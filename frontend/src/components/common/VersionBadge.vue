@@ -69,8 +69,63 @@
                 </p>
               </div>
 
-              <!-- Update available for source build - show git pull hint -->
-              <div v-if="hasUpdate && !isReleaseBuild" class="space-y-2">
+              <!-- Priority 1: Update error (must check before hasUpdate) -->
+              <div v-if="updateError" class="space-y-2">
+                <div class="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50">
+                  <div class="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-red-700 dark:text-red-300">{{ t('version.updateFailed') REDACTEDREDACTED</p>
+                    <p class="text-xs text-red-600/70 dark:text-red-400/70 truncate">{{ updateError REDACTEDREDACTED</p>
+                  </div>
+                </div>
+
+                <!-- Retry button -->
+                <button
+                  @click="handleUpdate"
+                  :disabled="updating"
+                  class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {{ t('version.retry') REDACTEDREDACTED
+                </button>
+              </div>
+
+              <!-- Priority 2: Update success - need restart -->
+              <div v-else-if="updateSuccess && needRestart" class="space-y-2">
+                <div class="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50">
+                  <div class="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-green-700 dark:text-green-300">{{ t('version.updateComplete') REDACTEDREDACTED</p>
+                    <p class="text-xs text-green-600/70 dark:text-green-400/70">{{ t('version.restartRequired') REDACTEDREDACTED</p>
+                  </div>
+                </div>
+
+                <!-- Restart button -->
+                <button
+                  @click="handleRestart"
+                  :disabled="restarting"
+                  class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <svg v-if="restarting" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {{ restarting ? t('version.restarting') : t('version.restartNow') REDACTEDREDACTED
+                </button>
+              </div>
+
+              <!-- Priority 3: Update available for source build - show git pull hint -->
+              <div v-else-if="hasUpdate && !isReleaseBuild" class="space-y-2">
                 <a
                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
                   :href="releaseInfo.html_url"
@@ -100,29 +155,53 @@
                 </div>
               </div>
 
-              <!-- Update available for release build - show download link -->
-              <a
-                v-else-if="hasUpdate && isReleaseBuild && releaseInfo?.html_url && releaseInfo.html_url !== '#'"
-                :href="releaseInfo.html_url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="flex items-center gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors group"
-              >
-                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-                  <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <!-- Priority 4: Update available for release build - show update button -->
+              <div v-else-if="hasUpdate && isReleaseBuild" class="space-y-2">
+                <!-- Update info card -->
+                <div class="flex items-center gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+                  <div class="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-amber-700 dark:text-amber-300">{{ t('version.updateAvailable') REDACTEDREDACTED</p>
+                    <p class="text-xs text-amber-600/70 dark:text-amber-400/70">v{{ latestVersion REDACTEDREDACTED</p>
+                  </div>
+                </div>
+
+                <!-- Update button -->
+                <button
+                  @click="handleUpdate"
+                  :disabled="updating"
+                  class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <svg v-if="updating" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-amber-700 dark:text-amber-300">{{ t('version.updateAvailable') REDACTEDREDACTED</p>
-                  <p class="text-xs text-amber-600/70 dark:text-amber-400/70">v{{ latestVersion REDACTEDREDACTED</p>
-                </div>
-                <svg class="w-4 h-4 text-amber-500 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </a>
+                  {{ updating ? t('version.updating') : t('version.updateNow') REDACTEDREDACTED
+                </button>
 
-              <!-- GitHub link when up to date -->
+                <!-- View release link -->
+                <a
+                  v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
+                  :href="releaseInfo.html_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center justify-center gap-1 text-xs text-gray-500 dark:text-dark-400 hover:text-gray-700 dark:hover:text-dark-200 transition-colors"
+                >
+                  {{ t('version.viewChangelog') REDACTEDREDACTED
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              </div>
+
+              <!-- Priority 5: Up to date - show GitHub link -->
               <a
                 v-else-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
                 :href="releaseInfo.html_url"
@@ -155,7 +234,7 @@
 import { ref, computed, onMounted, onBeforeUnmount REDACTED from 'vue';
 import { useI18n REDACTED from 'vue-i18n';
 import { useAuthStore REDACTED from '@/stores';
-import { checkUpdates, type VersionInfo, type ReleaseInfo REDACTED from '@/api/admin/system';
+import { checkUpdates, performUpdate, restartService, type VersionInfo, type ReleaseInfo REDACTED from '@/api/admin/system';
 
 const { t REDACTED = useI18n();
 
@@ -176,6 +255,13 @@ const latestVersion = ref('0.1.0');
 const hasUpdate = ref(false);
 const releaseInfo = ref<ReleaseInfo | null>(null);
 const buildType = ref('source'); // "source" or "release"
+
+// Update process states
+const updating = ref(false);
+const restarting = ref(false);
+const needRestart = ref(false);
+const updateError = ref('');
+const updateSuccess = ref(false);
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release');
@@ -200,11 +286,54 @@ async function refreshVersion(force = true) {
     // Show update indicator for all build types
     hasUpdate.value = data.has_update;
     releaseInfo.value = data.release_info || null;
+    // Reset update states when refreshing
+    updateError.value = '';
+    updateSuccess.value = false;
+    needRestart.value = false;
   REDACTED catch (error) {
     console.error('Failed to check updates:', error);
   REDACTED finally {
     loading.value = false;
   REDACTED
+REDACTED
+
+async function handleUpdate() {
+  if (updating.value) return;
+
+  updating.value = true;
+  updateError.value = '';
+  updateSuccess.value = false;
+
+  try {
+    const result = await performUpdate();
+    updateSuccess.value = true;
+    needRestart.value = result.need_restart;
+    hasUpdate.value = false;
+  REDACTED catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string REDACTED REDACTED; message?: string REDACTED;
+    updateError.value = err.response?.data?.message || err.message || t('version.updateFailed');
+  REDACTED finally {
+    updating.value = false;
+  REDACTED
+REDACTED
+
+async function handleRestart() {
+  if (restarting.value) return;
+
+  restarting.value = true;
+
+  try {
+    await restartService();
+    // Service will restart, page will reload automatically or show disconnected
+  REDACTED catch (error) {
+    // Expected - connection will be lost during restart
+    console.log('Service restarting...');
+  REDACTED
+
+  // Show restarting state for a while, then reload
+  setTimeout(() => {
+    window.location.reload();
+  REDACTED, 3000);
 REDACTED
 
 function handleClickOutside(event: MouseEvent) {

@@ -40,9 +40,42 @@ export async function checkUpdates(force = false): Promise<VersionInfo> {
   return data;
 REDACTED
 
+export interface UpdateResult {
+  message: string;
+  need_restart: boolean;
+REDACTED
+
+/**
+ * Perform system update
+ * Downloads and applies the latest version
+ */
+export async function performUpdate(): Promise<UpdateResult> {
+  const { data REDACTED = await apiClient.post<UpdateResult>('/admin/system/update');
+  return data;
+REDACTED
+
+/**
+ * Rollback to previous version
+ */
+export async function rollback(): Promise<UpdateResult> {
+  const { data REDACTED = await apiClient.post<UpdateResult>('/admin/system/rollback');
+  return data;
+REDACTED
+
+/**
+ * Restart the service
+ */
+export async function restartService(): Promise<{ message: string REDACTED> {
+  const { data REDACTED = await apiClient.post<{ message: string REDACTED>('/admin/system/restart');
+  return data;
+REDACTED
+
 export const systemAPI = {
   getVersion,
   checkUpdates,
+  performUpdate,
+  rollback,
+  restartService,
 REDACTED;
 
 export default systemAPI;

@@ -125,6 +125,7 @@ REDACTED
 REDACTED
 
 // PerformUpdate downloads and applies the update
+// Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
@@ -173,8 +174,11 @@ REDACTED
 		return fmt.Errorf("failed to resolve symlinks: %w", err)
 REDACTED
 
-	// Create temp directory for extraction
-	tempDir, err := os.MkdirTemp("", "sub2api-update-*")
+	exeDir := filepath.Dir(exePath)
+
+	// Create temp directory in the SAME directory as executable
+	// This ensures os.Rename is atomic (same filesystem)
+	tempDir, err := os.MkdirTemp(exeDir, ".sub2api-update-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 REDACTED
@@ -199,23 +203,36 @@ REDACTED
 		return fmt.Errorf("extraction failed: %w", err)
 REDACTED
 
-	// Backup current binary
-	backupFile := exePath + ".backup"
-	if err := os.Rename(exePath, backupFile); err != nil {
-		return fmt.Errorf("backup failed: %w", err)
-REDACTED
-
-	// Replace with new binary
-	if err := copyFile(newBinaryPath, exePath); err != nil {
-		os.Rename(backupFile, exePath)
-		return fmt.Errorf("replace failed: %w", err)
-REDACTED
-
-	// Make executable
-	if err := os.Chmod(exePath, 0755); err != nil {
+	// Set executable permission before replacement
+	if err := os.Chmod(newBinaryPath, 0755); err != nil {
 		return fmt.Errorf("chmod failed: %w", err)
 REDACTED
 
+	// Atomic replacement using rename pattern:
+	// 1. Rename current -> backup (atomic on Unix)
+	// 2. Rename new -> current (atomic on Unix, same filesystem)
+	// If step 2 fails, restore backup
+	backupPath := exePath + ".backup"
+
+	// Remove old backup if exists
+	os.Remove(backupPath)
+
+	// Step 1: Move current binary to backup
+	if err := os.Rename(exePath, backupPath); err != nil {
+		return fmt.Errorf("backup failed: %w", err)
+REDACTED
+
+	// Step 2: Move new binary to target location (atomic, same filesystem)
+	if err := os.Rename(newBinaryPath, exePath); err != nil {
+		// Restore backup on failure
+		if restoreErr := os.Rename(backupPath, exePath); restoreErr != nil {
+			return fmt.Errorf("replace failed and restore failed: %w (restore error: %v)", err, restoreErr)
+	REDACTED
+		return fmt.Errorf("replace failed (restored backup): %w", err)
+REDACTED
+
+	// Success - backup file is kept for rollback capability
+	// It will be cleaned up on next successful update
 	return nil
 REDACTED
 
@@ -512,23 +529,6 @@ REDACTED
 
 	limited := io.LimitReader(reader, maxBinarySize)
 	_, err = io.Copy(out, limited)
-	return err
-REDACTED
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-REDACTED
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-REDACTED
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
 	return err
 REDACTED
 
