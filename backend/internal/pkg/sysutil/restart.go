@@ -67,7 +67,17 @@ REDACTED
 	// The sub2api user has NOPASSWD sudo access for systemctl commands
 	// (configured by install.sh in /etc/sudoers.d/sub2api).
 	// Use -n (non-interactive) to prevent sudo from waiting for password input
-	cmd := exec.Command(sudoPath, "-n", systemctlPath, "restart", serviceName)
+	//
+	// Use setsid to create a new session, ensuring the child process
+	// survives even if the parent process is killed by systemctl restart
+	setsidPath := findExecutable("setsid")
+	cmd := exec.Command(setsidPath, sudoPath, "-n", systemctlPath, "restart", serviceName)
+
+	// Detach from parent's stdio to ensure clean separation
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to initiate service restart: %w", err)
 REDACTED
