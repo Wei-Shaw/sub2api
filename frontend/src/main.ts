@@ -9,4 +9,8 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(i18n)
-app.mount('#app')
+
+// 等待路由器完成初始导航后再挂载，避免竞态条件导致的空白渲染
+router.isReady().then(() => {
+  app.mount('#app')
+REDACTED)
