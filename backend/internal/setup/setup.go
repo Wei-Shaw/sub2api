@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"sub2api/internal/model"
+
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
@@ -82,16 +84,17 @@ REDACTED
 	return true
 REDACTED
 
-// TestDatabaseConnection tests the database connection
+// TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
+	// First, connect to the default 'postgres' database to check/create target database
+	defaultDSN := fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=postgres sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.SSLMode,
 	)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{REDACTED)
+	db, err := gorm.Open(postgres.Open(defaultDSN), &gorm.Config{REDACTED)
 	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
+		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 REDACTED
 
 	sqlDB, err := db.DB()
@@ -105,6 +108,50 @@ REDACTED
 
 	if err := sqlDB.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping failed: %w", err)
+REDACTED
+
+	// Check if target database exists
+	var exists bool
+	row := sqlDB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
+	if err := row.Scan(&exists); err != nil {
+		return fmt.Errorf("failed to check database existence: %w", err)
+REDACTED
+
+	// Create database if not exists
+	if !exists {
+		// Note: Database names cannot be parameterized, but we've already validated cfg.DBName
+		// in the handler using validateDBName() which only allows [a-zA-Z][a-zA-Z0-9_]*
+		_, err := sqlDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", cfg.DBName))
+		if err != nil {
+			return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
+	REDACTED
+		log.Printf("Database '%s' created successfully", cfg.DBName)
+REDACTED
+
+	// Now connect to the target database to verify
+	sqlDB.Close()
+
+	targetDSN := fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
+	)
+
+	targetDB, err := gorm.Open(postgres.Open(targetDSN), &gorm.Config{REDACTED)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database '%s': %w", cfg.DBName, err)
+REDACTED
+
+	targetSqlDB, err := targetDB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get target db instance: %w", err)
+REDACTED
+	defer targetSqlDB.Close()
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+
+	if err := targetSqlDB.PingContext(ctx2); err != nil {
+		return fmt.Errorf("ping target database failed: %w", err)
 REDACTED
 
 	return nil
@@ -198,18 +245,8 @@ REDACTED
 REDACTED
 	defer sqlDB.Close()
 
-	// Run auto-migration for all models
-	return db.AutoMigrate(
-		&User{REDACTED,
-		&Group{REDACTED,
-		&APIKey{REDACTED,
-		&Account{REDACTED,
-		&Proxy{REDACTED,
-		&RedeemCode{REDACTED,
-		&UsageLog{REDACTED,
-		&UserSubscription{REDACTED,
-		&Setting{REDACTED,
-	)
+	// 使用 model 包的 AutoMigrate，确保模型定义统一
+	return model.AutoMigrate(db)
 REDACTED
 
 func createAdminUser(cfg *SetupConfig) error {
@@ -232,7 +269,7 @@ REDACTED
 
 	// Check if admin already exists
 	var count int64
-	db.Model(&User{REDACTED).Where("role = ?", "admin").Count(&count)
+	db.Model(&model.User{REDACTED).Where("role = ?", "admin").Count(&count)
 	if count > 0 {
 		return nil // Admin already exists
 REDACTED
@@ -244,11 +281,11 @@ REDACTED
 REDACTED
 
 	// Create admin user
-	admin := &User{
+	admin := &model.User{
 		Email:        cfg.Admin.Email,
 		PasswordHash: string(hashedPassword),
-		Role:         "admin",
-		Status:       "active",
+		Role:         model.RoleAdmin,
+		Status:       model.StatusActive,
 		Balance:      0,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -320,119 +357,6 @@ func generateSecret(length int) string {
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)
 REDACTED
-
-// Minimal model definitions for migration (to avoid circular import)
-type User struct {
-	ID           uint      `gorm:"primaryKey"`
-	Email        string    `gorm:"uniqueIndex;not null"`
-	PasswordHash string    `gorm:"not null"`
-	Role         string    `gorm:"default:user"`
-	Status       string    `gorm:"default:active"`
-	Balance      float64   `gorm:"default:0"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-REDACTED
-
-type Group struct {
-	ID             uint    `gorm:"primaryKey"`
-	Name           string  `gorm:"uniqueIndex;not null"`
-	Description    string  `gorm:"type:text"`
-	RateMultiplier float64 `gorm:"default:1.0"`
-	IsExclusive    bool    `gorm:"default:false"`
-	Priority       int     `gorm:"default:0"`
-	Status         string  `gorm:"default:active"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-REDACTED
-
-type APIKey struct {
-	ID        uint   `gorm:"primaryKey"`
-	UserID    uint   `gorm:"index;not null"`
-	Key       string `gorm:"uniqueIndex;not null"`
-	Name      string
-	GroupID   *uint
-	Status    string `gorm:"default:active"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-REDACTED
-
-type Account struct {
-	ID          uint   `gorm:"primaryKey"`
-	Platform    string `gorm:"not null"`
-	Type        string `gorm:"not null"`
-	Credentials string `gorm:"type:text"`
-	Status      string `gorm:"default:active"`
-	Priority    int    `gorm:"default:0"`
-	ProxyID     *uint
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-REDACTED
-
-type Proxy struct {
-	ID        uint   `gorm:"primaryKey"`
-	Name      string `gorm:"not null"`
-	Protocol  string `gorm:"not null"`
-	Host      string `gorm:"not null"`
-	Port      int    `gorm:"not null"`
-	Username  string
-	Password  string
-	Status    string `gorm:"default:active"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-REDACTED
-
-type RedeemCode struct {
-	ID        uint    `gorm:"primaryKey"`
-	Code      string  `gorm:"uniqueIndex;not null"`
-	Value     float64 `gorm:"not null"`
-	Status    string  `gorm:"default:unused"`
-	UsedBy    *uint
-	UsedAt    *time.Time
-	ExpiresAt *time.Time
-	CreatedAt time.Time
-REDACTED
-
-type UsageLog struct {
-	ID           uint   `gorm:"primaryKey"`
-	UserID       uint   `gorm:"index"`
-	APIKeyID     uint   `gorm:"index"`
-	AccountID    *uint  `gorm:"index"`
-	Model        string `gorm:"index"`
-	InputTokens  int
-	OutputTokens int
-	Cost         float64
-	CreatedAt    time.Time
-REDACTED
-
-type UserSubscription struct {
-	ID        uint `gorm:"primaryKey"`
-	UserID    uint `gorm:"index;not null"`
-	GroupID   uint `gorm:"index;not null"`
-	Quota     int64
-	Used      int64 `gorm:"default:0"`
-	Status    string
-	ExpiresAt *time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
-REDACTED
-
-type Setting struct {
-	ID        uint   `gorm:"primaryKey"`
-	Key       string `gorm:"uniqueIndex;not null"`
-	Value     string `gorm:"type:text"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-REDACTED
-
-func (User) TableName() string             { return "users" REDACTED
-func (Group) TableName() string            { return "groups" REDACTED
-func (APIKey) TableName() string           { return "api_keys" REDACTED
-func (Account) TableName() string          { return "accounts" REDACTED
-func (Proxy) TableName() string            { return "proxies" REDACTED
-func (RedeemCode) TableName() string       { return "redeem_codes" REDACTED
-func (UsageLog) TableName() string         { return "usage_logs" REDACTED
-func (UserSubscription) TableName() string { return "user_subscriptions" REDACTED
-func (Setting) TableName() string          { return "settings" REDACTED
 
 // =============================================================================
 // Auto Setup for Docker Deployment

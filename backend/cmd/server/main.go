@@ -212,11 +212,10 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 自动迁移（开发环境）
-	if cfg.Server.Mode == "debug" {
-		if err := model.AutoMigrate(db); err != nil {
-			return nil, err
-	REDACTED
+	// 自动迁移（始终执行，确保数据库结构与代码同步）
+	// GORM 的 AutoMigrate 只会添加新字段，不会删除或修改已有字段，是安全的
+	if err := model.AutoMigrate(db); err != nil {
+		return nil, err
 REDACTED
 
 	return db, nil

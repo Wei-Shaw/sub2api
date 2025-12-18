@@ -12,6 +12,7 @@ docs/claude-relay-service/
 backend/bin/
 backend/server
 backend/sub2api
+backend/main
 
 # 测试覆盖率
 *.out
