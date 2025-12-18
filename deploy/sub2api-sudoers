@@ -8,6 +8,10 @@
 # SECURITY NOTE: This grants limited sudo access only for service management
 
 # Allow sub2api user to restart the service without password
+# Support both /bin/systemctl (Debian/Ubuntu) and /usr/bin/systemctl (RHEL/CentOS)
 sub2api ALL=(ALL) NOPASSWD: /bin/systemctl restart sub2api
 sub2api ALL=(ALL) NOPASSWD: /bin/systemctl stop sub2api
 sub2api ALL=(ALL) NOPASSWD: /bin/systemctl start sub2api
+sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sub2api
+sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sub2api
+sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl start sub2api
