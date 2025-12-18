@@ -85,6 +85,16 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: backend/go.sum
 
+      - name: Get tag message
+        id: tag_message
+        run: |
+          # 获取完整的 tag message（跳过第一行标题）
+          TAG_MESSAGE=$(git tag -l --format='%(contents:body)' ${GITHUB_REF#refs/tags/REDACTED)
+          # 使用 EOF 分隔符处理多行内容
+          echo "message<<EOF" >> $GITHUB_OUTPUT
+          echo "$TAG_MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -92,6 +102,7 @@ jobs:
           args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN REDACTEDREDACTED
+          TAG_MESSAGE: ${{ steps.tag_message.outputs.message REDACTEDREDACTED
 
   # ===========================================================================
   # Docker Build and Push
