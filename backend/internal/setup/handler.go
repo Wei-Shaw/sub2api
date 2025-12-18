@@ -2,11 +2,15 @@ package setup
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/mail"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"sub2api/internal/pkg/response"
 
@@ -337,8 +341,41 @@ REDACTED
 		return
 REDACTED
 
+	// Schedule service restart in background after sending response
+	// This ensures the client receives the success response before the service restarts
+	go func() {
+		// Wait a moment to ensure the response is sent
+		time.Sleep(500 * time.Millisecond)
+		triggerServiceRestart()
+REDACTED()
+
 	response.Success(c, gin.H{
-		"message": "Installation completed successfully",
+		"message": "Installation completed successfully. Service will restart automatically.",
 		"restart": true,
 REDACTED)
+REDACTED
+
+// triggerServiceRestart attempts to restart the service via systemd
+// This is called after setup completes to switch from setup mode to normal mode
+func triggerServiceRestart() {
+	if runtime.GOOS != "linux" {
+		log.Println("Service restart: not on Linux, manual restart required")
+		return
+REDACTED
+
+	log.Println("Setup completed, triggering service restart...")
+
+	// Try direct systemctl first (works if running as root or with proper permissions)
+	cmd := exec.Command("systemctl", "restart", "sub2api")
+	if err := cmd.Run(); err != nil {
+		// Try with sudo (requires NOPASSWD sudoers entry)
+		sudoCmd := exec.Command("sudo", "systemctl", "restart", "sub2api")
+		if sudoErr := sudoCmd.Run(); sudoErr != nil {
+			log.Printf("Service restart failed: %v (sudo also failed: %v)", err, sudoErr)
+			log.Println("Please restart the service manually: sudo systemctl restart sub2api")
+			return
+	REDACTED
+REDACTED
+
+	log.Println("Service restart initiated successfully")
 REDACTED

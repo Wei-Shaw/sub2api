@@ -214,12 +214,18 @@
         <!-- Success Message -->
         <div v-if="installSuccess" class="mt-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 rounded-xl">
           <div class="flex items-start gap-3">
-            <svg class="w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <svg v-if="!serviceReady" class="animate-spin w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <svg v-else class="w-5 h-5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
               <p class="text-sm font-medium text-green-700 dark:text-green-400">Installation completed!</p>
-              <p class="text-sm text-green-600 dark:text-green-500 mt-1">Please restart the service to apply changes.</p>
+              <p class="text-sm text-green-600 dark:text-green-500 mt-1">
+                {{ serviceReady ? 'Redirecting to login page...' : 'Service is restarting, please wait...' REDACTEDREDACTED
+              </p>
             </div>
           </div>
         </div>
@@ -290,6 +296,7 @@ const dbConnected = ref(false);
 const redisConnected = ref(false);
 const installing = ref(false);
 const confirmPassword = ref('');
+const serviceReady = ref(false);
 
 // Get current server port from browser location (set by install.sh)
 const getCurrentPort = (): number => {
@@ -390,11 +397,61 @@ async function performInstall() {
   try {
     await install(formData);
     installSuccess.value = true;
+    // Start polling for service restart
+    waitForServiceRestart();
   REDACTED catch (error: unknown) {
     const err = error as { response?: { data?: { detail?: string REDACTED REDACTED; message?: string REDACTED;
     errorMessage.value = err.response?.data?.detail || err.message || 'Installation failed';
   REDACTED finally {
     installing.value = false;
   REDACTED
+REDACTED
+
+// Wait for service to restart and become available
+async function waitForServiceRestart() {
+  const maxAttempts = 30; // 30 attempts, ~30 seconds max
+  const interval = 1000; // 1 second between attempts
+
+  // Wait a moment for the service to start restarting
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      // Try to access the health endpoint
+      const response = await fetch('/health', {
+        method: 'GET',
+        cache: 'no-store'
+      REDACTED);
+
+      if (response.ok) {
+        // Service is up, check if setup is no longer needed
+        const statusResponse = await fetch('/setup/status', {
+          method: 'GET',
+          cache: 'no-store'
+        REDACTED);
+
+        if (statusResponse.ok) {
+          const data = await statusResponse.json();
+          // If needs_setup is false, service has restarted in normal mode
+          if (data.data && !data.data.needs_setup) {
+            serviceReady.value = true;
+            // Redirect to login page after a short delay
+            setTimeout(() => {
+              window.location.href = '/login';
+            REDACTED, 1500);
+            return;
+          REDACTED
+        REDACTED
+      REDACTED
+    REDACTED catch {
+      // Service not ready yet, continue polling
+    REDACTED
+
+    await new Promise(resolve => setTimeout(resolve, interval));
+  REDACTED
+
+  // If we reach here, service didn't restart in time
+  // Show a message to refresh manually
+  errorMessage.value = 'Service restart is taking longer than expected. Please refresh the page manually.';
 REDACTED
 </script>

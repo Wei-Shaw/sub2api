@@ -235,6 +235,18 @@ func registerRoutes(r *gin.Engine, h *handler.Handlers, s *service.Services, rep
 		c.JSON(http.StatusOK, gin.H{"status": "ok"REDACTED)
 REDACTED)
 
+	// Setup status endpoint (always returns needs_setup: false in normal mode)
+	// This is used by the frontend to detect when the service has restarted after setup
+	r.GET("/setup/status", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 0,
+			"data": gin.H{
+				"needs_setup": false,
+				"step":        "completed",
+		REDACTED,
+	REDACTED)
+REDACTED)
+
 	// API v1
 	v1 := r.Group("/api/v1")
 	{

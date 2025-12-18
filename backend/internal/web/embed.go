@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//go:embed dist/*
+//go:embed all:dist
 var frontendFS embed.FS
 
 // ServeEmbeddedFrontend returns a Gin handler that serves embedded frontend assets
