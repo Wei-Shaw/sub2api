@@ -12,7 +12,8 @@
         ]"
         :title="hasUpdate ? 'New version available' : 'Up to date'"
       >
-        <span class="font-medium">v{{ currentVersion REDACTEDREDACTED</span>
+        <span v-if="currentVersion" class="font-medium">v{{ currentVersion REDACTEDREDACTED</span>
+        <span v-else class="font-medium w-12 h-3 bg-gray-200 dark:bg-dark-600 rounded animate-pulse"></span>
         <!-- Update indicator -->
         <span v-if="hasUpdate" class="relative flex h-2 w-2">
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -56,7 +57,8 @@
               <!-- Version display - centered and prominent -->
               <div class="text-center mb-4">
                 <div class="inline-flex items-center gap-2">
-                  <span class="text-2xl font-bold text-gray-900 dark:text-white">v{{ currentVersion REDACTEDREDACTED</span>
+                  <span v-if="currentVersion" class="text-2xl font-bold text-gray-900 dark:text-white">v{{ currentVersion REDACTEDREDACTED</span>
+                  <span v-else class="text-2xl font-bold text-gray-400 dark:text-dark-500">--</span>
                   <!-- Show check mark when up to date -->
                   <span v-if="!hasUpdate" class="flex items-center justify-center w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30">
                     <svg class="w-3 h-3 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
@@ -233,8 +235,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount REDACTED from 'vue';
 import { useI18n REDACTED from 'vue-i18n';
-import { useAuthStore REDACTED from '@/stores';
-import { checkUpdates, performUpdate, restartService, type VersionInfo, type ReleaseInfo REDACTED from '@/api/admin/system';
+import { useAuthStore, useAppStore REDACTED from '@/stores';
+import { performUpdate, restartService REDACTED from '@/api/admin/system';
 
 const { t REDACTED = useI18n();
 
@@ -243,20 +245,22 @@ const props = defineProps<{
 REDACTED>();
 
 const authStore = useAuthStore();
+const appStore = useAppStore();
 
 const isAdmin = computed(() => authStore.isAdmin);
 
-const loading = ref(false);
 const dropdownOpen = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
 
-const currentVersion = ref('0.1.0');
-const latestVersion = ref('0.1.0');
-const hasUpdate = ref(false);
-const releaseInfo = ref<ReleaseInfo | null>(null);
-const buildType = ref('source'); // "source" or "release"
+// Use store's cached version state
+const loading = computed(() => appStore.versionLoading);
+const currentVersion = computed(() => appStore.currentVersion || props.version || '');
+const latestVersion = computed(() => appStore.latestVersion);
+const hasUpdate = computed(() => appStore.hasUpdate);
+const releaseInfo = computed(() => appStore.releaseInfo);
+const buildType = computed(() => appStore.buildType);
 
-// Update process states
+// Update process states (local to this component)
 const updating = ref(false);
 const restarting = ref(false);
 const needRestart = ref(false);
@@ -277,24 +281,12 @@ REDACTED
 async function refreshVersion(force = true) {
   if (!isAdmin.value) return;
 
-  loading.value = true;
-  try {
-    const data: VersionInfo = await checkUpdates(force);
-    currentVersion.value = data.current_version;
-    latestVersion.value = data.latest_version;
-    buildType.value = data.build_type || 'source';
-    // Show update indicator for all build types
-    hasUpdate.value = data.has_update;
-    releaseInfo.value = data.release_info || null;
-    // Reset update states when refreshing
-    updateError.value = '';
-    updateSuccess.value = false;
-    needRestart.value = false;
-  REDACTED catch (error) {
-    console.error('Failed to check updates:', error);
-  REDACTED finally {
-    loading.value = false;
-  REDACTED
+  // Reset update states when refreshing
+  updateError.value = '';
+  updateSuccess.value = false;
+  needRestart.value = false;
+
+  await appStore.fetchVersion(force);
 REDACTED
 
 async function handleUpdate() {
@@ -308,7 +300,8 @@ async function handleUpdate() {
     const result = await performUpdate();
     updateSuccess.value = true;
     needRestart.value = result.need_restart;
-    hasUpdate.value = false;
+    // Clear version cache to reflect update completed
+    appStore.clearVersionCache();
   REDACTED catch (error: unknown) {
     const err = error as { response?: { data?: { message?: string REDACTED REDACTED; message?: string REDACTED;
     updateError.value = err.response?.data?.message || err.message || t('version.updateFailed');
@@ -346,9 +339,8 @@ REDACTED
 
 onMounted(() => {
   if (isAdmin.value) {
-    refreshVersion(false);
-  REDACTED else if (props.version) {
-    currentVersion.value = props.version;
+    // Use cached version if available, otherwise fetch
+    appStore.fetchVersion(false);
   REDACTED
   document.addEventListener('click', handleClickOutside);
 REDACTED);

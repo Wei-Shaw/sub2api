@@ -406,7 +406,7 @@ REDACTED))
 
 // Model chart data
 const modelChartData = computed(() => {
-  if (!modelStats.value.length) return null
+  if (!modelStats.value?.length) return null
 
   const colors = [
     '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -425,7 +425,7 @@ REDACTED)
 
 // Trend chart data
 const trendChartData = computed(() => {
-  if (!trendData.value.length) return null
+  if (!trendData.value?.length) return null
 
   return {
     labels: trendData.value.map(d => d.date),
@@ -460,7 +460,7 @@ REDACTED)
 
 // User trend chart data
 const userTrendChartData = computed(() => {
-  if (!userTrend.value.length) return null
+  if (!userTrend.value?.length) return null
 
   // Group by user
   const userGroups = new Map<string, { name: string; data: Map<string, number> REDACTED>()

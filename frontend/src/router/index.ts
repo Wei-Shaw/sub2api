@@ -305,9 +305,10 @@ router.beforeEach((to, _from, next) => {
 
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
-    // If already authenticated and trying to access login/register, redirect to dashboard
+    // If already authenticated and trying to access login/register, redirect to appropriate dashboard
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
-      next('/dashboard');
+      // Admin users go to admin dashboard, regular users go to user dashboard
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard');
       return;
     REDACTED
     next();
