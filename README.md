@@ -57,7 +57,6 @@ One-click installation script that downloads pre-built binaries from GitHub Rele
 #### Installation Steps
 
 ```bash
-# Download and run the installation script
 curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
 ```
 

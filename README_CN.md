@@ -57,7 +57,6 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 #### 安装步骤
 
 ```bash
-# 下载并运行安装脚本
 curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
 ```
 

@@ -260,8 +260,19 @@ print_error() {
     echo -e "${REDREDACTED[$(msg 'error')]${NCREDACTED $1"
 REDACTED
 
+# Check if running interactively (stdin is a terminal)
+is_interactive() {
+    [ -t 0 ]
+REDACTED
+
 # Select language
 select_language() {
+    # If not interactive (piped), use default language
+    if ! is_interactive; then
+        LANG_CHOICE="zh"
+        return
+    fi
+
     echo ""
     echo -e "${CYANREDACTED=============================================="
     echo "  $(msg 'select_lang')"
@@ -271,8 +282,7 @@ select_language() {
     echo "  2) $(msg 'lang_en')"
     echo ""
 
-    # Read with timeout for piped input
-    read -t 10 -p "$(msg 'enter_choice'): " lang_input 2>/dev/null || lang_input=""
+    read -p "$(msg 'enter_choice'): " lang_input
 
     case "$lang_input" in
         2|en|EN|english|English)
@@ -297,6 +307,12 @@ REDACTED
 
 # Configure server settings
 configure_server() {
+    # If not interactive (piped), use default settings
+    if ! is_interactive; then
+        print_info "$(msg 'server_config_summary'): ${SERVER_HOSTREDACTED:${SERVER_PORTREDACTED (default)"
+        return
+    fi
+
     echo ""
     echo -e "${CYANREDACTED=============================================="
     echo "  $(msg 'server_config_title')"
@@ -663,11 +679,20 @@ REDACTED
 # Uninstall function
 uninstall() {
     print_warning "$(msg 'uninstall_confirm')"
-    read -p "$(msg 'are_you_sure') " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_info "$(msg 'uninstall_cancelled')"
-        exit 0
+
+    # If not interactive (piped), require -y flag or skip confirmation
+    if ! is_interactive; then
+        if [ "${FORCE_YES:-REDACTED" != "true" ]; then
+            print_error "Non-interactive mode detected. Use 'bash -s -- uninstall -y' to confirm."
+            exit 1
+        fi
+    else
+        read -p "$(msg 'are_you_sure') " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "$(msg 'uninstall_cancelled')"
+            exit 0
+        fi
     fi
 
     print_info "$(msg 'stopping_service')"
@@ -693,6 +718,13 @@ REDACTED
 
 # Main
 main() {
+    # Parse -y flag first
+    for arg in "$@"; do
+        if [ "$arg" = "-y" ] || [ "$arg" = "--yes" ]; then
+            FORCE_YES="true"
+        fi
+    done
+
     # Select language first
     select_language
 
@@ -716,12 +748,15 @@ main() {
             exit 0
             ;;
         --help|-h)
-            echo "$(msg 'usage'): $0 [command]"
+            echo "$(msg 'usage'): $0 [command] [options]"
             echo ""
             echo "Commands:"
             echo "  $(msg 'cmd_none')     $(msg 'cmd_install')"
             echo "  upgrade        $(msg 'cmd_upgrade')"
             echo "  uninstall      $(msg 'cmd_uninstall')"
+            echo ""
+            echo "Options:"
+            echo "  -y, --yes      Skip confirmation prompts (for uninstall)"
             echo ""
             exit 0
             ;;
