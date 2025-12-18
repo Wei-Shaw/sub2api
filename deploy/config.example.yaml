@@ -1,0 +1,89 @@
+# Sub2API Configuration File
+# Copy this file to /etc/sub2api/config.yaml and modify as needed
+# Documentation: https://github.com/Wei-Shaw/sub2api
+
+# =============================================================================
+# Server Configuration
+# =============================================================================
+server:
+  # Bind address (0.0.0.0 for all interfaces)
+  host: "0.0.0.0"
+  # Port to listen on
+  port: 8080
+  # Mode: "debug" for development, "release" for production
+  mode: "release"
+
+# =============================================================================
+# Database Configuration (PostgreSQL)
+# =============================================================================
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "your_secure_password_here"
+  dbname: "sub2api"
+  # SSL mode: disable, require, verify-ca, verify-full
+  sslmode: "disable"
+
+# =============================================================================
+# Redis Configuration
+# =============================================================================
+redis:
+  host: "localhost"
+  port: 6379
+  # Leave empty if no password is set
+  password: ""
+  # Database number (0-15)
+  db: 0
+
+# =============================================================================
+# JWT Configuration
+# =============================================================================
+jwt:
+  # IMPORTANT: Change this to a random string in production!
+  # Generate with: openssl rand -hex 32
+  secret: "change-this-to-a-secure-random-string"
+  # Token expiration time in hours
+  expire_hour: 24
+
+# =============================================================================
+# Default Settings
+# =============================================================================
+default:
+  # Initial admin account (created on first run)
+  admin_email: "admin@example.com"
+  admin_password: "admin123"
+
+  # Default settings for new users
+  user_concurrency: 5        # Max concurrent requests per user
+  user_balance: 0            # Initial balance for new users
+
+  # API key settings
+  api_key_prefix: "sk-"      # Prefix for generated API keys
+
+  # Rate multiplier (affects billing calculation)
+  rate_multiplier: 1.0
+
+# =============================================================================
+# Rate Limiting
+# =============================================================================
+rate_limit:
+  # Cooldown time (in minutes) when upstream returns 529 (overloaded)
+  overload_cooldown_minutes: 10
+
+# =============================================================================
+# Pricing Data Source (Optional)
+# =============================================================================
+pricing:
+  # URL to fetch model pricing data (default: LiteLLM)
+  remote_url: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+  # Hash verification URL (optional)
+  hash_url: ""
+  # Local data directory for caching
+  data_dir: "./data"
+  # Fallback pricing file
+  fallback_file: "./resources/model-pricing/model_prices_and_context_window.json"
+  # Update interval in hours
+  update_interval_hours: 24
+  # Hash check interval in minutes
+  hash_check_interval_minutes: 10

@@ -1,0 +1,415 @@
+<template>
+  <div class="relative" ref="containerRef">
+    <button
+      type="button"
+      @click="toggle"
+      :class="[
+        'date-picker-trigger',
+        isOpen && 'date-picker-trigger-open'
+      ]"
+    >
+      <span class="date-picker-icon">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+        </svg>
+      </span>
+      <span class="date-picker-value">
+        {{ displayValue REDACTEDREDACTED
+      </span>
+      <span class="date-picker-chevron">
+        <svg
+          :class="['w-4 h-4 transition-transform duration-200', isOpen && 'rotate-180']"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          stroke-width="1.5"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </span>
+    </button>
+
+    <Transition name="date-picker-dropdown">
+      <div
+        v-if="isOpen"
+        class="date-picker-dropdown"
+      >
+        <!-- Quick presets -->
+        <div class="date-picker-presets">
+          <button
+            v-for="preset in presets"
+            :key="preset.value"
+            @click="selectPreset(preset)"
+            :class="[
+              'date-picker-preset',
+              isPresetActive(preset) && 'date-picker-preset-active'
+            ]"
+          >
+            {{ t(preset.labelKey) REDACTEDREDACTED
+          </button>
+        </div>
+
+        <div class="date-picker-divider"></div>
+
+        <!-- Custom date range inputs -->
+        <div class="date-picker-custom">
+          <div class="date-picker-field">
+            <label class="date-picker-label">{{ t('dates.startDate') REDACTEDREDACTED</label>
+            <input
+              type="date"
+              v-model="localStartDate"
+              :max="localEndDate || today"
+              class="date-picker-input"
+              @change="onDateChange"
+            />
+          </div>
+          <div class="date-picker-separator">
+            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H3" />
+            </svg>
+          </div>
+          <div class="date-picker-field">
+            <label class="date-picker-label">{{ t('dates.endDate') REDACTEDREDACTED</label>
+            <input
+              type="date"
+              v-model="localEndDate"
+              :min="localStartDate"
+              :max="today"
+              class="date-picker-input"
+              @change="onDateChange"
+            />
+          </div>
+        </div>
+
+        <!-- Apply button -->
+        <div class="date-picker-actions">
+          <button
+            @click="apply"
+            class="date-picker-apply"
+          >
+            {{ t('dates.apply') REDACTEDREDACTED
+          </button>
+        </div>
+      </div>
+    </Transition>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
+
+interface DatePreset {
+  labelKey: string
+  value: string
+  getRange: () => { start: string; end: string REDACTED
+REDACTED
+
+interface Props {
+  startDate: string
+  endDate: string
+REDACTED
+
+interface Emits {
+  (e: 'update:startDate', value: string): void
+  (e: 'update:endDate', value: string): void
+  (e: 'change', range: { startDate: string; endDate: string; preset: string | null REDACTED): void
+REDACTED
+
+const props = defineProps<Props>()
+const emit = defineEmits<Emits>()
+
+const { t, locale REDACTED = useI18n()
+
+const isOpen = ref(false)
+const containerRef = ref<HTMLElement | null>(null)
+const localStartDate = ref(props.startDate)
+const localEndDate = ref(props.endDate)
+const activePreset = ref<string | null>('7days')
+
+const today = computed(() => new Date().toISOString().split('T')[0])
+
+const presets: DatePreset[] = [
+  {
+    labelKey: 'dates.today',
+    value: 'today',
+    getRange: () => {
+      const t = today.value
+      return { start: t, end: t REDACTED
+    REDACTED
+  REDACTED,
+  {
+    labelKey: 'dates.yesterday',
+    value: 'yesterday',
+    getRange: () => {
+      const d = new Date()
+      d.setDate(d.getDate() - 1)
+      const yesterday = d.toISOString().split('T')[0]
+      return { start: yesterday, end: yesterday REDACTED
+    REDACTED
+  REDACTED,
+  {
+    labelKey: 'dates.last7Days',
+    value: '7days',
+    getRange: () => {
+      const end = today.value
+      const d = new Date()
+      d.setDate(d.getDate() - 6)
+      const start = d.toISOString().split('T')[0]
+      return { start, end REDACTED
+    REDACTED
+  REDACTED,
+  {
+    labelKey: 'dates.last14Days',
+    value: '14days',
+    getRange: () => {
+      const end = today.value
+      const d = new Date()
+      d.setDate(d.getDate() - 13)
+      const start = d.toISOString().split('T')[0]
+      return { start, end REDACTED
+    REDACTED
+  REDACTED,
+  {
+    labelKey: 'dates.last30Days',
+    value: '30days',
+    getRange: () => {
+      const end = today.value
+      const d = new Date()
+      d.setDate(d.getDate() - 29)
+      const start = d.toISOString().split('T')[0]
+      return { start, end REDACTED
+    REDACTED
+  REDACTED,
+  {
+    labelKey: 'dates.thisMonth',
+    value: 'thisMonth',
+    getRange: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+      return { start, end: today.value REDACTED
+    REDACTED
+  REDACTED,
+  {
+    labelKey: 'dates.lastMonth',
+    value: 'lastMonth',
+    getRange: () => {
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]
+      const end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]
+      return { start, end REDACTED
+    REDACTED
+  REDACTED
+]
+
+const displayValue = computed(() => {
+  if (activePreset.value) {
+    const preset = presets.find(p => p.value === activePreset.value)
+    if (preset) return t(preset.labelKey)
+  REDACTED
+
+  if (localStartDate.value && localEndDate.value) {
+    if (localStartDate.value === localEndDate.value) {
+      return formatDate(localStartDate.value)
+    REDACTED
+    return `${formatDate(localStartDate.value)REDACTED - ${formatDate(localEndDate.value)REDACTED`
+  REDACTED
+
+  return t('dates.selectDateRange')
+REDACTED)
+
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr + 'T00:00:00')
+  const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  return date.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric' REDACTED)
+REDACTED
+
+const isPresetActive = (preset: DatePreset): boolean => {
+  return activePreset.value === preset.value
+REDACTED
+
+const selectPreset = (preset: DatePreset) => {
+  const range = preset.getRange()
+  localStartDate.value = range.start
+  localEndDate.value = range.end
+  activePreset.value = preset.value
+REDACTED
+
+const onDateChange = () => {
+  // Check if current dates match any preset
+  activePreset.value = null
+  for (const preset of presets) {
+    const range = preset.getRange()
+    if (range.start === localStartDate.value && range.end === localEndDate.value) {
+      activePreset.value = preset.value
+      break
+    REDACTED
+  REDACTED
+REDACTED
+
+const toggle = () => {
+  isOpen.value = !isOpen.value
+REDACTED
+
+const apply = () => {
+  emit('update:startDate', localStartDate.value)
+  emit('update:endDate', localEndDate.value)
+  emit('change', {
+    startDate: localStartDate.value,
+    endDate: localEndDate.value,
+    preset: activePreset.value
+  REDACTED)
+  isOpen.value = false
+REDACTED
+
+const handleClickOutside = (event: MouseEvent) => {
+  if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
+    isOpen.value = false
+  REDACTED
+REDACTED
+
+const handleEscape = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && isOpen.value) {
+    isOpen.value = false
+  REDACTED
+REDACTED
+
+// Sync local state with props
+watch(() => props.startDate, (val) => {
+  localStartDate.value = val
+  onDateChange()
+REDACTED)
+
+watch(() => props.endDate, (val) => {
+  localEndDate.value = val
+  onDateChange()
+REDACTED)
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleEscape)
+  // Initialize active preset detection
+  onDateChange()
+REDACTED)
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleEscape)
+REDACTED)
+</script>
+
+<style scoped>
+.date-picker-trigger {
+  @apply flex items-center gap-2;
+  @apply px-3 py-2 rounded-lg text-sm;
+  @apply bg-white dark:bg-dark-800;
+  @apply border border-gray-200 dark:border-dark-600;
+  @apply text-gray-700 dark:text-gray-300;
+  @apply transition-all duration-200;
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500;
+  @apply hover:border-gray-300 dark:hover:border-dark-500;
+  @apply cursor-pointer;
+REDACTED
+
+.date-picker-trigger-open {
+  @apply ring-2 ring-primary-500/30 border-primary-500;
+REDACTED
+
+.date-picker-icon {
+  @apply text-gray-400 dark:text-dark-400;
+REDACTED
+
+.date-picker-value {
+  @apply font-medium;
+REDACTED
+
+.date-picker-chevron {
+  @apply text-gray-400 dark:text-dark-400;
+REDACTED
+
+.date-picker-dropdown {
+  @apply absolute z-[100] mt-2 left-0;
+  @apply bg-white dark:bg-dark-800;
+  @apply rounded-xl;
+  @apply border border-gray-200 dark:border-dark-700;
+  @apply shadow-lg shadow-black/10 dark:shadow-black/30;
+  @apply overflow-hidden;
+  @apply min-w-[320px];
+REDACTED
+
+.date-picker-presets {
+  @apply grid grid-cols-2 gap-1 p-2;
+REDACTED
+
+.date-picker-preset {
+  @apply px-3 py-1.5 text-xs font-medium rounded-md;
+  @apply text-gray-600 dark:text-gray-400;
+  @apply hover:bg-gray-100 dark:hover:bg-dark-700;
+  @apply transition-colors duration-150;
+REDACTED
+
+.date-picker-preset-active {
+  @apply bg-primary-100 dark:bg-primary-900/30;
+  @apply text-primary-700 dark:text-primary-300;
+REDACTED
+
+.date-picker-divider {
+  @apply border-t border-gray-100 dark:border-dark-700;
+REDACTED
+
+.date-picker-custom {
+  @apply flex items-end gap-2 p-3;
+REDACTED
+
+.date-picker-field {
+  @apply flex-1;
+REDACTED
+
+.date-picker-label {
+  @apply block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1;
+REDACTED
+
+.date-picker-input {
+  @apply w-full px-2 py-1.5 text-sm rounded-md;
+  @apply bg-gray-50 dark:bg-dark-700;
+  @apply border border-gray-200 dark:border-dark-600;
+  @apply text-gray-900 dark:text-gray-100;
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500;
+REDACTED
+
+.date-picker-input::-webkit-calendar-picker-indicator {
+  @apply cursor-pointer opacity-60 hover:opacity-100;
+  filter: invert(0.5);
+REDACTED
+
+.dark .date-picker-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+REDACTED
+
+.date-picker-separator {
+  @apply flex items-center justify-center pb-1;
+REDACTED
+
+.date-picker-actions {
+  @apply flex justify-end p-2 pt-0;
+REDACTED
+
+.date-picker-apply {
+  @apply px-4 py-1.5 text-sm font-medium rounded-lg;
+  @apply bg-primary-600 text-white;
+  @apply hover:bg-primary-700;
+  @apply transition-colors duration-150;
+REDACTED
+
+/* Dropdown animation */
+.date-picker-dropdown-enter-active,
+.date-picker-dropdown-leave-active {
+  transition: all 0.2s ease;
+REDACTED
+
+.date-picker-dropdown-enter-from,
+.date-picker-dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+REDACTED
+</style>

@@ -1,0 +1,109 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"sync"
+	"time"
+)
+
+// EmailTask 邮件发送任务
+type EmailTask struct {
+	Email    string
+	SiteName string
+	TaskType string // "verify_code"
+REDACTED
+
+// EmailQueueService 异步邮件队列服务
+type EmailQueueService struct {
+	emailService *EmailService
+	taskChan     chan EmailTask
+	wg           sync.WaitGroup
+	stopChan     chan struct{REDACTED
+	workers      int
+REDACTED
+
+// NewEmailQueueService 创建邮件队列服务
+func NewEmailQueueService(emailService *EmailService, workers int) *EmailQueueService {
+	if workers <= 0 {
+		workers = 3 // 默认3个工作协程
+REDACTED
+
+	service := &EmailQueueService{
+		emailService: emailService,
+		taskChan:     make(chan EmailTask, 100), // 缓冲100个任务
+		stopChan:     make(chan struct{REDACTED),
+		workers:      workers,
+REDACTED
+
+	// 启动工作协程
+	service.start()
+
+	return service
+REDACTED
+
+// start 启动工作协程
+func (s *EmailQueueService) start() {
+	for i := 0; i < s.workers; i++ {
+		s.wg.Add(1)
+		go s.worker(i)
+REDACTED
+	log.Printf("[EmailQueue] Started %d workers", s.workers)
+REDACTED
+
+// worker 工作协程
+func (s *EmailQueueService) worker(id int) {
+	defer s.wg.Done()
+
+	for {
+		select {
+		case task := <-s.taskChan:
+			s.processTask(id, task)
+		case <-s.stopChan:
+			log.Printf("[EmailQueue] Worker %d stopping", id)
+			return
+	REDACTED
+REDACTED
+REDACTED
+
+// processTask 处理任务
+func (s *EmailQueueService) processTask(workerID int, task EmailTask) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	switch task.TaskType {
+	case "verify_code":
+		if err := s.emailService.SendVerifyCode(ctx, task.Email, task.SiteName); err != nil {
+			log.Printf("[EmailQueue] Worker %d failed to send verify code to %s: %v", workerID, task.Email, err)
+	REDACTED else {
+			log.Printf("[EmailQueue] Worker %d sent verify code to %s", workerID, task.Email)
+	REDACTED
+	default:
+		log.Printf("[EmailQueue] Worker %d unknown task type: %s", workerID, task.TaskType)
+REDACTED
+REDACTED
+
+// EnqueueVerifyCode 将验证码发送任务加入队列
+func (s *EmailQueueService) EnqueueVerifyCode(email, siteName string) error {
+	task := EmailTask{
+		Email:    email,
+		SiteName: siteName,
+		TaskType: "verify_code",
+REDACTED
+
+	select {
+	case s.taskChan <- task:
+		log.Printf("[EmailQueue] Enqueued verify code task for %s", email)
+		return nil
+	default:
+		return fmt.Errorf("email queue is full")
+REDACTED
+REDACTED
+
+// Stop 停止队列服务
+func (s *EmailQueueService) Stop() {
+	close(s.stopChan)
+	s.wg.Wait()
+	log.Println("[EmailQueue] All workers stopped")
+REDACTED

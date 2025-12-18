@@ -1,0 +1,13 @@
+# Sudoers configuration for Sub2API
+# This file allows the sub2api service user to restart the service without password
+#
+# Installation:
+#   sudo cp sub2api-sudoers /etc/sudoers.d/sub2api
+#   sudo chmod 440 /etc/sudoers.d/sub2api
+#
+# SECURITY NOTE: This grants limited sudo access only for service management
+
+# Allow sub2api user to restart the service without password
+sub2api ALL=(ALL) NOPASSWD: /bin/systemctl restart sub2api
+sub2api ALL=(ALL) NOPASSWD: /bin/systemctl stop sub2api
+sub2api ALL=(ALL) NOPASSWD: /bin/systemctl start sub2api

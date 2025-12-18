@@ -1,0 +1,85 @@
+version: 2
+
+project_name: sub2api
+
+before:
+  hooks:
+    - go mod tidy -C backend
+
+builds:
+  - id: sub2api
+    dir: backend
+    main: ./cmd/server
+    binary: sub2api
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Commit={{.CommitREDACTEDREDACTED
+      - -X main.Date={{.DateREDACTEDREDACTED
+      - -X main.BuildType=release
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName REDACTEDREDACTED_{{ .Version REDACTEDREDACTED_{{ .Os REDACTEDREDACTED_{{ .Arch REDACTEDREDACTED
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+      - README*
+      - deploy/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+changelog:
+  # 禁用自动 changelog，完全使用 tag 消息
+  disable: true
+
+release:
+  github:
+    owner: Wei-Shaw
+    name: sub2api
+  draft: false
+  prerelease: auto
+  name_template: "v{{.VersionREDACTEDREDACTED"
+  # 完全使用 tag 消息作为 release 内容
+  header: |
+    ## Sub2API {{.VersionREDACTEDREDACTED
+
+    > AI API Gateway Platform - 将 AI 订阅配额分发和管理
+
+    {{ .TagBody REDACTEDREDACTED
+
+  footer: |
+
+    ---
+
+    ## 📥 Installation
+
+    **One-line install (Linux):**
+    ```bash
+    curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+    ```
+
+    **Manual download:**
+    Download the appropriate archive for your platform from the assets below.
+
+    ## 📚 Documentation
+
+    - [GitHub Repository](https://github.com/Wei-Shaw/sub2api)
+    - [Installation Guide](https://github.com/Wei-Shaw/sub2api/blob/main/deploy/README.md)

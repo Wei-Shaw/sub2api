@@ -1,0 +1,630 @@
+/**
+ * Core Type Definitions for Sub2API Frontend
+ */
+
+// ==================== User & Auth Types ====================
+
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: 'admin' | 'user'; // User role for authorization
+  balance: number; // User balance for API usage
+  concurrency: number; // Allowed concurrent requests
+  status: 'active' | 'disabled'; // Account status
+  allowed_groups: number[] | null; // Allowed group IDs (null = all non-exclusive groups)
+  created_at: string;
+  updated_at: string;
+REDACTED
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+  turnstile_token?: string;
+REDACTED
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  verify_code?: string;
+  turnstile_token?: string;
+REDACTED
+
+export interface SendVerifyCodeRequest {
+  email: string;
+  turnstile_token?: string;
+REDACTED
+
+export interface SendVerifyCodeResponse {
+  message: string;
+  countdown: number;
+REDACTED
+
+export interface PublicSettings {
+  registration_enabled: boolean;
+  email_verify_enabled: boolean;
+  turnstile_enabled: boolean;
+  turnstile_site_key: string;
+  site_name: string;
+  site_logo: string;
+  site_subtitle: string;
+  api_base_url: string;
+  contact_info: string;
+  version: string;
+REDACTED
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+REDACTED
+
+// ==================== Subscription Types ====================
+
+export interface Subscription {
+  id: number;
+  user_id: number;
+  name: string;
+  url: string;
+  type: 'clash' | 'v2ray' | 'surge' | 'quantumult' | 'shadowrocket';
+  update_interval: number; // in hours
+  last_updated: string | null;
+  node_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+REDACTED
+
+export interface CreateSubscriptionRequest {
+  name: string;
+  url: string;
+  type: Subscription['type'];
+  update_interval?: number;
+REDACTED
+
+export interface UpdateSubscriptionRequest {
+  name?: string;
+  url?: string;
+  type?: Subscription['type'];
+  update_interval?: number;
+  is_active?: boolean;
+REDACTED
+
+// ==================== Proxy Node Types ====================
+
+export interface ProxyNode {
+  id: number;
+  subscription_id: number;
+  name: string;
+  type: 'ss' | 'ssr' | 'vmess' | 'vless' | 'trojan' | 'hysteria' | 'hysteria2';
+  server: string;
+  port: number;
+  config: Record<string, unknown>; // JSON configuration specific to proxy type
+  latency: number | null; // in milliseconds
+  last_checked: string | null;
+  is_available: boolean;
+  created_at: string;
+  updated_at: string;
+REDACTED
+
+// ==================== Conversion Types ====================
+
+export interface ConversionRequest {
+  subscription_ids: number[];
+  target_type: 'clash' | 'v2ray' | 'surge' | 'quantumult' | 'shadowrocket';
+  filter?: {
+    name_pattern?: string;
+    types?: ProxyNode['type'][];
+    min_latency?: number;
+    max_latency?: number;
+    available_only?: boolean;
+  REDACTED;
+  sort?: {
+    by: 'name' | 'latency' | 'type';
+    order: 'asc' | 'desc';
+  REDACTED;
+REDACTED
+
+export interface ConversionResult {
+  url: string; // URL to download the converted subscription
+  expires_at: string;
+  node_count: number;
+REDACTED
+
+// ==================== Statistics Types ====================
+
+export interface SubscriptionStats {
+  subscription_id: number;
+  total_nodes: number;
+  available_nodes: number;
+  avg_latency: number | null;
+  by_type: Record<ProxyNode['type'], number>;
+  last_update: string;
+REDACTED
+
+export interface UserStats {
+  total_subscriptions: number;
+  total_nodes: number;
+  active_subscriptions: number;
+  total_conversions: number;
+  last_conversion: string | null;
+REDACTED
+
+// ==================== API Response Types ====================
+
+export interface ApiError {
+  detail: string;
+  code?: string;
+  field?: string;
+REDACTED
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+REDACTED
+
+// ==================== UI State Types ====================
+
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+export interface Toast {
+  id: string;
+  type: ToastType;
+  message: string;
+  title?: string;
+  duration?: number; // in milliseconds, undefined means no auto-dismiss
+  startTime?: number; // timestamp when toast was created, for progress bar
+REDACTED
+
+export interface AppState {
+  sidebarCollapsed: boolean;
+  loading: boolean;
+  toasts: Toast[];
+REDACTED
+
+// ==================== Validation Types ====================
+
+export interface ValidationError {
+  field: string;
+  message: string;
+REDACTED
+
+// ==================== Table/List Types ====================
+
+export interface SortConfig {
+  key: string;
+  order: 'asc' | 'desc';
+REDACTED
+
+export interface FilterConfig {
+  [key: string]: string | number | boolean | null | undefined;
+REDACTED
+
+export interface PaginationConfig {
+  page: number;
+  page_size: number;
+REDACTED
+
+// ==================== API Key & Group Types ====================
+
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini';
+
+export type SubscriptionType = 'standard' | 'subscription';
+
+export interface Group {
+  id: number;
+  name: string;
+  description: string | null;
+  platform: GroupPlatform;
+  rate_multiplier: number;
+  is_exclusive: boolean;
+  status: 'active' | 'inactive';
+  subscription_type: SubscriptionType;
+  daily_limit_usd: number | null;
+  weekly_limit_usd: number | null;
+  monthly_limit_usd: number | null;
+  account_count?: number;
+  created_at: string;
+  updated_at: string;
+REDACTED
+
+export interface ApiKey {
+  id: number;
+  user_id: number;
+  key: string;
+  name: string;
+  group_id: number | null;
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at: string;
+  group?: Group;
+REDACTED
+
+export interface CreateApiKeyRequest {
+  name: string;
+  group_id?: number | null;
+  custom_key?: string; // 可选的自定义API Key
+REDACTED
+
+export interface UpdateApiKeyRequest {
+  name?: string;
+  group_id?: number | null;
+  status?: 'active' | 'inactive';
+REDACTED
+
+export interface CreateGroupRequest {
+  name: string;
+  description?: string | null;
+  platform?: GroupPlatform;
+  rate_multiplier?: number;
+  is_exclusive?: boolean;
+REDACTED
+
+export interface UpdateGroupRequest {
+  name?: string;
+  description?: string | null;
+  platform?: GroupPlatform;
+  rate_multiplier?: number;
+  is_exclusive?: boolean;
+  status?: 'active' | 'inactive';
+REDACTED
+
+// ==================== Account & Proxy Types ====================
+
+export type AccountPlatform = 'anthropic';
+export type AccountType = 'oauth' | 'setup-token' | 'apikey';
+export type OAuthAddMethod = 'oauth' | 'setup-token';
+export type ProxyProtocol = 'http' | 'https' | 'socks5';
+
+export interface Proxy {
+  id: number;
+  name: string;
+  protocol: ProxyProtocol;
+  host: string;
+  port: number;
+  username: string | null;
+  password?: string | null;
+  status: 'active' | 'inactive';
+  account_count?: number; // Number of accounts using this proxy
+  created_at: string;
+  updated_at: string;
+REDACTED
+
+export interface Account {
+  id: number;
+  name: string;
+  platform: AccountPlatform;
+  type: AccountType;
+  credentials?: Record<string, unknown>;
+  proxy_id: number | null;
+  concurrency: number;
+  priority: number;
+  status: 'active' | 'inactive' | 'error';
+  error_message: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+  proxy?: Proxy;
+  group_ids?: number[]; // Groups this account belongs to
+
+  // Rate limit & scheduling fields
+  schedulable: boolean;
+  rate_limited_at: string | null;
+  rate_limit_reset_at: string | null;
+  overload_until: string | null;
+
+  // Session window fields (5-hour window)
+  session_window_start: string | null;
+  session_window_end: string | null;
+  session_window_status: 'allowed' | 'allowed_warning' | 'rejected' | null;
+REDACTED
+
+// Account Usage types
+export interface WindowStats {
+  requests: number;
+  tokens: number;
+  cost: number;
+REDACTED
+
+export interface UsageProgress {
+  utilization: number;      // Percentage (0-100+, 100 = 100%)
+  resets_at: string | null;
+  remaining_seconds: number;
+  window_stats?: WindowStats | null;  // 窗口期统计（从窗口开始到当前的使用量）
+REDACTED
+
+export interface AccountUsageInfo {
+  updated_at: string | null;
+  five_hour: UsageProgress | null;
+  seven_day: UsageProgress | null;
+  seven_day_sonnet: UsageProgress | null;
+REDACTED
+
+export interface CreateAccountRequest {
+  name: string;
+  platform: AccountPlatform;
+  type: AccountType;
+  credentials: Record<string, unknown>;
+  extra?: Record<string, string>;
+  proxy_id?: number | null;
+  concurrency?: number;
+  priority?: number;
+  group_ids?: number[];
+REDACTED
+
+export interface UpdateAccountRequest {
+  name?: string;
+  credentials?: Record<string, unknown>;
+  extra?: Record<string, string>;
+  proxy_id?: number | null;
+  concurrency?: number;
+  priority?: number;
+  status?: 'active' | 'inactive';
+  group_ids?: number[];
+REDACTED
+
+export interface CreateProxyRequest {
+  name: string;
+  protocol: ProxyProtocol;
+  host: string;
+  port: number;
+  username?: string | null;
+  password?: string | null;
+REDACTED
+
+export interface UpdateProxyRequest {
+  name?: string;
+  protocol?: ProxyProtocol;
+  host?: string;
+  port?: number;
+  username?: string | null;
+  password?: string | null;
+  status?: 'active' | 'inactive';
+REDACTED
+
+// ==================== Usage & Redeem Types ====================
+
+export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription';
+
+// 消费类型: 0=钱包余额, 1=订阅套餐
+export type BillingType = 0 | 1;
+
+export interface UsageLog {
+  id: number;
+  user_id: number;
+  api_key_id: number;
+  account_id: number | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  total_cost: number;
+  actual_cost: number;
+  rate_multiplier: number;
+  billing_type: BillingType;
+  stream: boolean;
+  duration_ms: number;
+  first_token_ms: number | null;
+  created_at: string;
+  user?: User;
+  api_key?: ApiKey;
+  account?: Account;
+REDACTED
+
+export interface RedeemCode {
+  id: number;
+  code: string;
+  type: RedeemCodeType;
+  value: number;
+  status: 'active' | 'used' | 'expired' | 'unused';
+  used_by: number | null;
+  used_at: string | null;
+  created_at: string;
+  updated_at?: string;
+  group_id?: number | null;      // 订阅类型专用
+  validity_days?: number;        // 订阅类型专用
+  user?: User;
+  group?: Group;                 // 关联的分组
+REDACTED
+
+export interface GenerateRedeemCodesRequest {
+  count: number;
+  type: RedeemCodeType;
+  value: number;
+  group_id?: number | null;      // 订阅类型专用
+  validity_days?: number;        // 订阅类型专用
+REDACTED
+
+export interface RedeemCodeRequest {
+  code: string;
+REDACTED
+
+// ==================== Dashboard & Statistics ====================
+
+export interface DashboardStats {
+  // 用户统计
+  total_users: number;
+  today_new_users: number;  // 今日新增用户数
+  active_users: number;  // 今日有请求的用户数
+
+  // API Key 统计
+  total_api_keys: number;
+  active_api_keys: number;  // 状态为 active 的 API Key 数
+
+  // 账户统计
+  total_accounts: number;
+  normal_accounts: number;     // 正常账户数
+  error_accounts: number;      // 异常账户数
+  ratelimit_accounts: number;  // 限流账户数
+  overload_accounts: number;   // 过载账户数
+
+  // 累计 Token 使用统计
+  total_requests: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_creation_tokens: number;
+  total_cache_read_tokens: number;
+  total_tokens: number;
+  total_cost: number;         // 累计标准计费
+  total_actual_cost: number;  // 累计实际扣除
+
+  // 今日 Token 使用统计
+  today_requests: number;
+  today_input_tokens: number;
+  today_output_tokens: number;
+  today_cache_creation_tokens: number;
+  today_cache_read_tokens: number;
+  today_tokens: number;
+  today_cost: number;         // 今日标准计费
+  today_actual_cost: number;  // 今日实际扣除
+
+  // 系统运行统计
+  average_duration_ms: number;  // 平均响应时间
+  uptime: number;               // 系统运行时间(秒)
+REDACTED
+
+export interface UsageStatsResponse {
+  period?: string;
+  total_requests: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_tokens: number;
+  total_tokens: number;
+  total_cost: number;         // 标准计费
+  total_actual_cost: number;  // 实际扣除
+  average_duration_ms: number;
+  models?: Record<string, number>;
+REDACTED
+
+// ==================== Trend & Chart Types ====================
+
+export interface TrendDataPoint {
+  date: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_tokens: number;
+  total_tokens: number;
+  cost: number;        // 标准计费
+  actual_cost: number; // 实际扣除
+REDACTED
+
+export interface ModelStat {
+  model: string;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;        // 标准计费
+  actual_cost: number; // 实际扣除
+REDACTED
+
+export interface UserUsageTrendPoint {
+  date: string;
+  user_id: number;
+  username: string;
+  requests: number;
+  tokens: number;
+  cost: number;        // 标准计费
+  actual_cost: number; // 实际扣除
+REDACTED
+
+export interface ApiKeyUsageTrendPoint {
+  date: string;
+  api_key_id: number;
+  key_name: string;
+  requests: number;
+  tokens: number;
+REDACTED
+
+// ==================== Admin User Management ====================
+
+export interface UpdateUserRequest {
+  email?: string;
+  password?: string;
+  role?: 'admin' | 'user';
+  balance?: number;
+  concurrency?: number;
+  status?: 'active' | 'disabled';
+  allowed_groups?: number[] | null;
+REDACTED
+
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
+REDACTED
+
+// ==================== User Subscription Types ====================
+
+export interface UserSubscription {
+  id: number;
+  user_id: number;
+  group_id: number;
+  status: 'active' | 'expired' | 'revoked';
+  daily_usage_usd: number;
+  weekly_usage_usd: number;
+  monthly_usage_usd: number;
+  daily_window_start: string | null;
+  weekly_window_start: string | null;
+  monthly_window_start: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string | null;
+  user?: User;
+  group?: Group;
+REDACTED
+
+export interface SubscriptionProgress {
+  subscription_id: number;
+  daily: {
+    used: number;
+    limit: number | null;
+    percentage: number;
+    reset_in_seconds: number | null;
+  REDACTED | null;
+  weekly: {
+    used: number;
+    limit: number | null;
+    percentage: number;
+    reset_in_seconds: number | null;
+  REDACTED | null;
+  monthly: {
+    used: number;
+    limit: number | null;
+    percentage: number;
+    reset_in_seconds: number | null;
+  REDACTED | null;
+  expires_at: string | null;
+  days_remaining: number | null;
+REDACTED
+
+export interface AssignSubscriptionRequest {
+  user_id: number;
+  group_id: number;
+  validity_days?: number;
+REDACTED
+
+export interface BulkAssignSubscriptionRequest {
+  user_ids: number[];
+  group_id: number;
+  validity_days?: number;
+REDACTED
+
+export interface ExtendSubscriptionRequest {
+  days: number;
+REDACTED
+
+// ==================== Query Parameters ====================
+
+export interface UsageQueryParams {
+  page?: number;
+  page_size?: number;
+  api_key_id?: number;
+  user_id?: number;
+  start_date?: string;
+  end_date?: string;
+REDACTED
