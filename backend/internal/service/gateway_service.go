@@ -35,25 +35,25 @@ const (
 
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
-	"accept":                                  true,
-	"x-stainless-retry-count":                 true,
-	"x-stainless-timeout":                     true,
-	"x-stainless-lang":                        true,
-	"x-stainless-package-version":             true,
-	"x-stainless-os":                          true,
-	"x-stainless-arch":                        true,
-	"x-stainless-runtime":                     true,
-	"x-stainless-runtime-version":             true,
-	"x-stainless-helper-method":               true,
+	"accept":                                    true,
+	"x-stainless-retry-count":                   true,
+	"x-stainless-timeout":                       true,
+	"x-stainless-lang":                          true,
+	"x-stainless-package-version":               true,
+	"x-stainless-os":                            true,
+	"x-stainless-arch":                          true,
+	"x-stainless-runtime":                       true,
+	"x-stainless-runtime-version":               true,
+	"x-stainless-helper-method":                 true,
 	"anthropic-dangerous-direct-browser-access": true,
-	"anthropic-version":                       true,
-	"x-app":                                   true,
-	"anthropic-beta":                          true,
-	"accept-language":                         true,
-	"sec-fetch-mode":                          true,
-	"accept-encoding":                         true,
-	"user-agent":                              true,
-	"content-type":                            true,
+	"anthropic-version":                         true,
+	"x-app":                                     true,
+	"anthropic-beta":                            true,
+	"accept-language":                           true,
+	"sec-fetch-mode":                            true,
+	"accept-encoding":                           true,
+	"user-agent":                                true,
+	"content-type":                              true,
 REDACTED
 
 // ClaudeUsage 表示Claude API返回的usage信息
@@ -418,13 +418,19 @@ REDACTED
 REDACTED
 
 	// 构建上游请求
-	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType)
+	upstreamResult, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType)
 	if err != nil {
 		return nil, err
 REDACTED
 
+	// 选择使用的client：如果有代理则使用独立的client，否则使用共享的httpClient
+	httpClient := s.httpClient
+	if upstreamResult.Client != nil {
+		httpClient = upstreamResult.Client
+REDACTED
+
 	// 发送请求
-	resp, err := s.httpClient.Do(upstreamReq)
+	resp, err := httpClient.Do(upstreamResult.Request)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 REDACTED
@@ -437,11 +443,16 @@ REDACTED
 		if err != nil {
 			return nil, fmt.Errorf("token refresh failed: %w", err)
 	REDACTED
-		upstreamReq, err = s.buildUpstreamRequest(ctx, c, account, body, token, tokenType)
+		upstreamResult, err = s.buildUpstreamRequest(ctx, c, account, body, token, tokenType)
 		if err != nil {
 			return nil, err
 	REDACTED
-		resp, err = s.httpClient.Do(upstreamReq)
+		// 重试时也需要使用正确的client
+		httpClient = s.httpClient
+		if upstreamResult.Client != nil {
+			httpClient = upstreamResult.Client
+	REDACTED
+		resp, err = httpClient.Do(upstreamResult.Request)
 		if err != nil {
 			return nil, fmt.Errorf("retry request failed: %w", err)
 	REDACTED
@@ -480,7 +491,13 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *model.Account, body []byte, token, tokenType string) (*http.Request, error) {
+// buildUpstreamRequestResult contains the request and optional custom client for proxy
+type buildUpstreamRequestResult struct {
+	Request *http.Request
+	Client  *http.Client // nil means use default s.httpClient
+REDACTED
+
+func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *model.Account, body []byte, token, tokenType string) (*buildUpstreamRequestResult, error) {
 	// 确定目标URL
 	targetURL := claudeAPIURL
 	if account.Type == model.AccountTypeApiKey {
@@ -549,7 +566,8 @@ REDACTED
 		req.Header.Set("anthropic-beta", s.getBetaHeader(body, c.GetHeader("anthropic-beta")))
 REDACTED
 
-	// 配置代理
+	// 配置代理 - 创建独立的client避免并发修改共享httpClient
+	var customClient *http.Client
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL := account.Proxy.URL()
 		if proxyURL != "" {
@@ -566,12 +584,18 @@ REDACTED
 					IdleConnTimeout:       90 * time.Second,
 					ResponseHeaderTimeout: responseHeaderTimeout,
 			REDACTED
-				s.httpClient.Transport = transport
+				// 创建独立的client，避免并发时修改共享的s.httpClient.Transport
+				customClient = &http.Client{
+					Transport: transport,
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
 
-	return req, nil
+	return &buildUpstreamRequestResult{
+		Request: req,
+		Client:  customClient,
+REDACTED, nil
 REDACTED
 
 // getBetaHeader 处理anthropic-beta header
