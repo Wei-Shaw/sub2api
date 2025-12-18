@@ -128,6 +128,15 @@ declare -A MSG_ZH=(
     ["server_port_hint"]="建议使用 1024-65535 之间的端口"
     ["server_config_summary"]="服务器配置"
     ["invalid_port"]="无效端口号，请输入 1-65535 之间的数字"
+
+    # Service management
+    ["starting_service"]="正在启动服务..."
+    ["service_started"]="服务已启动"
+    ["service_start_failed"]="服务启动失败，请检查日志"
+    ["enabling_autostart"]="正在设置开机自启..."
+    ["autostart_enabled"]="开机自启已启用"
+    ["getting_public_ip"]="正在获取公网 IP..."
+    ["public_ip_failed"]="无法获取公网 IP，使用本地 IP"
 )
 
 # English strings
@@ -225,6 +234,15 @@ declare -A MSG_EN=(
     ["server_port_hint"]="Recommended range: 1024-65535"
     ["server_config_summary"]="Server configuration"
     ["invalid_port"]="Invalid port number, please enter a number between 1-65535"
+
+    # Service management
+    ["starting_service"]="Starting service..."
+    ["service_started"]="Service started"
+    ["service_start_failed"]="Service failed to start, please check logs"
+    ["enabling_autostart"]="Enabling auto-start on boot..."
+    ["autostart_enabled"]="Auto-start enabled"
+    ["getting_public_ip"]="Getting public IP..."
+    ["public_ip_failed"]="Failed to get public IP, using local IP"
 )
 
 # Get message based on current language
@@ -254,9 +272,11 @@ print_error() {
     echo -e "${REDREDACTED[$(msg 'error')]${NCREDACTED $1"
 REDACTED
 
-# Check if running interactively (stdin is a terminal)
+# Check if running interactively (can access terminal)
+# When piped (curl | bash), stdin is not a terminal, but /dev/tty may still be available
 is_interactive() {
-    [ -t 0 ]
+    # Check if /dev/tty is available (works even when piped)
+    [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]
 REDACTED
 
 # Select language
@@ -276,7 +296,7 @@ select_language() {
     echo "  2) $(msg 'lang_en')"
     echo ""
 
-    read -p "$(msg 'enter_choice'): " lang_input
+    read -p "$(msg 'enter_choice'): " lang_input < /dev/tty
 
     case "$lang_input" in
         2|en|EN|english|English)
@@ -317,7 +337,7 @@ configure_server() {
 
     # Server host
     echo -e "${YELLOWREDACTED$(msg 'server_host_hint')${NCREDACTED"
-    read -p "$(msg 'server_host_prompt') [${SERVER_HOSTREDACTED]: " input_host
+    read -p "$(msg 'server_host_prompt') [${SERVER_HOSTREDACTED]: " input_host < /dev/tty
     if [ -n "$input_host" ]; then
         SERVER_HOST="$input_host"
     fi
@@ -327,7 +347,7 @@ configure_server() {
     # Server port
     echo -e "${YELLOWREDACTED$(msg 'server_port_hint')${NCREDACTED"
     while true; do
-        read -p "$(msg 'server_port_prompt') [${SERVER_PORTREDACTED]: " input_port
+        read -p "$(msg 'server_port_prompt') [${SERVER_PORTREDACTED]: " input_port < /dev/tty
         if [ -z "$input_port" ]; then
             # Use default
             break
@@ -566,13 +586,61 @@ prepare_for_setup() {
     print_success "$(msg 'ready_for_setup')"
 REDACTED
 
+# Get public IP address
+get_public_ip() {
+    print_info "$(msg 'getting_public_ip')"
+
+    # Try to get public IP from ipinfo.io
+    local response
+    response=$(curl -s --connect-timeout 5 --max-time 10 "https://ipinfo.io/json" 2>/dev/null)
+
+    if [ -n "$response" ]; then
+        # Extract IP from JSON response using grep and sed (no jq dependency)
+        PUBLIC_IP=$(echo "$response" | grep -o '"ip": *"[^"]*"' | sed 's/"ip": *"\([^"]*\)"/\1/')
+        if [ -n "$PUBLIC_IP" ]; then
+            print_success "Public IP: $PUBLIC_IP"
+            return 0
+        fi
+    fi
+
+    # Fallback to local IP
+    print_warning "$(msg 'public_ip_failed')"
+    PUBLIC_IP=$(hostname -I 2>/dev/null | awk '{print $1REDACTED' || echo "YOUR_SERVER_IP")
+    return 1
+REDACTED
+
+# Start service
+start_service() {
+    print_info "$(msg 'starting_service')"
+
+    if systemctl start sub2api; then
+        print_success "$(msg 'service_started')"
+        return 0
+    else
+        print_error "$(msg 'service_start_failed')"
+        print_info "sudo journalctl -u sub2api -n 50"
+        return 1
+    fi
+REDACTED
+
+# Enable service auto-start
+enable_autostart() {
+    print_info "$(msg 'enabling_autostart')"
+
+    if systemctl enable sub2api 2>/dev/null; then
+        print_success "$(msg 'autostart_enabled')"
+        return 0
+    else
+        print_warning "Failed to enable auto-start"
+        return 1
+    fi
+REDACTED
+
 # Print completion message
 print_completion() {
-    local ip_addr
-    ip_addr=$(hostname -I 2>/dev/null | awk '{print $1REDACTED' || echo "YOUR_SERVER_IP")
-
+    # Use PUBLIC_IP which was set by get_public_ip()
     # Determine display address
-    local display_host="$ip_addr"
+    local display_host="${PUBLIC_IP:-YOUR_SERVER_IPREDACTED"
     if [ "$SERVER_HOST" = "127.0.0.1" ]; then
         display_host="127.0.0.1"
     fi
@@ -586,20 +654,8 @@ print_completion() {
     echo "$(msg 'server_config_summary'): ${SERVER_HOSTREDACTED:${SERVER_PORTREDACTED"
     echo ""
     echo "=============================================="
-    echo "  $(msg 'next_steps')"
+    echo "  $(msg 'step4_open_wizard')"
     echo "=============================================="
-    echo ""
-    echo "  1. $(msg 'step1_check_services')"
-    echo "     sudo systemctl status postgresql"
-    echo "     sudo systemctl status redis"
-    echo ""
-    echo "  2. $(msg 'step2_start_service')"
-    echo "     sudo systemctl start sub2api"
-    echo ""
-    echo "  3. $(msg 'step3_enable_autostart')"
-    echo "     sudo systemctl enable sub2api"
-    echo ""
-    echo "  4. $(msg 'step4_open_wizard')"
     echo ""
     print_info "     http://${display_hostREDACTED:${SERVER_PORTREDACTED"
     echo ""
@@ -667,7 +723,7 @@ uninstall() {
             exit 1
         fi
     else
-        read -p "$(msg 'are_you_sure') " -n 1 -r
+        read -p "$(msg 'are_you_sure') " -n 1 -r < /dev/tty
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             print_info "$(msg 'uninstall_cancelled')"
@@ -752,6 +808,9 @@ main() {
     setup_directories
     install_service
     prepare_for_setup
+    get_public_ip
+    start_service
+    enable_autostart
     print_completion
 REDACTED
 
