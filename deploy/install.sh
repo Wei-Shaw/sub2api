@@ -73,9 +73,6 @@ declare -A MSG_ZH=(
     ["dirs_configured"]="目录配置完成"
     ["installing_service"]="正在安装 systemd 服务..."
     ["service_installed"]="systemd 服务已安装"
-    ["setting_up_sudoers"]="正在配置 sudoers..."
-    ["sudoers_configured"]="sudoers 配置完成"
-    ["sudoers_failed"]="sudoers 验证失败，已移除文件"
     ["ready_for_setup"]="准备就绪，可以启动设置向导"
 
     # Completion
@@ -173,9 +170,6 @@ declare -A MSG_EN=(
     ["dirs_configured"]="Directories configured"
     ["installing_service"]="Installing systemd service..."
     ["service_installed"]="Systemd service installed"
-    ["setting_up_sudoers"]="Setting up sudoers..."
-    ["sudoers_configured"]="Sudoers configured"
-    ["sudoers_failed"]="Sudoers validation failed, removing file"
     ["ready_for_setup"]="Ready for Setup Wizard"
 
     # Completion
@@ -521,35 +515,6 @@ setup_directories() {
     print_success "$(msg 'dirs_configured')"
 REDACTED
 
-# Setup sudoers for service restart
-setup_sudoers() {
-    print_info "$(msg 'setting_up_sudoers')"
-
-    # Always generate sudoers file from script (not from tar.gz)
-    # This ensures the latest configuration is used even with older releases
-    # Support both /bin/systemctl and /usr/bin/systemctl for different distros
-    cat > /etc/sudoers.d/sub2api << 'EOF'
-# Sudoers configuration for Sub2API
-sub2api ALL=(ALL) NOPASSWD: /bin/systemctl restart sub2api
-sub2api ALL=(ALL) NOPASSWD: /bin/systemctl stop sub2api
-sub2api ALL=(ALL) NOPASSWD: /bin/systemctl start sub2api
-sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sub2api
-sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sub2api
-sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl start sub2api
-EOF
-
-    # Set correct permissions (required for sudoers files)
-    chmod 440 /etc/sudoers.d/sub2api
-
-    # Validate sudoers file
-    if visudo -c -f /etc/sudoers.d/sub2api &>/dev/null; then
-        print_success "$(msg 'sudoers_configured')"
-    else
-        print_warning "$(msg 'sudoers_failed')"
-        rm -f /etc/sudoers.d/sub2api
-    fi
-REDACTED
-
 # Install systemd service
 install_service() {
     print_info "$(msg 'installing_service')"
@@ -716,7 +681,6 @@ uninstall() {
 
     print_info "$(msg 'removing_files')"
     rm -f /etc/systemd/system/sub2api.service
-    rm -f /etc/sudoers.d/sub2api
     systemctl daemon-reload
 
     print_info "$(msg 'removing_install_dir')"
@@ -787,7 +751,6 @@ main() {
     create_user
     setup_directories
     install_service
-    setup_sudoers
     prepare_for_setup
     print_completion
 REDACTED
