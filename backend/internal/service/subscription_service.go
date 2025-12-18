@@ -28,13 +28,11 @@ type SubscriptionService struct {
 REDACTED
 
 // NewSubscriptionService 创建订阅服务
-func NewSubscriptionService(repos *repository.Repositories) *SubscriptionService {
-	return &SubscriptionService{repos: reposREDACTED
+func NewSubscriptionService(repos *repository.Repositories, billingCacheService *BillingCacheService) *SubscriptionService {
+	return &SubscriptionService{
+		repos:               repos,
+		billingCacheService: billingCacheService,
 REDACTED
-
-// SetBillingCacheService 设置计费缓存服务（用于缓存失效）
-func (s *SubscriptionService) SetBillingCacheService(billingCacheService *BillingCacheService) {
-	s.billingCacheService = billingCacheService
 REDACTED
 
 // AssignSubscriptionInput 分配订阅输入
@@ -88,6 +86,7 @@ REDACTED
 // 如果用户已有同分组的订阅：
 //   - 未过期：从当前过期时间累加天数
 //   - 已过期：从当前时间开始计算新的过期时间，并激活订阅
+//
 // 如果没有订阅：创建新订阅
 func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, input *AssignSubscriptionInput) (*model.UserSubscription, bool, error) {
 	// 检查分组是否存在且为订阅类型
@@ -191,15 +190,15 @@ REDACTED
 
 	now := time.Now()
 	sub := &model.UserSubscription{
-		UserID:    input.UserID,
-		GroupID:   input.GroupID,
-		StartsAt:  now,
-		ExpiresAt: now.AddDate(0, 0, validityDays),
-		Status:    model.SubscriptionStatusActive,
+		UserID:     input.UserID,
+		GroupID:    input.GroupID,
+		StartsAt:   now,
+		ExpiresAt:  now.AddDate(0, 0, validityDays),
+		Status:     model.SubscriptionStatusActive,
 		AssignedAt: now,
-		Notes:     input.Notes,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Notes:      input.Notes,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 REDACTED
 	// 只有当 AssignedBy > 0 时才设置（0 表示系统分配，如兑换码）
 	if input.AssignedBy > 0 {
@@ -225,17 +224,17 @@ REDACTED
 
 // BulkAssignResult 批量分配结果
 type BulkAssignResult struct {
-	SuccessCount int
-	FailedCount  int
+	SuccessCount  int
+	FailedCount   int
 	Subscriptions []model.UserSubscription
-	Errors       []string
+	Errors        []string
 REDACTED
 
 // BulkAssignSubscription 批量分配订阅
 func (s *SubscriptionService) BulkAssignSubscription(ctx context.Context, input *BulkAssignSubscriptionInput) (*BulkAssignResult, error) {
 	result := &BulkAssignResult{
 		Subscriptions: make([]model.UserSubscription, 0),
-		Errors:       make([]string, 0),
+		Errors:        make([]string, 0),
 REDACTED
 
 	for _, userID := range input.UserIDs {
@@ -417,10 +416,10 @@ REDACTED
 
 // SubscriptionProgress 订阅进度
 type SubscriptionProgress struct {
-	ID            int64              `json:"id"`
-	GroupName     string             `json:"group_name"`
-	ExpiresAt     time.Time          `json:"expires_at"`
-	ExpiresInDays int                `json:"expires_in_days"`
+	ID            int64                `json:"id"`
+	GroupName     string               `json:"group_name"`
+	ExpiresAt     time.Time            `json:"expires_at"`
+	ExpiresInDays int                  `json:"expires_in_days"`
 	Daily         *UsageWindowProgress `json:"daily,omitempty"`
 	Weekly        *UsageWindowProgress `json:"weekly,omitempty"`
 	Monthly       *UsageWindowProgress `json:"monthly,omitempty"`
@@ -428,13 +427,13 @@ REDACTED
 
 // UsageWindowProgress 使用窗口进度
 type UsageWindowProgress struct {
-	LimitUSD       float64   `json:"limit_usd"`
-	UsedUSD        float64   `json:"used_usd"`
-	RemainingUSD   float64   `json:"remaining_usd"`
-	Percentage     float64   `json:"percentage"`
-	WindowStart    time.Time `json:"window_start"`
-	ResetsAt       time.Time `json:"resets_at"`
-	ResetsInSeconds int64    `json:"resets_in_seconds"`
+	LimitUSD        float64   `json:"limit_usd"`
+	UsedUSD         float64   `json:"used_usd"`
+	RemainingUSD    float64   `json:"remaining_usd"`
+	Percentage      float64   `json:"percentage"`
+	WindowStart     time.Time `json:"window_start"`
+	ResetsAt        time.Time `json:"resets_at"`
+	ResetsInSeconds int64     `json:"resets_in_seconds"`
 REDACTED
 
 // GetSubscriptionProgress 获取订阅使用进度
@@ -464,12 +463,12 @@ REDACTED
 		limit := *group.DailyLimitUSD
 		resetsAt := sub.DailyWindowStart.Add(24 * time.Hour)
 		progress.Daily = &UsageWindowProgress{
-			LimitUSD:       limit,
-			UsedUSD:        sub.DailyUsageUSD,
-			RemainingUSD:   limit - sub.DailyUsageUSD,
-			Percentage:     (sub.DailyUsageUSD / limit) * 100,
-			WindowStart:    *sub.DailyWindowStart,
-			ResetsAt:       resetsAt,
+			LimitUSD:        limit,
+			UsedUSD:         sub.DailyUsageUSD,
+			RemainingUSD:    limit - sub.DailyUsageUSD,
+			Percentage:      (sub.DailyUsageUSD / limit) * 100,
+			WindowStart:     *sub.DailyWindowStart,
+			ResetsAt:        resetsAt,
 			ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
 	REDACTED
 		if progress.Daily.RemainingUSD < 0 {
@@ -488,12 +487,12 @@ REDACTED
 		limit := *group.WeeklyLimitUSD
 		resetsAt := sub.WeeklyWindowStart.Add(7 * 24 * time.Hour)
 		progress.Weekly = &UsageWindowProgress{
-			LimitUSD:       limit,
-			UsedUSD:        sub.WeeklyUsageUSD,
-			RemainingUSD:   limit - sub.WeeklyUsageUSD,
-			Percentage:     (sub.WeeklyUsageUSD / limit) * 100,
-			WindowStart:    *sub.WeeklyWindowStart,
-			ResetsAt:       resetsAt,
+			LimitUSD:        limit,
+			UsedUSD:         sub.WeeklyUsageUSD,
+			RemainingUSD:    limit - sub.WeeklyUsageUSD,
+			Percentage:      (sub.WeeklyUsageUSD / limit) * 100,
+			WindowStart:     *sub.WeeklyWindowStart,
+			ResetsAt:        resetsAt,
 			ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
 	REDACTED
 		if progress.Weekly.RemainingUSD < 0 {
@@ -512,12 +511,12 @@ REDACTED
 		limit := *group.MonthlyLimitUSD
 		resetsAt := sub.MonthlyWindowStart.Add(30 * 24 * time.Hour)
 		progress.Monthly = &UsageWindowProgress{
-			LimitUSD:       limit,
-			UsedUSD:        sub.MonthlyUsageUSD,
-			RemainingUSD:   limit - sub.MonthlyUsageUSD,
-			Percentage:     (sub.MonthlyUsageUSD / limit) * 100,
-			WindowStart:    *sub.MonthlyWindowStart,
-			ResetsAt:       resetsAt,
+			LimitUSD:        limit,
+			UsedUSD:         sub.MonthlyUsageUSD,
+			RemainingUSD:    limit - sub.MonthlyUsageUSD,
+			Percentage:      (sub.MonthlyUsageUSD / limit) * 100,
+			WindowStart:     *sub.MonthlyWindowStart,
+			ResetsAt:        resetsAt,
 			ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
 	REDACTED
 		if progress.Monthly.RemainingUSD < 0 {

@@ -16,13 +16,13 @@ import (
 )
 
 var (
-	ErrInvalidCredentials   = errors.New("invalid email or password")
-	ErrUserNotActive        = errors.New("user is not active")
-	ErrEmailExists          = errors.New("email already exists")
-	ErrInvalidToken         = errors.New("invalid token")
-	ErrTokenExpired         = errors.New("token has expired")
-	ErrEmailVerifyRequired  = errors.New("email verification is required")
-	ErrRegDisabled          = errors.New("registration is currently disabled")
+	ErrInvalidCredentials  = errors.New("invalid email or password")
+	ErrUserNotActive       = errors.New("user is not active")
+	ErrEmailExists         = errors.New("email already exists")
+	ErrInvalidToken        = errors.New("invalid token")
+	ErrTokenExpired        = errors.New("token has expired")
+	ErrEmailVerifyRequired = errors.New("email verification is required")
+	ErrRegDisabled         = errors.New("registration is currently disabled")
 )
 
 // JWTClaims JWT载荷数据
@@ -44,31 +44,22 @@ type AuthService struct {
 REDACTED
 
 // NewAuthService 创建认证服务实例
-func NewAuthService(userRepo *repository.UserRepository, cfg *config.Config) *AuthService {
+func NewAuthService(
+	userRepo *repository.UserRepository,
+	cfg *config.Config,
+	settingService *SettingService,
+	emailService *EmailService,
+	turnstileService *TurnstileService,
+	emailQueueService *EmailQueueService,
+) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
-		cfg:      cfg,
+		userRepo:          userRepo,
+		cfg:               cfg,
+		settingService:    settingService,
+		emailService:      emailService,
+		turnstileService:  turnstileService,
+		emailQueueService: emailQueueService,
 REDACTED
-REDACTED
-
-// SetSettingService 设置系统设置服务（用于检查注册开关和邮件验证）
-func (s *AuthService) SetSettingService(settingService *SettingService) {
-	s.settingService = settingService
-REDACTED
-
-// SetEmailService 设置邮件服务（用于邮件验证）
-func (s *AuthService) SetEmailService(emailService *EmailService) {
-	s.emailService = emailService
-REDACTED
-
-// SetTurnstileService 设置Turnstile服务（用于验证码校验）
-func (s *AuthService) SetTurnstileService(turnstileService *TurnstileService) {
-	s.turnstileService = turnstileService
-REDACTED
-
-// SetEmailQueueService 设置邮件队列服务（用于异步发送邮件）
-func (s *AuthService) SetEmailQueueService(emailQueueService *EmailQueueService) {
-	s.emailQueueService = emailQueueService
 REDACTED
 
 // Register 用户注册，返回token和用户

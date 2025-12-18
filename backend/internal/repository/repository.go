@@ -1,9 +1,5 @@
 package repository
 
-import (
-	"gorm.io/gorm"
-)
-
 // Repositories 所有仓库的集合
 type Repositories struct {
 	User             *UserRepository
@@ -15,21 +11,6 @@ type Repositories struct {
 	UsageLog         *UsageLogRepository
 	Setting          *SettingRepository
 	UserSubscription *UserSubscriptionRepository
-REDACTED
-
-// NewRepositories 创建所有仓库
-func NewRepositories(db *gorm.DB) *Repositories {
-	return &Repositories{
-		User:             NewUserRepository(db),
-		ApiKey:           NewApiKeyRepository(db),
-		Group:            NewGroupRepository(db),
-		Account:          NewAccountRepository(db),
-		Proxy:            NewProxyRepository(db),
-		RedeemCode:       NewRedeemCodeRepository(db),
-		UsageLog:         NewUsageLogRepository(db),
-		Setting:          NewSettingRepository(db),
-		UserSubscription: NewUserSubscriptionRepository(db),
-REDACTED
 REDACTED
 
 // PaginationParams 分页参数

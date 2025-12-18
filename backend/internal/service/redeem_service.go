@@ -57,18 +57,20 @@ type RedeemService struct {
 REDACTED
 
 // NewRedeemService 创建兑换码服务实例
-func NewRedeemService(redeemRepo *repository.RedeemCodeRepository, userRepo *repository.UserRepository, subscriptionService *SubscriptionService, rdb *redis.Client) *RedeemService {
+func NewRedeemService(
+	redeemRepo *repository.RedeemCodeRepository,
+	userRepo *repository.UserRepository,
+	subscriptionService *SubscriptionService,
+	rdb *redis.Client,
+	billingCacheService *BillingCacheService,
+) *RedeemService {
 	return &RedeemService{
 		redeemRepo:          redeemRepo,
 		userRepo:            userRepo,
 		subscriptionService: subscriptionService,
 		rdb:                 rdb,
+		billingCacheService: billingCacheService,
 REDACTED
-REDACTED
-
-// SetBillingCacheService 设置计费缓存服务（用于缓存失效）
-func (s *RedeemService) SetBillingCacheService(billingCacheService *BillingCacheService) {
-	s.billingCacheService = billingCacheService
 REDACTED
 
 // GenerateRandomCode 生成随机兑换码
