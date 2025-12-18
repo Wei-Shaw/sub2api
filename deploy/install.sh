@@ -683,7 +683,7 @@ uninstall() {
     # If not interactive (piped), require -y flag or skip confirmation
     if ! is_interactive; then
         if [ "${FORCE_YES:-REDACTED" != "true" ]; then
-            print_error "Non-interactive mode detected. Use 'bash -s -- uninstall -y' to confirm."
+            print_error "Non-interactive mode detected. Use 'curl ... | bash -s -- uninstall -y' to confirm."
             exit 1
         fi
     else
