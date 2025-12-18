@@ -483,9 +483,24 @@ REDACTED
 create_user() {
     if id "$SERVICE_USER" &>/dev/null; then
         print_info "$(msg 'user_exists'): $SERVICE_USER"
+        # Fix: Ensure existing user has /bin/sh shell for sudo to work
+        # Previous versions used /bin/false which prevents sudo execution
+        local current_shell
+        current_shell=$(getent passwd "$SERVICE_USER" 2>/dev/null | cut -d: -f7)
+        if [ "$current_shell" = "/bin/false" ] || [ "$current_shell" = "/sbin/nologin" ]; then
+            print_info "Fixing user shell for sudo compatibility..."
+            if usermod -s /bin/sh "$SERVICE_USER" 2>/dev/null; then
+                print_success "User shell updated to /bin/sh"
+            else
+                print_warning "Failed to update user shell. Service restart may not work automatically."
+                print_warning "Manual fix: sudo usermod -s /bin/sh $SERVICE_USER"
+            fi
+        fi
     else
         print_info "$(msg 'creating_user') $SERVICE_USER..."
-        useradd -r -s /bin/false -d "$INSTALL_DIR" "$SERVICE_USER"
+        # Use /bin/sh instead of /bin/false to allow sudo execution
+        # The user still cannot login interactively (no password set)
+        useradd -r -s /bin/sh -d "$INSTALL_DIR" "$SERVICE_USER"
         print_success "$(msg 'user_created')"
     fi
 REDACTED
