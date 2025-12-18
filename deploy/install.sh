@@ -525,13 +525,10 @@ REDACTED
 setup_sudoers() {
     print_info "$(msg 'setting_up_sudoers')"
 
-    # Check if sudoers file exists in install dir
-    if [ -f "$INSTALL_DIR/sub2api-sudoers" ]; then
-        cp "$INSTALL_DIR/sub2api-sudoers" /etc/sudoers.d/sub2api
-    else
-        # Create sudoers file
-        # Support both /bin/systemctl and /usr/bin/systemctl for different distros
-        cat > /etc/sudoers.d/sub2api << 'EOF'
+    # Always generate sudoers file from script (not from tar.gz)
+    # This ensures the latest configuration is used even with older releases
+    # Support both /bin/systemctl and /usr/bin/systemctl for different distros
+    cat > /etc/sudoers.d/sub2api << 'EOF'
 # Sudoers configuration for Sub2API
 sub2api ALL=(ALL) NOPASSWD: /bin/systemctl restart sub2api
 sub2api ALL=(ALL) NOPASSWD: /bin/systemctl stop sub2api
@@ -540,7 +537,6 @@ sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart sub2api
 sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop sub2api
 sub2api ALL=(ALL) NOPASSWD: /usr/bin/systemctl start sub2api
 EOF
-    fi
 
     # Set correct permissions (required for sudoers files)
     chmod 440 /etc/sudoers.d/sub2api
