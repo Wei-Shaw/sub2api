@@ -47,7 +47,7 @@ interface Emits {
   (e: 'cancel'): void
 REDACTED
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   confirmText: 'Confirm',
   cancelText: 'Cancel',
   danger: false

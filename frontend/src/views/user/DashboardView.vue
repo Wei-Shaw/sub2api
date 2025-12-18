@@ -523,7 +523,7 @@ const lineOptions = computed(() => ({
         font: {
           size: 10,
         REDACTED,
-        callback: (value: number) => formatTokens(value),
+        callback: (value: string | number) => formatTokens(Number(value)),
       REDACTED,
     REDACTED,
   REDACTED,

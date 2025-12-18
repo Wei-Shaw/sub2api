@@ -450,7 +450,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Group, GroupPlatform, SubscriptionType REDACTED from '@/types'
-import type { Column REDACTED from '@/components/common/DataTable.vue'
+import type { Column REDACTED from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -570,7 +570,7 @@ const loadGroups = async () => {
       pagination.page,
       pagination.page_size,
       {
-        platform: filters.platform || undefined,
+        platform: (filters.platform as GroupPlatform) || undefined,
         status: filters.status as any,
         is_exclusive: filters.is_exclusive ? filters.is_exclusive === 'true' : undefined
       REDACTED

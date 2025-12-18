@@ -341,10 +341,6 @@ const isBalanceType = (type: string) => {
   return type === 'balance' || type === 'admin_balance'
 REDACTED
 
-const isConcurrencyType = (type: string) => {
-  return type === 'concurrency' || type === 'admin_concurrency'
-REDACTED
-
 const isSubscriptionType = (type: string) => {
   return type === 'subscription'
 REDACTED

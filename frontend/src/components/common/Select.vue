@@ -53,7 +53,7 @@
         <div class="select-options">
           <div
             v-for="option in filteredOptions"
-            :key="getOptionValue(option)"
+            :key="getOptionValue(option) ?? undefined"
             @click="selectOption(option)"
             :class="[
               'select-option',
@@ -136,9 +136,9 @@ const searchQuery = ref('')
 const containerRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-const getOptionValue = (option: SelectOption | Record<string, unknown>): string | number | null => {
+const getOptionValue = (option: SelectOption | Record<string, unknown>): string | number | null | undefined => {
   if (typeof option === 'object' && option !== null) {
-    return option[props.valueKey] as string | number | null
+    return option[props.valueKey] as string | number | null | undefined
   REDACTED
   return option as string | number | null
 REDACTED
@@ -187,7 +187,7 @@ const toggle = () => {
 REDACTED
 
 const selectOption = (option: SelectOption | Record<string, unknown>) => {
-  const value = getOptionValue(option)
+  const value = getOptionValue(option) ?? null
   emit('update:modelValue', value)
   emit('change', value, option as SelectOption)
   isOpen.value = false

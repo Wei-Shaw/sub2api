@@ -1,9 +1,16 @@
 import { defineConfig REDACTED from 'vite'
 import vue from '@vitejs/plugin-vue'
+import checker from 'vite-plugin-checker'
 import { resolve REDACTED from 'path'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    checker({
+      typescript: true,
+      vueTsc: true,
+    REDACTED),
+  ],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

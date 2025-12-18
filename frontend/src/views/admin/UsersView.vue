@@ -641,7 +641,7 @@ const { t REDACTED = useI18n()
 import { adminAPI REDACTED from '@/api/admin'
 import type { User, ApiKey, Group REDACTED from '@/types'
 import type { BatchUserUsageStats REDACTED from '@/api/admin/dashboard'
-import type { Column REDACTED from '@/components/common/DataTable.vue'
+import type { Column REDACTED from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'

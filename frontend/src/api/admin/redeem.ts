@@ -23,7 +23,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     type?: RedeemCodeType;
-    status?: 'active' | 'used' | 'expired';
+    status?: 'active' | 'used' | 'expired' | 'unused';
     search?: string;
   REDACTED
 ): Promise<PaginatedResponse<RedeemCode>> {

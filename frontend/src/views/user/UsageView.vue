@@ -246,7 +246,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse REDACTED from '@/types'
-import type { Column REDACTED from '@/components/common/DataTable.vue'
+import type { Column REDACTED from '@/components/common/types'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -314,21 +314,6 @@ const pagination = ref({
   page_size: 20,
   total: 0,
   pages: 0
-REDACTED)
-
-const totalTokens = computed(() => {
-  return usageLogs.value.reduce((sum, log) =>
-    sum + log.input_tokens + log.output_tokens, 0
-  )
-REDACTED)
-
-const totalCost = computed(() => {
-  return usageLogs.value.reduce((sum, log) => sum + log.total_cost, 0)
-REDACTED)
-
-const avgDuration = computed(() => {
-  if (usageLogs.value.length === 0) return 0
-  return usageLogs.value.reduce((sum, log) => sum + log.duration_ms, 0) / usageLogs.value.length
 REDACTED)
 
 const formatDuration = (ms: number): string => {

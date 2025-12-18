@@ -71,7 +71,7 @@
           {{ t('common.cancel') REDACTEDREDACTED
         </button>
         <button
-          v-if="oauthFlowRef?.inputMethod?.value === 'manual'"
+          v-if="isManualInputMethod"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
@@ -98,10 +98,19 @@ import { ref, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import { useAccountOAuth, type AddMethod REDACTED from '@/composables/useAccountOAuth'
+import { useAccountOAuth, type AddMethod, type AuthInputMethod REDACTED from '@/composables/useAccountOAuth'
 import type { Account REDACTED from '@/types'
 import Modal from '@/components/common/Modal.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+
+// Type for exposed OAuthAuthorizationFlow component
+// Note: defineExpose automatically unwraps refs, so we use the unwrapped types
+interface OAuthFlowExposed {
+  authCode: string
+  sessionKey: string
+  inputMethod: AuthInputMethod
+  reset: () => void
+REDACTED
 
 interface Props {
   show: boolean
@@ -121,14 +130,18 @@ const { t REDACTED = useI18n()
 const oauth = useAccountOAuth()
 
 // Refs
-const oauthFlowRef = ref<InstanceType<typeof OAuthAuthorizationFlow> | null>(null)
+const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 
 // State
 const addMethod = ref<AddMethod>('oauth')
 
 // Computed
+const isManualInputMethod = computed(() => {
+  return oauthFlowRef.value?.inputMethod === 'manual'
+REDACTED)
+
 const canExchangeCode = computed(() => {
-  const authCode = oauthFlowRef.value?.authCode?.value || ''
+  const authCode = oauthFlowRef.value?.authCode || ''
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 REDACTED)
 
@@ -163,7 +176,7 @@ REDACTED
 const handleExchangeCode = async () => {
   if (!props.account) return
 
-  const authCode = oauthFlowRef.value?.authCode?.value || ''
+  const authCode = oauthFlowRef.value?.authCode || ''
   if (!authCode.trim() || !oauth.sessionId.value) return
 
   oauth.loading.value = true

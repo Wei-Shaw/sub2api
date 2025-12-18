@@ -69,7 +69,6 @@
 
 <script setup lang="ts">
 import type { Component REDACTED from 'vue'
-import { RouterLink REDACTED from 'vue-router'
 
 interface Props {
   icon?: Component | string
@@ -81,7 +80,7 @@ interface Props {
   message?: string
 REDACTED
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   title: 'No data found',
   description: '',
   actionIcon: true
