@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -244,23 +243,6 @@ REDACTED
 	return nil
 REDACTED
 
-// RestartService triggers a service restart via systemd
-func (s *UpdateService) RestartService() error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("systemd restart only available on Linux")
-REDACTED
-
-	// Try direct systemctl first (works if running as root or with proper permissions)
-	cmd := exec.Command("systemctl", "restart", "sub2api")
-	if err := cmd.Run(); err != nil {
-		// Try with sudo (requires NOPASSWD sudoers entry)
-		sudoCmd := exec.Command("sudo", "systemctl", "restart", "sub2api")
-		if sudoErr := sudoCmd.Run(); sudoErr != nil {
-			return fmt.Errorf("systemctl restart failed: %w (sudo also failed: %v)", err, sudoErr)
-	REDACTED
-REDACTED
-	return nil
-REDACTED
 
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)

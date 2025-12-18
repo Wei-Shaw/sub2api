@@ -2,8 +2,10 @@ package admin
 
 import (
 	"net/http"
+	"time"
 
 	"sub2api/internal/pkg/response"
+	"sub2api/internal/pkg/sysutil"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -72,10 +74,14 @@ REDACTED
 // RestartService restarts the systemd service
 // POST /api/v1/admin/system/restart
 func (h *SystemHandler) RestartService(c *gin.Context) {
-	if err := h.updateSvc.RestartService(); err != nil {
-		response.Error(c, http.StatusInternalServerError, err.Error())
-		return
-REDACTED
+	// Schedule service restart in background after sending response
+	// This ensures the client receives the success response before the service restarts
+	go func() {
+		// Wait a moment to ensure the response is sent
+		time.Sleep(500 * time.Millisecond)
+		sysutil.RestartServiceAsync()
+REDACTED()
+
 	response.Success(c, gin.H{
 		"message": "Service restart initiated",
 REDACTED)
