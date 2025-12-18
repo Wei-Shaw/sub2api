@@ -108,7 +108,7 @@
                 </router-link>
 
                 <a
-                  href="https://github.com/fangyuan99/sub2api"
+                  href="https://github.com/Wei-Shaw/sub2api"
                   target="_blank"
                   rel="noopener noreferrer"
                   @click="closeDropdown"

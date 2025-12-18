@@ -282,7 +282,7 @@ const siteSubtitle = ref('AI API Gateway Platform');
 const isDark = ref(document.documentElement.classList.contains('dark'));
 
 // GitHub URL
-const githubUrl = 'https://github.com/fangyuan99/sub2api';
+const githubUrl = 'https://github.com/Wei-Shaw/sub2api';
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated);
