@@ -1,8 +1,11 @@
 package main
 
+//go:generate go run github.com/google/wire/cmd/wire
+
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -110,78 +113,25 @@ REDACTED
 REDACTED
 
 func runMainServer() {
-	// 加载配置
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-REDACTED
-
-	// 初始化时区（类似 PHP 的 date_default_timezone_set）
-	if err := timezone.Init(cfg.Timezone); err != nil {
-		log.Fatalf("Failed to initialize timezone: %v", err)
-REDACTED
-
-	// 初始化数据库
-	db, err := initDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-REDACTED
-
-	// 初始化Redis
-	rdb := initRedis(cfg)
-
-	// 初始化Repository
-	repos := repository.NewRepositories(db)
-
-	// 初始化Service
-	services := service.NewServices(repos, rdb, cfg)
-
-	// 初始化Handler
 	buildInfo := handler.BuildInfo{
 		Version:   Version,
 		BuildType: BuildType,
 REDACTED
-	handlers := handler.NewHandlers(services, repos, rdb, buildInfo)
 
-	// 设置Gin模式
-	if cfg.Server.Mode == "release" {
-		gin.SetMode(gin.ReleaseMode)
+	app, err := initializeApplication(buildInfo)
+	if err != nil {
+		log.Fatalf("Failed to initialize application: %v", err)
 REDACTED
-
-	// 创建路由
-	r := gin.New()
-	r.Use(gin.Recovery())
-	r.Use(middleware.Logger())
-	r.Use(middleware.CORS())
-
-	// 注册路由
-	registerRoutes(r, handlers, services, repos)
-
-	// Serve embedded frontend if available
-	if web.HasEmbeddedFrontend() {
-		r.Use(web.ServeEmbeddedFrontend())
-REDACTED
+	defer app.Cleanup()
 
 	// 启动服务器
-	srv := &http.Server{
-		Addr:    cfg.Server.Address(),
-		Handler: r,
-		// ReadHeaderTimeout: 读取请求头的超时时间，防止慢速请求头攻击
-		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout) * time.Second,
-		// IdleTimeout: 空闲连接超时时间，释放不活跃的连接资源
-		IdleTimeout: time.Duration(cfg.Server.IdleTimeout) * time.Second,
-		// 注意：不设置 WriteTimeout，因为流式响应可能持续十几分钟
-		// 不设置 ReadTimeout，因为大请求体可能需要较长时间读取
-REDACTED
-
-	// 优雅关闭
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Failed to start server: %v", err)
 	REDACTED
 REDACTED()
 
-	log.Printf("Server started on %s", cfg.Server.Address())
+	log.Printf("Server started on %s", app.Server.Addr)
 
 	// 等待中断信号
 	quit := make(chan os.Signal, 1)
@@ -193,7 +143,7 @@ REDACTED()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := app.Server.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 REDACTED
 
@@ -201,6 +151,11 @@ REDACTED
 REDACTED
 
 func initDB(cfg *config.Config) (*gorm.DB, error) {
+	// 初始化时区（在数据库连接之前，确保时区设置正确）
+	if err := timezone.Init(cfg.Timezone); err != nil {
+		return nil, err
+REDACTED
+
 	gormConfig := &gorm.Config{REDACTED
 	if cfg.Server.Mode == "debug" {
 		gormConfig.Logger = logger.Default.LogMode(logger.Info)
@@ -477,5 +432,36 @@ REDACTED
 		gateway.POST("/messages", h.Gateway.Messages)
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
+REDACTED
+REDACTED
+
+// setupRouter 配置路由器中间件和路由
+func setupRouter(r *gin.Engine, cfg *config.Config, handlers *handler.Handlers, services *service.Services, repos *repository.Repositories) *gin.Engine {
+	// 应用中间件
+	r.Use(middleware.Logger())
+	r.Use(middleware.CORS())
+
+	// 注册路由
+	registerRoutes(r, handlers, services, repos)
+
+	// Serve embedded frontend if available
+	if web.HasEmbeddedFrontend() {
+		r.Use(web.ServeEmbeddedFrontend())
+REDACTED
+
+	return r
+REDACTED
+
+// createHTTPServer 创建HTTP服务器
+func createHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
+	return &http.Server{
+		Addr:    cfg.Server.Address(),
+		Handler: router,
+		// ReadHeaderTimeout: 读取请求头的超时时间，防止慢速请求头攻击
+		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout) * time.Second,
+		// IdleTimeout: 空闲连接超时时间，释放不活跃的连接资源
+		IdleTimeout: time.Duration(cfg.Server.IdleTimeout) * time.Second,
+		// 注意：不设置 WriteTimeout，因为流式响应可能持续十几分钟
+		// 不设置 ReadTimeout，因为大请求体可能需要较长时间读取
 REDACTED
 REDACTED
