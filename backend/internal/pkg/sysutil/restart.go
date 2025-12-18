@@ -3,11 +3,38 @@ package sysutil
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"runtime"
 )
 
 const serviceName = "sub2api"
+
+// findExecutable finds the full path of an executable
+// by checking common system paths
+func findExecutable(name string) string {
+	// First try exec.LookPath (uses current PATH)
+	if path, err := exec.LookPath(name); err == nil {
+		return path
+REDACTED
+
+	// Fallback: check common paths
+	commonPaths := []string{
+		"/usr/bin/" + name,
+		"/bin/" + name,
+		"/usr/sbin/" + name,
+		"/sbin/" + name,
+REDACTED
+
+	for _, path := range commonPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+	REDACTED
+REDACTED
+
+	// Return the name as-is and let exec fail with a clear error
+	return name
+REDACTED
 
 // RestartService triggers a service restart via systemd.
 //
@@ -30,10 +57,17 @@ REDACTED
 
 	log.Println("Initiating service restart...")
 
+	// Find full paths for sudo and systemctl
+	// This ensures the commands work even if PATH is limited in systemd service
+	sudoPath := findExecutable("sudo")
+	systemctlPath := findExecutable("systemctl")
+
+	log.Printf("Using sudo: %s, systemctl: %s", sudoPath, systemctlPath)
+
 	// The sub2api user has NOPASSWD sudo access for systemctl commands
 	// (configured by install.sh in /etc/sudoers.d/sub2api).
 	// Use -n (non-interactive) to prevent sudo from waiting for password input
-	cmd := exec.Command("sudo", "-n", "systemctl", "restart", serviceName)
+	cmd := exec.Command(sudoPath, "-n", systemctlPath, "restart", serviceName)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to initiate service restart: %w", err)
 REDACTED
