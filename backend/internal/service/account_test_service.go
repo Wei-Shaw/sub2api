@@ -24,7 +24,6 @@ import (
 
 const (
 	testClaudeAPIURL = "https://api.anthropic.com/v1/messages"
-	testModel        = "claude-sonnet-4-5-20250929"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -64,9 +63,9 @@ func generateSessionString() string {
 REDACTED
 
 // createTestPayload creates a Claude Code style test request payload
-func createTestPayload() map[string]interface{REDACTED {
+func createTestPayload(modelID string) map[string]interface{REDACTED {
 	return map[string]interface{REDACTED{
-		"model": testModel,
+		"model": modelID,
 		"messages": []map[string]interface{REDACTED{
 			{
 				"role": "user",
@@ -101,13 +100,30 @@ REDACTED
 
 // TestAccountConnection tests an account's connection by sending a test request
 // All account types use full Claude Code client characteristics, only auth header differs
-func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64) error {
+// modelID is optional - if empty, defaults to claude.DefaultTestModel
+func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string) error {
 	ctx := c.Request.Context()
 
 	// Get account
 	account, err := s.repos.Account.GetByID(ctx, accountID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
+REDACTED
+
+	// Determine the model to use
+	testModelID := modelID
+	if testModelID == "" {
+		testModelID = claude.DefaultTestModel
+REDACTED
+
+	// For API Key accounts with model mapping, map the model
+	if account.Type == "apikey" {
+		mapping := account.GetModelMapping()
+		if mapping != nil && len(mapping) > 0 {
+			if mappedModel, exists := mapping[testModelID]; exists {
+				testModelID = mappedModel
+		REDACTED
+	REDACTED
 REDACTED
 
 	// Determine authentication method and API URL
@@ -165,11 +181,11 @@ REDACTED
 	c.Writer.Flush()
 
 	// Create Claude Code style payload (same for all account types)
-	payload := createTestPayload()
+	payload := createTestPayload(testModelID)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelREDACTED)
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payloadBytes))
 	if err != nil {

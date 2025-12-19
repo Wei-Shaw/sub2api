@@ -11,6 +11,7 @@ import (
 
 	"sub2api/internal/middleware"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/claude"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -285,29 +286,8 @@ REDACTED
 // Models handles listing available models
 // GET /v1/models
 func (h *GatewayHandler) Models(c *gin.Context) {
-	models := []gin.H{
-		{
-			"id":           "claude-opus-4-5-20251101",
-			"type":         "model",
-			"display_name": "Claude Opus 4.5",
-			"created_at":   "2025-11-01T00:00:00Z",
-	REDACTED,
-		{
-			"id":           "claude-sonnet-4-5-20250929",
-			"type":         "model",
-			"display_name": "Claude Sonnet 4.5",
-			"created_at":   "2025-09-29T00:00:00Z",
-	REDACTED,
-		{
-			"id":           "REDACTED",
-			"type":         "model",
-			"display_name": "Claude Haiku 4.5",
-			"created_at":   "2025-10-01T00:00:00Z",
-	REDACTED,
-REDACTED
-
 	c.JSON(http.StatusOK, gin.H{
-		"data":   models,
+		"data":   claude.DefaultModels,
 		"object": "list",
 REDACTED)
 REDACTED

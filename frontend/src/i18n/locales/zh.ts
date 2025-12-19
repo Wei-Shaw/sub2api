@@ -865,6 +865,7 @@ export default {
       copyOutput: '复制输出',
       startingTestForAccount: '开始测试账号：{nameREDACTED',
       testAccountTypeLabel: '账号类型：{typeREDACTED',
+      selectTestModel: '选择测试模型',
       testModel: 'claude-sonnet-4-5-20250929',
       testPrompt: '提示词："hi"',
     REDACTED,

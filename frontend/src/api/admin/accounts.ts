@@ -11,6 +11,7 @@ import type {
   PaginatedResponse,
   AccountUsageInfo,
   WindowStats,
+  ClaudeModel,
 REDACTED from '@/types';
 
 /**
@@ -247,6 +248,16 @@ export async function setSchedulable(id: number, schedulable: boolean): Promise<
   return data;
 REDACTED
 
+/**
+ * Get available models for an account
+ * @param id - Account ID
+ * @returns List of available models for this account
+ */
+export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
+  const { data REDACTED = await apiClient.get<ClaudeModel[]>(`/admin/accounts/${idREDACTED/models`);
+  return data;
+REDACTED
+
 export const accountsAPI = {
   list,
   getById,
@@ -262,6 +273,7 @@ export const accountsAPI = {
   getTodayStats,
   clearRateLimit,
   setSchedulable,
+  getAvailableModels,
   generateAuthUrl,
   exchangeCode,
   batchCreate,

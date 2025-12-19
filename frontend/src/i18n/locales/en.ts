@@ -777,6 +777,7 @@ export default {
       copyOutput: 'Copy output',
       startingTestForAccount: 'Starting test for account: {nameREDACTED',
       testAccountTypeLabel: 'Account type: {typeREDACTED',
+      selectTestModel: 'Select Test Model',
       testModel: 'claude-sonnet-4-5-20250929',
       testPrompt: 'Prompt: "hi"',
     REDACTED,

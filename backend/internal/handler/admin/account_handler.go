@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 
+	"sub2api/internal/pkg/claude"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/service"
 
@@ -186,6 +187,11 @@ REDACTED
 	response.Success(c, gin.H{"message": "Account deleted successfully"REDACTED)
 REDACTED
 
+// TestAccountRequest represents the request body for testing an account
+type TestAccountRequest struct {
+	ModelID string `json:"model_id"`
+REDACTED
+
 // Test handles testing account connectivity with SSE streaming
 // POST /api/v1/admin/accounts/:id/test
 func (h *AccountHandler) Test(c *gin.Context) {
@@ -195,8 +201,12 @@ func (h *AccountHandler) Test(c *gin.Context) {
 		return
 REDACTED
 
+	var req TestAccountRequest
+	// Allow empty body, model_id is optional
+	_ = c.ShouldBindJSON(&req)
+
 	// Use AccountTestService to test the account with SSE streaming
-	if err := h.accountTestService.TestAccountConnection(c, accountID); err != nil {
+	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID); err != nil {
 		// Error already sent via SSE, just log
 		return
 REDACTED
@@ -534,4 +544,59 @@ REDACTED
 REDACTED
 
 	response.Success(c, account)
+REDACTED
+
+// GetAvailableModels handles getting available models for an account
+// GET /api/v1/admin/accounts/:id/models
+func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+REDACTED
+
+	// For OAuth and Setup-Token accounts: return default models
+	if account.IsOAuth() {
+		response.Success(c, claude.DefaultModels)
+		return
+REDACTED
+
+	// For API Key accounts: return models based on model_mapping
+	mapping := account.GetModelMapping()
+	if mapping == nil || len(mapping) == 0 {
+		// No mapping configured, return default models
+		response.Success(c, claude.DefaultModels)
+		return
+REDACTED
+
+	// Return mapped models (keys of the mapping are the available model IDs)
+	var models []claude.Model
+	for requestedModel := range mapping {
+		// Try to find display info from default models
+		var found bool
+		for _, dm := range claude.DefaultModels {
+			if dm.ID == requestedModel {
+				models = append(models, dm)
+				found = true
+				break
+		REDACTED
+	REDACTED
+		// If not found in defaults, create a basic entry
+		if !found {
+			models = append(models, claude.Model{
+				ID:          requestedModel,
+				Type:        "model",
+				DisplayName: requestedModel,
+				CreatedAt:   "",
+		REDACTED)
+	REDACTED
+REDACTED
+
+	response.Success(c, models)
 REDACTED
