@@ -541,7 +541,7 @@ REDACTED
 export interface UserUsageTrendPoint {
   date: string;
   user_id: number;
-  username: string;
+  email: string;
   requests: number;
   tokens: number;
   cost: number;        // 标准计费

@@ -462,13 +462,21 @@ REDACTED)
 const userTrendChartData = computed(() => {
   if (!userTrend.value?.length) return null
 
+  // Extract display name from email (part before @)
+  const getDisplayName = (email: string, userId: number): string => {
+    if (email && email.includes('@')) {
+      return email.split('@')[0]
+    REDACTED
+    return `User #${userIdREDACTED`
+  REDACTED
+
   // Group by user
   const userGroups = new Map<string, { name: string; data: Map<string, number> REDACTED>()
   const allDates = new Set<string>()
 
   userTrend.value.forEach(point => {
     allDates.add(point.date)
-    const key = point.username || `User #${point.user_idREDACTED`
+    const key = getDisplayName(point.email, point.user_id)
     if (!userGroups.has(key)) {
       userGroups.set(key, { name: key, data: new Map() REDACTED)
     REDACTED
