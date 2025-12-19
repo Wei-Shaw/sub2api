@@ -7,14 +7,19 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
+	"context"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"log"
 	"net/http"
 	"sub2api/internal/config"
 	"sub2api/internal/handler"
+	"sub2api/internal/handler/admin"
+	"sub2api/internal/infrastructure"
 	"sub2api/internal/repository"
+	"sub2api/internal/server"
 	"sub2api/internal/service"
+	"time"
 )
 
 import (
@@ -24,23 +29,114 @@ import (
 // Injectors from wire.go:
 
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
-	config, err := provideConfig()
+	configConfig, err := config.ProvideConfig()
 	if err != nil {
 		return nil, err
 REDACTED
-	db, err := provideDB(config)
+	db, err := infrastructure.ProvideDB(configConfig)
 	if err != nil {
 		return nil, err
 REDACTED
-	repositories := provideRepositories(db)
-	client := provideRedis(config)
-	services := provideServices(repositories, client, config)
-	handlers := provideHandlers(services, repositories, client, buildInfo)
-	engine := provideRouter(config, handlers, services, repositories)
-	server := provideHTTPServer(config, engine)
-	v := provideCleanup()
+	userRepository := repository.NewUserRepository(db)
+	settingRepository := repository.NewSettingRepository(db)
+	settingService := service.NewSettingService(settingRepository, configConfig)
+	client := infrastructure.ProvideRedis(configConfig)
+	emailService := service.NewEmailService(settingRepository, client)
+	turnstileService := service.NewTurnstileService(settingService)
+	emailQueueService := service.ProvideEmailQueueService(emailService)
+	authService := service.NewAuthService(userRepository, configConfig, settingService, emailService, turnstileService, emailQueueService)
+	authHandler := handler.NewAuthHandler(authService)
+	userService := service.NewUserService(userRepository, configConfig)
+	userHandler := handler.NewUserHandler(userService)
+	apiKeyRepository := repository.NewApiKeyRepository(db)
+	groupRepository := repository.NewGroupRepository(db)
+	userSubscriptionRepository := repository.NewUserSubscriptionRepository(db)
+	apiKeyService := service.NewApiKeyService(apiKeyRepository, userRepository, groupRepository, userSubscriptionRepository, client, configConfig)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
+	usageLogRepository := repository.NewUsageLogRepository(db)
+	usageService := service.NewUsageService(usageLogRepository, userRepository)
+	usageHandler := handler.NewUsageHandler(usageService, usageLogRepository, apiKeyService)
+	redeemCodeRepository := repository.NewRedeemCodeRepository(db)
+	accountRepository := repository.NewAccountRepository(db)
+	proxyRepository := repository.NewProxyRepository(db)
+	repositories := &repository.Repositories{
+		User:             userRepository,
+		ApiKey:           apiKeyRepository,
+		Group:            groupRepository,
+		Account:          accountRepository,
+		Proxy:            proxyRepository,
+		RedeemCode:       redeemCodeRepository,
+		UsageLog:         usageLogRepository,
+		Setting:          settingRepository,
+		UserSubscription: userSubscriptionRepository,
+REDACTED
+	billingCacheService := service.NewBillingCacheService(client, userRepository, userSubscriptionRepository)
+	subscriptionService := service.NewSubscriptionService(repositories, billingCacheService)
+	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, client, billingCacheService)
+	redeemHandler := handler.NewRedeemHandler(redeemService)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
+	adminService := service.NewAdminService(repositories, billingCacheService)
+	dashboardHandler := admin.NewDashboardHandler(adminService, usageLogRepository)
+	adminUserHandler := admin.NewUserHandler(adminService)
+	groupHandler := admin.NewGroupHandler(adminService)
+	oAuthService := service.NewOAuthService(proxyRepository)
+	rateLimitService := service.NewRateLimitService(repositories, configConfig)
+	accountUsageService := service.NewAccountUsageService(repositories, oAuthService)
+	accountTestService := service.NewAccountTestService(repositories, oAuthService)
+	accountHandler := admin.NewAccountHandler(adminService, oAuthService, rateLimitService, accountUsageService, accountTestService)
+	oAuthHandler := admin.NewOAuthHandler(oAuthService, adminService)
+	proxyHandler := admin.NewProxyHandler(adminService)
+	adminRedeemHandler := admin.NewRedeemHandler(adminService)
+	settingHandler := admin.NewSettingHandler(settingService, emailService)
+	systemHandler := handler.ProvideSystemHandler(client, buildInfo)
+	adminSubscriptionHandler := admin.NewSubscriptionHandler(subscriptionService)
+	adminUsageHandler := admin.NewUsageHandler(usageLogRepository, apiKeyRepository, usageService, adminService)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler)
+	pricingService, err := service.ProvidePricingService(configConfig)
+	if err != nil {
+		return nil, err
+REDACTED
+	billingService := service.NewBillingService(configConfig, pricingService)
+	identityService := service.NewIdentityService(client)
+	gatewayService := service.NewGatewayService(repositories, client, configConfig, oAuthService, billingService, rateLimitService, billingCacheService, identityService)
+	concurrencyService := service.NewConcurrencyService(client)
+	gatewayHandler := handler.NewGatewayHandler(gatewayService, userService, concurrencyService, billingCacheService)
+	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, handlerSettingHandler)
+	groupService := service.NewGroupService(groupRepository)
+	accountService := service.NewAccountService(accountRepository, groupRepository)
+	proxyService := service.NewProxyService(proxyRepository)
+	services := &service.Services{
+		Auth:         authService,
+		User:         userService,
+		ApiKey:       apiKeyService,
+		Group:        groupService,
+		Account:      accountService,
+		Proxy:        proxyService,
+		Redeem:       redeemService,
+		Usage:        usageService,
+		Pricing:      pricingService,
+		Billing:      billingService,
+		BillingCache: billingCacheService,
+		Admin:        adminService,
+		Gateway:      gatewayService,
+		OAuth:        oAuthService,
+		RateLimit:    rateLimitService,
+		AccountUsage: accountUsageService,
+		AccountTest:  accountTestService,
+		Setting:      settingService,
+		Email:        emailService,
+		EmailQueue:   emailQueueService,
+		Turnstile:    turnstileService,
+		Subscription: subscriptionService,
+		Concurrency:  concurrencyService,
+		Identity:     identityService,
+REDACTED
+	engine := server.ProvideRouter(configConfig, handlers, services, repositories)
+	httpServer := server.ProvideHTTPServer(configConfig, engine)
+	v := provideCleanup(db, client, services)
 	application := &Application{
-		Server:  server,
+		Server:  httpServer,
 		Cleanup: v,
 REDACTED
 	return application, nil
@@ -53,47 +149,53 @@ type Application struct {
 	Cleanup func()
 REDACTED
 
-func provideConfig() (*config.Config, error) {
-	return config.Load()
-REDACTED
-
-func provideDB(cfg *config.Config) (*gorm.DB, error) {
-	return initDB(cfg)
-REDACTED
-
-func provideRedis(cfg *config.Config) *redis.Client {
-	return initRedis(cfg)
-REDACTED
-
-func provideRepositories(db *gorm.DB) *repository.Repositories {
-	return repository.NewRepositories(db)
-REDACTED
-
-func provideServices(repos *repository.Repositories, rdb *redis.Client, cfg *config.Config) *service.Services {
-	return service.NewServices(repos, rdb, cfg)
-REDACTED
-
-func provideHandlers(services *service.Services, repos *repository.Repositories, rdb *redis.Client, buildInfo handler.BuildInfo) *handler.Handlers {
-	return handler.NewHandlers(services, repos, rdb, buildInfo)
-REDACTED
-
-func provideRouter(cfg *config.Config, handlers *handler.Handlers, services *service.Services, repos *repository.Repositories) *gin.Engine {
-	if cfg.Server.Mode == "release" {
-		gin.SetMode(gin.ReleaseMode)
-REDACTED
-
-	r := gin.New()
-	r.Use(gin.Recovery())
-
-	return setupRouter(r, cfg, handlers, services, repos)
-REDACTED
-
-func provideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
-	return createHTTPServer(cfg, router)
-REDACTED
-
-func provideCleanup() func() {
+func provideCleanup(
+	db *gorm.DB,
+	rdb *redis.Client,
+	services *service.Services,
+) func() {
 	return func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
+		cleanupSteps := []struct {
+			name string
+			fn   func() error
+	REDACTED{
+			{"PricingService", func() error {
+				services.Pricing.Stop()
+				return nil
+	REDACTED
+			{"EmailQueueService", func() error {
+				services.EmailQueue.Stop()
+				return nil
+	REDACTED
+			{"Redis", func() error {
+				return rdb.Close()
+	REDACTED
+			{"Database", func() error {
+				sqlDB, err := db.DB()
+				if err != nil {
+					return err
+			REDACTED
+				return sqlDB.Close()
+	REDACTED
+	REDACTED
+
+		for _, step := range cleanupSteps {
+			if err := step.fn(); err != nil {
+				log.Printf("[Cleanup] %s failed: %v", step.name, err)
+
+		REDACTED else {
+				log.Printf("[Cleanup] %s succeeded", step.name)
+		REDACTED
+	REDACTED
+
+		select {
+		case <-ctx.Done():
+			log.Printf("[Cleanup] Warning: cleanup timed out after 10 seconds")
+		default:
+			log.Printf("[Cleanup] All cleanup steps completed")
+	REDACTED
 REDACTED
 REDACTED

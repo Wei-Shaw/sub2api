@@ -191,24 +191,17 @@ type adminServiceImpl struct {
 REDACTED
 
 // NewAdminService creates a new AdminService
-func NewAdminService(repos *repository.Repositories) AdminService {
+func NewAdminService(repos *repository.Repositories, billingCacheService *BillingCacheService) AdminService {
 	return &adminServiceImpl{
-		userRepo:       repos.User,
-		groupRepo:      repos.Group,
-		accountRepo:    repos.Account,
-		proxyRepo:      repos.Proxy,
-		apiKeyRepo:     repos.ApiKey,
-		redeemCodeRepo: repos.RedeemCode,
-		usageLogRepo:   repos.UsageLog,
-		userSubRepo:    repos.UserSubscription,
-REDACTED
-REDACTED
-
-// SetBillingCacheService 设置计费缓存服务（用于缓存失效）
-// 注意：AdminService是接口，需要类型断言
-func SetAdminServiceBillingCache(adminService AdminService, billingCacheService *BillingCacheService) {
-	if impl, ok := adminService.(*adminServiceImpl); ok {
-		impl.billingCacheService = billingCacheService
+		userRepo:            repos.User,
+		groupRepo:           repos.Group,
+		accountRepo:         repos.Account,
+		proxyRepo:           repos.Proxy,
+		apiKeyRepo:          repos.ApiKey,
+		redeemCodeRepo:      repos.RedeemCode,
+		usageLogRepo:        repos.UsageLog,
+		userSubRepo:         repos.UserSubscription,
+		billingCacheService: billingCacheService,
 REDACTED
 REDACTED
 
