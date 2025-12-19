@@ -20,6 +20,7 @@ import (
 
 	"sub2api/internal/config"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/claude"
 	"sub2api/internal/repository"
 
 	"github.com/gin-gonic/gin"
@@ -602,13 +603,10 @@ REDACTED
 // getBetaHeader 处理anthropic-beta header
 // 对于OAuth账号，需要确保包含oauth-2025-04-20
 func (s *GatewayService) getBetaHeader(body []byte, clientBetaHeader string) string {
-	const oauthBeta = "oauth-2025-04-20"
-	const claudeCodeBeta = "claude-code-20250219"
-
 	// 如果客户端传了anthropic-beta
 	if clientBetaHeader != "" {
 		// 已包含oauth beta则直接返回
-		if strings.Contains(clientBetaHeader, oauthBeta) {
+		if strings.Contains(clientBetaHeader, claude.BetaOAuth) {
 			return clientBetaHeader
 	REDACTED
 
@@ -621,7 +619,7 @@ func (s *GatewayService) getBetaHeader(body []byte, clientBetaHeader string) str
 		// 在claude-code-20250219后面插入oauth beta
 		claudeCodeIdx := -1
 		for i, p := range parts {
-			if p == claudeCodeBeta {
+			if p == claude.BetaClaudeCode {
 				claudeCodeIdx = i
 				break
 		REDACTED
@@ -631,13 +629,13 @@ func (s *GatewayService) getBetaHeader(body []byte, clientBetaHeader string) str
 			// 在claude-code后面插入
 			newParts := make([]string, 0, len(parts)+1)
 			newParts = append(newParts, parts[:claudeCodeIdx+1]...)
-			newParts = append(newParts, oauthBeta)
+			newParts = append(newParts, claude.BetaOAuth)
 			newParts = append(newParts, parts[claudeCodeIdx+1:]...)
 			return strings.Join(newParts, ",")
 	REDACTED
 
 		// 没有claude-code，放在第一位
-		return oauthBeta + "," + clientBetaHeader
+		return claude.BetaOAuth + "," + clientBetaHeader
 REDACTED
 
 	// 客户端没传，根据模型生成
@@ -651,10 +649,10 @@ REDACTED
 
 	// haiku模型不需要claude-code beta
 	if strings.Contains(strings.ToLower(modelID), "haiku") {
-		return "oauth-2025-04-20,REDACTED"
+		return claude.HaikuBetaHeader
 REDACTED
 
-	return "claude-code-20250219,oauth-2025-04-20,REDACTED,fine-grained-tool-streaming-2025-05-14"
+	return claude.DefaultBetaHeader
 REDACTED
 
 func (s *GatewayService) forceRefreshToken(ctx context.Context, account *model.Account) (string, string, error) {
