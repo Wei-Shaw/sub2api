@@ -180,7 +180,7 @@
           />
           <p class="input-hint">{{ t('admin.groups.rateMultiplierHint') REDACTEDREDACTED</p>
         </div>
-        <div class="flex items-center gap-3">
+        <div v-if="createForm.subscription_type !== 'subscription'" class="flex items-center gap-3">
           <button
             type="button"
             @click="createForm.is_exclusive = !createForm.is_exclusive"
@@ -323,7 +323,7 @@
             class="input"
           />
         </div>
-        <div class="flex items-center gap-3">
+        <div v-if="editForm.subscription_type !== 'subscription'" class="flex items-center gap-3">
           <button
             type="button"
             @click="editForm.is_exclusive = !editForm.is_exclusive"
@@ -360,8 +360,9 @@
             <Select
               v-model="editForm.subscription_type"
               :options="subscriptionTypeOptions"
+              :disabled="true"
             />
-            <p class="input-hint">{{ t('admin.groups.subscription.typeHint') REDACTEDREDACTED</p>
+            <p class="input-hint">{{ t('admin.groups.subscription.typeNotEditable') REDACTEDREDACTED</p>
           </div>
 
           <!-- Subscription limits (only show when subscription type is selected) -->
@@ -676,16 +677,11 @@ const confirmDelete = async () => {
   REDACTED
 REDACTED
 
-// 监听 subscription_type 变化，配额模式时重置 rate_multiplier 为 1
+// 监听 subscription_type 变化，订阅模式时重置 rate_multiplier 为 1，is_exclusive 为 true
 watch(() => createForm.subscription_type, (newVal) => {
   if (newVal === 'subscription') {
     createForm.rate_multiplier = 1.0
-  REDACTED
-REDACTED)
-
-watch(() => editForm.subscription_type, (newVal) => {
-  if (newVal === 'subscription') {
-    editForm.rate_multiplier = 1.0
+    createForm.is_exclusive = true
   REDACTED
 REDACTED)
 

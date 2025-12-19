@@ -543,6 +543,7 @@ export default {
         title: 'Subscription Settings',
         type: 'Billing Type',
         typeHint: 'Standard billing deducts from user balance. Subscription mode uses quota limits instead.',
+        typeNotEditable: 'Billing type cannot be changed after group creation.',
         standard: 'Standard (Balance)',
         subscription: 'Subscription (Quota)',
         dailyLimit: 'Daily Limit (USD)',
