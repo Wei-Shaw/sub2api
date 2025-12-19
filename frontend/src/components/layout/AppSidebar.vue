@@ -36,6 +36,7 @@
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path) REDACTED"
             :title="sidebarCollapsed ? item.label : undefined"
+            @click="handleMenuItemClick"
           >
             <component :is="item.icon" class="w-5 h-5 flex-shrink-0" />
             <transition name="fade">
@@ -58,6 +59,7 @@
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path) REDACTED"
             :title="sidebarCollapsed ? item.label : undefined"
+            @click="handleMenuItemClick"
           >
             <component :is="item.icon" class="w-5 h-5 flex-shrink-0" />
             <transition name="fade">
@@ -77,6 +79,7 @@
             class="sidebar-link mb-1"
             :class="{ 'sidebar-link-active': isActive(item.path) REDACTED"
             :title="sidebarCollapsed ? item.label : undefined"
+            @click="handleMenuItemClick"
           >
             <component :is="item.icon" class="w-5 h-5 flex-shrink-0" />
             <transition name="fade">
@@ -142,9 +145,9 @@ const appStore = useAppStore();
 const authStore = useAuthStore();
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed);
+const mobileOpen = computed(() => appStore.mobileOpen);
 const isAdmin = computed(() => authStore.isAdmin);
 const isDark = ref(document.documentElement.classList.contains('dark'));
-const mobileOpen = ref(false);
 
 // Site settings
 const siteName = ref('Sub2API');
@@ -303,7 +306,15 @@ function toggleTheme() {
 REDACTED
 
 function closeMobile() {
-  mobileOpen.value = false;
+  appStore.setMobileOpen(false);
+REDACTED
+
+function handleMenuItemClick() {
+  if (mobileOpen.value) {
+    setTimeout(() => {
+      appStore.setMobileOpen(false);
+    REDACTED, 150);
+  REDACTED
 REDACTED
 
 function isActive(path: string): boolean {

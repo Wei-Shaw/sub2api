@@ -12,6 +12,7 @@ export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
 
   const sidebarCollapsed = ref<boolean>(false);
+  const mobileOpen = ref<boolean>(false);
   const loading = ref<boolean>(false);
   const toasts = ref<Toast[]>([]);
 
@@ -48,6 +49,21 @@ export const useAppStore = defineStore('app', () => {
    */
   function setSidebarCollapsed(collapsed: boolean): void {
     sidebarCollapsed.value = collapsed;
+  REDACTED
+
+  /**
+   * Toggle mobile sidebar open state
+   */
+  function toggleMobileSidebar(): void {
+    mobileOpen.value = !mobileOpen.value;
+  REDACTED
+
+  /**
+   * Set mobile sidebar open state explicitly
+   * @param open - Whether mobile sidebar should be open
+   */
+  function setMobileOpen(open: boolean): void {
+    mobileOpen.value = open;
   REDACTED
 
   /**
@@ -257,6 +273,7 @@ export const useAppStore = defineStore('app', () => {
   return {
     // State
     sidebarCollapsed,
+    mobileOpen,
     loading,
     toasts,
 
@@ -275,6 +292,8 @@ export const useAppStore = defineStore('app', () => {
     // Actions
     toggleSidebar,
     setSidebarCollapsed,
+    toggleMobileSidebar,
+    setMobileOpen,
     setLoading,
     showToast,
     showSuccess,
