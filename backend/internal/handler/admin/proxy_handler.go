@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"strings"
 
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/service"
@@ -112,12 +113,12 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 REDACTED
 
 	proxy, err := h.adminService.CreateProxy(c.Request.Context(), &service.CreateProxyInput{
-		Name:     req.Name,
-		Protocol: req.Protocol,
-		Host:     req.Host,
+		Name:     strings.TrimSpace(req.Name),
+		Protocol: strings.TrimSpace(req.Protocol),
+		Host:     strings.TrimSpace(req.Host),
 		Port:     req.Port,
-		Username: req.Username,
-		Password: req.Password,
+		Username: strings.TrimSpace(req.Username),
+		Password: strings.TrimSpace(req.Password),
 REDACTED)
 	if err != nil {
 		response.BadRequest(c, "Failed to create proxy: "+err.Error())
@@ -143,13 +144,13 @@ REDACTED
 REDACTED
 
 	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, &service.UpdateProxyInput{
-		Name:     req.Name,
-		Protocol: req.Protocol,
-		Host:     req.Host,
+		Name:     strings.TrimSpace(req.Name),
+		Protocol: strings.TrimSpace(req.Protocol),
+		Host:     strings.TrimSpace(req.Host),
 		Port:     req.Port,
-		Username: req.Username,
-		Password: req.Password,
-		Status:   req.Status,
+		Username: strings.TrimSpace(req.Username),
+		Password: strings.TrimSpace(req.Password),
+		Status:   strings.TrimSpace(req.Status),
 REDACTED)
 	if err != nil {
 		response.InternalError(c, "Failed to update proxy: "+err.Error())
@@ -263,8 +264,14 @@ REDACTED
 	skipped := 0
 
 	for _, item := range req.Proxies {
+		// Trim all string fields
+		host := strings.TrimSpace(item.Host)
+		protocol := strings.TrimSpace(item.Protocol)
+		username := strings.TrimSpace(item.Username)
+		password := strings.TrimSpace(item.Password)
+
 		// Check for duplicates (same host, port, username, password)
-		exists, err := h.adminService.CheckProxyExists(c.Request.Context(), item.Host, item.Port, item.Username, item.Password)
+		exists, err := h.adminService.CheckProxyExists(c.Request.Context(), host, item.Port, username, password)
 		if err != nil {
 			response.InternalError(c, "Failed to check proxy existence: "+err.Error())
 			return
@@ -278,11 +285,11 @@ REDACTED
 		// Create proxy with default name
 		_, err = h.adminService.CreateProxy(c.Request.Context(), &service.CreateProxyInput{
 			Name:     "default",
-			Protocol: item.Protocol,
-			Host:     item.Host,
+			Protocol: protocol,
+			Host:     host,
 			Port:     item.Port,
-			Username: item.Username,
-			Password: item.Password,
+			Username: username,
+			Password: password,
 	REDACTED)
 		if err != nil {
 			// If creation fails due to duplicate, count as skipped
