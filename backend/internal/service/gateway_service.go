@@ -27,10 +27,11 @@ import (
 )
 
 const (
-	claudeAPIURL        = "https://api.anthropic.com/v1/messages?beta=true"
-	stickySessionPrefix = "sticky_session:"
-	stickySessionTTL    = time.Hour // 粘性会话TTL
-	tokenRefreshBuffer  = 5 * 60    // 提前5分钟刷新token
+	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
+	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
+	stickySessionPrefix     = "sticky_session:"
+	stickySessionTTL        = time.Hour // 粘性会话TTL
+	tokenRefreshBuffer      = 5 * 60    // 提前5分钟刷新token
 )
 
 // allowedHeaders 白名单headers（参考CRS项目）
@@ -1043,4 +1044,206 @@ REDACTED
 REDACTED
 
 	return nil
+REDACTED
+
+// ForwardCountTokens 转发 count_tokens 请求到上游 API
+// 特点：不记录使用量、仅支持非流式响应
+func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *model.Account, body []byte) error {
+	// 应用模型映射（仅对 apikey 类型账号）
+	if account.Type == model.AccountTypeApiKey {
+		var req struct {
+			Model string `json:"model"`
+	REDACTED
+		if err := json.Unmarshal(body, &req); err == nil && req.Model != "" {
+			mappedModel := account.GetMappedModel(req.Model)
+			if mappedModel != req.Model {
+				body = s.replaceModelInBody(body, mappedModel)
+				log.Printf("CountTokens model mapping applied: %s -> %s (account: %s)", req.Model, mappedModel, account.Name)
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 获取凭证
+	token, tokenType, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
+		return err
+REDACTED
+
+	// 构建上游请求
+	upstreamResult, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType)
+	if err != nil {
+		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		return err
+REDACTED
+
+	// 选择 HTTP client
+	httpClient := s.httpClient
+	if upstreamResult.Client != nil {
+		httpClient = upstreamResult.Client
+REDACTED
+
+	// 发送请求
+	resp, err := httpClient.Do(upstreamResult.Request)
+	if err != nil {
+		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
+		return fmt.Errorf("upstream request failed: %w", err)
+REDACTED
+	defer resp.Body.Close()
+
+	// 处理 401 错误：刷新 token 重试（仅 OAuth）
+	if resp.StatusCode == http.StatusUnauthorized && tokenType == "oauth" {
+		resp.Body.Close()
+		token, tokenType, err = s.forceRefreshToken(ctx, account)
+		if err != nil {
+			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Token refresh failed")
+			return fmt.Errorf("token refresh failed: %w", err)
+	REDACTED
+		upstreamResult, err = s.buildCountTokensRequest(ctx, c, account, body, token, tokenType)
+		if err != nil {
+			return err
+	REDACTED
+		httpClient = s.httpClient
+		if upstreamResult.Client != nil {
+			httpClient = upstreamResult.Client
+	REDACTED
+		resp, err = httpClient.Do(upstreamResult.Request)
+		if err != nil {
+			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Retry failed")
+			return fmt.Errorf("retry request failed: %w", err)
+	REDACTED
+		defer resp.Body.Close()
+REDACTED
+
+	// 读取响应体
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
+		return err
+REDACTED
+
+	// 处理错误响应
+	if resp.StatusCode >= 400 {
+		// 标记账号状态（429/529等）
+		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+
+		// 返回简化的错误响应
+		errMsg := "Upstream request failed"
+		switch resp.StatusCode {
+		case 429:
+			errMsg = "Rate limit exceeded"
+		case 529:
+			errMsg = "Service overloaded"
+	REDACTED
+		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
+		return fmt.Errorf("upstream error: %d", resp.StatusCode)
+REDACTED
+
+	// 透传成功响应
+	c.Data(resp.StatusCode, "application/json", respBody)
+	return nil
+REDACTED
+
+// buildCountTokensRequest 构建 count_tokens 上游请求
+func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *model.Account, body []byte, token, tokenType string) (*buildUpstreamRequestResult, error) {
+	// 确定目标 URL
+	targetURL := claudeAPICountTokensURL
+	if account.Type == model.AccountTypeApiKey {
+		baseURL := account.GetBaseURL()
+		targetURL = baseURL + "/v1/messages/count_tokens"
+REDACTED
+
+	// OAuth 账号：应用统一指纹和重写 userID
+	if account.IsOAuth() && s.identityService != nil {
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		if err == nil {
+			accountUUID := account.GetExtraString("account_uuid")
+			if accountUUID != "" && fp.ClientID != "" {
+				if newBody, err := s.identityService.RewriteUserID(body, account.ID, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
+					body = newBody
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// 设置认证头
+	if tokenType == "oauth" {
+		req.Header.Set("Authorization", "Bearer "+token)
+REDACTED else {
+		req.Header.Set("x-api-key", token)
+REDACTED
+
+	// 白名单透传 headers
+	for key, values := range c.Request.Header {
+		lowerKey := strings.ToLower(key)
+		if allowedHeaders[lowerKey] {
+			for _, v := range values {
+				req.Header.Add(key, v)
+		REDACTED
+	REDACTED
+REDACTED
+
+	// OAuth 账号：应用指纹到请求头
+	if account.IsOAuth() && s.identityService != nil {
+		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		if fp != nil {
+			s.identityService.ApplyFingerprint(req, fp)
+	REDACTED
+REDACTED
+
+	// 确保必要的 headers 存在
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+REDACTED
+	if req.Header.Get("anthropic-version") == "" {
+		req.Header.Set("anthropic-version", "2023-06-01")
+REDACTED
+
+	// OAuth 账号：处理 anthropic-beta header
+	if tokenType == "oauth" {
+		req.Header.Set("anthropic-beta", s.getBetaHeader(body, c.GetHeader("anthropic-beta")))
+REDACTED
+
+	// 配置代理
+	var customClient *http.Client
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL := account.Proxy.URL()
+		if proxyURL != "" {
+			if parsedURL, err := url.Parse(proxyURL); err == nil {
+				responseHeaderTimeout := time.Duration(s.cfg.Gateway.ResponseHeaderTimeout) * time.Second
+				if responseHeaderTimeout == 0 {
+					responseHeaderTimeout = 300 * time.Second
+			REDACTED
+				transport := &http.Transport{
+					Proxy:                 http.ProxyURL(parsedURL),
+					MaxIdleConns:          100,
+					MaxIdleConnsPerHost:   10,
+					IdleConnTimeout:       90 * time.Second,
+					ResponseHeaderTimeout: responseHeaderTimeout,
+			REDACTED
+				customClient = &http.Client{Transport: transportREDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	return &buildUpstreamRequestResult{
+		Request: req,
+		Client:  customClient,
+REDACTED, nil
+REDACTED
+
+// countTokensError 返回 count_tokens 错误响应
+func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, message string) {
+	c.JSON(status, gin.H{
+		"type": "error",
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+	REDACTED,
+REDACTED)
 REDACTED
