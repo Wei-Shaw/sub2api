@@ -131,11 +131,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref, onMounted REDACTED from 'vue';
+import { computed, h, ref REDACTED from 'vue';
 import { useRoute REDACTED from 'vue-router';
 import { useI18n REDACTED from 'vue-i18n';
 import { useAppStore, useAuthStore REDACTED from '@/stores';
-import { getPublicSettings REDACTED from '@/api/auth';
 import VersionBadge from '@/components/common/VersionBadge.vue';
 
 const { t REDACTED = useI18n();
@@ -149,21 +148,10 @@ const mobileOpen = computed(() => appStore.mobileOpen);
 const isAdmin = computed(() => authStore.isAdmin);
 const isDark = ref(document.documentElement.classList.contains('dark'));
 
-// Site settings
-const siteName = ref('Sub2API');
-const siteLogo = ref('');
-const siteVersion = ref('');
-
-onMounted(async () => {
-  try {
-    const settings = await getPublicSettings();
-    siteName.value = settings.site_name || 'Sub2API';
-    siteLogo.value = settings.site_logo || '';
-    siteVersion.value = settings.version || '';
-  REDACTED catch (error) {
-    console.error('Failed to load public settings:', error);
-  REDACTED
-REDACTED);
+// Site settings from appStore (cached, no flicker)
+const siteName = computed(() => appStore.siteName);
+const siteLogo = computed(() => appStore.siteLogo);
+const siteVersion = computed(() => appStore.siteVersion);
 
 // SVG Icon Components
 const DashboardIcon = {

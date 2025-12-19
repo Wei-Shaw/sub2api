@@ -499,6 +499,8 @@ async function saveSettings() {
   saving.value = true;
   try {
     await adminAPI.settings.updateSettings(form);
+    // Refresh cached public settings so sidebar/header update immediately
+    await appStore.fetchPublicSettings(true);
     appStore.showSuccess(t('admin.settings.settingsSaved'));
   REDACTED catch (error: any) {
     appStore.showError(t('admin.settings.failedToSave') + ': ' + (error.message || t('common.unknownError')));

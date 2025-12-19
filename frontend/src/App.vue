@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute REDACTED from 'vue-router'
-import { onMounted REDACTED from 'vue'
+import { onMounted, watch REDACTED from 'vue'
 import Toast from '@/components/common/Toast.vue'
-import { getPublicSettings REDACTED from '@/api/auth'
+import { useAppStore REDACTED from '@/stores'
 import { getSetupStatus REDACTED from '@/api/setup'
 
 const router = useRouter()
 const route = useRoute()
+const appStore = useAppStore()
 
 /**
  * Update favicon dynamically
@@ -24,6 +25,19 @@ function updateFavicon(logoUrl: string) {
   link.href = logoUrl
 REDACTED
 
+// Watch for site settings changes and update favicon/title
+watch(() => appStore.siteLogo, (newLogo) => {
+  if (newLogo) {
+    updateFavicon(newLogo)
+  REDACTED
+REDACTED, { immediate: true REDACTED)
+
+watch(() => appStore.siteName, (newName) => {
+  if (newName) {
+    document.title = `${newNameREDACTED - AI API Gateway`
+  REDACTED
+REDACTED, { immediate: true REDACTED)
+
 onMounted(async () => {
   // Check if setup is needed
   try {
@@ -36,21 +50,8 @@ onMounted(async () => {
     // If setup endpoint fails, assume normal mode and continue
   REDACTED
 
-  try {
-    const settings = await getPublicSettings()
-
-    // Update favicon if logo is set
-    if (settings.site_logo) {
-      updateFavicon(settings.site_logo)
-    REDACTED
-
-    // Update page title if site name is set
-    if (settings.site_name) {
-      document.title = `${settings.site_nameREDACTED - AI API Gateway`
-    REDACTED
-  REDACTED catch (error) {
-    console.error('Failed to load public settings for favicon:', error)
-  REDACTED
+  // Load public settings into appStore (will be cached for other components)
+  await appStore.fetchPublicSettings()
 REDACTED)
 </script>
 

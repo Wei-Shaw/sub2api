@@ -5,8 +5,9 @@
 
 import { defineStore REDACTED from 'pinia';
 import { ref, computed REDACTED from 'vue';
-import type { Toast, ToastType REDACTED from '@/types';
+import type { Toast, ToastType, PublicSettings REDACTED from '@/types';
 import { checkUpdates as checkUpdatesAPI, type VersionInfo, type ReleaseInfo REDACTED from '@/api/admin/system';
+import { getPublicSettings as fetchPublicSettingsAPI REDACTED from '@/api/auth';
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -15,6 +16,15 @@ export const useAppStore = defineStore('app', () => {
   const mobileOpen = ref<boolean>(false);
   const loading = ref<boolean>(false);
   const toasts = ref<Toast[]>([]);
+
+  // Public settings cache state
+  const publicSettingsLoaded = ref<boolean>(false);
+  const publicSettingsLoading = ref<boolean>(false);
+  const siteName = ref<string>('Sub2API');
+  const siteLogo = ref<string>('');
+  const siteVersion = ref<string>('');
+  const contactInfo = ref<string>('');
+  const apiBaseUrl = ref<string>('');
 
   // Version cache state
   const versionLoaded = ref<boolean>(false);
@@ -268,6 +278,59 @@ export const useAppStore = defineStore('app', () => {
     hasUpdate.value = false;
   REDACTED
 
+  // ==================== Public Settings Management ====================
+
+  /**
+   * Fetch public settings (uses cache unless force=true)
+   * @param force - Force refresh from API
+   */
+  async function fetchPublicSettings(force = false): Promise<PublicSettings | null> {
+    // Return cached data if available and not forcing refresh
+    if (publicSettingsLoaded.value && !force) {
+      return {
+        registration_enabled: false,
+        email_verify_enabled: false,
+        turnstile_enabled: false,
+        turnstile_site_key: '',
+        site_name: siteName.value,
+        site_logo: siteLogo.value,
+        site_subtitle: '',
+        api_base_url: apiBaseUrl.value,
+        contact_info: contactInfo.value,
+        version: siteVersion.value,
+      REDACTED;
+    REDACTED
+
+    // Prevent duplicate requests
+    if (publicSettingsLoading.value) {
+      return null;
+    REDACTED
+
+    publicSettingsLoading.value = true;
+    try {
+      const data = await fetchPublicSettingsAPI();
+      siteName.value = data.site_name || 'Sub2API';
+      siteLogo.value = data.site_logo || '';
+      siteVersion.value = data.version || '';
+      contactInfo.value = data.contact_info || '';
+      apiBaseUrl.value = data.api_base_url || '';
+      publicSettingsLoaded.value = true;
+      return data;
+    REDACTED catch (error) {
+      console.error('Failed to fetch public settings:', error);
+      return null;
+    REDACTED finally {
+      publicSettingsLoading.value = false;
+    REDACTED
+  REDACTED
+
+  /**
+   * Clear public settings cache
+   */
+  function clearPublicSettingsCache(): void {
+    publicSettingsLoaded.value = false;
+  REDACTED
+
   // ==================== Return Store API ====================
 
   return {
@@ -276,6 +339,14 @@ export const useAppStore = defineStore('app', () => {
     mobileOpen,
     loading,
     toasts,
+
+    // Public settings state
+    publicSettingsLoaded,
+    siteName,
+    siteLogo,
+    siteVersion,
+    contactInfo,
+    apiBaseUrl,
 
     // Version state
     versionLoaded,
@@ -309,5 +380,9 @@ export const useAppStore = defineStore('app', () => {
     // Version actions
     fetchVersion,
     clearVersionCache,
+
+    // Public settings actions
+    fetchPublicSettings,
+    clearPublicSettingsCache,
   REDACTED;
 REDACTED);

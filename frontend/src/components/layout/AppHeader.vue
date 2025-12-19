@@ -156,7 +156,6 @@ import { ref, computed, onMounted, onBeforeUnmount REDACTED from 'vue';
 import { useRouter, useRoute REDACTED from 'vue-router';
 import { useI18n REDACTED from 'vue-i18n';
 import { useAppStore, useAuthStore REDACTED from '@/stores';
-import { authAPI REDACTED from '@/api';
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue';
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue';
 
@@ -169,7 +168,7 @@ const authStore = useAuthStore();
 const user = computed(() => authStore.user);
 const dropdownOpen = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
-const contactInfo = ref('');
+const contactInfo = computed(() => appStore.contactInfo);
 
 const userInitials = computed(() => {
   if (!user.value) return '';
@@ -230,14 +229,8 @@ function handleClickOutside(event: MouseEvent) {
   REDACTED
 REDACTED
 
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener('click', handleClickOutside);
-  try {
-    const settings = await authAPI.getPublicSettings();
-    contactInfo.value = settings.contact_info || '';
-  REDACTED catch (error) {
-    console.error('Failed to load contact info:', error);
-  REDACTED
 REDACTED);
 
 onBeforeUnmount(() => {
