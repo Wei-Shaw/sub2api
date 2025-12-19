@@ -4,8 +4,8 @@ import (
 	"strconv"
 
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/pkg/response"
-	"sub2api/internal/repository"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -53,7 +53,7 @@ REDACTED
 REDACTED
 
 	page, pageSize := response.ParsePagination(c)
-	params := repository.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 
 	keys, result, err := h.apiKeyService.List(c.Request.Context(), user.ID, params)
 	if err != nil {

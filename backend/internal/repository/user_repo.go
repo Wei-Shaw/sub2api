@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 
 	"gorm.io/gorm"
 )
@@ -45,12 +46,12 @@ func (r *UserRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.User{REDACTED, id).Error
 REDACTED
 
-func (r *UserRepository) List(ctx context.Context, params PaginationParams) ([]model.User, *PaginationResult, error) {
+func (r *UserRepository) List(ctx context.Context, params pagination.PaginationParams) ([]model.User, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "")
 REDACTED
 
 // ListWithFilters lists users with optional filtering by status, role, and search query
-func (r *UserRepository) ListWithFilters(ctx context.Context, params PaginationParams, status, role, search string) ([]model.User, *PaginationResult, error) {
+func (r *UserRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, role, search string) ([]model.User, *pagination.PaginationResult, error) {
 	var users []model.User
 	var total int64
 
@@ -81,7 +82,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return users, &PaginationResult{
+	return users, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),
@@ -127,4 +128,3 @@ func (r *UserRepository) RemoveGroupFromAllowedGroups(ctx context.Context, group
 		Update("allowed_groups", gorm.Expr("array_remove(allowed_groups, ?)", groupID))
 	return result.RowsAffected, result.Error
 REDACTED
-

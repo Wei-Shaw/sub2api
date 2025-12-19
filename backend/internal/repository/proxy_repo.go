@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 
 	"gorm.io/gorm"
 )
@@ -36,12 +37,12 @@ func (r *ProxyRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.Proxy{REDACTED, id).Error
 REDACTED
 
-func (r *ProxyRepository) List(ctx context.Context, params PaginationParams) ([]model.Proxy, *PaginationResult, error) {
+func (r *ProxyRepository) List(ctx context.Context, params pagination.PaginationParams) ([]model.Proxy, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "")
 REDACTED
 
 // ListWithFilters lists proxies with optional filtering by protocol, status, and search query
-func (r *ProxyRepository) ListWithFilters(ctx context.Context, params PaginationParams, protocol, status, search string) ([]model.Proxy, *PaginationResult, error) {
+func (r *ProxyRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]model.Proxy, *pagination.PaginationResult, error) {
 	var proxies []model.Proxy
 	var total int64
 
@@ -72,7 +73,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return proxies, &PaginationResult{
+	return proxies, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),

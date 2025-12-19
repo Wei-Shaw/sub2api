@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 
 	"gorm.io/gorm"
 )
@@ -37,11 +38,11 @@ REDACTED
 
 // ProxyService 代理管理服务
 type ProxyService struct {
-	proxyRepo *repository.ProxyRepository
+	proxyRepo ports.ProxyRepository
 REDACTED
 
 // NewProxyService 创建代理服务实例
-func NewProxyService(proxyRepo *repository.ProxyRepository) *ProxyService {
+func NewProxyService(proxyRepo ports.ProxyRepository) *ProxyService {
 	return &ProxyService{
 		proxyRepo: proxyRepo,
 REDACTED
@@ -80,7 +81,7 @@ REDACTED
 REDACTED
 
 // List 获取代理列表
-func (s *ProxyService) List(ctx context.Context, params repository.PaginationParams) ([]model.Proxy, *repository.PaginationResult, error) {
+func (s *ProxyService) List(ctx context.Context, params pagination.PaginationParams) ([]model.Proxy, *pagination.PaginationResult, error) {
 	proxies, pagination, err := s.proxyRepo.List(ctx, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list proxies: %w", err)

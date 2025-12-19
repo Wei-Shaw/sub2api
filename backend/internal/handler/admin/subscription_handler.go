@@ -4,15 +4,15 @@ import (
 	"strconv"
 
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/pkg/response"
-	"sub2api/internal/repository"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-// toResponsePagination converts repository.PaginationResult to response.PaginationResult
-func toResponsePagination(p *repository.PaginationResult) *response.PaginationResult {
+// toResponsePagination converts pagination.PaginationResult to response.PaginationResult
+func toResponsePagination(p *pagination.PaginationResult) *response.PaginationResult {
 	if p == nil {
 		return nil
 REDACTED

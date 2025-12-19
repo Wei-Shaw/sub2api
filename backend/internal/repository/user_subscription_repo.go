@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 
 	"gorm.io/gorm"
 )
@@ -100,7 +101,7 @@ func (r *UserSubscriptionRepository) ListActiveByUserID(ctx context.Context, use
 REDACTED
 
 // ListByGroupID 获取分组的所有订阅（分页）
-func (r *UserSubscriptionRepository) ListByGroupID(ctx context.Context, groupID int64, params PaginationParams) ([]model.UserSubscription, *PaginationResult, error) {
+func (r *UserSubscriptionRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]model.UserSubscription, *pagination.PaginationResult, error) {
 	var subs []model.UserSubscription
 	var total int64
 
@@ -126,7 +127,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return subs, &PaginationResult{
+	return subs, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),
@@ -135,7 +136,7 @@ REDACTED, nil
 REDACTED
 
 // List 获取所有订阅（分页，支持筛选）
-func (r *UserSubscriptionRepository) List(ctx context.Context, params PaginationParams, userID, groupID *int64, status string) ([]model.UserSubscription, *PaginationResult, error) {
+func (r *UserSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status string) ([]model.UserSubscription, *pagination.PaginationResult, error) {
 	var subs []model.UserSubscription
 	var total int64
 
@@ -172,7 +173,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return subs, &PaginationResult{
+	return subs, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),

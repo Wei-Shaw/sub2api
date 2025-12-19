@@ -12,7 +12,7 @@ import (
 
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/oauth"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 
 	"github.com/imroc/req/v3"
 )
@@ -20,11 +20,11 @@ import (
 // OAuthService handles OAuth authentication flows
 type OAuthService struct {
 	sessionStore *oauth.SessionStore
-	proxyRepo    *repository.ProxyRepository
+	proxyRepo    ports.ProxyRepository
 REDACTED
 
 // NewOAuthService creates a new OAuth service
-func NewOAuthService(proxyRepo *repository.ProxyRepository) *OAuthService {
+func NewOAuthService(proxyRepo ports.ProxyRepository) *OAuthService {
 	return &OAuthService{
 		sessionStore: oauth.NewSessionStore(),
 		proxyRepo:    proxyRepo,
@@ -459,7 +459,7 @@ REDACTED
 // createReqClient creates a req client with Chrome impersonation and optional proxy
 func (s *OAuthService) createReqClient(proxyURL string) *req.Client {
 	client := req.C().
-		ImpersonateChrome().  // Impersonate Chrome browser to bypass Cloudflare
+		ImpersonateChrome(). // Impersonate Chrome browser to bypass Cloudflare
 		SetTimeout(60 * time.Second)
 
 	// Set proxy if specified

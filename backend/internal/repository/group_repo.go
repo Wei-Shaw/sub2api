@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 
 	"gorm.io/gorm"
 )
@@ -36,12 +37,12 @@ func (r *GroupRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.Group{REDACTED, id).Error
 REDACTED
 
-func (r *GroupRepository) List(ctx context.Context, params PaginationParams) ([]model.Group, *PaginationResult, error) {
+func (r *GroupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]model.Group, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", nil)
 REDACTED
 
 // ListWithFilters lists groups with optional filtering by platform, status, and is_exclusive
-func (r *GroupRepository) ListWithFilters(ctx context.Context, params PaginationParams, platform, status string, isExclusive *bool) ([]model.Group, *PaginationResult, error) {
+func (r *GroupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]model.Group, *pagination.PaginationResult, error) {
 	var groups []model.Group
 	var total int64
 
@@ -77,7 +78,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return groups, &PaginationResult{
+	return groups, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),

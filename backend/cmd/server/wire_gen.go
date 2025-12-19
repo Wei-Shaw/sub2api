@@ -57,32 +57,21 @@ REDACTED
 	usageService := service.NewUsageService(usageLogRepository, userRepository)
 	usageHandler := handler.NewUsageHandler(usageService, usageLogRepository, apiKeyService)
 	redeemCodeRepository := repository.NewRedeemCodeRepository(db)
-	accountRepository := repository.NewAccountRepository(db)
-	proxyRepository := repository.NewProxyRepository(db)
-	repositories := &repository.Repositories{
-		User:             userRepository,
-		ApiKey:           apiKeyRepository,
-		Group:            groupRepository,
-		Account:          accountRepository,
-		Proxy:            proxyRepository,
-		RedeemCode:       redeemCodeRepository,
-		UsageLog:         usageLogRepository,
-		Setting:          settingRepository,
-		UserSubscription: userSubscriptionRepository,
-REDACTED
 	billingCacheService := service.NewBillingCacheService(client, userRepository, userSubscriptionRepository)
-	subscriptionService := service.NewSubscriptionService(repositories, billingCacheService)
+	subscriptionService := service.NewSubscriptionService(groupRepository, userSubscriptionRepository, billingCacheService)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, client, billingCacheService)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
-	adminService := service.NewAdminService(repositories, billingCacheService)
+	accountRepository := repository.NewAccountRepository(db)
+	proxyRepository := repository.NewProxyRepository(db)
+	adminService := service.NewAdminService(userRepository, groupRepository, accountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, usageLogRepository, userSubscriptionRepository, billingCacheService)
 	dashboardHandler := admin.NewDashboardHandler(adminService, usageLogRepository)
 	adminUserHandler := admin.NewUserHandler(adminService)
 	groupHandler := admin.NewGroupHandler(adminService)
 	oAuthService := service.NewOAuthService(proxyRepository)
-	rateLimitService := service.NewRateLimitService(repositories, configConfig)
-	accountUsageService := service.NewAccountUsageService(repositories, oAuthService)
-	accountTestService := service.NewAccountTestService(repositories, oAuthService)
+	rateLimitService := service.NewRateLimitService(accountRepository, configConfig)
+	accountUsageService := service.NewAccountUsageService(accountRepository, usageLogRepository, oAuthService)
+	accountTestService := service.NewAccountTestService(accountRepository, oAuthService)
 	accountHandler := admin.NewAccountHandler(adminService, oAuthService, rateLimitService, accountUsageService, accountTestService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService, adminService)
 	proxyHandler := admin.NewProxyHandler(adminService)
@@ -98,7 +87,7 @@ REDACTED
 REDACTED
 	billingService := service.NewBillingService(configConfig, pricingService)
 	identityService := service.NewIdentityService(client)
-	gatewayService := service.NewGatewayService(repositories, client, configConfig, oAuthService, billingService, rateLimitService, billingCacheService, identityService)
+	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, client, configConfig, oAuthService, billingService, rateLimitService, billingCacheService, identityService)
 	concurrencyService := service.NewConcurrencyService(client)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, userService, concurrencyService, billingCacheService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
@@ -131,6 +120,17 @@ REDACTED
 		Subscription: subscriptionService,
 		Concurrency:  concurrencyService,
 		Identity:     identityService,
+REDACTED
+	repositories := &repository.Repositories{
+		User:             userRepository,
+		ApiKey:           apiKeyRepository,
+		Group:            groupRepository,
+		Account:          accountRepository,
+		Proxy:            proxyRepository,
+		RedeemCode:       redeemCodeRepository,
+		UsageLog:         usageLogRepository,
+		Setting:          settingRepository,
+		UserSubscription: userSubscriptionRepository,
 REDACTED
 	engine := server.ProvideRouter(configConfig, handlers, services, repositories)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"sub2api/internal/pkg/claude"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -37,15 +37,15 @@ REDACTED
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
-	repos        *repository.Repositories
+	accountRepo  ports.AccountRepository
 	oauthService *OAuthService
 	httpClient   *http.Client
 REDACTED
 
 // NewAccountTestService creates a new AccountTestService
-func NewAccountTestService(repos *repository.Repositories, oauthService *OAuthService) *AccountTestService {
+func NewAccountTestService(accountRepo ports.AccountRepository, oauthService *OAuthService) *AccountTestService {
 	return &AccountTestService{
-		repos:        repos,
+		accountRepo:  accountRepo,
 		oauthService: oauthService,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
@@ -105,7 +105,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	ctx := c.Request.Context()
 
 	// Get account
-	account, err := s.repos.Account.GetByID(ctx, accountID)
+	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 REDACTED

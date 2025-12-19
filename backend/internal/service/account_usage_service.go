@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 )
 
 // usageCache 用于缓存usage数据
@@ -35,10 +35,10 @@ REDACTED
 
 // UsageProgress 使用量进度
 type UsageProgress struct {
-	Utilization      float64      `json:"utilization"`                  // 使用率百分比 (0-100+，100表示100%)
-	ResetsAt         *time.Time   `json:"resets_at"`                    // 重置时间
-	RemainingSeconds int          `json:"remaining_seconds"`            // 距重置剩余秒数
-	WindowStats      *WindowStats `json:"window_stats,omitempty"`       // 窗口期统计（从窗口开始到当前的使用量）
+	Utilization      float64      `json:"utilization"`            // 使用率百分比 (0-100+，100表示100%)
+	ResetsAt         *time.Time   `json:"resets_at"`              // 重置时间
+	RemainingSeconds int          `json:"remaining_seconds"`      // 距重置剩余秒数
+	WindowStats      *WindowStats `json:"window_stats,omitempty"` // 窗口期统计（从窗口开始到当前的使用量）
 REDACTED
 
 // UsageInfo 账号使用量信息
@@ -67,15 +67,17 @@ REDACTED
 
 // AccountUsageService 账号使用量查询服务
 type AccountUsageService struct {
-	repos        *repository.Repositories
+	accountRepo  ports.AccountRepository
+	usageLogRepo ports.UsageLogRepository
 	oauthService *OAuthService
 	httpClient   *http.Client
 REDACTED
 
 // NewAccountUsageService 创建AccountUsageService实例
-func NewAccountUsageService(repos *repository.Repositories, oauthService *OAuthService) *AccountUsageService {
+func NewAccountUsageService(accountRepo ports.AccountRepository, usageLogRepo ports.UsageLogRepository, oauthService *OAuthService) *AccountUsageService {
 	return &AccountUsageService{
-		repos:        repos,
+		accountRepo:  accountRepo,
+		usageLogRepo: usageLogRepo,
 		oauthService: oauthService,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -88,7 +90,7 @@ REDACTED
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
 // API Key账号: 不支持usage查询
 func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
-	account, err := s.repos.Account.GetByID(ctx, accountID)
+	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("get account failed: %w", err)
 REDACTED
@@ -148,7 +150,7 @@ REDACTED else {
 		startTime = time.Now().Add(-5 * time.Hour)
 REDACTED
 
-	stats, err := s.repos.UsageLog.GetAccountWindowStats(ctx, account.ID, startTime)
+	stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
 	if err != nil {
 		log.Printf("Failed to get window stats for account %d: %v", account.ID, err)
 		return
@@ -163,7 +165,7 @@ REDACTED
 
 // GetTodayStats 获取账号今日统计
 func (s *AccountUsageService) GetTodayStats(ctx context.Context, accountID int64) (*WindowStats, error) {
-	stats, err := s.repos.UsageLog.GetAccountTodayStats(ctx, accountID)
+	stats, err := s.usageLogRepo.GetAccountTodayStats(ctx, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("get today stats failed: %w", err)
 REDACTED
