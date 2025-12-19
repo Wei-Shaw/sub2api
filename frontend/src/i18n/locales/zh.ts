@@ -266,6 +266,8 @@ export default {
     sync: '同步',
     in: '输入',
     out: '输出',
+    cacheRead: '读取',
+    cacheWrite: '写入',
     rate: '倍率',
     original: '原始',
     billed: '计费',

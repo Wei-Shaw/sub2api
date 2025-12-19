@@ -266,6 +266,8 @@ export default {
     sync: 'Sync',
     in: 'In',
     out: 'Out',
+    cacheRead: 'Read',
+    cacheWrite: 'Write',
     rate: 'Rate',
     original: 'Original',
     billed: 'Billed',

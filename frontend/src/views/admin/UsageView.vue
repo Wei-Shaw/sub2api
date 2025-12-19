@@ -194,17 +194,40 @@
           </template>
 
           <template #cell-tokens="{ row REDACTED">
-            <div class="text-sm">
-              <div class="flex items-center gap-1">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('usage.in') REDACTEDREDACTED</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ row.input_tokens.toLocaleString() REDACTEDREDACTED</span>
-                <span class="text-gray-400 dark:text-gray-500">/</span>
-                <span class="text-gray-500 dark:text-gray-400">{{ t('usage.out') REDACTEDREDACTED</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ row.output_tokens.toLocaleString() REDACTEDREDACTED</span>
+            <div class="text-sm space-y-1.5">
+              <!-- Input / Output Tokens -->
+              <div class="flex items-center gap-2">
+                <!-- Input -->
+                <div class="inline-flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                  </svg>
+                  <span class="font-medium text-gray-900 dark:text-white">{{ row.input_tokens.toLocaleString() REDACTEDREDACTED</span>
+                </div>
+                <!-- Output -->
+                <div class="inline-flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                  </svg>
+                  <span class="font-medium text-gray-900 dark:text-white">{{ row.output_tokens.toLocaleString() REDACTEDREDACTED</span>
+                </div>
               </div>
-              <div v-if="row.cache_read_tokens > 0" class="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                <span>{{ t('dashboard.cache') REDACTEDREDACTED</span>
-                <span class="font-medium">{{ row.cache_read_tokens.toLocaleString() REDACTEDREDACTED</span>
+              <!-- Cache Tokens (Read + Write) -->
+              <div v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0" class="flex items-center gap-2">
+                <!-- Cache Read -->
+                <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                  </svg>
+                  <span class="text-sky-600 dark:text-sky-400 font-medium">{{ formatCacheTokens(row.cache_read_tokens) REDACTEDREDACTED</span>
+                </div>
+                <!-- Cache Write -->
+                <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span class="text-amber-600 dark:text-amber-400 font-medium">{{ formatCacheTokens(row.cache_creation_tokens) REDACTEDREDACTED</span>
+                </div>
               </div>
             </div>
           </template>
@@ -457,6 +480,16 @@ const formatTokens = (value: number): string => {
   return value.toLocaleString()
 REDACTED
 
+// Compact format for cache tokens in table cells
+const formatCacheTokens = (value: number): string => {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)REDACTEDM`
+  REDACTED else if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)REDACTEDK`
+  REDACTED
+  return value.toLocaleString()
+REDACTED
+
 const formatDateTime = (dateString: string): string => {
   const date = new Date(dateString)
   return date.toLocaleString('en-US', {
@@ -537,7 +570,7 @@ const exportToCSV = () => {
     return
   REDACTED
 
-  const headers = ['User', 'API Key', 'Model', 'Type', 'Input Tokens', 'Output Tokens', 'Cache Tokens', 'Total Cost', 'Billing Type', 'Duration (ms)', 'Time']
+  const headers = ['User', 'API Key', 'Model', 'Type', 'Input Tokens', 'Output Tokens', 'Cache Read Tokens', 'Cache Write Tokens', 'Total Cost', 'Billing Type', 'Duration (ms)', 'Time']
   const rows = usageLogs.value.map(log => [
     log.user?.email || '',
     log.api_key?.name || '',
@@ -546,6 +579,7 @@ const exportToCSV = () => {
     log.input_tokens,
     log.output_tokens,
     log.cache_read_tokens,
+    log.cache_creation_tokens,
     log.total_cost.toFixed(6),
     log.billing_type === 1 ? 'Subscription' : 'Balance',
     log.duration_ms,
