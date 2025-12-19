@@ -96,7 +96,7 @@ services:
   # PostgreSQL Database
   # ===========================================================================
   postgres:
-    image: postgres:15-alpine
+    image: postgres:18-alpine
     container_name: sub2api-postgres
     restart: unless-stopped
     volumes:
