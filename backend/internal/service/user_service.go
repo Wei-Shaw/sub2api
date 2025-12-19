@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"sub2api/internal/config"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrPasswordIncorrect  = errors.New("current password is incorrect")
-	ErrInsufficientPerms  = errors.New("insufficient permissions")
+	ErrUserNotFound      = errors.New("user not found")
+	ErrPasswordIncorrect = errors.New("current password is incorrect")
+	ErrInsufficientPerms = errors.New("insufficient permissions")
 )
 
 // UpdateProfileRequest 更新用户资料请求
@@ -32,12 +33,12 @@ REDACTED
 
 // UserService 用户服务
 type UserService struct {
-	userRepo *repository.UserRepository
+	userRepo ports.UserRepository
 	cfg      *config.Config
 REDACTED
 
 // NewUserService 创建用户服务实例
-func NewUserService(userRepo *repository.UserRepository, cfg *config.Config) *UserService {
+func NewUserService(userRepo ports.UserRepository, cfg *config.Config) *UserService {
 	return &UserService{
 		userRepo: userRepo,
 		cfg:      cfg,
@@ -133,7 +134,7 @@ REDACTED
 REDACTED
 
 // List 获取用户列表（管理员功能）
-func (s *UserService) List(ctx context.Context, params repository.PaginationParams) ([]model.User, *repository.PaginationResult, error) {
+func (s *UserService) List(ctx context.Context, params pagination.PaginationParams) ([]model.User, *pagination.PaginationResult, error) {
 	users, pagination, err := s.userRepo.List(ctx, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list users: %w", err)

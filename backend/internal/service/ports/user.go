@@ -1,0 +1,25 @@
+package ports
+
+import (
+	"context"
+
+	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
+)
+
+type UserRepository interface {
+	Create(ctx context.Context, user *model.User) error
+	GetByID(ctx context.Context, id int64) (*model.User, error)
+	GetByEmail(ctx context.Context, email string) (*model.User, error)
+	Update(ctx context.Context, user *model.User) error
+	Delete(ctx context.Context, id int64) error
+
+	List(ctx context.Context, params pagination.PaginationParams) ([]model.User, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, role, search string) ([]model.User, *pagination.PaginationResult, error)
+
+	UpdateBalance(ctx context.Context, id int64, amount float64) error
+	DeductBalance(ctx context.Context, id int64, amount float64) error
+	UpdateConcurrency(ctx context.Context, id int64, amount int) error
+	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
+REDACTED

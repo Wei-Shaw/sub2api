@@ -11,7 +11,7 @@ import (
 	"net/smtp"
 	"strconv"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -25,9 +25,9 @@ var (
 )
 
 const (
-	verifyCodeKeyPrefix  = "email_verify:"
-	verifyCodeTTL        = 15 * time.Minute
-	verifyCodeCooldown   = 1 * time.Minute
+	verifyCodeKeyPrefix   = "email_verify:"
+	verifyCodeTTL         = 15 * time.Minute
+	verifyCodeCooldown    = 1 * time.Minute
 	maxVerifyCodeAttempts = 5
 )
 
@@ -51,12 +51,12 @@ REDACTED
 
 // EmailService 邮件服务
 type EmailService struct {
-	settingRepo *repository.SettingRepository
+	settingRepo ports.SettingRepository
 	rdb         *redis.Client
 REDACTED
 
 // NewEmailService 创建邮件服务实例
-func NewEmailService(settingRepo *repository.SettingRepository, rdb *redis.Client) *EmailService {
+func NewEmailService(settingRepo ports.SettingRepository, rdb *redis.Client) *EmailService {
 	return &EmailService{
 		settingRepo: settingRepo,
 		rdb:         rdb,

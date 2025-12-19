@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -81,12 +81,12 @@ REDACTED
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
 	rdb      *redis.Client
-	userRepo *repository.UserRepository
-	subRepo  *repository.UserSubscriptionRepository
+	userRepo ports.UserRepository
+	subRepo  ports.UserSubscriptionRepository
 REDACTED
 
 // NewBillingCacheService 创建计费缓存服务
-func NewBillingCacheService(rdb *redis.Client, userRepo *repository.UserRepository, subRepo *repository.UserSubscriptionRepository) *BillingCacheService {
+func NewBillingCacheService(rdb *redis.Client, userRepo ports.UserRepository, subRepo ports.UserSubscriptionRepository) *BillingCacheService {
 	return &BillingCacheService{
 		rdb:      rdb,
 		userRepo: userRepo,

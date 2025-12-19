@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/timezone"
 	"sub2api/internal/repository"
@@ -68,9 +69,9 @@ REDACTED
 		apiKeyID = id
 REDACTED
 
-	params := repository.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	var records []model.UsageLog
-	var result *repository.PaginationResult
+	var result *pagination.PaginationResult
 	var err error
 
 	if apiKeyID > 0 {
@@ -362,7 +363,7 @@ REDACTED
 REDACTED
 
 	// Verify ownership of all requested API keys
-	userApiKeys, _, err := h.apiKeyService.List(c.Request.Context(), user.ID, repository.PaginationParams{Page: 1, PageSize: 1000REDACTED)
+	userApiKeys, _, err := h.apiKeyService.List(c.Request.Context(), user.ID, pagination.PaginationParams{Page: 1, PageSize: 1000REDACTED)
 	if err != nil {
 		response.InternalError(c, "Failed to verify API key ownership")
 		return

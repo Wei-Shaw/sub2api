@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 )
 
 var (
@@ -23,14 +24,16 @@ var (
 
 // SubscriptionService 订阅服务
 type SubscriptionService struct {
-	repos               *repository.Repositories
+	groupRepo           ports.GroupRepository
+	userSubRepo         ports.UserSubscriptionRepository
 	billingCacheService *BillingCacheService
 REDACTED
 
 // NewSubscriptionService 创建订阅服务
-func NewSubscriptionService(repos *repository.Repositories, billingCacheService *BillingCacheService) *SubscriptionService {
+func NewSubscriptionService(groupRepo ports.GroupRepository, userSubRepo ports.UserSubscriptionRepository, billingCacheService *BillingCacheService) *SubscriptionService {
 	return &SubscriptionService{
-		repos:               repos,
+		groupRepo:           groupRepo,
+		userSubRepo:         userSubRepo,
 		billingCacheService: billingCacheService,
 REDACTED
 REDACTED
@@ -47,7 +50,7 @@ REDACTED
 // AssignSubscription 分配订阅给用户（不允许重复分配）
 func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *AssignSubscriptionInput) (*model.UserSubscription, error) {
 	// 检查分组是否存在且为订阅类型
-	group, err := s.repos.Group.GetByID(ctx, input.GroupID)
+	group, err := s.groupRepo.GetByID(ctx, input.GroupID)
 	if err != nil {
 		return nil, fmt.Errorf("group not found: %w", err)
 REDACTED
@@ -56,7 +59,7 @@ REDACTED
 REDACTED
 
 	// 检查是否已存在订阅
-	exists, err := s.repos.UserSubscription.ExistsByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
+	exists, err := s.userSubRepo.ExistsByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -90,7 +93,7 @@ REDACTED
 // 如果没有订阅：创建新订阅
 func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, input *AssignSubscriptionInput) (*model.UserSubscription, bool, error) {
 	// 检查分组是否存在且为订阅类型
-	group, err := s.repos.Group.GetByID(ctx, input.GroupID)
+	group, err := s.groupRepo.GetByID(ctx, input.GroupID)
 	if err != nil {
 		return nil, false, fmt.Errorf("group not found: %w", err)
 REDACTED
@@ -99,7 +102,7 @@ REDACTED
 REDACTED
 
 	// 查询是否已有订阅
-	existingSub, err := s.repos.UserSubscription.GetByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
+	existingSub, err := s.userSubRepo.GetByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
 	if err != nil {
 		// 不存在记录是正常情况，其他错误需要返回
 		existingSub = nil
@@ -124,13 +127,13 @@ REDACTED
 	REDACTED
 
 		// 更新过期时间
-		if err := s.repos.UserSubscription.ExtendExpiry(ctx, existingSub.ID, newExpiresAt); err != nil {
+		if err := s.userSubRepo.ExtendExpiry(ctx, existingSub.ID, newExpiresAt); err != nil {
 			return nil, false, fmt.Errorf("extend subscription: %w", err)
 	REDACTED
 
 		// 如果订阅已过期或被暂停，恢复为active状态
 		if existingSub.Status != model.SubscriptionStatusActive {
-			if err := s.repos.UserSubscription.UpdateStatus(ctx, existingSub.ID, model.SubscriptionStatusActive); err != nil {
+			if err := s.userSubRepo.UpdateStatus(ctx, existingSub.ID, model.SubscriptionStatusActive); err != nil {
 				return nil, false, fmt.Errorf("update subscription status: %w", err)
 		REDACTED
 	REDACTED
@@ -142,7 +145,7 @@ REDACTED
 				newNotes += "\n"
 		REDACTED
 			newNotes += input.Notes
-			if err := s.repos.UserSubscription.UpdateNotes(ctx, existingSub.ID, newNotes); err != nil {
+			if err := s.userSubRepo.UpdateNotes(ctx, existingSub.ID, newNotes); err != nil {
 				// 备注更新失败不影响主流程
 		REDACTED
 	REDACTED
@@ -158,7 +161,7 @@ REDACTED
 	REDACTED
 
 		// 返回更新后的订阅
-		sub, err := s.repos.UserSubscription.GetByID(ctx, existingSub.ID)
+		sub, err := s.userSubRepo.GetByID(ctx, existingSub.ID)
 		return sub, true, err // true 表示是续期
 REDACTED
 
@@ -205,12 +208,12 @@ REDACTED
 		sub.AssignedBy = &input.AssignedBy
 REDACTED
 
-	if err := s.repos.UserSubscription.Create(ctx, sub); err != nil {
+	if err := s.userSubRepo.Create(ctx, sub); err != nil {
 		return nil, err
 REDACTED
 
 	// 重新获取完整订阅信息（包含关联）
-	return s.repos.UserSubscription.GetByID(ctx, sub.ID)
+	return s.userSubRepo.GetByID(ctx, sub.ID)
 REDACTED
 
 // BulkAssignSubscriptionInput 批量分配订阅输入
@@ -260,12 +263,12 @@ REDACTED
 // RevokeSubscription 撤销订阅
 func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscriptionID int64) error {
 	// 先获取订阅信息用于失效缓存
-	sub, err := s.repos.UserSubscription.GetByID(ctx, subscriptionID)
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
 		return err
 REDACTED
 
-	if err := s.repos.UserSubscription.Delete(ctx, subscriptionID); err != nil {
+	if err := s.userSubRepo.Delete(ctx, subscriptionID); err != nil {
 		return err
 REDACTED
 
@@ -284,20 +287,20 @@ REDACTED
 
 // ExtendSubscription 延长订阅
 func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscriptionID int64, days int) (*model.UserSubscription, error) {
-	sub, err := s.repos.UserSubscription.GetByID(ctx, subscriptionID)
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
 REDACTED
 
 	// 计算新的过期时间
 	newExpiresAt := sub.ExpiresAt.AddDate(0, 0, days)
-	if err := s.repos.UserSubscription.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
+	if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
 		return nil, err
 REDACTED
 
 	// 如果订阅已过期，恢复为active状态
 	if sub.Status == model.SubscriptionStatusExpired {
-		if err := s.repos.UserSubscription.UpdateStatus(ctx, subscriptionID, model.SubscriptionStatusActive); err != nil {
+		if err := s.userSubRepo.UpdateStatus(ctx, subscriptionID, model.SubscriptionStatusActive); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
@@ -312,17 +315,17 @@ REDACTED
 	REDACTED()
 REDACTED
 
-	return s.repos.UserSubscription.GetByID(ctx, subscriptionID)
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
 REDACTED
 
 // GetByID 根据ID获取订阅
 func (s *SubscriptionService) GetByID(ctx context.Context, id int64) (*model.UserSubscription, error) {
-	return s.repos.UserSubscription.GetByID(ctx, id)
+	return s.userSubRepo.GetByID(ctx, id)
 REDACTED
 
 // GetActiveSubscription 获取用户对特定分组的有效订阅
 func (s *SubscriptionService) GetActiveSubscription(ctx context.Context, userID, groupID int64) (*model.UserSubscription, error) {
-	sub, err := s.repos.UserSubscription.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
+	sub, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
 REDACTED
@@ -331,24 +334,24 @@ REDACTED
 
 // ListUserSubscriptions 获取用户的所有订阅
 func (s *SubscriptionService) ListUserSubscriptions(ctx context.Context, userID int64) ([]model.UserSubscription, error) {
-	return s.repos.UserSubscription.ListByUserID(ctx, userID)
+	return s.userSubRepo.ListByUserID(ctx, userID)
 REDACTED
 
 // ListActiveUserSubscriptions 获取用户的所有有效订阅
 func (s *SubscriptionService) ListActiveUserSubscriptions(ctx context.Context, userID int64) ([]model.UserSubscription, error) {
-	return s.repos.UserSubscription.ListActiveByUserID(ctx, userID)
+	return s.userSubRepo.ListActiveByUserID(ctx, userID)
 REDACTED
 
 // ListGroupSubscriptions 获取分组的所有订阅
-func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupID int64, page, pageSize int) ([]model.UserSubscription, *repository.PaginationResult, error) {
-	params := repository.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	return s.repos.UserSubscription.ListByGroupID(ctx, groupID, params)
+func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupID int64, page, pageSize int) ([]model.UserSubscription, *pagination.PaginationResult, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	return s.userSubRepo.ListByGroupID(ctx, groupID, params)
 REDACTED
 
 // List 获取所有订阅（分页，支持筛选）
-func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status string) ([]model.UserSubscription, *repository.PaginationResult, error) {
-	params := repository.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	return s.repos.UserSubscription.List(ctx, params, userID, groupID, status)
+func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status string) ([]model.UserSubscription, *pagination.PaginationResult, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	return s.userSubRepo.List(ctx, params, userID, groupID, status)
 REDACTED
 
 // CheckAndActivateWindow 检查并激活窗口（首次使用时）
@@ -358,7 +361,7 @@ func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *m
 REDACTED
 
 	now := time.Now()
-	return s.repos.UserSubscription.ActivateWindows(ctx, sub.ID, now)
+	return s.userSubRepo.ActivateWindows(ctx, sub.ID, now)
 REDACTED
 
 // CheckAndResetWindows 检查并重置过期的窗口
@@ -367,7 +370,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *mod
 
 	// 日窗口重置（24小时）
 	if sub.NeedsDailyReset() {
-		if err := s.repos.UserSubscription.ResetDailyUsage(ctx, sub.ID, now); err != nil {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, now); err != nil {
 			return err
 	REDACTED
 		sub.DailyWindowStart = &now
@@ -376,7 +379,7 @@ REDACTED
 
 	// 周窗口重置（7天）
 	if sub.NeedsWeeklyReset() {
-		if err := s.repos.UserSubscription.ResetWeeklyUsage(ctx, sub.ID, now); err != nil {
+		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, now); err != nil {
 			return err
 	REDACTED
 		sub.WeeklyWindowStart = &now
@@ -385,7 +388,7 @@ REDACTED
 
 	// 月窗口重置（30天）
 	if sub.NeedsMonthlyReset() {
-		if err := s.repos.UserSubscription.ResetMonthlyUsage(ctx, sub.ID, now); err != nil {
+		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, now); err != nil {
 			return err
 	REDACTED
 		sub.MonthlyWindowStart = &now
@@ -411,7 +414,7 @@ REDACTED
 
 // RecordUsage 记录使用量到订阅
 func (s *SubscriptionService) RecordUsage(ctx context.Context, subscriptionID int64, costUSD float64) error {
-	return s.repos.UserSubscription.IncrementUsage(ctx, subscriptionID, costUSD)
+	return s.userSubRepo.IncrementUsage(ctx, subscriptionID, costUSD)
 REDACTED
 
 // SubscriptionProgress 订阅进度
@@ -438,14 +441,14 @@ REDACTED
 
 // GetSubscriptionProgress 获取订阅使用进度
 func (s *SubscriptionService) GetSubscriptionProgress(ctx context.Context, subscriptionID int64) (*SubscriptionProgress, error) {
-	sub, err := s.repos.UserSubscription.GetByID(ctx, subscriptionID)
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
 REDACTED
 
 	group := sub.Group
 	if group == nil {
-		group, err = s.repos.Group.GetByID(ctx, sub.GroupID)
+		group, err = s.groupRepo.GetByID(ctx, sub.GroupID)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -535,7 +538,7 @@ REDACTED
 
 // GetUserSubscriptionsWithProgress 获取用户所有订阅及进度
 func (s *SubscriptionService) GetUserSubscriptionsWithProgress(ctx context.Context, userID int64) ([]SubscriptionProgress, error) {
-	subs, err := s.repos.UserSubscription.ListActiveByUserID(ctx, userID)
+	subs, err := s.userSubRepo.ListActiveByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -554,7 +557,7 @@ REDACTED
 
 // UpdateExpiredSubscriptions 更新过期订阅状态（定时任务调用）
 func (s *SubscriptionService) UpdateExpiredSubscriptions(ctx context.Context) (int64, error) {
-	return s.repos.UserSubscription.BatchUpdateExpiredStatus(ctx)
+	return s.userSubRepo.BatchUpdateExpiredStatus(ctx)
 REDACTED
 
 // ValidateSubscription 验证订阅是否有效
@@ -567,7 +570,7 @@ REDACTED
 REDACTED
 	if sub.IsExpired() {
 		// 更新状态
-		_ = s.repos.UserSubscription.UpdateStatus(ctx, sub.ID, model.SubscriptionStatusExpired)
+		_ = s.userSubRepo.UpdateStatus(ctx, sub.ID, model.SubscriptionStatusExpired)
 		return ErrSubscriptionExpired
 REDACTED
 	return nil

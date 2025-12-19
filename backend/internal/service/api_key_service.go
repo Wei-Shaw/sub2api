@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"sub2api/internal/config"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -17,12 +18,12 @@ import (
 )
 
 var (
-	ErrApiKeyNotFound      = errors.New("api key not found")
-	ErrGroupNotAllowed     = errors.New("user is not allowed to bind this group")
-	ErrApiKeyExists        = errors.New("api key already exists")
-	ErrApiKeyTooShort      = errors.New("api key must be at least 16 characters")
-	ErrApiKeyInvalidChars  = errors.New("api key can only contain letters, numbers, underscores, and hyphens")
-	ErrApiKeyRateLimited   = errors.New("too many failed attempts, please try again later")
+	ErrApiKeyNotFound     = errors.New("api key not found")
+	ErrGroupNotAllowed    = errors.New("user is not allowed to bind this group")
+	ErrApiKeyExists       = errors.New("api key already exists")
+	ErrApiKeyTooShort     = errors.New("api key must be at least 16 characters")
+	ErrApiKeyInvalidChars = errors.New("api key can only contain letters, numbers, underscores, and hyphens")
+	ErrApiKeyRateLimited  = errors.New("too many failed attempts, please try again later")
 )
 
 const (
@@ -47,20 +48,20 @@ REDACTED
 
 // ApiKeyService API Key服务
 type ApiKeyService struct {
-	apiKeyRepo  *repository.ApiKeyRepository
-	userRepo    *repository.UserRepository
-	groupRepo   *repository.GroupRepository
-	userSubRepo *repository.UserSubscriptionRepository
+	apiKeyRepo  ports.ApiKeyRepository
+	userRepo    ports.UserRepository
+	groupRepo   ports.GroupRepository
+	userSubRepo ports.UserSubscriptionRepository
 	rdb         *redis.Client
 	cfg         *config.Config
 REDACTED
 
 // NewApiKeyService 创建API Key服务实例
 func NewApiKeyService(
-	apiKeyRepo *repository.ApiKeyRepository,
-	userRepo *repository.UserRepository,
-	groupRepo *repository.GroupRepository,
-	userSubRepo *repository.UserSubscriptionRepository,
+	apiKeyRepo ports.ApiKeyRepository,
+	userRepo ports.UserRepository,
+	groupRepo ports.GroupRepository,
+	userSubRepo ports.UserSubscriptionRepository,
 	rdb *redis.Client,
 	cfg *config.Config,
 ) *ApiKeyService {
@@ -237,7 +238,7 @@ REDACTED
 REDACTED
 
 // List 获取用户的API Key列表
-func (s *ApiKeyService) List(ctx context.Context, userID int64, params repository.PaginationParams) ([]model.ApiKey, *repository.PaginationResult, error) {
+func (s *ApiKeyService) List(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.ApiKey, *pagination.PaginationResult, error) {
 	keys, pagination, err := s.apiKeyRepo.ListByUserID(ctx, userID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list api keys: %w", err)

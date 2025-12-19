@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 
 	"gorm.io/gorm"
 )
@@ -41,12 +42,12 @@ REDACTED
 
 // AccountService 账号管理服务
 type AccountService struct {
-	accountRepo *repository.AccountRepository
-	groupRepo   *repository.GroupRepository
+	accountRepo ports.AccountRepository
+	groupRepo   ports.GroupRepository
 REDACTED
 
 // NewAccountService 创建账号服务实例
-func NewAccountService(accountRepo *repository.AccountRepository, groupRepo *repository.GroupRepository) *AccountService {
+func NewAccountService(accountRepo ports.AccountRepository, groupRepo ports.GroupRepository) *AccountService {
 	return &AccountService{
 		accountRepo: accountRepo,
 		groupRepo:   groupRepo,
@@ -108,7 +109,7 @@ REDACTED
 REDACTED
 
 // List 获取账号列表
-func (s *AccountService) List(ctx context.Context, params repository.PaginationParams) ([]model.Account, *repository.PaginationResult, error) {
+func (s *AccountService) List(ctx context.Context, params pagination.PaginationParams) ([]model.Account, *pagination.PaginationResult, error) {
 	accounts, pagination, err := s.accountRepo.List(ctx, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list accounts: %w", err)

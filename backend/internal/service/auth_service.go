@@ -7,7 +7,7 @@ import (
 	"log"
 	"sub2api/internal/config"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -35,7 +35,7 @@ REDACTED
 
 // AuthService 认证服务
 type AuthService struct {
-	userRepo          *repository.UserRepository
+	userRepo          ports.UserRepository
 	cfg               *config.Config
 	settingService    *SettingService
 	emailService      *EmailService
@@ -45,7 +45,7 @@ REDACTED
 
 // NewAuthService 创建认证服务实例
 func NewAuthService(
-	userRepo *repository.UserRepository,
+	userRepo ports.UserRepository,
 	cfg *config.Config,
 	settingService *SettingService,
 	emailService *EmailService,

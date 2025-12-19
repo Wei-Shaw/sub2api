@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 	"time"
 
 	"gorm.io/gorm"
@@ -46,12 +47,12 @@ func (r *RedeemCodeRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.RedeemCode{REDACTED, id).Error
 REDACTED
 
-func (r *RedeemCodeRepository) List(ctx context.Context, params PaginationParams) ([]model.RedeemCode, *PaginationResult, error) {
+func (r *RedeemCodeRepository) List(ctx context.Context, params pagination.PaginationParams) ([]model.RedeemCode, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "")
 REDACTED
 
 // ListWithFilters lists redeem codes with optional filtering by type, status, and search query
-func (r *RedeemCodeRepository) ListWithFilters(ctx context.Context, params PaginationParams, codeType, status, search string) ([]model.RedeemCode, *PaginationResult, error) {
+func (r *RedeemCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]model.RedeemCode, *pagination.PaginationResult, error) {
 	var codes []model.RedeemCode
 	var total int64
 
@@ -82,7 +83,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return codes, &PaginationResult{
+	return codes, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),

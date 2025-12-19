@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 
 	"gorm.io/gorm"
 )
@@ -45,7 +46,7 @@ func (r *ApiKeyRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.ApiKey{REDACTED, id).Error
 REDACTED
 
-func (r *ApiKeyRepository) ListByUserID(ctx context.Context, userID int64, params PaginationParams) ([]model.ApiKey, *PaginationResult, error) {
+func (r *ApiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.ApiKey, *pagination.PaginationResult, error) {
 	var keys []model.ApiKey
 	var total int64
 
@@ -64,7 +65,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return keys, &PaginationResult{
+	return keys, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),
@@ -84,7 +85,7 @@ func (r *ApiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, e
 	return count > 0, err
 REDACTED
 
-func (r *ApiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params PaginationParams) ([]model.ApiKey, *PaginationResult, error) {
+func (r *ApiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]model.ApiKey, *pagination.PaginationResult, error) {
 	var keys []model.ApiKey
 	var total int64
 
@@ -103,7 +104,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return keys, &PaginationResult{
+	return keys, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),

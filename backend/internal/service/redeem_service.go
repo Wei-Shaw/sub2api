@@ -8,7 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -49,8 +50,8 @@ REDACTED
 
 // RedeemService 兑换码服务
 type RedeemService struct {
-	redeemRepo          *repository.RedeemCodeRepository
-	userRepo            *repository.UserRepository
+	redeemRepo          ports.RedeemCodeRepository
+	userRepo            ports.UserRepository
 	subscriptionService *SubscriptionService
 	rdb                 *redis.Client
 	billingCacheService *BillingCacheService
@@ -58,8 +59,8 @@ REDACTED
 
 // NewRedeemService 创建兑换码服务实例
 func NewRedeemService(
-	redeemRepo *repository.RedeemCodeRepository,
-	userRepo *repository.UserRepository,
+	redeemRepo ports.RedeemCodeRepository,
+	userRepo ports.UserRepository,
 	subscriptionService *SubscriptionService,
 	rdb *redis.Client,
 	billingCacheService *BillingCacheService,
@@ -337,7 +338,7 @@ REDACTED
 REDACTED
 
 // List 获取兑换码列表（管理员功能）
-func (s *RedeemService) List(ctx context.Context, params repository.PaginationParams) ([]model.RedeemCode, *repository.PaginationResult, error) {
+func (s *RedeemService) List(ctx context.Context, params pagination.PaginationParams) ([]model.RedeemCode, *pagination.PaginationResult, error) {
 	codes, pagination, err := s.redeemRepo.List(ctx, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list redeem codes: %w", err)

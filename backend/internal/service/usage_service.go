@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 	"time"
 
 	"gorm.io/gorm"
@@ -41,24 +42,24 @@ REDACTED
 
 // UsageStats 使用统计
 type UsageStats struct {
-	TotalRequests        int64   `json:"total_requests"`
-	TotalInputTokens     int64   `json:"total_input_tokens"`
-	TotalOutputTokens    int64   `json:"total_output_tokens"`
-	TotalCacheTokens     int64   `json:"total_cache_tokens"`
-	TotalTokens          int64   `json:"total_tokens"`
-	TotalCost            float64 `json:"total_cost"`
-	TotalActualCost      float64 `json:"total_actual_cost"`
-	AverageDurationMs    float64 `json:"average_duration_ms"`
+	TotalRequests     int64   `json:"total_requests"`
+	TotalInputTokens  int64   `json:"total_input_tokens"`
+	TotalOutputTokens int64   `json:"total_output_tokens"`
+	TotalCacheTokens  int64   `json:"total_cache_tokens"`
+	TotalTokens       int64   `json:"total_tokens"`
+	TotalCost         float64 `json:"total_cost"`
+	TotalActualCost   float64 `json:"total_actual_cost"`
+	AverageDurationMs float64 `json:"average_duration_ms"`
 REDACTED
 
 // UsageService 使用统计服务
 type UsageService struct {
-	usageRepo *repository.UsageLogRepository
-	userRepo  *repository.UserRepository
+	usageRepo ports.UsageLogRepository
+	userRepo  ports.UserRepository
 REDACTED
 
 // NewUsageService 创建使用统计服务实例
-func NewUsageService(usageRepo *repository.UsageLogRepository, userRepo *repository.UserRepository) *UsageService {
+func NewUsageService(usageRepo ports.UsageLogRepository, userRepo ports.UserRepository) *UsageService {
 	return &UsageService{
 		usageRepo: usageRepo,
 		userRepo:  userRepo,
@@ -127,7 +128,7 @@ REDACTED
 REDACTED
 
 // ListByUser 获取用户的使用日志列表
-func (s *UsageService) ListByUser(ctx context.Context, userID int64, params repository.PaginationParams) ([]model.UsageLog, *repository.PaginationResult, error) {
+func (s *UsageService) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	logs, pagination, err := s.usageRepo.ListByUser(ctx, userID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs: %w", err)
@@ -136,7 +137,7 @@ REDACTED
 REDACTED
 
 // ListByApiKey 获取API Key的使用日志列表
-func (s *UsageService) ListByApiKey(ctx context.Context, apiKeyID int64, params repository.PaginationParams) ([]model.UsageLog, *repository.PaginationResult, error) {
+func (s *UsageService) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	logs, pagination, err := s.usageRepo.ListByApiKey(ctx, apiKeyID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs: %w", err)
@@ -145,7 +146,7 @@ REDACTED
 REDACTED
 
 // ListByAccount 获取账号的使用日志列表
-func (s *UsageService) ListByAccount(ctx context.Context, accountID int64, params repository.PaginationParams) ([]model.UsageLog, *repository.PaginationResult, error) {
+func (s *UsageService) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	logs, pagination, err := s.usageRepo.ListByAccount(ctx, accountID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs: %w", err)
@@ -233,15 +234,15 @@ REDACTED
 	REDACTED
 
 		result = append(result, map[string]interface{REDACTED{
-			"date":                  date,
-			"total_requests":        stats.TotalRequests,
-			"total_input_tokens":    stats.TotalInputTokens,
-			"total_output_tokens":   stats.TotalOutputTokens,
-			"total_cache_tokens":    stats.TotalCacheTokens,
-			"total_tokens":          stats.TotalTokens,
-			"total_cost":            stats.TotalCost,
-			"total_actual_cost":     stats.TotalActualCost,
-			"average_duration_ms":   stats.AverageDurationMs,
+			"date":                date,
+			"total_requests":      stats.TotalRequests,
+			"total_input_tokens":  stats.TotalInputTokens,
+			"total_output_tokens": stats.TotalOutputTokens,
+			"total_cache_tokens":  stats.TotalCacheTokens,
+			"total_tokens":        stats.TotalTokens,
+			"total_cost":          stats.TotalCost,
+			"total_actual_cost":   stats.TotalActualCost,
+			"average_duration_ms": stats.AverageDurationMs,
 	REDACTED)
 REDACTED
 

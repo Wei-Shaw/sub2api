@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/timezone"
 	"sub2api/internal/repository"
@@ -14,10 +15,10 @@ import (
 
 // UsageHandler handles admin usage-related requests
 type UsageHandler struct {
-	usageRepo     *repository.UsageLogRepository
-	apiKeyRepo    *repository.ApiKeyRepository
-	usageService  *service.UsageService
-	adminService  service.AdminService
+	usageRepo    *repository.UsageLogRepository
+	apiKeyRepo   *repository.ApiKeyRepository
+	usageService *service.UsageService
+	adminService service.AdminService
 REDACTED
 
 // NewUsageHandler creates a new admin usage handler
@@ -82,7 +83,7 @@ REDACTED
 		endTime = &t
 REDACTED
 
-	params := repository.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	filters := repository.UsageLogFilters{
 		UserID:    userID,
 		ApiKeyID:  apiKeyID,

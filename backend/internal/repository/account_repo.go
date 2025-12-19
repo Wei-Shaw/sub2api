@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/pagination"
 	"time"
 
 	"gorm.io/gorm"
@@ -47,12 +48,12 @@ REDACTED
 	return r.db.WithContext(ctx).Delete(&model.Account{REDACTED, id).Error
 REDACTED
 
-func (r *AccountRepository) List(ctx context.Context, params PaginationParams) ([]model.Account, *PaginationResult, error) {
+func (r *AccountRepository) List(ctx context.Context, params pagination.PaginationParams) ([]model.Account, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "", "")
 REDACTED
 
 // ListWithFilters lists accounts with optional filtering by platform, type, status, and search query
-func (r *AccountRepository) ListWithFilters(ctx context.Context, params PaginationParams, platform, accountType, status, search string) ([]model.Account, *PaginationResult, error) {
+func (r *AccountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string) ([]model.Account, *pagination.PaginationResult, error) {
 	var accounts []model.Account
 	var total int64
 
@@ -94,7 +95,7 @@ REDACTED
 		pages++
 REDACTED
 
-	return accounts, &PaginationResult{
+	return accounts, &pagination.PaginationResult{
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.Limit(),
@@ -226,7 +227,7 @@ func (r *AccountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 	now := time.Now()
 	return r.db.WithContext(ctx).Model(&model.Account{REDACTED).Where("id = ?", id).
 		Updates(map[string]interface{REDACTED{
-			"rate_limited_at":    now,
+			"rate_limited_at":     now,
 			"rate_limit_reset_at": resetAt,
 	REDACTED).Error
 REDACTED

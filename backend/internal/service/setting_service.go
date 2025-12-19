@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"sub2api/internal/config"
 	"sub2api/internal/model"
-	"sub2api/internal/repository"
+	"sub2api/internal/service/ports"
 
 	"gorm.io/gorm"
 )
@@ -18,12 +18,12 @@ var (
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo *repository.SettingRepository
+	settingRepo ports.SettingRepository
 	cfg         *config.Config
 REDACTED
 
 // NewSettingService 创建系统设置服务实例
-func NewSettingService(settingRepo *repository.SettingRepository, cfg *config.Config) *SettingService {
+func NewSettingService(settingRepo ports.SettingRepository, cfg *config.Config) *SettingService {
 	return &SettingService{
 		settingRepo: settingRepo,
 		cfg:         cfg,
