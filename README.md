@@ -216,20 +216,19 @@ Build and run from source code for development or customization.
 git clone https://github.com/Wei-Shaw/sub2api.git
 cd sub2api
 
-# 2. Build backend
-cd backend
-go build -o sub2api ./cmd/server
-
-# 3. Build frontend
-cd ../frontend
+# 2. Build frontend
+cd frontend
 npm install
 npm run build
 
-# 4. Copy frontend build to backend (for embedding)
+# 3. Copy frontend build to backend (for embedding)
 cp -r dist ../backend/internal/web/
 
-# 5. Create configuration file
+# 4. Build backend (requires frontend dist to be present)
 cd ../backend
+go build -o sub2api ./cmd/server
+
+# 5. Create configuration file
 cp ../deploy/config.example.yaml ./config.yaml
 
 # 6. Edit configuration

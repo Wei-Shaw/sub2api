@@ -216,20 +216,19 @@ docker-compose logs -f
 git clone https://github.com/Wei-Shaw/sub2api.git
 cd sub2api
 
-# 2. 编译后端
-cd backend
-go build -o sub2api ./cmd/server
-
-# 3. 编译前端
-cd ../frontend
+# 2. 编译前端
+cd frontend
 npm install
 npm run build
 
-# 4. 复制前端构建产物到后端（用于嵌入）
+# 3. 复制前端构建产物到后端（用于嵌入）
 cp -r dist ../backend/internal/web/
 
-# 5. 创建配置文件
+# 4. 编译后端（需要前端 dist 目录存在）
 cd ../backend
+go build -o sub2api ./cmd/server
+
+# 5. 创建配置文件
 cp ../deploy/config.example.yaml ./config.yaml
 
 # 6. 编辑配置
