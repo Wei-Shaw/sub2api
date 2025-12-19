@@ -24,13 +24,11 @@ import (
 	"sub2api/internal/service/ports"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
 const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
-	stickySessionPrefix     = "sticky_session:"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	tokenRefreshBuffer      = 5 * 60    // 提前5分钟刷新token
 )
@@ -82,7 +80,7 @@ type GatewayService struct {
 	usageLogRepo        ports.UsageLogRepository
 	userRepo            ports.UserRepository
 	userSubRepo         ports.UserSubscriptionRepository
-	rdb                 *redis.Client
+	cache               ports.GatewayCache
 	cfg                 *config.Config
 	oauthService        *OAuthService
 	billingService      *BillingService
@@ -98,7 +96,7 @@ func NewGatewayService(
 	usageLogRepo ports.UsageLogRepository,
 	userRepo ports.UserRepository,
 	userSubRepo ports.UserSubscriptionRepository,
-	rdb *redis.Client,
+	cache ports.GatewayCache,
 	cfg *config.Config,
 	oauthService *OAuthService,
 	billingService *BillingService,
@@ -124,7 +122,7 @@ REDACTED
 		usageLogRepo:        usageLogRepo,
 		userRepo:            userRepo,
 		userSubRepo:         userSubRepo,
-		rdb:                 rdb,
+		cache:               cache,
 		cfg:                 cfg,
 		oauthService:        oauthService,
 		billingService:      billingService,
@@ -290,14 +288,14 @@ REDACTED
 func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int64, sessionHash string, requestedModel string) (*model.Account, error) {
 	// 1. 查询粘性会话
 	if sessionHash != "" {
-		accountID, err := s.rdb.Get(ctx, stickySessionPrefix+sessionHash).Int64()
+		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
 		if err == nil && accountID > 0 {
 			account, err := s.accountRepo.GetByID(ctx, accountID)
 			// 使用IsSchedulable代替IsActive，确保限流/过载账号不会被选中
 			// 同时检查模型支持
 			if err == nil && account.IsSchedulable() && (requestedModel == "" || account.IsModelSupported(requestedModel)) {
 				// 续期粘性会话
-				s.rdb.Expire(ctx, stickySessionPrefix+sessionHash, stickySessionTTL)
+				s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL)
 				return account, nil
 		REDACTED
 	REDACTED
@@ -347,7 +345,7 @@ REDACTED
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" {
-		s.rdb.Set(ctx, stickySessionPrefix+sessionHash, selected.ID, stickySessionTTL)
+		s.cache.SetSessionAccountID(ctx, sessionHash, selected.ID, stickySessionTTL)
 REDACTED
 
 	return selected, nil
@@ -526,7 +524,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 REDACTED
 
 	// OAuth账号：应用统一指纹
-	var fingerprint *Fingerprint
+	var fingerprint *ports.Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)

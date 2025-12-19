@@ -27,9 +27,7 @@ var (
 )
 
 const (
-	apiKeyRateLimitKeyPrefix = "apikey:create_rate_limit:"
-	apiKeyMaxErrorsPerHour   = 20
-	apiKeyRateLimitDuration  = time.Hour
+	apiKeyMaxErrorsPerHour = 20
 )
 
 // CreateApiKeyRequest 创建API Key请求
@@ -52,7 +50,7 @@ type ApiKeyService struct {
 	userRepo    ports.UserRepository
 	groupRepo   ports.GroupRepository
 	userSubRepo ports.UserSubscriptionRepository
-	rdb         *redis.Client
+	cache       ports.ApiKeyCache
 	cfg         *config.Config
 REDACTED
 
@@ -62,7 +60,7 @@ func NewApiKeyService(
 	userRepo ports.UserRepository,
 	groupRepo ports.GroupRepository,
 	userSubRepo ports.UserSubscriptionRepository,
-	rdb *redis.Client,
+	cache ports.ApiKeyCache,
 	cfg *config.Config,
 ) *ApiKeyService {
 	return &ApiKeyService{
@@ -70,7 +68,7 @@ func NewApiKeyService(
 		userRepo:    userRepo,
 		groupRepo:   groupRepo,
 		userSubRepo: userSubRepo,
-		rdb:         rdb,
+		cache:       cache,
 		cfg:         cfg,
 REDACTED
 REDACTED
@@ -113,13 +111,11 @@ REDACTED
 
 // checkApiKeyRateLimit 检查用户创建自定义Key的错误次数是否超限
 func (s *ApiKeyService) checkApiKeyRateLimit(ctx context.Context, userID int64) error {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return nil
 REDACTED
 
-	key := fmt.Sprintf("%s%d", apiKeyRateLimitKeyPrefix, userID)
-
-	count, err := s.rdb.Get(ctx, key).Int()
+	count, err := s.cache.GetCreateAttemptCount(ctx, userID)
 	if err != nil && !errors.Is(err, redis.Nil) {
 		// Redis 出错时不阻止用户操作
 		return nil
@@ -134,16 +130,11 @@ REDACTED
 
 // incrementApiKeyErrorCount 增加用户创建自定义Key的错误计数
 func (s *ApiKeyService) incrementApiKeyErrorCount(ctx context.Context, userID int64) {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return
 REDACTED
 
-	key := fmt.Sprintf("%s%d", apiKeyRateLimitKeyPrefix, userID)
-
-	pipe := s.rdb.Pipeline()
-	pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, apiKeyRateLimitDuration)
-	_, _ = pipe.Exec(ctx)
+	_ = s.cache.IncrementCreateAttemptCount(ctx, userID)
 REDACTED
 
 // canUserBindGroup 检查用户是否可以绑定指定分组
@@ -273,7 +264,7 @@ func (s *ApiKeyService) GetByKey(ctx context.Context, key string) (*model.ApiKey
 REDACTED
 
 	// 缓存到Redis（可选，TTL设置为5分钟）
-	if s.rdb != nil {
+	if s.cache != nil {
 		// 这里可以序列化并缓存API Key
 		_ = cacheKey // 使用变量避免未使用错误
 REDACTED
@@ -326,9 +317,8 @@ REDACTED
 	if req.Status != nil {
 		apiKey.Status = *req.Status
 		// 如果状态改变，清除Redis缓存
-		if s.rdb != nil {
-			cacheKey := fmt.Sprintf("apikey:%s", apiKey.Key)
-			_ = s.rdb.Del(ctx, cacheKey)
+		if s.cache != nil {
+			_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
 	REDACTED
 REDACTED
 
@@ -355,9 +345,8 @@ REDACTED
 REDACTED
 
 	// 清除Redis缓存
-	if s.rdb != nil {
-		cacheKey := fmt.Sprintf("apikey:%s", apiKey.Key)
-		_ = s.rdb.Del(ctx, cacheKey)
+	if s.cache != nil {
+		_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
 REDACTED
 
 	if err := s.apiKeyRepo.Delete(ctx, id); err != nil {
@@ -400,13 +389,13 @@ REDACTED
 // IncrementUsage 增加API Key使用次数（可选：用于统计）
 func (s *ApiKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 	// 使用Redis计数器
-	if s.rdb != nil {
+	if s.cache != nil {
 		cacheKey := fmt.Sprintf("apikey:usage:%d:%s", keyID, timezone.Now().Format("2006-01-02"))
-		if err := s.rdb.Incr(ctx, cacheKey).Err(); err != nil {
+		if err := s.cache.IncrementDailyUsage(ctx, cacheKey); err != nil {
 			return fmt.Errorf("increment usage: %w", err)
 	REDACTED
 		// 设置24小时过期
-		_ = s.rdb.Expire(ctx, cacheKey, 24*time.Hour)
+		_ = s.cache.SetDailyUsageExpiry(ctx, cacheKey, 24*time.Hour)
 REDACTED
 	return nil
 REDACTED

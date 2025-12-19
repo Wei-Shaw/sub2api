@@ -11,15 +11,10 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"sub2api/internal/service/ports"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
-const (
-	// Redis key prefix
-	identityFingerprintKey = "identity:fingerprint:"
-)
 
 // 预编译正则表达式（避免每次调用重新编译）
 var (
@@ -29,20 +24,8 @@ var (
 	userAgentVersionRegex = regexp.MustCompile(`/(\d+)\.(\d+)\.(\d+)`)
 )
 
-// Fingerprint 存储的指纹数据结构
-type Fingerprint struct {
-	ClientID                string `json:"client_id"`                    // 64位hex客户端ID（首次随机生成）
-	UserAgent               string `json:"user_agent"`                   // User-Agent
-	StainlessLang           string `json:"x_stainless_lang"`             // x-stainless-lang
-	StainlessPackageVersion string `json:"x_stainless_package_version"`  // x-stainless-package-version
-	StainlessOS             string `json:"x_stainless_os"`               // x-stainless-os
-	StainlessArch           string `json:"x_stainless_arch"`             // x-stainless-arch
-	StainlessRuntime        string `json:"x_stainless_runtime"`          // x-stainless-runtime
-	StainlessRuntimeVersion string `json:"x_stainless_runtime_version"`  // x-stainless-runtime-version
-REDACTED
-
 // 默认指纹值（当客户端未提供时使用）
-var defaultFingerprint = Fingerprint{
+var defaultFingerprint = ports.Fingerprint{
 	UserAgent:               "claude-cli/2.0.62 (external, cli)",
 	StainlessLang:           "js",
 	StainlessPackageVersion: "0.52.0",
@@ -54,39 +37,31 @@ REDACTED
 
 // IdentityService 管理OAuth账号的请求身份指纹
 type IdentityService struct {
-	rdb *redis.Client
+	cache ports.IdentityCache
 REDACTED
 
 // NewIdentityService 创建新的IdentityService
-func NewIdentityService(rdb *redis.Client) *IdentityService {
-	return &IdentityService{rdb: rdbREDACTED
+func NewIdentityService(cache ports.IdentityCache) *IdentityService {
+	return &IdentityService{cache: cacheREDACTED
 REDACTED
 
 // GetOrCreateFingerprint 获取或创建账号的指纹
 // 如果缓存存在，检测user-agent版本，新版本则更新
 // 如果缓存不存在，生成随机ClientID并从请求头创建指纹，然后缓存
-func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*Fingerprint, error) {
-	key := identityFingerprintKey + strconv.FormatInt(accountID, 10)
-
-	// 尝试从Redis获取缓存的指纹
-	data, err := s.rdb.Get(ctx, key).Bytes()
-	if err == nil && len(data) > 0 {
-		// 缓存存在，解析指纹
-		var cached Fingerprint
-		if err := json.Unmarshal(data, &cached); err == nil {
-			// 检查客户端的user-agent是否是更新版本
-			clientUA := headers.Get("User-Agent")
-			if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
-				// 更新user-agent
-				cached.UserAgent = clientUA
-				// 保存更新后的指纹
-				if newData, err := json.Marshal(cached); err == nil {
-					s.rdb.Set(ctx, key, newData, 0) // 永不过期
-			REDACTED
-				log.Printf("Updated fingerprint user-agent for account %d: %s", accountID, clientUA)
-		REDACTED
-			return &cached, nil
+func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*ports.Fingerprint, error) {
+	// 尝试从缓存获取指纹
+	cached, err := s.cache.GetFingerprint(ctx, accountID)
+	if err == nil && cached != nil {
+		// 检查客户端的user-agent是否是更新版本
+		clientUA := headers.Get("User-Agent")
+		if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
+			// 更新user-agent
+			cached.UserAgent = clientUA
+			// 保存更新后的指纹
+			_ = s.cache.SetFingerprint(ctx, accountID, cached)
+			log.Printf("Updated fingerprint user-agent for account %d: %s", accountID, clientUA)
 	REDACTED
+		return cached, nil
 REDACTED
 
 	// 缓存不存在或解析失败，创建新指纹
@@ -95,11 +70,9 @@ REDACTED
 	// 生成随机ClientID
 	fp.ClientID = generateClientID()
 
-	// 保存到Redis（永不过期）
-	if data, err := json.Marshal(fp); err == nil {
-		if err := s.rdb.Set(ctx, key, data, 0).Err(); err != nil {
-			log.Printf("Warning: failed to cache fingerprint for account %d: %v", accountID, err)
-	REDACTED
+	// 保存到缓存（永不过期）
+	if err := s.cache.SetFingerprint(ctx, accountID, fp); err != nil {
+		log.Printf("Warning: failed to cache fingerprint for account %d: %v", accountID, err)
 REDACTED
 
 	log.Printf("Created new fingerprint for account %d with client_id: %s", accountID, fp.ClientID)
@@ -107,8 +80,8 @@ REDACTED
 REDACTED
 
 // createFingerprintFromHeaders 从请求头创建指纹
-func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fingerprint {
-	fp := &Fingerprint{REDACTED
+func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *ports.Fingerprint {
+	fp := &ports.Fingerprint{REDACTED
 
 	// 获取User-Agent
 	if ua := headers.Get("User-Agent"); ua != "" {
@@ -137,7 +110,7 @@ REDACTED
 REDACTED
 
 // ApplyFingerprint 将指纹应用到请求头（覆盖原有的x-stainless-*头）
-func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
+func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *ports.Fingerprint) {
 	if fp == nil {
 		return
 REDACTED

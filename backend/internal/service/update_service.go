@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"sub2api/internal/service/ports"
 )
 
 const (
@@ -36,15 +36,15 @@ const (
 
 // UpdateService handles software updates
 type UpdateService struct {
-	rdb            *redis.Client
+	cache          ports.UpdateCache
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
 REDACTED
 
 // NewUpdateService creates a new UpdateService
-func NewUpdateService(rdb *redis.Client, version, buildType string) *UpdateService {
+func NewUpdateService(cache ports.UpdateCache, version, buildType string) *UpdateService {
 	return &UpdateService{
-		rdb:            rdb,
+		cache:          cache,
 		currentVersion: version,
 		buildType:      buildType,
 REDACTED
@@ -533,7 +533,7 @@ REDACTED
 REDACTED
 
 func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
-	data, err := s.rdb.Get(ctx, updateCacheKey).Result()
+	data, err := s.cache.GetUpdateInfo(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -573,7 +573,7 @@ REDACTED{
 REDACTED
 
 	data, _ := json.Marshal(cacheData)
-	s.rdb.Set(ctx, updateCacheKey, data, time.Duration(updateCacheTTL)*time.Second)
+	s.cache.SetUpdateInfo(ctx, string(data), time.Duration(updateCacheTTL)*time.Second)
 REDACTED
 
 // compareVersions compares two semantic versions

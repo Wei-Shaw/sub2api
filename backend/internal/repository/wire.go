@@ -19,6 +19,16 @@ var ProviderSet = wire.NewSet(
 	NewUserSubscriptionRepository,
 	wire.Struct(new(Repositories), "*"),
 
+	// Cache implementations
+	NewGatewayCache,
+	NewBillingCache,
+	NewApiKeyCache,
+	NewConcurrencyCache,
+	NewEmailCache,
+	NewIdentityCache,
+	NewRedeemCache,
+	NewUpdateCache,
+
 	// Bind concrete repositories to service port interfaces
 	wire.Bind(new(ports.UserRepository), new(*UserRepository)),
 	wire.Bind(new(ports.ApiKeyRepository), new(*ApiKeyRepository)),
