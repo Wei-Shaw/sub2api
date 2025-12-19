@@ -203,3 +203,29 @@ REDACTED
 REDACTED
 	return nil
 REDACTED
+
+// GetServerAddress returns the server address (host:port) from config file or environment variable.
+// This is a lightweight function that can be used before full config validation,
+// such as during setup wizard startup.
+// Priority: config.yaml > environment variables > defaults
+func GetServerAddress() string {
+	v := viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath(".")
+	v.AddConfigPath("./config")
+	v.AddConfigPath("/etc/sub2api")
+
+	// Support SERVER_HOST and SERVER_PORT environment variables
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.SetDefault("server.host", "0.0.0.0")
+	v.SetDefault("server.port", 8080)
+
+	// Try to read config file (ignore errors if not found)
+	_ = v.ReadInConfig()
+
+	host := v.GetString("server.host")
+	port := v.GetInt("server.port")
+	return fmt.Sprintf("%s:%d", host, port)
+REDACTED
