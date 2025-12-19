@@ -241,15 +241,19 @@ REDACTED
 		return
 REDACTED
 
-	// Update account credentials
-	newCredentials := map[string]interface{REDACTED{
-		"access_token":  tokenInfo.AccessToken,
-		"token_type":    tokenInfo.TokenType,
-		"expires_in":    tokenInfo.ExpiresIn,
-		"expires_at":    tokenInfo.ExpiresAt,
-		"refresh_token": tokenInfo.RefreshToken,
-		"scope":         tokenInfo.Scope,
+	// Copy existing credentials to preserve non-token settings (e.g., intercept_warmup_requests)
+	newCredentials := make(map[string]interface{REDACTED)
+	for k, v := range account.Credentials {
+		newCredentials[k] = v
 REDACTED
+
+	// Update token-related fields
+	newCredentials["access_token"] = tokenInfo.AccessToken
+	newCredentials["token_type"] = tokenInfo.TokenType
+	newCredentials["expires_in"] = tokenInfo.ExpiresIn
+	newCredentials["expires_at"] = tokenInfo.ExpiresAt
+	newCredentials["refresh_token"] = tokenInfo.RefreshToken
+	newCredentials["scope"] = tokenInfo.Scope
 
 	updatedAccount, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Credentials: newCredentials,

@@ -418,6 +418,31 @@
         </div>
       </div>
 
+      <!-- Intercept Warmup Requests (all account types) -->
+      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.interceptWarmupRequests') REDACTEDREDACTED</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.accounts.interceptWarmupRequestsDesc') REDACTEDREDACTED</p>
+          </div>
+          <button
+            type="button"
+            @click="interceptWarmupRequests = !interceptWarmupRequests"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              interceptWarmupRequests ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                interceptWarmupRequests ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') REDACTEDREDACTED</label>
         <ProxySelector
@@ -590,6 +615,7 @@ const allowedModels = ref<string[]>([])
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
+const interceptWarmupRequests = ref(false)
 
 // Common models for whitelist
 const commonModels = [
@@ -758,6 +784,7 @@ const resetForm = () => {
   customErrorCodesEnabled.value = false
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
+  interceptWarmupRequests.value = false
   oauth.resetState()
   oauthFlowRef.value?.reset()
 REDACTED
@@ -799,6 +826,11 @@ const handleSubmit = async () => {
   if (customErrorCodesEnabled.value) {
     credentials.custom_error_codes_enabled = true
     credentials.custom_error_codes = [...selectedErrorCodes.value]
+  REDACTED
+
+  // Add intercept warmup requests setting
+  if (interceptWarmupRequests.value) {
+    credentials.intercept_warmup_requests = true
   REDACTED
 
   form.credentials = credentials
@@ -847,11 +879,17 @@ const handleExchangeCode = async () => {
 
     const extra = oauth.buildExtraInfo(tokenInfo)
 
+    // Merge interceptWarmupRequests into credentials
+    const credentials = {
+      ...tokenInfo,
+      ...(interceptWarmupRequests.value ? { intercept_warmup_requests: true REDACTED : {REDACTED)
+    REDACTED
+
     await adminAPI.accounts.create({
       name: form.name,
       platform: form.platform,
       type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
-      credentials: tokenInfo,
+      credentials,
       extra,
       proxy_id: form.proxy_id,
       concurrency: form.concurrency,
@@ -901,11 +939,17 @@ const handleCookieAuth = async (sessionKey: string) => {
         const extra = oauth.buildExtraInfo(tokenInfo)
         const accountName = keys.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
 
+        // Merge interceptWarmupRequests into credentials
+        const credentials = {
+          ...tokenInfo,
+          ...(interceptWarmupRequests.value ? { intercept_warmup_requests: true REDACTED : {REDACTED)
+        REDACTED
+
         await adminAPI.accounts.create({
           name: accountName,
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
-          credentials: tokenInfo,
+          credentials,
           extra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,

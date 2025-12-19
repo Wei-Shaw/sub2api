@@ -286,6 +286,31 @@
         </div>
       </div>
 
+      <!-- Intercept Warmup Requests (all account types) -->
+      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.interceptWarmupRequests') REDACTEDREDACTED</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.accounts.interceptWarmupRequestsDesc') REDACTEDREDACTED</p>
+          </div>
+          <button
+            type="button"
+            @click="interceptWarmupRequests = !interceptWarmupRequests"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              interceptWarmupRequests ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                interceptWarmupRequests ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') REDACTEDREDACTED</label>
         <ProxySelector
@@ -401,6 +426,7 @@ const allowedModels = ref<string[]>([])
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
+const interceptWarmupRequests = ref(false)
 
 // Common models for whitelist
 const commonModels = [
@@ -458,6 +484,10 @@ watch(() => props.account, (newAccount) => {
     form.priority = newAccount.priority
     form.status = newAccount.status as 'active' | 'inactive'
     form.group_ids = newAccount.group_ids || []
+
+    // Load intercept warmup requests setting (applies to all account types)
+    const credentials = newAccount.credentials as Record<string, unknown> | undefined
+    interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
 
     // Initialize API Key fields for apikey type
     if (newAccount.type === 'apikey' && newAccount.credentials) {
@@ -628,6 +658,23 @@ const handleSubmit = async () => {
       if (customErrorCodesEnabled.value) {
         newCredentials.custom_error_codes_enabled = true
         newCredentials.custom_error_codes = [...selectedErrorCodes.value]
+      REDACTED
+
+      // Add intercept warmup requests setting
+      if (interceptWarmupRequests.value) {
+        newCredentials.intercept_warmup_requests = true
+      REDACTED
+
+      updatePayload.credentials = newCredentials
+    REDACTED else {
+      // For oauth/setup-token types, only update intercept_warmup_requests if changed
+      const currentCredentials = props.account.credentials as Record<string, unknown> || {REDACTED
+      const newCredentials: Record<string, unknown> = { ...currentCredentials REDACTED
+
+      if (interceptWarmupRequests.value) {
+        newCredentials.intercept_warmup_requests = true
+      REDACTED else {
+        delete newCredentials.intercept_warmup_requests
       REDACTED
 
       updatePayload.credentials = newCredentials

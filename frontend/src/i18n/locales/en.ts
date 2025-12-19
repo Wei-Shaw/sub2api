@@ -696,6 +696,8 @@ export default {
       enterErrorCode: 'Enter error code (100-599)',
       invalidErrorCode: 'Please enter a valid HTTP error code (100-599)',
       errorCodeExists: 'This error code is already selected',
+      interceptWarmupRequests: 'Intercept Warmup Requests',
+      interceptWarmupRequestsDesc: 'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
       concurrency: 'Concurrency',

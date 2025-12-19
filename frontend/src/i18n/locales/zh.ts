@@ -786,6 +786,8 @@ export default {
       enterErrorCode: '输入错误码 (100-599)',
       invalidErrorCode: '请输入有效的 HTTP 错误码 (100-599)',
       errorCodeExists: '该错误码已被选中',
+      interceptWarmupRequests: '拦截预热请求',
+      interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
       proxy: '代理',
       noProxy: '无代理',
       concurrency: '并发数',
