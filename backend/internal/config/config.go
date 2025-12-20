@@ -8,15 +8,30 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig    `mapstructure:"server"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	Redis     RedisConfig     `mapstructure:"redis"`
-	JWT       JWTConfig       `mapstructure:"jwt"`
-	Default   DefaultConfig   `mapstructure:"default"`
-	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
-	Pricing   PricingConfig   `mapstructure:"pricing"`
-	Gateway   GatewayConfig   `mapstructure:"gateway"`
-	Timezone  string          `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Server       ServerConfig       `mapstructure:"server"`
+	Database     DatabaseConfig     `mapstructure:"database"`
+	Redis        RedisConfig        `mapstructure:"redis"`
+	JWT          JWTConfig          `mapstructure:"jwt"`
+	Default      DefaultConfig      `mapstructure:"default"`
+	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
+	Pricing      PricingConfig      `mapstructure:"pricing"`
+	Gateway      GatewayConfig      `mapstructure:"gateway"`
+	TokenRefresh TokenRefreshConfig `mapstructure:"token_refresh"`
+	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+REDACTED
+
+// TokenRefreshConfig OAuth token自动刷新配置
+type TokenRefreshConfig struct {
+	// 是否启用自动刷新
+	Enabled bool `mapstructure:"enabled"`
+	// 检查间隔（分钟）
+	CheckIntervalMinutes int `mapstructure:"check_interval_minutes"`
+	// 提前刷新时间（小时），在token过期前多久开始刷新
+	RefreshBeforeExpiryHours float64 `mapstructure:"refresh_before_expiry_hours"`
+	// 最大重试次数
+	MaxRetries int `mapstructure:"max_retries"`
+	// 重试退避基础时间（秒）
+	RetryBackoffSeconds int `mapstructure:"retry_backoff_seconds"`
 REDACTED
 
 type PricingConfig struct {
@@ -192,6 +207,13 @@ func setDefaults() {
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 300) // 300秒(5分钟)等待上游响应头，LLM高负载时可能排队较久
+
+	// TokenRefresh
+	viper.SetDefault("token_refresh.enabled", true)
+	viper.SetDefault("token_refresh.check_interval_minutes", 5)      // 每5分钟检查一次
+	viper.SetDefault("token_refresh.refresh_before_expiry_hours", 1.5) // 提前1.5小时刷新
+	viper.SetDefault("token_refresh.max_retries", 3)                 // 最多重试3次
+	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)       // 重试退避基础2秒
 REDACTED
 
 func (c *Config) Validate() error {

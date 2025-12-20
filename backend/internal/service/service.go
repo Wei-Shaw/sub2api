@@ -27,4 +27,5 @@ type Services struct {
 	Concurrency  *ConcurrencyService
 	Identity     *IdentityService
 	Update       *UpdateService
+	TokenRefresh *TokenRefreshService
 REDACTED

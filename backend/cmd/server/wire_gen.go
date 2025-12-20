@@ -106,6 +106,7 @@ REDACTED
 	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, oAuthService, billingService, rateLimitService, billingCacheService, identityService, claudeUpstream)
 	concurrencyCache := repository.NewConcurrencyCache(client)
 	concurrencyService := service.NewConcurrencyService(concurrencyCache)
+	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, configConfig)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, userService, concurrencyService, billingCacheService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, handlerSettingHandler)
@@ -138,6 +139,7 @@ REDACTED
 		Concurrency:  concurrencyService,
 		Identity:     identityService,
 		Update:       updateService,
+		TokenRefresh: tokenRefreshService,
 REDACTED
 	repositories := &repository.Repositories{
 		User:             userRepository,
@@ -187,6 +189,10 @@ func provideCleanup(
 			name string
 			fn   func() error
 	REDACTED{
+			{"TokenRefreshService", func() error {
+				services.TokenRefresh.Stop()
+				return nil
+	REDACTED
 			{"PricingService", func() error {
 				services.Pricing.Stop()
 				return nil

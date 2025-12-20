@@ -73,6 +73,10 @@ func provideCleanup(
 			name string
 			fn   func() error
 	REDACTED{
+			{"TokenRefreshService", func() error {
+				services.TokenRefresh.Stop()
+				return nil
+	REDACTED
 			{"PricingService", func() error {
 				services.Pricing.Stop()
 				return nil

@@ -33,6 +33,17 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
 REDACTED
 
+// ProvideTokenRefreshService creates and starts TokenRefreshService
+func ProvideTokenRefreshService(
+	accountRepo ports.AccountRepository,
+	oauthService *OAuthService,
+	cfg *config.Config,
+) *TokenRefreshService {
+	svc := NewTokenRefreshService(accountRepo, oauthService, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -61,6 +72,7 @@ var ProviderSet = wire.NewSet(
 	NewConcurrencyService,
 	NewIdentityService,
 	ProvideUpdateService,
+	ProvideTokenRefreshService,
 
 	// Provide the Services container struct
 	wire.Struct(new(Services), "*"),
