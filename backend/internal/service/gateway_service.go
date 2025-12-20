@@ -281,7 +281,9 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 			// 同时检查模型支持
 			if err == nil && account.IsSchedulable() && (requestedModel == "" || account.IsModelSupported(requestedModel)) {
 				// 续期粘性会话
-				s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL)
+				if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
+					log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+				}
 				return account, nil
 			}
 		}
@@ -331,7 +333,9 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" {
-		s.cache.SetSessionAccountID(ctx, sessionHash, selected.ID, stickySessionTTL)
+		if err := s.cache.SetSessionAccountID(ctx, sessionHash, selected.ID, stickySessionTTL); err != nil {
+			log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+		}
 	}
 
 	return selected, nil
@@ -411,7 +415,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *m
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// 处理错误响应（包括401，由后台TokenRefreshService维护token有效性）
 	if resp.StatusCode >= 400 {
@@ -678,7 +682,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		// 转发行
-		fmt.Fprintf(w, "%s\n", line)
+		if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+			return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, err
+		}
 		flusher.Flush()
 
 		// 解析usage数据
@@ -985,7 +991,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// 读取响应体
 	respBody, err := io.ReadAll(resp.Body)

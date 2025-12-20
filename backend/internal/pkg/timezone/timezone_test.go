@@ -37,11 +37,15 @@ func TestInitInvalidTimezone(t *testing.T) {
 
 func TestTimeNowAffected(t *testing.T) {
 	// Reset to UTC first
-	Init("UTC")
+	if err := Init("UTC"); err != nil {
+		t.Fatalf("Init failed with UTC: %v", err)
+	}
 	utcNow := time.Now()
 
 	// Switch to Shanghai (UTC+8)
-	Init("Asia/Shanghai")
+	if err := Init("Asia/Shanghai"); err != nil {
+		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	}
 	shanghaiNow := time.Now()
 
 	// The times should be the same instant, but different timezone representation
@@ -58,7 +62,9 @@ func TestTimeNowAffected(t *testing.T) {
 }
 
 func TestToday(t *testing.T) {
-	Init("Asia/Shanghai")
+	if err := Init("Asia/Shanghai"); err != nil {
+		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	}
 
 	today := Today()
 	now := Now()
@@ -75,7 +81,9 @@ func TestToday(t *testing.T) {
 }
 
 func TestStartOfDay(t *testing.T) {
-	Init("Asia/Shanghai")
+	if err := Init("Asia/Shanghai"); err != nil {
+		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	}
 
 	// Create a time at 15:30:45
 	testTime := time.Date(2024, 6, 15, 15, 30, 45, 123456789, Location())
@@ -91,7 +99,9 @@ func TestTruncateVsStartOfDay(t *testing.T) {
 	// This test demonstrates why Truncate(24*time.Hour) can be problematic
 	// and why StartOfDay is more reliable for timezone-aware code
 
-	Init("Asia/Shanghai")
+	if err := Init("Asia/Shanghai"); err != nil {
+		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	}
 
 	now := Now()
 

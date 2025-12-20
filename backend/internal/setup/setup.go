@@ -14,9 +14,9 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gopkg.in/yaml.v3"
 )
 
 // Config paths
@@ -101,7 +101,14 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to get db instance: %w", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if sqlDB == nil {
+			return
+		}
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("failed to close postgres connection: %v", err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -129,7 +136,10 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	}
 
 	// Now connect to the target database to verify
-	sqlDB.Close()
+	if err := sqlDB.Close(); err != nil {
+		log.Printf("failed to close postgres connection: %v", err)
+	}
+	sqlDB = nil
 
 	targetDSN := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
@@ -145,7 +155,11 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to get target db instance: %w", err)
 	}
-	defer targetSqlDB.Close()
+	defer func() {
+		if err := targetSqlDB.Close(); err != nil {
+			log.Printf("failed to close postgres connection: %v", err)
+		}
+	}()
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel2()
@@ -164,7 +178,11 @@ func TestRedisConnection(cfg *RedisConfig) error {
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	})
-	defer rdb.Close()
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			log.Printf("failed to close redis client: %v", err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -185,7 +203,11 @@ func Install(cfg *SetupConfig) error {
 
 	// Generate JWT secret if not provided
 	if cfg.JWT.Secret == "" {
-		cfg.JWT.Secret = generateSecret(32)
+		secret, err := generateSecret(32)
+		if err != nil {
+			return fmt.Errorf("failed to generate jwt secret: %w", err)
+		}
+		cfg.JWT.Secret = secret
 	}
 
 	// Test connections
@@ -243,7 +265,11 @@ func initializeDatabase(cfg *SetupConfig) error {
 	if err != nil {
 		return err
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("failed to close postgres connection: %v", err)
+		}
+	}()
 
 	// 使用 model 包的 AutoMigrate，确保模型定义统一
 	return model.AutoMigrate(db)
@@ -265,7 +291,11 @@ func createAdminUser(cfg *SetupConfig) error {
 	if err != nil {
 		return err
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("failed to close postgres connection: %v", err)
+		}
+	}()
 
 	// Check if admin already exists
 	var count int64
@@ -352,10 +382,12 @@ func writeConfigFile(cfg *SetupConfig) error {
 	return os.WriteFile(ConfigFile, data, 0600)
 }
 
-func generateSecret(length int) string {
+func generateSecret(length int) (string, error) {
 	bytes := make([]byte, length)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 // =============================================================================
@@ -431,13 +463,21 @@ func AutoSetupFromEnv() error {
 
 	// Generate JWT secret if not provided
 	if cfg.JWT.Secret == "" {
-		cfg.JWT.Secret = generateSecret(32)
+		secret, err := generateSecret(32)
+		if err != nil {
+			return fmt.Errorf("failed to generate jwt secret: %w", err)
+		}
+		cfg.JWT.Secret = secret
 		log.Println("Generated JWT secret automatically")
 	}
 
 	// Generate admin password if not provided
 	if cfg.Admin.Password == "" {
-		cfg.Admin.Password = generateSecret(16)
+		password, err := generateSecret(16)
+		if err != nil {
+			return fmt.Errorf("failed to generate admin password: %w", err)
+		}
+		cfg.Admin.Password = password
 		log.Printf("Generated admin password: %s", cfg.Admin.Password)
 		log.Println("IMPORTANT: Save this password! It will not be shown again.")
 	}

@@ -352,4 +352,3 @@ func install(c *gin.Context) {
 		"restart": true,
 	})
 }
-

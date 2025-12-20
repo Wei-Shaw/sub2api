@@ -9,12 +9,6 @@ import (
 )
 
 const (
-	// Wait polling interval
-	waitPollInterval = 100 * time.Millisecond
-
-	// Default max wait time
-	defaultMaxWait = 60 * time.Second
-
 	// Default extra wait slots beyond concurrency limit
 	defaultExtraWaitSlots = 20
 )
@@ -31,7 +25,7 @@ func NewConcurrencyService(cache ports.ConcurrencyCache) *ConcurrencyService {
 
 // AcquireResult represents the result of acquiring a concurrency slot
 type AcquireResult struct {
-	Acquired   bool
+	Acquired    bool
 	ReleaseFunc func() // Must be called when done (typically via defer)
 }
 
@@ -54,7 +48,7 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 
 	if acquired {
 		return &AcquireResult{
-			Acquired:    true,
+			Acquired: true,
 			ReleaseFunc: func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
@@ -90,7 +84,7 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 
 	if acquired {
 		return &AcquireResult{
-			Acquired:    true,
+			Acquired: true,
 			ReleaseFunc: func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()

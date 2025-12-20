@@ -52,7 +52,7 @@ type PricingConfig struct {
 type ServerConfig struct {
 	Host              string `mapstructure:"host"`
 	Port              int    `mapstructure:"port"`
-	Mode              string `mapstructure:"mode"`               // debug/release
+	Mode              string `mapstructure:"mode"`                // debug/release
 	ReadHeaderTimeout int    `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
 	IdleTimeout       int    `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
 }
@@ -163,7 +163,7 @@ func setDefaults() {
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.mode", "debug")
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
-	viper.SetDefault("server.idle_timeout", 120)      // 120秒空闲超时
+	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
 
 	// Database
 	viper.SetDefault("database.host", "localhost")
@@ -210,10 +210,10 @@ func setDefaults() {
 
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
-	viper.SetDefault("token_refresh.check_interval_minutes", 5)      // 每5分钟检查一次
+	viper.SetDefault("token_refresh.check_interval_minutes", 5)        // 每5分钟检查一次
 	viper.SetDefault("token_refresh.refresh_before_expiry_hours", 1.5) // 提前1.5小时刷新
-	viper.SetDefault("token_refresh.max_retries", 3)                 // 最多重试3次
-	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)       // 重试退避基础2秒
+	viper.SetDefault("token_refresh.max_retries", 3)                   // 最多重试3次
+	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)         // 重试退避基础2秒
 }
 
 func (c *Config) Validate() error {
