@@ -21,6 +21,34 @@ linters:
           deny:
             - pkg: sub2api/internal/repository
               desc: "service must not import repository"
+    errcheck:
+      # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
+      # Such cases aren't reported by default.
+      # Default: false
+      check-type-assertions: true
+      # report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`.
+      # Such cases aren't reported by default.
+      # Default: false
+      check-blank: false
+      # To disable the errcheck built-in exclude list.
+      # See `-excludeonly` option in https://github.com/kisielk/errcheck#excluding-functions for details.
+      # Default: false
+      disable-default-exclusions: true
+      # List of functions to exclude from checking, where each entry is a single function to exclude.
+      # See https://github.com/kisielk/errcheck#excluding-functions for details.
+      exclude-functions:
+        - io/ioutil.ReadFile
+        - io.Copy(*bytes.Buffer)
+        - io.Copy(os.Stdout)
+        - fmt.Println
+        - fmt.Print
+        - fmt.Printf
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+      # Display function signature instead of selector.
+      # Default: false
+      verbose: true
 
 formatters:
   enable:

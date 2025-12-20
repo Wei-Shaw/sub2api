@@ -19,7 +19,11 @@ func NewClaudeUsageFetcher() service.ClaudeUsageFetcher {
 REDACTED
 
 func (s *claudeUsageService) FetchUsage(ctx context.Context, accessToken, proxyURL string) (*service.ClaudeUsageResponse, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("failed to get default transport")
+REDACTED
+	transport = transport.Clone()
 	if proxyURL != "" {
 		if parsedURL, err := url.Parse(proxyURL); err == nil {
 			transport.Proxy = http.ProxyURL(parsedURL)
