@@ -38,6 +38,8 @@ export interface TrendParams {
   start_date?: string;
   end_date?: string;
   granularity?: 'day' | 'hour';
+  user_id?: number;
+  api_key_id?: number;
 REDACTED
 
 export interface TrendResponse {
@@ -57,6 +59,13 @@ export async function getUsageTrend(params?: TrendParams): Promise<TrendResponse
   return data;
 REDACTED
 
+export interface ModelStatsParams {
+  start_date?: string;
+  end_date?: string;
+  user_id?: number;
+  api_key_id?: number;
+REDACTED
+
 export interface ModelStatsResponse {
   models: ModelStat[];
   start_date: string;
@@ -68,7 +77,7 @@ REDACTED
  * @param params - Query parameters for filtering
  * @returns Model usage statistics
  */
-export async function getModelStats(params?: { start_date?: string; end_date?: string REDACTED): Promise<ModelStatsResponse> {
+export async function getModelStats(params?: ModelStatsParams): Promise<ModelStatsResponse> {
   const { data REDACTED = await apiClient.get<ModelStatsResponse>('/admin/dashboard/models', { params REDACTED);
   return data;
 REDACTED

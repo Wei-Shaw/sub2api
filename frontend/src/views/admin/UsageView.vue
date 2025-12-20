@@ -47,7 +47,7 @@
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('usage.totalCost') REDACTEDREDACTED</p>
               <p class="text-xl font-bold text-green-600 dark:text-green-400">${{ (usageStats?.total_actual_cost || 0).toFixed(4) REDACTEDREDACTED</p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('usage.actualCost') REDACTEDREDACTED / <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) REDACTEDREDACTED</span> {{ t('usage.standardCost') REDACTEDREDACTED
+                <span class="line-through">${{ (usageStats?.total_cost || 0).toFixed(4) REDACTEDREDACTED</span> {{ t('usage.standardCost') REDACTEDREDACTED
               </p>
             </div>
           </div>
@@ -67,6 +67,35 @@
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('usage.perRequest') REDACTEDREDACTED</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="space-y-4">
+        <!-- Chart Controls -->
+        <div class="card p-4">
+          <div class="flex items-center gap-4">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') REDACTEDREDACTED:</span>
+            <div class="w-28">
+              <Select
+                v-model="granularity"
+                :options="granularityOptions"
+                @change="onGranularityChange"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <ModelDistributionChart
+            :model-stats="modelStats"
+            :loading="chartsLoading"
+          />
+          <TokenUsageTrend
+            :trend-data="trendData"
+            :loading="chartsLoading"
+          />
         </div>
       </div>
 
@@ -324,7 +353,9 @@ import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
-import type { UsageLog REDACTED from '@/types'
+import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
+import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import type { UsageLog, TrendDataPoint, ModelStat REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import type { SimpleUser, SimpleApiKey, AdminUsageStatsResponse, AdminUsageQueryParams REDACTED from '@/api/admin/usage'
 
@@ -333,6 +364,18 @@ const appStore = useAppStore()
 
 // Usage stats from API
 const usageStats = ref<AdminUsageStatsResponse | null>(null)
+
+// Chart data
+const trendData = ref<TrendDataPoint[]>([])
+const modelStats = ref<ModelStat[]>([])
+const chartsLoading = ref(false)
+const granularity = ref<'day' | 'hour'>('day')
+
+// Granularity options for Select component
+const granularityOptions = computed(() => [
+  { value: 'day', label: t('admin.dashboard.day') REDACTED,
+  { value: 'hour', label: t('admin.dashboard.hour') REDACTED,
+])
 
 const columns = computed<Column[]>(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false REDACTED,
@@ -535,10 +578,45 @@ const loadUsageStats = async () => {
   REDACTED
 REDACTED
 
+const loadChartData = async () => {
+  chartsLoading.value = true
+  try {
+    const params = {
+      start_date: filters.value.start_date || startDate.value,
+      end_date: filters.value.end_date || endDate.value,
+      granularity: granularity.value,
+      user_id: filters.value.user_id,
+      api_key_id: filters.value.api_key_id ? Number(filters.value.api_key_id) : undefined,
+    REDACTED
+
+    const [trendResponse, modelResponse] = await Promise.all([
+      adminAPI.dashboard.getUsageTrend(params),
+      adminAPI.dashboard.getModelStats({
+        start_date: params.start_date,
+        end_date: params.end_date,
+        user_id: params.user_id,
+        api_key_id: params.api_key_id,
+      REDACTED),
+    ])
+
+    trendData.value = trendResponse.trend || []
+    modelStats.value = modelResponse.models || []
+  REDACTED catch (error) {
+    console.error('Failed to load chart data:', error)
+  REDACTED finally {
+    chartsLoading.value = false
+  REDACTED
+REDACTED
+
+const onGranularityChange = () => {
+  loadChartData()
+REDACTED
+
 const applyFilters = () => {
   pagination.value.page = 1
   loadUsageLogs()
   loadUsageStats()
+  loadChartData()
 REDACTED
 
 const resetFilters = () => {
@@ -552,11 +630,13 @@ const resetFilters = () => {
     start_date: undefined,
     end_date: undefined
   REDACTED
+  granularity.value = 'day'
   // Reset date range to default (last 7 days)
   initializeDateRange()
   pagination.value.page = 1
   loadUsageLogs()
   loadUsageStats()
+  loadChartData()
 REDACTED
 
 const handlePageChange = (page: number) => {
@@ -614,6 +694,7 @@ onMounted(() => {
   initializeDateRange()
   loadUsageLogs()
   loadUsageStats()
+  loadChartData()
   document.addEventListener('click', handleClickOutside)
 REDACTED)
 

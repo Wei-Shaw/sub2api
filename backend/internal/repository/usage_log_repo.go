@@ -431,68 +431,6 @@ type UserUsageTrendPoint struct {
 	ActualCost float64 `json:"actual_cost"` // 实际扣除
 REDACTED
 
-// GetUsageTrend returns usage trend data grouped by date
-// granularity: "day" or "hour"
-func (r *UsageLogRepository) GetUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string) ([]TrendDataPoint, error) {
-	var results []TrendDataPoint
-
-	// Choose date format based on granularity
-	var dateFormat string
-	if granularity == "hour" {
-		dateFormat = "YYYY-MM-DD HH24:00"
-REDACTED else {
-		dateFormat = "YYYY-MM-DD"
-REDACTED
-
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
-		Select(`
-			TO_CHAR(created_at, ?) as date,
-			COUNT(*) as requests,
-			COALESCE(SUM(input_tokens), 0) as input_tokens,
-			COALESCE(SUM(output_tokens), 0) as output_tokens,
-			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as cache_tokens,
-			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
-			COALESCE(SUM(total_cost), 0) as cost,
-			COALESCE(SUM(actual_cost), 0) as actual_cost
-		`, dateFormat).
-		Where("created_at >= ? AND created_at < ?", startTime, endTime).
-		Group("date").
-		Order("date ASC").
-		Scan(&results).Error
-
-	if err != nil {
-		return nil, err
-REDACTED
-
-	return results, nil
-REDACTED
-
-// GetModelStats returns usage statistics grouped by model
-func (r *UsageLogRepository) GetModelStats(ctx context.Context, startTime, endTime time.Time) ([]ModelStat, error) {
-	var results []ModelStat
-
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
-		Select(`
-			model,
-			COUNT(*) as requests,
-			COALESCE(SUM(input_tokens), 0) as input_tokens,
-			COALESCE(SUM(output_tokens), 0) as output_tokens,
-			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
-			COALESCE(SUM(total_cost), 0) as cost,
-			COALESCE(SUM(actual_cost), 0) as actual_cost
-		`).
-		Where("created_at >= ? AND created_at < ?", startTime, endTime).
-		Group("model").
-		Order("total_tokens DESC").
-		Scan(&results).Error
-
-	if err != nil {
-		return nil, err
-REDACTED
-
-	return results, nil
-REDACTED
-
 // ApiKeyUsageTrendPoint represents API key usage trend data point
 type ApiKeyUsageTrendPoint struct {
 	Date     string `json:"date"`
@@ -957,6 +895,76 @@ REDACTED
 REDACTED
 
 	return result, nil
+REDACTED
+
+// GetUsageTrendWithFilters returns usage trend data with optional user/api_key filters
+func (r *UsageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) ([]TrendDataPoint, error) {
+	var results []TrendDataPoint
+
+	var dateFormat string
+	if granularity == "hour" {
+		dateFormat = "YYYY-MM-DD HH24:00"
+REDACTED else {
+		dateFormat = "YYYY-MM-DD"
+REDACTED
+
+	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+		Select(`
+			TO_CHAR(created_at, ?) as date,
+			COUNT(*) as requests,
+			COALESCE(SUM(input_tokens), 0) as input_tokens,
+			COALESCE(SUM(output_tokens), 0) as output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as cache_tokens,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
+			COALESCE(SUM(total_cost), 0) as cost,
+			COALESCE(SUM(actual_cost), 0) as actual_cost
+		`, dateFormat).
+		Where("created_at >= ? AND created_at < ?", startTime, endTime)
+
+	if userID > 0 {
+		db = db.Where("user_id = ?", userID)
+REDACTED
+	if apiKeyID > 0 {
+		db = db.Where("api_key_id = ?", apiKeyID)
+REDACTED
+
+	err := db.Group("date").Order("date ASC").Scan(&results).Error
+	if err != nil {
+		return nil, err
+REDACTED
+
+	return results, nil
+REDACTED
+
+// GetModelStatsWithFilters returns model statistics with optional user/api_key filters
+func (r *UsageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID int64) ([]ModelStat, error) {
+	var results []ModelStat
+
+	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+		Select(`
+			model,
+			COUNT(*) as requests,
+			COALESCE(SUM(input_tokens), 0) as input_tokens,
+			COALESCE(SUM(output_tokens), 0) as output_tokens,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
+			COALESCE(SUM(total_cost), 0) as cost,
+			COALESCE(SUM(actual_cost), 0) as actual_cost
+		`).
+		Where("created_at >= ? AND created_at < ?", startTime, endTime)
+
+	if userID > 0 {
+		db = db.Where("user_id = ?", userID)
+REDACTED
+	if apiKeyID > 0 {
+		db = db.Where("api_key_id = ?", apiKeyID)
+REDACTED
+
+	err := db.Group("model").Order("total_tokens DESC").Scan(&results).Error
+	if err != nil {
+		return nil, err
+REDACTED
+
+	return results, nil
 REDACTED
 
 // GetGlobalStats gets usage statistics for all users within a time range
