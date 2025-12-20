@@ -40,8 +40,8 @@ type Account struct {
 	Extra        JSONB          `gorm:"type:jsonb;default:'{}'" json:"extra"`       // 扩展信息
 	ProxyID      *int64         `gorm:"index" json:"proxy_id"`
 	Concurrency  int            `gorm:"default:3;not null" json:"concurrency"`
-	Priority     int            `gorm:"default:50;not null" json:"priority"`            // 1-100，越小越高
-	Status       string         `gorm:"size:20;default:active;not null" json:"status"`  // active/disabled/error
+	Priority     int            `gorm:"default:50;not null" json:"priority"`           // 1-100，越小越高
+	Status       string         `gorm:"size:20;default:active;not null" json:"status"` // active/disabled/error
 	ErrorMessage string         `gorm:"type:text" json:"error_message"`
 	LastUsedAt   *time.Time     `gorm:"index" json:"last_used_at"`
 	CreatedAt    time.Time      `gorm:"not null" json:"created_at"`
@@ -163,7 +163,7 @@ func (a *Account) GetModelMapping() map[string]string {
 // 如果没有设置模型映射，则支持所有模型
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	mapping := a.GetModelMapping()
-	if mapping == nil || len(mapping) == 0 {
+	if len(mapping) == 0 {
 		return true // 没有映射配置，支持所有模型
 	}
 	_, exists := mapping[requestedModel]
@@ -174,7 +174,7 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 // 如果没有映射，返回原始模型名
 func (a *Account) GetMappedModel(requestedModel string) string {
 	mapping := a.GetModelMapping()
-	if mapping == nil || len(mapping) == 0 {
+	if len(mapping) == 0 {
 		return requestedModel
 	}
 	if mappedModel, exists := mapping[requestedModel]; exists {

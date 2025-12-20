@@ -19,17 +19,17 @@ func (Setting) TableName() string {
 // 设置Key常量
 const (
 	// 注册设置
-	SettingKeyRegistrationEnabled = "registration_enabled"  // 是否开放注册
-	SettingKeyEmailVerifyEnabled  = "email_verify_enabled"  // 是否开启邮件验证
+	SettingKeyRegistrationEnabled = "registration_enabled" // 是否开放注册
+	SettingKeyEmailVerifyEnabled  = "email_verify_enabled" // 是否开启邮件验证
 
 	// 邮件服务设置
-	SettingKeySmtpHost     = "smtp_host"     // SMTP服务器地址
-	SettingKeySmtpPort     = "smtp_port"     // SMTP端口
-	SettingKeySmtpUsername = "smtp_username" // SMTP用户名
-	SettingKeySmtpPassword = "smtp_password" // SMTP密码（加密存储）
-	SettingKeySmtpFrom     = "smtp_from"     // 发件人地址
+	SettingKeySmtpHost     = "smtp_host"      // SMTP服务器地址
+	SettingKeySmtpPort     = "smtp_port"      // SMTP端口
+	SettingKeySmtpUsername = "smtp_username"  // SMTP用户名
+	SettingKeySmtpPassword = "smtp_password"  // SMTP密码（加密存储）
+	SettingKeySmtpFrom     = "smtp_from"      // 发件人地址
 	SettingKeySmtpFromName = "smtp_from_name" // 发件人名称
-	SettingKeySmtpUseTLS   = "smtp_use_tls"  // 是否使用TLS
+	SettingKeySmtpUseTLS   = "smtp_use_tls"   // 是否使用TLS
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证

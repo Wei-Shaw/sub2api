@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"sub2api/internal/model"
@@ -78,7 +79,7 @@ func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *Ass
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
 		}()
 	}
 
@@ -146,7 +147,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			}
 			newNotes += input.Notes
 			if err := s.userSubRepo.UpdateNotes(ctx, existingSub.ID, newNotes); err != nil {
-				// 备注更新失败不影响主流程
+				log.Printf("update subscription notes failed: sub_id=%d err=%v", existingSub.ID, err)
 			}
 		}
 
@@ -156,7 +157,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			go func() {
 				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
 			}()
 		}
 
@@ -177,7 +178,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
 		}()
 	}
 
@@ -278,7 +279,7 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
 		}()
 	}
 
@@ -311,7 +312,7 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
 		}()
 	}
 

@@ -1,0 +1,27 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  settings:
+    depguard:
+      rules:
+        # Enforce: service must not depend on repository.
+        service-no-repository:
+          list-mode: original
+          files:
+            - internal/service/**
+          deny:
+            - pkg: sub2api/internal/repository
+              desc: "service must not import repository"
+
+formatters:
+  enable:
+    - gofmt

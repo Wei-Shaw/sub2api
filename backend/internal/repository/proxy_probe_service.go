@@ -43,7 +43,7 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 	if err != nil {
 		return nil, 0, fmt.Errorf("proxy connection failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	latencyMs := time.Since(startTime).Milliseconds()
 

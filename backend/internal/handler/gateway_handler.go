@@ -268,7 +268,9 @@ func (h *GatewayHandler) waitForSlotWithPing(c *gin.Context, slotType string, id
 					c.Header("X-Accel-Buffering", "no")
 					*streamStarted = true
 				}
-				fmt.Fprintf(c.Writer, "data: {\"type\": \"ping\"}\n\n")
+				if _, err := fmt.Fprintf(c.Writer, "data: {\"type\": \"ping\"}\n\n"); err != nil {
+					return nil, err
+				}
 				flusher.Flush()
 			}
 
@@ -414,7 +416,9 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 		if ok {
 			// Send error event in SSE format
 			errorEvent := fmt.Sprintf(`data: {"type": "error", "error": {"type": "%s", "message": "%s"}}`+"\n\n", errType, message)
-			fmt.Fprint(c.Writer, errorEvent)
+			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
+				_ = c.Error(err)
+			}
 			flusher.Flush()
 		}
 		return
@@ -574,11 +578,11 @@ func sendMockWarmupStream(c *gin.Context, model string) {
 // sendMockWarmupResponse 发送非流式 mock 响应（用于预热请求拦截）
 func sendMockWarmupResponse(c *gin.Context, model string) {
 	c.JSON(http.StatusOK, gin.H{
-		"id":      "msg_mock_warmup",
-		"type":    "message",
-		"role":    "assistant",
-		"model":   model,
-		"content": []gin.H{{"type": "text", "text": "New Conversation"}},
+		"id":          "msg_mock_warmup",
+		"type":        "message",
+		"role":        "assistant",
+		"model":       model,
+		"content":     []gin.H{{"type": "text", "text": "New Conversation"}},
 		"stop_reason": "end_turn",
 		"usage": gin.H{
 			"input_tokens":  10,

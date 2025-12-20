@@ -573,7 +573,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// For API Key accounts: return models based on model_mapping
 	mapping := account.GetModelMapping()
-	if mapping == nil || len(mapping) == 0 {
+	if len(mapping) == 0 {
 		// No mapping configured, return default models
 		response.Success(c, claude.DefaultModels)
 		return

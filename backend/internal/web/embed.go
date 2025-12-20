@@ -41,7 +41,7 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 		}
 
 		if file, err := distFS.Open(cleanPath); err == nil {
-			file.Close()
+			_ = file.Close()
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
 			return
@@ -59,7 +59,7 @@ func serveIndexHTML(c *gin.Context, fsys fs.FS) {
 		c.Abort()
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	content, err := io.ReadAll(file)
 	if err != nil {
