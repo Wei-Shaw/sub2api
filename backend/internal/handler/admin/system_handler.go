@@ -6,6 +6,7 @@ import (
 
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/sysutil"
+	"sub2api/internal/repository"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -19,8 +20,9 @@ REDACTED
 
 // NewSystemHandler creates a new SystemHandler
 func NewSystemHandler(rdb *redis.Client, version, buildType string) *SystemHandler {
+	updateCache := repository.NewUpdateCache(rdb)
 	return &SystemHandler{
-		updateSvc: service.NewUpdateService(rdb, version, buildType),
+		updateSvc: service.NewUpdateService(updateCache, version, buildType),
 REDACTED
 REDACTED
 

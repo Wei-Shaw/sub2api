@@ -26,11 +26,9 @@ var (
 )
 
 const (
-	redeemRateLimitKeyPrefix = "redeem:rate_limit:"
-	redeemLockKeyPrefix      = "redeem:lock:"
-	redeemMaxErrorsPerHour   = 20
-	redeemRateLimitDuration  = time.Hour
-	redeemLockDuration       = 10 * time.Second // 锁超时时间，防止死锁
+	redeemMaxErrorsPerHour  = 20
+	redeemRateLimitDuration = time.Hour
+	redeemLockDuration      = 10 * time.Second // 锁超时时间，防止死锁
 )
 
 // GenerateCodesRequest 生成兑换码请求
@@ -53,7 +51,7 @@ type RedeemService struct {
 	redeemRepo          ports.RedeemCodeRepository
 	userRepo            ports.UserRepository
 	subscriptionService *SubscriptionService
-	rdb                 *redis.Client
+	cache               ports.RedeemCache
 	billingCacheService *BillingCacheService
 REDACTED
 
@@ -62,14 +60,14 @@ func NewRedeemService(
 	redeemRepo ports.RedeemCodeRepository,
 	userRepo ports.UserRepository,
 	subscriptionService *SubscriptionService,
-	rdb *redis.Client,
+	cache ports.RedeemCache,
 	billingCacheService *BillingCacheService,
 ) *RedeemService {
 	return &RedeemService{
 		redeemRepo:          redeemRepo,
 		userRepo:            userRepo,
 		subscriptionService: subscriptionService,
-		rdb:                 rdb,
+		cache:               cache,
 		billingCacheService: billingCacheService,
 REDACTED
 REDACTED
@@ -140,13 +138,11 @@ REDACTED
 
 // checkRedeemRateLimit 检查用户兑换错误次数是否超限
 func (s *RedeemService) checkRedeemRateLimit(ctx context.Context, userID int64) error {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return nil
 REDACTED
 
-	key := fmt.Sprintf("%s%d", redeemRateLimitKeyPrefix, userID)
-
-	count, err := s.rdb.Get(ctx, key).Int()
+	count, err := s.cache.GetRedeemAttemptCount(ctx, userID)
 	if err != nil && !errors.Is(err, redis.Nil) {
 		// Redis 出错时不阻止用户操作
 		return nil
@@ -161,27 +157,21 @@ REDACTED
 
 // incrementRedeemErrorCount 增加用户兑换错误计数
 func (s *RedeemService) incrementRedeemErrorCount(ctx context.Context, userID int64) {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return
 REDACTED
 
-	key := fmt.Sprintf("%s%d", redeemRateLimitKeyPrefix, userID)
-
-	pipe := s.rdb.Pipeline()
-	pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, redeemRateLimitDuration)
-	_, _ = pipe.Exec(ctx)
+	_ = s.cache.IncrementRedeemAttemptCount(ctx, userID)
 REDACTED
 
 // acquireRedeemLock 尝试获取兑换码的分布式锁
 // 返回 true 表示获取成功，false 表示锁已被占用
 func (s *RedeemService) acquireRedeemLock(ctx context.Context, code string) bool {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return true // 无 Redis 时降级为不加锁
 REDACTED
 
-	key := redeemLockKeyPrefix + code
-	ok, err := s.rdb.SetNX(ctx, key, "1", redeemLockDuration).Result()
+	ok, err := s.cache.AcquireRedeemLock(ctx, code, redeemLockDuration)
 	if err != nil {
 		// Redis 出错时不阻止操作，依赖数据库层面的状态检查
 		return true
@@ -191,12 +181,11 @@ REDACTED
 
 // releaseRedeemLock 释放兑换码的分布式锁
 func (s *RedeemService) releaseRedeemLock(ctx context.Context, code string) {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return
 REDACTED
 
-	key := redeemLockKeyPrefix + code
-	s.rdb.Del(ctx, key)
+	_ = s.cache.ReleaseRedeemLock(ctx, code)
 REDACTED
 
 // Redeem 使用兑换码
