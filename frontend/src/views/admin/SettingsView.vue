@@ -166,7 +166,7 @@
                   />
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t('admin.settings.turnstile.siteKeyHint') REDACTEDREDACTED
-                    <a href="https://dash.cloudflare.com/turnstile" target="_blank" class="text-primary-600 hover:text-primary-500">Cloudflare Dashboard</a>
+                    <a href="https://dash.cloudflare.com/" target="_blank" class="text-primary-600 hover:text-primary-500">Cloudflare Dashboard</a>
                   </p>
                 </div>
                 <div>
