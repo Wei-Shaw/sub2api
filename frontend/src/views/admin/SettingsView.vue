@@ -8,6 +8,106 @@
 
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6">
+        <!-- Admin API Key Settings -->
+        <div class="card">
+          <div class="px-6 py-4 border-b border-gray-100 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.adminApiKey.title') REDACTEDREDACTED</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.settings.adminApiKey.description') REDACTEDREDACTED</p>
+          </div>
+          <div class="p-6 space-y-4">
+            <!-- Security Warning -->
+            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <div class="flex items-start">
+                <svg class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+                <p class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+                  {{ t('admin.settings.adminApiKey.securityWarning') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+
+            <!-- Loading State -->
+            <div v-if="adminApiKeyLoading" class="flex items-center gap-2 text-gray-500">
+              <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+              {{ t('common.loading') REDACTEDREDACTED
+            </div>
+
+            <!-- No Key Configured -->
+            <div v-else-if="!adminApiKeyExists" class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.adminApiKey.notConfigured') REDACTEDREDACTED
+              </span>
+              <button
+                type="button"
+                @click="createAdminApiKey"
+                :disabled="adminApiKeyOperating"
+                class="btn btn-primary btn-sm"
+              >
+                <svg v-if="adminApiKeyOperating" class="animate-spin h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ adminApiKeyOperating ? t('admin.settings.adminApiKey.creating') : t('admin.settings.adminApiKey.create') REDACTEDREDACTED
+              </button>
+            </div>
+
+            <!-- Key Exists -->
+            <div v-else class="space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {{ t('admin.settings.adminApiKey.currentKey') REDACTEDREDACTED
+                  </label>
+                  <code class="text-sm font-mono text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-dark-700 px-2 py-1 rounded">
+                    {{ adminApiKeyMasked REDACTEDREDACTED
+                  </code>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    @click="regenerateAdminApiKey"
+                    :disabled="adminApiKeyOperating"
+                    class="btn btn-secondary btn-sm"
+                  >
+                    {{ adminApiKeyOperating ? t('admin.settings.adminApiKey.regenerating') : t('admin.settings.adminApiKey.regenerate') REDACTEDREDACTED
+                  </button>
+                  <button
+                    type="button"
+                    @click="deleteAdminApiKey"
+                    :disabled="adminApiKeyOperating"
+                    class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                  >
+                    {{ t('admin.settings.adminApiKey.delete') REDACTEDREDACTED
+                  </button>
+                </div>
+              </div>
+
+              <!-- Newly Generated Key Display -->
+              <div v-if="newAdminApiKey" class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-3">
+                <p class="text-sm font-medium text-green-700 dark:text-green-300">
+                  {{ t('admin.settings.adminApiKey.keyWarning') REDACTEDREDACTED
+                </p>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 text-sm font-mono bg-white dark:bg-dark-800 px-3 py-2 rounded border border-green-300 dark:border-green-700 break-all select-all">
+                    {{ newAdminApiKey REDACTEDREDACTED
+                  </code>
+                  <button
+                    type="button"
+                    @click="copyNewKey"
+                    class="btn btn-primary btn-sm flex-shrink-0"
+                  >
+                    {{ t('admin.settings.adminApiKey.copyKey') REDACTEDREDACTED
+                  </button>
+                </div>
+                <p class="text-xs text-green-600 dark:text-green-400">
+                  {{ t('admin.settings.adminApiKey.usage') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Registration Settings -->
         <div class="card">
           <div class="px-6 py-4 border-b border-gray-100 dark:border-dark-700">
@@ -424,6 +524,13 @@ const sendingTestEmail = ref(false);
 const testEmailAddress = ref('');
 const logoError = ref('');
 
+// Admin API Key 状态
+const adminApiKeyLoading = ref(true);
+const adminApiKeyExists = ref(false);
+const adminApiKeyMasked = ref('');
+const adminApiKeyOperating = ref(false);
+const newAdminApiKey = ref('');
+
 const form = reactive<SystemSettings>({
   registration_enabled: true,
   email_verify_enabled: false,
@@ -555,7 +662,66 @@ async function sendTestEmail() {
   REDACTED
 REDACTED
 
+// Admin API Key 方法
+async function loadAdminApiKey() {
+  adminApiKeyLoading.value = true;
+  try {
+    const status = await adminAPI.settings.getAdminApiKey();
+    adminApiKeyExists.value = status.exists;
+    adminApiKeyMasked.value = status.masked_key;
+  REDACTED catch (error: any) {
+    console.error('Failed to load admin API key status:', error);
+  REDACTED finally {
+    adminApiKeyLoading.value = false;
+  REDACTED
+REDACTED
+
+async function createAdminApiKey() {
+  adminApiKeyOperating.value = true;
+  try {
+    const result = await adminAPI.settings.regenerateAdminApiKey();
+    newAdminApiKey.value = result.key;
+    adminApiKeyExists.value = true;
+    adminApiKeyMasked.value = result.key.substring(0, 10) + '...' + result.key.slice(-4);
+    appStore.showSuccess(t('admin.settings.adminApiKey.keyGenerated'));
+  REDACTED catch (error: any) {
+    appStore.showError(error.message || t('common.error'));
+  REDACTED finally {
+    adminApiKeyOperating.value = false;
+  REDACTED
+REDACTED
+
+async function regenerateAdminApiKey() {
+  if (!confirm(t('admin.settings.adminApiKey.regenerateConfirm'))) return;
+  await createAdminApiKey();
+REDACTED
+
+async function deleteAdminApiKey() {
+  if (!confirm(t('admin.settings.adminApiKey.deleteConfirm'))) return;
+  adminApiKeyOperating.value = true;
+  try {
+    await adminAPI.settings.deleteAdminApiKey();
+    adminApiKeyExists.value = false;
+    adminApiKeyMasked.value = '';
+    newAdminApiKey.value = '';
+    appStore.showSuccess(t('admin.settings.adminApiKey.keyDeleted'));
+  REDACTED catch (error: any) {
+    appStore.showError(error.message || t('common.error'));
+  REDACTED finally {
+    adminApiKeyOperating.value = false;
+  REDACTED
+REDACTED
+
+function copyNewKey() {
+  navigator.clipboard.writeText(newAdminApiKey.value).then(() => {
+    appStore.showSuccess(t('admin.settings.adminApiKey.keyCopied'));
+  REDACTED).catch(() => {
+    appStore.showError(t('common.copyFailed'));
+  REDACTED);
+REDACTED
+
 onMounted(() => {
   loadSettings();
+  loadAdminApiKey();
 REDACTED);
 </script>

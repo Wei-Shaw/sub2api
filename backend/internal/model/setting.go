@@ -46,7 +46,13 @@ const (
 	// 默认配置
 	SettingKeyDefaultConcurrency = "default_concurrency" // 新用户默认并发量
 	SettingKeyDefaultBalance     = "default_balance"     // 新用户默认余额
+
+	// 管理员 API Key
+	SettingKeyAdminApiKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
 )
+
+// 管理员 API Key 前缀（与用户 sk- 前缀区分）
+const AdminApiKeyPrefix = "admin-"
 
 // SystemSettings 系统设置结构体（用于API响应）
 type SystemSettings struct {

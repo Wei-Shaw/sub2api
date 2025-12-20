@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -261,4 +263,64 @@ func (s *SettingService) GetTurnstileSecretKey(ctx context.Context) string {
 		return ""
 REDACTED
 	return value
+REDACTED
+
+// GenerateAdminApiKey 生成新的管理员 API Key
+func (s *SettingService) GenerateAdminApiKey(ctx context.Context) (string, error) {
+	// 生成 32 字节随机数 = 64 位十六进制字符
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+REDACTED
+
+	key := model.AdminApiKeyPrefix + hex.EncodeToString(bytes)
+
+	// 存储到 settings 表
+	if err := s.settingRepo.Set(ctx, model.SettingKeyAdminApiKey, key); err != nil {
+		return "", fmt.Errorf("save admin api key: %w", err)
+REDACTED
+
+	return key, nil
+REDACTED
+
+// GetAdminApiKeyStatus 获取管理员 API Key 状态
+// 返回脱敏的 key、是否存在、错误
+func (s *SettingService) GetAdminApiKeyStatus(ctx context.Context) (maskedKey string, exists bool, err error) {
+	key, err := s.settingRepo.GetValue(ctx, model.SettingKeyAdminApiKey)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", false, nil
+	REDACTED
+		return "", false, err
+REDACTED
+	if key == "" {
+		return "", false, nil
+REDACTED
+
+	// 脱敏：显示前 10 位和后 4 位
+	if len(key) > 14 {
+		maskedKey = key[:10] + "..." + key[len(key)-4:]
+REDACTED else {
+		maskedKey = key
+REDACTED
+
+	return maskedKey, true, nil
+REDACTED
+
+// GetAdminApiKey 获取完整的管理员 API Key（仅供内部验证使用）
+// 如果未配置返回空字符串和 nil 错误，只有数据库错误时才返回 error
+func (s *SettingService) GetAdminApiKey(ctx context.Context) (string, error) {
+	key, err := s.settingRepo.GetValue(ctx, model.SettingKeyAdminApiKey)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil // 未配置，返回空字符串
+	REDACTED
+		return "", err // 数据库错误
+REDACTED
+	return key, nil
+REDACTED
+
+// DeleteAdminApiKey 删除管理员 API Key
+func (s *SettingService) DeleteAdminApiKey(ctx context.Context) error {
+	return s.settingRepo.Delete(ctx, model.SettingKeyAdminApiKey)
 REDACTED

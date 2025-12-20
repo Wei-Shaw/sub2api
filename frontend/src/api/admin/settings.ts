@@ -99,11 +99,49 @@ export async function sendTestEmail(request: SendTestEmailRequest): Promise<{ me
   return data;
 REDACTED
 
+/**
+ * Admin API Key status response
+ */
+export interface AdminApiKeyStatus {
+  exists: boolean;
+  masked_key: string;
+REDACTED
+
+/**
+ * Get admin API key status
+ * @returns Status indicating if key exists and masked version
+ */
+export async function getAdminApiKey(): Promise<AdminApiKeyStatus> {
+  const { data REDACTED = await apiClient.get<AdminApiKeyStatus>('/admin/settings/admin-api-key');
+  return data;
+REDACTED
+
+/**
+ * Regenerate admin API key
+ * @returns The new full API key (only shown once)
+ */
+export async function regenerateAdminApiKey(): Promise<{ key: string REDACTED> {
+  const { data REDACTED = await apiClient.post<{ key: string REDACTED>('/admin/settings/admin-api-key/regenerate');
+  return data;
+REDACTED
+
+/**
+ * Delete admin API key
+ * @returns Success message
+ */
+export async function deleteAdminApiKey(): Promise<{ message: string REDACTED> {
+  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>('/admin/settings/admin-api-key');
+  return data;
+REDACTED
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
   testSmtpConnection,
   sendTestEmail,
+  getAdminApiKey,
+  regenerateAdminApiKey,
+  deleteAdminApiKey,
 REDACTED;
 
 export default settingsAPI;

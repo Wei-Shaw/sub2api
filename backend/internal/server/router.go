@@ -132,7 +132,7 @@ REDACTED)
 
 		// 管理员接口
 		admin := v1.Group("/admin")
-		admin.Use(middleware.JWTAuth(s.Auth, repos.User), middleware.AdminOnly())
+		admin.Use(middleware.AdminAuth(s.Auth, repos.User, s.Setting))
 		{
 			// 仪表盘
 			dashboard := admin.Group("/dashboard")
@@ -236,6 +236,10 @@ REDACTED)
 				adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
 				adminSettings.POST("/test-smtp", h.Admin.Setting.TestSmtpConnection)
 				adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
+				// Admin API Key 管理
+				adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminApiKey)
+				adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminApiKey)
+				adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminApiKey)
 		REDACTED
 
 			// 系统管理

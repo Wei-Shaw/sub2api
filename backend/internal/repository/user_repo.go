@@ -128,3 +128,16 @@ func (r *UserRepository) RemoveGroupFromAllowedGroups(ctx context.Context, group
 		Update("allowed_groups", gorm.Expr("array_remove(allowed_groups, ?)", groupID))
 	return result.RowsAffected, result.Error
 REDACTED
+
+// GetFirstAdmin 获取第一个管理员用户（用于 Admin API Key 认证）
+func (r *UserRepository) GetFirstAdmin(ctx context.Context) (*model.User, error) {
+	var user model.User
+	err := r.db.WithContext(ctx).
+		Where("role = ? AND status = ?", model.RoleAdmin, model.StatusActive).
+		Order("id ASC").
+		First(&user).Error
+	if err != nil {
+		return nil, err
+REDACTED
+	return &user, nil
+REDACTED
