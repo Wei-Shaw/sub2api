@@ -156,10 +156,10 @@ REDACTED
 func (h *RedeemHandler) GetStats(c *gin.Context) {
 	// Return mock data for now
 	response.Success(c, gin.H{
-		"total_codes":            0,
-		"active_codes":           0,
-		"used_codes":             0,
-		"expired_codes":          0,
+		"total_codes":             0,
+		"active_codes":            0,
+		"used_codes":              0,
+		"expired_codes":           0,
 		"total_value_distributed": 0.0,
 		"by_type": gin.H{
 			"balance":     0,
@@ -187,7 +187,10 @@ REDACTED
 	writer := csv.NewWriter(&buf)
 
 	// Write header
-	writer.Write([]string{"id", "code", "type", "value", "status", "used_by", "used_at", "created_at"REDACTED)
+	if err := writer.Write([]string{"id", "code", "type", "value", "status", "used_by", "used_at", "created_at"REDACTED); err != nil {
+		response.InternalError(c, "Failed to export redeem codes: "+err.Error())
+		return
+REDACTED
 
 	// Write data rows
 	for _, code := range codes {
@@ -199,7 +202,7 @@ REDACTED
 		if code.UsedAt != nil {
 			usedAt = code.UsedAt.Format("2006-01-02 15:04:05")
 	REDACTED
-		writer.Write([]string{
+		if err := writer.Write([]string{
 			fmt.Sprintf("%d", code.ID),
 			code.Code,
 			code.Type,
@@ -208,10 +211,17 @@ REDACTED
 			usedBy,
 			usedAt,
 			code.CreatedAt.Format("2006-01-02 15:04:05"),
-	REDACTED)
+	REDACTED); err != nil {
+			response.InternalError(c, "Failed to export redeem codes: "+err.Error())
+			return
+	REDACTED
 REDACTED
 
 	writer.Flush()
+	if err := writer.Error(); err != nil {
+		response.InternalError(c, "Failed to export redeem codes: "+err.Error())
+		return
+REDACTED
 
 	c.Header("Content-Type", "text/csv")
 	c.Header("Content-Disposition", "attachment; filename=redeem_codes.csv")

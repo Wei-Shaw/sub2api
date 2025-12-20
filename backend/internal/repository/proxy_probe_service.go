@@ -43,7 +43,7 @@ REDACTED
 	if err != nil {
 		return nil, 0, fmt.Errorf("proxy connection failed: %w", err)
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	latencyMs := time.Since(startTime).Milliseconds()
 

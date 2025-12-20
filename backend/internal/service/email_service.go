@@ -133,13 +133,13 @@ REDACTED
 	if err != nil {
 		return fmt.Errorf("tls dial: %w", err)
 REDACTED
-	defer conn.Close()
+	defer func() { _ = conn.Close() REDACTED()
 
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("new smtp client: %w", err)
 REDACTED
-	defer client.Close()
+	defer func() { _ = client.Close() REDACTED()
 
 	if err = client.Auth(auth); err != nil {
 		return fmt.Errorf("smtp auth: %w", err)
@@ -303,13 +303,13 @@ func (s *EmailService) TestSmtpConnectionWithConfig(config *SmtpConfig) error {
 		if err != nil {
 			return fmt.Errorf("tls connection failed: %w", err)
 	REDACTED
-		defer conn.Close()
+		defer func() { _ = conn.Close() REDACTED()
 
 		client, err := smtp.NewClient(conn, config.Host)
 		if err != nil {
 			return fmt.Errorf("smtp client creation failed: %w", err)
 	REDACTED
-		defer client.Close()
+		defer func() { _ = client.Close() REDACTED()
 
 		auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 		if err = client.Auth(auth); err != nil {
@@ -324,7 +324,7 @@ REDACTED
 	if err != nil {
 		return fmt.Errorf("smtp connection failed: %w", err)
 REDACTED
-	defer client.Close()
+	defer func() { _ = client.Close() REDACTED()
 
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 	if err = client.Auth(auth); err != nil {

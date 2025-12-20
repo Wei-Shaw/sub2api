@@ -44,7 +44,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	var result service.TurnstileVerifyResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {

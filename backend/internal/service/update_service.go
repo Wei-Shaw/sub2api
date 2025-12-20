@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -190,7 +191,7 @@ REDACTED
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 REDACTED
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) REDACTED()
 
 	// Download archive
 	archivePath := filepath.Join(tempDir, filepath.Base(downloadURL))
@@ -223,7 +224,7 @@ REDACTED
 	backupPath := exePath + ".backup"
 
 	// Remove old backup if exists
-	os.Remove(backupPath)
+	_ = os.Remove(backupPath)
 
 	// Step 1: Move current binary to backup
 	if err := os.Rename(exePath, backupPath); err != nil {
@@ -349,7 +350,7 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	defer f.Close()
+	defer func() { _ = f.Close() REDACTED()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
@@ -379,7 +380,7 @@ func (s *UpdateService) extractBinary(archivePath, destPath string) error {
 	if err != nil {
 		return err
 REDACTED
-	defer f.Close()
+	defer func() { _ = f.Close() REDACTED()
 
 	var reader io.Reader = f
 
@@ -389,7 +390,7 @@ REDACTED
 		if err != nil {
 			return err
 	REDACTED
-		defer gzr.Close()
+		defer func() { _ = gzr.Close() REDACTED()
 		reader = gzr
 REDACTED
 
@@ -435,10 +436,12 @@ REDACTED
 				// Use LimitReader to prevent decompression bombs
 				limited := io.LimitReader(tr, maxBinarySize)
 				if _, err := io.Copy(out, limited); err != nil {
-					out.Close()
+					_ = out.Close()
 					return err
 			REDACTED
-				out.Close()
+				if err := out.Close(); err != nil {
+					return err
+			REDACTED
 				return nil
 		REDACTED
 	REDACTED
@@ -451,11 +454,13 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	defer out.Close()
 
 	limited := io.LimitReader(reader, maxBinarySize)
-	_, err = io.Copy(out, limited)
-	return err
+	if _, err := io.Copy(out, limited); err != nil {
+		_ = out.Close()
+		return err
+REDACTED
+	return out.Close()
 REDACTED
 
 func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
@@ -499,7 +504,7 @@ REDACTED{
 REDACTED
 
 	data, _ := json.Marshal(cacheData)
-	s.cache.SetUpdateInfo(ctx, string(data), time.Duration(updateCacheTTL)*time.Second)
+	_ = s.cache.SetUpdateInfo(ctx, string(data), time.Duration(updateCacheTTL)*time.Second)
 REDACTED
 
 // compareVersions compares two semantic versions
@@ -523,7 +528,9 @@ func parseVersion(v string) [3]int {
 	parts := strings.Split(v, ".")
 	result := [3]int{0, 0, 0REDACTED
 	for i := 0; i < len(parts) && i < 3; i++ {
-		fmt.Sscanf(parts[i], "%d", &result[i])
+		if parsed, err := strconv.Atoi(parts[i]); err == nil {
+			result[i] = parsed
+	REDACTED
 REDACTED
 	return result
 REDACTED

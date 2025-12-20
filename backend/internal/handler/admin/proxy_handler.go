@@ -236,7 +236,6 @@ REDACTED
 	response.Paginated(c, accounts, total, page, pageSize)
 REDACTED
 
-
 // BatchCreateProxyItem represents a single proxy in batch create request
 type BatchCreateProxyItem struct {
 	Protocol string `json:"protocol" binding:"required,oneof=http https socks5"`

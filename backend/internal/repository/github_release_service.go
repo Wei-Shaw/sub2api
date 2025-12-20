@@ -38,7 +38,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
@@ -63,7 +63,7 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download returned %d", resp.StatusCode)
@@ -78,7 +78,7 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	defer out.Close()
+	defer func() { _ = out.Close() REDACTED()
 
 	// SECURITY: Use LimitReader to enforce max download size even if Content-Length is missing/wrong
 	limited := io.LimitReader(resp.Body, maxSize+1)
@@ -89,7 +89,7 @@ REDACTED
 
 	// Check if we hit the limit (downloaded more than maxSize)
 	if written > maxSize {
-		os.Remove(dest) // Clean up partial file
+		_ = os.Remove(dest) // Clean up partial file (best-effort)
 		return fmt.Errorf("download exceeded maximum size of %d bytes", maxSize)
 REDACTED
 
@@ -106,7 +106,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)

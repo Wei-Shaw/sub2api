@@ -37,7 +37,7 @@ type UsageLog struct {
 	OutputCost        float64 `gorm:"type:decimal(20,10);default:0;not null" json:"output_cost"`
 	CacheCreationCost float64 `gorm:"type:decimal(20,10);default:0;not null" json:"cache_creation_cost"`
 	CacheReadCost     float64 `gorm:"type:decimal(20,10);default:0;not null" json:"cache_read_cost"`
-	TotalCost         float64 `gorm:"type:decimal(20,10);default:0;not null" json:"total_cost"`      // 原始总费用
+	TotalCost         float64 `gorm:"type:decimal(20,10);default:0;not null" json:"total_cost"`     // 原始总费用
 	ActualCost        float64 `gorm:"type:decimal(20,10);default:0;not null" json:"actual_cost"`    // 实际扣除费用
 	RateMultiplier    float64 `gorm:"type:decimal(10,4);default:1;not null" json:"rate_multiplier"` // 计费倍率
 

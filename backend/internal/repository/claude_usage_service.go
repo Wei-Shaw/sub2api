@@ -43,7 +43,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

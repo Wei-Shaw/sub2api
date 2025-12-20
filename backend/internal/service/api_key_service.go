@@ -100,10 +100,13 @@ REDACTED
 
 	// 检查字符：只允许字母、数字、下划线、连字符
 	for _, c := range key {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == '_' || c == '-') {
-			return ErrApiKeyInvalidChars
+		if (c >= 'a' && c <= 'z') ||
+			(c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') ||
+			c == '_' || c == '-' {
+			continue
 	REDACTED
+		return ErrApiKeyInvalidChars
 REDACTED
 
 	return nil

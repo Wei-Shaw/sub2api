@@ -13,13 +13,13 @@ const (
 )
 
 type Group struct {
-	ID             int64          `gorm:"primaryKey" json:"id"`
-	Name           string         `gorm:"uniqueIndex;size:100;not null" json:"name"`
-	Description    string         `gorm:"type:text" json:"description"`
-	Platform       string         `gorm:"size:50;default:anthropic;not null" json:"platform"` // anthropic/openai/gemini
-	RateMultiplier float64        `gorm:"type:decimal(10,4);default:1.0;not null" json:"rate_multiplier"`
-	IsExclusive    bool           `gorm:"default:false;not null" json:"is_exclusive"`
-	Status         string         `gorm:"size:20;default:active;not null" json:"status"` // active/disabled
+	ID             int64   `gorm:"primaryKey" json:"id"`
+	Name           string  `gorm:"uniqueIndex;size:100;not null" json:"name"`
+	Description    string  `gorm:"type:text" json:"description"`
+	Platform       string  `gorm:"size:50;default:anthropic;not null" json:"platform"` // anthropic/openai/gemini
+	RateMultiplier float64 `gorm:"type:decimal(10,4);default:1.0;not null" json:"rate_multiplier"`
+	IsExclusive    bool    `gorm:"default:false;not null" json:"is_exclusive"`
+	Status         string  `gorm:"size:20;default:active;not null" json:"status"` // active/disabled
 
 	// 订阅功能字段
 	SubscriptionType string   `gorm:"size:20;default:standard;not null" json:"subscription_type"` // standard/subscription

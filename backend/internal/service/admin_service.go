@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"sub2api/internal/model"
@@ -309,7 +310,9 @@ REDACTED
 			go func() {
 				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				s.billingCacheService.InvalidateUserBalance(cacheCtx, id)
+				if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, id); err != nil {
+					log.Printf("invalidate user balance cache failed: user_id=%d err=%v", id, err)
+			REDACTED
 		REDACTED()
 	REDACTED
 REDACTED
@@ -317,8 +320,13 @@ REDACTED
 	// Create adjustment records for balance/concurrency changes
 	balanceDiff := user.Balance - oldBalance
 	if balanceDiff != 0 {
+		code, err := model.GenerateRedeemCode()
+		if err != nil {
+			log.Printf("failed to generate adjustment redeem code: %v", err)
+			return user, nil
+	REDACTED
 		adjustmentRecord := &model.RedeemCode{
-			Code:   model.GenerateRedeemCode(),
+			Code:   code,
 			Type:   model.AdjustmentTypeAdminBalance,
 			Value:  balanceDiff,
 			Status: model.StatusUsed,
@@ -327,15 +335,19 @@ REDACTED
 		now := time.Now()
 		adjustmentRecord.UsedAt = &now
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
-			// Log error but don't fail the update
-			// The user update has already succeeded
+			log.Printf("failed to create balance adjustment redeem code: %v", err)
 	REDACTED
 REDACTED
 
 	concurrencyDiff := user.Concurrency - oldConcurrency
 	if concurrencyDiff != 0 {
+		code, err := model.GenerateRedeemCode()
+		if err != nil {
+			log.Printf("failed to generate adjustment redeem code: %v", err)
+			return user, nil
+	REDACTED
 		adjustmentRecord := &model.RedeemCode{
-			Code:   model.GenerateRedeemCode(),
+			Code:   code,
 			Type:   model.AdjustmentTypeAdminConcurrency,
 			Value:  float64(concurrencyDiff),
 			Status: model.StatusUsed,
@@ -344,8 +356,7 @@ REDACTED
 		now := time.Now()
 		adjustmentRecord.UsedAt = &now
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
-			// Log error but don't fail the update
-			// The user update has already succeeded
+			log.Printf("failed to create concurrency adjustment redeem code: %v", err)
 	REDACTED
 REDACTED
 
@@ -388,7 +399,9 @@ REDACTED
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			s.billingCacheService.InvalidateUserBalance(cacheCtx, userID)
+			if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, userID); err != nil {
+				log.Printf("invalidate user balance cache failed: user_id=%d err=%v", userID, err)
+		REDACTED
 	REDACTED()
 REDACTED
 
@@ -579,7 +592,9 @@ REDACTED
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			for _, userID := range affectedUserIDs {
-				s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+				if err := s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID); err != nil {
+					log.Printf("invalidate subscription cache failed: user_id=%d group_id=%d err=%v", userID, groupID, err)
+			REDACTED
 		REDACTED
 	REDACTED()
 REDACTED
@@ -646,10 +661,10 @@ REDACTED
 	if input.Type != "" {
 		account.Type = input.Type
 REDACTED
-	if input.Credentials != nil && len(input.Credentials) > 0 {
+	if len(input.Credentials) > 0 {
 		account.Credentials = model.JSONB(input.Credentials)
 REDACTED
-	if input.Extra != nil && len(input.Extra) > 0 {
+	if len(input.Extra) > 0 {
 		account.Extra = model.JSONB(input.Extra)
 REDACTED
 	if input.ProxyID != nil {
@@ -831,8 +846,12 @@ REDACTED
 
 	codes := make([]model.RedeemCode, 0, input.Count)
 	for i := 0; i < input.Count; i++ {
+		codeValue, err := model.GenerateRedeemCode()
+		if err != nil {
+			return nil, err
+	REDACTED
 		code := model.RedeemCode{
-			Code:   model.GenerateRedeemCode(),
+			Code:   codeValue,
 			Type:   input.Type,
 			Value:  input.Value,
 			Status: model.StatusUnused,

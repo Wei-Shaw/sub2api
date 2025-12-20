@@ -12,8 +12,6 @@ var (
 	ErrTurnstileNotConfigured      = errors.New("turnstile not configured")
 )
 
-const turnstileVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-
 // TurnstileVerifier 验证 Turnstile token 的接口
 type TurnstileVerifier interface {
 	VerifyToken(ctx context.Context, secretKey, token, remoteIP string) (*TurnstileVerifyResponse, error)
