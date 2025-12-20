@@ -29,6 +29,15 @@ var ProviderSet = wire.NewSet(
 	NewRedeemCache,
 	NewUpdateCache,
 
+	// HTTP service ports (DI Strategy A: return interface directly)
+	NewTurnstileVerifier,
+	NewPricingRemoteClient,
+	NewGitHubReleaseClient,
+	NewProxyExitInfoProber,
+	NewClaudeUsageFetcher,
+	NewClaudeOAuthClient,
+	NewClaudeUpstream,
+
 	// Bind concrete repositories to service port interfaces
 	wire.Bind(new(ports.UserRepository), new(*UserRepository)),
 	wire.Bind(new(ports.ApiKeyRepository), new(*ApiKeyRepository)),

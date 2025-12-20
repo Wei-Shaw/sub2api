@@ -43,7 +43,8 @@ REDACTED
 	client := infrastructure.ProvideRedis(configConfig)
 	emailCache := repository.NewEmailCache(client)
 	emailService := service.NewEmailService(settingRepository, emailCache)
-	turnstileService := service.NewTurnstileService(settingService)
+	turnstileVerifier := repository.NewTurnstileVerifier()
+	turnstileService := service.NewTurnstileService(settingService, turnstileVerifier)
 	emailQueueService := service.ProvideEmailQueueService(emailService)
 	authService := service.NewAuthService(userRepository, configConfig, settingService, emailService, turnstileService, emailQueueService)
 	authHandler := handler.NewAuthHandler(authService)
@@ -68,32 +69,41 @@ REDACTED
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	accountRepository := repository.NewAccountRepository(db)
 	proxyRepository := repository.NewProxyRepository(db)
-	adminService := service.NewAdminService(userRepository, groupRepository, accountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, usageLogRepository, userSubscriptionRepository, billingCacheService)
+	proxyExitInfoProber := repository.NewProxyExitInfoProber()
+	adminService := service.NewAdminService(userRepository, groupRepository, accountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, usageLogRepository, userSubscriptionRepository, billingCacheService, proxyExitInfoProber)
 	dashboardHandler := admin.NewDashboardHandler(adminService, usageLogRepository)
 	adminUserHandler := admin.NewUserHandler(adminService)
 	groupHandler := admin.NewGroupHandler(adminService)
-	oAuthService := service.NewOAuthService(proxyRepository)
+	claudeOAuthClient := repository.NewClaudeOAuthClient()
+	oAuthService := service.NewOAuthService(proxyRepository, claudeOAuthClient)
 	rateLimitService := service.NewRateLimitService(accountRepository, configConfig)
-	accountUsageService := service.NewAccountUsageService(accountRepository, usageLogRepository, oAuthService)
-	accountTestService := service.NewAccountTestService(accountRepository, oAuthService)
+	claudeUsageFetcher := repository.NewClaudeUsageFetcher()
+	accountUsageService := service.NewAccountUsageService(accountRepository, usageLogRepository, oAuthService, claudeUsageFetcher)
+	claudeUpstream := repository.NewClaudeUpstream(configConfig)
+	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, claudeUpstream)
 	accountHandler := admin.NewAccountHandler(adminService, oAuthService, rateLimitService, accountUsageService, accountTestService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService, adminService)
 	proxyHandler := admin.NewProxyHandler(adminService)
 	adminRedeemHandler := admin.NewRedeemHandler(adminService)
 	settingHandler := admin.NewSettingHandler(settingService, emailService)
-	systemHandler := handler.ProvideSystemHandler(client, buildInfo)
+	updateCache := repository.NewUpdateCache(client)
+	gitHubReleaseClient := repository.NewGitHubReleaseClient()
+	serviceBuildInfo := provideServiceBuildInfo(buildInfo)
+	updateService := service.ProvideUpdateService(updateCache, gitHubReleaseClient, serviceBuildInfo)
+	systemHandler := handler.ProvideSystemHandler(updateService)
 	adminSubscriptionHandler := admin.NewSubscriptionHandler(subscriptionService)
 	adminUsageHandler := admin.NewUsageHandler(usageLogRepository, apiKeyRepository, usageService, adminService)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler)
 	gatewayCache := repository.NewGatewayCache(client)
-	pricingService, err := service.ProvidePricingService(configConfig)
+	pricingRemoteClient := repository.NewPricingRemoteClient()
+	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
 	if err != nil {
 		return nil, err
 REDACTED
 	billingService := service.NewBillingService(configConfig, pricingService)
 	identityCache := repository.NewIdentityCache(client)
 	identityService := service.NewIdentityService(identityCache)
-	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, oAuthService, billingService, rateLimitService, billingCacheService, identityService)
+	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, oAuthService, billingService, rateLimitService, billingCacheService, identityService, claudeUpstream)
 	concurrencyCache := repository.NewConcurrencyCache(client)
 	concurrencyService := service.NewConcurrencyService(concurrencyCache)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, userService, concurrencyService, billingCacheService)
@@ -127,6 +137,7 @@ REDACTED
 		Subscription: subscriptionService,
 		Concurrency:  concurrencyService,
 		Identity:     identityService,
+		Update:       updateService,
 REDACTED
 	repositories := &repository.Repositories{
 		User:             userRepository,
@@ -154,6 +165,13 @@ REDACTED
 type Application struct {
 	Server  *http.Server
 	Cleanup func()
+REDACTED
+
+func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
+	return service.BuildInfo{
+		Version:   buildInfo.Version,
+		BuildType: buildInfo.BuildType,
+REDACTED
 REDACTED
 
 func provideCleanup(
