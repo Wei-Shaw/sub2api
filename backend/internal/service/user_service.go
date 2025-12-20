@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sub2api/internal/config"
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/service/ports"
@@ -34,14 +33,12 @@ REDACTED
 // UserService 用户服务
 type UserService struct {
 	userRepo ports.UserRepository
-	cfg      *config.Config
 REDACTED
 
 // NewUserService 创建用户服务实例
-func NewUserService(userRepo ports.UserRepository, cfg *config.Config) *UserService {
+func NewUserService(userRepo ports.UserRepository) *UserService {
 	return &UserService{
 		userRepo: userRepo,
-		cfg:      cfg,
 REDACTED
 REDACTED
 

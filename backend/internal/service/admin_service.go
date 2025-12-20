@@ -193,8 +193,6 @@ type adminServiceImpl struct {
 	proxyRepo           ports.ProxyRepository
 	apiKeyRepo          ports.ApiKeyRepository
 	redeemCodeRepo      ports.RedeemCodeRepository
-	usageLogRepo        ports.UsageLogRepository
-	userSubRepo         ports.UserSubscriptionRepository
 	billingCacheService *BillingCacheService
 	proxyProber         ProxyExitInfoProber
 REDACTED
@@ -207,8 +205,6 @@ func NewAdminService(
 	proxyRepo ports.ProxyRepository,
 	apiKeyRepo ports.ApiKeyRepository,
 	redeemCodeRepo ports.RedeemCodeRepository,
-	usageLogRepo ports.UsageLogRepository,
-	userSubRepo ports.UserSubscriptionRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
 ) AdminService {
@@ -219,8 +215,6 @@ func NewAdminService(
 		proxyRepo:           proxyRepo,
 		apiKeyRepo:          apiKeyRepo,
 		redeemCodeRepo:      redeemCodeRepo,
-		usageLogRepo:        usageLogRepo,
-		userSubRepo:         userSubRepo,
 		billingCacheService: billingCacheService,
 		proxyProber:         proxyProber,
 REDACTED

@@ -5,7 +5,6 @@ import (
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/timezone"
 	"sub2api/internal/repository"
-	"sub2api/internal/service"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,17 +12,15 @@ import (
 
 // DashboardHandler handles admin dashboard statistics
 type DashboardHandler struct {
-	adminService service.AdminService
-	usageRepo    *repository.UsageLogRepository
-	startTime    time.Time // Server start time for uptime calculation
+	usageRepo *repository.UsageLogRepository
+	startTime time.Time // Server start time for uptime calculation
 REDACTED
 
 // NewDashboardHandler creates a new admin dashboard handler
-func NewDashboardHandler(adminService service.AdminService, usageRepo *repository.UsageLogRepository) *DashboardHandler {
+func NewDashboardHandler(usageRepo *repository.UsageLogRepository) *DashboardHandler {
 	return &DashboardHandler{
-		adminService: adminService,
-		usageRepo:    usageRepo,
-		startTime:    time.Now(),
+		usageRepo: usageRepo,
+		startTime: time.Now(),
 REDACTED
 REDACTED
 

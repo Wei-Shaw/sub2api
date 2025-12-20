@@ -13,14 +13,12 @@ import (
 // OAuthHandler handles OAuth-related operations for accounts
 type OAuthHandler struct {
 	oauthService *service.OAuthService
-	adminService service.AdminService
 REDACTED
 
 // NewOAuthHandler creates a new OAuth handler
-func NewOAuthHandler(oauthService *service.OAuthService, adminService service.AdminService) *OAuthHandler {
+func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 	return &OAuthHandler{
 		oauthService: oauthService,
-		adminService: adminService,
 REDACTED
 REDACTED
 

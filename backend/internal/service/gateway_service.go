@@ -84,7 +84,6 @@ type GatewayService struct {
 	userSubRepo         ports.UserSubscriptionRepository
 	cache               ports.GatewayCache
 	cfg                 *config.Config
-	oauthService        *OAuthService
 	billingService      *BillingService
 	rateLimitService    *RateLimitService
 	billingCacheService *BillingCacheService
@@ -100,7 +99,6 @@ func NewGatewayService(
 	userSubRepo ports.UserSubscriptionRepository,
 	cache ports.GatewayCache,
 	cfg *config.Config,
-	oauthService *OAuthService,
 	billingService *BillingService,
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
@@ -114,7 +112,6 @@ func NewGatewayService(
 		userSubRepo:         userSubRepo,
 		cache:               cache,
 		cfg:                 cfg,
-		oauthService:        oauthService,
 		billingService:      billingService,
 		rateLimitService:    rateLimitService,
 		billingCacheService: billingCacheService,
