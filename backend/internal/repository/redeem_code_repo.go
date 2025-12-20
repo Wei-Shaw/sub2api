@@ -99,7 +99,7 @@ func (r *RedeemCodeRepository) Use(ctx context.Context, id, userID int64) error 
 	now := time.Now()
 	result := r.db.WithContext(ctx).Model(&model.RedeemCode{REDACTED).
 		Where("id = ? AND status = ?", id, model.StatusUnused).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"status":  model.StatusUsed,
 			"used_by": userID,
 			"used_at": now,

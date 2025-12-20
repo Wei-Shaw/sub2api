@@ -193,7 +193,7 @@ REDACTED
 func (h *UsageHandler) SearchUsers(c *gin.Context) {
 	keyword := c.Query("q")
 	if keyword == "" {
-		response.Success(c, []interface{REDACTED{REDACTED)
+		response.Success(c, []any{REDACTED)
 		return
 REDACTED
 

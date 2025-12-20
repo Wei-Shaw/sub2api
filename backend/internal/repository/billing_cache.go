@@ -143,7 +143,7 @@ REDACTED
 
 	key := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
 
-	fields := map[string]interface{REDACTED{
+	fields := map[string]any{
 		subFieldStatus:       data.Status,
 		subFieldExpiresAt:    data.ExpiresAt.Unix(),
 		subFieldDailyUsage:   data.DailyUsage,

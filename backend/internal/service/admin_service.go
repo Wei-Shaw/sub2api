@@ -24,7 +24,7 @@ type AdminService interface {
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string) (*model.User, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]model.ApiKey, int64, error)
-	GetUserUsageStats(ctx context.Context, userID int64, period string) (interface{REDACTED, error)
+	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 
 	// Group management
 	ListGroups(ctx context.Context, page, pageSize int, platform, status string, isExclusive *bool) ([]model.Group, int64, error)
@@ -114,8 +114,8 @@ type CreateAccountInput struct {
 	Name        string
 	Platform    string
 	Type        string
-	Credentials map[string]interface{REDACTED
-	Extra       map[string]interface{REDACTED
+	Credentials map[string]any
+	Extra       map[string]any
 	ProxyID     *int64
 	Concurrency int
 	Priority    int
@@ -125,8 +125,8 @@ REDACTED
 type UpdateAccountInput struct {
 	Name        string
 	Type        string // Account type: oauth, setup-token, apikey
-	Credentials map[string]interface{REDACTED
-	Extra       map[string]interface{REDACTED
+	Credentials map[string]any
+	Extra       map[string]any
 	ProxyID     *int64
 	Concurrency *int // 使用指针区分"未提供"和"设置为0"
 	Priority    *int // 使用指针区分"未提供"和"设置为0"
@@ -411,9 +411,9 @@ REDACTED
 	return keys, result.Total, nil
 REDACTED
 
-func (s *adminServiceImpl) GetUserUsageStats(ctx context.Context, userID int64, period string) (interface{REDACTED, error) {
+func (s *adminServiceImpl) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
 	// Return mock data for now
-	return map[string]interface{REDACTED{
+	return map[string]any{
 		"period":          period,
 		"total_requests":  0,
 		"total_cost":      0.0,

@@ -10,7 +10,7 @@ import (
 )
 
 // JSONB 用于存储JSONB数据
-type JSONB map[string]interface{REDACTED
+type JSONB map[string]any
 
 func (j JSONB) Value() (driver.Value, error) {
 	if j == nil {
@@ -19,7 +19,7 @@ REDACTED
 	return json.Marshal(j)
 REDACTED
 
-func (j *JSONB) Scan(value interface{REDACTED) error {
+func (j *JSONB) Scan(value any) error {
 	if value == nil {
 		*j = nil
 		return nil
@@ -145,7 +145,7 @@ REDACTED
 		return nil
 REDACTED
 	// 处理map[string]interface{REDACTED类型
-	if m, ok := raw.(map[string]interface{REDACTED); ok {
+	if m, ok := raw.(map[string]any); ok {
 		result := make(map[string]string)
 		for k, v := range m {
 			if s, ok := v.(string); ok {
@@ -231,7 +231,7 @@ REDACTED
 		return nil
 REDACTED
 	// 处理 []interface{REDACTED 类型（JSON反序列化后的格式）
-	if arr, ok := raw.([]interface{REDACTED); ok {
+	if arr, ok := raw.([]any); ok {
 		result := make([]int, 0, len(arr))
 		for _, v := range arr {
 			// JSON 数字默认解析为 float64

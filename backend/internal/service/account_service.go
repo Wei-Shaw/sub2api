@@ -17,27 +17,27 @@ var (
 
 // CreateAccountRequest 创建账号请求
 type CreateAccountRequest struct {
-	Name        string                 `json:"name"`
-	Platform    string                 `json:"platform"`
-	Type        string                 `json:"type"`
-	Credentials map[string]interface{REDACTED `json:"credentials"`
-	Extra       map[string]interface{REDACTED `json:"extra"`
-	ProxyID     *int64                 `json:"proxy_id"`
-	Concurrency int                    `json:"concurrency"`
-	Priority    int                    `json:"priority"`
-	GroupIDs    []int64                `json:"group_ids"`
+	Name        string         `json:"name"`
+	Platform    string         `json:"platform"`
+	Type        string         `json:"type"`
+	Credentials map[string]any `json:"credentials"`
+	Extra       map[string]any `json:"extra"`
+	ProxyID     *int64         `json:"proxy_id"`
+	Concurrency int            `json:"concurrency"`
+	Priority    int            `json:"priority"`
+	GroupIDs    []int64        `json:"group_ids"`
 REDACTED
 
 // UpdateAccountRequest 更新账号请求
 type UpdateAccountRequest struct {
-	Name        *string                 `json:"name"`
-	Credentials *map[string]interface{REDACTED `json:"credentials"`
-	Extra       *map[string]interface{REDACTED `json:"extra"`
-	ProxyID     *int64                  `json:"proxy_id"`
-	Concurrency *int                    `json:"concurrency"`
-	Priority    *int                    `json:"priority"`
-	Status      *string                 `json:"status"`
-	GroupIDs    *[]int64                `json:"group_ids"`
+	Name        *string         `json:"name"`
+	Credentials *map[string]any `json:"credentials"`
+	Extra       *map[string]any `json:"extra"`
+	ProxyID     *int64          `json:"proxy_id"`
+	Concurrency *int            `json:"concurrency"`
+	Priority    *int            `json:"priority"`
+	Status      *string         `json:"status"`
+	GroupIDs    *[]int64        `json:"group_ids"`
 REDACTED
 
 // AccountService 账号管理服务

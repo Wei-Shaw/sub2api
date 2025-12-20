@@ -62,18 +62,18 @@ REDACTED
 REDACTED
 
 // createTestPayload creates a Claude Code style test request payload
-func createTestPayload(modelID string) (map[string]interface{REDACTED, error) {
+func createTestPayload(modelID string) (map[string]any, error) {
 	sessionID, err := generateSessionString()
 	if err != nil {
 		return nil, err
 REDACTED
 
-	return map[string]interface{REDACTED{
+	return map[string]any{
 		"model": modelID,
-		"messages": []map[string]interface{REDACTED{
+		"messages": []map[string]any{
 			{
 				"role": "user",
-				"content": []map[string]interface{REDACTED{
+				"content": []map[string]any{
 					{
 						"type": "text",
 						"text": "hi",
@@ -84,7 +84,7 @@ REDACTED
 			REDACTED,
 		REDACTED,
 	REDACTED,
-		"system": []map[string]interface{REDACTED{
+		"system": []map[string]any{
 			{
 				"type": "text",
 				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
@@ -262,7 +262,7 @@ func (s *AccountTestService) processStream(c *gin.Context, body io.Reader) error
 			return nil
 	REDACTED
 
-		var data map[string]interface{REDACTED
+		var data map[string]any
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 			continue
 	REDACTED
@@ -271,7 +271,7 @@ func (s *AccountTestService) processStream(c *gin.Context, body io.Reader) error
 
 		switch eventType {
 		case "content_block_delta":
-			if delta, ok := data["delta"].(map[string]interface{REDACTED); ok {
+			if delta, ok := data["delta"].(map[string]any); ok {
 				if text, ok := delta["text"].(string); ok {
 					s.sendEvent(c, TestEvent{Type: "content", Text: textREDACTED)
 			REDACTED
@@ -281,7 +281,7 @@ func (s *AccountTestService) processStream(c *gin.Context, body io.Reader) error
 			return nil
 		case "error":
 			errorMsg := "Unknown error"
-			if errData, ok := data["error"].(map[string]interface{REDACTED); ok {
+			if errData, ok := data["error"].(map[string]any); ok {
 				if msg, ok := errData["message"].(string); ok {
 					errorMsg = msg
 			REDACTED

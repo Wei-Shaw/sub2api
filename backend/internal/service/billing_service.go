@@ -259,11 +259,11 @@ REDACTED
 REDACTED
 
 // GetPricingServiceStatus 获取价格服务状态
-func (s *BillingService) GetPricingServiceStatus() map[string]interface{REDACTED {
+func (s *BillingService) GetPricingServiceStatus() map[string]any {
 	if s.pricingService != nil {
 		return s.pricingService.GetStatus()
 REDACTED
-	return map[string]interface{REDACTED{
+	return map[string]any{
 		"model_count":  len(s.fallbackPrices),
 		"last_updated": "using fallback",
 		"local_hash":   "N/A",

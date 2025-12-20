@@ -64,7 +64,7 @@ func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKe
 
 	authURL := fmt.Sprintf("https://claude.ai/v1/oauth/%s/authorize", orgUUID)
 
-	reqBody := map[string]interface{REDACTED{
+	reqBody := map[string]any{
 		"response_type":         "code",
 		"client_id":             oauth.ClientID,
 		"organization_uuid":     orgUUID,
@@ -155,7 +155,7 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 	REDACTED
 REDACTED
 
-	reqBody := map[string]interface{REDACTED{
+	reqBody := map[string]any{
 		"code":          authCode,
 		"grant_type":    "authorization_code",
 		"client_id":     oauth.ClientID,

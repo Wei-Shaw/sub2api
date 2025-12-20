@@ -255,7 +255,7 @@ func (h *DashboardHandler) GetBatchUsersUsage(c *gin.Context) {
 REDACTED
 
 	if len(req.UserIDs) == 0 {
-		response.Success(c, gin.H{"stats": map[string]interface{REDACTED{REDACTEDREDACTED)
+		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 
@@ -283,7 +283,7 @@ func (h *DashboardHandler) GetBatchApiKeysUsage(c *gin.Context) {
 REDACTED
 
 	if len(req.ApiKeyIDs) == 0 {
-		response.Success(c, gin.H{"stats": map[string]interface{REDACTED{REDACTEDREDACTED)
+		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 

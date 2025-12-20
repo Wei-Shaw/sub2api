@@ -185,7 +185,7 @@ REDACTED
 func (r *UserSubscriptionRepository) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"daily_usage_usd":   gorm.Expr("daily_usage_usd + ?", costUSD),
 			"weekly_usage_usd":  gorm.Expr("weekly_usage_usd + ?", costUSD),
 			"monthly_usage_usd": gorm.Expr("monthly_usage_usd + ?", costUSD),
@@ -197,7 +197,7 @@ REDACTED
 func (r *UserSubscriptionRepository) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"daily_usage_usd":    0,
 			"daily_window_start": newWindowStart,
 			"updated_at":         time.Now(),
@@ -208,7 +208,7 @@ REDACTED
 func (r *UserSubscriptionRepository) ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"weekly_usage_usd":    0,
 			"weekly_window_start": newWindowStart,
 			"updated_at":          time.Now(),
@@ -219,7 +219,7 @@ REDACTED
 func (r *UserSubscriptionRepository) ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"monthly_usage_usd":    0,
 			"monthly_window_start": newWindowStart,
 			"updated_at":           time.Now(),
@@ -230,7 +230,7 @@ REDACTED
 func (r *UserSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, activateTime time.Time) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"daily_window_start":   activateTime,
 			"weekly_window_start":  activateTime,
 			"monthly_window_start": activateTime,
@@ -242,7 +242,7 @@ REDACTED
 func (r *UserSubscriptionRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"status":     status,
 			"updated_at": time.Now(),
 	REDACTED).Error
@@ -252,7 +252,7 @@ REDACTED
 func (r *UserSubscriptionRepository) ExtendExpiry(ctx context.Context, id int64, newExpiresAt time.Time) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"expires_at": newExpiresAt,
 			"updated_at": time.Now(),
 	REDACTED).Error
@@ -262,7 +262,7 @@ REDACTED
 func (r *UserSubscriptionRepository) UpdateNotes(ctx context.Context, id int64, notes string) error {
 	return r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("id = ?", id).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"notes":      notes,
 			"updated_at": time.Now(),
 	REDACTED).Error
@@ -281,7 +281,7 @@ REDACTED
 func (r *UserSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
 	result := r.db.WithContext(ctx).Model(&model.UserSubscription{REDACTED).
 		Where("status = ? AND expires_at <= ?", model.SubscriptionStatusActive, time.Now()).
-		Updates(map[string]interface{REDACTED{
+		Updates(map[string]any{
 			"status":     model.SubscriptionStatusExpired,
 			"updated_at": time.Now(),
 	REDACTED)

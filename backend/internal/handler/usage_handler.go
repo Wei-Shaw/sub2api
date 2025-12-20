@@ -358,7 +358,7 @@ REDACTED
 REDACTED
 
 	if len(req.ApiKeyIDs) == 0 {
-		response.Success(c, gin.H{"stats": map[string]interface{REDACTED{REDACTEDREDACTED)
+		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 
@@ -383,7 +383,7 @@ REDACTED
 REDACTED
 
 	if len(validApiKeyIDs) == 0 {
-		response.Success(c, gin.H{"stats": map[string]interface{REDACTED{REDACTEDREDACTED)
+		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 

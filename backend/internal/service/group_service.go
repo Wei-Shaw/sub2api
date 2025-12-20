@@ -167,7 +167,7 @@ REDACTED
 REDACTED
 
 // GetStats 获取分组统计信息
-func (s *GroupService) GetStats(ctx context.Context, id int64) (map[string]interface{REDACTED, error) {
+func (s *GroupService) GetStats(ctx context.Context, id int64) (map[string]any, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -182,7 +182,7 @@ REDACTED
 		return nil, fmt.Errorf("get account count: %w", err)
 REDACTED
 
-	stats := map[string]interface{REDACTED{
+	stats := map[string]any{
 		"id":              group.ID,
 		"name":            group.Name,
 		"rate_multiplier": group.RateMultiplier,
