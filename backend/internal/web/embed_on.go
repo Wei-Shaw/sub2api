@@ -1,3 +1,5 @@
+//go:build embed
+
 package web
 
 import (
@@ -13,8 +15,6 @@ import (
 //go:embed all:dist
 var frontendFS embed.FS
 
-// ServeEmbeddedFrontend returns a Gin handler that serves embedded frontend assets
-// and handles SPA routing by falling back to index.html for non-API routes.
 func ServeEmbeddedFrontend() gin.HandlerFunc {
 	distFS, err := fs.Sub(frontendFS, "dist")
 	if err != nil {
@@ -25,7 +25,6 @@ REDACTED
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
-		// Skip API and gateway routes
 		if strings.HasPrefix(path, "/api/") ||
 			strings.HasPrefix(path, "/v1/") ||
 			strings.HasPrefix(path, "/setup/") ||
@@ -34,7 +33,6 @@ REDACTED
 			return
 	REDACTED
 
-		// Try to serve static file
 		cleanPath := strings.TrimPrefix(path, "/")
 		if cleanPath == "" {
 			cleanPath = "index.html"
@@ -47,7 +45,6 @@ REDACTED
 			return
 	REDACTED
 
-		// SPA fallback: serve index.html for all other routes
 		serveIndexHTML(c, distFS)
 REDACTED
 REDACTED
@@ -72,7 +69,6 @@ REDACTED
 	c.Abort()
 REDACTED
 
-// HasEmbeddedFrontend checks if frontend assets are embedded
 func HasEmbeddedFrontend() bool {
 	_, err := frontendFS.ReadFile("dist/index.html")
 	return err == nil
