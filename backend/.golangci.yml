@@ -49,6 +49,10 @@ linters:
       # Display function signature instead of selector.
       # Default: false
       verbose: true
+    ineffassign:
+      # Check escaping variables of type error, may cause false positives.
+      # Default: false
+      check-escaping-errors: true
 
 formatters:
   enable:
