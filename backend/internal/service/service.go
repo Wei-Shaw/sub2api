@@ -26,4 +26,5 @@ type Services struct {
 	Subscription *SubscriptionService
 	Concurrency  *ConcurrencyService
 	Identity     *IdentityService
+	Update       *UpdateService
 REDACTED

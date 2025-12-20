@@ -2,21 +2,14 @@ package service
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
-	"net/url"
 	"time"
 
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/service/ports"
 
-	"golang.org/x/net/proxy"
 	"gorm.io/gorm"
 )
 
@@ -178,6 +171,19 @@ type ProxyTestResult struct {
 	Country   string `json:"country,omitempty"`
 REDACTED
 
+// ProxyExitInfo represents proxy exit information from ipinfo.io
+type ProxyExitInfo struct {
+	IP      string
+	City    string
+	Region  string
+	Country string
+REDACTED
+
+// ProxyExitInfoProber tests proxy connectivity and retrieves exit information
+type ProxyExitInfoProber interface {
+	ProbeProxy(ctx context.Context, proxyURL string) (*ProxyExitInfo, int64, error)
+REDACTED
+
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
 	userRepo            ports.UserRepository
@@ -189,6 +195,7 @@ type adminServiceImpl struct {
 	usageLogRepo        ports.UsageLogRepository
 	userSubRepo         ports.UserSubscriptionRepository
 	billingCacheService *BillingCacheService
+	proxyProber         ProxyExitInfoProber
 REDACTED
 
 // NewAdminService creates a new AdminService
@@ -202,6 +209,7 @@ func NewAdminService(
 	usageLogRepo ports.UsageLogRepository,
 	userSubRepo ports.UserSubscriptionRepository,
 	billingCacheService *BillingCacheService,
+	proxyProber ProxyExitInfoProber,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:            userRepo,
@@ -213,6 +221,7 @@ func NewAdminService(
 		usageLogRepo:        usageLogRepo,
 		userSubRepo:         userSubRepo,
 		billingCacheService: billingCacheService,
+		proxyProber:         proxyProber,
 REDACTED
 REDACTED
 
@@ -876,79 +885,12 @@ func (s *adminServiceImpl) TestProxy(ctx context.Context, id int64) (*ProxyTestR
 		return nil, err
 REDACTED
 
-	return testProxyConnection(ctx, proxy)
-REDACTED
-
-// testProxyConnection tests proxy connectivity by requesting ipinfo.io/json
-func testProxyConnection(ctx context.Context, proxy *model.Proxy) (*ProxyTestResult, error) {
 	proxyURL := proxy.URL()
-
-	// Create HTTP client with proxy
-	transport, err := createProxyTransport(proxyURL)
+	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxyURL)
 	if err != nil {
 		return &ProxyTestResult{
 			Success: false,
-			Message: fmt.Sprintf("Failed to create proxy transport: %v", err),
-	REDACTED, nil
-REDACTED
-
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   15 * time.Second,
-REDACTED
-
-	// Measure latency
-	startTime := time.Now()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://ipinfo.io/json", nil)
-	if err != nil {
-		return &ProxyTestResult{
-			Success: false,
-			Message: fmt.Sprintf("Failed to create request: %v", err),
-	REDACTED, nil
-REDACTED
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return &ProxyTestResult{
-			Success: false,
-			Message: fmt.Sprintf("Proxy connection failed: %v", err),
-	REDACTED, nil
-REDACTED
-	defer resp.Body.Close()
-
-	latencyMs := time.Since(startTime).Milliseconds()
-
-	if resp.StatusCode != http.StatusOK {
-		return &ProxyTestResult{
-			Success:   false,
-			Message:   fmt.Sprintf("Request failed with status: %d", resp.StatusCode),
-			LatencyMs: latencyMs,
-	REDACTED, nil
-REDACTED
-
-	// Parse ipinfo.io response
-	var ipInfo struct {
-		IP      string `json:"ip"`
-		City    string `json:"city"`
-		Region  string `json:"region"`
-		Country string `json:"country"`
-REDACTED
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return &ProxyTestResult{
-			Success:   true,
-			Message:   "Proxy is accessible but failed to read response",
-			LatencyMs: latencyMs,
-	REDACTED, nil
-REDACTED
-
-	if err := json.Unmarshal(body, &ipInfo); err != nil {
-		return &ProxyTestResult{
-			Success:   true,
-			Message:   "Proxy is accessible but failed to parse response",
-			LatencyMs: latencyMs,
+			Message: err.Error(),
 	REDACTED, nil
 REDACTED
 
@@ -956,38 +898,9 @@ REDACTED
 		Success:   true,
 		Message:   "Proxy is accessible",
 		LatencyMs: latencyMs,
-		IPAddress: ipInfo.IP,
-		City:      ipInfo.City,
-		Region:    ipInfo.Region,
-		Country:   ipInfo.Country,
+		IPAddress: exitInfo.IP,
+		City:      exitInfo.City,
+		Region:    exitInfo.Region,
+		Country:   exitInfo.Country,
 REDACTED, nil
-REDACTED
-
-// createProxyTransport creates an HTTP transport with the given proxy URL
-func createProxyTransport(proxyURL string) (*http.Transport, error) {
-	parsedURL, err := url.Parse(proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL: %w", err)
-REDACTED
-
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: trueREDACTED,
-REDACTED
-
-	switch parsedURL.Scheme {
-	case "http", "https":
-		transport.Proxy = http.ProxyURL(parsedURL)
-	case "socks5":
-		dialer, err := proxy.FromURL(parsedURL, proxy.Direct)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create socks5 dialer: %w", err)
-	REDACTED
-		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialer.Dial(network, addr)
-	REDACTED
-	default:
-		return nil, fmt.Errorf("unsupported proxy protocol: %s", parsedURL.Scheme)
-REDACTED
-
-	return transport, nil
 REDACTED

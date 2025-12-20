@@ -6,11 +6,9 @@ import (
 
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/sysutil"
-	"sub2api/internal/repository"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
 // SystemHandler handles system-related operations
@@ -19,10 +17,9 @@ type SystemHandler struct {
 REDACTED
 
 // NewSystemHandler creates a new SystemHandler
-func NewSystemHandler(rdb *redis.Client, version, buildType string) *SystemHandler {
-	updateCache := repository.NewUpdateCache(rdb)
+func NewSystemHandler(updateSvc *service.UpdateService) *SystemHandler {
 	return &SystemHandler{
-		updateSvc: service.NewUpdateService(updateCache, version, buildType),
+		updateSvc: updateSvc,
 REDACTED
 REDACTED
 

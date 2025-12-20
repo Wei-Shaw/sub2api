@@ -5,7 +5,6 @@ import (
 	"sub2api/internal/service"
 
 	"github.com/google/wire"
-	"github.com/redis/go-redis/v9"
 )
 
 // ProvideAdminHandlers creates the AdminHandlers struct
@@ -37,9 +36,9 @@ func ProvideAdminHandlers(
 REDACTED
 REDACTED
 
-// ProvideSystemHandler creates admin.SystemHandler with BuildInfo parameters
-func ProvideSystemHandler(rdb *redis.Client, buildInfo BuildInfo) *admin.SystemHandler {
-	return admin.NewSystemHandler(rdb, buildInfo.Version, buildInfo.BuildType)
+// ProvideSystemHandler creates admin.SystemHandler with UpdateService
+func ProvideSystemHandler(updateService *service.UpdateService) *admin.SystemHandler {
+	return admin.NewSystemHandler(updateService)
 REDACTED
 
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo

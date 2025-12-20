@@ -2,18 +2,30 @@ package service
 
 import (
 	"sub2api/internal/config"
+	"sub2api/internal/service/ports"
 
 	"github.com/google/wire"
 )
 
+// BuildInfo contains build information
+type BuildInfo struct {
+	Version   string
+	BuildType string
+REDACTED
+
 // ProvidePricingService creates and initializes PricingService
-func ProvidePricingService(cfg *config.Config) (*PricingService, error) {
-	svc := NewPricingService(cfg)
+func ProvidePricingService(cfg *config.Config, remoteClient PricingRemoteClient) (*PricingService, error) {
+	svc := NewPricingService(cfg, remoteClient)
 	if err := svc.Initialize(); err != nil {
 		// 价格服务初始化失败不应阻止启动,使用回退价格
 		println("[Service] Warning: Pricing service initialization failed:", err.Error())
 REDACTED
 	return svc, nil
+REDACTED
+
+// ProvideUpdateService creates UpdateService with BuildInfo
+func ProvideUpdateService(cache ports.UpdateCache, githubClient GitHubReleaseClient, buildInfo BuildInfo) *UpdateService {
+	return NewUpdateService(cache, githubClient, buildInfo.Version, buildInfo.BuildType)
 REDACTED
 
 // ProvideEmailQueueService creates EmailQueueService with default worker count
@@ -48,6 +60,7 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionService,
 	NewConcurrencyService,
 	NewIdentityService,
+	ProvideUpdateService,
 
 	// Provide the Services container struct
 	wire.Struct(new(Services), "*"),

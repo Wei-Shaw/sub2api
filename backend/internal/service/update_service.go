@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -34,17 +33,26 @@ const (
 	maxDownloadSize = 500 * 1024 * 1024
 )
 
+// GitHubReleaseClient 获取 GitHub release 信息的接口
+type GitHubReleaseClient interface {
+	FetchLatestRelease(ctx context.Context, repo string) (*GitHubRelease, error)
+	DownloadFile(ctx context.Context, url, dest string, maxSize int64) error
+	FetchChecksumFile(ctx context.Context, url string) ([]byte, error)
+REDACTED
+
 // UpdateService handles software updates
 type UpdateService struct {
 	cache          ports.UpdateCache
+	githubClient   GitHubReleaseClient
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
 REDACTED
 
 // NewUpdateService creates a new UpdateService
-func NewUpdateService(cache ports.UpdateCache, version, buildType string) *UpdateService {
+func NewUpdateService(cache ports.UpdateCache, githubClient GitHubReleaseClient, version, buildType string) *UpdateService {
 	return &UpdateService{
 		cache:          cache,
+		githubClient:   githubClient,
 		currentVersion: version,
 		buildType:      buildType,
 REDACTED
@@ -260,40 +268,9 @@ REDACTED
 	return nil
 REDACTED
 
-
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	release, err := s.githubClient.FetchLatestRelease(ctx, githubRepo)
 	if err != nil {
-		return nil, err
-REDACTED
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "Sub2API-Updater")
-
-	client := &http.Client{Timeout: 30 * time.SecondREDACTED
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-REDACTED
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return &UpdateInfo{
-			CurrentVersion: s.currentVersion,
-			LatestVersion:  s.currentVersion,
-			HasUpdate:      false,
-			Warning:        "No releases found",
-			BuildType:      s.buildType,
-	REDACTED, nil
-REDACTED
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
-REDACTED
-
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return nil, err
 REDACTED
 
@@ -325,47 +302,7 @@ REDACTED, nil
 REDACTED
 
 func (s *UpdateService) downloadFile(ctx context.Context, downloadURL, dest string) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
-	if err != nil {
-		return err
-REDACTED
-
-	client := &http.Client{Timeout: 10 * time.MinuteREDACTED
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-REDACTED
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download returned %d", resp.StatusCode)
-REDACTED
-
-	// SECURITY: Check Content-Length if available
-	if resp.ContentLength > maxDownloadSize {
-		return fmt.Errorf("file too large: %d bytes (max %d)", resp.ContentLength, maxDownloadSize)
-REDACTED
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-REDACTED
-	defer out.Close()
-
-	// SECURITY: Use LimitReader to enforce max download size even if Content-Length is missing/wrong
-	limited := io.LimitReader(resp.Body, maxDownloadSize+1)
-	written, err := io.Copy(out, limited)
-	if err != nil {
-		return err
-REDACTED
-
-	// Check if we hit the limit (downloaded more than maxDownloadSize)
-	if written > maxDownloadSize {
-		os.Remove(dest) // Clean up partial file
-		return fmt.Errorf("download exceeded maximum size of %d bytes", maxDownloadSize)
-REDACTED
-
-	return nil
+	return s.githubClient.DownloadFile(ctx, downloadURL, dest, maxDownloadSize)
 REDACTED
 
 func (s *UpdateService) getArchiveName() string {
@@ -402,20 +339,9 @@ REDACTED
 
 func (s *UpdateService) verifyChecksum(ctx context.Context, filePath, checksumURL string) error {
 	// Download checksums file
-	req, err := http.NewRequestWithContext(ctx, "GET", checksumURL, nil)
+	checksumData, err := s.githubClient.FetchChecksumFile(ctx, checksumURL)
 	if err != nil {
-		return err
-REDACTED
-
-	client := &http.Client{Timeout: 30 * time.SecondREDACTED
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-REDACTED
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download checksums: %d", resp.StatusCode)
+		return fmt.Errorf("failed to download checksums: %w", err)
 REDACTED
 
 	// Calculate file hash
@@ -433,7 +359,7 @@ REDACTED
 
 	// Find expected hash in checksums file
 	fileName := filepath.Base(filePath)
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(strings.NewReader(string(checksumData)))
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.Fields(line)
