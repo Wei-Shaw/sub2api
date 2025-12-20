@@ -11,6 +11,8 @@ builds:
     dir: backend
     main: ./cmd/server
     binary: sub2api
+    flags:
+      - -tags=embed
     env:
       - CGO_ENABLED=0
     goos:

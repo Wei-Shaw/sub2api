@@ -220,20 +220,20 @@ cd sub2api
 cd frontend
 npm install
 npm run build
+# Output will be in ../backend/internal/web/dist/
 
-# 3. Copy frontend build to backend (for embedding)
-cp -r dist ../backend/internal/web/
-
-# 4. Build backend (requires frontend dist to be present)
+# 3. Build backend with embedded frontend
 cd ../backend
-go build -o sub2api ./cmd/server
+go build -tags embed -o sub2api ./cmd/server
 
-# 5. Create configuration file
+# 4. Create configuration file
 cp ../deploy/config.example.yaml ./config.yaml
 
-# 6. Edit configuration
+# 5. Edit configuration
 nano config.yaml
 ```
+
+> **Note:** The `-tags embed` flag embeds the frontend into the binary. Without this flag, the binary will not serve the frontend UI.
 
 **Key configuration in `config.yaml`:**
 
@@ -265,7 +265,7 @@ default:
 ```
 
 ```bash
-# 7. Run the application
+# 6. Run the application
 ./sub2api
 ```
 

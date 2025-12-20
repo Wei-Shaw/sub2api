@@ -220,20 +220,20 @@ cd sub2api
 cd frontend
 npm install
 npm run build
+# 构建产物输出到 ../backend/internal/web/dist/
 
-# 3. 复制前端构建产物到后端（用于嵌入）
-cp -r dist ../backend/internal/web/
-
-# 4. 编译后端（需要前端 dist 目录存在）
+# 3. 编译后端（嵌入前端）
 cd ../backend
-go build -o sub2api ./cmd/server
+go build -tags embed -o sub2api ./cmd/server
 
-# 5. 创建配置文件
+# 4. 创建配置文件
 cp ../deploy/config.example.yaml ./config.yaml
 
-# 6. 编辑配置
+# 5. 编辑配置
 nano config.yaml
 ```
+
+> **注意：** `-tags embed` 参数会将前端嵌入到二进制文件中。不使用此参数编译的程序将不包含前端界面。
 
 **`config.yaml` 关键配置：**
 
@@ -265,7 +265,7 @@ default:
 ```
 
 ```bash
-# 7. 运行应用
+# 6. 运行应用
 ./sub2api
 ```
 
