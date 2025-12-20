@@ -79,6 +79,7 @@ export default {
     searchPlaceholder: 'Search...',
     noOptionsFound: 'No options found',
     saving: 'Saving...',
+    refresh: 'Refresh',
   REDACTED,
 
   // Navigation

@@ -79,6 +79,7 @@ export default {
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
     saving: '保存中...',
+    refresh: '刷新',
   REDACTED,
 
   // Navigation
