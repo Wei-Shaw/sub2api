@@ -53,7 +53,6 @@ var allowedHeaders = map[string]bool{
 	"anthropic-beta":                            true,
 	"accept-language":                           true,
 	"sec-fetch-mode":                            true,
-	"accept-encoding":                           true,
 	"user-agent":                                true,
 	"content-type":                              true,
 }
