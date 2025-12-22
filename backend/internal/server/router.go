@@ -82,6 +82,7 @@ func registerRoutes(r *gin.Engine, h *handler.Handlers, s *service.Services, rep
 			{
 				user.GET("/profile", h.User.GetProfile)
 				user.PUT("/password", h.User.ChangePassword)
+				user.PUT("", h.User.UpdateProfile)
 			}
 
 			// API Key管理

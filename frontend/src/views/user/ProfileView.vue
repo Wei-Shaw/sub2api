@@ -55,11 +55,25 @@
           </div>
         </div>
         <div class="px-6 py-4">
-          <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-            <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-            </svg>
-            <span class="truncate">{{ user?.email }}</span>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+              <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+              </svg>
+              <span class="truncate">{{ user?.email }}</span>
+            </div>
+            <div v-if="user?.username" class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+              <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+              <span class="truncate">{{ user.username }}</span>
+            </div>
+            <div v-if="user?.wechat" class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+              <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+              </svg>
+              <span class="truncate">{{ user.wechat }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -78,6 +92,52 @@
               <p class="mt-1 text-sm font-medium text-primary-600 dark:text-primary-300">{{ contactInfo }}</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Edit Profile Section -->
+      <div class="card">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-dark-700">
+          <h2 class="text-lg font-medium text-gray-900 dark:text-white">{{ t('profile.editProfile') }}</h2>
+        </div>
+        <div class="px-6 py-6">
+          <form @submit.prevent="handleUpdateProfile" class="space-y-4">
+            <div>
+              <label for="username" class="input-label">
+                {{ t('profile.username') }}
+              </label>
+              <input
+                id="username"
+                v-model="profileForm.username"
+                type="text"
+                class="input"
+                :placeholder="t('profile.enterUsername')"
+              />
+            </div>
+
+            <div>
+              <label for="wechat" class="input-label">
+                {{ t('profile.wechat') }}
+              </label>
+              <input
+                id="wechat"
+                v-model="profileForm.wechat"
+                type="text"
+                class="input"
+                :placeholder="t('profile.enterWechat')"
+              />
+            </div>
+
+            <div class="flex justify-end pt-4">
+              <button
+                type="submit"
+                :disabled="updatingProfile"
+                class="btn btn-primary"
+              >
+                {{ updatingProfile ? t('profile.updating') : t('profile.updateProfile') }}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -191,13 +251,25 @@ const passwordForm = ref({
   confirm_password: ''
 })
 
+const profileForm = ref({
+  username: '',
+  wechat: ''
+})
+
 const changingPassword = ref(false)
+const updatingProfile = ref(false)
 const contactInfo = ref('')
 
 onMounted(async () => {
   try {
     const settings = await authAPI.getPublicSettings()
     contactInfo.value = settings.contact_info || ''
+
+    // Initialize profile form with current user data
+    if (user.value) {
+      profileForm.value.username = user.value.username || ''
+      profileForm.value.wechat = user.value.wechat || ''
+    }
   } catch (error) {
     console.error('Failed to load contact info:', error)
   }
@@ -248,6 +320,25 @@ const handleChangePassword = async () => {
     appStore.showError(error.response?.data?.detail || t('profile.passwordChangeFailed'))
   } finally {
     changingPassword.value = false
+  }
+}
+
+const handleUpdateProfile = async () => {
+  updatingProfile.value = true
+  try {
+    const updatedUser = await userAPI.updateProfile({
+      username: profileForm.value.username,
+      wechat: profileForm.value.wechat
+    })
+
+    // Update auth store with new user data
+    authStore.user = updatedUser
+
+    appStore.showSuccess(t('profile.updateSuccess'))
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('profile.updateFailed'))
+  } finally {
+    updatingProfile.value = false
   }
 }
 </script>

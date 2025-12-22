@@ -25,6 +25,9 @@ func NewUserHandler(adminService service.AdminService) *UserHandler {
 type CreateUserRequest struct {
 	Email         string  `json:"email" binding:"required,email"`
 	Password      string  `json:"password" binding:"required,min=6"`
+	Username      string  `json:"username"`
+	Wechat        string  `json:"wechat"`
+	Notes         string  `json:"notes"`
 	Balance       float64 `json:"balance"`
 	Concurrency   int     `json:"concurrency"`
 	AllowedGroups []int64 `json:"allowed_groups"`
@@ -35,6 +38,9 @@ type CreateUserRequest struct {
 type UpdateUserRequest struct {
 	Email         string   `json:"email" binding:"omitempty,email"`
 	Password      string   `json:"password" binding:"omitempty,min=6"`
+	Username      *string  `json:"username"`
+	Wechat        *string  `json:"wechat"`
+	Notes         *string  `json:"notes"`
 	Balance       *float64 `json:"balance"`
 	Concurrency   *int     `json:"concurrency"`
 	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
@@ -94,6 +100,9 @@ func (h *UserHandler) Create(c *gin.Context) {
 	user, err := h.adminService.CreateUser(c.Request.Context(), &service.CreateUserInput{
 		Email:         req.Email,
 		Password:      req.Password,
+		Username:      req.Username,
+		Wechat:        req.Wechat,
+		Notes:         req.Notes,
 		Balance:       req.Balance,
 		Concurrency:   req.Concurrency,
 		AllowedGroups: req.AllowedGroups,
@@ -125,6 +134,9 @@ func (h *UserHandler) Update(c *gin.Context) {
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
 		Email:         req.Email,
 		Password:      req.Password,
+		Username:      req.Username,
+		Wechat:        req.Wechat,
+		Notes:         req.Notes,
 		Balance:       req.Balance,
 		Concurrency:   req.Concurrency,
 		Status:        req.Status,

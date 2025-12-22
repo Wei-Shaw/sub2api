@@ -21,6 +21,8 @@ var (
 // UpdateProfileRequest 更新用户资料请求
 type UpdateProfileRequest struct {
 	Email       *string `json:"email"`
+	Username    *string `json:"username"`
+	Wechat      *string `json:"wechat"`
 	Concurrency *int    `json:"concurrency"`
 }
 
@@ -75,6 +77,14 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, req Updat
 			return nil, ErrEmailExists
 		}
 		user.Email = *req.Email
+	}
+
+	if req.Username != nil {
+		user.Username = *req.Username
+	}
+
+	if req.Wechat != nil {
+		user.Wechat = *req.Wechat
 	}
 
 	if req.Concurrency != nil {

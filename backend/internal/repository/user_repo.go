@@ -66,7 +66,10 @@ func (r *UserRepository) ListWithFilters(ctx context.Context, params pagination.
 	}
 	if search != "" {
 		searchPattern := "%" + search + "%"
-		db = db.Where("email ILIKE ?", searchPattern)
+		db = db.Where(
+			"email ILIKE ? OR username ILIKE ? OR wechat ILIKE ?",
+			searchPattern, searchPattern, searchPattern,
+		)
 	}
 
 	if err := db.Count(&total).Error; err != nil {

@@ -7,6 +7,8 @@
 export interface User {
   id: number;
   username: string;
+  wechat: string;
+  notes: string;
   email: string;
   role: 'admin' | 'user'; // User role for authorization
   balance: number; // User balance for API usage
@@ -561,6 +563,9 @@ export interface ApiKeyUsageTrendPoint {
 export interface UpdateUserRequest {
   email?: string;
   password?: string;
+  username?: string;
+  wechat?: string;
+  notes?: string;
   role?: 'admin' | 'user';
   balance?: number;
   concurrency?: number;
