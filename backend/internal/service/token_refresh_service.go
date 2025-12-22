@@ -27,6 +27,7 @@ REDACTED
 func NewTokenRefreshService(
 	accountRepo ports.AccountRepository,
 	oauthService *OAuthService,
+	openaiOAuthService *OpenAIOAuthService,
 	cfg *config.Config,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
@@ -38,9 +39,7 @@ REDACTED
 	// 注册平台特定的刷新器
 	s.refreshers = []TokenRefresher{
 		NewClaudeTokenRefresher(oauthService),
-		// 未来可以添加其他平台的刷新器：
-		// NewOpenAITokenRefresher(...),
-		// NewGeminiTokenRefresher(...),
+		NewOpenAITokenRefresher(openaiOAuthService),
 REDACTED
 
 	return s

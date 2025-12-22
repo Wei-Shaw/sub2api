@@ -24,11 +24,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ClaudeUpstream handles HTTP requests to Claude API
-type ClaudeUpstream interface {
-	Do(req *http.Request, proxyURL string) (*http.Response, error)
-REDACTED
-
 const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
@@ -87,7 +82,7 @@ type GatewayService struct {
 	rateLimitService    *RateLimitService
 	billingCacheService *BillingCacheService
 	identityService     *IdentityService
-	claudeUpstream      ClaudeUpstream
+	httpUpstream        ports.HTTPUpstream
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -102,7 +97,7 @@ func NewGatewayService(
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
 	identityService *IdentityService,
-	claudeUpstream ClaudeUpstream,
+	httpUpstream ports.HTTPUpstream,
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
@@ -115,7 +110,7 @@ func NewGatewayService(
 		rateLimitService:    rateLimitService,
 		billingCacheService: billingCacheService,
 		identityService:     identityService,
-		claudeUpstream:      claudeUpstream,
+		httpUpstream:        httpUpstream,
 REDACTED
 REDACTED
 
@@ -285,13 +280,13 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 	REDACTED
 REDACTED
 
-	// 2. 获取可调度账号列表（排除限流和过载的账号）
+	// 2. 获取可调度账号列表（排除限流和过载的账号，仅限 Anthropic 平台）
 	var accounts []model.Account
 	var err error
 	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, model.PlatformAnthropic)
 REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulable(ctx)
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, model.PlatformAnthropic)
 REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -407,7 +402,7 @@ REDACTED
 REDACTED
 
 	// 发送请求
-	resp, err := s.claudeUpstream.Do(upstreamReq, proxyURL)
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 REDACTED
@@ -481,7 +476,7 @@ REDACTED
 
 	// 设置认证头
 	if tokenType == "oauth" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("authorization", "Bearer "+token)
 REDACTED else {
 		req.Header.Set("x-api-key", token)
 REDACTED
@@ -502,8 +497,8 @@ REDACTED
 REDACTED
 
 	// 确保必要的headers存在
-	if req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/json")
+	if req.Header.Get("content-type") == "" {
+		req.Header.Set("content-type", "application/json")
 REDACTED
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
@@ -982,7 +977,7 @@ REDACTED
 REDACTED
 
 	// 发送请求
-	resp, err := s.claudeUpstream.Do(upstreamReq, proxyURL)
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL)
 	if err != nil {
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
@@ -1049,7 +1044,7 @@ REDACTED
 
 	// 设置认证头
 	if tokenType == "oauth" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("authorization", "Bearer "+token)
 REDACTED else {
 		req.Header.Set("x-api-key", token)
 REDACTED
@@ -1073,8 +1068,8 @@ REDACTED
 REDACTED
 
 	// 确保必要的 headers 存在
-	if req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/json")
+	if req.Header.Get("content-type") == "" {
+		req.Header.Set("content-type", "application/json")
 REDACTED
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")

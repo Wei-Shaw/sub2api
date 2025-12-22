@@ -667,6 +667,7 @@ export default {
       failedToClearRateLimit: 'Failed to clear rate limit',
       deleteConfirm: "Are you sure you want to delete '{nameREDACTED'? This action cannot be undone.",
       // Create/Edit Account Modal
+      platform: 'Platform',
       accountName: 'Account Name',
       enterAccountName: 'Enter account name',
       accountType: 'Account Type',
@@ -759,10 +760,26 @@ export default {
         cookieAuthFailed: 'Cookie authorization failed',
         keyAuthFailed: 'Key {indexREDACTED: {errorREDACTED',
         successCreated: 'Successfully created {countREDACTED account(s)',
+        // OpenAI specific
+        openai: {
+          title: 'OpenAI Account Authorization',
+          followSteps: 'Follow these steps to complete OpenAI account authorization:',
+          step1GenerateUrl: 'Click the button below to generate the authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc: 'Open the authorization URL in a new tab, log in to your OpenAI account and authorize.',
+          importantNotice: '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to <code>http://localhost...</code>, the authorization is complete.',
+          step3EnterCode: 'Enter Authorization URL or Code',
+          authCodeDesc: 'After authorization is complete, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+          authCode: 'Authorization URL or Code',
+          authCodePlaceholder: 'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
+          authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+        REDACTED,
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',
       claudeCodeAccount: 'Claude Code Account',
+      openaiAccount: 'OpenAI Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal

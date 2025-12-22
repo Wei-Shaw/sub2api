@@ -8,7 +8,7 @@
       class="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto p-2 border border-gray-200 dark:border-dark-600 rounded-lg bg-gray-50 dark:bg-dark-800"
     >
       <label
-        v-for="group in groups"
+        v-for="group in filteredGroups"
         :key="group.id"
         class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white dark:hover:bg-dark-700 cursor-pointer transition-colors"
         :title="`${group.rate_multiplierREDACTEDx rate · ${group.account_count || 0REDACTED accounts`"
@@ -29,7 +29,7 @@
         <span class="text-xs text-gray-400 shrink-0">{{ group.account_count || 0 REDACTEDREDACTED</span>
       </label>
       <div
-        v-if="groups.length === 0"
+        v-if="filteredGroups.length === 0"
         class="col-span-2 text-center text-sm text-gray-500 dark:text-gray-400 py-2"
       >
         No groups available
@@ -39,18 +39,28 @@
 </template>
 
 <script setup lang="ts">
+import { computed REDACTED from 'vue'
 import GroupBadge from './GroupBadge.vue'
-import type { Group REDACTED from '@/types'
+import type { Group, GroupPlatform REDACTED from '@/types'
 
 interface Props {
   modelValue: number[]
   groups: Group[]
+  platform?: GroupPlatform // Optional platform filter
 REDACTED
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
   'update:modelValue': [value: number[]]
 REDACTED>()
+
+// Filter groups by platform if specified
+const filteredGroups = computed(() => {
+  if (!props.platform) {
+    return props.groups
+  REDACTED
+  return props.groups.filter(g => g.platform === props.platform)
+REDACTED)
 
 const handleChange = (groupId: number, checked: boolean) => {
   const newValue = checked

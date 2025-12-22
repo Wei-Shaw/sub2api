@@ -78,10 +78,10 @@
               <span
                 :class="[
                   'w-2 h-2 rounded-full',
-                  value === 'anthropic' ? 'bg-orange-500' : 'bg-gray-400'
+                  value === 'anthropic' ? 'bg-orange-500' : value === 'openai' ? 'bg-green-500' : 'bg-gray-400'
                 ]"
               />
-              <span class="text-sm text-gray-700 dark:text-gray-300 capitalize">{{ value === 'anthropic' ? 'Anthropic' : value REDACTEDREDACTED</span>
+              <span class="text-sm text-gray-700 dark:text-gray-300 capitalize">{{ value === 'anthropic' ? 'Anthropic' : value === 'openai' ? 'OpenAI' : value REDACTEDREDACTED</span>
             </div>
           </template>
 
@@ -312,7 +312,8 @@ const columns = computed<Column[]>(() => [
 // Filter options
 const platformOptions = computed(() => [
   { value: '', label: t('admin.accounts.allPlatforms') REDACTED,
-  { value: 'anthropic', label: t('admin.accounts.platforms.anthropic') REDACTED
+  { value: 'anthropic', label: t('admin.accounts.platforms.anthropic') REDACTED,
+  { value: 'openai', label: t('admin.accounts.platforms.openai') REDACTED
 ])
 
 const typeOptions = computed(() => [
@@ -405,7 +406,8 @@ REDACTED
 
 const loadGroups = async () => {
   try {
-    groups.value = await adminAPI.groups.getByPlatform('anthropic')
+    // Load groups for all platforms to support both Anthropic and OpenAI accounts
+    groups.value = await adminAPI.groups.getAll()
   REDACTED catch (error) {
     console.error('Error loading groups:', error)
   REDACTED

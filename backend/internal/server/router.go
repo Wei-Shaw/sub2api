@@ -192,13 +192,23 @@ REDACTED)
 				accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
 				accounts.POST("/batch", h.Admin.Account.BatchCreate)
 
-				// OAuth routes
+				// Claude OAuth routes
 				accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)
 				accounts.POST("/generate-setup-token-url", h.Admin.OAuth.GenerateSetupTokenURL)
 				accounts.POST("/exchange-code", h.Admin.OAuth.ExchangeCode)
 				accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)
 				accounts.POST("/cookie-auth", h.Admin.OAuth.CookieAuth)
 				accounts.POST("/setup-token-cookie-auth", h.Admin.OAuth.SetupTokenCookieAuth)
+		REDACTED
+
+			// OpenAI OAuth routes
+			openai := admin.Group("/openai")
+			{
+				openai.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
+				openai.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
+				openai.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
+				openai.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
+				openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
 		REDACTED
 
 			// 代理管理
@@ -289,5 +299,10 @@ REDACTED
 		gateway.POST("/messages/count_tokens", h.Gateway.CountTokens)
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
+		// OpenAI Responses API
+		gateway.POST("/responses", h.OpenAIGateway.Responses)
 REDACTED
+
+	// OpenAI Responses API（不带v1前缀的别名）
+	r.POST("/responses", middleware.ApiKeyAuthWithSubscription(s.ApiKey, s.Subscription), h.OpenAIGateway.Responses)
 REDACTED

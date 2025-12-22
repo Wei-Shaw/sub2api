@@ -43,16 +43,23 @@ REDACTED
 type SessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*OAuthSession
+	stopCh   chan struct{REDACTED
 REDACTED
 
 // NewSessionStore creates a new session store
 func NewSessionStore() *SessionStore {
 	store := &SessionStore{
 		sessions: make(map[string]*OAuthSession),
+		stopCh:   make(chan struct{REDACTED),
 REDACTED
 	// Start cleanup goroutine
 	go store.cleanup()
 	return store
+REDACTED
+
+// Stop stops the cleanup goroutine
+func (s *SessionStore) Stop() {
+	close(s.stopCh)
 REDACTED
 
 // Set stores a session
@@ -87,14 +94,20 @@ REDACTED
 // cleanup removes expired sessions periodically
 func (s *SessionStore) cleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
-	for range ticker.C {
-		s.mu.Lock()
-		for id, session := range s.sessions {
-			if time.Since(session.CreatedAt) > SessionTTL {
-				delete(s.sessions, id)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.stopCh:
+			return
+		case <-ticker.C:
+			s.mu.Lock()
+			for id, session := range s.sessions {
+				if time.Since(session.CreatedAt) > SessionTTL {
+					delete(s.sessions, id)
+			REDACTED
 		REDACTED
+			s.mu.Unlock()
 	REDACTED
-		s.mu.Unlock()
 REDACTED
 REDACTED
 

@@ -284,3 +284,8 @@ REDACTED
 
 	return s.RefreshToken(ctx, refreshToken, proxyURL)
 REDACTED
+
+// Stop stops the session store cleanup goroutine
+func (s *OAuthService) Stop() {
+	s.sessionStore.Stop()
+REDACTED

@@ -757,6 +757,7 @@ export default {
       failedToDelete: '删除账号失败',
       failedToRefresh: '刷新 Cookie 失败',
       // Create/Edit Account Modal
+      platform: '平台',
       accountName: '账号名称',
       enterAccountName: '请输入账号名称',
       accountType: '账号类型',
@@ -849,10 +850,26 @@ export default {
         cookieAuthFailed: 'Cookie 授权失败',
         keyAuthFailed: '密钥 {indexREDACTED: {errorREDACTED',
         successCreated: '成功创建 {countREDACTED 个账号',
+        // OpenAI specific
+        openai: {
+          title: 'OpenAI 账户授权',
+          followSteps: '请按照以下步骤完成 OpenAI 账户的授权：',
+          step1GenerateUrl: '点击下方按钮生成授权链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '请在新标签页中打开授权链接，登录您的 OpenAI 账户并授权。',
+          importantNotice: '<strong>重要提示：</strong>授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 <code>http://localhost...</code> 开头时，表示授权已完成。',
+          step3EnterCode: '输入授权链接或 Code',
+          authCodeDesc: '授权完成后，当页面地址变为 <code>http://localhost:xxx/auth/callback?code=...</code> 时：',
+          authCode: '授权链接或 Code',
+          authCodePlaceholder: '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
+          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+        REDACTED,
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
       claudeCodeAccount: 'Claude Code 账号',
+      openaiAccount: 'OpenAI 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
