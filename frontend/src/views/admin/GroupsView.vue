@@ -60,12 +60,44 @@
           </template>
 
           <template #cell-platform="{ value REDACTED">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
-              <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-              </svg>
-              {{ value.charAt(0).toUpperCase() + value.slice(1) REDACTEDREDACTED
+            <span
+              :class="[
+                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
+                value === 'anthropic'
+                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+              ]"
+            >
+              <PlatformIcon :platform="value" size="xs" />
+              {{ value === 'anthropic' ? 'Anthropic' : 'OpenAI' REDACTEDREDACTED
             </span>
+          </template>
+
+          <template #cell-billing_type="{ row REDACTED">
+            <div class="space-y-1">
+              <!-- Type Badge -->
+              <span
+                :class="[
+                  'inline-block px-2 py-0.5 rounded-full text-xs font-medium',
+                  row.subscription_type === 'subscription'
+                    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                ]"
+              >
+                {{ row.subscription_type === 'subscription' ? t('admin.groups.subscription.subscription') : t('admin.groups.subscription.standard') REDACTEDREDACTED
+              </span>
+              <!-- Subscription Limits - compact single line -->
+              <div v-if="row.subscription_type === 'subscription'" class="text-xs text-gray-500 dark:text-gray-400">
+                <template v-if="row.daily_limit_usd || row.weekly_limit_usd || row.monthly_limit_usd">
+                  <span v-if="row.daily_limit_usd">${{ row.daily_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitDay') REDACTEDREDACTED</span>
+                  <span v-if="row.daily_limit_usd && (row.weekly_limit_usd || row.monthly_limit_usd)" class="mx-1 text-gray-300 dark:text-gray-600">·</span>
+                  <span v-if="row.weekly_limit_usd">${{ row.weekly_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitWeek') REDACTEDREDACTED</span>
+                  <span v-if="row.weekly_limit_usd && row.monthly_limit_usd" class="mx-1 text-gray-300 dark:text-gray-600">·</span>
+                  <span v-if="row.monthly_limit_usd">${{ row.monthly_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitMonth') REDACTEDREDACTED</span>
+                </template>
+                <span v-else class="text-gray-400 dark:text-gray-500">{{ t('admin.groups.subscription.noLimit') REDACTEDREDACTED</span>
+              </div>
+            </div>
           </template>
 
           <template #cell-rate_multiplier="{ value REDACTED">
@@ -186,8 +218,8 @@
           <input
             v-model.number="createForm.rate_multiplier"
             type="number"
-            step="0.1"
-            min="0.1"
+            step="0.001"
+            min="0.001"
             required
             class="input"
           />
@@ -323,15 +355,17 @@
           <Select
             v-model="editForm.platform"
             :options="platformOptions"
+            :disabled="true"
           />
+          <p class="input-hint">{{ t('admin.groups.platformNotEditable') REDACTEDREDACTED</p>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <label class="input-label">{{ t('admin.groups.form.rateMultiplier') REDACTEDREDACTED</label>
           <input
             v-model.number="editForm.rate_multiplier"
             type="number"
-            step="0.1"
-            min="0.1"
+            step="0.001"
+            min="0.001"
             required
             class="input"
           />
@@ -472,6 +506,7 @@ import Modal from '@/components/common/Modal.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -479,6 +514,7 @@ const appStore = useAppStore()
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.groups.columns.name'), sortable: true REDACTED,
   { key: 'platform', label: t('admin.groups.columns.platform'), sortable: true REDACTED,
+  { key: 'billing_type', label: t('admin.groups.columns.billingType'), sortable: true REDACTED,
   { key: 'rate_multiplier', label: t('admin.groups.columns.rateMultiplier'), sortable: true REDACTED,
   { key: 'is_exclusive', label: t('admin.groups.columns.type'), sortable: true REDACTED,
   { key: 'account_count', label: t('admin.groups.columns.accounts'), sortable: true REDACTED,

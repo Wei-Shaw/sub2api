@@ -182,6 +182,11 @@ export default {
     addBalanceWithCode: 'Add balance with a code',
   REDACTED,
 
+  // Groups (shared)
+  groups: {
+    subscription: 'Sub',
+  REDACTED,
+
   // API Keys
   keys: {
     title: 'API Keys',
@@ -515,6 +520,7 @@ export default {
         accounts: 'Accounts',
         status: 'Status',
         actions: 'Actions',
+        billingType: 'Billing Type',
       REDACTED,
       accountsCount: '{countREDACTED accounts',
       form: {
@@ -527,12 +533,16 @@ export default {
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
+      platformNotEditable: 'Platform cannot be changed after creation',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
       exclusiveHint: 'Exclusive (requires explicit user access)',
       noGroupsYet: 'No groups yet',
       createFirstGroup: 'Create your first group to organize API keys.',
       creating: 'Creating...',
       updating: 'Updating...',
+      limitDay: 'd',
+      limitWeek: 'w',
+      limitMonth: 'mo',
       groupCreated: 'Group created successfully',
       groupUpdated: 'Group updated successfully',
       groupDeleted: 'Group deleted successfully',
@@ -661,6 +671,9 @@ export default {
       tokenRefreshed: 'Token refreshed successfully',
       accountDeleted: 'Account deleted successfully',
       rateLimitCleared: 'Rate limit cleared successfully',
+      resetStatus: 'Reset Status',
+      statusReset: 'Account status reset successfully',
+      failedToResetStatus: 'Failed to reset account status',
       failedToLoad: 'Failed to load accounts',
       failedToRefresh: 'Failed to refresh token',
       failedToDelete: 'Failed to delete account',

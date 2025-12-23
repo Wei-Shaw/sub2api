@@ -182,6 +182,11 @@ export default {
     addBalanceWithCode: '使用兑换码充值',
   REDACTED,
 
+  // Groups (shared)
+  groups: {
+    subscription: '订阅',
+  REDACTED,
+
   // API Keys
   keys: {
     title: 'API 密钥',
@@ -530,13 +535,16 @@ export default {
       deleteConfirmSubscription: "确定要删除订阅分组 '{nameREDACTED' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
       columns: {
         name: '名称',
+        platform: '平台',
         rateMultiplier: '费率倍数',
         exclusive: '独占',
-        platforms: '平台',
+        type: '类型',
         priority: '优先级',
         apiKeys: 'API 密钥数',
+        accounts: '账号数',
         status: '状态',
         actions: '操作',
+        billingType: '计费类型',
       REDACTED,
       form: {
         name: '名称',
@@ -588,10 +596,14 @@ export default {
       enterGroupName: '请输入分组名称',
       optionalDescription: '可选描述',
       platformHint: '选择此分组关联的平台',
+      platformNotEditable: '创建后不可更改平台',
       noGroupsYet: '暂无分组',
       createFirstGroup: '创建您的第一个分组来组织 API 密钥。',
       creating: '创建中...',
       updating: '更新中...',
+      limitDay: '日',
+      limitWeek: '周',
+      limitMonth: '月',
       groupCreated: '分组创建成功',
       groupUpdated: '分组更新成功',
       groupDeleted: '分组删除成功',
@@ -749,6 +761,9 @@ export default {
       accountCreatedSuccess: '账号添加成功',
       accountUpdatedSuccess: '账号更新成功',
       accountDeletedSuccess: '账号删除成功',
+      resetStatus: '重置状态',
+      statusReset: '账号状态已重置',
+      failedToResetStatus: '重置账号状态失败',
       cookieRefreshedSuccess: 'Cookie 刷新成功',
       testSuccess: '账号测试通过',
       testFailed: '账号测试失败',

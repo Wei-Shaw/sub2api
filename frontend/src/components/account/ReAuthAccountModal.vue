@@ -226,6 +226,9 @@ const handleExchangeCode = async () => {
         extra
       REDACTED)
 
+      // Clear error status after successful re-authorization
+      await adminAPI.accounts.clearError(props.account.id)
+
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
       emit('reauthorized')
       handleClose()
@@ -261,6 +264,9 @@ const handleExchangeCode = async () => {
         credentials: tokenInfo,
         extra
       REDACTED)
+
+      // Clear error status after successful re-authorization
+      await adminAPI.accounts.clearError(props.account.id)
 
       appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
       emit('reauthorized')
@@ -300,6 +306,9 @@ const handleCookieAuth = async (sessionKey: string) => {
       credentials: tokenInfo,
       extra
     REDACTED)
+
+    // Clear error status after successful re-authorization
+    await adminAPI.accounts.clearError(props.account.id)
 
     appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
     emit('reauthorized')

@@ -139,6 +139,17 @@
 
           <template #cell-actions="{ row REDACTED">
             <div class="flex items-center gap-1">
+              <!-- Reset Status button for error accounts -->
+              <button
+                v-if="row.status === 'error'"
+                @click="handleResetStatus(row)"
+                class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                :title="t('admin.accounts.resetStatus')"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+              </button>
               <!-- Clear Rate Limit button -->
               <button
                 v-if="isRateLimited(row) || isOverloaded(row)"
@@ -493,6 +504,23 @@ const handleClearRateLimit = async (account: Account) => {
   REDACTED catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToClearRateLimit'))
     console.error('Error clearing rate limit:', error)
+  REDACTED
+REDACTED
+
+// Reset account status (clear error and rate limit)
+const handleResetStatus = async (account: Account) => {
+  try {
+    // Clear error status
+    await adminAPI.accounts.clearError(account.id)
+    // Also clear rate limit if exists
+    if (isRateLimited(account) || isOverloaded(account)) {
+      await adminAPI.accounts.clearRateLimit(account.id)
+    REDACTED
+    appStore.showSuccess(t('admin.accounts.statusReset'))
+    loadAccounts()
+  REDACTED catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToResetStatus'))
+    console.error('Error resetting account status:', error)
   REDACTED
 REDACTED
 
