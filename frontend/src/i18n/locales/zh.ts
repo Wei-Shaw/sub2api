@@ -93,7 +93,7 @@ export default {
     groups: '分组管理',
     subscriptions: '订阅管理',
     accounts: '账号管理',
-    proxies: '代理管理',
+    proxies: 'IP管理',
     redeemCodes: '兑换码',
     settings: '系统设置',
     myAccount: '我的账户',
@@ -1015,7 +1015,7 @@ export default {
 
     // Proxies Management
     proxies: {
-      title: '代理管理',
+      title: 'IP管理',
       description: '管理代理服务器配置',
       createProxy: '添加代理',
       editProxy: '编辑代理',
