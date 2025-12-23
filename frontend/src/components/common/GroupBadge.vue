@@ -2,40 +2,32 @@
   <span
     :class="[
       'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium transition-colors',
-      isSubscription
-        ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+      badgeClass
     ]"
   >
-    <!-- Subscription type icon (calendar) -->
-    <svg v-if="isSubscription" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-    </svg>
-    <!-- Standard type icon (wallet) -->
-    <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
-    </svg>
+    <!-- Platform logo -->
+    <PlatformIcon v-if="platform" :platform="platform" size="sm" />
+    <!-- Group name -->
     <span class="truncate">{{ name }}</span>
+    <!-- Right side label: subscription shows "订阅", standard shows rate multiplier -->
     <span
-      v-if="showRate && rateMultiplier !== undefined"
-      :class="[
-        'px-1 py-0.5 rounded text-[10px] font-semibold',
-        isSubscription
-          ? 'bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300'
-          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-      ]"
+      v-if="showRate"
+      :class="labelClass"
     >
-      {{ rateMultiplier }}x
+      {{ labelText }}
     </span>
   </span>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SubscriptionType } from '@/types'
+import { useI18n } from 'vue-i18n'
+import type { SubscriptionType, GroupPlatform } from '@/types'
+import PlatformIcon from './PlatformIcon.vue'
 
 interface Props {
   name: string
+  platform?: GroupPlatform
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   showRate?: boolean
@@ -46,5 +38,50 @@ const props = withDefaults(defineProps<Props>(), {
   showRate: true
 })
 
+const { t } = useI18n()
+
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
+
+// Label text: subscription shows localized text, standard shows rate
+const labelText = computed(() => {
+  if (isSubscription.value) {
+    return t('groups.subscription')
+  }
+  return props.rateMultiplier !== undefined ? `${props.rateMultiplier}x` : ''
+})
+
+// Label style based on type
+const labelClass = computed(() => {
+  const base = 'px-1.5 py-0.5 rounded text-[10px] font-semibold'
+  if (isSubscription.value) {
+    // Subscription: more prominent style with border
+    if (props.platform === 'anthropic') {
+      return `${base} bg-orange-200/60 text-orange-800 dark:bg-orange-800/40 dark:text-orange-300`
+    } else if (props.platform === 'openai') {
+      return `${base} bg-emerald-200/60 text-emerald-800 dark:bg-emerald-800/40 dark:text-emerald-300`
+    }
+    return `${base} bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
+  }
+  // Standard: subtle background
+  return `${base} bg-black/10 dark:bg-white/10`
+})
+
+// Badge color based on platform and subscription type
+const badgeClass = computed(() => {
+  if (props.platform === 'anthropic') {
+    // Claude: orange theme
+    return isSubscription.value
+      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+      : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+  } else if (props.platform === 'openai') {
+    // OpenAI: green theme
+    return isSubscription.value
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+      : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+  }
+  // Fallback: original colors
+  return isSubscription.value
+    ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
+    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+})
 </script>

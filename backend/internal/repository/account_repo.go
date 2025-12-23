@@ -222,6 +222,38 @@ func (r *AccountRepository) ListSchedulableByGroupID(ctx context.Context, groupI
 	return accounts, err
 }
 
+// ListSchedulableByPlatform 按平台获取可调度的账号
+func (r *AccountRepository) ListSchedulableByPlatform(ctx context.Context, platform string) ([]model.Account, error) {
+	var accounts []model.Account
+	now := time.Now()
+	err := r.db.WithContext(ctx).
+		Where("platform = ?", platform).
+		Where("status = ? AND schedulable = ?", model.StatusActive, true).
+		Where("(overload_until IS NULL OR overload_until <= ?)", now).
+		Where("(rate_limit_reset_at IS NULL OR rate_limit_reset_at <= ?)", now).
+		Preload("Proxy").
+		Order("priority ASC").
+		Find(&accounts).Error
+	return accounts, err
+}
+
+// ListSchedulableByGroupIDAndPlatform 按组和平台获取可调度的账号
+func (r *AccountRepository) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]model.Account, error) {
+	var accounts []model.Account
+	now := time.Now()
+	err := r.db.WithContext(ctx).
+		Joins("JOIN account_groups ON account_groups.account_id = accounts.id").
+		Where("account_groups.group_id = ?", groupID).
+		Where("accounts.platform = ?", platform).
+		Where("accounts.status = ? AND accounts.schedulable = ?", model.StatusActive, true).
+		Where("(accounts.overload_until IS NULL OR accounts.overload_until <= ?)", now).
+		Where("(accounts.rate_limit_reset_at IS NULL OR accounts.rate_limit_reset_at <= ?)", now).
+		Preload("Proxy").
+		Order("account_groups.priority ASC, accounts.priority ASC").
+		Find(&accounts).Error
+	return accounts, err
+}
+
 // SetRateLimited 标记账号为限流状态(429)
 func (r *AccountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	now := time.Now()

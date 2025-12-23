@@ -13,24 +13,18 @@ import (
 	"sub2api/internal/middleware"
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/claude"
+	"sub2api/internal/pkg/openai"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
-)
-
-const (
-	// Maximum wait time for concurrency slot
-	maxConcurrencyWait = 60 * time.Second
-	// Ping interval during wait
-	pingInterval = 5 * time.Second
 )
 
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
 	gatewayService      *service.GatewayService
 	userService         *service.UserService
-	concurrencyService  *service.ConcurrencyService
 	billingCacheService *service.BillingCacheService
+	concurrencyHelper   *ConcurrencyHelper
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -38,8 +32,8 @@ func NewGatewayHandler(gatewayService *service.GatewayService, userService *serv
 	return &GatewayHandler{
 		gatewayService:      gatewayService,
 		userService:         userService,
-		concurrencyService:  concurrencyService,
 		billingCacheService: billingCacheService,
+		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude),
 	}
 }
 
@@ -89,7 +83,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 0. 检查wait队列是否已满
 	maxWait := service.CalculateMaxWait(user.Concurrency)
-	canWait, err := h.concurrencyService.IncrementWaitCount(c.Request.Context(), user.ID, maxWait)
+	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), user.ID, maxWait)
 	if err != nil {
 		log.Printf("Increment wait count failed: %v", err)
 		// On error, allow request to proceed
@@ -98,10 +92,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	// 确保在函数退出时减少wait计数
-	defer h.concurrencyService.DecrementWaitCount(c.Request.Context(), user.ID)
+	defer h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), user.ID)
 
 	// 1. 首先获取用户并发槽位
-	userReleaseFunc, err := h.acquireUserSlotWithWait(c, user, req.Stream, &streamStarted)
+	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, user, req.Stream, &streamStarted)
 	if err != nil {
 		log.Printf("User concurrency acquire failed: %v", err)
 		h.handleConcurrencyError(c, err, "user", streamStarted)
@@ -139,7 +133,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 3. 获取账号并发槽位
-	accountReleaseFunc, err := h.acquireAccountSlotWithWait(c, account, req.Stream, &streamStarted)
+	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account, req.Stream, &streamStarted)
 	if err != nil {
 		log.Printf("Account concurrency acquire failed: %v", err)
 		h.handleConcurrencyError(c, err, "account", streamStarted)
@@ -173,135 +167,25 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}()
 }
 
-// acquireUserSlotWithWait acquires a user concurrency slot, waiting if necessary
-// For streaming requests, sends ping events during the wait
-// streamStarted is updated if streaming response has begun
-func (h *GatewayHandler) acquireUserSlotWithWait(c *gin.Context, user *model.User, isStream bool, streamStarted *bool) (func(), error) {
-	ctx := c.Request.Context()
-
-	// Try to acquire immediately
-	result, err := h.concurrencyService.AcquireUserSlot(ctx, user.ID, user.Concurrency)
-	if err != nil {
-		return nil, err
-	}
-
-	if result.Acquired {
-		return result.ReleaseFunc, nil
-	}
-
-	// Need to wait - handle streaming ping if needed
-	return h.waitForSlotWithPing(c, "user", user.ID, user.Concurrency, isStream, streamStarted)
-}
-
-// acquireAccountSlotWithWait acquires an account concurrency slot, waiting if necessary
-// For streaming requests, sends ping events during the wait
-// streamStarted is updated if streaming response has begun
-func (h *GatewayHandler) acquireAccountSlotWithWait(c *gin.Context, account *model.Account, isStream bool, streamStarted *bool) (func(), error) {
-	ctx := c.Request.Context()
-
-	// Try to acquire immediately
-	result, err := h.concurrencyService.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
-	if err != nil {
-		return nil, err
-	}
-
-	if result.Acquired {
-		return result.ReleaseFunc, nil
-	}
-
-	// Need to wait - handle streaming ping if needed
-	return h.waitForSlotWithPing(c, "account", account.ID, account.Concurrency, isStream, streamStarted)
-}
-
-// concurrencyError represents a concurrency limit error with context
-type concurrencyError struct {
-	SlotType  string
-	IsTimeout bool
-}
-
-func (e *concurrencyError) Error() string {
-	if e.IsTimeout {
-		return fmt.Sprintf("timeout waiting for %s concurrency slot", e.SlotType)
-	}
-	return fmt.Sprintf("%s concurrency limit reached", e.SlotType)
-}
-
-// waitForSlotWithPing waits for a concurrency slot, sending ping events for streaming requests
-// Note: For streaming requests, we send ping to keep the connection alive.
-// streamStarted pointer is updated when streaming begins (for proper error handling by caller)
-func (h *GatewayHandler) waitForSlotWithPing(c *gin.Context, slotType string, id int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), maxConcurrencyWait)
-	defer cancel()
-
-	// For streaming requests, set up SSE headers for ping
-	var flusher http.Flusher
-	if isStream {
-		var ok bool
-		flusher, ok = c.Writer.(http.Flusher)
-		if !ok {
-			return nil, fmt.Errorf("streaming not supported")
-		}
-	}
-
-	pingTicker := time.NewTicker(pingInterval)
-	defer pingTicker.Stop()
-
-	pollTicker := time.NewTicker(100 * time.Millisecond)
-	defer pollTicker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, &concurrencyError{
-				SlotType:  slotType,
-				IsTimeout: true,
-			}
-
-		case <-pingTicker.C:
-			// Send ping for streaming requests to keep connection alive
-			if isStream && flusher != nil {
-				// Set headers on first ping (lazy initialization)
-				if !*streamStarted {
-					c.Header("Content-Type", "text/event-stream")
-					c.Header("Cache-Control", "no-cache")
-					c.Header("Connection", "keep-alive")
-					c.Header("X-Accel-Buffering", "no")
-					*streamStarted = true
-				}
-				if _, err := fmt.Fprintf(c.Writer, "data: {\"type\": \"ping\"}\n\n"); err != nil {
-					return nil, err
-				}
-				flusher.Flush()
-			}
-
-		case <-pollTicker.C:
-			// Try to acquire slot
-			var result *service.AcquireResult
-			var err error
-
-			if slotType == "user" {
-				result, err = h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
-			} else {
-				result, err = h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
-			}
-
-			if err != nil {
-				return nil, err
-			}
-
-			if result.Acquired {
-				return result.ReleaseFunc, nil
-			}
-		}
-	}
-}
-
 // Models handles listing available models
 // GET /v1/models
+// Returns different model lists based on the API key's group platform
 func (h *GatewayHandler) Models(c *gin.Context) {
+	apiKey, _ := middleware.GetApiKeyFromContext(c)
+
+	// Return OpenAI models for OpenAI platform groups
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == "openai" {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   openai.DefaultModels,
+		})
+		return
+	}
+
+	// Default: Claude models
 	c.JSON(http.StatusOK, gin.H{
-		"data":   claude.DefaultModels,
 		"object": "list",
+		"data":   claude.DefaultModels,
 	})
 }
 

@@ -1,7 +1,7 @@
 <template>
-  <div v-if="account.type === 'oauth' || account.type === 'setup-token'">
-    <!-- OAuth accounts: fetch real usage data -->
-    <template v-if="account.type === 'oauth'">
+  <div v-if="showUsageWindows">
+    <!-- Anthropic OAuth accounts: fetch real usage data -->
+    <template v-if="account.platform === 'anthropic' && account.type === 'oauth'">
       <!-- Loading state -->
       <div v-if="loading" class="space-y-1.5">
         <div class="flex items-center gap-1">
@@ -63,20 +63,25 @@
       </div>
     </template>
 
-    <!-- Setup Token accounts: show time-based window progress -->
-    <template v-else-if="account.type === 'setup-token'">
+    <!-- Anthropic Setup Token accounts: show time-based window progress -->
+    <template v-else-if="account.platform === 'anthropic' && account.type === 'setup-token'">
       <SetupTokenTimeWindow :account="account" />
+    </template>
+
+    <!-- OpenAI accounts: no usage window API, show dash -->
+    <template v-else>
+      <div class="text-xs text-gray-400">-</div>
     </template>
   </div>
 
-  <!-- Non-OAuth accounts -->
+  <!-- Non-OAuth/Setup-Token accounts -->
   <div v-else class="text-xs text-gray-400">
     -
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo } from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
@@ -90,9 +95,15 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
 
+// Show usage windows for OAuth and Setup Token accounts
+const showUsageWindows = computed(() =>
+  props.account.type === 'oauth' || props.account.type === 'setup-token'
+)
+
 const loadUsage = async () => {
-  // Only fetch usage for OAuth accounts (Setup Token uses local time-based calculation)
-  if (props.account.type !== 'oauth') return
+  // Only fetch usage for Anthropic OAuth accounts
+  // OpenAI doesn't have a usage window API - usage is updated from response headers during forwarding
+  if (props.account.platform !== 'anthropic' || props.account.type !== 'oauth') return
 
   loading.value = true
   error.value = null

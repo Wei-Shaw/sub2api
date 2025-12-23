@@ -88,3 +88,54 @@ func (r *ClaudeTokenRefresher) Refresh(ctx context.Context, account *model.Accou
 
 	return newCredentials, nil
 }
+
+// OpenAITokenRefresher 处理 OpenAI OAuth token刷新
+type OpenAITokenRefresher struct {
+	openaiOAuthService *OpenAIOAuthService
+}
+
+// NewOpenAITokenRefresher 创建 OpenAI token刷新器
+func NewOpenAITokenRefresher(openaiOAuthService *OpenAIOAuthService) *OpenAITokenRefresher {
+	return &OpenAITokenRefresher{
+		openaiOAuthService: openaiOAuthService,
+	}
+}
+
+// CanRefresh 检查是否能处理此账号
+// 只处理 openai 平台的 oauth 类型账号
+func (r *OpenAITokenRefresher) CanRefresh(account *model.Account) bool {
+	return account.Platform == model.PlatformOpenAI &&
+		account.Type == model.AccountTypeOAuth
+}
+
+// NeedsRefresh 检查token是否需要刷新
+// 基于 expires_at 字段判断是否在刷新窗口内
+func (r *OpenAITokenRefresher) NeedsRefresh(account *model.Account, refreshWindow time.Duration) bool {
+	expiresAt := account.GetOpenAITokenExpiresAt()
+	if expiresAt == nil {
+		return false
+	}
+
+	return time.Until(*expiresAt) < refreshWindow
+}
+
+// Refresh 执行token刷新
+// 保留原有credentials中的所有字段，只更新token相关字段
+func (r *OpenAITokenRefresher) Refresh(ctx context.Context, account *model.Account) (map[string]any, error) {
+	tokenInfo, err := r.openaiOAuthService.RefreshAccountToken(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+
+	// 使用服务提供的方法构建新凭证，并保留原有字段
+	newCredentials := r.openaiOAuthService.BuildAccountCredentials(tokenInfo)
+
+	// 保留原有credentials中非token相关字段
+	for k, v := range account.Credentials {
+		if _, exists := newCredentials[k]; !exists {
+			newCredentials[k] = v
+		}
+	}
+
+	return newCredentials, nil
+}

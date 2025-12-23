@@ -27,6 +27,8 @@ type AccountRepository interface {
 
 	ListSchedulable(ctx context.Context) ([]model.Account, error)
 	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]model.Account, error)
+	ListSchedulableByPlatform(ctx context.Context, platform string) ([]model.Account, error)
+	ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]model.Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error

@@ -182,6 +182,11 @@ export default {
     addBalanceWithCode: '使用兑换码充值',
   },
 
+  // Groups (shared)
+  groups: {
+    subscription: '订阅',
+  },
+
   // API Keys
   keys: {
     title: 'API 密钥',
@@ -591,13 +596,16 @@ export default {
       deleteConfirmSubscription: "确定要删除订阅分组 '{name}' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
       columns: {
         name: '名称',
+        platform: '平台',
         rateMultiplier: '费率倍数',
         exclusive: '独占',
-        platforms: '平台',
+        type: '类型',
         priority: '优先级',
         apiKeys: 'API 密钥数',
+        accounts: '账号数',
         status: '状态',
         actions: '操作',
+        billingType: '计费类型',
       },
       form: {
         name: '名称',
@@ -649,10 +657,14 @@ export default {
       enterGroupName: '请输入分组名称',
       optionalDescription: '可选描述',
       platformHint: '选择此分组关联的平台',
+      platformNotEditable: '创建后不可更改平台',
       noGroupsYet: '暂无分组',
       createFirstGroup: '创建您的第一个分组来组织 API 密钥。',
       creating: '创建中...',
       updating: '更新中...',
+      limitDay: '日',
+      limitWeek: '周',
+      limitMonth: '月',
       groupCreated: '分组创建成功',
       groupUpdated: '分组更新成功',
       groupDeleted: '分组删除成功',
@@ -687,6 +699,10 @@ export default {
       weekly: '每周',
       monthly: '每月',
       noLimits: '未配置限额',
+      resetNow: '即将重置',
+      resetInMinutes: '{minutes} 分钟后重置',
+      resetInHoursMinutes: '{hours} 小时 {minutes} 分钟后重置',
+      resetInDaysHours: '{days} 天 {hours} 小时后重置',
       daysRemaining: '天剩余',
       noExpiration: '无过期时间',
       status: {
@@ -810,6 +826,9 @@ export default {
       accountCreatedSuccess: '账号添加成功',
       accountUpdatedSuccess: '账号更新成功',
       accountDeletedSuccess: '账号删除成功',
+      resetStatus: '重置状态',
+      statusReset: '账号状态已重置',
+      failedToResetStatus: '重置账号状态失败',
       cookieRefreshedSuccess: 'Cookie 刷新成功',
       testSuccess: '账号测试通过',
       testFailed: '账号测试失败',
@@ -818,6 +837,7 @@ export default {
       failedToDelete: '删除账号失败',
       failedToRefresh: '刷新 Cookie 失败',
       // Create/Edit Account Modal
+      platform: '平台',
       accountName: '账号名称',
       enterAccountName: '请输入账号名称',
       accountType: '账号类型',
@@ -910,10 +930,26 @@ export default {
         cookieAuthFailed: 'Cookie 授权失败',
         keyAuthFailed: '密钥 {index}: {error}',
         successCreated: '成功创建 {count} 个账号',
+        // OpenAI specific
+        openai: {
+          title: 'OpenAI 账户授权',
+          followSteps: '请按照以下步骤完成 OpenAI 账户的授权：',
+          step1GenerateUrl: '点击下方按钮生成授权链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '请在新标签页中打开授权链接，登录您的 OpenAI 账户并授权。',
+          importantNotice: '<strong>重要提示：</strong>授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 <code>http://localhost...</code> 开头时，表示授权已完成。',
+          step3EnterCode: '输入授权链接或 Code',
+          authCodeDesc: '授权完成后，当页面地址变为 <code>http://localhost:xxx/auth/callback?code=...</code> 时：',
+          authCode: '授权链接或 Code',
+          authCodePlaceholder: '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
+          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+        },
       },
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
       claudeCodeAccount: 'Claude Code 账号',
+      openaiAccount: 'OpenAI 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal

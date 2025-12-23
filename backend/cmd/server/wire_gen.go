@@ -76,13 +76,16 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	groupHandler := admin.NewGroupHandler(adminService)
 	claudeOAuthClient := repository.NewClaudeOAuthClient()
 	oAuthService := service.NewOAuthService(proxyRepository, claudeOAuthClient)
+	openAIOAuthClient := repository.NewOpenAIOAuthClient()
+	openAIOAuthService := service.NewOpenAIOAuthService(proxyRepository, openAIOAuthClient)
 	rateLimitService := service.NewRateLimitService(accountRepository, configConfig)
 	claudeUsageFetcher := repository.NewClaudeUsageFetcher()
 	accountUsageService := service.NewAccountUsageService(accountRepository, usageLogRepository, claudeUsageFetcher)
-	claudeUpstream := repository.NewClaudeUpstream(configConfig)
-	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, claudeUpstream)
-	accountHandler := admin.NewAccountHandler(adminService, oAuthService, rateLimitService, accountUsageService, accountTestService)
+	httpUpstream := repository.NewHTTPUpstream(configConfig)
+	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, openAIOAuthService, httpUpstream)
+	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, rateLimitService, accountUsageService, accountTestService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService)
+	openAIOAuthHandler := admin.NewOpenAIOAuthHandler(openAIOAuthService, adminService)
 	proxyHandler := admin.NewProxyHandler(adminService)
 	adminRedeemHandler := admin.NewRedeemHandler(adminService)
 	settingHandler := admin.NewSettingHandler(settingService, emailService)
@@ -93,7 +96,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	systemHandler := handler.ProvideSystemHandler(updateService)
 	adminSubscriptionHandler := admin.NewSubscriptionHandler(subscriptionService)
 	adminUsageHandler := admin.NewUsageHandler(usageLogRepository, apiKeyRepository, usageService, adminService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, openAIOAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler)
 	gatewayCache := repository.NewGatewayCache(client)
 	pricingRemoteClient := repository.NewPricingRemoteClient()
 	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
@@ -103,43 +106,47 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	billingService := service.NewBillingService(configConfig, pricingService)
 	identityCache := repository.NewIdentityCache(client)
 	identityService := service.NewIdentityService(identityCache)
-	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, billingService, rateLimitService, billingCacheService, identityService, claudeUpstream)
+	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, billingService, rateLimitService, billingCacheService, identityService, httpUpstream)
 	concurrencyCache := repository.NewConcurrencyCache(client)
 	concurrencyService := service.NewConcurrencyService(concurrencyCache)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, userService, concurrencyService, billingCacheService)
+	openAIGatewayService := service.NewOpenAIGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, billingService, rateLimitService, billingCacheService, httpUpstream)
+	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, userService, concurrencyService, billingCacheService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, handlerSettingHandler)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler)
 	groupService := service.NewGroupService(groupRepository)
 	accountService := service.NewAccountService(accountRepository, groupRepository)
 	proxyService := service.NewProxyService(proxyRepository)
-	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, configConfig)
+	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, openAIOAuthService, configConfig)
 	services := &service.Services{
-		Auth:         authService,
-		User:         userService,
-		ApiKey:       apiKeyService,
-		Group:        groupService,
-		Account:      accountService,
-		Proxy:        proxyService,
-		Redeem:       redeemService,
-		Usage:        usageService,
-		Pricing:      pricingService,
-		Billing:      billingService,
-		BillingCache: billingCacheService,
-		Admin:        adminService,
-		Gateway:      gatewayService,
-		OAuth:        oAuthService,
-		RateLimit:    rateLimitService,
-		AccountUsage: accountUsageService,
-		AccountTest:  accountTestService,
-		Setting:      settingService,
-		Email:        emailService,
-		EmailQueue:   emailQueueService,
-		Turnstile:    turnstileService,
-		Subscription: subscriptionService,
-		Concurrency:  concurrencyService,
-		Identity:     identityService,
-		Update:       updateService,
-		TokenRefresh: tokenRefreshService,
+		Auth:          authService,
+		User:          userService,
+		ApiKey:        apiKeyService,
+		Group:         groupService,
+		Account:       accountService,
+		Proxy:         proxyService,
+		Redeem:        redeemService,
+		Usage:         usageService,
+		Pricing:       pricingService,
+		Billing:       billingService,
+		BillingCache:  billingCacheService,
+		Admin:         adminService,
+		Gateway:       gatewayService,
+		OpenAIGateway: openAIGatewayService,
+		OAuth:         oAuthService,
+		OpenAIOAuth:   openAIOAuthService,
+		RateLimit:     rateLimitService,
+		AccountUsage:  accountUsageService,
+		AccountTest:   accountTestService,
+		Setting:       settingService,
+		Email:         emailService,
+		EmailQueue:    emailQueueService,
+		Turnstile:     turnstileService,
+		Subscription:  subscriptionService,
+		Concurrency:   concurrencyService,
+		Identity:      identityService,
+		Update:        updateService,
+		TokenRefresh:  tokenRefreshService,
 	}
 	repositories := &repository.Repositories{
 		User:             userRepository,
@@ -199,6 +206,14 @@ func provideCleanup(
 			}},
 			{"EmailQueueService", func() error {
 				services.EmailQueue.Stop()
+				return nil
+			}},
+			{"OAuthService", func() error {
+				services.OAuth.Stop()
+				return nil
+			}},
+			{"OpenAIOAuthService", func() error {
+				services.OpenAIOAuth.Stop()
 				return nil
 			}},
 			{"Redis", func() error {

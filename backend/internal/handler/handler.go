@@ -11,6 +11,7 @@ type AdminHandlers struct {
 	Group        *admin.GroupHandler
 	Account      *admin.AccountHandler
 	OAuth        *admin.OAuthHandler
+	OpenAIOAuth  *admin.OpenAIOAuthHandler
 	Proxy        *admin.ProxyHandler
 	Redeem       *admin.RedeemHandler
 	Setting      *admin.SettingHandler
@@ -21,15 +22,16 @@ type AdminHandlers struct {
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	Auth         *AuthHandler
-	User         *UserHandler
-	APIKey       *APIKeyHandler
-	Usage        *UsageHandler
-	Redeem       *RedeemHandler
-	Subscription *SubscriptionHandler
-	Admin        *AdminHandlers
-	Gateway      *GatewayHandler
-	Setting      *SettingHandler
+	Auth          *AuthHandler
+	User          *UserHandler
+	APIKey        *APIKeyHandler
+	Usage         *UsageHandler
+	Redeem        *RedeemHandler
+	Subscription  *SubscriptionHandler
+	Admin         *AdminHandlers
+	Gateway       *GatewayHandler
+	OpenAIGateway *OpenAIGatewayHandler
+	Setting       *SettingHandler
 }
 
 // BuildInfo contains build-time information

@@ -6,15 +6,18 @@ import (
 	"time"
 
 	"sub2api/internal/config"
-	"sub2api/internal/service"
+	"sub2api/internal/service/ports"
 )
 
-type claudeUpstreamService struct {
+// httpUpstreamService is a generic HTTP upstream service that can be used for
+// making requests to any HTTP API (Claude, OpenAI, etc.) with optional proxy support.
+type httpUpstreamService struct {
 	defaultClient *http.Client
 	cfg           *config.Config
 }
 
-func NewClaudeUpstream(cfg *config.Config) service.ClaudeUpstream {
+// NewHTTPUpstream creates a new generic HTTP upstream service
+func NewHTTPUpstream(cfg *config.Config) ports.HTTPUpstream {
 	responseHeaderTimeout := time.Duration(cfg.Gateway.ResponseHeaderTimeout) * time.Second
 	if responseHeaderTimeout == 0 {
 		responseHeaderTimeout = 300 * time.Second
@@ -27,13 +30,13 @@ func NewClaudeUpstream(cfg *config.Config) service.ClaudeUpstream {
 		ResponseHeaderTimeout: responseHeaderTimeout,
 	}
 
-	return &claudeUpstreamService{
+	return &httpUpstreamService{
 		defaultClient: &http.Client{Transport: transport},
 		cfg:           cfg,
 	}
 }
 
-func (s *claudeUpstreamService) Do(req *http.Request, proxyURL string) (*http.Response, error) {
+func (s *httpUpstreamService) Do(req *http.Request, proxyURL string) (*http.Response, error) {
 	if proxyURL == "" {
 		return s.defaultClient.Do(req)
 	}
@@ -41,7 +44,7 @@ func (s *claudeUpstreamService) Do(req *http.Request, proxyURL string) (*http.Re
 	return client.Do(req)
 }
 
-func (s *claudeUpstreamService) createProxyClient(proxyURL string) *http.Client {
+func (s *httpUpstreamService) createProxyClient(proxyURL string) *http.Client {
 	parsedURL, err := url.Parse(proxyURL)
 	if err != nil {
 		return s.defaultClient

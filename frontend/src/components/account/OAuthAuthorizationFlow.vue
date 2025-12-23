@@ -7,10 +7,10 @@
         </svg>
       </div>
       <div class="flex-1">
-        <h4 class="mb-3 font-semibold text-blue-900 dark:text-blue-200">{{ t('admin.accounts.oauth.title') }}</h4>
+        <h4 class="mb-3 font-semibold text-blue-900 dark:text-blue-200">{{ oauthTitle }}</h4>
 
         <!-- Auth Method Selection -->
-        <div class="mb-4">
+        <div v-if="showCookieOption" class="mb-4">
           <label class="mb-2 block text-sm font-medium text-blue-800 dark:text-blue-300">
             {{ methodLabel }}
           </label>
@@ -132,7 +132,7 @@
         <!-- Manual Authorization Flow -->
         <div v-else class="space-y-4">
           <p class="mb-4 text-sm text-blue-800 dark:text-blue-300">
-            {{ t('admin.accounts.oauth.followSteps') }}
+            {{ oauthFollowSteps }}
           </p>
 
           <!-- Step 1: Generate Auth URL -->
@@ -143,7 +143,7 @@
               </div>
               <div class="flex-1">
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
-                  {{ t('admin.accounts.oauth.step1GenerateUrl') }}
+                  {{ oauthStep1GenerateUrl }}
                 </p>
                 <button
                   v-if="!authUrl"
@@ -159,7 +159,7 @@
                   <svg v-else class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
                   </svg>
-                  {{ loading ? t('admin.accounts.oauth.generating') : t('admin.accounts.oauth.generateAuthUrl') }}
+                  {{ loading ? t('admin.accounts.oauth.generating') : oauthGenerateAuthUrl }}
                 </button>
                 <div v-else class="space-y-3">
                   <div class="flex items-center gap-2">
@@ -206,12 +206,18 @@
               </div>
               <div class="flex-1">
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
-                  {{ t('admin.accounts.oauth.step2OpenUrl') }}
+                  {{ oauthStep2OpenUrl }}
                 </p>
                 <p class="text-sm text-blue-700 dark:text-blue-300">
-                  {{ t('admin.accounts.oauth.openUrlDesc') }}
+                  {{ oauthOpenUrlDesc }}
                 </p>
-                <div v-if="showProxyWarning" class="mt-2 rounded border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/30 p-3">
+                <!-- OpenAI Important Notice -->
+                <div v-if="isOpenAI" class="mt-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 p-3">
+                  <p class="text-xs text-amber-800 dark:text-amber-300" v-html="oauthImportantNotice">
+                  </p>
+                </div>
+                <!-- Proxy Warning (for non-OpenAI) -->
+                <div v-else-if="showProxyWarning" class="mt-2 rounded border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/30 p-3">
                   <p class="text-xs text-yellow-800 dark:text-yellow-300" v-html="t('admin.accounts.oauth.proxyWarning')">
                   </p>
                 </div>
@@ -227,28 +233,28 @@
               </div>
               <div class="flex-1">
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
-                  {{ t('admin.accounts.oauth.step3EnterCode') }}
+                  {{ oauthStep3EnterCode }}
                 </p>
-                <p class="mb-3 text-sm text-blue-700 dark:text-blue-300" v-html="t('admin.accounts.oauth.authCodeDesc')">
+                <p class="mb-3 text-sm text-blue-700 dark:text-blue-300" v-html="oauthAuthCodeDesc">
                 </p>
                 <div>
                   <label class="input-label">
                     <svg class="w-4 h-4 inline mr-1 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
                     </svg>
-                    {{ t('admin.accounts.oauth.authCode') }}
+                    {{ oauthAuthCode }}
                   </label>
                   <textarea
                     v-model="authCodeInput"
                     rows="3"
                     class="input w-full font-mono text-sm resize-none"
-                    :placeholder="t('admin.accounts.oauth.authCodePlaceholder')"
+                    :placeholder="oauthAuthCodePlaceholder"
                   ></textarea>
                   <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                     <svg class="w-3 h-3 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
                     </svg>
-                    {{ t('admin.accounts.oauth.authCodeHint') }}
+                    {{ oauthAuthCodeHint }}
                   </p>
                 </div>
 
@@ -286,6 +292,8 @@ interface Props {
   showProxyWarning?: boolean
   allowMultiple?: boolean
   methodLabel?: string
+  showCookieOption?: boolean // Whether to show cookie auto-auth option
+  platform?: 'anthropic' | 'openai' // Platform type for different UI/text
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -296,7 +304,9 @@ const props = withDefaults(defineProps<Props>(), {
   showHelp: true,
   showProxyWarning: true,
   allowMultiple: false,
-  methodLabel: 'Authorization Method'
+  methodLabel: 'Authorization Method',
+  showCookieOption: true,
+  platform: 'anthropic'
 })
 
 const emit = defineEmits<{
@@ -308,8 +318,35 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+// Platform-specific translation helpers
+const isOpenAI = computed(() => props.platform === 'openai')
+
+// Get translation key based on platform
+const getOAuthKey = (key: string) => {
+  if (isOpenAI.value) {
+    // Try OpenAI-specific key first
+    const openaiKey = `admin.accounts.oauth.openai.${key}`
+    return openaiKey
+  }
+  return `admin.accounts.oauth.${key}`
+}
+
+// Computed translations for current platform
+const oauthTitle = computed(() => t(getOAuthKey('title')))
+const oauthFollowSteps = computed(() => t(getOAuthKey('followSteps')))
+const oauthStep1GenerateUrl = computed(() => t(getOAuthKey('step1GenerateUrl')))
+const oauthGenerateAuthUrl = computed(() => t(getOAuthKey('generateAuthUrl')))
+const oauthStep2OpenUrl = computed(() => t(getOAuthKey('step2OpenUrl')))
+const oauthOpenUrlDesc = computed(() => t(getOAuthKey('openUrlDesc')))
+const oauthStep3EnterCode = computed(() => t(getOAuthKey('step3EnterCode')))
+const oauthAuthCodeDesc = computed(() => t(getOAuthKey('authCodeDesc')))
+const oauthAuthCode = computed(() => t(getOAuthKey('authCode')))
+const oauthAuthCodePlaceholder = computed(() => t(getOAuthKey('authCodePlaceholder')))
+const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
+const oauthImportantNotice = computed(() => isOpenAI.value ? t('admin.accounts.oauth.openai.importantNotice') : '')
+
 // Local state
-const inputMethod = ref<AuthInputMethod>('manual')
+const inputMethod = ref<AuthInputMethod>(props.showCookieOption ? 'manual' : 'manual')
 const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const showHelpDialog = ref(false)
@@ -325,6 +362,32 @@ const parsedKeyCount = computed(() => {
 // Watchers
 watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
+})
+
+// Auto-extract code from OpenAI callback URL
+// e.g., http://localhost:1455/auth/callback?code=ac_xxx...&scope=...&state=...
+watch(authCodeInput, (newVal) => {
+  if (!isOpenAI.value) return
+
+  const trimmed = newVal.trim()
+  // Check if it looks like a URL with code parameter
+  if (trimmed.includes('?') && trimmed.includes('code=')) {
+    try {
+      // Try to parse as URL
+      const url = new URL(trimmed)
+      const code = url.searchParams.get('code')
+      if (code && code !== trimmed) {
+        // Replace the input with just the code
+        authCodeInput.value = code
+      }
+    } catch {
+      // If URL parsing fails, try regex extraction
+      const match = trimmed.match(/[?&]code=([^&]+)/)
+      if (match && match[1] && match[1] !== trimmed) {
+        authCodeInput.value = match[1]
+      }
+    }
+  }
 })
 
 // Methods

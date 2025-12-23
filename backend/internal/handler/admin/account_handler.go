@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"sub2api/internal/pkg/claude"
+	"sub2api/internal/pkg/openai"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/service"
 
@@ -26,16 +27,18 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 type AccountHandler struct {
 	adminService        service.AdminService
 	oauthService        *service.OAuthService
+	openaiOAuthService  *service.OpenAIOAuthService
 	rateLimitService    *service.RateLimitService
 	accountUsageService *service.AccountUsageService
 	accountTestService  *service.AccountTestService
 }
 
 // NewAccountHandler creates a new admin account handler
-func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService) *AccountHandler {
+func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, openaiOAuthService *service.OpenAIOAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService) *AccountHandler {
 	return &AccountHandler{
 		adminService:        adminService,
 		oauthService:        oauthService,
+		openaiOAuthService:  openaiOAuthService,
 		rateLimitService:    rateLimitService,
 		accountUsageService: accountUsageService,
 		accountTestService:  accountTestService,
@@ -232,26 +235,47 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	// Use OAuth service to refresh token
-	tokenInfo, err := h.oauthService.RefreshAccountToken(c.Request.Context(), account)
-	if err != nil {
-		response.InternalError(c, "Failed to refresh credentials: "+err.Error())
-		return
-	}
+	var newCredentials map[string]any
 
-	// Copy existing credentials to preserve non-token settings (e.g., intercept_warmup_requests)
-	newCredentials := make(map[string]any)
-	for k, v := range account.Credentials {
-		newCredentials[k] = v
-	}
+	if account.IsOpenAI() {
+		// Use OpenAI OAuth service to refresh token
+		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(c.Request.Context(), account)
+		if err != nil {
+			response.InternalError(c, "Failed to refresh credentials: "+err.Error())
+			return
+		}
 
-	// Update token-related fields
-	newCredentials["access_token"] = tokenInfo.AccessToken
-	newCredentials["token_type"] = tokenInfo.TokenType
-	newCredentials["expires_in"] = tokenInfo.ExpiresIn
-	newCredentials["expires_at"] = tokenInfo.ExpiresAt
-	newCredentials["refresh_token"] = tokenInfo.RefreshToken
-	newCredentials["scope"] = tokenInfo.Scope
+		// Build new credentials from token info
+		newCredentials = h.openaiOAuthService.BuildAccountCredentials(tokenInfo)
+
+		// Preserve non-token settings from existing credentials
+		for k, v := range account.Credentials {
+			if _, exists := newCredentials[k]; !exists {
+				newCredentials[k] = v
+			}
+		}
+	} else {
+		// Use Anthropic/Claude OAuth service to refresh token
+		tokenInfo, err := h.oauthService.RefreshAccountToken(c.Request.Context(), account)
+		if err != nil {
+			response.InternalError(c, "Failed to refresh credentials: "+err.Error())
+			return
+		}
+
+		// Copy existing credentials to preserve non-token settings (e.g., intercept_warmup_requests)
+		newCredentials = make(map[string]any)
+		for k, v := range account.Credentials {
+			newCredentials[k] = v
+		}
+
+		// Update token-related fields
+		newCredentials["access_token"] = tokenInfo.AccessToken
+		newCredentials["token_type"] = tokenInfo.TokenType
+		newCredentials["expires_in"] = tokenInfo.ExpiresIn
+		newCredentials["expires_at"] = tokenInfo.ExpiresAt
+		newCredentials["refresh_token"] = tokenInfo.RefreshToken
+		newCredentials["scope"] = tokenInfo.Scope
+	}
 
 	updatedAccount, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Credentials: newCredentials,
@@ -563,6 +587,46 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// Handle OpenAI accounts
+	if account.IsOpenAI() {
+		// For OAuth accounts: return default OpenAI models
+		if account.IsOAuth() {
+			response.Success(c, openai.DefaultModels)
+			return
+		}
+
+		// For API Key accounts: check model_mapping
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			response.Success(c, openai.DefaultModels)
+			return
+		}
+
+		// Return mapped models
+		var models []openai.Model
+		for requestedModel := range mapping {
+			var found bool
+			for _, dm := range openai.DefaultModels {
+				if dm.ID == requestedModel {
+					models = append(models, dm)
+					found = true
+					break
+				}
+			}
+			if !found {
+				models = append(models, openai.Model{
+					ID:          requestedModel,
+					Object:      "model",
+					Type:        "model",
+					DisplayName: requestedModel,
+				})
+			}
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle Claude/Anthropic accounts
 	// For OAuth and Setup-Token accounts: return default models
 	if account.IsOAuth() {
 		response.Success(c, claude.DefaultModels)

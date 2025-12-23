@@ -114,12 +114,12 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *ports.Fingerpr
 		return
 	}
 
-	// 设置User-Agent
+	// 设置user-agent
 	if fp.UserAgent != "" {
-		req.Header.Set("User-Agent", fp.UserAgent)
+		req.Header.Set("user-agent", fp.UserAgent)
 	}
 
-	// 设置x-stainless-*头（使用正确的大小写）
+	// 设置x-stainless-*头
 	if fp.StainlessLang != "" {
 		req.Header.Set("X-Stainless-Lang", fp.StainlessLang)
 	}

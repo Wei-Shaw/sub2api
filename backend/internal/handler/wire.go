@@ -14,6 +14,7 @@ func ProvideAdminHandlers(
 	groupHandler *admin.GroupHandler,
 	accountHandler *admin.AccountHandler,
 	oauthHandler *admin.OAuthHandler,
+	openaiOAuthHandler *admin.OpenAIOAuthHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
 	settingHandler *admin.SettingHandler,
@@ -27,6 +28,7 @@ func ProvideAdminHandlers(
 		Group:        groupHandler,
 		Account:      accountHandler,
 		OAuth:        oauthHandler,
+		OpenAIOAuth:  openaiOAuthHandler,
 		Proxy:        proxyHandler,
 		Redeem:       redeemHandler,
 		Setting:      settingHandler,
@@ -56,18 +58,20 @@ func ProvideHandlers(
 	subscriptionHandler *SubscriptionHandler,
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
+	openaiGatewayHandler *OpenAIGatewayHandler,
 	settingHandler *SettingHandler,
 ) *Handlers {
 	return &Handlers{
-		Auth:         authHandler,
-		User:         userHandler,
-		APIKey:       apiKeyHandler,
-		Usage:        usageHandler,
-		Redeem:       redeemHandler,
-		Subscription: subscriptionHandler,
-		Admin:        adminHandlers,
-		Gateway:      gatewayHandler,
-		Setting:      settingHandler,
+		Auth:          authHandler,
+		User:          userHandler,
+		APIKey:        apiKeyHandler,
+		Usage:         usageHandler,
+		Redeem:        redeemHandler,
+		Subscription:  subscriptionHandler,
+		Admin:         adminHandlers,
+		Gateway:       gatewayHandler,
+		OpenAIGateway: openaiGatewayHandler,
+		Setting:       settingHandler,
 	}
 }
 
@@ -81,6 +85,7 @@ var ProviderSet = wire.NewSet(
 	NewRedeemHandler,
 	NewSubscriptionHandler,
 	NewGatewayHandler,
+	NewOpenAIGatewayHandler,
 	ProvideSettingHandler,
 
 	// Admin handlers
@@ -89,6 +94,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewGroupHandler,
 	admin.NewAccountHandler,
 	admin.NewOAuthHandler,
+	admin.NewOpenAIOAuthHandler,
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewSettingHandler,

@@ -66,46 +66,83 @@
           </template>
 
           <template #cell-usage="{ row }">
-            <div class="space-y-1 min-w-[200px]">
-              <div v-if="row.group?.daily_limit_usd" class="flex items-center gap-2">
-                <span class="text-xs text-gray-500 w-12">{{ t('admin.subscriptions.daily') }}</span>
-                <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-2">
-                  <div
-                    class="h-2 rounded-full transition-all"
-                    :class="getProgressClass(row.daily_usage_usd, row.group?.daily_limit_usd)"
-                    :style="{ width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd) }"
-                  ></div>
+            <div class="space-y-2 min-w-[280px]">
+              <!-- Daily Usage -->
+              <div v-if="row.group?.daily_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.daily') }}</span>
+                  <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.daily_usage_usd, row.group?.daily_limit_usd)"
+                      :style="{ width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd) }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.daily_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.daily_limit_usd?.toFixed(2) }}
+                  </span>
                 </div>
-                <span class="text-xs text-gray-500 w-20 text-right">
-                  ${{ row.daily_usage_usd?.toFixed(2) || '0.00' }} / ${{ row.group?.daily_limit_usd?.toFixed(2) }}
-                </span>
-              </div>
-              <div v-if="row.group?.weekly_limit_usd" class="flex items-center gap-2">
-                <span class="text-xs text-gray-500 w-12">{{ t('admin.subscriptions.weekly') }}</span>
-                <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-2">
-                  <div
-                    class="h-2 rounded-full transition-all"
-                    :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
-                    :style="{ width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd) }"
-                  ></div>
+                <div class="reset-info" v-if="row.daily_window_start">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{{ formatResetTime(row.daily_window_start, 'daily') }}</span>
                 </div>
-                <span class="text-xs text-gray-500 w-20 text-right">
-                  ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }} / ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
-                </span>
               </div>
-              <div v-if="row.group?.monthly_limit_usd" class="flex items-center gap-2">
-                <span class="text-xs text-gray-500 w-12">{{ t('admin.subscriptions.monthly') }}</span>
-                <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-2">
-                  <div
-                    class="h-2 rounded-full transition-all"
-                    :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
-                    :style="{ width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd) }"
-                  ></div>
+
+              <!-- Weekly Usage -->
+              <div v-if="row.group?.weekly_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.weekly') }}</span>
+                  <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
+                      :style="{ width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd) }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
+                  </span>
                 </div>
-                <span class="text-xs text-gray-500 w-20 text-right">
-                  ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }} / ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
-                </span>
+                <div class="reset-info" v-if="row.weekly_window_start">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{{ formatResetTime(row.weekly_window_start, 'weekly') }}</span>
+                </div>
               </div>
+
+              <!-- Monthly Usage -->
+              <div v-if="row.group?.monthly_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
+                  <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
+                      :style="{ width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd) }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
+                  </span>
+                </div>
+                <div class="reset-info" v-if="row.monthly_window_start">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{{ formatResetTime(row.monthly_window_start, 'monthly') }}</span>
+                </div>
+              </div>
+
+              <!-- No Limits -->
               <div v-if="!row.group?.daily_limit_usd && !row.group?.weekly_limit_usd && !row.group?.monthly_limit_usd" class="text-xs text-gray-500">
                 {{ t('admin.subscriptions.noLimits') }}
               </div>
@@ -553,9 +590,63 @@ const getProgressClass = (used: number, limit: number | null): string => {
   return 'bg-green-500'
 }
 
+// Format reset time based on window start and period type
+const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'monthly'): string => {
+  const start = new Date(windowStart)
+  const now = new Date()
+
+  // Calculate reset time based on period
+  let resetTime: Date
+  switch (period) {
+    case 'daily':
+      resetTime = new Date(start.getTime() + 24 * 60 * 60 * 1000)
+      break
+    case 'weekly':
+      resetTime = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+      break
+    case 'monthly':
+      resetTime = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000)
+      break
+  }
+
+  const diffMs = resetTime.getTime() - now.getTime()
+  if (diffMs <= 0) return t('admin.subscriptions.resetNow')
+
+  const diffSeconds = Math.floor(diffMs / 1000)
+  const days = Math.floor(diffSeconds / 86400)
+  const hours = Math.floor((diffSeconds % 86400) / 3600)
+  const minutes = Math.floor((diffSeconds % 3600) / 60)
+
+  if (days > 0) {
+    return t('admin.subscriptions.resetInDaysHours', { days, hours })
+  } else if (hours > 0) {
+    return t('admin.subscriptions.resetInHoursMinutes', { hours, minutes })
+  } else {
+    return t('admin.subscriptions.resetInMinutes', { minutes })
+  }
+}
+
 onMounted(() => {
   loadSubscriptions()
   loadGroups()
   loadUsers()
 })
 </script>
+
+<style scoped>
+.usage-row {
+  @apply space-y-1;
+}
+
+.usage-label {
+  @apply text-xs font-medium text-gray-500 dark:text-gray-400 w-10 flex-shrink-0;
+}
+
+.usage-amount {
+  @apply text-xs text-gray-600 dark:text-gray-300 tabular-nums whitespace-nowrap;
+}
+
+.reset-info {
+  @apply flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 pl-12;
+}
+</style>

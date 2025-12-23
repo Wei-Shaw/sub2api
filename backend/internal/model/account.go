@@ -277,3 +277,138 @@ func (a *Account) IsInterceptWarmupEnabled() bool {
 	}
 	return false
 }
+
+// =============== OpenAI 相关方法 ===============
+
+// IsOpenAI 检查是否为 OpenAI 平台账号
+func (a *Account) IsOpenAI() bool {
+	return a.Platform == PlatformOpenAI
+}
+
+// IsAnthropic 检查是否为 Anthropic 平台账号
+func (a *Account) IsAnthropic() bool {
+	return a.Platform == PlatformAnthropic
+}
+
+// IsOpenAIOAuth 检查是否为 OpenAI OAuth 类型账号
+func (a *Account) IsOpenAIOAuth() bool {
+	return a.IsOpenAI() && a.Type == AccountTypeOAuth
+}
+
+// IsOpenAIApiKey 检查是否为 OpenAI API Key 类型账号（Response 账号）
+func (a *Account) IsOpenAIApiKey() bool {
+	return a.IsOpenAI() && a.Type == AccountTypeApiKey
+}
+
+// GetOpenAIBaseURL 获取 OpenAI API 基础 URL
+// 对于 API Key 类型账号，从 credentials 中获取 base_url
+// 对于 OAuth 类型账号，返回默认的 OpenAI API URL
+func (a *Account) GetOpenAIBaseURL() string {
+	if !a.IsOpenAI() {
+		return ""
+	}
+	if a.Type == AccountTypeApiKey {
+		baseURL := a.GetCredential("base_url")
+		if baseURL != "" {
+			return baseURL
+		}
+	}
+	return "https://api.openai.com" // OpenAI 默认 API URL
+}
+
+// GetOpenAIAccessToken 获取 OpenAI 访问令牌
+func (a *Account) GetOpenAIAccessToken() string {
+	if !a.IsOpenAI() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+// GetOpenAIRefreshToken 获取 OpenAI 刷新令牌
+func (a *Account) GetOpenAIRefreshToken() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+// GetOpenAIIDToken 获取 OpenAI ID Token（JWT，包含用户信息）
+func (a *Account) GetOpenAIIDToken() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("id_token")
+}
+
+// GetOpenAIApiKey 获取 OpenAI API Key（用于 Response 账号）
+func (a *Account) GetOpenAIApiKey() string {
+	if !a.IsOpenAIApiKey() {
+		return ""
+	}
+	return a.GetCredential("api_key")
+}
+
+// GetOpenAIUserAgent 获取 OpenAI 自定义 User-Agent
+// 返回空字符串表示透传原始 User-Agent
+func (a *Account) GetOpenAIUserAgent() string {
+	if !a.IsOpenAI() {
+		return ""
+	}
+	return a.GetCredential("user_agent")
+}
+
+// GetChatGPTAccountID 获取 ChatGPT 账号 ID（从 ID Token 解析）
+func (a *Account) GetChatGPTAccountID() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("chatgpt_account_id")
+}
+
+// GetChatGPTUserID 获取 ChatGPT 用户 ID（从 ID Token 解析）
+func (a *Account) GetChatGPTUserID() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("chatgpt_user_id")
+}
+
+// GetOpenAIOrganizationID 获取 OpenAI 组织 ID
+func (a *Account) GetOpenAIOrganizationID() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	return a.GetCredential("organization_id")
+}
+
+// GetOpenAITokenExpiresAt 获取 OpenAI Token 过期时间
+func (a *Account) GetOpenAITokenExpiresAt() *time.Time {
+	if !a.IsOpenAIOAuth() {
+		return nil
+	}
+	expiresAtStr := a.GetCredential("expires_at")
+	if expiresAtStr == "" {
+		return nil
+	}
+	// 尝试解析时间
+	t, err := time.Parse(time.RFC3339, expiresAtStr)
+	if err != nil {
+		// 尝试解析为 Unix 时间戳
+		if v, ok := a.Credentials["expires_at"].(float64); ok {
+			t = time.Unix(int64(v), 0)
+			return &t
+		}
+		return nil
+	}
+	return &t
+}
+
+// IsOpenAITokenExpired 检查 OpenAI Token 是否过期
+func (a *Account) IsOpenAITokenExpired() bool {
+	expiresAt := a.GetOpenAITokenExpiresAt()
+	if expiresAt == nil {
+		return false // 没有过期时间信息，假设未过期
+	}
+	// 提前 60 秒认为过期，便于刷新
+	return time.Now().Add(60 * time.Second).After(*expiresAt)
+}

@@ -37,9 +37,10 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 func ProvideTokenRefreshService(
 	accountRepo ports.AccountRepository,
 	oauthService *OAuthService,
+	openaiOAuthService *OpenAIOAuthService,
 	cfg *config.Config,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, cfg)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, cfg)
 	svc.Start()
 	return svc
 }
@@ -60,7 +61,9 @@ var ProviderSet = wire.NewSet(
 	NewBillingCacheService,
 	NewAdminService,
 	NewGatewayService,
+	NewOpenAIGatewayService,
 	NewOAuthService,
+	NewOpenAIOAuthService,
 	NewRateLimitService,
 	NewAccountUsageService,
 	NewAccountTestService,

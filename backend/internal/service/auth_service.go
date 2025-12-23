@@ -23,6 +23,7 @@ var (
 	ErrTokenExpired        = errors.New("token has expired")
 	ErrEmailVerifyRequired = errors.New("email verification is required")
 	ErrRegDisabled         = errors.New("registration is currently disabled")
+	ErrServiceUnavailable  = errors.New("service temporarily unavailable")
 )
 
 // JWTClaims JWT载荷数据
@@ -90,7 +91,8 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
-		return "", nil, fmt.Errorf("check email exists: %w", err)
+		log.Printf("[Auth] Database error checking email exists: %v", err)
+		return "", nil, ErrServiceUnavailable
 	}
 	if existsEmail {
 		return "", nil, ErrEmailExists
@@ -121,7 +123,8 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
-		return "", nil, fmt.Errorf("create user: %w", err)
+		log.Printf("[Auth] Database error creating user: %v", err)
+		return "", nil, ErrServiceUnavailable
 	}
 
 	// 生成token
@@ -148,7 +151,8 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string) error {
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("check email exists: %w", err)
+		log.Printf("[Auth] Database error checking email exists: %v", err)
+		return ErrServiceUnavailable
 	}
 	if existsEmail {
 		return ErrEmailExists
@@ -181,8 +185,8 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*S
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
-		log.Printf("[Auth] Error checking email exists: %v", err)
-		return nil, fmt.Errorf("check email exists: %w", err)
+		log.Printf("[Auth] Database error checking email exists: %v", err)
+		return nil, ErrServiceUnavailable
 	}
 	if existsEmail {
 		log.Printf("[Auth] Email already exists: %s", email)
@@ -254,7 +258,9 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", nil, ErrInvalidCredentials
 		}
-		return "", nil, fmt.Errorf("get user by email: %w", err)
+		// 记录数据库错误但不暴露给用户
+		log.Printf("[Auth] Database error during login: %v", err)
+		return "", nil, ErrServiceUnavailable
 	}
 
 	// 验证密码
@@ -354,7 +360,8 @@ func (s *AuthService) RefreshToken(ctx context.Context, oldTokenString string) (
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", ErrInvalidToken
 		}
-		return "", fmt.Errorf("get user: %w", err)
+		log.Printf("[Auth] Database error refreshing token: %v", err)
+		return "", ErrServiceUnavailable
 	}
 
 	// 检查用户状态

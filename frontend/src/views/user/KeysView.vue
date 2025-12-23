@@ -71,6 +71,7 @@
                 <GroupBadge
                   v-if="row.group"
                   :name="row.group.name"
+                  :platform="row.group.platform"
                   :subscription-type="row.group.subscription_type"
                   :rate-multiplier="row.group.rate_multiplier"
                 />
@@ -231,6 +232,7 @@
               <GroupBadge
                 v-if="option"
                 :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
               />
@@ -239,6 +241,7 @@
             <template #option="{ option }">
               <GroupBadge
                 :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
               />
@@ -358,6 +361,7 @@
           >
             <GroupBadge
               :name="option.label"
+              :platform="option.platform"
               :subscription-type="option.subscriptionType"
               :rate-multiplier="option.rate"
             />
@@ -394,7 +398,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
-import type { ApiKey, Group, PublicSettings, SubscriptionType } from '@/types'
+import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 
@@ -403,6 +407,7 @@ interface GroupOption {
   label: string
   rate: number
   subscriptionType: SubscriptionType
+  platform: GroupPlatform
 }
 
 const appStore = useAppStore()
@@ -491,7 +496,8 @@ const groupOptions = computed(() =>
     value: group.id,
     label: group.name,
     rate: group.rate_multiplier,
-    subscriptionType: group.subscription_type
+    subscriptionType: group.subscription_type,
+    platform: group.platform
   }))
 )
 

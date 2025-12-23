@@ -47,83 +47,161 @@
         />
       </div>
 
+      <!-- Platform Selection - Segmented Control Style -->
       <div>
-        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
-        <div class="grid grid-cols-2 gap-3 mt-2">
-          <label
+        <label class="input-label">{{ t('admin.accounts.platform') }}</label>
+        <div class="flex rounded-lg bg-gray-100 dark:bg-dark-700 p-1 mt-2">
+          <button
+            type="button"
+            @click="form.platform = 'anthropic'"
             :class="[
-              'relative flex cursor-pointer rounded-lg border-2 p-4 transition-all',
-              accountCategory === 'oauth-based'
-                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                : 'border-gray-200 dark:border-dark-600 hover:border-primary-300'
+              'flex-1 flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'anthropic'
+                ? 'bg-white dark:bg-dark-600 text-orange-600 dark:text-orange-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             ]"
           >
-            <input
-              v-model="accountCategory"
-              type="radio"
-              value="oauth-based"
-              class="sr-only"
-            />
-            <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600">
-                <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
-                </svg>
-              </div>
-              <div>
-                <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.accounts.claudeCode') }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauthSetupToken') }}</span>
-              </div>
-            </div>
-            <div
-              v-if="accountCategory === 'oauth-based'"
-              class="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary-500"
-            >
-              <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-              </svg>
-            </div>
-          </label>
-
-          <label
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+            </svg>
+            Anthropic
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'openai'"
             :class="[
-              'relative flex cursor-pointer rounded-lg border-2 p-4 transition-all',
-              accountCategory === 'apikey'
-                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                : 'border-gray-200 dark:border-dark-600 hover:border-primary-300'
+              'flex-1 flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'openai'
+                ? 'bg-white dark:bg-dark-600 text-green-600 dark:text-green-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
             ]"
           >
-            <input
-              v-model="accountCategory"
-              type="radio"
-              value="apikey"
-              class="sr-only"
-            />
-            <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-purple-600">
-                <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
-                </svg>
-              </div>
-              <div>
-                <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.accounts.claudeConsole') }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.apiKey') }}</span>
-              </div>
-            </div>
-            <div
-              v-if="accountCategory === 'apikey'"
-              class="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary-500"
-            >
-              <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-              </svg>
-            </div>
-          </label>
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+            </svg>
+            OpenAI
+          </button>
         </div>
       </div>
 
-      <!-- Add Method (only for OAuth-based type) -->
-      <div v-if="isOAuthFlow">
+      <!-- Account Type Selection (Anthropic) -->
+      <div v-if="form.platform === 'anthropic'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="grid grid-cols-2 gap-3 mt-2">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 transition-all text-left',
+              accountCategory === 'oauth-based'
+                ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
+                : 'border-gray-200 dark:border-dark-600 hover:border-orange-300 dark:hover:border-orange-700'
+            ]"
+          >
+            <div :class="[
+              'flex h-8 w-8 items-center justify-center rounded-lg',
+              accountCategory === 'oauth-based'
+                ? 'bg-orange-500 text-white'
+                : 'bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400'
+            ]">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.claudeCode') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauthSetupToken') }}</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 transition-all text-left',
+              accountCategory === 'apikey'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 dark:border-dark-600 hover:border-purple-300 dark:hover:border-purple-700'
+            ]"
+          >
+            <div :class="[
+              'flex h-8 w-8 items-center justify-center rounded-lg',
+              accountCategory === 'apikey'
+                ? 'bg-purple-500 text-white'
+                : 'bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400'
+            ]">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.claudeConsole') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.apiKey') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Account Type Selection (OpenAI) -->
+      <div v-if="form.platform === 'openai'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="grid grid-cols-2 gap-3 mt-2">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 transition-all text-left',
+              accountCategory === 'oauth-based'
+                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                : 'border-gray-200 dark:border-dark-600 hover:border-green-300 dark:hover:border-green-700'
+            ]"
+          >
+            <div :class="[
+              'flex h-8 w-8 items-center justify-center rounded-lg',
+              accountCategory === 'oauth-based'
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400'
+            ]">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">ChatGPT Plus</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 transition-all text-left',
+              accountCategory === 'apikey'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 dark:border-dark-600 hover:border-purple-300 dark:hover:border-purple-700'
+            ]"
+          >
+            <div :class="[
+              'flex h-8 w-8 items-center justify-center rounded-lg',
+              accountCategory === 'apikey'
+                ? 'bg-purple-500 text-white'
+                : 'bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400'
+            ]">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">Responses API</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Add Method (only for Anthropic OAuth-based type) -->
+      <div v-if="form.platform === 'anthropic' && isOAuthFlow">
         <label class="input-label">{{ t('admin.accounts.addMethod') }}</label>
         <div class="flex gap-4 mt-2">
           <label class="flex cursor-pointer items-center">
@@ -155,7 +233,7 @@
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
-            placeholder="https://api.anthropic.com"
+            :placeholder="form.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'"
           />
           <p class="input-hint">{{ t('admin.accounts.baseUrlHint') }}</p>
         </div>
@@ -166,7 +244,7 @@
             type="password"
             required
             class="input font-mono"
-            :placeholder="t('admin.accounts.apiKeyPlaceholder')"
+            :placeholder="form.platform === 'openai' ? 'sk-proj-...' : 'sk-ant-...'"
           />
           <p class="input-hint">{{ t('admin.accounts.apiKeyHint') }}</p>
         </div>
@@ -418,8 +496,8 @@
         </div>
       </div>
 
-      <!-- Intercept Warmup Requests (all account types) -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
+      <!-- Intercept Warmup Requests (Anthropic only) -->
+      <div v-if="form.platform === 'anthropic'" class="border-t border-gray-200 dark:border-dark-600 pt-4">
         <div class="flex items-center justify-between">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.interceptWarmupRequests') }}</label>
@@ -477,6 +555,7 @@
       <GroupSelector
         v-model="form.group_ids"
         :groups="groups"
+        :platform="form.platform"
       />
 
       <div class="flex justify-end gap-3 pt-4">
@@ -510,14 +589,16 @@
     <div v-else class="space-y-5">
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
-        :add-method="addMethod"
-        :auth-url="oauth.authUrl.value"
-        :session-id="oauth.sessionId.value"
-        :loading="oauth.loading.value"
-        :error="oauth.error.value"
-        :show-help="true"
+        :add-method="form.platform === 'openai' ? 'oauth' : addMethod"
+        :auth-url="currentAuthUrl"
+        :session-id="currentSessionId"
+        :loading="currentOAuthLoading"
+        :error="currentOAuthError"
+        :show-help="form.platform !== 'openai'"
         :show-proxy-warning="!!form.proxy_id"
-        :allow-multiple="true"
+        :allow-multiple="form.platform !== 'openai'"
+        :show-cookie-option="form.platform !== 'openai'"
+        :platform="form.platform"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
       />
@@ -538,7 +619,7 @@
           @click="handleExchangeCode"
         >
           <svg
-            v-if="oauth.loading.value"
+            v-if="currentOAuthLoading"
             class="animate-spin -ml-1 mr-2 h-4 w-4"
             fill="none"
             viewBox="0 0 24 24"
@@ -546,7 +627,7 @@
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          {{ oauth.loading.value ? t('admin.accounts.oauth.verifying') : t('admin.accounts.oauth.completeAuth') }}
+          {{ currentOAuthLoading ? t('admin.accounts.oauth.verifying') : t('admin.accounts.oauth.completeAuth') }}
         </button>
       </div>
     </div>
@@ -559,6 +640,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { useAccountOAuth, type AddMethod, type AuthInputMethod } from '@/composables/useAccountOAuth'
+import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import type { Proxy, Group, AccountPlatform, AccountType } from '@/types'
 import Modal from '@/components/common/Modal.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -590,8 +672,26 @@ const emit = defineEmits<{
 
 const appStore = useAppStore()
 
-// OAuth composable
-const oauth = useAccountOAuth()
+// OAuth composables
+const oauth = useAccountOAuth()           // For Anthropic OAuth
+const openaiOAuth = useOpenAIOAuth()      // For OpenAI OAuth
+
+// Computed: current OAuth state for template binding
+const currentAuthUrl = computed(() => {
+  return form.platform === 'openai' ? openaiOAuth.authUrl.value : oauth.authUrl.value
+})
+
+const currentSessionId = computed(() => {
+  return form.platform === 'openai' ? openaiOAuth.sessionId.value : oauth.sessionId.value
+})
+
+const currentOAuthLoading = computed(() => {
+  return form.platform === 'openai' ? openaiOAuth.loading.value : oauth.loading.value
+})
+
+const currentOAuthError = computed(() => {
+  return form.platform === 'openai' ? openaiOAuth.error.value : oauth.error.value
+})
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
@@ -617,8 +717,8 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 
-// Common models for whitelist
-const commonModels = [
+// Common models for whitelist - Anthropic
+const anthropicModels = [
   { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
   { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
   { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
@@ -629,8 +729,24 @@ const commonModels = [
   { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' }
 ]
 
-// Preset mappings for quick add
-const presetMappings = [
+// Common models for whitelist - OpenAI
+const openaiModels = [
+  { value: 'gpt-5.2-2025-12-11', label: 'GPT-5.2' },
+  { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
+  { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' },
+  { value: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' },
+  { value: 'gpt-5.1-2025-11-13', label: 'GPT-5.1' },
+  { value: 'gpt-5.1-codex-mini', label: 'GPT-5.1 Codex Mini' },
+  { value: 'gpt-5-2025-08-07', label: 'GPT-5' }
+]
+
+// Computed: current models based on platform
+const commonModels = computed(() => {
+  return form.platform === 'openai' ? openaiModels : anthropicModels
+})
+
+// Preset mappings for quick add - Anthropic
+const anthropicPresetMappings = [
   { label: 'Sonnet 4', from: 'claude-sonnet-4-20250514', to: 'claude-sonnet-4-20250514', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
   { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-5-20250929', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
   { label: 'Opus 4.5', from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-5-20251101', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
@@ -638,6 +754,21 @@ const presetMappings = [
   { label: 'Haiku 4.5', from: 'claude-haiku-4-5-20251001', to: 'claude-haiku-4-5-20251001', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
   { label: 'Opus->Sonnet', from: 'claude-opus-4-5-20251101', to: 'claude-sonnet-4-5-20250929', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
 ]
+
+// Preset mappings for quick add - OpenAI
+const openaiPresetMappings = [
+  { label: 'GPT-5.2', from: 'gpt-5.2-2025-12-11', to: 'gpt-5.2-2025-12-11', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' },
+  { label: 'GPT-5.2 Codex', from: 'gpt-5.2-codex', to: 'gpt-5.2-codex', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'GPT-5.1 Codex', from: 'gpt-5.1-codex', to: 'gpt-5.1-codex', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Codex Max', from: 'gpt-5.1-codex-max', to: 'gpt-5.1-codex-max', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Codex Mini', from: 'gpt-5.1-codex-mini', to: 'gpt-5.1-codex-mini', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  { label: 'Max->Codex', from: 'gpt-5.1-codex-max', to: 'gpt-5.1-codex', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+]
+
+// Computed: current preset mappings based on platform
+const presetMappings = computed(() => {
+  return form.platform === 'openai' ? openaiPresetMappings : anthropicPresetMappings
+})
 
 // Common HTTP error codes for quick selection
 const commonErrorCodes = [
@@ -670,6 +801,9 @@ const isManualInputMethod = computed(() => {
 
 const canExchangeCode = computed(() => {
   const authCode = oauthFlowRef.value?.authCode || ''
+  if (form.platform === 'openai') {
+    return authCode.trim() && openaiOAuth.sessionId.value && !openaiOAuth.loading.value
+  }
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
 
@@ -688,6 +822,20 @@ watch([accountCategory, addMethod], ([category, method]) => {
     form.type = 'apikey'
   }
 }, { immediate: true })
+
+// Reset platform-specific settings when platform changes
+watch(() => form.platform, (newPlatform) => {
+  // Reset base URL based on platform
+  apiKeyBaseUrl.value = newPlatform === 'openai'
+    ? 'https://api.openai.com'
+    : 'https://api.anthropic.com'
+  // Clear model-related settings
+  allowedModels.value = []
+  modelMappings.value = []
+  // Reset OAuth states
+  oauth.resetState()
+  openaiOAuth.resetState()
+})
 
 // Model mapping helpers
 const addModelMapping = () => {
@@ -786,6 +934,7 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   oauth.resetState()
+  openaiOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -810,9 +959,14 @@ const handleSubmit = async () => {
     return
   }
 
+  // Determine default base URL based on platform
+  const defaultBaseUrl = form.platform === 'openai'
+    ? 'https://api.openai.com'
+    : 'https://api.anthropic.com'
+
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
-    base_url: apiKeyBaseUrl.value.trim() || 'https://api.anthropic.com',
+    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   }
 
@@ -837,7 +991,10 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
-    await adminAPI.accounts.create(form)
+    await adminAPI.accounts.create({
+      ...form,
+      group_ids: form.group_ids
+    })
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -851,15 +1008,72 @@ const handleSubmit = async () => {
 const goBackToBasicInfo = () => {
   step.value = 1
   oauth.resetState()
+  openaiOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
 const handleGenerateUrl = async () => {
-  await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
+  if (form.platform === 'openai') {
+    await openaiOAuth.generateAuthUrl(form.proxy_id)
+  } else {
+    await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
+  }
 }
 
 const handleExchangeCode = async () => {
   const authCode = oauthFlowRef.value?.authCode || ''
+
+  // For OpenAI
+  if (form.platform === 'openai') {
+    if (!authCode.trim() || !openaiOAuth.sessionId.value) return
+
+    openaiOAuth.loading.value = true
+    openaiOAuth.error.value = ''
+
+    try {
+      const tokenInfo = await openaiOAuth.exchangeAuthCode(
+        authCode.trim(),
+        openaiOAuth.sessionId.value,
+        form.proxy_id
+      )
+
+      if (!tokenInfo) {
+        return // Error already handled by composable
+      }
+
+      const credentials = openaiOAuth.buildCredentials(tokenInfo)
+      const extra = openaiOAuth.buildExtraInfo(tokenInfo)
+
+      // Merge interceptWarmupRequests into credentials
+      if (interceptWarmupRequests.value) {
+        credentials.intercept_warmup_requests = true
+      }
+
+      await adminAPI.accounts.create({
+        name: form.name,
+        platform: 'openai',
+        type: 'oauth',
+        credentials,
+        extra,
+        proxy_id: form.proxy_id,
+        concurrency: form.concurrency,
+        priority: form.priority,
+        group_ids: form.group_ids
+      })
+
+      appStore.showSuccess(t('admin.accounts.accountCreated'))
+      emit('created')
+      handleClose()
+    } catch (error: any) {
+      openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+      appStore.showError(openaiOAuth.error.value)
+    } finally {
+      openaiOAuth.loading.value = false
+    }
+    return
+  }
+
+  // For Anthropic
   if (!authCode.trim() || !oauth.sessionId.value) return
 
   oauth.loading.value = true
@@ -893,7 +1107,8 @@ const handleExchangeCode = async () => {
       extra,
       proxy_id: form.proxy_id,
       concurrency: form.concurrency,
-      priority: form.priority
+      priority: form.priority,
+      group_ids: form.group_ids
     })
 
     appStore.showSuccess(t('admin.accounts.accountCreated'))

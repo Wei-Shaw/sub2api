@@ -282,7 +282,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic';
+export type AccountPlatform = 'anthropic' | 'openai';
 export type AccountType = 'oauth' | 'setup-token' | 'apikey';
 export type OAuthAddMethod = 'oauth' | 'setup-token';
 export type ProxyProtocol = 'http' | 'https' | 'socks5';

@@ -223,13 +223,13 @@
             <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Claude</span>
             <span class="px-1.5 py-0.5 text-[10px] font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded">{{ t('home.providers.supported') }}</span>
           </div>
-          <!-- GPT - Coming Soon -->
-          <div class="flex items-center gap-2 px-5 py-3 rounded-xl bg-white/40 dark:bg-dark-800/40 backdrop-blur-sm border border-gray-200/50 dark:border-dark-700/50 opacity-60">
+          <!-- GPT - Supported -->
+          <div class="flex items-center gap-2 px-5 py-3 rounded-xl bg-white/60 dark:bg-dark-800/60 backdrop-blur-sm border border-primary-200 dark:border-primary-800 ring-1 ring-primary-500/20">
             <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
               <span class="text-white text-xs font-bold">G</span>
             </div>
             <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
-            <span class="px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-dark-700 text-gray-500 dark:text-dark-400 rounded">{{ t('home.providers.soon') }}</span>
+            <span class="px-1.5 py-0.5 text-[10px] font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded">{{ t('home.providers.supported') }}</span>
           </div>
           <!-- Gemini - Coming Soon -->
           <div class="flex items-center gap-2 px-5 py-3 rounded-xl bg-white/40 dark:bg-dark-800/40 backdrop-blur-sm border border-gray-200/50 dark:border-dark-700/50 opacity-60">

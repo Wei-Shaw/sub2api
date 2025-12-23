@@ -182,6 +182,11 @@ export default {
     addBalanceWithCode: 'Add balance with a code',
   },
 
+  // Groups (shared)
+  groups: {
+    subscription: 'Sub',
+  },
+
   // API Keys
   keys: {
     title: 'API Keys',
@@ -534,6 +539,7 @@ export default {
         accounts: 'Accounts',
         status: 'Status',
         actions: 'Actions',
+        billingType: 'Billing Type',
       },
       accountsCount: '{count} accounts',
       form: {
@@ -546,12 +552,16 @@ export default {
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
+      platformNotEditable: 'Platform cannot be changed after creation',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
       exclusiveHint: 'Exclusive (requires explicit user access)',
       noGroupsYet: 'No groups yet',
       createFirstGroup: 'Create your first group to organize API keys.',
       creating: 'Creating...',
       updating: 'Updating...',
+      limitDay: 'd',
+      limitWeek: 'w',
+      limitMonth: 'mo',
       groupCreated: 'Group created successfully',
       groupUpdated: 'Group updated successfully',
       groupDeleted: 'Group deleted successfully',
@@ -590,6 +600,10 @@ export default {
       weekly: 'Weekly',
       monthly: 'Monthly',
       noLimits: 'No limits configured',
+      resetNow: 'Resetting soon',
+      resetInMinutes: 'Resets in {minutes}m',
+      resetInHoursMinutes: 'Resets in {hours}h {minutes}m',
+      resetInDaysHours: 'Resets in {days}d {hours}h',
       daysRemaining: 'days remaining',
       noExpiration: 'No expiration',
       status: {
@@ -680,12 +694,16 @@ export default {
       tokenRefreshed: 'Token refreshed successfully',
       accountDeleted: 'Account deleted successfully',
       rateLimitCleared: 'Rate limit cleared successfully',
+      resetStatus: 'Reset Status',
+      statusReset: 'Account status reset successfully',
+      failedToResetStatus: 'Failed to reset account status',
       failedToLoad: 'Failed to load accounts',
       failedToRefresh: 'Failed to refresh token',
       failedToDelete: 'Failed to delete account',
       failedToClearRateLimit: 'Failed to clear rate limit',
       deleteConfirm: "Are you sure you want to delete '{name}'? This action cannot be undone.",
       // Create/Edit Account Modal
+      platform: 'Platform',
       accountName: 'Account Name',
       enterAccountName: 'Enter account name',
       accountType: 'Account Type',
@@ -778,10 +796,26 @@ export default {
         cookieAuthFailed: 'Cookie authorization failed',
         keyAuthFailed: 'Key {index}: {error}',
         successCreated: 'Successfully created {count} account(s)',
+        // OpenAI specific
+        openai: {
+          title: 'OpenAI Account Authorization',
+          followSteps: 'Follow these steps to complete OpenAI account authorization:',
+          step1GenerateUrl: 'Click the button below to generate the authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc: 'Open the authorization URL in a new tab, log in to your OpenAI account and authorize.',
+          importantNotice: '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to <code>http://localhost...</code>, the authorization is complete.',
+          step3EnterCode: 'Enter Authorization URL or Code',
+          authCodeDesc: 'After authorization is complete, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+          authCode: 'Authorization URL or Code',
+          authCodePlaceholder: 'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
+          authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+        },
       },
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',
       claudeCodeAccount: 'Claude Code Account',
+      openaiAccount: 'OpenAI Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal

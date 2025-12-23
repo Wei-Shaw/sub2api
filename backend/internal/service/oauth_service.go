@@ -284,3 +284,8 @@ func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *model.A
 
 	return s.RefreshToken(ctx, refreshToken, proxyURL)
 }
+
+// Stop stops the session store cleanup goroutine
+func (s *OAuthService) Stop() {
+	s.sessionStore.Stop()
+}

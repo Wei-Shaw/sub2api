@@ -36,7 +36,8 @@ var ProviderSet = wire.NewSet(
 	NewProxyExitInfoProber,
 	NewClaudeUsageFetcher,
 	NewClaudeOAuthClient,
-	NewClaudeUpstream,
+	NewHTTPUpstream,
+	NewOpenAIOAuthClient,
 
 	// Bind concrete repositories to service port interfaces
 	wire.Bind(new(ports.UserRepository), new(*UserRepository)),

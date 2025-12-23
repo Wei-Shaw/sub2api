@@ -24,7 +24,7 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
-            placeholder="https://api.anthropic.com"
+            :placeholder="account.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'"
           />
           <p class="input-hint">{{ t('admin.accounts.baseUrlHint') }}</p>
         </div>
@@ -34,7 +34,7 @@
             v-model="editApiKey"
             type="password"
             class="input font-mono"
-            :placeholder="t('admin.accounts.leaveEmptyToKeep')"
+            :placeholder="account.platform === 'openai' ? 'sk-proj-...' : 'sk-ant-...'"
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
@@ -286,8 +286,8 @@
         </div>
       </div>
 
-      <!-- Intercept Warmup Requests (all account types) -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
+      <!-- Intercept Warmup Requests (Anthropic only) -->
+      <div v-if="account?.platform === 'anthropic'" class="border-t border-gray-200 dark:border-dark-600 pt-4">
         <div class="flex items-center justify-between">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.interceptWarmupRequests') }}</label>
@@ -352,6 +352,7 @@
       <GroupSelector
         v-model="form.group_ids"
         :groups="groups"
+        :platform="account?.platform"
       />
 
       <div class="flex justify-end gap-3 pt-4">
@@ -428,8 +429,8 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 
-// Common models for whitelist
-const commonModels = [
+// Common models for whitelist - Anthropic
+const anthropicModels = [
   { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
   { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
   { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
@@ -440,8 +441,24 @@ const commonModels = [
   { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' }
 ]
 
-// Preset mappings for quick add
-const presetMappings = [
+// Common models for whitelist - OpenAI
+const openaiModels = [
+  { value: 'gpt-5.2-2025-12-11', label: 'GPT-5.2' },
+  { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
+  { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' },
+  { value: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' },
+  { value: 'gpt-5.1-2025-11-13', label: 'GPT-5.1' },
+  { value: 'gpt-5.1-codex-mini', label: 'GPT-5.1 Codex Mini' },
+  { value: 'gpt-5-2025-08-07', label: 'GPT-5' }
+]
+
+// Computed: current models based on platform
+const commonModels = computed(() => {
+  return props.account?.platform === 'openai' ? openaiModels : anthropicModels
+})
+
+// Preset mappings for quick add - Anthropic
+const anthropicPresetMappings = [
   { label: 'Sonnet 4', from: 'claude-sonnet-4-20250514', to: 'claude-sonnet-4-20250514', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
   { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-5-20250929', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
   { label: 'Opus 4.5', from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-5-20251101', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
@@ -449,6 +466,26 @@ const presetMappings = [
   { label: 'Haiku 4.5', from: 'claude-haiku-4-5-20251001', to: 'claude-haiku-4-5-20251001', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
   { label: 'Opus->Sonnet', from: 'claude-opus-4-5-20251101', to: 'claude-sonnet-4-5-20250929', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
 ]
+
+// Preset mappings for quick add - OpenAI
+const openaiPresetMappings = [
+  { label: 'GPT-5.2', from: 'gpt-5.2-2025-12-11', to: 'gpt-5.2-2025-12-11', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' },
+  { label: 'GPT-5.2 Codex', from: 'gpt-5.2-codex', to: 'gpt-5.2-codex', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'GPT-5.1 Codex', from: 'gpt-5.1-codex', to: 'gpt-5.1-codex', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Codex Max', from: 'gpt-5.1-codex-max', to: 'gpt-5.1-codex-max', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Codex Mini', from: 'gpt-5.1-codex-mini', to: 'gpt-5.1-codex-mini', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  { label: 'Max->Codex', from: 'gpt-5.1-codex-max', to: 'gpt-5.1-codex', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+]
+
+// Computed: current preset mappings based on platform
+const presetMappings = computed(() => {
+  return props.account?.platform === 'openai' ? openaiPresetMappings : anthropicPresetMappings
+})
+
+// Computed: default base URL based on platform
+const defaultBaseUrl = computed(() => {
+  return props.account?.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+})
 
 // Common HTTP error codes for quick selection
 const commonErrorCodes = [
@@ -492,7 +529,8 @@ watch(() => props.account, (newAccount) => {
     // Initialize API Key fields for apikey type
     if (newAccount.type === 'apikey' && newAccount.credentials) {
       const credentials = newAccount.credentials as Record<string, unknown>
-      editBaseUrl.value = credentials.base_url as string || 'https://api.anthropic.com'
+      const platformDefaultUrl = newAccount.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+      editBaseUrl.value = credentials.base_url as string || platformDefaultUrl
 
       // Load model mappings and detect mode
       const existingMappings = credentials.model_mapping as Record<string, string> | undefined
@@ -529,7 +567,8 @@ watch(() => props.account, (newAccount) => {
         selectedErrorCodes.value = []
       }
     } else {
-      editBaseUrl.value = 'https://api.anthropic.com'
+      const platformDefaultUrl = newAccount.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+      editBaseUrl.value = platformDefaultUrl
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
       allowedModels.value = []
@@ -628,7 +667,7 @@ const handleSubmit = async () => {
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
       const currentCredentials = props.account.credentials as Record<string, unknown> || {}
-      const newBaseUrl = editBaseUrl.value.trim() || 'https://api.anthropic.com'
+      const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const modelMapping = buildModelMappingObject()
 
       // Always update credentials for apikey type to handle model mapping changes
