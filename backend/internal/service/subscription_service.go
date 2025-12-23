@@ -335,24 +335,67 @@ REDACTED
 
 // ListUserSubscriptions 获取用户的所有订阅
 func (s *SubscriptionService) ListUserSubscriptions(ctx context.Context, userID int64) ([]model.UserSubscription, error) {
-	return s.userSubRepo.ListByUserID(ctx, userID)
+	subs, err := s.userSubRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+REDACTED
+	normalizeExpiredWindows(subs)
+	return subs, nil
 REDACTED
 
 // ListActiveUserSubscriptions 获取用户的所有有效订阅
 func (s *SubscriptionService) ListActiveUserSubscriptions(ctx context.Context, userID int64) ([]model.UserSubscription, error) {
-	return s.userSubRepo.ListActiveByUserID(ctx, userID)
+	subs, err := s.userSubRepo.ListActiveByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+REDACTED
+	normalizeExpiredWindows(subs)
+	return subs, nil
 REDACTED
 
 // ListGroupSubscriptions 获取分组的所有订阅
 func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupID int64, page, pageSize int) ([]model.UserSubscription, *pagination.PaginationResult, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	return s.userSubRepo.ListByGroupID(ctx, groupID, params)
+	subs, pag, err := s.userSubRepo.ListByGroupID(ctx, groupID, params)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+	normalizeExpiredWindows(subs)
+	return subs, pag, nil
 REDACTED
 
 // List 获取所有订阅（分页，支持筛选）
 func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status string) ([]model.UserSubscription, *pagination.PaginationResult, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	return s.userSubRepo.List(ctx, params, userID, groupID, status)
+	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+	normalizeExpiredWindows(subs)
+	return subs, pag, nil
+REDACTED
+
+// normalizeExpiredWindows 将已过期窗口的数据清零（仅影响返回数据，不影响数据库）
+// 这确保前端显示正确的当前窗口状态，而不是过期窗口的历史数据
+func normalizeExpiredWindows(subs []model.UserSubscription) {
+	for i := range subs {
+		sub := &subs[i]
+		// 日窗口过期：清零展示数据
+		if sub.NeedsDailyReset() {
+			sub.DailyWindowStart = nil
+			sub.DailyUsageUSD = 0
+	REDACTED
+		// 周窗口过期：清零展示数据
+		if sub.NeedsWeeklyReset() {
+			sub.WeeklyWindowStart = nil
+			sub.WeeklyUsageUSD = 0
+	REDACTED
+		// 月窗口过期：清零展示数据
+		if sub.NeedsMonthlyReset() {
+			sub.MonthlyWindowStart = nil
+			sub.MonthlyUsageUSD = 0
+	REDACTED
+REDACTED
 REDACTED
 
 // startOfDay 返回给定时间所在日期的零点（保持原时区）

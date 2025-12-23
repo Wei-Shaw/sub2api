@@ -592,6 +592,8 @@ REDACTED
 
 // Format reset time based on window start and period type
 const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'monthly'): string => {
+  if (!windowStart) return t('admin.subscriptions.windowNotActive')
+
   const start = new Date(windowStart)
   const now = new Date()
 
@@ -610,7 +612,7 @@ const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'mont
   REDACTED
 
   const diffMs = resetTime.getTime() - now.getTime()
-  if (diffMs <= 0) return t('admin.subscriptions.resetNow')
+  if (diffMs <= 0) return t('admin.subscriptions.windowNotActive')
 
   const diffSeconds = Math.floor(diffMs / 1000)
   const days = Math.floor(diffSeconds / 86400)

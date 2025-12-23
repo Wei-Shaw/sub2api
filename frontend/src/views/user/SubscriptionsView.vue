@@ -229,14 +229,14 @@ function getExpirationClass(expiresAt: string): string {
 REDACTED
 
 function formatResetTime(windowStart: string | null, windowHours: number): string {
-  if (!windowStart) return '--';
+  if (!windowStart) return t('userSubscriptions.windowNotActive');
 
   const start = new Date(windowStart);
   const end = new Date(start.getTime() + windowHours * 60 * 60 * 1000);
   const now = new Date();
   const diff = end.getTime() - now.getTime();
 
-  if (diff <= 0) return 'Now';
+  if (diff <= 0) return t('userSubscriptions.windowNotActive');
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
