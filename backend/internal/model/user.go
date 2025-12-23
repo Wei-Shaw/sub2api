@@ -22,7 +22,8 @@ type User struct {
 	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// 关联
-	ApiKeys []ApiKey `gorm:"foreignKey:UserID" json:"api_keys,omitempty"`
+	ApiKeys       []ApiKey           `gorm:"foreignKey:UserID" json:"api_keys,omitempty"`
+	Subscriptions []UserSubscription `gorm:"foreignKey:UserID" json:"subscriptions,omitempty"`
 REDACTED
 
 func (User) TableName() string {

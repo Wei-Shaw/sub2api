@@ -84,6 +84,27 @@
             </span>
           </template>
 
+          <template #cell-subscriptions="{ row REDACTED">
+            <div v-if="row.subscriptions && row.subscriptions.length > 0" class="flex flex-wrap gap-1.5">
+              <GroupBadge
+                v-for="sub in row.subscriptions"
+                :key="sub.id"
+                :name="sub.group?.name || ''"
+                :platform="sub.group?.platform"
+                :subscription-type="sub.group?.subscription_type"
+                :rate-multiplier="sub.group?.rate_multiplier"
+                :days-remaining="sub.expires_at ? getDaysRemaining(sub.expires_at) : null"
+                :title="sub.expires_at ? formatExpiresAt(sub.expires_at) : ''"
+              />
+            </div>
+            <span v-else class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-gray-400 dark:text-dark-500 bg-gray-50 dark:bg-dark-700/50">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+              <span>{{ t('admin.users.noSubscription') REDACTEDREDACTED</span>
+            </span>
+          </template>
+
           <template #cell-balance="{ value REDACTED">
             <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) REDACTEDREDACTED</span>
           </template>
@@ -662,12 +683,14 @@ import Modal from '@/components/common/Modal.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
 
 const appStore = useAppStore()
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('admin.users.columns.user'), sortable: true REDACTED,
   { key: 'role', label: t('admin.users.columns.role'), sortable: true REDACTED,
+  { key: 'subscriptions', label: t('admin.users.columns.subscriptions'), sortable: false REDACTED,
   { key: 'balance', label: t('admin.users.columns.balance'), sortable: true REDACTED,
   { key: 'usage', label: t('admin.users.columns.usage'), sortable: false REDACTED,
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true REDACTED,
@@ -747,6 +770,20 @@ const formatDate = (dateString: string): string => {
     month: 'short',
     day: 'numeric'
   REDACTED)
+REDACTED
+
+// 计算剩余天数
+const getDaysRemaining = (expiresAt: string): number => {
+  const now = new Date()
+  const expires = new Date(expiresAt)
+  const diffMs = expires.getTime() - now.getTime()
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+REDACTED
+
+// 格式化过期时间（用于 tooltip）
+const formatExpiresAt = (expiresAt: string): string => {
+  const date = new Date(expiresAt)
+  return date.toLocaleString()
 REDACTED
 
 const generateRandomPasswordStr = () => {

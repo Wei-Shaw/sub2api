@@ -73,8 +73,35 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
+	// Query users with pagination (reuse the same db with filters applied)
 	if err := db.Offset(params.Offset()).Limit(params.Limit()).Order("id DESC").Find(&users).Error; err != nil {
 		return nil, nil, err
+REDACTED
+
+	// Batch load subscriptions for all users (avoid N+1)
+	if len(users) > 0 {
+		userIDs := make([]int64, len(users))
+		userMap := make(map[int64]*model.User, len(users))
+		for i := range users {
+			userIDs[i] = users[i].ID
+			userMap[users[i].ID] = &users[i]
+	REDACTED
+
+		// Query active subscriptions with groups in one query
+		var subscriptions []model.UserSubscription
+		if err := r.db.WithContext(ctx).
+			Preload("Group").
+			Where("user_id IN ? AND status = ?", userIDs, model.SubscriptionStatusActive).
+			Find(&subscriptions).Error; err != nil {
+			return nil, nil, err
+	REDACTED
+
+		// Associate subscriptions with users
+		for i := range subscriptions {
+			if user, ok := userMap[subscriptions[i].UserID]; ok {
+				user.Subscriptions = append(user.Subscriptions, subscriptions[i])
+		REDACTED
+	REDACTED
 REDACTED
 
 	pages := int(total) / params.Limit()
