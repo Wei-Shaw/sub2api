@@ -666,6 +666,7 @@ export default {
         status: 'Status',
         schedulable: 'Schedule',
         todayStats: "Today's Stats",
+        groups: 'Groups',
         usageWindows: 'Usage Windows',
         priority: 'Priority',
         lastUsed: 'Last Used',

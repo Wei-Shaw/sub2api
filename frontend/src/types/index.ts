@@ -324,6 +324,7 @@ export interface Account {
   updated_at: string;
   proxy?: Proxy;
   group_ids?: number[]; // Groups this account belongs to
+  groups?: Group[]; // Preloaded group objects
 
   // Rate limit & scheduling fields
   schedulable: boolean;

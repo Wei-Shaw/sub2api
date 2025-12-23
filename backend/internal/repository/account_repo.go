@@ -78,15 +78,19 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	if err := db.Preload("Proxy").Preload("AccountGroups").Offset(params.Offset()).Limit(params.Limit()).Order("id DESC").Find(&accounts).Error; err != nil {
+	if err := db.Preload("Proxy").Preload("AccountGroups.Group").Offset(params.Offset()).Limit(params.Limit()).Order("id DESC").Find(&accounts).Error; err != nil {
 		return nil, nil, err
 REDACTED
 
-	// 填充每个 Account 的 GroupIDs 虚拟字段
+	// 填充每个 Account 的虚拟字段（GroupIDs 和 Groups）
 	for i := range accounts {
 		accounts[i].GroupIDs = make([]int64, 0, len(accounts[i].AccountGroups))
+		accounts[i].Groups = make([]*model.Group, 0, len(accounts[i].AccountGroups))
 		for _, ag := range accounts[i].AccountGroups {
 			accounts[i].GroupIDs = append(accounts[i].GroupIDs, ag.GroupID)
+			if ag.Group != nil {
+				accounts[i].Groups = append(accounts[i].Groups, ag.Group)
+		REDACTED
 	REDACTED
 REDACTED
 

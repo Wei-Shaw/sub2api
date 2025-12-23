@@ -68,7 +68,8 @@ type Account struct {
 	AccountGroups []AccountGroup `gorm:"foreignKey:AccountID" json:"account_groups,omitempty"`
 
 	// 虚拟字段 (不存储到数据库)
-	GroupIDs []int64 `gorm:"-" json:"group_ids,omitempty"`
+	GroupIDs []int64  `gorm:"-" json:"group_ids,omitempty"`
+	Groups   []*Group `gorm:"-" json:"groups,omitempty"`
 REDACTED
 
 func (Account) TableName() string {

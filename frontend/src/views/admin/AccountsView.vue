@@ -123,6 +123,21 @@
             <AccountTodayStatsCell :account="row" />
           </template>
 
+          <template #cell-groups="{ row REDACTED">
+            <div v-if="row.groups && row.groups.length > 0" class="flex flex-wrap gap-1.5">
+              <GroupBadge
+                v-for="group in row.groups"
+                :key="group.id"
+                :name="group.name"
+                :platform="group.platform"
+                :subscription-type="group.subscription_type"
+                :rate-multiplier="group.rate_multiplier"
+                :show-rate="false"
+              />
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
           <template #cell-usage="{ row REDACTED">
             <AccountUsageCell :account="row" />
           </template>
@@ -301,6 +316,7 @@ import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountTestModal from '@/components/account/AccountTestModal.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
 import { formatRelativeTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
@@ -314,6 +330,7 @@ const columns = computed<Column[]>(() => [
   { key: 'status', label: t('admin.accounts.columns.status'), sortable: true REDACTED,
   { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true REDACTED,
   { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false REDACTED,
+  { key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false REDACTED,
   { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
   { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
   { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
