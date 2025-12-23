@@ -734,7 +734,7 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
-	// 解析message_start获取input tokens
+	// 解析message_start获取input tokens（标准Claude API格式）
 	var msgStart struct {
 		Type    string `json:"type"`
 		Message struct {
@@ -747,15 +747,30 @@ REDACTED
 		usage.CacheReadInputTokens = msgStart.Message.Usage.CacheReadInputTokens
 REDACTED
 
-	// 解析message_delta获取output tokens
+	// 解析message_delta获取tokens（兼容GLM等把所有usage放在delta中的API）
 	var msgDelta struct {
 		Type  string `json:"type"`
 		Usage struct {
-			OutputTokens int `json:"output_tokens"`
+			InputTokens              int `json:"input_tokens"`
+			OutputTokens             int `json:"output_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	REDACTED `json:"usage"`
 REDACTED
 	if json.Unmarshal([]byte(data), &msgDelta) == nil && msgDelta.Type == "message_delta" {
+		// output_tokens 总是从 message_delta 获取
 		usage.OutputTokens = msgDelta.Usage.OutputTokens
+
+		// 如果 message_start 中没有值，则从 message_delta 获取（兼容GLM等API）
+		if usage.InputTokens == 0 {
+			usage.InputTokens = msgDelta.Usage.InputTokens
+	REDACTED
+		if usage.CacheCreationInputTokens == 0 {
+			usage.CacheCreationInputTokens = msgDelta.Usage.CacheCreationInputTokens
+	REDACTED
+		if usage.CacheReadInputTokens == 0 {
+			usage.CacheReadInputTokens = msgDelta.Usage.CacheReadInputTokens
+	REDACTED
 REDACTED
 REDACTED
 
