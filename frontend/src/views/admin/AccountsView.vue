@@ -74,15 +74,17 @@
           </template>
 
           <template #cell-platform="{ value REDACTED">
-            <div class="flex items-center gap-2">
-              <span
-                :class="[
-                  'w-2 h-2 rounded-full',
-                  value === 'anthropic' ? 'bg-orange-500' : value === 'openai' ? 'bg-green-500' : 'bg-gray-400'
-                ]"
-              />
-              <span class="text-sm text-gray-700 dark:text-gray-300 capitalize">{{ value === 'anthropic' ? 'Anthropic' : value === 'openai' ? 'OpenAI' : value REDACTEDREDACTED</span>
-            </div>
+            <span
+              :class="[
+                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
+                value === 'anthropic'
+                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+              ]"
+            >
+              <PlatformIcon :platform="value" size="xs" />
+              {{ value === 'anthropic' ? 'Anthropic' : 'OpenAI' REDACTEDREDACTED
+            </span>
           </template>
 
           <template #cell-type="{ value REDACTED">
@@ -334,6 +336,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountTestModal from '@/components/account/AccountTestModal.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { formatRelativeTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()

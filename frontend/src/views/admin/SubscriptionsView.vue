@@ -60,9 +60,15 @@
           </template>
 
           <template #cell-group="{ row REDACTED">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
-              {{ row.group?.name || `Group #${row.group_idREDACTED` REDACTEDREDACTED
-            </span>
+            <GroupBadge
+              v-if="row.group"
+              :name="row.group.name"
+              :platform="row.group.platform"
+              :subscription-type="row.group.subscription_type"
+              :rate-multiplier="row.group.rate_multiplier"
+              :show-rate="false"
+            />
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
 
           <template #cell-usage="{ row REDACTED">
@@ -361,6 +367,7 @@ import Modal from '@/components/common/Modal.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()

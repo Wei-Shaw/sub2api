@@ -168,7 +168,7 @@
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">ChatGPT Plus</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">ChatGPT OAuth</span>
             </div>
           </button>
 
