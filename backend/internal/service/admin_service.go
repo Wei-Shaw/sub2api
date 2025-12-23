@@ -71,6 +71,9 @@ REDACTED
 type CreateUserInput struct {
 	Email         string
 	Password      string
+	Username      string
+	Wechat        string
+	Notes         string
 	Balance       float64
 	Concurrency   int
 	AllowedGroups []int64
@@ -79,6 +82,9 @@ REDACTED
 type UpdateUserInput struct {
 	Email         string
 	Password      string
+	Username      *string
+	Wechat        *string
+	Notes         *string
 	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
@@ -237,6 +243,9 @@ REDACTED
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*model.User, error) {
 	user := &model.User{
 		Email:       input.Email,
+		Username:    input.Username,
+		Wechat:      input.Wechat,
+		Notes:       input.Notes,
 		Role:        "user", // Always create as regular user, never admin
 		Balance:     input.Balance,
 		Concurrency: input.Concurrency,
@@ -274,6 +283,18 @@ REDACTED
 			return nil, err
 	REDACTED
 REDACTED
+
+	// 更新用户字段
+	if input.Username != nil {
+		user.Username = *input.Username
+REDACTED
+	if input.Wechat != nil {
+		user.Wechat = *input.Wechat
+REDACTED
+	if input.Notes != nil {
+		user.Notes = *input.Notes
+REDACTED
+
 	// Role is not allowed to be changed via API to prevent privilege escalation
 	if input.Status != "" {
 		user.Status = input.Status

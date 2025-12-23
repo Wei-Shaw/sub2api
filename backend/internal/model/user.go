@@ -11,6 +11,9 @@ import (
 type User struct {
 	ID            int64          `gorm:"primaryKey" json:"id"`
 	Email         string         `gorm:"uniqueIndex;size:255;not null" json:"email"`
+	Username      string         `gorm:"size:100;default:''" json:"username"`
+	Wechat        string         `gorm:"size:100;default:''" json:"wechat"`
+	Notes         string         `gorm:"type:text;default:''" json:"notes"`
 	PasswordHash  string         `gorm:"size:255;not null" json:"-"`
 	Role          string         `gorm:"size:20;default:user;not null" json:"role"` // admin/user
 	Balance       float64        `gorm:"type:decimal(20,8);default:0;not null" json:"balance"`

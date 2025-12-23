@@ -11,7 +11,20 @@ import type { User, ChangePasswordRequest REDACTED from '@/types';
  * @returns User profile data
  */
 export async function getProfile(): Promise<User> {
-  const { data REDACTED = await apiClient.get<User>('/users/me');
+  const { data REDACTED = await apiClient.get<User>('/user/profile');
+  return data;
+REDACTED
+
+/**
+ * Update current user profile
+ * @param profile - Profile data to update
+ * @returns Updated user profile data
+ */
+export async function updateProfile(profile: {
+  username?: string;
+  wechat?: string;
+REDACTED): Promise<User> {
+  const { data REDACTED = await apiClient.put<User>('/user', profile);
   return data;
 REDACTED
 
@@ -29,12 +42,13 @@ export async function changePassword(
     new_password: newPassword,
   REDACTED;
 
-  const { data REDACTED = await apiClient.post<{ message: string REDACTED>('/users/me/password', payload);
+  const { data REDACTED = await apiClient.put<{ message: string REDACTED>('/user/password', payload);
   return data;
 REDACTED
 
 export const userAPI = {
   getProfile,
+  updateProfile,
   changePassword,
 REDACTED;
 
