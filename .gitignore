@@ -28,6 +28,7 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 *.local
+*.tsbuildinfo
 
 # 日志
 npm-debug.log*
