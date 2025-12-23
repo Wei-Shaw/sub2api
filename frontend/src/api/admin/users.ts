@@ -84,16 +84,19 @@ export async function deleteUser(id: number): Promise<{ message: string }> {
  * @param id - User ID
  * @param balance - New balance
  * @param operation - Operation type ('set', 'add', 'subtract')
+ * @param notes - Optional notes for the balance adjustment
  * @returns Updated user
  */
 export async function updateBalance(
   id: number,
   balance: number,
-  operation: 'set' | 'add' | 'subtract' = 'set'
+  operation: 'set' | 'add' | 'subtract' = 'set',
+  notes?: string
 ): Promise<User> {
   const { data } = await apiClient.post<User>(`/admin/users/${id}/balance`, {
     balance,
     operation,
+    notes: notes || '',
   });
   return data;
 }

@@ -22,7 +22,7 @@ type AdminService interface {
 	CreateUser(ctx context.Context, input *CreateUserInput) (*model.User, error)
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*model.User, error)
 	DeleteUser(ctx context.Context, id int64) error
-	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string) (*model.User, error)
+	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*model.User, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]model.ApiKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 
@@ -271,8 +271,6 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, errors.New("cannot disable admin user")
 	}
 
-	// Track balance and concurrency changes for logging
-	oldBalance := user.Balance
 	oldConcurrency := user.Concurrency
 
 	if input.Email != "" {
@@ -284,7 +282,6 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		}
 	}
 
-	// 更新用户字段
 	if input.Username != nil {
 		user.Username = *input.Username
 	}
@@ -295,63 +292,20 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		user.Notes = *input.Notes
 	}
 
-	// Role is not allowed to be changed via API to prevent privilege escalation
 	if input.Status != "" {
 		user.Status = input.Status
 	}
 
-	// 只在指针非 nil 时更新 Balance（支持设置为 0）
-	if input.Balance != nil {
-		user.Balance = *input.Balance
-	}
-
-	// 只在指针非 nil 时更新 Concurrency（支持设置为任意值）
 	if input.Concurrency != nil {
 		user.Concurrency = *input.Concurrency
 	}
 
-	// 只在指针非 nil 时更新 AllowedGroups
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
-	}
-
-	// 余额变化时失效缓存
-	if input.Balance != nil && *input.Balance != oldBalance {
-		if s.billingCacheService != nil {
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, id); err != nil {
-					log.Printf("invalidate user balance cache failed: user_id=%d err=%v", id, err)
-				}
-			}()
-		}
-	}
-
-	// Create adjustment records for balance/concurrency changes
-	balanceDiff := user.Balance - oldBalance
-	if balanceDiff != 0 {
-		code, err := model.GenerateRedeemCode()
-		if err != nil {
-			log.Printf("failed to generate adjustment redeem code: %v", err)
-			return user, nil
-		}
-		adjustmentRecord := &model.RedeemCode{
-			Code:   code,
-			Type:   model.AdjustmentTypeAdminBalance,
-			Value:  balanceDiff,
-			Status: model.StatusUsed,
-			UsedBy: &user.ID,
-		}
-		now := time.Now()
-		adjustmentRecord.UsedAt = &now
-		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
-			log.Printf("failed to create balance adjustment redeem code: %v", err)
-		}
 	}
 
 	concurrencyDiff := user.Concurrency - oldConcurrency
@@ -390,11 +344,13 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	return s.userRepo.Delete(ctx, id)
 }
 
-func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string) (*model.User, error) {
+func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*model.User, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
+
+	oldBalance := user.Balance
 
 	switch operation {
 	case "set":
@@ -405,11 +361,14 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		user.Balance -= balance
 	}
 
+	if user.Balance < 0 {
+		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldBalance, user.Balance)
+	}
+
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
 	}
 
-	// 失效余额缓存
 	if s.billingCacheService != nil {
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -418,6 +377,30 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 				log.Printf("invalidate user balance cache failed: user_id=%d err=%v", userID, err)
 			}
 		}()
+	}
+
+	balanceDiff := user.Balance - oldBalance
+	if balanceDiff != 0 {
+		code, err := model.GenerateRedeemCode()
+		if err != nil {
+			log.Printf("failed to generate adjustment redeem code: %v", err)
+			return user, nil
+		}
+
+		adjustmentRecord := &model.RedeemCode{
+			Code:   code,
+			Type:   model.AdjustmentTypeAdminBalance,
+			Value:  balanceDiff,
+			Status: model.StatusUsed,
+			UsedBy: &user.ID,
+			Notes:  notes,
+		}
+		now := time.Now()
+		adjustmentRecord.UsedAt = &now
+
+		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
+			log.Printf("failed to create balance adjustment redeem code: %v", err)
+		}
 	}
 
 	return user, nil

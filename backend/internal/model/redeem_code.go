@@ -14,6 +14,7 @@ type RedeemCode struct {
 	Status    string     `gorm:"size:20;default:unused;not null" json:"status"` // unused/used
 	UsedBy    *int64     `gorm:"index" json:"used_by"`
 	UsedAt    *time.Time `json:"used_at"`
+	Notes     string     `gorm:"type:text" json:"notes"`
 	CreatedAt time.Time  `gorm:"not null" json:"created_at"`
 
 	// 订阅类型专用字段

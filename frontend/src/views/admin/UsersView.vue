@@ -207,6 +207,26 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
                 </svg>
               </button>
+              <!-- Deposit -->
+              <button
+                @click="handleDeposit(row)"
+                class="p-2 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                :title="t('admin.users.deposit')"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </button>
+              <!-- Withdraw -->
+              <button
+                @click="handleWithdraw(row)"
+                class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                :title="t('admin.users.withdraw')"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14" />
+                </svg>
+              </button>
               <!-- Edit -->
               <button
                 @click="handleEdit(row)"
@@ -476,24 +496,13 @@
           ></textarea>
           <p class="input-hint">{{ t('admin.users.notesHint') }}</p>
         </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="input-label">{{ t('admin.users.columns.balance') }}</label>
-            <input
-              v-model.number="editForm.balance"
-              type="number"
-              step="any"
-              class="input"
+        <div>
+          <label class="input-label">{{ t('admin.users.columns.concurrency') }}</label>
+          <input
+            v-model.number="editForm.concurrency"
+            type="number"
+            class="input"
             />
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.users.columns.concurrency') }}</label>
-            <input
-              v-model.number="editForm.concurrency"
-              type="number"
-              class="input"
-            />
-          </div>
         </div>
 
         <div class="flex justify-end gap-3 pt-4">
@@ -729,6 +738,114 @@
       </template>
     </Modal>
 
+    <!-- Deposit/Withdraw Modal -->
+    <Modal
+      :show="showBalanceModal"
+      :title="balanceOperation === 'add' ? t('admin.users.deposit') : t('admin.users.withdraw')"
+      size="md"
+      @close="closeBalanceModal"
+    >
+      <form v-if="balanceUser" @submit.prevent="handleBalanceSubmit" class="space-y-5">
+        <div class="flex items-center gap-3 p-4 rounded-xl bg-gray-50 dark:bg-dark-700">
+          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
+            <span class="text-lg font-medium text-primary-700 dark:text-primary-300">
+              {{ balanceUser.email.charAt(0).toUpperCase() }}
+            </span>
+          </div>
+          <div class="flex-1">
+            <p class="font-medium text-gray-900 dark:text-white">{{ balanceUser.email }}</p>
+            <p class="text-sm text-gray-500 dark:text-dark-400">
+              {{ t('admin.users.currentBalance') }}: ${{ balanceUser.balance.toFixed(2) }}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label class="input-label">
+            {{ balanceOperation === 'add' ? t('admin.users.depositAmount') : t('admin.users.withdrawAmount') }}
+          </label>
+          <div class="relative">
+            <div class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-dark-400 font-medium">
+              $
+            </div>
+            <input
+              v-model.number="balanceForm.amount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              class="input pl-8"
+              :placeholder="balanceOperation === 'add' ? '10.00' : '5.00'"
+            />
+          </div>
+          <p class="input-hint">
+            {{ t('admin.users.amountHint') }}
+          </p>
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('admin.users.notes') }}</label>
+          <textarea
+            v-model="balanceForm.notes"
+            rows="3"
+            class="input"
+            :placeholder="balanceOperation === 'add'
+              ? t('admin.users.depositNotesPlaceholder')
+              : t('admin.users.withdrawNotesPlaceholder')"
+          ></textarea>
+          <p class="input-hint">{{ t('admin.users.notesOptional') }}</p>
+        </div>
+
+        <div v-if="balanceForm.amount > 0" class="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-blue-700 dark:text-blue-300">{{ t('admin.users.newBalance') }}:</span>
+            <span class="font-bold text-blue-900 dark:text-blue-100">
+              ${{ calculateNewBalance().toFixed(2) }}
+            </span>
+          </div>
+        </div>
+
+        <div v-if="balanceOperation === 'subtract' && calculateNewBalance() < 0" class="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50">
+          <div class="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
+            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <span>{{ t('admin.users.insufficientBalance') }}</span>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-4">
+          <button
+            @click="closeBalanceModal"
+            type="button"
+            class="btn btn-secondary"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="submit"
+            :disabled="balanceSubmitting || !balanceForm.amount || balanceForm.amount <= 0 || (balanceOperation === 'subtract' && calculateNewBalance() < 0)"
+            class="btn"
+            :class="balanceOperation === 'add' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'btn-danger'"
+          >
+            <svg
+              v-if="balanceSubmitting"
+              class="animate-spin -ml-1 mr-2 h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ balanceSubmitting
+              ? (balanceOperation === 'add' ? t('admin.users.depositing') : t('admin.users.withdrawing'))
+              : (balanceOperation === 'add' ? t('admin.users.confirmDeposit') : t('admin.users.confirmWithdraw'))
+            }}
+          </button>
+        </div>
+      </form>
+    </Modal>
+
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
       :show="showDeleteDialog"
@@ -828,6 +945,16 @@ const selectedGroupIds = ref<number[]>([])
 const loadingGroups = ref(false)
 const savingAllowedGroups = ref(false)
 
+// Balance (Deposit/Withdraw) modal state
+const showBalanceModal = ref(false)
+const balanceUser = ref<User | null>(null)
+const balanceOperation = ref<'add' | 'subtract'>('add')
+const balanceSubmitting = ref(false)
+const balanceForm = reactive({
+  amount: 0,
+  notes: ''
+})
+
 const createForm = reactive({
   email: '',
   password: '',
@@ -844,7 +971,6 @@ const editForm = reactive({
   username: '',
   wechat: '',
   notes: '',
-  balance: 0,
   concurrency: 1
 })
 const editPasswordCopied = ref(false)
@@ -997,7 +1123,6 @@ const handleEdit = (user: User) => {
   editForm.username = user.username || ''
   editForm.wechat = user.wechat || ''
   editForm.notes = user.notes || ''
-  editForm.balance = user.balance
   editForm.concurrency = user.concurrency
   editPasswordCopied.value = false
   showEditModal.value = true
@@ -1015,13 +1140,11 @@ const handleUpdateUser = async () => {
 
   submitting.value = true
   try {
-    // Build update data - only include password if not empty
     const updateData: Record<string, any> = {
       email: editForm.email,
       username: editForm.username,
       wechat: editForm.wechat,
       notes: editForm.notes,
-      balance: editForm.balance,
       concurrency: editForm.concurrency
     }
     if (editForm.password.trim()) {
@@ -1138,6 +1261,69 @@ const confirmDelete = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
     console.error('Error deleting user:', error)
+  }
+}
+
+const handleDeposit = (user: User) => {
+  balanceUser.value = user
+  balanceOperation.value = 'add'
+  balanceForm.amount = 0
+  balanceForm.notes = ''
+  showBalanceModal.value = true
+}
+
+const handleWithdraw = (user: User) => {
+  balanceUser.value = user
+  balanceOperation.value = 'subtract'
+  balanceForm.amount = 0
+  balanceForm.notes = ''
+  showBalanceModal.value = true
+}
+
+const closeBalanceModal = () => {
+  showBalanceModal.value = false
+  balanceUser.value = null
+  balanceForm.amount = 0
+  balanceForm.notes = ''
+}
+
+const calculateNewBalance = () => {
+  if (!balanceUser.value) return 0
+  if (balanceOperation.value === 'add') {
+    return balanceUser.value.balance + balanceForm.amount
+  } else {
+    return balanceUser.value.balance - balanceForm.amount
+  }
+}
+
+const handleBalanceSubmit = async () => {
+  if (!balanceUser.value || balanceForm.amount <= 0) return
+
+  balanceSubmitting.value = true
+  try {
+    await adminAPI.users.updateBalance(
+      balanceUser.value.id,
+      balanceForm.amount,
+      balanceOperation.value,
+      balanceForm.notes
+    )
+
+    const successMsg = balanceOperation.value === 'add'
+      ? t('admin.users.depositSuccess')
+      : t('admin.users.withdrawSuccess')
+
+    appStore.showSuccess(successMsg)
+    closeBalanceModal()
+    loadUsers()
+  } catch (error: any) {
+    const errorMsg = balanceOperation.value === 'add'
+      ? t('admin.users.failedToDeposit')
+      : t('admin.users.failedToWithdraw')
+
+    appStore.showError(error.response?.data?.detail || errorMsg)
+    console.error('Error updating balance:', error)
+  } finally {
+    balanceSubmitting.value = false
   }
 }
 
