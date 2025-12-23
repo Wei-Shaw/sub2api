@@ -19,7 +19,6 @@ import (
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
 	gatewayService      *service.OpenAIGatewayService
-	userService         *service.UserService
 	billingCacheService *service.BillingCacheService
 	concurrencyHelper   *ConcurrencyHelper
 REDACTED
@@ -27,13 +26,11 @@ REDACTED
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
-	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 ) *OpenAIGatewayHandler {
 	return &OpenAIGatewayHandler{
 		gatewayService:      gatewayService,
-		userService:         userService,
 		billingCacheService: billingCacheService,
 		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatNone),
 REDACTED
