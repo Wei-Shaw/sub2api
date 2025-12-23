@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,18 @@ var openaiAllowedHeaders = map[string]bool{
 	"user-agent":      true,
 	"originator":      true,
 	"session_id":      true,
+REDACTED
+
+// OpenAICodexUsageSnapshot represents Codex API usage limits from response headers
+type OpenAICodexUsageSnapshot struct {
+	PrimaryUsedPercent          *float64 `json:"primary_used_percent,omitempty"`
+	PrimaryResetAfterSeconds    *int     `json:"primary_reset_after_seconds,omitempty"`
+	PrimaryWindowMinutes        *int     `json:"primary_window_minutes,omitempty"`
+	SecondaryUsedPercent        *float64 `json:"secondary_used_percent,omitempty"`
+	SecondaryResetAfterSeconds  *int     `json:"secondary_reset_after_seconds,omitempty"`
+	SecondaryWindowMinutes      *int     `json:"secondary_window_minutes,omitempty"`
+	PrimaryOverSecondaryPercent *float64 `json:"primary_over_secondary_percent,omitempty"`
+	UpdatedAt                   string   `json:"updated_at,omitempty"`
 REDACTED
 
 // OpenAIUsage represents OpenAI API response usage
@@ -281,6 +294,13 @@ REDACTED else {
 		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, mappedModel)
 		if err != nil {
 			return nil, err
+	REDACTED
+REDACTED
+
+	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
+	if account.Type == model.AccountTypeOAuth {
+		if snapshot := extractCodexUsageHeaders(resp.Header); snapshot != nil {
+			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 	REDACTED
 REDACTED
 
@@ -707,4 +727,110 @@ REDACTED
 	_ = s.accountRepo.UpdateLastUsed(ctx, account.ID)
 
 	return nil
+REDACTED
+
+// extractCodexUsageHeaders extracts Codex usage limits from response headers
+func extractCodexUsageHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
+	snapshot := &OpenAICodexUsageSnapshot{REDACTED
+	hasData := false
+
+	// Helper to parse float64 from header
+	parseFloat := func(key string) *float64 {
+		if v := headers.Get(key); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				return &f
+		REDACTED
+	REDACTED
+		return nil
+REDACTED
+
+	// Helper to parse int from header
+	parseInt := func(key string) *int {
+		if v := headers.Get(key); v != "" {
+			if i, err := strconv.Atoi(v); err == nil {
+				return &i
+		REDACTED
+	REDACTED
+		return nil
+REDACTED
+
+	// Primary (weekly) limits
+	if v := parseFloat("x-codex-primary-used-percent"); v != nil {
+		snapshot.PrimaryUsedPercent = v
+		hasData = true
+REDACTED
+	if v := parseInt("x-codex-primary-reset-after-seconds"); v != nil {
+		snapshot.PrimaryResetAfterSeconds = v
+		hasData = true
+REDACTED
+	if v := parseInt("x-codex-primary-window-minutes"); v != nil {
+		snapshot.PrimaryWindowMinutes = v
+		hasData = true
+REDACTED
+
+	// Secondary (5h) limits
+	if v := parseFloat("x-codex-secondary-used-percent"); v != nil {
+		snapshot.SecondaryUsedPercent = v
+		hasData = true
+REDACTED
+	if v := parseInt("x-codex-secondary-reset-after-seconds"); v != nil {
+		snapshot.SecondaryResetAfterSeconds = v
+		hasData = true
+REDACTED
+	if v := parseInt("x-codex-secondary-window-minutes"); v != nil {
+		snapshot.SecondaryWindowMinutes = v
+		hasData = true
+REDACTED
+
+	// Overflow ratio
+	if v := parseFloat("x-codex-primary-over-secondary-limit-percent"); v != nil {
+		snapshot.PrimaryOverSecondaryPercent = v
+		hasData = true
+REDACTED
+
+	if !hasData {
+		return nil
+REDACTED
+
+	snapshot.UpdatedAt = time.Now().Format(time.RFC3339)
+	return snapshot
+REDACTED
+
+// updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field
+func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, accountID int64, snapshot *OpenAICodexUsageSnapshot) {
+	if snapshot == nil {
+		return
+REDACTED
+
+	// Convert snapshot to map for merging into Extra
+	updates := make(map[string]any)
+	if snapshot.PrimaryUsedPercent != nil {
+		updates["codex_primary_used_percent"] = *snapshot.PrimaryUsedPercent
+REDACTED
+	if snapshot.PrimaryResetAfterSeconds != nil {
+		updates["codex_primary_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
+REDACTED
+	if snapshot.PrimaryWindowMinutes != nil {
+		updates["codex_primary_window_minutes"] = *snapshot.PrimaryWindowMinutes
+REDACTED
+	if snapshot.SecondaryUsedPercent != nil {
+		updates["codex_secondary_used_percent"] = *snapshot.SecondaryUsedPercent
+REDACTED
+	if snapshot.SecondaryResetAfterSeconds != nil {
+		updates["codex_secondary_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
+REDACTED
+	if snapshot.SecondaryWindowMinutes != nil {
+		updates["codex_secondary_window_minutes"] = *snapshot.SecondaryWindowMinutes
+REDACTED
+	if snapshot.PrimaryOverSecondaryPercent != nil {
+		updates["codex_primary_over_secondary_percent"] = *snapshot.PrimaryOverSecondaryPercent
+REDACTED
+	updates["codex_usage_updated_at"] = snapshot.UpdatedAt
+
+	// Update account's Extra field asynchronously
+	go func() {
+		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+REDACTED()
 REDACTED

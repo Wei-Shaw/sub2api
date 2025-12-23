@@ -34,4 +34,5 @@ type AccountRepository interface {
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
 	ClearRateLimit(ctx context.Context, id int64) error
 	UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error
+	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
 REDACTED

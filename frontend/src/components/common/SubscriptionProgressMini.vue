@@ -29,7 +29,7 @@
     <transition name="dropdown">
       <div
         v-if="tooltipOpen"
-        class="absolute right-0 mt-2 w-80 bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-gray-200 dark:border-dark-700 z-50"
+        class="absolute right-0 mt-2 w-[340px] bg-white dark:bg-dark-800 rounded-xl shadow-xl border border-gray-200 dark:border-dark-700 z-50 overflow-hidden"
       >
         <div class="p-3 border-b border-gray-100 dark:border-dark-700">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -62,43 +62,43 @@
             <!-- Progress bars -->
             <div class="space-y-1.5">
               <div v-if="subscription.group?.daily_limit_usd" class="flex items-center gap-2">
-                <span class="text-[10px] text-gray-500 w-8">{{ t('subscriptionProgress.daily') REDACTEDREDACTED</span>
-                <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                <span class="text-[10px] text-gray-500 w-8 flex-shrink-0">{{ t('subscriptionProgress.daily') REDACTEDREDACTED</span>
+                <div class="flex-1 min-w-0 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
                   <div
                     class="h-1.5 rounded-full transition-all"
                     :class="getProgressBarClass(subscription.daily_usage_usd, subscription.group?.daily_limit_usd)"
                     :style="{ width: getProgressWidth(subscription.daily_usage_usd, subscription.group?.daily_limit_usd) REDACTED"
                   ></div>
                 </div>
-                <span class="text-[10px] text-gray-500 w-16 text-right">
+                <span class="text-[10px] text-gray-500 w-24 text-right flex-shrink-0">
                   {{ formatUsage(subscription.daily_usage_usd, subscription.group?.daily_limit_usd) REDACTEDREDACTED
                 </span>
               </div>
 
               <div v-if="subscription.group?.weekly_limit_usd" class="flex items-center gap-2">
-                <span class="text-[10px] text-gray-500 w-8">{{ t('subscriptionProgress.weekly') REDACTEDREDACTED</span>
-                <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                <span class="text-[10px] text-gray-500 w-8 flex-shrink-0">{{ t('subscriptionProgress.weekly') REDACTEDREDACTED</span>
+                <div class="flex-1 min-w-0 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
                   <div
                     class="h-1.5 rounded-full transition-all"
                     :class="getProgressBarClass(subscription.weekly_usage_usd, subscription.group?.weekly_limit_usd)"
                     :style="{ width: getProgressWidth(subscription.weekly_usage_usd, subscription.group?.weekly_limit_usd) REDACTED"
                   ></div>
                 </div>
-                <span class="text-[10px] text-gray-500 w-16 text-right">
+                <span class="text-[10px] text-gray-500 w-24 text-right flex-shrink-0">
                   {{ formatUsage(subscription.weekly_usage_usd, subscription.group?.weekly_limit_usd) REDACTEDREDACTED
                 </span>
               </div>
 
               <div v-if="subscription.group?.monthly_limit_usd" class="flex items-center gap-2">
-                <span class="text-[10px] text-gray-500 w-8">{{ t('subscriptionProgress.monthly') REDACTEDREDACTED</span>
-                <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                <span class="text-[10px] text-gray-500 w-8 flex-shrink-0">{{ t('subscriptionProgress.monthly') REDACTEDREDACTED</span>
+                <div class="flex-1 min-w-0 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
                   <div
                     class="h-1.5 rounded-full transition-all"
                     :class="getProgressBarClass(subscription.monthly_usage_usd, subscription.group?.monthly_limit_usd)"
                     :style="{ width: getProgressWidth(subscription.monthly_usage_usd, subscription.group?.monthly_limit_usd) REDACTED"
                   ></div>
                 </div>
-                <span class="text-[10px] text-gray-500 w-16 text-right">
+                <span class="text-[10px] text-gray-500 w-24 text-right flex-shrink-0">
                   {{ formatUsage(subscription.monthly_usage_usd, subscription.group?.monthly_limit_usd) REDACTEDREDACTED
                 </span>
               </div>

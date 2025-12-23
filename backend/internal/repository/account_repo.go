@@ -23,14 +23,18 @@ REDACTED
 
 func (r *AccountRepository) GetByID(ctx context.Context, id int64) (*model.Account, error) {
 	var account model.Account
-	err := r.db.WithContext(ctx).Preload("Proxy").Preload("AccountGroups").First(&account, id).Error
+	err := r.db.WithContext(ctx).Preload("Proxy").Preload("AccountGroups.Group").First(&account, id).Error
 	if err != nil {
 		return nil, err
 REDACTED
-	// 填充 GroupIDs 虚拟字段
+	// 填充 GroupIDs 和 Groups 虚拟字段
 	account.GroupIDs = make([]int64, 0, len(account.AccountGroups))
+	account.Groups = make([]*model.Group, 0, len(account.AccountGroups))
 	for _, ag := range account.AccountGroups {
 		account.GroupIDs = append(account.GroupIDs, ag.GroupID)
+		if ag.Group != nil {
+			account.Groups = append(account.Groups, ag.Group)
+	REDACTED
 REDACTED
 	return &account, nil
 REDACTED
@@ -302,4 +306,32 @@ REDACTED
 func (r *AccountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
 	return r.db.WithContext(ctx).Model(&model.Account{REDACTED).Where("id = ?", id).
 		Update("schedulable", schedulable).Error
+REDACTED
+
+// UpdateExtra updates specific fields in account's Extra JSONB field
+// It merges the updates into existing Extra data without overwriting other fields
+func (r *AccountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+REDACTED
+
+	// Get current account to preserve existing Extra data
+	var account model.Account
+	if err := r.db.WithContext(ctx).Select("extra").Where("id = ?", id).First(&account).Error; err != nil {
+		return err
+REDACTED
+
+	// Initialize Extra if nil
+	if account.Extra == nil {
+		account.Extra = make(model.JSONB)
+REDACTED
+
+	// Merge updates into existing Extra
+	for k, v := range updates {
+		account.Extra[k] = v
+REDACTED
+
+	// Save updated Extra
+	return r.db.WithContext(ctx).Model(&model.Account{REDACTED).Where("id = ?", id).
+		Update("extra", account.Extra).Error
 REDACTED
