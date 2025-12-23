@@ -9,11 +9,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"sub2api/internal/config"
+	"sub2api/internal/pkg/openai"
 )
 
 // LiteLLMModelPricing LiteLLM价格数据结构
@@ -419,8 +421,17 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 4. 基于模型系列匹配
-	return s.matchByModelFamily(modelLower)
+	// 4. 基于模型系列匹配（Claude）
+	if pricing := s.matchByModelFamily(modelLower); pricing != nil {
+		return pricing
+REDACTED
+
+	// 5. OpenAI 模型回退策略
+	if strings.HasPrefix(modelLower, "gpt-") {
+		return s.matchOpenAIModel(modelLower)
+REDACTED
+
+	return nil
 REDACTED
 
 // extractBaseName 提取基础模型名称（去掉日期版本号）
@@ -512,6 +523,70 @@ REDACTED
 REDACTED
 
 	return nil
+REDACTED
+
+// matchOpenAIModel OpenAI 模型回退匹配策略
+// 回退顺序：
+// 1. gpt-5.2-codex -> gpt-5.2（去掉后缀如 -codex, -mini, -max 等）
+// 2. gpt-5.2-20251222 -> gpt-5.2（去掉日期版本号）
+// 3. 最终回退到 DefaultTestModel (gpt-5.1-codex)
+func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
+	// 正则匹配日期后缀 (如 -20251222)
+	datePattern := regexp.MustCompile(`-\d{8REDACTED$`)
+
+	// 尝试的回退变体
+	variants := s.generateOpenAIModelVariants(model, datePattern)
+
+	for _, variant := range variants {
+		if pricing, ok := s.pricingData[variant]; ok {
+			log.Printf("[Pricing] OpenAI fallback matched %s -> %s", model, variant)
+			return pricing
+	REDACTED
+REDACTED
+
+	// 最终回退到 DefaultTestModel
+	defaultModel := strings.ToLower(openai.DefaultTestModel)
+	if pricing, ok := s.pricingData[defaultModel]; ok {
+		log.Printf("[Pricing] OpenAI fallback to default model %s -> %s", model, defaultModel)
+		return pricing
+REDACTED
+
+	return nil
+REDACTED
+
+// generateOpenAIModelVariants 生成 OpenAI 模型的回退变体列表
+func (s *PricingService) generateOpenAIModelVariants(model string, datePattern *regexp.Regexp) []string {
+	seen := make(map[string]bool)
+	var variants []string
+
+	addVariant := func(v string) {
+		if v != model && !seen[v] {
+			seen[v] = true
+			variants = append(variants, v)
+	REDACTED
+REDACTED
+
+	// 1. 去掉日期版本号: gpt-5.2-20251222 -> gpt-5.2
+	withoutDate := datePattern.ReplaceAllString(model, "")
+	if withoutDate != model {
+		addVariant(withoutDate)
+REDACTED
+
+	// 2. 提取基础版本号: gpt-5.2-codex -> gpt-5.2
+	// 只匹配纯数字版本号格式 gpt-X 或 gpt-X.Y，不匹配 gpt-4o 这种带字母后缀的
+	basePattern := regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	if matches := basePattern.FindStringSubmatch(model); len(matches) > 1 {
+		addVariant(matches[1])
+REDACTED
+
+	// 3. 同时去掉日期后再提取基础版本号
+	if withoutDate != model {
+		if matches := basePattern.FindStringSubmatch(withoutDate); len(matches) > 1 {
+			addVariant(matches[1])
+	REDACTED
+REDACTED
+
+	return variants
 REDACTED
 
 // GetStatus 获取服务状态
