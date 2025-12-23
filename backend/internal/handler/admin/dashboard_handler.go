@@ -175,7 +175,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	stats, err := h.usageRepo.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID)
+	stats, err := h.usageRepo.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID, 0)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return

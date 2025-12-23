@@ -5,3 +5,6 @@ export { default as OAuthAuthorizationFlow REDACTED from './OAuthAuthorizationFl
 export { default as AccountStatusIndicator REDACTED from './AccountStatusIndicator.vue'
 export { default as AccountUsageCell REDACTED from './AccountUsageCell.vue'
 export { default as UsageProgressBar REDACTED from './UsageProgressBar.vue'
+export { default as AccountStatsModal REDACTED from './AccountStatsModal.vue'
+export { default as AccountTestModal REDACTED from './AccountTestModal.vue'
+export { default as AccountTodayStatsCell REDACTED from './AccountTodayStatsCell.vue'

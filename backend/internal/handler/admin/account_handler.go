@@ -6,6 +6,8 @@ import (
 	"sub2api/internal/pkg/claude"
 	"sub2api/internal/pkg/openai"
 	"sub2api/internal/pkg/response"
+	"sub2api/internal/pkg/timezone"
+	"sub2api/internal/repository"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -31,10 +33,11 @@ type AccountHandler struct {
 	rateLimitService    *service.RateLimitService
 	accountUsageService *service.AccountUsageService
 	accountTestService  *service.AccountTestService
+	usageLogRepo        *repository.UsageLogRepository
 REDACTED
 
 // NewAccountHandler creates a new admin account handler
-func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, openaiOAuthService *service.OpenAIOAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService) *AccountHandler {
+func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, openaiOAuthService *service.OpenAIOAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService, usageLogRepo *repository.UsageLogRepository) *AccountHandler {
 	return &AccountHandler{
 		adminService:        adminService,
 		oauthService:        oauthService,
@@ -42,6 +45,7 @@ func NewAccountHandler(adminService service.AdminService, oauthService *service.
 		rateLimitService:    rateLimitService,
 		accountUsageService: accountUsageService,
 		accountTestService:  accountTestService,
+		usageLogRepo:        usageLogRepo,
 REDACTED
 REDACTED
 
@@ -297,15 +301,26 @@ func (h *AccountHandler) GetStats(c *gin.Context) {
 		return
 REDACTED
 
-	// Return mock data for now
-	_ = accountID
-	response.Success(c, gin.H{
-		"total_requests":        0,
-		"successful_requests":   0,
-		"failed_requests":       0,
-		"total_tokens":          0,
-		"average_response_time": 0,
-REDACTED)
+	// Parse days parameter (default 30)
+	days := 30
+	if daysStr := c.Query("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 90 {
+			days = d
+	REDACTED
+REDACTED
+
+	// Calculate time range
+	now := timezone.Now()
+	endTime := timezone.StartOfDay(now.AddDate(0, 0, 1))
+	startTime := timezone.StartOfDay(now.AddDate(0, 0, -days+1))
+
+	stats, err := h.usageLogRepo.GetAccountUsageStats(c.Request.Context(), accountID, startTime, endTime)
+	if err != nil {
+		response.InternalError(c, "Failed to get account stats: "+err.Error())
+		return
+REDACTED
+
+	response.Success(c, stats)
 REDACTED
 
 // ClearError handles clearing account error

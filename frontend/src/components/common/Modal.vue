@@ -52,7 +52,7 @@
 <script setup lang="ts">
 import { computed, watch, onMounted, onUnmounted REDACTED from 'vue'
 
-type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full'
+type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full'
 
 interface Props {
   show: boolean
@@ -80,6 +80,7 @@ const sizeClasses = computed(() => {
     md: 'max-w-md',
     lg: 'max-w-lg',
     xl: 'max-w-xl',
+    '2xl': 'max-w-5xl',
     full: 'max-w-4xl'
   REDACTED
   return sizes[props.size]

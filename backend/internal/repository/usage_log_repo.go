@@ -937,7 +937,7 @@ REDACTED
 REDACTED
 
 // GetModelStatsWithFilters returns model statistics with optional user/api_key filters
-func (r *UsageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID int64) ([]ModelStat, error) {
+func (r *UsageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) ([]ModelStat, error) {
 	var results []ModelStat
 
 	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
@@ -957,6 +957,9 @@ func (r *UsageLogRepository) GetModelStatsWithFilters(ctx context.Context, start
 REDACTED
 	if apiKeyID > 0 {
 		db = db.Where("api_key_id = ?", apiKeyID)
+REDACTED
+	if accountID > 0 {
+		db = db.Where("account_id = ?", accountID)
 REDACTED
 
 	err := db.Group("model").Order("total_tokens DESC").Scan(&results).Error
@@ -1005,5 +1008,211 @@ REDACTED
 		TotalCost:         stats.TotalCost,
 		TotalActualCost:   stats.TotalActualCost,
 		AverageDurationMs: stats.AverageDurationMs,
+REDACTED, nil
+REDACTED
+
+// AccountUsageHistory represents daily usage history for an account
+type AccountUsageHistory struct {
+	Date       string  `json:"date"`
+	Label      string  `json:"label"`
+	Requests   int64   `json:"requests"`
+	Tokens     int64   `json:"tokens"`
+	Cost       float64 `json:"cost"`
+	ActualCost float64 `json:"actual_cost"`
+REDACTED
+
+// AccountUsageSummary represents summary statistics for an account
+type AccountUsageSummary struct {
+	Days              int     `json:"days"`
+	ActualDaysUsed    int     `json:"actual_days_used"`
+	TotalCost         float64 `json:"total_cost"`
+	TotalStandardCost float64 `json:"total_standard_cost"`
+	TotalRequests     int64   `json:"total_requests"`
+	TotalTokens       int64   `json:"total_tokens"`
+	AvgDailyCost      float64 `json:"avg_daily_cost"`
+	AvgDailyRequests  float64 `json:"avg_daily_requests"`
+	AvgDailyTokens    float64 `json:"avg_daily_tokens"`
+	AvgDurationMs     float64 `json:"avg_duration_ms"`
+	Today             *struct {
+		Date     string  `json:"date"`
+		Cost     float64 `json:"cost"`
+		Requests int64   `json:"requests"`
+		Tokens   int64   `json:"tokens"`
+REDACTED `json:"today"`
+	HighestCostDay *struct {
+		Date     string  `json:"date"`
+		Label    string  `json:"label"`
+		Cost     float64 `json:"cost"`
+		Requests int64   `json:"requests"`
+REDACTED `json:"highest_cost_day"`
+	HighestRequestDay *struct {
+		Date     string  `json:"date"`
+		Label    string  `json:"label"`
+		Requests int64   `json:"requests"`
+		Cost     float64 `json:"cost"`
+REDACTED `json:"highest_request_day"`
+REDACTED
+
+// AccountUsageStatsResponse represents the full usage statistics response for an account
+type AccountUsageStatsResponse struct {
+	History []AccountUsageHistory `json:"history"`
+	Summary AccountUsageSummary   `json:"summary"`
+	Models  []ModelStat           `json:"models"`
+REDACTED
+
+// GetAccountUsageStats returns comprehensive usage statistics for an account over a time range
+func (r *UsageLogRepository) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*AccountUsageStatsResponse, error) {
+	daysCount := int(endTime.Sub(startTime).Hours()/24) + 1
+	if daysCount <= 0 {
+		daysCount = 30
+REDACTED
+
+	// Get daily history
+	var historyResults []struct {
+		Date       string  `gorm:"column:date"`
+		Requests   int64   `gorm:"column:requests"`
+		Tokens     int64   `gorm:"column:tokens"`
+		Cost       float64 `gorm:"column:cost"`
+		ActualCost float64 `gorm:"column:actual_cost"`
+REDACTED
+
+	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+		Select(`
+			TO_CHAR(created_at, 'YYYY-MM-DD') as date,
+			COUNT(*) as requests,
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(total_cost), 0) as cost,
+			COALESCE(SUM(actual_cost), 0) as actual_cost
+		`).
+		Where("account_id = ? AND created_at >= ? AND created_at < ?", accountID, startTime, endTime).
+		Group("date").
+		Order("date ASC").
+		Scan(&historyResults).Error
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// Build history with labels
+	history := make([]AccountUsageHistory, 0, len(historyResults))
+	for _, h := range historyResults {
+		// Parse date to get label (MM/DD)
+		t, _ := time.Parse("2006-01-02", h.Date)
+		label := t.Format("01/02")
+		history = append(history, AccountUsageHistory{
+			Date:       h.Date,
+			Label:      label,
+			Requests:   h.Requests,
+			Tokens:     h.Tokens,
+			Cost:       h.Cost,
+			ActualCost: h.ActualCost,
+	REDACTED)
+REDACTED
+
+	// Calculate summary
+	var totalActualCost, totalStandardCost float64
+	var totalRequests, totalTokens int64
+	var highestCostDay, highestRequestDay *AccountUsageHistory
+
+	for i := range history {
+		h := &history[i]
+		totalActualCost += h.ActualCost
+		totalStandardCost += h.Cost
+		totalRequests += h.Requests
+		totalTokens += h.Tokens
+
+		if highestCostDay == nil || h.ActualCost > highestCostDay.ActualCost {
+			highestCostDay = h
+	REDACTED
+		if highestRequestDay == nil || h.Requests > highestRequestDay.Requests {
+			highestRequestDay = h
+	REDACTED
+REDACTED
+
+	actualDaysUsed := len(history)
+	if actualDaysUsed == 0 {
+		actualDaysUsed = 1
+REDACTED
+
+	// Get average duration
+	var avgDuration struct {
+		AvgDurationMs float64 `gorm:"column:avg_duration_ms"`
+REDACTED
+	r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+		Select("COALESCE(AVG(duration_ms), 0) as avg_duration_ms").
+		Where("account_id = ? AND created_at >= ? AND created_at < ?", accountID, startTime, endTime).
+		Scan(&avgDuration)
+
+	summary := AccountUsageSummary{
+		Days:              daysCount,
+		ActualDaysUsed:    actualDaysUsed,
+		TotalCost:         totalActualCost,
+		TotalStandardCost: totalStandardCost,
+		TotalRequests:     totalRequests,
+		TotalTokens:       totalTokens,
+		AvgDailyCost:      totalActualCost / float64(actualDaysUsed),
+		AvgDailyRequests:  float64(totalRequests) / float64(actualDaysUsed),
+		AvgDailyTokens:    float64(totalTokens) / float64(actualDaysUsed),
+		AvgDurationMs:     avgDuration.AvgDurationMs,
+REDACTED
+
+	// Set today's stats
+	todayStr := timezone.Now().Format("2006-01-02")
+	for i := range history {
+		if history[i].Date == todayStr {
+			summary.Today = &struct {
+				Date     string  `json:"date"`
+				Cost     float64 `json:"cost"`
+				Requests int64   `json:"requests"`
+				Tokens   int64   `json:"tokens"`
+		REDACTED{
+				Date:     history[i].Date,
+				Cost:     history[i].ActualCost,
+				Requests: history[i].Requests,
+				Tokens:   history[i].Tokens,
+		REDACTED
+			break
+	REDACTED
+REDACTED
+
+	// Set highest cost day
+	if highestCostDay != nil {
+		summary.HighestCostDay = &struct {
+			Date     string  `json:"date"`
+			Label    string  `json:"label"`
+			Cost     float64 `json:"cost"`
+			Requests int64   `json:"requests"`
+	REDACTED{
+			Date:     highestCostDay.Date,
+			Label:    highestCostDay.Label,
+			Cost:     highestCostDay.ActualCost,
+			Requests: highestCostDay.Requests,
+	REDACTED
+REDACTED
+
+	// Set highest request day
+	if highestRequestDay != nil {
+		summary.HighestRequestDay = &struct {
+			Date     string  `json:"date"`
+			Label    string  `json:"label"`
+			Requests int64   `json:"requests"`
+			Cost     float64 `json:"cost"`
+	REDACTED{
+			Date:     highestRequestDay.Date,
+			Label:    highestRequestDay.Label,
+			Requests: highestRequestDay.Requests,
+			Cost:     highestRequestDay.ActualCost,
+	REDACTED
+REDACTED
+
+	// Get model statistics using the unified method
+	models, err := r.GetModelStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID)
+	if err != nil {
+		models = []ModelStat{REDACTED
+REDACTED
+
+	return &AccountUsageStatsResponse{
+		History: history,
+		Summary: summary,
+		Models:  models,
 REDACTED, nil
 REDACTED
