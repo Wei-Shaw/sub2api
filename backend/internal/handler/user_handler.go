@@ -26,6 +26,12 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=6"`
 REDACTED
 
+// UpdateProfileRequest represents the update profile request payload
+type UpdateProfileRequest struct {
+	Username *string `json:"username"`
+	Wechat   *string `json:"wechat"`
+REDACTED
+
 // GetProfile handles getting user profile
 // GET /api/v1/users/me
 func (h *UserHandler) GetProfile(c *gin.Context) {
@@ -46,6 +52,9 @@ REDACTED
 		response.InternalError(c, "Failed to get user profile: "+err.Error())
 		return
 REDACTED
+
+	// 清空notes字段，普通用户不应看到备注
+	userData.Notes = ""
 
 	response.Success(c, userData)
 REDACTED
@@ -82,4 +91,41 @@ REDACTED
 REDACTED
 
 	response.Success(c, gin.H{"message": "Password changed successfully"REDACTED)
+REDACTED
+
+// UpdateProfile handles updating user profile
+// PUT /api/v1/users/me
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	userValue, exists := c.Get("user")
+	if !exists {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+
+	user, ok := userValue.(*model.User)
+	if !ok {
+		response.InternalError(c, "Invalid user context")
+		return
+REDACTED
+
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	svcReq := service.UpdateProfileRequest{
+		Username: req.Username,
+		Wechat:   req.Wechat,
+REDACTED
+	updatedUser, err := h.userService.UpdateProfile(c.Request.Context(), user.ID, svcReq)
+	if err != nil {
+		response.BadRequest(c, "Failed to update profile: "+err.Error())
+		return
+REDACTED
+
+	// 清空notes字段，普通用户不应看到备注
+	updatedUser.Notes = ""
+
+	response.Success(c, updatedUser)
 REDACTED

@@ -21,6 +21,8 @@ var (
 // UpdateProfileRequest 更新用户资料请求
 type UpdateProfileRequest struct {
 	Email       *string `json:"email"`
+	Username    *string `json:"username"`
+	Wechat      *string `json:"wechat"`
 	Concurrency *int    `json:"concurrency"`
 REDACTED
 
@@ -75,6 +77,14 @@ REDACTED
 			return nil, ErrEmailExists
 	REDACTED
 		user.Email = *req.Email
+REDACTED
+
+	if req.Username != nil {
+		user.Username = *req.Username
+REDACTED
+
+	if req.Wechat != nil {
+		user.Wechat = *req.Wechat
 REDACTED
 
 	if req.Concurrency != nil {

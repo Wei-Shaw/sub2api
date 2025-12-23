@@ -66,7 +66,10 @@ REDACTED
 REDACTED
 	if search != "" {
 		searchPattern := "%" + search + "%"
-		db = db.Where("email ILIKE ?", searchPattern)
+		db = db.Where(
+			"email ILIKE ? OR username ILIKE ? OR wechat ILIKE ?",
+			searchPattern, searchPattern, searchPattern,
+		)
 REDACTED
 
 	if err := db.Count(&total).Error; err != nil {
