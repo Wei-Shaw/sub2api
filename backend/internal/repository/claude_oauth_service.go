@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"sub2api/internal/pkg/oauth"
@@ -139,20 +140,12 @@ REDACTED
 func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string) (*oauth.TokenResponse, error) {
 	client := createReqClient(proxyURL)
 
+	// Parse code which may contain state in format "authCode#state"
 	authCode := code
 	codeState := ""
-	if len(code) > 0 {
-		parts := make([]string, 0, 2)
-		for i, part := range []rune(code) {
-			if part == '#' {
-				authCode = code[:i]
-				codeState = code[i+1:]
-				break
-		REDACTED
-	REDACTED
-		if len(parts) == 0 {
-			authCode = code
-	REDACTED
+	if idx := strings.Index(code, "#"); idx != -1 {
+		authCode = code[:idx]
+		codeState = code[idx+1:]
 REDACTED
 
 	reqBody := map[string]any{
