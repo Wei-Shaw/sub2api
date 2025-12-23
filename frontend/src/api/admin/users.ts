@@ -84,16 +84,19 @@ REDACTED
  * @param id - User ID
  * @param balance - New balance
  * @param operation - Operation type ('set', 'add', 'subtract')
+ * @param notes - Optional notes for the balance adjustment
  * @returns Updated user
  */
 export async function updateBalance(
   id: number,
   balance: number,
-  operation: 'set' | 'add' | 'subtract' = 'set'
+  operation: 'set' | 'add' | 'subtract' = 'set',
+  notes?: string
 ): Promise<User> {
   const { data REDACTED = await apiClient.post<User>(`/admin/users/${idREDACTED/balance`, {
     balance,
     operation,
+    notes: notes || '',
   REDACTED);
   return data;
 REDACTED
