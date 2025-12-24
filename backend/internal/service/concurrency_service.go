@@ -2,11 +2,25 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"time"
 
 	"sub2api/internal/service/ports"
 )
+
+// generateRequestID generates a unique request ID for concurrency slot tracking
+// Uses 8 random bytes (16 hex chars) for uniqueness
+func generateRequestID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to nanosecond timestamp (extremely rare case)
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+REDACTED
+	return hex.EncodeToString(b)
+REDACTED
 
 const (
 	// Default extra wait slots beyond concurrency limit
@@ -41,7 +55,10 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	REDACTED, nil
 REDACTED
 
-	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	// Generate unique request ID for this slot
+	requestID := generateRequestID()
+
+	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -52,8 +69,8 @@ REDACTED
 			ReleaseFunc: func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID); err != nil {
-					log.Printf("Warning: failed to release account slot for %d: %v", accountID, err)
+				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
+					log.Printf("Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
 			REDACTED
 		REDACTED,
 	REDACTED, nil
@@ -77,7 +94,10 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 	REDACTED, nil
 REDACTED
 
-	acquired, err := s.cache.AcquireUserSlot(ctx, userID, maxConcurrency)
+	// Generate unique request ID for this slot
+	requestID := generateRequestID()
+
+	acquired, err := s.cache.AcquireUserSlot(ctx, userID, maxConcurrency, requestID)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -88,8 +108,8 @@ REDACTED
 			ReleaseFunc: func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				if err := s.cache.ReleaseUserSlot(bgCtx, userID); err != nil {
-					log.Printf("Warning: failed to release user slot for %d: %v", userID, err)
+				if err := s.cache.ReleaseUserSlot(bgCtx, userID, requestID); err != nil {
+					log.Printf("Warning: failed to release user slot for %d (req=%s): %v", userID, requestID, err)
 			REDACTED
 		REDACTED,
 	REDACTED, nil
