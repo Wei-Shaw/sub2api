@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"sub2api/internal/config"
-	"sub2api/internal/model"
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // RateLimitService 处理限流和过载状态管理

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"sub2api/internal/pkg/oauth"
-	"sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/imroc/req/v3"
 )

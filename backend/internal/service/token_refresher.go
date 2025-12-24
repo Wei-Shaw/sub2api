@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 // TokenRefresher 定义平台特定的token刷新策略接口

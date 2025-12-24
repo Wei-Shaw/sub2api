@@ -2,9 +2,9 @@ package service
 
 import (
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"log"
 	"strings"
-	"sub2api/internal/config"
 )
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）

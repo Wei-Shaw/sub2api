@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"time"
 
-	"sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"golang.org/x/net/proxy"
 )

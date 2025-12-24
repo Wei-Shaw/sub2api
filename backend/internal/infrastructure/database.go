@@ -1,9 +1,9 @@
 package infrastructure
 
 import (
-	"sub2api/internal/config"
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
