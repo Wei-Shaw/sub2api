@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"sub2api/internal/model"
+	"sub2api/internal/pkg/usagestats"
 	"sub2api/internal/service/ports"
 )
 
@@ -174,6 +175,14 @@ REDACTED
 		Tokens:   stats.Tokens,
 		Cost:     stats.Cost,
 REDACTED, nil
+REDACTED
+
+func (s *AccountUsageService) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.AccountUsageStatsResponse, error) {
+	stats, err := s.usageLogRepo.GetAccountUsageStats(ctx, accountID, startTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("get account usage stats failed: %w", err)
+REDACTED
+	return stats, nil
 REDACTED
 
 // fetchOAuthUsage 从Anthropic API获取OAuth账号的使用量

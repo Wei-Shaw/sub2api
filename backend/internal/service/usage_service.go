@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/pkg/usagestats"
 	"sub2api/internal/service/ports"
 	"time"
 
@@ -281,4 +282,58 @@ func (s *UsageService) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("delete usage log: %w", err)
 REDACTED
 	return nil
+REDACTED
+
+// GetUserDashboardStats returns per-user dashboard summary stats.
+func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) (*usagestats.UserDashboardStats, error) {
+	stats, err := s.usageRepo.GetUserDashboardStats(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user dashboard stats: %w", err)
+REDACTED
+	return stats, nil
+REDACTED
+
+// GetUserUsageTrendByUserID returns per-user usage trend.
+func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error) {
+	trend, err := s.usageRepo.GetUserUsageTrendByUserID(ctx, userID, startTime, endTime, granularity)
+	if err != nil {
+		return nil, fmt.Errorf("get user usage trend: %w", err)
+REDACTED
+	return trend, nil
+REDACTED
+
+// GetUserModelStats returns per-user model usage stats.
+func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
+	stats, err := s.usageRepo.GetUserModelStats(ctx, userID, startTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("get user model stats: %w", err)
+REDACTED
+	return stats, nil
+REDACTED
+
+// GetBatchApiKeyUsageStats returns today/total actual_cost for given api keys.
+func (s *UsageService) GetBatchApiKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchApiKeyUsageStats, error) {
+	stats, err := s.usageRepo.GetBatchApiKeyUsageStats(ctx, apiKeyIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get batch api key usage stats: %w", err)
+REDACTED
+	return stats, nil
+REDACTED
+
+// ListWithFilters lists usage logs with admin filters.
+func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]model.UsageLog, *pagination.PaginationResult, error) {
+	logs, result, err := s.usageRepo.ListWithFilters(ctx, params, filters)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list usage logs with filters: %w", err)
+REDACTED
+	return logs, result, nil
+REDACTED
+
+// GetGlobalStats returns global usage stats for a time range.
+func (s *UsageService) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	stats, err := s.usageRepo.GetGlobalStats(ctx, startTime, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("get global usage stats: %w", err)
+REDACTED
+	return stats, nil
 REDACTED

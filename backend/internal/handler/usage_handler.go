@@ -8,7 +8,6 @@ import (
 	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/repository"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -17,15 +16,13 @@ import (
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
 	usageService  *service.UsageService
-	usageRepo     *repository.UsageLogRepository
 	apiKeyService *service.ApiKeyService
 REDACTED
 
 // NewUsageHandler creates a new UsageHandler
-func NewUsageHandler(usageService *service.UsageService, usageRepo *repository.UsageLogRepository, apiKeyService *service.ApiKeyService) *UsageHandler {
+func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.ApiKeyService) *UsageHandler {
 	return &UsageHandler{
 		usageService:  usageService,
-		usageRepo:     usageRepo,
 		apiKeyService: apiKeyService,
 REDACTED
 REDACTED
@@ -260,7 +257,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.usageRepo.GetUserDashboardStats(c.Request.Context(), user.ID)
+	stats, err := h.usageService.GetUserDashboardStats(c.Request.Context(), user.ID)
 	if err != nil {
 		response.InternalError(c, "Failed to get dashboard statistics")
 		return
@@ -287,7 +284,7 @@ REDACTED
 	startTime, endTime := parseUserTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
 
-	trend, err := h.usageRepo.GetUserUsageTrendByUserID(c.Request.Context(), user.ID, startTime, endTime, granularity)
+	trend, err := h.usageService.GetUserUsageTrendByUserID(c.Request.Context(), user.ID, startTime, endTime, granularity)
 	if err != nil {
 		response.InternalError(c, "Failed to get usage trend")
 		return
@@ -318,7 +315,7 @@ REDACTED
 
 	startTime, endTime := parseUserTimeRange(c)
 
-	stats, err := h.usageRepo.GetUserModelStats(c.Request.Context(), user.ID, startTime, endTime)
+	stats, err := h.usageService.GetUserModelStats(c.Request.Context(), user.ID, startTime, endTime)
 	if err != nil {
 		response.InternalError(c, "Failed to get model statistics")
 		return
@@ -387,7 +384,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.usageRepo.GetBatchApiKeyUsageStats(c.Request.Context(), validApiKeyIDs)
+	stats, err := h.usageService.GetBatchApiKeyUsageStats(c.Request.Context(), validApiKeyIDs)
 	if err != nil {
 		response.InternalError(c, "Failed to get API key usage stats")
 		return

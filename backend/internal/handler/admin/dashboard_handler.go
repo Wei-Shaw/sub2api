@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/repository"
+	"sub2api/internal/service"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,15 +12,15 @@ import (
 
 // DashboardHandler handles admin dashboard statistics
 type DashboardHandler struct {
-	usageRepo *repository.UsageLogRepository
-	startTime time.Time // Server start time for uptime calculation
+	dashboardService *service.DashboardService
+	startTime        time.Time // Server start time for uptime calculation
 REDACTED
 
 // NewDashboardHandler creates a new admin dashboard handler
-func NewDashboardHandler(usageRepo *repository.UsageLogRepository) *DashboardHandler {
+func NewDashboardHandler(dashboardService *service.DashboardService) *DashboardHandler {
 	return &DashboardHandler{
-		usageRepo: usageRepo,
-		startTime: time.Now(),
+		dashboardService: dashboardService,
+		startTime:        time.Now(),
 REDACTED
 REDACTED
 
@@ -58,7 +58,7 @@ REDACTED
 // GetStats handles getting dashboard statistics
 // GET /api/v1/admin/dashboard/stats
 func (h *DashboardHandler) GetStats(c *gin.Context) {
-	stats, err := h.usageRepo.GetDashboardStats(c.Request.Context())
+	stats, err := h.dashboardService.GetDashboardStats(c.Request.Context())
 	if err != nil {
 		response.Error(c, 500, "Failed to get dashboard statistics")
 		return
@@ -142,7 +142,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	trend, err := h.usageRepo.GetUsageTrendWithFilters(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID)
+	trend, err := h.dashboardService.GetUsageTrendWithFilters(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID)
 	if err != nil {
 		response.Error(c, 500, "Failed to get usage trend")
 		return
@@ -175,7 +175,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	stats, err := h.usageRepo.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID, 0)
+	stats, err := h.dashboardService.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return
@@ -200,7 +200,7 @@ func (h *DashboardHandler) GetApiKeyUsageTrend(c *gin.Context) {
 		limit = 5
 REDACTED
 
-	trend, err := h.usageRepo.GetApiKeyUsageTrend(c.Request.Context(), startTime, endTime, granularity, limit)
+	trend, err := h.dashboardService.GetApiKeyUsageTrend(c.Request.Context(), startTime, endTime, granularity, limit)
 	if err != nil {
 		response.Error(c, 500, "Failed to get API key usage trend")
 		return
@@ -226,7 +226,7 @@ func (h *DashboardHandler) GetUserUsageTrend(c *gin.Context) {
 		limit = 12
 REDACTED
 
-	trend, err := h.usageRepo.GetUserUsageTrend(c.Request.Context(), startTime, endTime, granularity, limit)
+	trend, err := h.dashboardService.GetUserUsageTrend(c.Request.Context(), startTime, endTime, granularity, limit)
 	if err != nil {
 		response.Error(c, 500, "Failed to get user usage trend")
 		return
@@ -259,7 +259,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.usageRepo.GetBatchUserUsageStats(c.Request.Context(), req.UserIDs)
+	stats, err := h.dashboardService.GetBatchUserUsageStats(c.Request.Context(), req.UserIDs)
 	if err != nil {
 		response.Error(c, 500, "Failed to get user usage stats")
 		return
@@ -287,7 +287,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.usageRepo.GetBatchApiKeyUsageStats(c.Request.Context(), req.ApiKeyIDs)
+	stats, err := h.dashboardService.GetBatchApiKeyUsageStats(c.Request.Context(), req.ApiKeyIDs)
 	if err != nil {
 		response.Error(c, 500, "Failed to get API key usage stats")
 		return

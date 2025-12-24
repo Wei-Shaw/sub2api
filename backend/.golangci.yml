@@ -17,10 +17,17 @@ linters:
         service-no-repository:
           list-mode: original
           files:
-            - internal/service/**
+            - "**/internal/service/**"
           deny:
             - pkg: sub2api/internal/repository
               desc: "service must not import repository"
+        handler-no-repository:
+          list-mode: original
+          files:
+            - "**/internal/handler/**"
+          deny:
+            - pkg: sub2api/internal/repository
+              desc: "handler must not import repository"
     errcheck:
       # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
       # Such cases aren't reported by default.

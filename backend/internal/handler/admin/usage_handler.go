@@ -7,7 +7,7 @@ import (
 	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/repository"
+	"sub2api/internal/pkg/usagestats"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -15,24 +15,21 @@ import (
 
 // UsageHandler handles admin usage-related requests
 type UsageHandler struct {
-	usageRepo    *repository.UsageLogRepository
-	apiKeyRepo   *repository.ApiKeyRepository
-	usageService *service.UsageService
-	adminService service.AdminService
+	usageService  *service.UsageService
+	apiKeyService *service.ApiKeyService
+	adminService  service.AdminService
 REDACTED
 
 // NewUsageHandler creates a new admin usage handler
 func NewUsageHandler(
-	usageRepo *repository.UsageLogRepository,
-	apiKeyRepo *repository.ApiKeyRepository,
 	usageService *service.UsageService,
+	apiKeyService *service.ApiKeyService,
 	adminService service.AdminService,
 ) *UsageHandler {
 	return &UsageHandler{
-		usageRepo:    usageRepo,
-		apiKeyRepo:   apiKeyRepo,
-		usageService: usageService,
-		adminService: adminService,
+		usageService:  usageService,
+		apiKeyService: apiKeyService,
+		adminService:  adminService,
 REDACTED
 REDACTED
 
@@ -84,14 +81,14 @@ REDACTED
 REDACTED
 
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	filters := repository.UsageLogFilters{
+	filters := usagestats.UsageLogFilters{
 		UserID:    userID,
 		ApiKeyID:  apiKeyID,
 		StartTime: startTime,
 		EndTime:   endTime,
 REDACTED
 
-	records, result, err := h.usageRepo.ListWithFilters(c.Request.Context(), params, filters)
+	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
 	if err != nil {
 		response.InternalError(c, "Failed to list usage records: "+err.Error())
 		return
@@ -179,7 +176,7 @@ REDACTED
 REDACTED
 
 	// Get global stats
-	stats, err := h.usageRepo.GetGlobalStats(c.Request.Context(), startTime, endTime)
+	stats, err := h.usageService.GetGlobalStats(c.Request.Context(), startTime, endTime)
 	if err != nil {
 		response.InternalError(c, "Failed to get usage statistics: "+err.Error())
 		return
@@ -237,7 +234,7 @@ func (h *UsageHandler) SearchApiKeys(c *gin.Context) {
 		userID = id
 REDACTED
 
-	keys, err := h.apiKeyRepo.SearchApiKeys(c.Request.Context(), userID, keyword, 30)
+	keys, err := h.apiKeyService.SearchApiKeys(c.Request.Context(), userID, keyword, 30)
 	if err != nil {
 		response.InternalError(c, "Failed to search API keys: "+err.Error())
 		return

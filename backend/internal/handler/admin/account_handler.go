@@ -7,7 +7,6 @@ import (
 	"sub2api/internal/pkg/openai"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/repository"
 	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -33,11 +32,10 @@ type AccountHandler struct {
 	rateLimitService    *service.RateLimitService
 	accountUsageService *service.AccountUsageService
 	accountTestService  *service.AccountTestService
-	usageLogRepo        *repository.UsageLogRepository
 REDACTED
 
 // NewAccountHandler creates a new admin account handler
-func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, openaiOAuthService *service.OpenAIOAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService, usageLogRepo *repository.UsageLogRepository) *AccountHandler {
+func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, openaiOAuthService *service.OpenAIOAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService) *AccountHandler {
 	return &AccountHandler{
 		adminService:        adminService,
 		oauthService:        oauthService,
@@ -45,7 +43,6 @@ func NewAccountHandler(adminService service.AdminService, oauthService *service.
 		rateLimitService:    rateLimitService,
 		accountUsageService: accountUsageService,
 		accountTestService:  accountTestService,
-		usageLogRepo:        usageLogRepo,
 REDACTED
 REDACTED
 
@@ -314,7 +311,7 @@ REDACTED
 	endTime := timezone.StartOfDay(now.AddDate(0, 0, 1))
 	startTime := timezone.StartOfDay(now.AddDate(0, 0, -days+1))
 
-	stats, err := h.usageLogRepo.GetAccountUsageStats(c.Request.Context(), accountID, startTime, endTime)
+	stats, err := h.accountUsageService.GetAccountUsageStats(c.Request.Context(), accountID, startTime, endTime)
 	if err != nil {
 		response.InternalError(c, "Failed to get account stats: "+err.Error())
 		return
