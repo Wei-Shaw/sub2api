@@ -517,6 +517,10 @@ export interface DashboardStats {
   // 系统运行统计
   average_duration_ms: number;  // 平均响应时间
   uptime: number;               // 系统运行时间(秒)
+
+  // 性能指标
+  rpm: number;  // 最近1分钟的请求数
+  tpm: number;  // 最近1分钟的Token数
 REDACTED
 
 export interface UsageStatsResponse {

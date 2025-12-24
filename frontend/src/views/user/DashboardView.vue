@@ -119,20 +119,24 @@
             </div>
           </div>
 
-          <!-- Cache Tokens -->
+          <!-- Performance (RPM/TPM) -->
           <div class="card p-4">
             <div class="flex items-center gap-3">
-              <div class="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900/30">
-                <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              <div class="p-2 rounded-lg bg-violet-100 dark:bg-violet-900/30">
+                <svg class="w-5 h-5 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.cacheToday') REDACTEDREDACTED</p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatTokens(stats.today_cache_read_tokens) REDACTEDREDACTED</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('common.create') REDACTEDREDACTED: {{ formatTokens(stats.today_cache_creation_tokens) REDACTEDREDACTED
-                </p>
+              <div class="flex-1">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.performance') REDACTEDREDACTED</p>
+                <div class="flex items-baseline gap-2">
+                  <p class="text-xl font-bold text-gray-900 dark:text-white">{{ formatTokens(stats.rpm) REDACTEDREDACTED</p>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">RPM</span>
+                </div>
+                <div class="flex items-baseline gap-2">
+                  <p class="text-sm font-semibold text-violet-600 dark:text-violet-400">{{ formatTokens(stats.tpm) REDACTEDREDACTED</p>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">TPM</span>
+                </div>
               </div>
             </div>
           </div>
@@ -584,7 +588,8 @@ const trendChartData = computed(() => {
 REDACTED)
 
 // Format helpers
-const formatTokens = (value: number): string => {
+const formatTokens = (value: number | undefined): string => {
+  if (value === undefined || value === null) return '0'
   if (value >= 1_000_000_000) {
     return `${(value / 1_000_000_000).toFixed(2)REDACTEDB`
   REDACTED else if (value >= 1_000_000) {
