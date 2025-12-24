@@ -1,37 +1,50 @@
 <template>
-  <div class="flex items-center gap-1">
-    <!-- Label badge (fixed width for alignment) -->
-    <span
-      :class="[
-        'text-[10px] font-medium px-1 rounded w-[32px] text-center shrink-0',
-        labelClass
-      ]"
-    >
-      {{ label REDACTEDREDACTED
-    </span>
-
-    <!-- Progress bar container -->
-    <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
-      <div
-        :class="['h-full transition-all duration-300', barClass]"
-        :style="{ width: barWidth REDACTED"
-      ></div>
+  <div>
+    <!-- Window stats row (above progress bar, left-right aligned with progress bar) -->
+    <div v-if="windowStats" class="flex items-center justify-between mb-0.5" :title="`5h 窗口用量统计`">
+      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400 cursor-help">
+        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+          {{ formatRequests REDACTEDREDACTED req
+        </span>
+        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+          {{ formatTokens REDACTEDREDACTED
+        </span>
+        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+          ${{ formatCost REDACTEDREDACTED
+        </span>
+      </div>
     </div>
 
-    <!-- Percentage -->
-    <span :class="['text-[10px] font-medium w-[32px] text-right shrink-0', textClass]">
-      {{ displayPercent REDACTEDREDACTED
-    </span>
+    <!-- Progress bar row -->
+    <div class="flex items-center gap-1">
+      <!-- Label badge (fixed width for alignment) -->
+      <span
+        :class="[
+          'text-[10px] font-medium px-1 rounded w-[32px] text-center shrink-0',
+          labelClass
+        ]"
+      >
+        {{ label REDACTEDREDACTED
+      </span>
 
-    <!-- Reset time -->
-    <span v-if="resetsAt" class="text-[10px] text-gray-400 shrink-0">
-      {{ formatResetTime REDACTEDREDACTED
-    </span>
+      <!-- Progress bar container -->
+      <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+        <div
+          :class="['h-full transition-all duration-300', barClass]"
+          :style="{ width: barWidth REDACTED"
+        ></div>
+      </div>
 
-    <!-- Window stats (only for 5h window) -->
-    <span v-if="windowStats" class="text-[10px] text-gray-400 shrink-0 ml-1">
-      ({{ formatStats REDACTEDREDACTED)
-    </span>
+      <!-- Percentage -->
+      <span :class="['text-[10px] font-medium w-[32px] text-right shrink-0', textClass]">
+        {{ displayPercent REDACTEDREDACTED
+      </span>
+
+      <!-- Reset time -->
+      <span v-if="resetsAt" class="text-[10px] text-gray-400 shrink-0">
+        {{ formatResetTime REDACTEDREDACTED
+      </span>
+    </div>
   </div>
 </template>
 
@@ -113,17 +126,25 @@ const formatResetTime = computed(() => {
 REDACTED)
 
 // Format window stats
-const formatStats = computed(() => {
+const formatRequests = computed(() => {
   if (!props.windowStats) return ''
-  const { requests, tokens, cost REDACTED = props.windowStats
+  const r = props.windowStats.requests
+  if (r >= 1000000) return `${(r / 1000000).toFixed(1)REDACTEDM`
+  if (r >= 1000) return `${(r / 1000).toFixed(1)REDACTEDK`
+  return r.toString()
+REDACTED)
 
-  // Format tokens (e.g., 1234567 -> 1.2M)
-  const formatTokens = (t: number): string => {
-    if (t >= 1000000) return `${(t / 1000000).toFixed(1)REDACTEDM`
-    if (t >= 1000) return `${(t / 1000).toFixed(1)REDACTEDK`
-    return t.toString()
-  REDACTED
+const formatTokens = computed(() => {
+  if (!props.windowStats) return ''
+  const t = props.windowStats.tokens
+  if (t >= 1000000000) return `${(t / 1000000000).toFixed(1)REDACTEDB`
+  if (t >= 1000000) return `${(t / 1000000).toFixed(1)REDACTEDM`
+  if (t >= 1000) return `${(t / 1000).toFixed(1)REDACTEDK`
+  return t.toString()
+REDACTED)
 
-  return `${requestsREDACTEDreq ${formatTokens(tokens)REDACTEDtok $${cost.toFixed(2)REDACTED`
+const formatCost = computed(() => {
+  if (!props.windowStats) return '0.00'
+  return props.windowStats.cost.toFixed(2)
 REDACTED)
 </script>
