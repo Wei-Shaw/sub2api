@@ -11,6 +11,9 @@ import (
 type AccountRepository interface {
 	Create(ctx context.Context, account *model.Account) error
 	GetByID(ctx context.Context, id int64) (*model.Account, error)
+	// GetByCRSAccountID finds an account previously synced from CRS.
+	// Returns (nil, nil) if not found.
+	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*model.Account, error)
 	Update(ctx context.Context, account *model.Account) error
 	Delete(ctx context.Context, id int64) error
 

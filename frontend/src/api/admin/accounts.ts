@@ -244,6 +244,28 @@ export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
   return data;
 REDACTED
 
+export async function syncFromCrs(params: {
+  base_url: string;
+  username: string;
+  password: string;
+  sync_proxies?: boolean;
+REDACTED): Promise<{
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  items: Array<{
+    crs_account_id: string;
+    kind: string;
+    name: string;
+    action: string;
+    error?: string;
+  REDACTED>;
+REDACTED> {
+  const { data REDACTED = await apiClient.post('/admin/accounts/sync/crs', params);
+  return data;
+REDACTED
+
 export const accountsAPI = {
   list,
   getById,
@@ -263,6 +285,7 @@ export const accountsAPI = {
   generateAuthUrl,
   exchangeCode,
   batchCreate,
+  syncFromCrs,
 REDACTED;
 
 export default accountsAPI;

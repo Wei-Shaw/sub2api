@@ -17,6 +17,15 @@
           </svg>
         </button>
         <button
+          @click="showCrsSyncModal = true"
+          class="btn btn-secondary"
+        >
+          <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+          {{ t('admin.accounts.syncFromCrs') REDACTEDREDACTED
+        </button>
+        <button
           @click="showCreateModal = true"
           class="btn btn-primary"
         >
@@ -315,6 +324,12 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
+
+    <SyncFromCrsModal
+      :show="showCrsSyncModal"
+      @close="showCrsSyncModal = false"
+      @synced="handleCrsSynced"
+    />
   </AppLayout>
 </template>
 
@@ -331,7 +346,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
-import { CreateAccountModal, EditAccountModal, ReAuthAccountModal, AccountStatsModal REDACTED from '@/components/account'
+import { CreateAccountModal, EditAccountModal, ReAuthAccountModal, AccountStatsModal, SyncFromCrsModal REDACTED from '@/components/account'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
@@ -404,6 +419,7 @@ const showReAuthModal = ref(false)
 const showDeleteDialog = ref(false)
 const showTestModal = ref(false)
 const showStatsModal = ref(false)
+const showCrsSyncModal = ref(false)
 const editingAccount = ref<Account | null>(null)
 const reAuthAccount = ref<Account | null>(null)
 const deletingAccount = ref<Account | null>(null)
@@ -477,6 +493,11 @@ REDACTED
 // Pagination
 const handlePageChange = (page: number) => {
   pagination.page = page
+  loadAccounts()
+REDACTED
+
+const handleCrsSynced = () => {
+  showCrsSyncModal.value = false
   loadAccounts()
 REDACTED
 
