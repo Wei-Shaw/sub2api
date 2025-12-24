@@ -2,7 +2,7 @@
   <Modal
     :show="show"
     :title="t('admin.accounts.createAccount')"
-    :size="step === 2 ? '2xl' : 'lg'"
+    :size="step === 2 ? '2xl' : 'xl'"
     @close="handleClose"
   >
     <!-- Step Indicator for OAuth accounts -->
