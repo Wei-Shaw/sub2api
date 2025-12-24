@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 
+	"sub2api/internal/model"
 	"sub2api/internal/pkg/claude"
 	"sub2api/internal/pkg/openai"
 	"sub2api/internal/pkg/response"
@@ -32,10 +33,11 @@ type AccountHandler struct {
 	rateLimitService    *service.RateLimitService
 	accountUsageService *service.AccountUsageService
 	accountTestService  *service.AccountTestService
+	concurrencyService  *service.ConcurrencyService
 REDACTED
 
 // NewAccountHandler creates a new admin account handler
-func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, openaiOAuthService *service.OpenAIOAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService) *AccountHandler {
+func NewAccountHandler(adminService service.AdminService, oauthService *service.OAuthService, openaiOAuthService *service.OpenAIOAuthService, rateLimitService *service.RateLimitService, accountUsageService *service.AccountUsageService, accountTestService *service.AccountTestService, concurrencyService *service.ConcurrencyService) *AccountHandler {
 	return &AccountHandler{
 		adminService:        adminService,
 		oauthService:        oauthService,
@@ -43,6 +45,7 @@ func NewAccountHandler(adminService service.AdminService, oauthService *service.
 		rateLimitService:    rateLimitService,
 		accountUsageService: accountUsageService,
 		accountTestService:  accountTestService,
+		concurrencyService:  concurrencyService,
 REDACTED
 REDACTED
 
@@ -73,6 +76,12 @@ type UpdateAccountRequest struct {
 	GroupIDs    *[]int64       `json:"group_ids"`
 REDACTED
 
+// AccountWithConcurrency extends Account with real-time concurrency info
+type AccountWithConcurrency struct {
+	*model.Account
+	CurrentConcurrency int `json:"current_concurrency"`
+REDACTED
+
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
@@ -88,7 +97,28 @@ func (h *AccountHandler) List(c *gin.Context) {
 		return
 REDACTED
 
-	response.Paginated(c, accounts, total, page, pageSize)
+	// Get current concurrency counts for all accounts
+	accountIDs := make([]int64, len(accounts))
+	for i, acc := range accounts {
+		accountIDs[i] = acc.ID
+REDACTED
+
+	concurrencyCounts, err := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs)
+	if err != nil {
+		// Log error but don't fail the request, just use 0 for all
+		concurrencyCounts = make(map[int64]int)
+REDACTED
+
+	// Build response with concurrency info
+	result := make([]AccountWithConcurrency, len(accounts))
+	for i := range accounts {
+		result[i] = AccountWithConcurrency{
+			Account:            &accounts[i],
+			CurrentConcurrency: concurrencyCounts[accounts[i].ID],
+	REDACTED
+REDACTED
+
+	response.Paginated(c, result, total, page, pageSize)
 REDACTED
 
 // GetByID handles getting an account by ID

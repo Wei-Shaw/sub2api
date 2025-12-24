@@ -702,8 +702,10 @@ export default {
       REDACTED,
       columns: {
         name: 'Name',
+        platformType: 'Platform/Type',
         platform: 'Platform',
         type: 'Type',
+        concurrencyStatus: 'Concurrency',
         status: 'Status',
         schedulable: 'Schedule',
         todayStats: "Today's Stats",

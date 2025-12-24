@@ -796,8 +796,10 @@ export default {
       failedToToggleSchedulable: '切换调度状态失败',
       columns: {
         name: '名称',
+        platformType: '平台/类型',
         platform: '平台',
         type: '类型',
+        concurrencyStatus: '并发',
         priority: '优先级',
         weight: '权重',
         status: '状态',

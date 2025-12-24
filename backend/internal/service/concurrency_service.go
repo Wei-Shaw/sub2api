@@ -147,3 +147,20 @@ func CalculateMaxWait(userConcurrency int) int {
 REDACTED
 	return userConcurrency + defaultExtraWaitSlots
 REDACTED
+
+// GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts
+// Returns a map of accountID -> current concurrency count
+func (s *ConcurrencyService) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int)
+
+	for _, accountID := range accountIDs {
+		count, err := s.cache.GetAccountConcurrency(ctx, accountID)
+		if err != nil {
+			// If key doesn't exist in Redis, count is 0
+			count = 0
+	REDACTED
+		result[accountID] = count
+REDACTED
+
+	return result, nil
+REDACTED

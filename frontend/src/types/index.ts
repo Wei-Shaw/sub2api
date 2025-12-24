@@ -319,6 +319,7 @@ export interface Account {
   extra?: CodexUsageSnapshot & Record<string, unknown>; // Extra fields including Codex usage
   proxy_id: number | null;
   concurrency: number;
+  current_concurrency?: number; // Real-time concurrency count from Redis
   priority: number;
   status: 'active' | 'inactive' | 'error';
   error_message: string | null;
