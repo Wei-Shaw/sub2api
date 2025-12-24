@@ -21,6 +21,7 @@ export interface SystemSettings {
   site_subtitle: string;
   api_base_url: string;
   contact_info: string;
+  doc_url: string;
   // SMTP settings
   smtp_host: string;
   smtp_port: number;

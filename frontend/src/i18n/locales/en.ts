@@ -2,6 +2,8 @@ export default {
   // Home Page
   home: {
     viewOnGithub: 'View on GitHub',
+    viewDocs: 'View Documentation',
+    docs: 'Docs',
     switchToLight: 'Switch to Light Mode',
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
@@ -1077,6 +1079,8 @@ export default {
         contactInfo: 'Contact Info',
         contactInfoPlaceholder: 'e.g., QQ: 123456789',
         contactInfoHint: 'Customer support contact info, displayed on redeem page, profile, etc.',
+        docUrl: 'Documentation URL',
+        docUrlHint: 'Link to your documentation site. Leave empty to hide the documentation link.',
         siteLogo: 'Site Logo',
         uploadImage: 'Upload Image',
         remove: 'Remove',

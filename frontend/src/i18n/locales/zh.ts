@@ -2,6 +2,8 @@ export default {
   // Home Page
   home: {
     viewOnGithub: '在 GitHub 上查看',
+    viewDocs: '查看文档',
+    docs: '文档',
     switchToLight: '切换到浅色模式',
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
@@ -1301,6 +1303,8 @@ export default {
         contactInfo: '客服联系方式',
         contactInfoPlaceholder: '例如：QQ: 123456789',
         contactInfoHint: '填写客服联系方式，将展示在兑换页面、个人资料等位置',
+        docUrl: '文档链接',
+        docUrlHint: '文档网站的链接。留空则隐藏文档链接。',
         siteLogo: '站点Logo',
         uploadImage: '上传图片',
         remove: '移除',
