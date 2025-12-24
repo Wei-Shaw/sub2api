@@ -97,6 +97,7 @@ backend/data/
 # ===================
 tests
 CLAUDE.md
+AGENTS.md
 .claude
 scripts
 code-reviews/
