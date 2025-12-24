@@ -520,8 +520,8 @@ export interface DashboardStats {
   uptime: number;               // 系统运行时间(秒)
 
   // 性能指标
-  rpm: number;  // 最近1分钟的请求数
-  tpm: number;  // 最近1分钟的Token数
+  rpm: number;  // 近5分钟平均每分钟请求数
+  tpm: number;  // 近5分钟平均每分钟Token数
 REDACTED
 
 export interface UsageStatsResponse {

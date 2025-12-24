@@ -107,6 +107,10 @@ REDACTED
 		// 系统运行统计
 		"average_duration_ms": stats.AverageDurationMs,
 		"uptime":              uptime,
+
+		// 性能指标
+		"rpm": stats.Rpm,
+		"tpm": stats.Tpm,
 REDACTED)
 REDACTED
 
