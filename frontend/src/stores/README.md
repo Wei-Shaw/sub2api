@@ -6,11 +6,10 @@ This directory contains all Pinia stores for the Sub2API frontend application.
 
 ### 1. Auth Store (`auth.ts`)
 
-Manages user authentication state, login/logout, and token persistence.
+Manages user authentication state, login/logout, and session refresh using HttpOnly cookies.
 
 **State:**
 - `user: User | null` - Current authenticated user
-- `token: string | null` - JWT authentication token
 
 **Computed:**
 - `isAuthenticated: boolean` - Whether user is currently authenticated
@@ -19,7 +18,7 @@ Manages user authentication state, login/logout, and token persistence.
 - `login(credentials)` - Authenticate user with username/password
 - `register(userData)` - Register new user account
 - `logout()` - Clear authentication and logout
-- `checkAuth()` - Restore session from localStorage
+- `checkAuth()` - Restore session from server cookie
 - `refreshUser()` - Fetch latest user data from server
 
 ### 2. App Store (`app.ts`)
@@ -59,7 +58,7 @@ import { useAuthStore } from '@/stores';
 // In component setup
 const authStore = useAuthStore();
 
-// Initialize on app startup
+// Initialize on app startup (checks server session)
 authStore.checkAuth();
 
 // Login
@@ -141,7 +140,7 @@ async function handleLogin(username: string, password: string) {
 }
 
 async function handleLogout() {
-  authStore.logout();
+  await authStore.logout();
   appStore.showInfo('You have been logged out.');
 }
 </script>
@@ -167,10 +166,7 @@ async function handleLogout() {
 
 ## Persistence
 
-- **Auth Store**: Token and user data are automatically persisted to `localStorage`
-  - Keys: `auth_token`, `auth_user`
-  - Restored on `checkAuth()` call
-  
+- **Auth Store**: Session lives in an HttpOnly cookie; user data is fetched on `checkAuth()`
 - **App Store**: No persistence (UI state resets on page reload)
 
 ## TypeScript Support

@@ -12,6 +12,14 @@ type Config struct {
 	Database     DatabaseConfig     `mapstructure:"database"`
 	Redis        RedisConfig        `mapstructure:"redis"`
 	JWT          JWTConfig          `mapstructure:"jwt"`
+	// 安装向导相关配置（非本地访问需 token）
+	Setup        SetupConfig        `mapstructure:"setup"`
+	// CORS 跨域配置（空列表表示允许所有来源但不携带 Cookie）
+	CORS         CORSConfig         `mapstructure:"cors"`
+	// 安全相关配置（API Key 哈希等）
+	Security     SecurityConfig     `mapstructure:"security"`
+	// 代理探测配置（TLS 校验开关）
+	Proxy        ProxyConfig        `mapstructure:"proxy"`
 	Default      DefaultConfig      `mapstructure:"default"`
 	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
 	Pricing      PricingConfig      `mapstructure:"pricing"`
@@ -50,11 +58,12 @@ type PricingConfig struct {
 }
 
 type ServerConfig struct {
-	Host              string `mapstructure:"host"`
-	Port              int    `mapstructure:"port"`
-	Mode              string `mapstructure:"mode"`                // debug/release
-	ReadHeaderTimeout int    `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
-	IdleTimeout       int    `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
+	Host              string   `mapstructure:"host"`
+	Port              int      `mapstructure:"port"`
+	Mode              string   `mapstructure:"mode"`                // debug/release
+	ReadHeaderTimeout int      `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
+	IdleTimeout       int      `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
+	TrustedProxies    []string `mapstructure:"trusted_proxies"`      // 可信代理列表
 }
 
 // GatewayConfig API网关相关配置
@@ -62,6 +71,8 @@ type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
+	// 上游请求总超时（秒），仅用于非流式请求
+	UpstreamTimeout int `mapstructure:"upstream_timeout"`
 }
 
 func (s *ServerConfig) Address() string {
@@ -111,6 +122,28 @@ type JWTConfig struct {
 	ExpireHour int    `mapstructure:"expire_hour"`
 }
 
+type SetupConfig struct {
+	Token string `mapstructure:"token"`
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
+}
+
+type SecurityConfig struct {
+	ApiKeyHMACSecret string `mapstructure:"api_key_hmac_secret"`
+	// Cookie SameSite 策略：lax/strict/none
+	AuthCookieSameSite string `mapstructure:"auth_cookie_same_site"`
+	// Cookie Secure 策略：auto/true/false
+	AuthCookieSecure string `mapstructure:"auth_cookie_secure"`
+	// 是否强制要求 Origin/Referer（Cookie 鉴权时）
+	AuthCookieRequireOrigin bool `mapstructure:"auth_cookie_require_origin"`
+}
+
+type ProxyConfig struct {
+	TLSInsecureSkipVerify bool `mapstructure:"tls_insecure_skip_verify"`
+}
+
 type DefaultConfig struct {
 	AdminEmail      string  `mapstructure:"admin_email"`
 	AdminPassword   string  `mapstructure:"admin_password"`
@@ -150,6 +183,13 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config error: %w", err)
 	}
 
+	if len(cfg.Server.TrustedProxies) == 0 {
+		cfg.Server.TrustedProxies = parseCommaList(viper.GetString("server.trusted_proxies"))
+	}
+	if len(cfg.CORS.AllowedOrigins) == 0 {
+		cfg.CORS.AllowedOrigins = parseCommaList(viper.GetString("cors.allowed_origins"))
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config error: %w", err)
 	}
@@ -183,6 +223,21 @@ func setDefaults() {
 	viper.SetDefault("jwt.secret", "change-me-in-production")
 	viper.SetDefault("jwt.expire_hour", 24)
 
+	// 安装向导
+	viper.SetDefault("setup.token", "")
+
+	// 跨域
+	viper.SetDefault("cors.allowed_origins", []string{})
+
+	// 安全
+	viper.SetDefault("security.api_key_hmac_secret", "")
+	viper.SetDefault("security.auth_cookie_same_site", "lax")
+	viper.SetDefault("security.auth_cookie_secure", "auto")
+	viper.SetDefault("security.auth_cookie_require_origin", true)
+
+	// 代理
+	viper.SetDefault("proxy.tls_insecure_skip_verify", false)
+
 	// Default
 	viper.SetDefault("default.admin_email", "admin@sub2api.com")
 	viper.SetDefault("default.admin_password", "admin123")
@@ -207,6 +262,7 @@ func setDefaults() {
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 300) // 300秒(5分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.upstream_timeout", 120)         // 120秒非流式上游请求总超时
 
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
@@ -220,10 +276,97 @@ func (c *Config) Validate() error {
 	if c.JWT.Secret == "" {
 		return fmt.Errorf("jwt.secret is required")
 	}
-	if c.JWT.Secret == "change-me-in-production" && c.Server.Mode == "release" {
+	if c.Server.Mode == "release" && isDefaultSecret(c.JWT.Secret) {
 		return fmt.Errorf("jwt.secret must be changed in production")
 	}
+	if c.Server.Mode == "release" {
+		if c.Default.AdminPassword == "" || isWeakPassword(c.Default.AdminPassword) {
+			return fmt.Errorf("default.admin_password must be changed in production")
+		}
+	}
+	if c.Gateway.UpstreamTimeout < 0 {
+		return fmt.Errorf("gateway.upstream_timeout must be >= 0")
+	}
+	if err := validateAuthCookieConfig(c.Security); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateAuthCookieConfig 校验 Cookie 策略配置合法性。
+func validateAuthCookieConfig(cfg SecurityConfig) error {
+	sameSite := strings.ToLower(strings.TrimSpace(cfg.AuthCookieSameSite))
+	if sameSite != "" {
+		switch sameSite {
+		case "lax", "strict", "none":
+		default:
+			return fmt.Errorf("security.auth_cookie_same_site must be lax/strict/none")
+		}
+	}
+
+	secure := strings.ToLower(strings.TrimSpace(cfg.AuthCookieSecure))
+	if secure != "" {
+		switch secure {
+		case "auto", "true", "false":
+		default:
+			return fmt.Errorf("security.auth_cookie_secure must be auto/true/false")
+		}
+	}
+
+	if sameSite == "none" && secure == "false" {
+		return fmt.Errorf("security.auth_cookie_secure cannot be false when auth_cookie_same_site is none")
+	}
+
+	return nil
+}
+
+func parseCommaList(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+func isDefaultSecret(secret string) bool {
+	knownDefaults := []string{
+		"change-me-in-production",
+		"your-secret-key-change-in-production",
+		"changeme",
+		"change-me",
+	}
+	for _, value := range knownDefaults {
+		if secret == value {
+			return true
+		}
+	}
+	return false
+}
+
+func isWeakPassword(password string) bool {
+	knownDefaults := []string{
+		"admin123",
+		"admin",
+		"password",
+		"changeme",
+		"change-me",
+	}
+	if len(password) < 8 {
+		return true
+	}
+	for _, value := range knownDefaults {
+		if password == value {
+			return true
+		}
+	}
+	return false
 }
 
 // GetServerAddress returns the server address (host:port) from config file or environment variable.
@@ -250,4 +393,22 @@ func GetServerAddress() string {
 	host := v.GetString("server.host")
 	port := v.GetInt("server.port")
 	return fmt.Sprintf("%s:%d", host, port)
+}
+
+// GetSetupToken 获取安装向导的访问令牌（优先环境变量，其次配置文件）。
+func GetSetupToken() string {
+	v := viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath(".")
+	v.AddConfigPath("./config")
+	v.AddConfigPath("/etc/sub2api")
+
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.SetDefault("setup.token", "")
+
+	_ = v.ReadInConfig()
+
+	return strings.TrimSpace(v.GetString("setup.token"))
 }

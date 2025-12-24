@@ -4,6 +4,7 @@ import (
 	"context"
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,6 +16,16 @@ type RedeemCodeRepository struct {
 
 func NewRedeemCodeRepository(db *gorm.DB) *RedeemCodeRepository {
 	return &RedeemCodeRepository{db: db}
+}
+
+// WithTx 将仓库绑定到事务内，确保同一事务中一致读写。
+func (r *RedeemCodeRepository) WithTx(tx *gorm.DB) ports.RedeemCodeRepository {
+	return &RedeemCodeRepository{db: tx}
+}
+
+// Transaction 统一封装 GORM 事务执行入口。
+func (r *RedeemCodeRepository) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return r.db.WithContext(ctx).Transaction(fn)
 }
 
 func (r *RedeemCodeRepository) Create(ctx context.Context, code *model.RedeemCode) error {

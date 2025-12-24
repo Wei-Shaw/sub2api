@@ -6,6 +6,7 @@ import (
 
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 
 	"gorm.io/gorm"
 )
@@ -18,6 +19,11 @@ type UserSubscriptionRepository struct {
 // NewUserSubscriptionRepository 创建用户订阅仓库
 func NewUserSubscriptionRepository(db *gorm.DB) *UserSubscriptionRepository {
 	return &UserSubscriptionRepository{db: db}
+}
+
+// WithTx 在事务内复用订阅仓库。
+func (r *UserSubscriptionRepository) WithTx(tx *gorm.DB) ports.UserSubscriptionRepository {
+	return &UserSubscriptionRepository{db: tx}
 }
 
 // Create 创建订阅

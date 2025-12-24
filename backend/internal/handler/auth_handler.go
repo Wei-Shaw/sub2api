@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+	"strings"
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/service"
@@ -77,6 +79,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	// 写入 HttpOnly Cookie，便于浏览器基于 Cookie 的会话鉴权。
+	setAuthCookie(c, h.authService, token)
 	response.Success(c, AuthResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
@@ -132,6 +136,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// 写入 HttpOnly Cookie，避免前端持久化 token。
+	setAuthCookie(c, h.authService, token)
 	response.Success(c, AuthResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
@@ -139,7 +145,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// GetCurrentUser handles getting current authenticated user
+// Logout 用户退出登录
+// 接口: POST /api/v1/auth/logout
+func (h *AuthHandler) Logout(c *gin.Context) {
+	clearAuthCookie(c, h.authService)
+	response.Success(c, gin.H{"message": "Logged out"})
+}
+
+// GetCurrentUser 获取当前登录用户信息
 // GET /api/v1/auth/me
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	userValue, exists := c.Get("user")
@@ -155,4 +168,48 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	}
 
 	response.Success(c, user)
+}
+
+// setAuthCookie 写入 HttpOnly Cookie，让浏览器自动携带会话令牌。
+func setAuthCookie(c *gin.Context, authService *service.AuthService, token string) {
+	// Cookie 的 SameSite/Secure 策略由配置决定。
+	cookie := &http.Cookie{
+		Name:     authService.AuthCookieName(),
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: authService.AuthCookieSameSite(),
+		Secure:   authService.AuthCookieSecure(isSecureRequest(c)),
+		MaxAge:   authService.AuthCookieMaxAgeSeconds(),
+	}
+	http.SetCookie(c.Writer, cookie)
+}
+
+// clearAuthCookie 清理 Cookie，触发客户端登出。
+func clearAuthCookie(c *gin.Context, authService *service.AuthService) {
+	// 清理 Cookie 时保持一致的 SameSite/Secure，确保覆盖成功。
+	cookie := &http.Cookie{
+		Name:     authService.AuthCookieName(),
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: authService.AuthCookieSameSite(),
+		Secure:   authService.AuthCookieSecure(isSecureRequest(c)),
+		MaxAge:   -1,
+	}
+	http.SetCookie(c.Writer, cookie)
+}
+
+// isSecureRequest 用于判断当前请求是否走 HTTPS（含反向代理场景）。
+func isSecureRequest(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
+		parts := strings.Split(proto, ",")
+		if len(parts) > 0 && strings.TrimSpace(parts[0]) == "https" {
+			return true
+		}
+	}
+	return false
 }

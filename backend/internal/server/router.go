@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net/http"
 	"sub2api/internal/config"
 	"sub2api/internal/handler"
@@ -14,9 +15,18 @@ import (
 
 // SetupRouter 配置路由器中间件和路由
 func SetupRouter(r *gin.Engine, cfg *config.Config, handlers *handler.Handlers, services *service.Services, repos *repository.Repositories) *gin.Engine {
+	// 显式设置可信代理，避免默认信任所有代理导致 ClientIP 被伪造。
+	if len(cfg.Server.TrustedProxies) == 0 {
+		if err := r.SetTrustedProxies(nil); err != nil {
+			log.Printf("failed to clear trusted proxies: %v", err)
+		}
+	} else if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
+		log.Printf("failed to set trusted proxies: %v", err)
+	}
+
 	// 应用中间件
 	r.Use(middleware.Logger())
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(&cfg.CORS))
 
 	// 注册路由
 	registerRoutes(r, handlers, services, repos)
@@ -62,6 +72,7 @@ func registerRoutes(r *gin.Engine, h *handler.Handlers, s *service.Services, rep
 			auth.POST("/register", h.Auth.Register)
 			auth.POST("/login", h.Auth.Login)
 			auth.POST("/send-verify-code", h.Auth.SendVerifyCode)
+			auth.POST("/logout", h.Auth.Logout)
 		}
 
 		// 公开设置（无需认证）

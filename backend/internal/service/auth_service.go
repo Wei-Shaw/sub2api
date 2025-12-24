@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"strings"
 	"sub2api/internal/config"
 	"sub2api/internal/model"
 	"sub2api/internal/service/ports"
@@ -25,6 +27,8 @@ var (
 	ErrRegDisabled         = errors.New("registration is currently disabled")
 	ErrServiceUnavailable  = errors.New("service temporarily unavailable")
 )
+
+const authCookieName = "sub2api_auth"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
@@ -61,6 +65,59 @@ func NewAuthService(
 		turnstileService:  turnstileService,
 		emailQueueService: emailQueueService,
 	}
+}
+
+func (s *AuthService) AuthCookieName() string {
+	// 统一 Cookie 名称，便于前端与中间件识别。
+	return authCookieName
+}
+
+func (s *AuthService) AuthCookieMaxAgeSeconds() int {
+	if s.cfg.JWT.ExpireHour <= 0 {
+		return 0
+	}
+	// Cookie 生命周期与 JWT 过期时间保持一致。
+	return int((time.Duration(s.cfg.JWT.ExpireHour) * time.Hour).Seconds())
+}
+
+func (s *AuthService) AllowedOrigins() []string {
+	// 用于 Cookie 鉴权时的 Origin/Referer 校验。
+	return s.cfg.CORS.AllowedOrigins
+}
+
+func (s *AuthService) AuthCookieSameSite() http.SameSite {
+	// 允许通过配置调整 SameSite，以适配跨域部署场景。
+	switch strings.ToLower(strings.TrimSpace(s.cfg.Security.AuthCookieSameSite)) {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	default:
+		return http.SameSiteLaxMode
+	}
+}
+
+func (s *AuthService) AuthCookieSecure(requestSecure bool) bool {
+	// 当 SameSite=None 时必须启用 Secure，避免浏览器拒绝 Cookie。
+	sameSite := strings.ToLower(strings.TrimSpace(s.cfg.Security.AuthCookieSameSite))
+	securePolicy := strings.ToLower(strings.TrimSpace(s.cfg.Security.AuthCookieSecure))
+	if sameSite == "none" && securePolicy == "auto" {
+		return true
+	}
+
+	switch securePolicy {
+	case "true":
+		return true
+	case "false":
+		return false
+	default:
+		return requestSecure
+	}
+}
+
+func (s *AuthService) AuthCookieRequireOrigin() bool {
+	// 控制是否强制校验 Origin/Referer。
+	return s.cfg.Security.AuthCookieRequireOrigin
 }
 
 // Register 用户注册，返回token和用户

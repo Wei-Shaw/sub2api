@@ -201,105 +201,131 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	}
 	defer s.releaseRedeemLock(ctx, code)
 
-	// 查找兑换码
-	redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
+	// 在事务外声明，便于提交后返回更新结果。
+	var updatedCode *model.RedeemCode
+
+	err := s.redeemRepo.Transaction(ctx, func(tx *gorm.DB) error {
+		// 事务内使用同一个 tx，保证兑换码状态与权益更新原子性。
+		redeemRepo := s.redeemRepo.WithTx(tx)
+		userRepo := s.userRepo.WithTx(tx)
+		subscriptionService := s.subscriptionService
+		if subscriptionService != nil {
+			subscriptionService = subscriptionService.WithTx(tx)
+		}
+
+		// 查找兑换码
+		redeemCode, err := redeemRepo.GetByCode(ctx, code)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrRedeemCodeNotFound
+			}
+			return fmt.Errorf("get redeem code: %w", err)
+		}
+
+		// 检查兑换码状态
+		if !redeemCode.CanUse() {
+			return ErrRedeemCodeUsed
+		}
+
+		// 验证兑换码类型的前置条件
+		if redeemCode.Type == model.RedeemTypeSubscription && redeemCode.GroupID == nil {
+			return errors.New("invalid subscription redeem code: missing group_id")
+		}
+
+		// 获取用户信息
+		if _, err := userRepo.GetByID(ctx, userID); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrUserNotFound
+			}
+			return fmt.Errorf("get user: %w", err)
+		}
+
+		// 【关键】先标记兑换码为已使用，确保并发安全
+		// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
+		if err := redeemRepo.Use(ctx, redeemCode.ID, userID); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 兑换码已被其他请求使用
+				return ErrRedeemCodeUsed
+			}
+			return fmt.Errorf("mark code as used: %w", err)
+		}
+
+		// 执行兑换逻辑（兑换码已被锁定，此时可安全操作）
+		switch redeemCode.Type {
+		case model.RedeemTypeBalance:
+			// 增加用户余额
+			if err := userRepo.UpdateBalance(ctx, userID, redeemCode.Value); err != nil {
+				return fmt.Errorf("update user balance: %w", err)
+			}
+		case model.RedeemTypeConcurrency:
+			// 增加用户并发数
+			if err := userRepo.UpdateConcurrency(ctx, userID, int(redeemCode.Value)); err != nil {
+				return fmt.Errorf("update user concurrency: %w", err)
+			}
+		case model.RedeemTypeSubscription:
+			if subscriptionService == nil {
+				return errors.New("subscription service unavailable")
+			}
+			validityDays := redeemCode.ValidityDays
+			if validityDays <= 0 {
+				validityDays = 30
+			}
+			_, _, err := subscriptionService.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+				UserID:       userID,
+				GroupID:      *redeemCode.GroupID,
+				ValidityDays: validityDays,
+				AssignedBy:   0, // 系统分配
+				Notes:        fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
+			})
+			if err != nil {
+				return fmt.Errorf("assign or extend subscription: %w", err)
+			}
+		default:
+			return fmt.Errorf("unsupported redeem type: %s", redeemCode.Type)
+		}
+
+		// 重新获取更新后的兑换码
+		redeemCode, err = redeemRepo.GetByID(ctx, redeemCode.ID)
+		if err != nil {
+			return fmt.Errorf("get updated redeem code: %w", err)
+		}
+
+		updatedCode = redeemCode
+		return nil
+	})
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, ErrRedeemCodeNotFound) || errors.Is(err, ErrRedeemCodeUsed) {
 			s.incrementRedeemErrorCount(ctx, userID)
-			return nil, ErrRedeemCodeNotFound
 		}
-		return nil, fmt.Errorf("get redeem code: %w", err)
+		return nil, err
 	}
 
-	// 检查兑换码状态
-	if !redeemCode.CanUse() {
-		s.incrementRedeemErrorCount(ctx, userID)
-		return nil, ErrRedeemCodeUsed
+	if updatedCode == nil {
+		return nil, errors.New("redeem failed without result")
 	}
 
-	// 验证兑换码类型的前置条件
-	if redeemCode.Type == model.RedeemTypeSubscription && redeemCode.GroupID == nil {
-		return nil, errors.New("invalid subscription redeem code: missing group_id")
-	}
-
-	// 获取用户信息
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-		}
-		return nil, fmt.Errorf("get user: %w", err)
-	}
-	_ = user // 使用变量避免未使用错误
-
-	// 【关键】先标记兑换码为已使用，确保并发安全
-	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
-	if err := s.redeemRepo.Use(ctx, redeemCode.ID, userID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 兑换码已被其他请求使用
-			return nil, ErrRedeemCodeUsed
-		}
-		return nil, fmt.Errorf("mark code as used: %w", err)
-	}
-
-	// 执行兑换逻辑（兑换码已被锁定，此时可安全操作）
-	switch redeemCode.Type {
-	case model.RedeemTypeBalance:
-		// 增加用户余额
-		if err := s.userRepo.UpdateBalance(ctx, userID, redeemCode.Value); err != nil {
-			return nil, fmt.Errorf("update user balance: %w", err)
-		}
-		// 失效余额缓存
-		if s.billingCacheService != nil {
+	// 事务提交后再异步清理缓存，避免回滚时误删缓存。
+	if s.billingCacheService != nil {
+		switch updatedCode.Type {
+		case model.RedeemTypeBalance:
 			go func() {
 				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				_ = s.billingCacheService.InvalidateUserBalance(cacheCtx, userID)
 			}()
+		case model.RedeemTypeSubscription:
+			if updatedCode.GroupID != nil {
+				groupID := *updatedCode.GroupID
+				go func() {
+					cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+				}()
+			}
 		}
-
-	case model.RedeemTypeConcurrency:
-		// 增加用户并发数
-		if err := s.userRepo.UpdateConcurrency(ctx, userID, int(redeemCode.Value)); err != nil {
-			return nil, fmt.Errorf("update user concurrency: %w", err)
-		}
-
-	case model.RedeemTypeSubscription:
-		validityDays := redeemCode.ValidityDays
-		if validityDays <= 0 {
-			validityDays = 30
-		}
-		_, _, err := s.subscriptionService.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
-			UserID:       userID,
-			GroupID:      *redeemCode.GroupID,
-			ValidityDays: validityDays,
-			AssignedBy:   0, // 系统分配
-			Notes:        fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("assign or extend subscription: %w", err)
-		}
-		// 失效订阅缓存
-		if s.billingCacheService != nil {
-			groupID := *redeemCode.GroupID
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-			}()
-		}
-
-	default:
-		return nil, fmt.Errorf("unsupported redeem type: %s", redeemCode.Type)
 	}
 
-	// 重新获取更新后的兑换码
-	redeemCode, err = s.redeemRepo.GetByID(ctx, redeemCode.ID)
-	if err != nil {
-		return nil, fmt.Errorf("get updated redeem code: %w", err)
-	}
-
-	return redeemCode, nil
+	return updatedCode, nil
 }
 
 // GetByID 根据ID获取兑换码

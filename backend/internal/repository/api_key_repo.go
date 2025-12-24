@@ -38,8 +38,29 @@ func (r *ApiKeyRepository) GetByKey(ctx context.Context, key string) (*model.Api
 	return &apiKey, nil
 }
 
+func (r *ApiKeyRepository) GetByHash(ctx context.Context, keyHash string) (*model.ApiKey, error) {
+	var apiKey model.ApiKey
+	err := r.db.WithContext(ctx).Preload("User").Preload("Group").Where("key_hash = ?", keyHash).First(&apiKey).Error
+	if err != nil {
+		return nil, err
+	}
+	return &apiKey, nil
+}
+
 func (r *ApiKeyRepository) Update(ctx context.Context, key *model.ApiKey) error {
 	return r.db.WithContext(ctx).Model(key).Select("name", "group_id", "status", "updated_at").Updates(key).Error
+}
+
+// UpdateKeyMaterial 用于将旧版明文 key 迁移为哈希存储。
+func (r *ApiKeyRepository) UpdateKeyMaterial(ctx context.Context, id int64, keyHash *string, keyLast4 string, legacyKey *string) error {
+	return r.db.WithContext(ctx).Model(&model.ApiKey{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"key_hash":  keyHash,
+			"key_last4": keyLast4,
+			"key":       legacyKey,
+			"updated_at": gorm.Expr("NOW()"),
+		}).Error
 }
 
 func (r *ApiKeyRepository) Delete(ctx context.Context, id int64) error {
@@ -82,6 +103,12 @@ func (r *ApiKeyRepository) CountByUserID(ctx context.Context, userID int64) (int
 func (r *ApiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&model.ApiKey{}).Where("key = ?", key).Count(&count).Error
+	return count > 0, err
+}
+
+func (r *ApiKeyRepository) ExistsByHash(ctx context.Context, keyHash string) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&model.ApiKey{}).Where("key_hash = ?", keyHash).Count(&count).Error
 	return count > 0, err
 }
 

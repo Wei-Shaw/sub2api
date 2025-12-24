@@ -10,6 +10,8 @@ import (
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
 	"sub2api/internal/service/ports"
+
+	"gorm.io/gorm"
 )
 
 var (
@@ -36,6 +38,18 @@ func NewSubscriptionService(groupRepo ports.GroupRepository, userSubRepo ports.U
 		groupRepo:           groupRepo,
 		userSubRepo:         userSubRepo,
 		billingCacheService: billingCacheService,
+	}
+}
+
+func (s *SubscriptionService) WithTx(tx *gorm.DB) *SubscriptionService {
+	if s == nil {
+		return nil
+	}
+	// 仅替换需要写入的仓库，保持其他依赖不变。
+	return &SubscriptionService{
+		groupRepo:           s.groupRepo,
+		userSubRepo:         s.userSubRepo.WithTx(tx),
+		billingCacheService: s.billingCacheService,
 	}
 }
 

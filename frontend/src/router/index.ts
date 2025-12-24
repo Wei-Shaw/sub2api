@@ -283,12 +283,13 @@ const router = createRouter({
  */
 let authInitialized = false;
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
 
-  // Restore auth state from localStorage on first navigation (page refresh)
+  // 首次导航时从服务端会话恢复登录态（用于页面刷新场景）。
   if (!authInitialized) {
-    authStore.checkAuth();
+    // 首次路由进入时向后端确认会话状态。
+    await authStore.checkAuth();
     authInitialized = true;
   }
 

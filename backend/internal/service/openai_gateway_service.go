@@ -256,8 +256,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, err
 	}
 
-	// Build upstream request
-	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, reqStream)
+	// 为非流式请求添加总超时，避免上游长时间阻塞。
+	upstreamCtx, cancel := s.withUpstreamTimeout(ctx, reqStream)
+	defer cancel()
+	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream)
 	if err != nil {
 		return nil, err
 	}
@@ -380,6 +382,15 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 
 	return req, nil
+}
+
+// withUpstreamTimeout 为非流式请求附加总超时，避免长时间挂起。
+func (s *OpenAIGatewayService) withUpstreamTimeout(ctx context.Context, isStream bool) (context.Context, context.CancelFunc) {
+	if isStream || s.cfg.Gateway.UpstreamTimeout <= 0 {
+		return ctx, func() {}
+	}
+	timeout := time.Duration(s.cfg.Gateway.UpstreamTimeout) * time.Second
+	return context.WithTimeout(ctx, timeout)
 }
 
 func (s *OpenAIGatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *model.Account) (*OpenAIForwardResult, error) {

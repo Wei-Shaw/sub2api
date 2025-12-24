@@ -3,7 +3,7 @@
  * Base client with interceptors for authentication and error handling
  */
 
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import type { ApiResponse } from '@/types';
 
 // ==================== Axios Instance Configuration ====================
@@ -13,27 +13,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+  // Cookie 鉴权模式下需要携带凭据。
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// ==================== Request Interceptor ====================
-
-apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    // Attach token from localStorage
-    const token = localStorage.getItem('auth_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
+// 鉴权改为 HttpOnly Cookie，因此不再在拦截器里注入 Authorization 头。
 // ==================== Response Interceptor ====================
 
 apiClient.interceptors.response.use(
@@ -62,8 +49,6 @@ apiClient.interceptors.response.use(
 
       // 401: Unauthorized - clear token and redirect to login
       if (status === 401) {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('auth_user');
         // Only redirect if not already on login page
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login';

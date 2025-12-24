@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sub2api/internal/model"
 	"sub2api/internal/service"
@@ -14,23 +15,15 @@ func JWTAuth(authService *service.AuthService, userRepo interface {
 	GetByID(ctx context.Context, id int64) (*model.User, error)
 }) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 从Authorization header中提取token
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			AbortWithError(c, 401, "UNAUTHORIZED", "Authorization header is required")
+		tokenString, viaCookie, err := extractToken(c, authService)
+		if err != nil {
+			AbortWithError(c, 401, "UNAUTHORIZED", err.Error())
 			return
 		}
 
-		// 验证Bearer scheme
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			AbortWithError(c, 401, "INVALID_AUTH_HEADER", "Authorization header format must be 'Bearer {token}'")
-			return
-		}
-
-		tokenString := parts[1]
-		if tokenString == "" {
-			AbortWithError(c, 401, "EMPTY_TOKEN", "Token cannot be empty")
+		// 如果走 Cookie 认证，则需要来源校验，避免跨站请求伪造。
+		if viaCookie && !enforceCookieOrigin(c, authService.AllowedOrigins(), authService.AuthCookieRequireOrigin()) {
+			AbortWithError(c, 403, "INVALID_ORIGIN", "Origin or Referer check failed")
 			return
 		}
 
@@ -60,9 +53,37 @@ func JWTAuth(authService *service.AuthService, userRepo interface {
 
 		// 将用户信息存入上下文
 		c.Set(string(ContextKeyUser), user)
+		if viaCookie {
+			c.Set("auth_method", "cookie")
+		} else {
+			c.Set("auth_method", "jwt")
+		}
 
 		c.Next()
 	}
+}
+
+// extractToken 同时支持 Authorization Bearer 与 HttpOnly Cookie。
+// 返回值 viaCookie 用于区分认证方式并执行额外安全校验。
+func extractToken(c *gin.Context, authService *service.AuthService) (string, bool, error) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			return "", false, fmt.Errorf("Authorization header format must be 'Bearer {token}'")
+		}
+		tokenString := strings.TrimSpace(parts[1])
+		if tokenString == "" {
+			return "", false, fmt.Errorf("Token cannot be empty")
+		}
+		return tokenString, false, nil
+	}
+
+	cookie, err := c.Cookie(authService.AuthCookieName())
+	if err != nil || cookie == "" {
+		return "", false, fmt.Errorf("Authorization required")
+	}
+	return cookie, true, nil
 }
 
 // GetUserFromContext 从上下文中获取用户

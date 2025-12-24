@@ -5,9 +5,15 @@ import (
 
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
+
+	"gorm.io/gorm"
 )
 
 type RedeemCodeRepository interface {
+	// WithTx 在事务上下文内返回仓库实例。
+	WithTx(tx *gorm.DB) RedeemCodeRepository
+	// Transaction 统一封装事务执行入口。
+	Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error
 	Create(ctx context.Context, code *model.RedeemCode) error
 	CreateBatch(ctx context.Context, codes []model.RedeemCode) error
 	GetByID(ctx context.Context, id int64) (*model.RedeemCode, error)

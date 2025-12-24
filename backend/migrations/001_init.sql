@@ -87,7 +87,9 @@ CREATE INDEX IF NOT EXISTS idx_accounts_deleted_at ON accounts(deleted_at);
 CREATE TABLE IF NOT EXISTS api_keys (
     id              BIGSERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    key             VARCHAR(64) NOT NULL UNIQUE,          -- sk-xxx格式
+    key             VARCHAR(128) UNIQUE,                  -- 旧版明文密钥（迁移保留）
+    key_hash        VARCHAR(64) UNIQUE,                   -- HMAC-SHA256 哈希
+    key_last4       VARCHAR(4),                           -- 末 4 位用于展示
     name            VARCHAR(100) NOT NULL,
     group_id        BIGINT REFERENCES groups(id) ON DELETE SET NULL,
     status          VARCHAR(20) NOT NULL DEFAULT 'active', -- active/disabled
@@ -97,6 +99,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_key ON api_keys(key);
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_group_id ON api_keys(group_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(status);

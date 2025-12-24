@@ -85,7 +85,11 @@ func main() {
 func runSetupServer() {
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(middleware.CORS())
+	if err := configureTrustedProxies(r); err != nil {
+		log.Printf("failed to configure trusted proxies: %v", err)
+	}
+	// 安装向导允许全域访问（不携带 Cookie），以方便首次配置。
+	r.Use(middleware.CORS(nil))
 
 	// Register setup routes
 	setup.RegisterRoutes(r)
@@ -104,6 +108,30 @@ func runSetupServer() {
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("Failed to start setup server: %v", err)
 	}
+}
+
+func configureTrustedProxies(router *gin.Engine) error {
+	trustedProxies := parseCommaList(os.Getenv("SERVER_TRUSTED_PROXIES"))
+	if len(trustedProxies) == 0 {
+		// 未配置时禁用代理信任，避免 ClientIP 被伪造。
+		return router.SetTrustedProxies(nil)
+	}
+	return router.SetTrustedProxies(trustedProxies)
+}
+
+func parseCommaList(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 func runMainServer() {

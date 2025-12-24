@@ -1,28 +1,26 @@
 /**
- * Authentication Store
- * Manages user authentication state, login/logout, and token persistence
+ * 认证状态 Store
+ * 负责会话恢复、登录/登出与自动刷新
  */
 
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { authAPI } from '@/api';
 import type { User, LoginRequest, RegisterRequest } from '@/types';
-
-const AUTH_TOKEN_KEY = 'auth_token';
-const AUTH_USER_KEY = 'auth_user';
 const AUTO_REFRESH_INTERVAL = 60 * 1000; // 60 seconds
 
 export const useAuthStore = defineStore('auth', () => {
   // ==================== State ====================
 
   const user = ref<User | null>(null);
-  const token = ref<string | null>(null);
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null;
+  // 避免重复发起会话恢复请求。
+  const isChecking = ref(false);
 
   // ==================== Computed ====================
 
   const isAuthenticated = computed(() => {
-    return !!token.value && !!user.value;
+    return !!user.value;
   });
 
   const isAdmin = computed(() => {
@@ -32,43 +30,34 @@ export const useAuthStore = defineStore('auth', () => {
   // ==================== Actions ====================
 
   /**
-   * Initialize auth state from localStorage
-   * Call this on app startup to restore session
-   * Also starts auto-refresh and immediately fetches latest user data
+   * 启动时从服务端会话恢复登录态
+   * 通过 /auth/me 拉取最新用户信息并开启自动刷新
    */
-  function checkAuth(): void {
-    const savedToken = localStorage.getItem(AUTH_TOKEN_KEY);
-    const savedUser = localStorage.getItem(AUTH_USER_KEY);
-
-    if (savedToken && savedUser) {
-      try {
-        token.value = savedToken;
-        user.value = JSON.parse(savedUser);
-
-        // Immediately refresh user data from backend (async, don't block)
-        refreshUser().catch((error) => {
-          console.error('Failed to refresh user on init:', error);
-        });
-
-        // Start auto-refresh interval
-        startAutoRefresh();
-      } catch (error) {
-        console.error('Failed to parse saved user data:', error);
-        clearAuth();
-      }
+  async function checkAuth(): Promise<void> {
+    if (isChecking.value) return;
+    isChecking.value = true;
+    try {
+      // 通过 /auth/me 验证 Cookie 会话，并拉取最新用户信息。
+      const currentUser = await authAPI.getCurrentUser();
+      user.value = currentUser;
+      startAutoRefresh();
+    } catch (error) {
+      clearAuth();
+    } finally {
+      isChecking.value = false;
     }
   }
 
   /**
-   * Start auto-refresh interval for user data
-   * Refreshes user data every 60 seconds
+   * 启动用户信息自动刷新
+   * 每 60 秒同步一次用户状态
    */
   function startAutoRefresh(): void {
     // Clear existing interval if any
     stopAutoRefresh();
 
     refreshIntervalId = setInterval(() => {
-      if (token.value) {
+      if (user.value) {
         refreshUser().catch((error) => {
           console.error('Auto-refresh user failed:', error);
         });
@@ -77,7 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Stop auto-refresh interval
+   * 停止用户信息自动刷新
    */
   function stopAutoRefresh(): void {
     if (refreshIntervalId) {
@@ -96,13 +85,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await authAPI.login(credentials);
 
-      // Store token and user
-      token.value = response.access_token;
+      // 登录成功后仅保留用户信息，令牌由 Cookie 管理。
       user.value = response.user;
-
-      // Persist to localStorage
-      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.user));
 
       // Start auto-refresh interval
       startAutoRefresh();
@@ -125,13 +109,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await authAPI.register(userData);
 
-      // Store token and user
-      token.value = response.access_token;
+      // 注册成功后仅保留用户信息，令牌由 Cookie 管理。
       user.value = response.user;
-
-      // Persist to localStorage
-      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.user));
 
       // Start auto-refresh interval
       startAutoRefresh();
@@ -148,9 +127,9 @@ export const useAuthStore = defineStore('auth', () => {
    * User logout
    * Clears all authentication state and persisted data
    */
-  function logout(): void {
+  async function logout(): Promise<void> {
     // Call API logout (client-side cleanup)
-    authAPI.logout();
+    await authAPI.logout();
 
     // Clear state
     clearAuth();
@@ -163,16 +142,9 @@ export const useAuthStore = defineStore('auth', () => {
    * @throws Error if not authenticated or request fails
    */
   async function refreshUser(): Promise<User> {
-    if (!token.value) {
-      throw new Error('Not authenticated');
-    }
-
     try {
       const updatedUser = await authAPI.getCurrentUser();
       user.value = updatedUser;
-      
-      // Update localStorage
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
 
       return updatedUser;
     } catch (error) {
@@ -192,10 +164,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Stop auto-refresh
     stopAutoRefresh();
 
-    token.value = null;
     user.value = null;
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_USER_KEY);
   }
 
   // ==================== Return Store API ====================
@@ -203,7 +172,6 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     // State
     user,
-    token,
 
     // Computed
     isAuthenticated,

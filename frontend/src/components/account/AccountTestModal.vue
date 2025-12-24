@@ -289,8 +289,9 @@ const startTest = async () => {
     // Use fetch with streaming for SSE since EventSource doesn't support POST
     const response = await fetch(url, {
       method: 'POST',
+      // 使用 Cookie 会话鉴权。
+      credentials: 'include',
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ model_id: selectedModelId.value })

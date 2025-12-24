@@ -177,7 +177,7 @@
                     v-model="form.turnstile_secret_key"
                     type="password"
                     class="input font-mono text-sm"
-                    placeholder="0x4AAAAAAA..."
+                    :placeholder="turnstileSecretPlaceholder"
                   />
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.turnstile.secretKeyHint') }}</p>
                 </div>
@@ -412,7 +412,7 @@
                   v-model="form.smtp_password"
                   type="password"
                   class="input"
-                  placeholder="********"
+                  :placeholder="smtpPasswordPlaceholder"
                 />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.smtp.passwordHint') }}</p>
               </div>
@@ -506,7 +506,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { adminAPI } from '@/api';
 import type { SystemSettings } from '@/api/admin/settings';
@@ -545,6 +545,7 @@ const form = reactive<SystemSettings>({
   smtp_port: 587,
   smtp_username: '',
   smtp_password: '',
+  smtp_password_set: false,
   smtp_from_email: '',
   smtp_from_name: '',
   smtp_use_tls: true,
@@ -552,6 +553,20 @@ const form = reactive<SystemSettings>({
   turnstile_enabled: false,
   turnstile_site_key: '',
   turnstile_secret_key: '',
+  turnstile_secret_key_set: false,
+});
+
+// 使用占位符提示“已配置”，避免回显真实密钥。
+const smtpPasswordPlaceholder = computed(() => {
+  return form.smtp_password_set
+    ? t('admin.settings.smtp.passwordPlaceholderSet')
+    : t('admin.settings.smtp.passwordPlaceholder');
+});
+
+const turnstileSecretPlaceholder = computed(() => {
+  return form.turnstile_secret_key_set
+    ? t('admin.settings.turnstile.secretKeyPlaceholderSet')
+    : t('admin.settings.turnstile.secretKeyPlaceholder');
 });
 
 function handleLogoUpload(event: Event) {
@@ -595,6 +610,9 @@ async function loadSettings() {
   try {
     const settings = await adminAPI.settings.getSettings();
     Object.assign(form, settings);
+    // 清空密钥输入框，避免误以为密钥已明文回显。
+    form.smtp_password = '';
+    form.turnstile_secret_key = '';
   } catch (error: any) {
     appStore.showError(t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError')));
   } finally {
@@ -608,6 +626,7 @@ async function saveSettings() {
     await adminAPI.settings.updateSettings(form);
     // Refresh cached public settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true);
+    await loadSettings();
     appStore.showSuccess(t('admin.settings.settingsSaved'));
   } catch (error: any) {
     appStore.showError(t('admin.settings.failedToSave') + ': ' + (error.message || t('common.unknownError')));

@@ -11,19 +11,23 @@ import (
 	"net/url"
 	"time"
 
+	"sub2api/internal/config"
 	"sub2api/internal/service"
 
 	"golang.org/x/net/proxy"
 )
 
-type proxyProbeService struct{}
+type proxyProbeService struct {
+	insecureSkipVerify bool
+}
 
-func NewProxyExitInfoProber() service.ProxyExitInfoProber {
-	return &proxyProbeService{}
+func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
+	// 默认启用 TLS 校验，只有显式配置才会跳过验证。
+	return &proxyProbeService{insecureSkipVerify: cfg.Proxy.TLSInsecureSkipVerify}
 }
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
-	transport, err := createProxyTransport(proxyURL)
+	transport, err := createProxyTransport(proxyURL, s.insecureSkipVerify)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create proxy transport: %w", err)
 	}
@@ -75,14 +79,14 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 	}, latencyMs, nil
 }
 
-func createProxyTransport(proxyURL string) (*http.Transport, error) {
+func createProxyTransport(proxyURL string, insecureSkipVerify bool) (*http.Transport, error) {
 	parsedURL, err := url.Parse(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid proxy URL: %w", err)
 	}
 
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
 	}
 
 	switch parsedURL.Scheme {

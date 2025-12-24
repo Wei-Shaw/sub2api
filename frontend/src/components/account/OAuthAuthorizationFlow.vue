@@ -90,14 +90,14 @@
                 {{ t('admin.accounts.oauth.howToGetSessionKey') }}
               </h5>
               <ol class="list-inside list-decimal space-y-1 text-xs text-amber-700 dark:text-amber-300">
-                <li v-html="t('admin.accounts.oauth.step1')"></li>
-                <li v-html="t('admin.accounts.oauth.step2')"></li>
-                <li v-html="t('admin.accounts.oauth.step3')"></li>
-                <li v-html="t('admin.accounts.oauth.step4')"></li>
-                <li v-html="t('admin.accounts.oauth.step5')"></li>
-                <li v-html="t('admin.accounts.oauth.step6')"></li>
+                <li>{{ t('admin.accounts.oauth.step1') }}</li>
+                <li>{{ t('admin.accounts.oauth.step2') }}</li>
+                <li>{{ t('admin.accounts.oauth.step3') }}</li>
+                <li>{{ t('admin.accounts.oauth.step4') }}</li>
+                <li>{{ t('admin.accounts.oauth.step5') }}</li>
+                <li>{{ t('admin.accounts.oauth.step6') }}</li>
               </ol>
-              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400" v-html="t('admin.accounts.oauth.sessionKeyFormat')"></p>
+              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.oauth.sessionKeyFormat') }}</p>
             </div>
 
             <!-- Error Message -->
@@ -213,13 +213,11 @@
                 </p>
                 <!-- OpenAI Important Notice -->
                 <div v-if="isOpenAI" class="mt-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 p-3">
-                  <p class="text-xs text-amber-800 dark:text-amber-300" v-html="oauthImportantNotice">
-                  </p>
+                  <p class="text-xs text-amber-800 dark:text-amber-300">{{ oauthImportantNotice }}</p>
                 </div>
                 <!-- Proxy Warning (for non-OpenAI) -->
                 <div v-else-if="showProxyWarning" class="mt-2 rounded border border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/30 p-3">
-                  <p class="text-xs text-yellow-800 dark:text-yellow-300" v-html="t('admin.accounts.oauth.proxyWarning')">
-                  </p>
+                  <p class="text-xs text-yellow-800 dark:text-yellow-300">{{ t('admin.accounts.oauth.proxyWarning') }}</p>
                 </div>
               </div>
             </div>
@@ -235,8 +233,7 @@
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
                   {{ oauthStep3EnterCode }}
                 </p>
-                <p class="mb-3 text-sm text-blue-700 dark:text-blue-300" v-html="oauthAuthCodeDesc">
-                </p>
+                <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">{{ oauthAuthCodeDesc }}</p>
                 <div>
                   <label class="input-label">
                     <svg class="w-4 h-4 inline mr-1 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -343,6 +340,7 @@ const oauthAuthCodeDesc = computed(() => t(getOAuthKey('authCodeDesc')))
 const oauthAuthCode = computed(() => t(getOAuthKey('authCode')))
 const oauthAuthCodePlaceholder = computed(() => t(getOAuthKey('authCodePlaceholder')))
 const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
+// 使用纯文本提示，避免渲染 HTML。
 const oauthImportantNotice = computed(() => isOpenAI.value ? t('admin.accounts.oauth.openai.importantNotice') : '')
 
 // Local state

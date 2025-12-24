@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client';
-import type { User, UpdateUserRequest, PaginatedResponse } from '@/types';
+import type { User, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types';
 
 /**
  * List all users with pagination
@@ -126,8 +126,9 @@ export async function toggleStatus(id: number, status: 'active' | 'disabled'): P
  * @param id - User ID
  * @returns List of user's API keys
  */
-export async function getUserApiKeys(id: number): Promise<PaginatedResponse<any>> {
-  const { data } = await apiClient.get<PaginatedResponse<any>>(`/admin/users/${id}/api-keys`);
+export async function getUserApiKeys(id: number): Promise<PaginatedResponse<ApiKey>> {
+  // 后端仅返回 masked_key，避免暴露完整密钥。
+  const { data } = await apiClient.get<PaginatedResponse<ApiKey>>(`/admin/users/${id}/api-keys`);
   return data;
 }
 

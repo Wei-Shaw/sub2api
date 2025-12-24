@@ -6,9 +6,13 @@ import (
 
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
+
+	"gorm.io/gorm"
 )
 
 type UserSubscriptionRepository interface {
+	// WithTx 在事务上下文内返回仓库实例。
+	WithTx(tx *gorm.DB) UserSubscriptionRepository
 	Create(ctx context.Context, sub *model.UserSubscription) error
 	GetByID(ctx context.Context, id int64) (*model.UserSubscription, error)
 	GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*model.UserSubscription, error)

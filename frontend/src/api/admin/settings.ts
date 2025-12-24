@@ -26,6 +26,7 @@ export interface SystemSettings {
   smtp_port: number;
   smtp_username: string;
   smtp_password: string;
+  smtp_password_set: boolean;
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
@@ -33,7 +34,11 @@ export interface SystemSettings {
   turnstile_enabled: boolean;
   turnstile_site_key: string;
   turnstile_secret_key: string;
+  turnstile_secret_key_set: boolean;
 }
+
+// 更新时不提交“已配置”标记字段。
+export type UpdateSystemSettings = Omit<SystemSettings, 'smtp_password_set' | 'turnstile_secret_key_set'>;
 
 /**
  * Get all system settings
@@ -49,7 +54,7 @@ export async function getSettings(): Promise<SystemSettings> {
  * @param settings - Partial settings to update
  * @returns Updated settings
  */
-export async function updateSettings(settings: Partial<SystemSettings>): Promise<SystemSettings> {
+export async function updateSettings(settings: Partial<UpdateSystemSettings>): Promise<SystemSettings> {
   const { data } = await apiClient.put<SystemSettings>('/admin/settings', settings);
   return data;
 }

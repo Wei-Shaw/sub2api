@@ -6,27 +6,7 @@
 import { apiClient } from './client';
 import type { LoginRequest, RegisterRequest, AuthResponse, User, SendVerifyCodeRequest, SendVerifyCodeResponse, PublicSettings } from '@/types';
 
-/**
- * Store authentication token in localStorage
- */
-export function setAuthToken(token: string): void {
-  localStorage.setItem('auth_token', token);
-}
-
-/**
- * Get authentication token from localStorage
- */
-export function getAuthToken(): string | null {
-  return localStorage.getItem('auth_token');
-}
-
-/**
- * Clear authentication token from localStorage
- */
-export function clearAuthToken(): void {
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('auth_user');
-}
+// 登录态由 HttpOnly Cookie 维护，前端不再持久化 token。
 
 /**
  * User login
@@ -35,11 +15,6 @@ export function clearAuthToken(): void {
  */
 export async function login(credentials: LoginRequest): Promise<AuthResponse> {
   const { data } = await apiClient.post<AuthResponse>('/auth/login', credentials);
-
-  // Store token and user data
-  setAuthToken(data.access_token);
-  localStorage.setItem('auth_user', JSON.stringify(data.user));
-
   return data;
 }
 
@@ -50,11 +25,6 @@ export async function login(credentials: LoginRequest): Promise<AuthResponse> {
  */
 export async function register(userData: RegisterRequest): Promise<AuthResponse> {
   const { data } = await apiClient.post<AuthResponse>('/auth/register', userData);
-
-  // Store token and user data
-  setAuthToken(data.access_token);
-  localStorage.setItem('auth_user', JSON.stringify(data.user));
-
   return data;
 }
 
@@ -69,20 +39,11 @@ export async function getCurrentUser(): Promise<User> {
 
 /**
  * User logout
- * Clears authentication token and user data from localStorage
+ * 通知后端清理 Cookie 会话
  */
-export function logout(): void {
-  clearAuthToken();
-  // Optionally redirect to login page
-  // window.location.href = '/login';
-}
-
-/**
- * Check if user is authenticated
- * @returns True if user has valid token
- */
-export function isAuthenticated(): boolean {
-  return getAuthToken() !== null;
+export async function logout(): Promise<void> {
+  // 通过后端清理 HttpOnly Cookie。
+  await apiClient.post('/auth/logout');
 }
 
 /**
@@ -109,10 +70,6 @@ export const authAPI = {
   register,
   getCurrentUser,
   logout,
-  isAuthenticated,
-  setAuthToken,
-  getAuthToken,
-  clearAuthToken,
   getPublicSettings,
   sendVerifyCode,
 };

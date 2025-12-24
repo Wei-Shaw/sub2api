@@ -586,8 +586,9 @@
                     {{ key.status }}
                   </span>
                 </div>
+                <!-- 仅展示脱敏密钥，完整密钥不会再次返回 -->
                 <p class="text-sm font-mono text-gray-500 dark:text-dark-400 truncate">
-                  {{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}
+                  {{ key.masked_key || t('keys.keyUnavailableShort') }}
                 </p>
               </div>
             </div>

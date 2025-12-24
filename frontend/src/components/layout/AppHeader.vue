@@ -219,7 +219,8 @@ function closeDropdown() {
 
 async function handleLogout() {
   closeDropdown();
-  authStore.logout();
+  // 先通知后端清理 Cookie，再跳转登录页。
+  await authStore.logout();
   await router.push('/login');
 }
 

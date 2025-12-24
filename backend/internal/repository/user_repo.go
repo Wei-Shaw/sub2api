@@ -4,6 +4,7 @@ import (
 	"context"
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
+	"sub2api/internal/service/ports"
 
 	"gorm.io/gorm"
 )
@@ -14,6 +15,11 @@ type UserRepository struct {
 
 func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
+}
+
+// WithTx 在事务内复用用户仓库。
+func (r *UserRepository) WithTx(tx *gorm.DB) ports.UserRepository {
+	return &UserRepository{db: tx}
 }
 
 func (r *UserRepository) Create(ctx context.Context, user *model.User) error {

@@ -198,6 +198,7 @@ type adminServiceImpl struct {
 	accountRepo         ports.AccountRepository
 	proxyRepo           ports.ProxyRepository
 	apiKeyRepo          ports.ApiKeyRepository
+	apiKeyService       *ApiKeyService
 	redeemCodeRepo      ports.RedeemCodeRepository
 	billingCacheService *BillingCacheService
 	proxyProber         ProxyExitInfoProber
@@ -213,6 +214,7 @@ func NewAdminService(
 	redeemCodeRepo ports.RedeemCodeRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
+	apiKeyService *ApiKeyService,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:            userRepo,
@@ -220,6 +222,7 @@ func NewAdminService(
 		accountRepo:         accountRepo,
 		proxyRepo:           proxyRepo,
 		apiKeyRepo:          apiKeyRepo,
+		apiKeyService:       apiKeyService,
 		redeemCodeRepo:      redeemCodeRepo,
 		billingCacheService: billingCacheService,
 		proxyProber:         proxyProber,
@@ -412,6 +415,7 @@ func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, pag
 	if err != nil {
 		return nil, 0, err
 	}
+	s.applyMaskedKeys(keys)
 	return keys, result.Total, nil
 }
 
@@ -606,7 +610,18 @@ func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 	if err != nil {
 		return nil, 0, err
 	}
+	s.applyMaskedKeys(keys)
 	return keys, result.Total, nil
+}
+
+func (s *adminServiceImpl) applyMaskedKeys(keys []model.ApiKey) {
+	if s.apiKeyService == nil {
+		return
+	}
+	for i := range keys {
+		// 后台接口也只返回脱敏密钥，避免暴露完整 key。
+		keys[i].MaskedKey = s.apiKeyService.MaskKey("", &keys[i])
+	}
 }
 
 // Account management implementations

@@ -1,7 +1,9 @@
 package setup
 
 import (
+	"crypto/subtle"
 	"fmt"
+	"net"
 	"net/http"
 	"net/mail"
 	"regexp"
@@ -9,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"sub2api/internal/config"
 	"sub2api/internal/pkg/response"
 	"sub2api/internal/pkg/sysutil"
 
@@ -57,6 +60,17 @@ func setupGuard() gin.HandlerFunc {
 			response.Error(c, http.StatusForbidden, "Setup is not allowed: system is already installed")
 			c.Abort()
 			return
+		}
+		// 非本地请求必须携带 setup token，避免远程绕过安装流程。
+		clientIP := net.ParseIP(c.ClientIP())
+		if clientIP == nil || !clientIP.IsLoopback() {
+			token := config.GetSetupToken()
+			requestToken := c.GetHeader("X-Setup-Token")
+			if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(requestToken)) != 1 {
+				response.Error(c, http.StatusForbidden, "Setup is restricted to local requests")
+				c.Abort()
+				return
+			}
 		}
 		c.Next()
 	}

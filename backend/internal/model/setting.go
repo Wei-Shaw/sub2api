@@ -65,6 +65,8 @@ type SystemSettings struct {
 	SmtpPort     int    `json:"smtp_port"`
 	SmtpUsername string `json:"smtp_username"`
 	SmtpPassword string `json:"smtp_password,omitempty"` // 不返回明文密码
+	// smtp_password_set 用于前端判断是否已配置过密码
+	SmtpPasswordSet bool `json:"smtp_password_set"`
 	SmtpFrom     string `json:"smtp_from_email"`
 	SmtpFromName string `json:"smtp_from_name"`
 	SmtpUseTLS   bool   `json:"smtp_use_tls"`
@@ -73,6 +75,8 @@ type SystemSettings struct {
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey   string `json:"turnstile_site_key"`
 	TurnstileSecretKey string `json:"turnstile_secret_key,omitempty"` // 不返回明文密钥
+	// turnstile_secret_key_set 用于前端展示“已配置”状态
+	TurnstileSecretKeySet bool `json:"turnstile_secret_key_set"`
 
 	// OEM设置
 	SiteName     string `json:"site_name"`

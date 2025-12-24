@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"crypto/subtle"
+	"fmt"
 	"strings"
 	"sub2api/internal/model"
 	"sub2api/internal/service"
@@ -33,17 +34,23 @@ func AdminAuth(
 			return
 		}
 
-		// 检查 Authorization header（JWT 认证）
-		authHeader := c.GetHeader("Authorization")
-		if authHeader != "" {
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && parts[0] == "Bearer" {
-				if !validateJWTForAdmin(c, parts[1], authService, userRepo) {
-					return
-				}
-				c.Next()
+		tokenString, viaCookie, err := extractAdminToken(c, authService)
+		if err == nil {
+			// Cookie 认证必须通过来源校验，避免跨站提交。
+			if viaCookie && !enforceCookieOrigin(c, authService.AllowedOrigins(), authService.AuthCookieRequireOrigin()) {
+				AbortWithError(c, 403, "INVALID_ORIGIN", "Origin or Referer check failed")
 				return
 			}
+			if !validateJWTForAdmin(c, tokenString, authService, userRepo) {
+				return
+			}
+			if viaCookie {
+				c.Set("auth_method", "cookie")
+			} else {
+				c.Set("auth_method", "jwt")
+			}
+			c.Next()
+			return
 		}
 
 		// 无有效认证信息
@@ -124,7 +131,28 @@ func validateJWTForAdmin(
 	}
 
 	c.Set(string(ContextKeyUser), user)
-	c.Set("auth_method", "jwt")
 
 	return true
+}
+
+// extractAdminToken 支持 Bearer 与 Cookie 两种方式，便于后台统一鉴权。
+func extractAdminToken(c *gin.Context, authService *service.AuthService) (string, bool, error) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			return "", false, fmt.Errorf("Authorization header format must be 'Bearer {token}'")
+		}
+		tokenString := strings.TrimSpace(parts[1])
+		if tokenString == "" {
+			return "", false, fmt.Errorf("Token cannot be empty")
+		}
+		return tokenString, false, nil
+	}
+
+	cookie, err := c.Cookie(authService.AuthCookieName())
+	if err != nil || cookie == "" {
+		return "", false, fmt.Errorf("Authorization required")
+	}
+	return cookie, true, nil
 }

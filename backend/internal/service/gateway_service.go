@@ -389,8 +389,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *m
 		return nil, err
 	}
 
-	// 构建上游请求
-	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType)
+	// 构建上游请求，并为非流式请求设置总超时。
+	upstreamCtx, cancel := s.withUpstreamTimeout(ctx, req.Stream)
+	defer cancel()
+	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, tokenType)
 	if err != nil {
 		return nil, err
 	}
@@ -510,6 +512,15 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	return req, nil
+}
+
+// withUpstreamTimeout 为非流式请求附加总超时，避免长时间挂起。
+func (s *GatewayService) withUpstreamTimeout(ctx context.Context, isStream bool) (context.Context, context.CancelFunc) {
+	if isStream || s.cfg.Gateway.UpstreamTimeout <= 0 {
+		return ctx, func() {}
+	}
+	timeout := time.Duration(s.cfg.Gateway.UpstreamTimeout) * time.Second
+	return context.WithTimeout(ctx, timeout)
 }
 
 // getBetaHeader 处理anthropic-beta header
@@ -979,7 +990,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	}
 
 	// 构建上游请求
-	upstreamReq, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType)
+	upstreamCtx, cancel := s.withUpstreamTimeout(ctx, false)
+	defer cancel()
+	upstreamReq, err := s.buildCountTokensRequest(upstreamCtx, c, account, body, token, tokenType)
 	if err != nil {
 		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 		return err

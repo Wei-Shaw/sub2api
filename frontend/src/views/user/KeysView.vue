@@ -34,13 +34,13 @@
           :data="apiKeys"
           :loading="loading"
         >
-          <template #cell-key="{ value, row }">
+          <template #cell-masked_key="{ value, row }">
             <div class="flex items-center gap-2">
               <code class="code text-xs">
-                {{ maskKey(value) }}
+                {{ formatMaskedKey(row, value) }}
               </code>
               <button
-                @click="copyToClipboard(value, row.id)"
+                @click="copyToClipboard(row)"
                 class="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors"
                 :class="copiedKeyId === row.id ? 'text-green-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
                 :title="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
@@ -131,7 +131,7 @@
               </button>
               <!-- Import to CC Switch Button -->
               <button
-                @click="importToCcswitch(row.key)"
+                @click="importToCcswitch(row)"
                 class="p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 :title="t('keys.importToCcSwitch')"
               >
@@ -414,7 +414,7 @@ const appStore = useAppStore()
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('common.name'), sortable: true },
-  { key: 'key', label: t('keys.apiKey'), sortable: false },
+  { key: 'masked_key', label: t('keys.apiKey'), sortable: false },
   { key: 'group', label: t('keys.group'), sortable: false },
   { key: 'usage', label: t('keys.usage'), sortable: false },
   { key: 'status', label: t('common.status'), sortable: true },
@@ -446,6 +446,8 @@ const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+// 仅保存在内存中，创建后展示一次完整密钥。
+const revealedKeys = new Map<number, string>()
 
 // Get the currently selected key for group change
 const selectedKeyForGroup = computed(() => {
@@ -506,10 +508,28 @@ const maskKey = (key: string): string => {
   return `${key.slice(0, 8)}...${key.slice(-4)}`
 }
 
-const copyToClipboard = async (text: string, keyId: number) => {
+// 优先使用后端返回的 masked_key，其次回退到本地脱敏。
+const formatMaskedKey = (key: ApiKey, fallback?: string): string => {
+  if (key.masked_key) return key.masked_key
+  if (fallback) return fallback
+  if (key.key) return maskKey(key.key)
+  return t('keys.keyUnavailableShort')
+}
+
+// 获取可用的完整密钥（仅创建时或本地缓存中存在）。
+const getRawKey = (key: ApiKey): string | undefined => {
+  return key.key || revealedKeys.get(key.id)
+}
+
+const copyToClipboard = async (key: ApiKey) => {
+  const rawKey = getRawKey(key)
+  if (!rawKey) {
+    appStore.showError(t('keys.keyUnavailable'))
+    return
+  }
   try {
-    await navigator.clipboard.writeText(text)
-    copiedKeyId.value = keyId
+    await navigator.clipboard.writeText(rawKey)
+    copiedKeyId.value = key.id
     setTimeout(() => {
       copiedKeyId.value = null
     }, 2000)
@@ -569,7 +589,12 @@ const loadPublicSettings = async () => {
 }
 
 const openUseKeyModal = (key: ApiKey) => {
-  selectedKey.value = key
+  const rawKey = getRawKey(key)
+  if (!rawKey) {
+    appStore.showError(t('keys.keyUnavailable'))
+    return
+  }
+  selectedKey.value = { ...key, key: rawKey }
   showUseKeyModal.value = true
 }
 
@@ -677,7 +702,11 @@ const handleSubmit = async () => {
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      await keysAPI.create(formData.value.name, formData.value.group_id, customKey)
+      const createdKey = await keysAPI.create(formData.value.name, formData.value.group_id, customKey)
+      if (createdKey.key) {
+        // 只在创建成功后缓存一次完整密钥。
+        revealedKeys.set(createdKey.id, createdKey.key)
+      }
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
     }
     closeModals()
@@ -716,7 +745,13 @@ const closeModals = () => {
   }
 }
 
-const importToCcswitch = (apiKey: string) => {
+const importToCcswitch = (key: ApiKey) => {
+  const rawKey = getRawKey(key)
+  if (!rawKey) {
+    appStore.showError(t('keys.keyUnavailable'))
+    return
+  }
+  // 仅在有完整密钥时生成导入链接。
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const usageScript = `({
     request: {
@@ -738,7 +773,7 @@ const importToCcswitch = (apiKey: string) => {
     name: 'sub2api',
     homepage: baseUrl,
     endpoint: baseUrl,
-    apiKey: apiKey,
+    apiKey: rawKey,
     configFormat: 'json',
     usageEnabled: 'true',
     usageScript: btoa(usageScript),

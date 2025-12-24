@@ -200,11 +200,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *model.System
 		EmailVerifyEnabled:  settings[model.SettingKeyEmailVerifyEnabled] == "true",
 		SmtpHost:            settings[model.SettingKeySmtpHost],
 		SmtpUsername:        settings[model.SettingKeySmtpUsername],
+		// 仅返回“是否已配置”，不返回明文密码
+		SmtpPasswordSet:     settings[model.SettingKeySmtpPassword] != "",
 		SmtpFrom:            settings[model.SettingKeySmtpFrom],
 		SmtpFromName:        settings[model.SettingKeySmtpFromName],
 		SmtpUseTLS:          settings[model.SettingKeySmtpUseTLS] == "true",
 		TurnstileEnabled:    settings[model.SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:    settings[model.SettingKeyTurnstileSiteKey],
+		// 仅返回“是否已配置”，不返回明文密钥
+		TurnstileSecretKeySet: settings[model.SettingKeyTurnstileSecretKey] != "",
 		SiteName:            s.getStringOrDefault(settings, model.SettingKeySiteName, "Sub2API"),
 		SiteLogo:            settings[model.SettingKeySiteLogo],
 		SiteSubtitle:        s.getStringOrDefault(settings, model.SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
@@ -231,10 +235,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *model.System
 	} else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
 	}
-
-	// 敏感信息直接返回，方便测试连接时使用
-	result.SmtpPassword = settings[model.SettingKeySmtpPassword]
-	result.TurnstileSecretKey = settings[model.SettingKeyTurnstileSecretKey]
 
 	return result
 }

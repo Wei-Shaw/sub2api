@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"sub2api/internal/config"
 	"sub2api/internal/model"
 	"sub2api/internal/pkg/pagination"
@@ -71,6 +74,57 @@ func NewApiKeyService(
 		cache:       cache,
 		cfg:         cfg,
 	}
+}
+
+func (s *ApiKeyService) apiKeyHMACSecret() string {
+	// 独立密钥优先，否则回退到 JWT secret，避免空值导致无法认证。
+	if s.cfg.Security.ApiKeyHMACSecret != "" {
+		return s.cfg.Security.ApiKeyHMACSecret
+	}
+	return s.cfg.JWT.Secret
+}
+
+func (s *ApiKeyService) hashKey(key string) (string, error) {
+	secret := s.apiKeyHMACSecret()
+	if secret == "" {
+		return "", errors.New("api key hmac secret is empty")
+	}
+	// 使用 HMAC-SHA256，避免直接保存明文 key。
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, err := mac.Write([]byte(key))
+	if err != nil {
+		return "", fmt.Errorf("hash key: %w", err)
+	}
+	return hex.EncodeToString(mac.Sum(nil)), nil
+}
+
+func (s *ApiKeyService) last4(key string) string {
+	if len(key) <= 4 {
+		return key
+	}
+	return key[len(key)-4:]
+}
+
+func (s *ApiKeyService) MaskKey(fullKey string, apiKey *model.ApiKey) string {
+	last4 := ""
+	if fullKey != "" {
+		last4 = s.last4(fullKey)
+	} else if apiKey != nil {
+		if apiKey.KeyLast4 != "" {
+			last4 = apiKey.KeyLast4
+		} else if apiKey.Key != nil {
+			last4 = s.last4(*apiKey.Key)
+		}
+	}
+
+	prefix := s.cfg.Default.ApiKeyPrefix
+	if prefix == "" {
+		prefix = "sk-"
+	}
+	if last4 == "" {
+		return prefix + "..."
+	}
+	return prefix + "..." + last4
 }
 
 // GenerateKey 生成随机API Key
@@ -154,14 +208,14 @@ func (s *ApiKeyService) canUserBindGroup(ctx context.Context, user *model.User, 
 }
 
 // Create 创建API Key
-func (s *ApiKeyService) Create(ctx context.Context, userID int64, req CreateApiKeyRequest) (*model.ApiKey, error) {
+func (s *ApiKeyService) Create(ctx context.Context, userID int64, req CreateApiKeyRequest) (*model.ApiKey, string, error) {
 	// 验证用户存在
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
+			return nil, "", ErrUserNotFound
 		}
-		return nil, fmt.Errorf("get user: %w", err)
+		return nil, "", fmt.Errorf("get user: %w", err)
 	}
 
 	// 验证分组权限（如果指定了分组）
@@ -169,14 +223,14 @@ func (s *ApiKeyService) Create(ctx context.Context, userID int64, req CreateApiK
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, errors.New("group not found")
+				return nil, "", errors.New("group not found")
 			}
-			return nil, fmt.Errorf("get group: %w", err)
+			return nil, "", fmt.Errorf("get group: %w", err)
 		}
 
 		// 检查用户是否可以绑定该分组
 		if !s.canUserBindGroup(ctx, user, group) {
-			return nil, ErrGroupNotAllowed
+			return nil, "", ErrGroupNotAllowed
 		}
 	}
 
@@ -186,23 +240,31 @@ func (s *ApiKeyService) Create(ctx context.Context, userID int64, req CreateApiK
 	if req.CustomKey != nil && *req.CustomKey != "" {
 		// 检查限流（仅对自定义key进行限流）
 		if err := s.checkApiKeyRateLimit(ctx, userID); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		// 验证自定义Key格式
 		if err := s.ValidateCustomKey(*req.CustomKey); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
-		// 检查Key是否已存在
-		exists, err := s.apiKeyRepo.ExistsByKey(ctx, *req.CustomKey)
+		// 检查Key是否已存在（哈希存储 + 兼容旧明文列）
+		keyHash, err := s.hashKey(*req.CustomKey)
 		if err != nil {
-			return nil, fmt.Errorf("check key exists: %w", err)
+			return nil, "", fmt.Errorf("hash api key: %w", err)
 		}
-		if exists {
+		exists, err := s.apiKeyRepo.ExistsByHash(ctx, keyHash)
+		if err != nil {
+			return nil, "", fmt.Errorf("check key exists: %w", err)
+		}
+		legacyExists, err := s.apiKeyRepo.ExistsByKey(ctx, *req.CustomKey)
+		if err != nil {
+			return nil, "", fmt.Errorf("check legacy key exists: %w", err)
+		}
+		if exists || legacyExists {
 			// Key已存在，增加错误计数
 			s.incrementApiKeyErrorCount(ctx, userID)
-			return nil, ErrApiKeyExists
+			return nil, "", ErrApiKeyExists
 		}
 
 		key = *req.CustomKey
@@ -211,24 +273,31 @@ func (s *ApiKeyService) Create(ctx context.Context, userID int64, req CreateApiK
 		var err error
 		key, err = s.GenerateKey()
 		if err != nil {
-			return nil, fmt.Errorf("generate key: %w", err)
+			return nil, "", fmt.Errorf("generate key: %w", err)
 		}
 	}
 
+	keyHash, err := s.hashKey(key)
+	if err != nil {
+		return nil, "", fmt.Errorf("hash api key: %w", err)
+	}
+	last4 := s.last4(key)
+
 	// 创建API Key记录
 	apiKey := &model.ApiKey{
-		UserID:  userID,
-		Key:     key,
-		Name:    req.Name,
-		GroupID: req.GroupID,
-		Status:  model.StatusActive,
+		UserID:   userID,
+		KeyHash:  &keyHash,
+		KeyLast4: last4,
+		Name:     req.Name,
+		GroupID:  req.GroupID,
+		Status:   model.StatusActive,
 	}
 
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
-		return nil, fmt.Errorf("create api key: %w", err)
+		return nil, "", fmt.Errorf("create api key: %w", err)
 	}
 
-	return apiKey, nil
+	return apiKey, key, nil
 }
 
 // List 获取用户的API Key列表
@@ -258,12 +327,31 @@ func (s *ApiKeyService) GetByKey(ctx context.Context, key string) (*model.ApiKey
 	cacheKey := fmt.Sprintf("apikey:%s", key)
 
 	// 这里可以添加Redis缓存逻辑，暂时直接查询数据库
-	apiKey, err := s.apiKeyRepo.GetByKey(ctx, key)
+	keyHash, err := s.hashKey(key)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrApiKeyNotFound
+		return nil, fmt.Errorf("hash api key: %w", err)
+	}
+	apiKey, err := s.apiKeyRepo.GetByHash(ctx, keyHash)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("get api key: %w", err)
 		}
-		return nil, fmt.Errorf("get api key: %w", err)
+		// 旧版明文 key 兜底查找，并在成功后迁移为哈希存储。
+		apiKey, err = s.apiKeyRepo.GetByKey(ctx, key)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrApiKeyNotFound
+			}
+			return nil, fmt.Errorf("get api key: %w", err)
+		}
+		last4 := s.last4(key)
+		if err := s.apiKeyRepo.UpdateKeyMaterial(ctx, apiKey.ID, &keyHash, last4, nil); err != nil {
+			log.Printf("failed to migrate legacy api key %d: %v", apiKey.ID, err)
+		} else {
+			apiKey.KeyHash = &keyHash
+			apiKey.KeyLast4 = last4
+			apiKey.Key = nil
+		}
 	}
 
 	// 缓存到Redis（可选，TTL设置为5分钟）

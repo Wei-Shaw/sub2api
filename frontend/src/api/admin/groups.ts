@@ -10,6 +10,7 @@ import type {
   CreateGroupRequest,
   UpdateGroupRequest,
   PaginatedResponse,
+  ApiKey,
 } from '@/types';
 
 /**
@@ -144,8 +145,9 @@ export async function getGroupApiKeys(
   id: number,
   page: number = 1,
   pageSize: number = 20
-): Promise<PaginatedResponse<any>> {
-  const { data } = await apiClient.get<PaginatedResponse<any>>(
+): Promise<PaginatedResponse<ApiKey>> {
+  // 仅返回脱敏密钥字段（masked_key）。
+  const { data } = await apiClient.get<PaginatedResponse<ApiKey>>(
     `/admin/groups/${id}/api-keys`,
     {
       params: { page, page_size: pageSize },

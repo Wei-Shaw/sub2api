@@ -471,15 +471,9 @@ func AutoSetupFromEnv() error {
 		log.Println("Generated JWT secret automatically")
 	}
 
-	// Generate admin password if not provided
 	if cfg.Admin.Password == "" {
-		password, err := generateSecret(16)
-		if err != nil {
-			return fmt.Errorf("failed to generate admin password: %w", err)
-		}
-		cfg.Admin.Password = password
-		log.Printf("Generated admin password: %s", cfg.Admin.Password)
-		log.Println("IMPORTANT: Save this password! It will not be shown again.")
+		// 自动安装必须显式提供管理员密码，避免弱口令或空口令。
+		return fmt.Errorf("admin password must be provided when AUTO_SETUP is enabled")
 	}
 
 	// Test database connection

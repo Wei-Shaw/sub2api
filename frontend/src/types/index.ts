@@ -243,7 +243,10 @@ export interface Group {
 export interface ApiKey {
   id: number;
   user_id: number;
-  key: string;
+  // key 仅在创建时返回，后续接口只返回 masked_key
+  key?: string;
+  // 脱敏后的展示字段，避免暴露完整密钥
+  masked_key: string;
   name: string;
   group_id: number | null;
   status: 'active' | 'inactive';

@@ -56,7 +56,7 @@
             </button>
           </div>
           <!-- Code Content -->
-          <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-html="highlightedCode"></code></pre>
+          <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-text="configCode"></code></pre>
         </div>
       </div>
 
@@ -142,6 +142,7 @@ const tabs = [
 
 const activeTabConfig = computed(() => tabs.find(tab => tab.id === activeTab.value))
 
+// 仅输出纯文本，避免任何 HTML 注入风险。
 const configCode = computed(() => {
   const baseUrl = props.baseUrl || window.location.origin
   const apiKey = props.apiKey
@@ -156,31 +157,6 @@ set ANTHROPIC_AUTH_TOKEN=${apiKey}`
     case 'powershell':
       return `$env:ANTHROPIC_BASE_URL="${baseUrl}"
 $env:ANTHROPIC_AUTH_TOKEN="${apiKey}"`
-    default:
-      return ''
-  }
-})
-
-const highlightedCode = computed(() => {
-  const baseUrl = props.baseUrl || window.location.origin
-  const apiKey = props.apiKey
-
-  // Build highlighted code directly to avoid regex replacement conflicts
-  const keyword = (text: string) => `<span class="text-purple-400">${text}</span>`
-  const variable = (text: string) => `<span class="text-cyan-400">${text}</span>`
-  const string = (text: string) => `<span class="text-green-400">${text}</span>`
-  const operator = (text: string) => `<span class="text-yellow-400">${text}</span>`
-
-  switch (activeTab.value) {
-    case 'unix':
-      return `${keyword('export')} ${variable('ANTHROPIC_BASE_URL')}${operator('=')}${string(`"${baseUrl}"`)}
-${keyword('export')} ${variable('ANTHROPIC_AUTH_TOKEN')}${operator('=')}${string(`"${apiKey}"`)}`
-    case 'cmd':
-      return `${keyword('set')} ${variable('ANTHROPIC_BASE_URL')}${operator('=')}${baseUrl}
-${keyword('set')} ${variable('ANTHROPIC_AUTH_TOKEN')}${operator('=')}${apiKey}`
-    case 'powershell':
-      return `${keyword('$env:')}${variable('ANTHROPIC_BASE_URL')}${operator('=')}${string(`"${baseUrl}"`)}
-${keyword('$env:')}${variable('ANTHROPIC_AUTH_TOKEN')}${operator('=')}${string(`"${apiKey}"`)}`
     default:
       return ''
   }
