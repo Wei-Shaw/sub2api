@@ -16,11 +16,11 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ${SUB2API_IMAGE:-sub2api:local}
     container_name: sub2api
     restart: unless-stopped
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-9899}:8080"
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
@@ -84,7 +84,8 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - sub2api-network
+      - sub2api-public
+      - sub2api-private
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -101,13 +102,37 @@ services:
     restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-256MB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-768MB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-16MB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
+      - -c
+      - wal_compression=${POSTGRES_WAL_COMPRESSION:-on}
+      - -c
+      - checkpoint_completion_target=${POSTGRES_CHECKPOINT_COMPLETION_TARGET:-0.9}
+      - -c
+      - max_wal_size=${POSTGRES_MAX_WAL_SIZE:-1GB}
+      - -c
+      - min_wal_size=${POSTGRES_MIN_WAL_SIZE:-256MB}
+      - -c
+      - log_min_duration_statement=${POSTGRES_LOG_MIN_DURATION_STATEMENT:-500ms}
+      - -c
+      - idle_in_transaction_session_timeout=${POSTGRES_IDLE_IN_TX_TIMEOUT:-10min}
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-sub2api}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - POSTGRES_DB=${POSTGRES_DB:-sub2api}
       - TZ=${TZ:-Asia/Shanghai}
     networks:
-      - sub2api-network
+      - sub2api-private
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
       interval: 10s
@@ -119,7 +144,7 @@ services:
   # Redis Cache
   # ===========================================================================
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
     volumes:
@@ -133,7 +158,7 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
     networks:
-      - sub2api-network
+      - sub2api-private
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -156,5 +181,8 @@ volumes:
 # Networks
 # =============================================================================
 networks:
-  sub2api-network:
+  sub2api-public:
     driver: bridge
+  sub2api-private:
+    driver: bridge
+    internal: true

@@ -9,7 +9,10 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
+
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
+ENV NPM_CONFIG_REGISTRY=$NPM_CONFIG_REGISTRY
 
 WORKDIR /app/frontend
 
@@ -24,15 +27,22 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
 # -----------------------------------------------------------------------------
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.25-alpine AS backend-builder
 
 # Build arguments for version info (set by CI)
 ARG VERSION=docker
 ARG COMMIT=docker
 ARG DATE
+ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOSUMDB=sum.golang.org
+ENV GOPROXY=$GOPROXY
+ENV GOSUMDB=$GOSUMDB
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+    && sed -i "s|http://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+    && apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /app/backend
 
@@ -58,13 +68,17 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # -----------------------------------------------------------------------------
 FROM alpine:3.19
 
+ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"
 LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
 
 # Install runtime dependencies
-RUN apk add --no-cache \
+RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+    && sed -i "s|http://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
+    && apk add --no-cache \
     ca-certificates \
     tzdata \
     curl \
