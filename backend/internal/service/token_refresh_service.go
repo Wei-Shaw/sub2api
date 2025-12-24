@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"sub2api/internal/config"
-	"sub2api/internal/model"
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // TokenRefreshService OAuth token自动刷新服务

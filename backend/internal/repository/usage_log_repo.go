@@ -2,10 +2,10 @@ package repository
 
 import (
 	"context"
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/pagination"
-	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"time"
 
 	"gorm.io/gorm"

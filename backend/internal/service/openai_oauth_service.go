@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/openai"
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // OpenAIOAuthService handles OpenAI OAuth authentication flows

@@ -8,7 +8,7 @@ import (
 	"log"
 	"time"
 
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // generateRequestID generates a unique request ID for concurrency slot tracking

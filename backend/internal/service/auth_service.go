@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 	"log"
-	"sub2api/internal/config"
-	"sub2api/internal/model"
-	"sub2api/internal/service/ports"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"

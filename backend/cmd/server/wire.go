@@ -4,12 +4,12 @@
 package main
 
 import (
-	"sub2api/internal/config"
-	"sub2api/internal/handler"
-	"sub2api/internal/infrastructure"
-	"sub2api/internal/repository"
-	"sub2api/internal/server"
-	"sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
+	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/server"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"context"
 	"log"

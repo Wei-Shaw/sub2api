@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 type SettingRepository interface {
