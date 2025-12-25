@@ -86,7 +86,7 @@ REDACTED
 	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, openAIOAuthService, httpUpstream)
 	concurrencyCache := repository.NewConcurrencyCache(client)
 	concurrencyService := service.NewConcurrencyService(concurrencyCache)
-	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository)
+	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService)
 	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService)
 	openAIOAuthHandler := admin.NewOpenAIOAuthHandler(openAIOAuthService, adminService)
