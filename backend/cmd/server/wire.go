@@ -99,6 +99,10 @@ func provideCleanup(
 				openaiOAuth.Stop()
 				return nil
 	REDACTED
+			{"GeminiOAuthService", func() error {
+				services.GeminiOAuth.Stop()
+				return nil
+	REDACTED
 			{"Redis", func() error {
 				return rdb.Close()
 	REDACTED

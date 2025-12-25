@@ -30,6 +30,7 @@ type AccountHandler struct {
 	adminService        service.AdminService
 	oauthService        *service.OAuthService
 	openaiOAuthService  *service.OpenAIOAuthService
+	geminiOAuthService  *service.GeminiOAuthService
 	rateLimitService    *service.RateLimitService
 	accountUsageService *service.AccountUsageService
 	accountTestService  *service.AccountTestService
@@ -42,6 +43,7 @@ func NewAccountHandler(
 	adminService service.AdminService,
 	oauthService *service.OAuthService,
 	openaiOAuthService *service.OpenAIOAuthService,
+	geminiOAuthService *service.GeminiOAuthService,
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
@@ -52,6 +54,7 @@ func NewAccountHandler(
 		adminService:        adminService,
 		oauthService:        oauthService,
 		openaiOAuthService:  openaiOAuthService,
+		geminiOAuthService:  geminiOAuthService,
 		rateLimitService:    rateLimitService,
 		accountUsageService: accountUsageService,
 		accountTestService:  accountTestService,
@@ -340,6 +343,19 @@ REDACTED
 		newCredentials = h.openaiOAuthService.BuildAccountCredentials(tokenInfo)
 
 		// Preserve non-token settings from existing credentials
+		for k, v := range account.Credentials {
+			if _, exists := newCredentials[k]; !exists {
+				newCredentials[k] = v
+		REDACTED
+	REDACTED
+REDACTED else if account.Platform == model.PlatformGemini {
+		tokenInfo, err := h.geminiOAuthService.RefreshAccountToken(c.Request.Context(), account)
+		if err != nil {
+			response.InternalError(c, "Failed to refresh credentials: "+err.Error())
+			return
+	REDACTED
+
+		newCredentials = h.geminiOAuthService.BuildAccountCredentials(tokenInfo)
 		for k, v := range account.Credentials {
 			if _, exists := newCredentials[k]; !exists {
 				newCredentials[k] = v

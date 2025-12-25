@@ -14,7 +14,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -80,6 +79,9 @@ REDACTED
 	oAuthService := service.NewOAuthService(proxyRepository, claudeOAuthClient)
 	openAIOAuthClient := repository.NewOpenAIOAuthClient()
 	openAIOAuthService := service.NewOpenAIOAuthService(proxyRepository, openAIOAuthClient)
+	geminiOAuthClient := repository.NewGeminiOAuthClient(configConfig)
+	geminiCliCodeAssistClient := repository.NewGeminiCliCodeAssistClient()
+	geminiOAuthService := service.NewGeminiOAuthService(proxyRepository, geminiOAuthClient, geminiCliCodeAssistClient, configConfig)
 	rateLimitService := service.NewRateLimitService(accountRepository, configConfig)
 	claudeUsageFetcher := repository.NewClaudeUsageFetcher()
 	accountUsageService := service.NewAccountUsageService(accountRepository, usageLogRepository, claudeUsageFetcher)
@@ -87,10 +89,11 @@ REDACTED
 	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, openAIOAuthService, httpUpstream)
 	concurrencyCache := repository.NewConcurrencyCache(client)
 	concurrencyService := service.NewConcurrencyService(concurrencyCache)
-	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService)
-	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService)
+	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService, geminiOAuthService)
+	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, geminiOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService)
 	openAIOAuthHandler := admin.NewOpenAIOAuthHandler(openAIOAuthService, adminService)
+	geminiOAuthHandler := admin.NewGeminiOAuthHandler(geminiOAuthService)
 	proxyHandler := admin.NewProxyHandler(adminService)
 	adminRedeemHandler := admin.NewRedeemHandler(adminService)
 	settingHandler := admin.NewSettingHandler(settingService, emailService)
@@ -101,7 +104,7 @@ REDACTED
 	systemHandler := handler.ProvideSystemHandler(updateService)
 	adminSubscriptionHandler := admin.NewSubscriptionHandler(subscriptionService)
 	adminUsageHandler := admin.NewUsageHandler(usageService, apiKeyService, adminService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, openAIOAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler)
 	gatewayCache := repository.NewGatewayCache(client)
 	pricingRemoteClient := repository.NewPricingRemoteClient()
 	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
@@ -112,18 +115,63 @@ REDACTED
 	identityCache := repository.NewIdentityCache(client)
 	identityService := service.NewIdentityService(identityCache)
 	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, billingService, rateLimitService, billingCacheService, identityService, httpUpstream)
-	gatewayHandler := handler.NewGatewayHandler(gatewayService, userService, concurrencyService, billingCacheService)
+	geminiTokenCache := repository.NewGeminiTokenCache(client)
+	geminiTokenProvider := service.NewGeminiTokenProvider(accountRepository, geminiTokenCache, geminiOAuthService)
+	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, gatewayCache, geminiTokenProvider, rateLimitService, httpUpstream)
+	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, userService, concurrencyService, billingCacheService)
 	openAIGatewayService := service.NewOpenAIGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, billingService, rateLimitService, billingCacheService, httpUpstream)
 	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler)
-	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
-	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
-	apiKeyAuthMiddleware := middleware.NewApiKeyAuthMiddleware(apiKeyService, subscriptionService)
-	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware)
+	groupService := service.NewGroupService(groupRepository)
+	accountService := service.NewAccountService(accountRepository, groupRepository)
+	proxyService := service.NewProxyService(proxyRepository)
+	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, openAIOAuthService, geminiOAuthService, configConfig)
+	services := &service.Services{
+		Auth:          authService,
+		User:          userService,
+		ApiKey:        apiKeyService,
+		Group:         groupService,
+		Account:       accountService,
+		Proxy:         proxyService,
+		Redeem:        redeemService,
+		Usage:         usageService,
+		Pricing:       pricingService,
+		Billing:       billingService,
+		BillingCache:  billingCacheService,
+		Admin:         adminService,
+		Gateway:       gatewayService,
+		OpenAIGateway: openAIGatewayService,
+		OAuth:         oAuthService,
+		OpenAIOAuth:   openAIOAuthService,
+		GeminiOAuth:   geminiOAuthService,
+		RateLimit:     rateLimitService,
+		AccountUsage:  accountUsageService,
+		AccountTest:   accountTestService,
+		Setting:       settingService,
+		Email:         emailService,
+		EmailQueue:    emailQueueService,
+		Turnstile:     turnstileService,
+		Subscription:  subscriptionService,
+		Concurrency:   concurrencyService,
+		Identity:      identityService,
+		Update:        updateService,
+		TokenRefresh:  tokenRefreshService,
+REDACTED
+	repositories := &repository.Repositories{
+		User:             userRepository,
+		ApiKey:           apiKeyRepository,
+		Group:            groupRepository,
+		Account:          accountRepository,
+		Proxy:            proxyRepository,
+		RedeemCode:       redeemCodeRepository,
+		UsageLog:         usageLogRepository,
+		Setting:          settingRepository,
+		UserSubscription: userSubscriptionRepository,
+REDACTED
+	engine := server.ProvideRouter(configConfig, handlers, services, repositories)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
-	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, openAIOAuthService, configConfig)
-	v := provideCleanup(db, client, tokenRefreshService, pricingService, emailQueueService, oAuthService, openAIOAuthService)
+	v := provideCleanup(db, client, services)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -148,11 +196,7 @@ REDACTED
 func provideCleanup(
 	db *gorm.DB,
 	rdb *redis.Client,
-	tokenRefresh *service.TokenRefreshService,
-	pricing *service.PricingService,
-	emailQueue *service.EmailQueueService,
-	oauth *service.OAuthService,
-	openaiOAuth *service.OpenAIOAuthService,
+	services *service.Services,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -163,23 +207,23 @@ func provideCleanup(
 			fn   func() error
 	REDACTED{
 			{"TokenRefreshService", func() error {
-				tokenRefresh.Stop()
+				services.TokenRefresh.Stop()
 				return nil
 	REDACTED
 			{"PricingService", func() error {
-				pricing.Stop()
+				services.Pricing.Stop()
 				return nil
 	REDACTED
 			{"EmailQueueService", func() error {
-				emailQueue.Stop()
+				services.EmailQueue.Stop()
 				return nil
 	REDACTED
 			{"OAuthService", func() error {
-				oauth.Stop()
+				services.OAuth.Stop()
 				return nil
 	REDACTED
 			{"OpenAIOAuthService", func() error {
-				openaiOAuth.Stop()
+				services.OpenAIOAuth.Stop()
 				return nil
 	REDACTED
 			{"Redis", func() error {
