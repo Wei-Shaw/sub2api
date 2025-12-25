@@ -8,22 +8,22 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 var (
-	ErrInvalidCredentials  = errors.New("invalid email or password")
-	ErrUserNotActive       = errors.New("user is not active")
-	ErrEmailExists         = errors.New("email already exists")
-	ErrInvalidToken        = errors.New("invalid token")
-	ErrTokenExpired        = errors.New("token has expired")
-	ErrEmailVerifyRequired = errors.New("email verification is required")
-	ErrRegDisabled         = errors.New("registration is currently disabled")
-	ErrServiceUnavailable  = errors.New("service temporarily unavailable")
+	ErrInvalidCredentials  = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
+	ErrUserNotActive       = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
+	ErrEmailExists         = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrInvalidToken        = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
+	ErrTokenExpired        = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrEmailVerifyRequired = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrRegDisabled         = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrServiceUnavailable  = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 )
 
 // JWTClaims JWT载荷数据
@@ -255,7 +255,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	// 查找用户
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, ErrUserNotFound) {
 			return "", nil, ErrInvalidCredentials
 	REDACTED
 		// 记录数据库错误但不暴露给用户
@@ -357,7 +357,7 @@ REDACTED
 	// 获取最新的用户信息
 	user, err := s.userRepo.GetByID(ctx, claims.UserID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, ErrUserNotFound) {
 			return "", ErrInvalidToken
 	REDACTED
 		log.Printf("[Auth] Database error refreshing token: %v", err)

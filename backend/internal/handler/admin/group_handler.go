@@ -65,7 +65,7 @@ REDACTED
 
 	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, isExclusive)
 	if err != nil {
-		response.InternalError(c, "Failed to list groups: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -87,7 +87,7 @@ REDACTED else {
 REDACTED
 
 	if err != nil {
-		response.InternalError(c, "Failed to get groups: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -105,7 +105,7 @@ REDACTED
 
 	group, err := h.adminService.GetGroup(c.Request.Context(), groupID)
 	if err != nil {
-		response.NotFound(c, "Group not found")
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -133,7 +133,7 @@ REDACTED
 		MonthlyLimitUSD:  req.MonthlyLimitUSD,
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Failed to create group: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -168,7 +168,7 @@ REDACTED
 		MonthlyLimitUSD:  req.MonthlyLimitUSD,
 REDACTED)
 	if err != nil {
-		response.InternalError(c, "Failed to update group: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -186,7 +186,7 @@ REDACTED
 
 	err = h.adminService.DeleteGroup(c.Request.Context(), groupID)
 	if err != nil {
-		response.InternalError(c, "Failed to delete group: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -225,7 +225,7 @@ REDACTED
 
 	keys, total, err := h.adminService.GetGroupAPIKeys(c.Request.Context(), groupID, page, pageSize)
 	if err != nil {
-		response.InternalError(c, "Failed to get group API keys: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

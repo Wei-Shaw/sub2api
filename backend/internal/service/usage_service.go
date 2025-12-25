@@ -2,18 +2,17 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"gorm.io/gorm"
 )
 
 var (
-	ErrUsageLogNotFound = errors.New("usage log not found")
+	ErrUsageLogNotFound = infraerrors.NotFound("USAGE_LOG_NOT_FOUND", "usage log not found")
 )
 
 // CreateUsageLogRequest 创建使用日志请求
@@ -71,9 +70,6 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	// 验证用户存在
 	_, err := s.userRepo.GetByID(ctx, req.UserID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-	REDACTED
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 
@@ -119,9 +115,6 @@ REDACTED
 func (s *UsageService) GetByID(ctx context.Context, id int64) (*model.UsageLog, error) {
 	log, err := s.usageRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUsageLogNotFound
-	REDACTED
 		return nil, fmt.Errorf("get usage log: %w", err)
 REDACTED
 	return log, nil

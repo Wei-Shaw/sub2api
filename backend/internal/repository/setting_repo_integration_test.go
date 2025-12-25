@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
 )
@@ -14,13 +15,13 @@ type SettingRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
 	db   *gorm.DB
-	repo *SettingRepository
+	repo *settingRepository
 REDACTED
 
 func (s *SettingRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.db = testTx(s.T())
-	s.repo = NewSettingRepository(s.db)
+	s.repo = NewSettingRepository(s.db).(*settingRepository)
 REDACTED
 
 func TestSettingRepoSuite(t *testing.T) {
@@ -45,7 +46,7 @@ REDACTED
 func (s *SettingRepoSuite) TestGetValue_Missing() {
 	_, err := s.repo.GetValue(s.ctx, "nonexistent")
 	s.Require().Error(err, "expected error for missing key")
-	s.Require().ErrorIs(err, gorm.ErrRecordNotFound)
+	s.Require().ErrorIs(err, service.ErrSettingNotFound)
 REDACTED
 
 func (s *SettingRepoSuite) TestSetMultiple_AndGetMultiple() {
@@ -86,7 +87,7 @@ func (s *SettingRepoSuite) TestDelete() {
 	s.Require().NoError(s.repo.Delete(s.ctx, "todelete"), "Delete")
 	_, err := s.repo.GetValue(s.ctx, "todelete")
 	s.Require().Error(err, "expected missing key error after Delete")
-	s.Require().ErrorIs(err, gorm.ErrRecordNotFound)
+	s.Require().ErrorIs(err, service.ErrSettingNotFound)
 REDACTED
 
 func (s *SettingRepoSuite) TestDelete_Idempotent() {

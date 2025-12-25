@@ -9,19 +9,18 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 var (
-	ErrRedeemCodeNotFound  = errors.New("redeem code not found")
-	ErrRedeemCodeUsed      = errors.New("redeem code already used")
-	ErrRedeemCodeInvalid   = errors.New("invalid redeem code")
-	ErrInsufficientBalance = errors.New("insufficient balance")
-	ErrRedeemRateLimited   = errors.New("too many failed attempts, please try again later")
-	ErrRedeemCodeLocked    = errors.New("redeem code is being processed, please try again")
+	ErrRedeemCodeNotFound  = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
+	ErrRedeemCodeUsed      = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
+	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
+	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
 )
 
 const (
@@ -226,7 +225,7 @@ REDACTED
 	// 查找兑换码
 	redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, ErrRedeemCodeNotFound) {
 			s.incrementRedeemErrorCount(ctx, userID)
 			return nil, ErrRedeemCodeNotFound
 	REDACTED
@@ -241,15 +240,12 @@ REDACTED
 
 	// 验证兑换码类型的前置条件
 	if redeemCode.Type == model.RedeemTypeSubscription && redeemCode.GroupID == nil {
-		return nil, errors.New("invalid subscription redeem code: missing group_id")
+		return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing group_id")
 REDACTED
 
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-	REDACTED
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 	_ = user // 使用变量避免未使用错误
@@ -257,8 +253,7 @@ REDACTED
 	// 【关键】先标记兑换码为已使用，确保并发安全
 	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
 	if err := s.redeemRepo.Use(ctx, redeemCode.ID, userID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 兑换码已被其他请求使用
+		if errors.Is(err, ErrRedeemCodeNotFound) || errors.Is(err, ErrRedeemCodeUsed) {
 			return nil, ErrRedeemCodeUsed
 	REDACTED
 		return nil, fmt.Errorf("mark code as used: %w", err)
@@ -328,9 +323,6 @@ REDACTED
 func (s *RedeemService) GetByID(ctx context.Context, id int64) (*model.RedeemCode, error) {
 	code, err := s.redeemRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrRedeemCodeNotFound
-	REDACTED
 		return nil, fmt.Errorf("get redeem code: %w", err)
 REDACTED
 	return code, nil
@@ -340,9 +332,6 @@ REDACTED
 func (s *RedeemService) GetByCode(ctx context.Context, code string) (*model.RedeemCode, error) {
 	redeemCode, err := s.redeemRepo.GetByCode(ctx, code)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrRedeemCodeNotFound
-	REDACTED
 		return nil, fmt.Errorf("get redeem code: %w", err)
 REDACTED
 	return redeemCode, nil
@@ -362,15 +351,12 @@ func (s *RedeemService) Delete(ctx context.Context, id int64) error {
 	// 检查兑换码是否存在
 	code, err := s.redeemRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrRedeemCodeNotFound
-	REDACTED
 		return fmt.Errorf("get redeem code: %w", err)
 REDACTED
 
 	// 不允许删除已使用的兑换码
 	if code.IsUsed() {
-		return errors.New("cannot delete used redeem code")
+		return infraerrors.Conflict("REDEEM_CODE_DELETE_USED", "cannot delete used redeem code")
 REDACTED
 
 	if err := s.redeemRepo.Delete(ctx, id); err != nil {

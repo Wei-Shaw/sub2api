@@ -17,13 +17,13 @@ type UserSubscriptionRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
 	db   *gorm.DB
-	repo *UserSubscriptionRepository
+	repo *userSubscriptionRepository
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.db = testTx(s.T())
-	s.repo = NewUserSubscriptionRepository(s.db)
+	s.repo = NewUserSubscriptionRepository(s.db).(*userSubscriptionRepository)
 REDACTED
 
 func TestUserSubscriptionRepoSuite(t *testing.T) {

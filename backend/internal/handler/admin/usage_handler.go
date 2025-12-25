@@ -90,7 +90,7 @@ REDACTED
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
 	if err != nil {
-		response.InternalError(c, "Failed to list usage records: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -158,7 +158,7 @@ REDACTED
 	if apiKeyID > 0 {
 		stats, err := h.usageService.GetStatsByApiKey(c.Request.Context(), apiKeyID, startTime, endTime)
 		if err != nil {
-			response.InternalError(c, "Failed to get usage statistics: "+err.Error())
+			response.ErrorFrom(c, err)
 			return
 	REDACTED
 		response.Success(c, stats)
@@ -168,7 +168,7 @@ REDACTED
 	if userID > 0 {
 		stats, err := h.usageService.GetStatsByUser(c.Request.Context(), userID, startTime, endTime)
 		if err != nil {
-			response.InternalError(c, "Failed to get usage statistics: "+err.Error())
+			response.ErrorFrom(c, err)
 			return
 	REDACTED
 		response.Success(c, stats)
@@ -178,7 +178,7 @@ REDACTED
 	// Get global stats
 	stats, err := h.usageService.GetGlobalStats(c.Request.Context(), startTime, endTime)
 	if err != nil {
-		response.InternalError(c, "Failed to get usage statistics: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -197,7 +197,7 @@ REDACTED
 	// Limit to 30 results
 	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, "", "", keyword)
 	if err != nil {
-		response.InternalError(c, "Failed to search users: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -236,7 +236,7 @@ REDACTED
 
 	keys, err := h.apiKeyService.SearchApiKeys(c.Request.Context(), userID, keyword, 30)
 	if err != nil {
-		response.InternalError(c, "Failed to search API keys: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

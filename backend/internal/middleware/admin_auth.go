@@ -3,9 +3,11 @@ package middleware
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
+	"strings"
+
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -96,7 +98,7 @@ REDACTED,
 	// 验证 JWT token
 	claims, err := authService.ValidateToken(token)
 	if err != nil {
-		if err == service.ErrTokenExpired {
+		if errors.Is(err, service.ErrTokenExpired) {
 			AbortWithError(c, 401, "TOKEN_EXPIRED", "Token has expired")
 			return false
 	REDACTED

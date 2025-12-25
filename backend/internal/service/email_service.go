@@ -4,21 +4,21 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"math/big"
 	"net/smtp"
 	"strconv"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 var (
-	ErrEmailNotConfigured    = errors.New("email service not configured")
-	ErrInvalidVerifyCode     = errors.New("invalid or expired verification code")
-	ErrVerifyCodeTooFrequent = errors.New("please wait before requesting a new code")
-	ErrVerifyCodeMaxAttempts = errors.New("too many failed attempts, please request a new code")
+	ErrEmailNotConfigured    = infraerrors.ServiceUnavailable("EMAIL_NOT_CONFIGURED", "email service not configured")
+	ErrInvalidVerifyCode     = infraerrors.BadRequest("INVALID_VERIFY_CODE", "invalid or expired verification code")
+	ErrVerifyCodeTooFrequent = infraerrors.TooManyRequests("VERIFY_CODE_TOO_FREQUENT", "please wait before requesting a new code")
+	ErrVerifyCodeMaxAttempts = infraerrors.TooManyRequests("VERIFY_CODE_MAX_ATTEMPTS", "too many failed attempts, please request a new code")
 )
 
 // EmailCache defines cache operations for email service

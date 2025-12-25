@@ -2,25 +2,28 @@ package repository
 
 import (
 	"context"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
+
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"time"
 
 	"gorm.io/gorm"
 )
 
-type UsageLogRepository struct {
+type usageLogRepository struct {
 	db *gorm.DB
 REDACTED
 
-func NewUsageLogRepository(db *gorm.DB) *UsageLogRepository {
-	return &UsageLogRepository{db: dbREDACTED
+func NewUsageLogRepository(db *gorm.DB) service.UsageLogRepository {
+	return &usageLogRepository{db: dbREDACTED
 REDACTED
 
 // getPerformanceStats 获取 RPM 和 TPM（近5分钟平均值，可选按用户过滤）
-func (r *UsageLogRepository) getPerformanceStats(ctx context.Context, userID int64) (rpm, tpm int64) {
+func (r *usageLogRepository) getPerformanceStats(ctx context.Context, userID int64) (rpm, tpm int64) {
 	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
 	var perfStats struct {
 		RequestCount int64 `gorm:"column:request_count"`
@@ -43,20 +46,20 @@ REDACTED
 	return perfStats.RequestCount / 5, perfStats.TokenCount / 5
 REDACTED
 
-func (r *UsageLogRepository) Create(ctx context.Context, log *model.UsageLog) error {
+func (r *usageLogRepository) Create(ctx context.Context, log *model.UsageLog) error {
 	return r.db.WithContext(ctx).Create(log).Error
 REDACTED
 
-func (r *UsageLogRepository) GetByID(ctx context.Context, id int64) (*model.UsageLog, error) {
+func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (*model.UsageLog, error) {
 	var log model.UsageLog
 	err := r.db.WithContext(ctx).First(&log, id).Error
 	if err != nil {
-		return nil, err
+		return nil, translatePersistenceError(err, service.ErrUsageLogNotFound, nil)
 REDACTED
 	return &log, nil
 REDACTED
 
-func (r *UsageLogRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	var total int64
 
@@ -83,7 +86,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (r *UsageLogRepository) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	var total int64
 
@@ -120,7 +123,7 @@ type UserStats struct {
 	CacheReadTokens int64   `json:"cache_read_tokens"`
 REDACTED
 
-func (r *UsageLogRepository) GetUserStats(ctx context.Context, userID int64, startTime, endTime time.Time) (*UserStats, error) {
+func (r *usageLogRepository) GetUserStats(ctx context.Context, userID int64, startTime, endTime time.Time) (*UserStats, error) {
 	var stats UserStats
 	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
 		Select(`
@@ -139,7 +142,7 @@ REDACTED
 // DashboardStats 仪表盘统计
 type DashboardStats = usagestats.DashboardStats
 
-func (r *UsageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
+func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
 	var stats DashboardStats
 	today := timezone.Today()
 
@@ -260,7 +263,7 @@ REDACTED
 	return &stats, nil
 REDACTED
 
-func (r *UsageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	var total int64
 
@@ -287,7 +290,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (r *UsageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, startTime, endTime).
@@ -296,7 +299,7 @@ func (r *UsageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID 
 	return logs, nil, err
 REDACTED
 
-func (r *UsageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	err := r.db.WithContext(ctx).
 		Where("api_key_id = ? AND created_at >= ? AND created_at < ?", apiKeyID, startTime, endTime).
@@ -305,7 +308,7 @@ func (r *UsageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKe
 	return logs, nil, err
 REDACTED
 
-func (r *UsageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	err := r.db.WithContext(ctx).
 		Where("account_id = ? AND created_at >= ? AND created_at < ?", accountID, startTime, endTime).
@@ -314,7 +317,7 @@ func (r *UsageLogRepository) ListByAccountAndTimeRange(ctx context.Context, acco
 	return logs, nil, err
 REDACTED
 
-func (r *UsageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	err := r.db.WithContext(ctx).
 		Where("model = ? AND created_at >= ? AND created_at < ?", modelName, startTime, endTime).
@@ -323,12 +326,12 @@ func (r *UsageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelN
 	return logs, nil, err
 REDACTED
 
-func (r *UsageLogRepository) Delete(ctx context.Context, id int64) error {
+func (r *usageLogRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&model.UsageLog{REDACTED, id).Error
 REDACTED
 
 // GetAccountTodayStats 获取账号今日统计
-func (r *UsageLogRepository) GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error) {
+func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error) {
 	today := timezone.Today()
 
 	var stats struct {
@@ -358,7 +361,7 @@ REDACTED, nil
 REDACTED
 
 // GetAccountWindowStats 获取账号时间窗口内的统计
-func (r *UsageLogRepository) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
+func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
 	var stats struct {
 		Requests int64   `gorm:"column:requests"`
 		Tokens   int64   `gorm:"column:tokens"`
@@ -398,7 +401,7 @@ type UserUsageTrendPoint = usagestats.UserUsageTrendPoint
 type ApiKeyUsageTrendPoint = usagestats.ApiKeyUsageTrendPoint
 
 // GetApiKeyUsageTrend returns usage trend data grouped by API key and date
-func (r *UsageLogRepository) GetApiKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]ApiKeyUsageTrendPoint, error) {
+func (r *usageLogRepository) GetApiKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]ApiKeyUsageTrendPoint, error) {
 	var results []ApiKeyUsageTrendPoint
 
 	// Choose date format based on granularity
@@ -442,7 +445,7 @@ REDACTED
 REDACTED
 
 // GetUserUsageTrend returns usage trend data grouped by user and date
-func (r *UsageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]UserUsageTrendPoint, error) {
+func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]UserUsageTrendPoint, error) {
 	var results []UserUsageTrendPoint
 
 	// Choose date format based on granularity
@@ -491,7 +494,7 @@ REDACTED
 type UserDashboardStats = usagestats.UserDashboardStats
 
 // GetUserDashboardStats 获取用户专属的仪表盘统计
-func (r *UsageLogRepository) GetUserDashboardStats(ctx context.Context, userID int64) (*UserDashboardStats, error) {
+func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID int64) (*UserDashboardStats, error) {
 	var stats UserDashboardStats
 	today := timezone.Today()
 
@@ -578,7 +581,7 @@ REDACTED
 REDACTED
 
 // GetUserUsageTrendByUserID 获取指定用户的使用趋势
-func (r *UsageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]TrendDataPoint, error) {
+func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]TrendDataPoint, error) {
 	var results []TrendDataPoint
 
 	var dateFormat string
@@ -612,7 +615,7 @@ REDACTED
 REDACTED
 
 // GetUserModelStats 获取指定用户的模型统计
-func (r *UsageLogRepository) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]ModelStat, error) {
+func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]ModelStat, error) {
 	var results []ModelStat
 
 	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
@@ -641,7 +644,7 @@ REDACTED
 type UsageLogFilters = usagestats.UsageLogFilters
 
 // ListWithFilters lists usage logs with optional filters (for admin)
-func (r *UsageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]model.UsageLog, *pagination.PaginationResult, error) {
 	var logs []model.UsageLog
 	var total int64
 
@@ -692,7 +695,7 @@ type UsageStats = usagestats.UsageStats
 type BatchUserUsageStats = usagestats.BatchUserUsageStats
 
 // GetBatchUserUsageStats gets today and total actual_cost for multiple users
-func (r *UsageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs []int64) (map[int64]*BatchUserUsageStats, error) {
+func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs []int64) (map[int64]*BatchUserUsageStats, error) {
 	if len(userIDs) == 0 {
 		return make(map[int64]*BatchUserUsageStats), nil
 REDACTED
@@ -752,7 +755,7 @@ REDACTED
 type BatchApiKeyUsageStats = usagestats.BatchApiKeyUsageStats
 
 // GetBatchApiKeyUsageStats gets today and total actual_cost for multiple API keys
-func (r *UsageLogRepository) GetBatchApiKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*BatchApiKeyUsageStats, error) {
+func (r *usageLogRepository) GetBatchApiKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*BatchApiKeyUsageStats, error) {
 	if len(apiKeyIDs) == 0 {
 		return make(map[int64]*BatchApiKeyUsageStats), nil
 REDACTED
@@ -809,7 +812,7 @@ REDACTED
 REDACTED
 
 // GetUsageTrendWithFilters returns usage trend data with optional user/api_key filters
-func (r *UsageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) ([]TrendDataPoint, error) {
+func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) ([]TrendDataPoint, error) {
 	var results []TrendDataPoint
 
 	var dateFormat string
@@ -848,7 +851,7 @@ REDACTED
 REDACTED
 
 // GetModelStatsWithFilters returns model statistics with optional user/api_key filters
-func (r *UsageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) ([]ModelStat, error) {
+func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) ([]ModelStat, error) {
 	var results []ModelStat
 
 	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
@@ -882,7 +885,7 @@ REDACTED
 REDACTED
 
 // GetGlobalStats gets usage statistics for all users within a time range
-func (r *UsageLogRepository) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*UsageStats, error) {
+func (r *usageLogRepository) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*UsageStats, error) {
 	var stats struct {
 		TotalRequests     int64   `gorm:"column:total_requests"`
 		TotalInputTokens  int64   `gorm:"column:total_input_tokens"`
@@ -932,7 +935,7 @@ type AccountUsageSummary = usagestats.AccountUsageSummary
 type AccountUsageStatsResponse = usagestats.AccountUsageStatsResponse
 
 // GetAccountUsageStats returns comprehensive usage statistics for an account over a time range
-func (r *UsageLogRepository) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*AccountUsageStatsResponse, error) {
+func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*AccountUsageStatsResponse, error) {
 	daysCount := int(endTime.Sub(startTime).Hours()/24) + 1
 	if daysCount <= 0 {
 		daysCount = 30

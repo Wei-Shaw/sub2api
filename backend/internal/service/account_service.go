@@ -2,17 +2,16 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"gorm.io/gorm"
 )
 
 var (
-	ErrAccountNotFound = errors.New("account not found")
+	ErrAccountNotFound = infraerrors.NotFound("ACCOUNT_NOT_FOUND", "account not found")
 )
 
 type AccountRepository interface {
@@ -106,9 +105,6 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		for _, groupID := range req.GroupIDs {
 			_, err := s.groupRepo.GetByID(ctx, groupID)
 			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return nil, fmt.Errorf("group %d not found", groupID)
-			REDACTED
 				return nil, fmt.Errorf("get group: %w", err)
 		REDACTED
 	REDACTED
@@ -145,9 +141,6 @@ REDACTED
 func (s *AccountService) GetByID(ctx context.Context, id int64) (*model.Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAccountNotFound
-	REDACTED
 		return nil, fmt.Errorf("get account: %w", err)
 REDACTED
 	return account, nil
@@ -184,9 +177,6 @@ REDACTED
 func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccountRequest) (*model.Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAccountNotFound
-	REDACTED
 		return nil, fmt.Errorf("get account: %w", err)
 REDACTED
 
@@ -229,9 +219,6 @@ REDACTED
 		for _, groupID := range *req.GroupIDs {
 			_, err := s.groupRepo.GetByID(ctx, groupID)
 			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return nil, fmt.Errorf("group %d not found", groupID)
-			REDACTED
 				return nil, fmt.Errorf("get group: %w", err)
 		REDACTED
 	REDACTED
@@ -249,9 +236,6 @@ func (s *AccountService) Delete(ctx context.Context, id int64) error {
 	// 检查账号是否存在
 	_, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrAccountNotFound
-	REDACTED
 		return fmt.Errorf("get account: %w", err)
 REDACTED
 
@@ -266,9 +250,6 @@ REDACTED
 func (s *AccountService) UpdateStatus(ctx context.Context, id int64, status string, errorMessage string) error {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrAccountNotFound
-	REDACTED
 		return fmt.Errorf("get account: %w", err)
 REDACTED
 
@@ -294,9 +275,6 @@ REDACTED
 func (s *AccountService) GetCredential(ctx context.Context, id int64, key string) (string, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", ErrAccountNotFound
-	REDACTED
 		return "", fmt.Errorf("get account: %w", err)
 REDACTED
 
@@ -307,9 +285,6 @@ REDACTED
 func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrAccountNotFound
-	REDACTED
 		return fmt.Errorf("get account: %w", err)
 REDACTED
 

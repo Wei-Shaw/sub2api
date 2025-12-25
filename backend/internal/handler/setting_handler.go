@@ -26,7 +26,7 @@ REDACTED
 func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 	settings, err := h.settingService.GetPublicSettings(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "Failed to get settings: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

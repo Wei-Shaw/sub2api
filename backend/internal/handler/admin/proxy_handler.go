@@ -53,7 +53,7 @@ func (h *ProxyHandler) List(c *gin.Context) {
 
 	proxies, total, err := h.adminService.ListProxies(c.Request.Context(), page, pageSize, protocol, status, search)
 	if err != nil {
-		response.InternalError(c, "Failed to list proxies: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -69,7 +69,7 @@ func (h *ProxyHandler) GetAll(c *gin.Context) {
 	if withCount {
 		proxies, err := h.adminService.GetAllProxiesWithAccountCount(c.Request.Context())
 		if err != nil {
-			response.InternalError(c, "Failed to get proxies: "+err.Error())
+			response.ErrorFrom(c, err)
 			return
 	REDACTED
 		response.Success(c, proxies)
@@ -78,7 +78,7 @@ REDACTED
 
 	proxies, err := h.adminService.GetAllProxies(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "Failed to get proxies: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -96,7 +96,7 @@ REDACTED
 
 	proxy, err := h.adminService.GetProxy(c.Request.Context(), proxyID)
 	if err != nil {
-		response.NotFound(c, "Proxy not found")
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -121,7 +121,7 @@ REDACTED
 		Password: strings.TrimSpace(req.Password),
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Failed to create proxy: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -153,7 +153,7 @@ REDACTED
 		Status:   strings.TrimSpace(req.Status),
 REDACTED)
 	if err != nil {
-		response.InternalError(c, "Failed to update proxy: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -171,7 +171,7 @@ REDACTED
 
 	err = h.adminService.DeleteProxy(c.Request.Context(), proxyID)
 	if err != nil {
-		response.InternalError(c, "Failed to delete proxy: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -189,7 +189,7 @@ REDACTED
 
 	result, err := h.adminService.TestProxy(c.Request.Context(), proxyID)
 	if err != nil {
-		response.InternalError(c, "Failed to test proxy: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -229,7 +229,7 @@ REDACTED
 
 	accounts, total, err := h.adminService.GetProxyAccounts(c.Request.Context(), proxyID, page, pageSize)
 	if err != nil {
-		response.InternalError(c, "Failed to get proxy accounts: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -272,7 +272,7 @@ REDACTED
 		// Check for duplicates (same host, port, username, password)
 		exists, err := h.adminService.CheckProxyExists(c.Request.Context(), host, item.Port, username, password)
 		if err != nil {
-			response.InternalError(c, "Failed to check proxy existence: "+err.Error())
+			response.ErrorFrom(c, err)
 			return
 	REDACTED
 

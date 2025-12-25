@@ -78,7 +78,7 @@ REDACTED
 
 	subscriptions, pagination, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status)
 	if err != nil {
-		response.InternalError(c, "Failed to list subscriptions: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -96,7 +96,7 @@ REDACTED
 
 	subscription, err := h.subscriptionService.GetByID(c.Request.Context(), subscriptionID)
 	if err != nil {
-		response.NotFound(c, "Subscription not found")
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -141,7 +141,7 @@ REDACTED
 		Notes:        req.Notes,
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Failed to assign subscription: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -168,7 +168,7 @@ REDACTED
 		Notes:        req.Notes,
 REDACTED)
 	if err != nil {
-		response.InternalError(c, "Failed to bulk assign subscriptions: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -192,7 +192,7 @@ REDACTED
 
 	subscription, err := h.subscriptionService.ExtendSubscription(c.Request.Context(), subscriptionID, req.Days)
 	if err != nil {
-		response.InternalError(c, "Failed to extend subscription: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -210,7 +210,7 @@ REDACTED
 
 	err = h.subscriptionService.RevokeSubscription(c.Request.Context(), subscriptionID)
 	if err != nil {
-		response.InternalError(c, "Failed to revoke subscription: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -230,7 +230,7 @@ REDACTED
 
 	subscriptions, pagination, err := h.subscriptionService.ListGroupSubscriptions(c.Request.Context(), groupID, page, pageSize)
 	if err != nil {
-		response.InternalError(c, "Failed to list group subscriptions: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -248,7 +248,7 @@ REDACTED
 
 	subscriptions, err := h.subscriptionService.ListUserSubscriptions(c.Request.Context(), userID)
 	if err != nil {
-		response.InternalError(c, "Failed to list user subscriptions: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

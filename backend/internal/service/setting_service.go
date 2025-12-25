@@ -9,13 +9,13 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
-
-	"gorm.io/gorm"
 )
 
 var (
-	ErrRegistrationDisabled = errors.New("registration is currently disabled")
+	ErrRegistrationDisabled = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrSettingNotFound      = infraerrors.NotFound("SETTING_NOT_FOUND", "setting not found")
 )
 
 type SettingRepository interface {
@@ -187,7 +187,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 已有设置，不需要初始化
 		return nil
 REDACTED
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if !errors.Is(err, ErrSettingNotFound) {
 		return fmt.Errorf("check existing settings: %w", err)
 REDACTED
 
@@ -302,7 +302,7 @@ REDACTED
 func (s *SettingService) GetAdminApiKeyStatus(ctx context.Context) (maskedKey string, exists bool, err error) {
 	key, err := s.settingRepo.GetValue(ctx, model.SettingKeyAdminApiKey)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, ErrSettingNotFound) {
 			return "", false, nil
 	REDACTED
 		return "", false, err
@@ -326,7 +326,7 @@ REDACTED
 func (s *SettingService) GetAdminApiKey(ctx context.Context) (string, error) {
 	key, err := s.settingRepo.GetValue(ctx, model.SettingKeyAdminApiKey)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, ErrSettingNotFound) {
 			return "", nil // 未配置，返回空字符串
 	REDACTED
 		return "", err // 数据库错误

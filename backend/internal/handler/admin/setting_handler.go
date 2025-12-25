@@ -27,7 +27,7 @@ REDACTED
 func (h *SettingHandler) GetSettings(c *gin.Context) {
 	settings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "Failed to get settings: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -111,14 +111,14 @@ REDACTED
 REDACTED
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
-		response.InternalError(c, "Failed to update settings: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
 	// 重新获取设置返回
 	updatedSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "Failed to get updated settings: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -166,7 +166,7 @@ REDACTED
 
 	err := h.emailService.TestSmtpConnectionWithConfig(config)
 	if err != nil {
-		response.BadRequest(c, "SMTP connection test failed: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -252,7 +252,7 @@ REDACTED
 `
 
 	if err := h.emailService.SendEmailWithConfig(config, req.Email, subject, body); err != nil {
-		response.BadRequest(c, "Failed to send test email: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -264,7 +264,7 @@ REDACTED
 func (h *SettingHandler) GetAdminApiKey(c *gin.Context) {
 	maskedKey, exists, err := h.settingService.GetAdminApiKeyStatus(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "Failed to get admin API key status: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -279,7 +279,7 @@ REDACTED
 func (h *SettingHandler) RegenerateAdminApiKey(c *gin.Context) {
 	key, err := h.settingService.GenerateAdminApiKey(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "Failed to generate admin API key: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -292,7 +292,7 @@ REDACTED
 // DELETE /api/v1/admin/settings/admin-api-key
 func (h *SettingHandler) DeleteAdminApiKey(c *gin.Context) {
 	if err := h.settingService.DeleteAdminApiKey(c.Request.Context()); err != nil {
-		response.InternalError(c, "Failed to delete admin API key: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

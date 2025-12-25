@@ -16,13 +16,13 @@ type GroupRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
 	db   *gorm.DB
-	repo *GroupRepository
+	repo *groupRepository
 REDACTED
 
 func (s *GroupRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.db = testTx(s.T())
-	s.repo = NewGroupRepository(s.db)
+	s.repo = NewGroupRepository(s.db).(*groupRepository)
 REDACTED
 
 func TestGroupRepoSuite(t *testing.T) {
@@ -233,12 +233,4 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID_MultipleAccounts() {
 
 	count, _ := s.repo.GetAccountCount(s.ctx, g.ID)
 	s.Require().Zero(count)
-REDACTED
-
-// --- DB ---
-
-func (s *GroupRepoSuite) TestDB() {
-	db := s.repo.DB()
-	s.Require().NotNil(db, "DB should return non-nil")
-	s.Require().Equal(s.db, db, "DB should return the underlying gorm.DB")
 REDACTED

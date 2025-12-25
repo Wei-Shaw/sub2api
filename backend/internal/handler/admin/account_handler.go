@@ -117,7 +117,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 
 	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search)
 	if err != nil {
-		response.InternalError(c, "Failed to list accounts: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -156,7 +156,7 @@ REDACTED
 
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
-		response.NotFound(c, "Account not found")
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -184,7 +184,7 @@ REDACTED
 		GroupIDs:    req.GroupIDs,
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Failed to create account: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -218,7 +218,7 @@ REDACTED
 		GroupIDs:    req.GroupIDs,
 REDACTED)
 	if err != nil {
-		response.InternalError(c, "Failed to update account: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -236,7 +236,7 @@ REDACTED
 
 	err = h.adminService.DeleteAccount(c.Request.Context(), accountID)
 	if err != nil {
-		response.InternalError(c, "Failed to delete account: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -297,7 +297,7 @@ REDACTED
 		SyncProxies: syncProxies,
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Sync failed: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -332,7 +332,7 @@ REDACTED
 		// Use OpenAI OAuth service to refresh token
 		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(c.Request.Context(), account)
 		if err != nil {
-			response.InternalError(c, "Failed to refresh credentials: "+err.Error())
+			response.ErrorFrom(c, err)
 			return
 	REDACTED
 
@@ -349,7 +349,7 @@ REDACTED else {
 		// Use Anthropic/Claude OAuth service to refresh token
 		tokenInfo, err := h.oauthService.RefreshAccountToken(c.Request.Context(), account)
 		if err != nil {
-			response.InternalError(c, "Failed to refresh credentials: "+err.Error())
+			response.ErrorFrom(c, err)
 			return
 	REDACTED
 
@@ -372,7 +372,7 @@ REDACTED
 		Credentials: newCredentials,
 REDACTED)
 	if err != nil {
-		response.InternalError(c, "Failed to update account credentials: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -403,7 +403,7 @@ REDACTED
 
 	stats, err := h.accountUsageService.GetAccountUsageStats(c.Request.Context(), accountID, startTime, endTime)
 	if err != nil {
-		response.InternalError(c, "Failed to get account stats: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -421,7 +421,7 @@ REDACTED
 
 	account, err := h.adminService.ClearAccountError(c.Request.Context(), accountID)
 	if err != nil {
-		response.InternalError(c, "Failed to clear error: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -570,7 +570,7 @@ REDACTED
 		Extra:       req.Extra,
 REDACTED)
 	if err != nil {
-		response.InternalError(c, "Failed to bulk update accounts: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -595,7 +595,7 @@ REDACTED
 
 	result, err := h.oauthService.GenerateAuthURL(c.Request.Context(), req.ProxyID)
 	if err != nil {
-		response.InternalError(c, "Failed to generate auth URL: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -613,7 +613,7 @@ REDACTED
 
 	result, err := h.oauthService.GenerateSetupTokenURL(c.Request.Context(), req.ProxyID)
 	if err != nil {
-		response.InternalError(c, "Failed to generate setup token URL: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -642,7 +642,7 @@ REDACTED
 		ProxyID:   req.ProxyID,
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Failed to exchange code: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -664,7 +664,7 @@ REDACTED
 		ProxyID:   req.ProxyID,
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Failed to exchange code: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -692,7 +692,7 @@ REDACTED
 		Scope:      "full",
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Cookie auth failed: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -714,7 +714,7 @@ REDACTED
 		Scope:      "inference",
 REDACTED)
 	if err != nil {
-		response.BadRequest(c, "Cookie auth failed: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -732,7 +732,7 @@ REDACTED
 
 	usage, err := h.accountUsageService.GetUsage(c.Request.Context(), accountID)
 	if err != nil {
-		response.InternalError(c, "Failed to get usage: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -750,7 +750,7 @@ REDACTED
 
 	err = h.rateLimitService.ClearRateLimit(c.Request.Context(), accountID)
 	if err != nil {
-		response.InternalError(c, "Failed to clear rate limit: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -768,7 +768,7 @@ REDACTED
 
 	stats, err := h.accountUsageService.GetTodayStats(c.Request.Context(), accountID)
 	if err != nil {
-		response.InternalError(c, "Failed to get today stats: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -797,7 +797,7 @@ REDACTED
 
 	account, err := h.adminService.SetAccountSchedulable(c.Request.Context(), accountID, req.Schedulable)
 	if err != nil {
-		response.InternalError(c, "Failed to update schedulable status: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

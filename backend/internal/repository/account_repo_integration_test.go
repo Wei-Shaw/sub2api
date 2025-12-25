@@ -18,13 +18,13 @@ type AccountRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
 	db   *gorm.DB
-	repo *AccountRepository
+	repo *accountRepository
 REDACTED
 
 func (s *AccountRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.db = testTx(s.T())
-	s.repo = NewAccountRepository(s.db)
+	s.repo = NewAccountRepository(s.db).(*accountRepository)
 REDACTED
 
 func TestAccountRepoSuite(t *testing.T) {
@@ -167,7 +167,7 @@ REDACTED
 		s.Run(tt.name, func() {
 			// 每个 case 重新获取隔离资源
 			db := testTx(s.T())
-			repo := NewAccountRepository(db)
+			repo := NewAccountRepository(db).(*accountRepository)
 			ctx := context.Background()
 
 			tt.setup(db)

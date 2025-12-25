@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
 )
@@ -17,13 +18,13 @@ type RedeemCodeRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
 	db   *gorm.DB
-	repo *RedeemCodeRepository
+	repo *redeemCodeRepository
 REDACTED
 
 func (s *RedeemCodeRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.db = testTx(s.T())
-	s.repo = NewRedeemCodeRepository(s.db)
+	s.repo = NewRedeemCodeRepository(s.db).(*redeemCodeRepository)
 REDACTED
 
 func TestRedeemCodeRepoSuite(t *testing.T) {
@@ -195,7 +196,7 @@ func (s *RedeemCodeRepoSuite) TestUse_Idempotency() {
 	// Second use should fail
 	err = s.repo.Use(s.ctx, code.ID, user.ID)
 	s.Require().Error(err, "Use expected error on second call")
-	s.Require().ErrorIs(err, gorm.ErrRecordNotFound)
+	s.Require().ErrorIs(err, service.ErrRedeemCodeUsed)
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestUse_AlreadyUsed() {
@@ -204,7 +205,7 @@ func (s *RedeemCodeRepoSuite) TestUse_AlreadyUsed() {
 
 	err := s.repo.Use(s.ctx, code.ID, user.ID)
 	s.Require().Error(err, "expected error for already used code")
-	s.Require().ErrorIs(err, gorm.ErrRecordNotFound)
+	s.Require().ErrorIs(err, service.ErrRedeemCodeUsed)
 REDACTED
 
 // --- ListByUser ---
@@ -298,7 +299,7 @@ REDACTED
 	s.Require().NoError(s.repo.Use(s.ctx, codeB.ID, user.ID), "Use")
 	err = s.repo.Use(s.ctx, codeB.ID, user.ID)
 	s.Require().Error(err, "Use expected error on second call")
-	s.Require().ErrorIs(err, gorm.ErrRecordNotFound)
+	s.Require().ErrorIs(err, service.ErrRedeemCodeUsed)
 
 	codeA, err := s.repo.GetByCode(s.ctx, "CODEA")
 	s.Require().NoError(err, "GetByCode")

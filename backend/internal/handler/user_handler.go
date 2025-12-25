@@ -49,7 +49,7 @@ REDACTED
 
 	userData, err := h.userService.GetByID(c.Request.Context(), user.ID)
 	if err != nil {
-		response.InternalError(c, "Failed to get user profile: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -86,7 +86,7 @@ REDACTED
 REDACTED
 	err := h.userService.ChangePassword(c.Request.Context(), user.ID, svcReq)
 	if err != nil {
-		response.BadRequest(c, "Failed to change password: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -120,7 +120,7 @@ REDACTED
 REDACTED
 	updatedUser, err := h.userService.UpdateProfile(c.Request.Context(), user.ID, svcReq)
 	if err != nil {
-		response.BadRequest(c, "Failed to update profile: "+err.Error())
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

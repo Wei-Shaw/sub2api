@@ -2,14 +2,15 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 )
 
 var (
-	ErrTurnstileVerificationFailed = errors.New("turnstile verification failed")
-	ErrTurnstileNotConfigured      = errors.New("turnstile not configured")
+	ErrTurnstileVerificationFailed = infraerrors.BadRequest("TURNSTILE_VERIFICATION_FAILED", "turnstile verification failed")
+	ErrTurnstileNotConfigured      = infraerrors.ServiceUnavailable("TURNSTILE_NOT_CONFIGURED", "turnstile not configured")
 )
 
 // TurnstileVerifier 验证 Turnstile token 的接口

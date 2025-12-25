@@ -2,17 +2,16 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"gorm.io/gorm"
 )
 
 var (
-	ErrGroupNotFound = errors.New("group not found")
-	ErrGroupExists   = errors.New("group name already exists")
+	ErrGroupNotFound = infraerrors.NotFound("GROUP_NOT_FOUND", "group not found")
+	ErrGroupExists   = infraerrors.Conflict("GROUP_EXISTS", "group name already exists")
 )
 
 type GroupRepository interface {
@@ -20,6 +19,7 @@ type GroupRepository interface {
 	GetByID(ctx context.Context, id int64) (*model.Group, error)
 	Update(ctx context.Context, group *model.Group) error
 	Delete(ctx context.Context, id int64) error
+	DeleteCascade(ctx context.Context, id int64) ([]int64, error)
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]model.Group, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]model.Group, *pagination.PaginationResult, error)
@@ -29,8 +29,6 @@ type GroupRepository interface {
 	ExistsByName(ctx context.Context, name string) (bool, error)
 	GetAccountCount(ctx context.Context, groupID int64) (int64, error)
 	DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error)
-
-	DB() *gorm.DB
 REDACTED
 
 // CreateGroupRequest 创建分组请求
@@ -93,9 +91,6 @@ REDACTED
 func (s *GroupService) GetByID(ctx context.Context, id int64) (*model.Group, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrGroupNotFound
-	REDACTED
 		return nil, fmt.Errorf("get group: %w", err)
 REDACTED
 	return group, nil
@@ -123,9 +118,6 @@ REDACTED
 func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequest) (*model.Group, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrGroupNotFound
-	REDACTED
 		return nil, fmt.Errorf("get group: %w", err)
 REDACTED
 
@@ -170,9 +162,6 @@ func (s *GroupService) Delete(ctx context.Context, id int64) error {
 	// 检查分组是否存在
 	_, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrGroupNotFound
-	REDACTED
 		return fmt.Errorf("get group: %w", err)
 REDACTED
 
@@ -187,9 +176,6 @@ REDACTED
 func (s *GroupService) GetStats(ctx context.Context, id int64) (map[string]any, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrGroupNotFound
-	REDACTED
 		return nil, fmt.Errorf("get group: %w", err)
 REDACTED
 

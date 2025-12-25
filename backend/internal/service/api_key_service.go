@@ -9,20 +9,20 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 var (
-	ErrApiKeyNotFound     = errors.New("api key not found")
-	ErrGroupNotAllowed    = errors.New("user is not allowed to bind this group")
-	ErrApiKeyExists       = errors.New("api key already exists")
-	ErrApiKeyTooShort     = errors.New("api key must be at least 16 characters")
-	ErrApiKeyInvalidChars = errors.New("api key can only contain letters, numbers, underscores, and hyphens")
-	ErrApiKeyRateLimited  = errors.New("too many failed attempts, please try again later")
+	ErrApiKeyNotFound     = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed    = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrApiKeyExists       = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrApiKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrApiKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrApiKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 )
 
 const (
@@ -183,9 +183,6 @@ func (s *ApiKeyService) Create(ctx context.Context, userID int64, req CreateApiK
 	// 验证用户存在
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-	REDACTED
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 
@@ -193,9 +190,6 @@ REDACTED
 	if req.GroupID != nil {
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, errors.New("group not found")
-		REDACTED
 			return nil, fmt.Errorf("get group: %w", err)
 	REDACTED
 
@@ -269,9 +263,6 @@ REDACTED
 func (s *ApiKeyService) GetByID(ctx context.Context, id int64) (*model.ApiKey, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrApiKeyNotFound
-	REDACTED
 		return nil, fmt.Errorf("get api key: %w", err)
 REDACTED
 	return apiKey, nil
@@ -285,9 +276,6 @@ func (s *ApiKeyService) GetByKey(ctx context.Context, key string) (*model.ApiKey
 	// 这里可以添加Redis缓存逻辑，暂时直接查询数据库
 	apiKey, err := s.apiKeyRepo.GetByKey(ctx, key)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrApiKeyNotFound
-	REDACTED
 		return nil, fmt.Errorf("get api key: %w", err)
 REDACTED
 
@@ -304,9 +292,6 @@ REDACTED
 func (s *ApiKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateApiKeyRequest) (*model.ApiKey, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrApiKeyNotFound
-	REDACTED
 		return nil, fmt.Errorf("get api key: %w", err)
 REDACTED
 
@@ -329,9 +314,6 @@ REDACTED
 
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, errors.New("group not found")
-		REDACTED
 			return nil, fmt.Errorf("get group: %w", err)
 	REDACTED
 
@@ -361,9 +343,6 @@ REDACTED
 func (s *ApiKeyService) Delete(ctx context.Context, id int64, userID int64) error {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrApiKeyNotFound
-	REDACTED
 		return fmt.Errorf("get api key: %w", err)
 REDACTED
 
@@ -394,15 +373,12 @@ REDACTED
 
 	// 检查API Key状态
 	if !apiKey.IsActive() {
-		return nil, nil, errors.New("api key is not active")
+		return nil, nil, infraerrors.Unauthorized("API_KEY_INACTIVE", "api key is not active")
 REDACTED
 
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, apiKey.UserID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil, ErrUserNotFound
-	REDACTED
 		return nil, nil, fmt.Errorf("get user: %w", err)
 REDACTED
 
@@ -436,9 +412,6 @@ func (s *ApiKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-	REDACTED
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 
@@ -450,7 +423,7 @@ REDACTED
 
 	// 获取用户的所有有效订阅
 	activeSubscriptions, err := s.userSubRepo.ListActiveByUserID(ctx, userID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil {
 		return nil, fmt.Errorf("list active subscriptions: %w", err)
 REDACTED
 

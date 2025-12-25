@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -18,13 +19,13 @@ type UserRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
 	db   *gorm.DB
-	repo *UserRepository
+	repo *userRepository
 REDACTED
 
 func (s *UserRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.db = testTx(s.T())
-	s.repo = NewUserRepository(s.db)
+	s.repo = NewUserRepository(s.db).(*userRepository)
 REDACTED
 
 func TestUserRepoSuite(t *testing.T) {
@@ -247,7 +248,7 @@ func (s *UserRepoSuite) TestDeductBalance_InsufficientFunds() {
 
 	err := s.repo.DeductBalance(s.ctx, user.ID, 999)
 	s.Require().Error(err, "expected error for insufficient balance")
-	s.Require().ErrorIs(err, gorm.ErrRecordNotFound)
+	s.Require().ErrorIs(err, service.ErrInsufficientBalance)
 REDACTED
 
 func (s *UserRepoSuite) TestDeductBalance_ExactAmount() {
@@ -432,7 +433,7 @@ REDACTED)
 
 	err = s.repo.DeductBalance(s.ctx, user1.ID, 999)
 	s.Require().Error(err, "DeductBalance expected error for insufficient balance")
-	s.Require().ErrorIs(err, gorm.ErrRecordNotFound, "DeductBalance unexpected error")
+	s.Require().ErrorIs(err, service.ErrInsufficientBalance, "DeductBalance unexpected error")
 
 	s.Require().NoError(s.repo.UpdateConcurrency(s.ctx, user1.ID, 3), "UpdateConcurrency")
 	got5, err := s.repo.GetByID(s.ctx, user1.ID)

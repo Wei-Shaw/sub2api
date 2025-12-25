@@ -2,19 +2,18 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 var (
-	ErrUserNotFound      = errors.New("user not found")
-	ErrPasswordIncorrect = errors.New("current password is incorrect")
-	ErrInsufficientPerms = errors.New("insufficient permissions")
+	ErrUserNotFound      = infraerrors.NotFound("USER_NOT_FOUND", "user not found")
+	ErrPasswordIncorrect = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
+	ErrInsufficientPerms = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 )
 
 type UserRepository interface {
@@ -65,9 +64,6 @@ REDACTED
 func (s *UserService) GetProfile(ctx context.Context, userID int64) (*model.User, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-	REDACTED
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 	return user, nil
@@ -77,9 +73,6 @@ REDACTED
 func (s *UserService) UpdateProfile(ctx context.Context, userID int64, req UpdateProfileRequest) (*model.User, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-	REDACTED
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 
@@ -119,9 +112,6 @@ REDACTED
 func (s *UserService) ChangePassword(ctx context.Context, userID int64, req ChangePasswordRequest) error {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrUserNotFound
-	REDACTED
 		return fmt.Errorf("get user: %w", err)
 REDACTED
 
@@ -149,9 +139,6 @@ REDACTED
 func (s *UserService) GetByID(ctx context.Context, id int64) (*model.User, error) {
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrUserNotFound
-	REDACTED
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 	return user, nil
@@ -178,9 +165,6 @@ REDACTED
 func (s *UserService) UpdateStatus(ctx context.Context, userID int64, status string) error {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrUserNotFound
-	REDACTED
 		return fmt.Errorf("get user: %w", err)
 REDACTED
 
