@@ -831,32 +831,29 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	// This fixes the issue where OpenAI's primary/secondary naming is reversed
 	// Strategy: Compare the two windows and assign the smaller one to 5h, larger one to 7d
 
-	// Get window sizes (in minutes)
-	var primaryWindowMins, secondaryWindowMins int
-	var hasPrimary, hasSecondary bool
+	// IMPORTANT: We can only reliably determine window type from window_minutes field
+	// The reset_after_seconds is remaining time, not window size, so it cannot be used for comparison
 
+	var primaryWindowMins, secondaryWindowMins int
+	var hasPrimaryWindow, hasSecondaryWindow bool
+
+	// Only use window_minutes for reliable window size comparison
 	if snapshot.PrimaryWindowMinutes != nil {
 		primaryWindowMins = *snapshot.PrimaryWindowMinutes
-		hasPrimary = true
-	} else if snapshot.PrimaryResetAfterSeconds != nil {
-		primaryWindowMins = *snapshot.PrimaryResetAfterSeconds / 60
-		hasPrimary = true
+		hasPrimaryWindow = true
 	}
 
 	if snapshot.SecondaryWindowMinutes != nil {
 		secondaryWindowMins = *snapshot.SecondaryWindowMinutes
-		hasSecondary = true
-	} else if snapshot.SecondaryResetAfterSeconds != nil {
-		secondaryWindowMins = *snapshot.SecondaryResetAfterSeconds / 60
-		hasSecondary = true
+		hasSecondaryWindow = true
 	}
 
-	// Determine which is 5h and which is 7d by comparing sizes
+	// Determine which is 5h and which is 7d
 	var use5hFromPrimary, use7dFromPrimary bool
 	var use5hFromSecondary, use7dFromSecondary bool
 
-	if hasPrimary && hasSecondary {
-		// Both windows present: smaller is 5h, larger is 7d
+	if hasPrimaryWindow && hasSecondaryWindow {
+		// Both window sizes known: compare and assign smaller to 5h, larger to 7d
 		if primaryWindowMins < secondaryWindowMins {
 			use5hFromPrimary = true
 			use7dFromSecondary = true
@@ -864,20 +861,26 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 			use5hFromSecondary = true
 			use7dFromPrimary = true
 		}
-	} else if hasPrimary {
-		// Only primary present: decide based on size
+	} else if hasPrimaryWindow {
+		// Only primary window size known: classify by absolute threshold
 		if primaryWindowMins <= 360 {
 			use5hFromPrimary = true
 		} else {
 			use7dFromPrimary = true
 		}
-	} else if hasSecondary {
-		// Only secondary present: decide based on size
+	} else if hasSecondaryWindow {
+		// Only secondary window size known: classify by absolute threshold
 		if secondaryWindowMins <= 360 {
 			use5hFromSecondary = true
 		} else {
 			use7dFromSecondary = true
 		}
+	} else {
+		// No window_minutes available: cannot reliably determine window types
+		// Fall back to legacy assumption (may be incorrect)
+		// Assume primary=7d, secondary=5h based on historical observation
+		use5hFromSecondary = snapshot.SecondaryUsedPercent != nil
+		use7dFromPrimary = snapshot.PrimaryUsedPercent != nil
 	}
 
 	// Write canonical 5h fields
