@@ -620,7 +620,8 @@ export default {
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
       deleteConfirm: "确定要删除分组 '{nameREDACTED' 吗？所有关联的 API 密钥将不再属于任何分组。",
-      deleteConfirmSubscription: "确定要删除订阅分组 '{nameREDACTED' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
+      deleteConfirmSubscription:
+        "确定要删除订阅分组 '{nameREDACTED' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
       columns: {
         name: '名称',
         platform: '平台',
@@ -782,7 +783,8 @@ export default {
       createAccount: '添加账号',
       syncFromCrs: '从 CRS 同步',
       syncFromCrsTitle: '从 CRS 同步账号',
-      syncFromCrsDesc: '将 claude-relay-service（CRS）中的账号同步到当前系统（不会在浏览器侧直接请求 CRS）。',
+      syncFromCrsDesc:
+        '将 claude-relay-service（CRS）中的账号同步到当前系统（不会在浏览器侧直接请求 CRS）。',
       crsBaseUrl: 'CRS 服务地址',
       crsBaseUrlPlaceholder: '例如：http://127.0.0.1:3000',
       crsUsername: '用户名',
@@ -973,7 +975,8 @@ export default {
         sessionKey: 'sessionKey',
         keysCount: '{countREDACTED 个密钥',
         batchCreateAccounts: '将批量创建 {countREDACTED 个账号',
-        sessionKeyPlaceholder: '每行一个 sessionKey，例如：\nsk-ant-sid01-xxxxx...\nsk-ant-sid01-yyyyy...',
+        sessionKeyPlaceholder:
+          '每行一个 sessionKey，例如：\nsk-ant-sid01-xxxxx...\nsk-ant-sid01-yyyyy...',
         sessionKeyPlaceholderSingle: 'sk-ant-sid01-xxxxx...',
         howToGetSessionKey: '如何获取 sessionKey',
         step1: '在浏览器中登录 <strong>claude.ai</strong>',
@@ -992,7 +995,8 @@ export default {
         regenerate: '重新生成',
         step2OpenUrl: '在浏览器中打开 URL 并完成授权',
         openUrlDesc: '在新标签页中打开授权 URL，登录您的 Claude 账号并授权。',
-        proxyWarning: '<strong>注意：</strong>如果您配置了代理，请确保浏览器使用相同的代理访问授权页面。',
+        proxyWarning:
+          '<strong>注意：</strong>如果您配置了代理，请确保浏览器使用相同的代理访问授权页面。',
         step3EnterCode: '输入授权码',
         authCodeDesc: '授权完成后，页面会显示一个 <strong>授权码</strong>。复制并粘贴到下方：',
         authCode: '授权码',
@@ -1013,11 +1017,14 @@ export default {
           generateAuthUrl: '生成授权链接',
           step2OpenUrl: '在浏览器中打开链接并完成授权',
           openUrlDesc: '请在新标签页中打开授权链接，登录您的 OpenAI 账户并授权。',
-          importantNotice: '<strong>重要提示：</strong>授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 <code>http://localhost...</code> 开头时，表示授权已完成。',
+          importantNotice:
+            '<strong>重要提示：</strong>授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 <code>http://localhost...</code> 开头时，表示授权已完成。',
           step3EnterCode: '输入授权链接或 Code',
-          authCodeDesc: '授权完成后，当页面地址变为 <code>http://localhost:xxx/auth/callback?code=...</code> 时：',
+          authCodeDesc:
+            '授权完成后，当页面地址变为 <code>http://localhost:xxx/auth/callback?code=...</code> 时：',
           authCode: '授权链接或 Code',
-          authCodePlaceholder: '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
+          authCodePlaceholder:
+            '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
           authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
         REDACTED,
       REDACTED,
@@ -1153,7 +1160,8 @@ export default {
       standardAdd: '标准添加',
       batchAdd: '快捷添加',
       batchInput: '代理列表',
-      batchInputPlaceholder: "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'REDACTED192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'REDACTEDproxy.example.com:443",
+      batchInputPlaceholder:
+        "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'REDACTED192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'REDACTEDproxy.example.com:443",
       batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码{'@'REDACTED]主机:端口",
       parsedCount: '有效 {countREDACTED 个',
       invalidCount: '无效 {countREDACTED 个',

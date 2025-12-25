@@ -17,11 +17,14 @@ export default {
     REDACTED,
     features: {
       unifiedGateway: 'Unified API Gateway',
-      unifiedGatewayDesc: 'Convert Claude subscriptions to API endpoints. Access AI capabilities through standard /v1/messages interface.',
+      unifiedGatewayDesc:
+        'Convert Claude subscriptions to API endpoints. Access AI capabilities through standard /v1/messages interface.',
       multiAccount: 'Multi-Account Pool',
-      multiAccountDesc: 'Manage multiple upstream accounts with smart load balancing. Support OAuth and API Key authentication.',
+      multiAccountDesc:
+        'Manage multiple upstream accounts with smart load balancing. Support OAuth and API Key authentication.',
       balanceQuota: 'Balance & Quota',
-      balanceQuotaDesc: 'Token-based billing with precise usage tracking. Manage quotas and recharge with redeem codes.',
+      balanceQuotaDesc:
+        'Token-based billing with precise usage tracking. Manage quotas and recharge with redeem codes.',
     REDACTED,
     providers: {
       title: 'Supported Providers',
@@ -235,7 +238,8 @@ export default {
     useKey: 'Use Key',
     useKeyModal: {
       title: 'Use API Key',
-      description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
+      description:
+        'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
       copy: 'Copy',
       copied: 'Copied',
       note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
@@ -517,7 +521,8 @@ export default {
       failedToLoadApiKeys: 'Failed to load user API keys',
       deleteConfirm: "Are you sure you want to delete '{emailREDACTED'? This action cannot be undone.",
       setAllowedGroups: 'Set Allowed Groups',
-      allowedGroupsHint: 'Select which standard groups this user can use. Subscription groups are managed separately.',
+      allowedGroupsHint:
+        'Select which standard groups this user can use. Subscription groups are managed separately.',
       noStandardGroups: 'No standard groups available',
       allowAllGroups: 'Allow All Groups',
       allowAllGroupsHint: 'User can use any non-exclusive group',
@@ -529,8 +534,10 @@ export default {
       depositAmount: 'Deposit Amount',
       withdrawAmount: 'Withdraw Amount',
       currentBalance: 'Current Balance',
-      depositNotesPlaceholder: 'e.g., New user registration bonus, promotional credit, compensation, etc.',
-      withdrawNotesPlaceholder: 'e.g., Service issue refund, incorrect charge reversal, account closure refund, etc.',
+      depositNotesPlaceholder:
+        'e.g., New user registration bonus, promotional credit, compensation, etc.',
+      withdrawNotesPlaceholder:
+        'e.g., Service issue refund, incorrect charge reversal, account closure refund, etc.',
       notesOptional: 'Notes are optional but helpful for record keeping',
       amountHint: 'Please enter a positive amount',
       newBalance: 'New Balance',
@@ -597,12 +604,15 @@ export default {
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
-      deleteConfirm: "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
-      deleteConfirmSubscription: "Are you sure you want to delete subscription group '{nameREDACTED'? This will invalidate all API keys bound to this subscription and delete all related subscription records. This action cannot be undone.",
+      deleteConfirm:
+        "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
+      deleteConfirmSubscription:
+        "Are you sure you want to delete subscription group '{nameREDACTED'? This will invalidate all API keys bound to this subscription and delete all related subscription records. This action cannot be undone.",
       subscription: {
         title: 'Subscription Settings',
         type: 'Billing Type',
-        typeHint: 'Standard billing deducts from user balance. Subscription mode uses quota limits instead.',
+        typeHint:
+          'Standard billing deducts from user balance. Subscription mode uses quota limits instead.',
         typeNotEditable: 'Billing type cannot be changed after group creation.',
         standard: 'Standard (Balance)',
         subscription: 'Subscription (Quota)',
@@ -674,7 +684,8 @@ export default {
       failedToAssign: 'Failed to assign subscription',
       failedToExtend: 'Failed to extend subscription',
       failedToRevoke: 'Failed to revoke subscription',
-      revokeConfirm: "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone.",
+      revokeConfirm:
+        "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone.",
     REDACTED,
 
     // Accounts
@@ -754,7 +765,8 @@ export default {
       REDACTED,
       bulkEdit: {
         title: 'Bulk Edit Accounts',
-        selectionInfo: '{countREDACTED account(s) selected. Only checked or filled fields will be updated; others stay unchanged.',
+        selectionInfo:
+          '{countREDACTED account(s) selected. Only checked or filled fields will be updated; others stay unchanged.',
         baseUrlPlaceholder: 'https://api.anthropic.com or https://api.openai.com',
         baseUrlNotice: 'Applies to API Key accounts only; leave empty to keep existing value',
         submit: 'Update Accounts',
@@ -797,7 +809,8 @@ export default {
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
       selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
-      mapRequestModels: 'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
+      mapRequestModels:
+        'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
       selectedModels: 'Selected {countREDACTED model(s)',
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
@@ -806,14 +819,16 @@ export default {
       mappingExists: 'Mapping for {modelREDACTED already exists',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
-      customErrorCodesWarning: 'Only selected error codes will stop scheduling. Other errors will return 500.',
+      customErrorCodesWarning:
+        'Only selected error codes will stop scheduling. Other errors will return 500.',
       selectedErrorCodes: 'Selected',
       noneSelectedUsesDefault: 'None selected (uses default policy)',
       enterErrorCode: 'Enter error code (100-599)',
       invalidErrorCode: 'Please enter a valid HTTP error code (100-599)',
       errorCodeExists: 'This error code is already selected',
       interceptWarmupRequests: 'Intercept Warmup Requests',
-      interceptWarmupRequestsDesc: 'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
+      interceptWarmupRequestsDesc:
+        'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
       concurrency: 'Concurrency',
@@ -836,11 +851,13 @@ export default {
         authMethod: 'Authorization Method',
         manualAuth: 'Manual Authorization',
         cookieAutoAuth: 'Cookie Auto-Auth',
-        cookieAutoAuthDesc: 'Use claude.ai sessionKey to automatically complete OAuth authorization without manually opening browser.',
+        cookieAutoAuthDesc:
+          'Use claude.ai sessionKey to automatically complete OAuth authorization without manually opening browser.',
         sessionKey: 'sessionKey',
         keysCount: '{countREDACTED keys',
         batchCreateAccounts: 'Will batch create {countREDACTED accounts',
-        sessionKeyPlaceholder: 'One sessionKey per line, e.g.:\nsk-ant-sid01-xxxxx...\nsk-ant-sid01-yyyyy...',
+        sessionKeyPlaceholder:
+          'One sessionKey per line, e.g.:\nsk-ant-sid01-xxxxx...\nsk-ant-sid01-yyyyy...',
         sessionKeyPlaceholderSingle: 'sk-ant-sid01-xxxxx...',
         howToGetSessionKey: 'How to get sessionKey',
         step1: 'Login to <strong>claude.ai</strong> in your browser',
@@ -858,10 +875,13 @@ export default {
         generating: 'Generating...',
         regenerate: 'Regenerate',
         step2OpenUrl: 'Open the URL in your browser and complete authorization',
-        openUrlDesc: 'Open the authorization URL in a new tab, log in to your Claude account and authorize.',
-        proxyWarning: '<strong>Note:</strong> If you configured a proxy, make sure your browser uses the same proxy to access the authorization page.',
+        openUrlDesc:
+          'Open the authorization URL in a new tab, log in to your Claude account and authorize.',
+        proxyWarning:
+          '<strong>Note:</strong> If you configured a proxy, make sure your browser uses the same proxy to access the authorization page.',
         step3EnterCode: 'Enter the Authorization Code',
-        authCodeDesc: 'After authorization is complete, the page will display an <strong>Authorization Code</strong>. Copy and paste it below:',
+        authCodeDesc:
+          'After authorization is complete, the page will display an <strong>Authorization Code</strong>. Copy and paste it below:',
         authCode: 'Authorization Code',
         authCodePlaceholder: 'Paste the Authorization Code from Claude page...',
         authCodeHint: 'Paste the Authorization Code copied from the Claude page',
@@ -879,13 +899,18 @@ export default {
           step1GenerateUrl: 'Click the button below to generate the authorization URL',
           generateAuthUrl: 'Generate Auth URL',
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
-          openUrlDesc: 'Open the authorization URL in a new tab, log in to your OpenAI account and authorize.',
-          importantNotice: '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to <code>http://localhost...</code>, the authorization is complete.',
+          openUrlDesc:
+            'Open the authorization URL in a new tab, log in to your OpenAI account and authorize.',
+          importantNotice:
+            '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to <code>http://localhost...</code>, the authorization is complete.',
           step3EnterCode: 'Enter Authorization URL or Code',
-          authCodeDesc: 'After authorization is complete, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+          authCodeDesc:
+            'After authorization is complete, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
           authCode: 'Authorization URL or Code',
-          authCodePlaceholder: 'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
-          authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+          authCodePlaceholder:
+            'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
+          authCodeHint:
+            'You can copy the entire URL or just the code parameter value, the system will auto-detect',
         REDACTED,
       REDACTED,
       // Re-Auth Modal
@@ -985,8 +1010,10 @@ export default {
       standardAdd: 'Standard Add',
       batchAdd: 'Quick Add',
       batchInput: 'Proxy List',
-      batchInputPlaceholder: "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'REDACTED192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'REDACTEDproxy.example.com:443",
-      batchInputHint: "Supports http, https, socks5 protocols. Format: protocol://[user:pass{'@'REDACTED]host:port",
+      batchInputPlaceholder:
+        "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'REDACTED192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'REDACTEDproxy.example.com:443",
+      batchInputHint:
+        "Supports http, https, socks5 protocols. Format: protocol://[user:pass{'@'REDACTED]host:port",
       parsedCount: '{countREDACTED valid',
       invalidCount: '{countREDACTED invalid',
       duplicateCount: '{countREDACTED duplicate',
@@ -1009,7 +1036,8 @@ export default {
       failedToUpdate: 'Failed to update proxy',
       failedToDelete: 'Failed to delete proxy',
       failedToTest: 'Failed to test proxy',
-      deleteConfirm: "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed.",
+      deleteConfirm:
+        "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed.",
     REDACTED,
 
     // Redeem Codes
@@ -1038,8 +1066,10 @@ export default {
       exportCsv: 'Export CSV',
       deleteAllUnused: 'Delete All Unused Codes',
       deleteCode: 'Delete Redeem Code',
-      deleteCodeConfirm: 'Are you sure you want to delete this redeem code? This action cannot be undone.',
-      deleteAllUnusedConfirm: 'Are you sure you want to delete all unused (active) redeem codes? This action cannot be undone.',
+      deleteCodeConfirm:
+        'Are you sure you want to delete this redeem code? This action cannot be undone.',
+      deleteAllUnusedConfirm:
+        'Are you sure you want to delete all unused (active) redeem codes? This action cannot be undone.',
       deleteAll: 'Delete All',
       generateCodesTitle: 'Generate Redeem Codes',
       generatedSuccessfully: 'Generated Successfully',
@@ -1119,7 +1149,8 @@ export default {
         siteSubtitle: 'Site Subtitle',
         siteSubtitleHint: 'Displayed on login and register pages',
         apiBaseUrl: 'API Base URL',
-        apiBaseUrlHint: 'Used for "Use Key" and "Import to CC Switch" features. Leave empty to use current site URL.',
+        apiBaseUrlHint:
+          'Used for "Use Key" and "Import to CC Switch" features. Leave empty to use current site URL.',
         contactInfo: 'Contact Info',
         contactInfoPlaceholder: 'e.g., QQ: 123456789',
         contactInfoHint: 'Customer support contact info, displayed on redeem page, profile, etc.',
@@ -1169,7 +1200,8 @@ export default {
         create: 'Create Key',
         creating: 'Creating...',
         regenerateConfirm: 'Are you sure? The current key will be immediately invalidated.',
-        deleteConfirm: 'Are you sure you want to delete the admin API key? External integrations will stop working.',
+        deleteConfirm:
+          'Are you sure you want to delete the admin API key? External integrations will stop working.',
         keyGenerated: 'New admin API key generated',
         keyDeleted: 'Admin API key deleted',
         copyKey: 'Copy Key',
@@ -1235,7 +1267,8 @@ export default {
     title: 'My Subscriptions',
     description: 'View your subscription plans and usage',
     noActiveSubscriptions: 'No Active Subscriptions',
-    noActiveSubscriptionsDesc: 'You don\'t have any active subscriptions. Contact administrator to get one.',
+    noActiveSubscriptionsDesc:
+      "You don't have any active subscriptions. Contact administrator to get one.",
     status: {
       active: 'Active',
       expired: 'Expired',
