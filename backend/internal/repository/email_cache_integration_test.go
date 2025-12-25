@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -15,7 +15,7 @@ import (
 
 type EmailCacheSuite struct {
 	IntegrationRedisSuite
-	cache ports.EmailCache
+	cache service.EmailCache
 REDACTED
 
 func (s *EmailCacheSuite) SetupTest() {
@@ -31,7 +31,7 @@ REDACTED
 func (s *EmailCacheSuite) TestSetAndGetVerificationCode() {
 	email := "a@example.com"
 	emailTTL := 2 * time.Minute
-	data := &ports.VerificationCodeData{Code: "123456", Attempts: 1, CreatedAt: time.Now()REDACTED
+	data := &service.VerificationCodeData{Code: "123456", Attempts: 1, CreatedAt: time.Now()REDACTED
 
 	require.NoError(s.T(), s.cache.SetVerificationCode(s.ctx, email, data, emailTTL), "SetVerificationCode")
 
@@ -44,7 +44,7 @@ REDACTED
 func (s *EmailCacheSuite) TestVerificationCode_TTL() {
 	email := "ttl@example.com"
 	emailTTL := 2 * time.Minute
-	data := &ports.VerificationCodeData{Code: "654321", Attempts: 0, CreatedAt: time.Now()REDACTED
+	data := &service.VerificationCodeData{Code: "654321", Attempts: 0, CreatedAt: time.Now()REDACTED
 
 	require.NoError(s.T(), s.cache.SetVerificationCode(s.ctx, email, data, emailTTL), "SetVerificationCode")
 
@@ -56,7 +56,7 @@ REDACTED
 
 func (s *EmailCacheSuite) TestDeleteVerificationCode() {
 	email := "delete@example.com"
-	data := &ports.VerificationCodeData{Code: "999999", Attempts: 0, CreatedAt: time.Now()REDACTED
+	data := &service.VerificationCodeData{Code: "999999", Attempts: 0, CreatedAt: time.Now()REDACTED
 
 	require.NoError(s.T(), s.cache.SetVerificationCode(s.ctx, email, data, 2*time.Minute), "SetVerificationCode")
 

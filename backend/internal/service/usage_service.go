@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-	"time"
-
 	"gorm.io/gorm"
 )
 
@@ -55,12 +54,12 @@ REDACTED
 
 // UsageService 使用统计服务
 type UsageService struct {
-	usageRepo ports.UsageLogRepository
-	userRepo  ports.UserRepository
+	usageRepo UsageLogRepository
+	userRepo  UserRepository
 REDACTED
 
 // NewUsageService 创建使用统计服务实例
-func NewUsageService(usageRepo ports.UsageLogRepository, userRepo ports.UserRepository) *UsageService {
+func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository) *UsageService {
 	return &UsageService{
 		usageRepo: usageRepo,
 		userRepo:  userRepo,

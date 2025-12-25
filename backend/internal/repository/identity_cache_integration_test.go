@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -30,7 +30,7 @@ func (s *IdentityCacheSuite) TestGetFingerprint_Missing() {
 REDACTED
 
 func (s *IdentityCacheSuite) TestSetAndGetFingerprint() {
-	fp := &ports.Fingerprint{ClientID: "c1", UserAgent: "ua"REDACTED
+	fp := &service.Fingerprint{ClientID: "c1", UserAgent: "ua"REDACTED
 	require.NoError(s.T(), s.cache.SetFingerprint(s.ctx, 1, fp), "SetFingerprint")
 	gotFP, err := s.cache.GetFingerprint(s.ctx, 1)
 	require.NoError(s.T(), err, "GetFingerprint")
@@ -39,7 +39,7 @@ func (s *IdentityCacheSuite) TestSetAndGetFingerprint() {
 REDACTED
 
 func (s *IdentityCacheSuite) TestFingerprint_TTL() {
-	fp := &ports.Fingerprint{ClientID: "c1", UserAgent: "ua"REDACTED
+	fp := &service.Fingerprint{ClientID: "c1", UserAgent: "ua"REDACTED
 	require.NoError(s.T(), s.cache.SetFingerprint(s.ctx, 2, fp))
 
 	fpKey := fmt.Sprintf("%s%d", fingerprintKeyPrefix, 2)

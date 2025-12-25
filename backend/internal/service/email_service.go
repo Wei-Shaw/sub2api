@@ -6,12 +6,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 	"math/big"
 	"net/smtp"
 	"strconv"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 var (
@@ -20,6 +20,20 @@ var (
 	ErrVerifyCodeTooFrequent = errors.New("please wait before requesting a new code")
 	ErrVerifyCodeMaxAttempts = errors.New("too many failed attempts, please request a new code")
 )
+
+// EmailCache defines cache operations for email service
+type EmailCache interface {
+	GetVerificationCode(ctx context.Context, email string) (*VerificationCodeData, error)
+	SetVerificationCode(ctx context.Context, email string, data *VerificationCodeData, ttl time.Duration) error
+	DeleteVerificationCode(ctx context.Context, email string) error
+REDACTED
+
+// VerificationCodeData represents verification code data
+type VerificationCodeData struct {
+	Code      string
+	Attempts  int
+	CreatedAt time.Time
+REDACTED
 
 const (
 	verifyCodeTTL         = 15 * time.Minute
@@ -40,12 +54,12 @@ REDACTED
 
 // EmailService 邮件服务
 type EmailService struct {
-	settingRepo ports.SettingRepository
-	cache       ports.EmailCache
+	settingRepo SettingRepository
+	cache       EmailCache
 REDACTED
 
 // NewEmailService 创建邮件服务实例
-func NewEmailService(settingRepo ports.SettingRepository, cache ports.EmailCache) *EmailService {
+func NewEmailService(settingRepo SettingRepository, cache EmailCache) *EmailService {
 	return &EmailService{
 		settingRepo: settingRepo,
 		cache:       cache,
@@ -205,7 +219,7 @@ REDACTED
 REDACTED
 
 	// 保存验证码到 Redis
-	data := &ports.VerificationCodeData{
+	data := &VerificationCodeData{
 		Code:      code,
 		Attempts:  0,
 		CreatedAt: time.Now(),

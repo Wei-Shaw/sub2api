@@ -9,17 +9,16 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // RateLimitService 处理限流和过载状态管理
 type RateLimitService struct {
-	accountRepo ports.AccountRepository
+	accountRepo AccountRepository
 	cfg         *config.Config
 REDACTED
 
 // NewRateLimitService 创建RateLimitService实例
-func NewRateLimitService(accountRepo ports.AccountRepository, cfg *config.Config) *RateLimitService {
+func NewRateLimitService(accountRepo AccountRepository, cfg *config.Config) *RateLimitService {
 	return &RateLimitService{
 		accountRepo: accountRepo,
 		cfg:         cfg,

@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 	"log"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -36,7 +36,7 @@ REDACTED
 
 // AuthService 认证服务
 type AuthService struct {
-	userRepo          ports.UserRepository
+	userRepo          UserRepository
 	cfg               *config.Config
 	settingService    *SettingService
 	emailService      *EmailService
@@ -46,7 +46,7 @@ REDACTED
 
 // NewAuthService 创建认证服务实例
 func NewAuthService(
-	userRepo ports.UserRepository,
+	userRepo UserRepository,
 	cfg *config.Config,
 	settingService *SettingService,
 	emailService *EmailService,

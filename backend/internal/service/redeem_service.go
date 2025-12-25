@@ -6,12 +6,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -31,6 +30,29 @@ const (
 	redeemLockDuration      = 10 * time.Second // 锁超时时间，防止死锁
 )
 
+// RedeemCache defines cache operations for redeem service
+type RedeemCache interface {
+	GetRedeemAttemptCount(ctx context.Context, userID int64) (int, error)
+	IncrementRedeemAttemptCount(ctx context.Context, userID int64) error
+
+	AcquireRedeemLock(ctx context.Context, code string, ttl time.Duration) (bool, error)
+	ReleaseRedeemLock(ctx context.Context, code string) error
+REDACTED
+
+type RedeemCodeRepository interface {
+	Create(ctx context.Context, code *model.RedeemCode) error
+	CreateBatch(ctx context.Context, codes []model.RedeemCode) error
+	GetByID(ctx context.Context, id int64) (*model.RedeemCode, error)
+	GetByCode(ctx context.Context, code string) (*model.RedeemCode, error)
+	Update(ctx context.Context, code *model.RedeemCode) error
+	Delete(ctx context.Context, id int64) error
+	Use(ctx context.Context, id, userID int64) error
+
+	List(ctx context.Context, params pagination.PaginationParams) ([]model.RedeemCode, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]model.RedeemCode, *pagination.PaginationResult, error)
+	ListByUser(ctx context.Context, userID int64, limit int) ([]model.RedeemCode, error)
+REDACTED
+
 // GenerateCodesRequest 生成兑换码请求
 type GenerateCodesRequest struct {
 	Count int     `json:"count"`
@@ -48,19 +70,19 @@ REDACTED
 
 // RedeemService 兑换码服务
 type RedeemService struct {
-	redeemRepo          ports.RedeemCodeRepository
-	userRepo            ports.UserRepository
+	redeemRepo          RedeemCodeRepository
+	userRepo            UserRepository
 	subscriptionService *SubscriptionService
-	cache               ports.RedeemCache
+	cache               RedeemCache
 	billingCacheService *BillingCacheService
 REDACTED
 
 // NewRedeemService 创建兑换码服务实例
 func NewRedeemService(
-	redeemRepo ports.RedeemCodeRepository,
-	userRepo ports.UserRepository,
+	redeemRepo RedeemCodeRepository,
+	userRepo UserRepository,
 	subscriptionService *SubscriptionService,
-	cache ports.RedeemCache,
+	cache RedeemCache,
 	billingCacheService *BillingCacheService,
 ) *RedeemService {
 	return &RedeemService{

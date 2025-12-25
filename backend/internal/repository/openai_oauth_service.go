@@ -7,13 +7,12 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/imroc/req/v3"
 )
 
 // NewOpenAIOAuthClient creates a new OpenAI OAuth client
-func NewOpenAIOAuthClient() ports.OpenAIOAuthClient {
+func NewOpenAIOAuthClient() service.OpenAIOAuthClient {
 	return &openaiOAuthService{tokenURL: openai.TokenURLREDACTED
 REDACTED
 

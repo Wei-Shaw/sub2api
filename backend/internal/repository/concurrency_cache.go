@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -107,7 +106,7 @@ type concurrencyCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewConcurrencyCache(rdb *redis.Client) ports.ConcurrencyCache {
+func NewConcurrencyCache(rdb *redis.Client) service.ConcurrencyCache {
 	return &concurrencyCache{rdb: rdbREDACTED
 REDACTED
 

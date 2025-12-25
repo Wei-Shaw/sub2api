@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-	"strconv"
 
 	"gorm.io/gorm"
 )
@@ -18,14 +18,24 @@ var (
 	ErrRegistrationDisabled = errors.New("registration is currently disabled")
 )
 
+type SettingRepository interface {
+	Get(ctx context.Context, key string) (*model.Setting, error)
+	GetValue(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key, value string) error
+	GetMultiple(ctx context.Context, keys []string) (map[string]string, error)
+	SetMultiple(ctx context.Context, settings map[string]string) error
+	GetAll(ctx context.Context) (map[string]string, error)
+	Delete(ctx context.Context, key string) error
+REDACTED
+
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo ports.SettingRepository
+	settingRepo SettingRepository
 	cfg         *config.Config
 REDACTED
 
 // NewSettingService 创建系统设置服务实例
-func NewSettingService(settingRepo ports.SettingRepository, cfg *config.Config) *SettingService {
+func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
 	return &SettingService{
 		settingRepo: settingRepo,
 		cfg:         cfg,

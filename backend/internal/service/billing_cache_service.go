@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // 错误定义
@@ -31,13 +30,13 @@ REDACTED
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache    ports.BillingCache
-	userRepo ports.UserRepository
-	subRepo  ports.UserSubscriptionRepository
+	cache    BillingCache
+	userRepo UserRepository
+	subRepo  UserSubscriptionRepository
 REDACTED
 
 // NewBillingCacheService 创建计费缓存服务
-func NewBillingCacheService(cache ports.BillingCache, userRepo ports.UserRepository, subRepo ports.UserSubscriptionRepository) *BillingCacheService {
+func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository) *BillingCacheService {
 	return &BillingCacheService{
 		cache:    cache,
 		userRepo: userRepo,
@@ -149,7 +148,7 @@ REDACTED()
 	return data, nil
 REDACTED
 
-func (s *BillingCacheService) convertFromPortsData(data *ports.SubscriptionCacheData) *subscriptionCacheData {
+func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
 	return &subscriptionCacheData{
 		Status:       data.Status,
 		ExpiresAt:    data.ExpiresAt,
@@ -160,8 +159,8 @@ func (s *BillingCacheService) convertFromPortsData(data *ports.SubscriptionCache
 REDACTED
 REDACTED
 
-func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *ports.SubscriptionCacheData {
-	return &ports.SubscriptionCacheData{
+func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
+	return &SubscriptionCacheData{
 		Status:       data.Status,
 		ExpiresAt:    data.ExpiresAt,
 		DailyUsage:   data.DailyUsage,

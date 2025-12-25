@@ -9,7 +9,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 var (
@@ -25,13 +24,13 @@ var (
 
 // SubscriptionService 订阅服务
 type SubscriptionService struct {
-	groupRepo           ports.GroupRepository
-	userSubRepo         ports.UserSubscriptionRepository
+	groupRepo           GroupRepository
+	userSubRepo         UserSubscriptionRepository
 	billingCacheService *BillingCacheService
 REDACTED
 
 // NewSubscriptionService 创建订阅服务
-func NewSubscriptionService(groupRepo ports.GroupRepository, userSubRepo ports.UserSubscriptionRepository, billingCacheService *BillingCacheService) *SubscriptionService {
+func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService) *SubscriptionService {
 	return &SubscriptionService{
 		groupRepo:           groupRepo,
 		userSubRepo:         userSubRepo,

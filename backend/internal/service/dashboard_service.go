@@ -6,15 +6,14 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // DashboardService provides aggregated statistics for admin dashboard.
 type DashboardService struct {
-	usageRepo ports.UsageLogRepository
+	usageRepo UsageLogRepository
 REDACTED
 
-func NewDashboardService(usageRepo ports.UsageLogRepository) *DashboardService {
+func NewDashboardService(usageRepo UsageLogRepository) *DashboardService {
 	return &DashboardService{
 		usageRepo: usageRepo,
 REDACTED

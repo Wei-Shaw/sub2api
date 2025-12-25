@@ -7,18 +7,17 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // OpenAIOAuthService handles OpenAI OAuth authentication flows
 type OpenAIOAuthService struct {
 	sessionStore *openai.SessionStore
-	proxyRepo    ports.ProxyRepository
-	oauthClient  ports.OpenAIOAuthClient
+	proxyRepo    ProxyRepository
+	oauthClient  OpenAIOAuthClient
 REDACTED
 
 // NewOpenAIOAuthService creates a new OpenAI OAuth service
-func NewOpenAIOAuthService(proxyRepo ports.ProxyRepository, oauthClient ports.OpenAIOAuthClient) *OpenAIOAuthService {
+func NewOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthClient) *OpenAIOAuthService {
 	return &OpenAIOAuthService{
 		sessionStore: openai.NewSessionStore(),
 		proxyRepo:    proxyRepo,

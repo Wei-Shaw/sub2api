@@ -8,8 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -58,7 +57,7 @@ type billingCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewBillingCache(rdb *redis.Client) ports.BillingCache {
+func NewBillingCache(rdb *redis.Client) service.BillingCache {
 	return &billingCache{rdb: rdbREDACTED
 REDACTED
 
@@ -90,7 +89,7 @@ func (c *billingCache) InvalidateUserBalance(ctx context.Context, userID int64) 
 	return c.rdb.Del(ctx, key).Err()
 REDACTED
 
-func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*ports.SubscriptionCacheData, error) {
+func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*service.SubscriptionCacheData, error) {
 	key := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
 	result, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
@@ -102,8 +101,8 @@ REDACTED
 	return c.parseSubscriptionCache(result)
 REDACTED
 
-func (c *billingCache) parseSubscriptionCache(data map[string]string) (*ports.SubscriptionCacheData, error) {
-	result := &ports.SubscriptionCacheData{REDACTED
+func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.SubscriptionCacheData, error) {
+	result := &service.SubscriptionCacheData{REDACTED
 
 	result.Status = data[subFieldStatus]
 	if result.Status == "" {
@@ -136,7 +135,7 @@ REDACTED
 	return result, nil
 REDACTED
 
-func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *ports.SubscriptionCacheData) error {
+func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *service.SubscriptionCacheData) error {
 	if data == nil {
 		return nil
 REDACTED

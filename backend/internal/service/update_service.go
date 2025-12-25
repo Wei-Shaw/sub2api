@@ -17,8 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 const (
@@ -34,6 +32,12 @@ const (
 	maxDownloadSize = 500 * 1024 * 1024
 )
 
+// UpdateCache defines cache operations for update service
+type UpdateCache interface {
+	GetUpdateInfo(ctx context.Context) (string, error)
+	SetUpdateInfo(ctx context.Context, data string, ttl time.Duration) error
+REDACTED
+
 // GitHubReleaseClient 获取 GitHub release 信息的接口
 type GitHubReleaseClient interface {
 	FetchLatestRelease(ctx context.Context, repo string) (*GitHubRelease, error)
@@ -43,14 +47,14 @@ REDACTED
 
 // UpdateService handles software updates
 type UpdateService struct {
-	cache          ports.UpdateCache
+	cache          UpdateCache
 	githubClient   GitHubReleaseClient
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
 REDACTED
 
 // NewUpdateService creates a new UpdateService
-func NewUpdateService(cache ports.UpdateCache, githubClient GitHubReleaseClient, version, buildType string) *UpdateService {
+func NewUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, version, buildType string) *UpdateService {
 	return &UpdateService{
 		cache:          cache,
 		githubClient:   githubClient,

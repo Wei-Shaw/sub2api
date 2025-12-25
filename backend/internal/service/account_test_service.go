@@ -17,8 +17,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -40,14 +38,14 @@ REDACTED
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
-	accountRepo        ports.AccountRepository
+	accountRepo        AccountRepository
 	oauthService       *OAuthService
 	openaiOAuthService *OpenAIOAuthService
-	httpUpstream       ports.HTTPUpstream
+	httpUpstream       HTTPUpstream
 REDACTED
 
 // NewAccountTestService creates a new AccountTestService
-func NewAccountTestService(accountRepo ports.AccountRepository, oauthService *OAuthService, openaiOAuthService *OpenAIOAuthService, httpUpstream ports.HTTPUpstream) *AccountTestService {
+func NewAccountTestService(accountRepo AccountRepository, oauthService *OAuthService, openaiOAuthService *OpenAIOAuthService, httpUpstream HTTPUpstream) *AccountTestService {
 	return &AccountTestService{
 		accountRepo:        accountRepo,
 		oauthService:       oauthService,

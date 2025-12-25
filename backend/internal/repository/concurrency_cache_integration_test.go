@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -16,7 +16,7 @@ import (
 
 type ConcurrencyCacheSuite struct {
 	IntegrationRedisSuite
-	cache ports.ConcurrencyCache
+	cache service.ConcurrencyCache
 REDACTED
 
 func (s *ConcurrencyCacheSuite) SetupTest() {

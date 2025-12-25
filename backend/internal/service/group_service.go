@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
 	"gorm.io/gorm"
 )
 
@@ -15,6 +14,24 @@ var (
 	ErrGroupNotFound = errors.New("group not found")
 	ErrGroupExists   = errors.New("group name already exists")
 )
+
+type GroupRepository interface {
+	Create(ctx context.Context, group *model.Group) error
+	GetByID(ctx context.Context, id int64) (*model.Group, error)
+	Update(ctx context.Context, group *model.Group) error
+	Delete(ctx context.Context, id int64) error
+
+	List(ctx context.Context, params pagination.PaginationParams) ([]model.Group, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]model.Group, *pagination.PaginationResult, error)
+	ListActive(ctx context.Context) ([]model.Group, error)
+	ListActiveByPlatform(ctx context.Context, platform string) ([]model.Group, error)
+
+	ExistsByName(ctx context.Context, name string) (bool, error)
+	GetAccountCount(ctx context.Context, groupID int64) (int64, error)
+	DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error)
+
+	DB() *gorm.DB
+REDACTED
 
 // CreateGroupRequest 创建分组请求
 type CreateGroupRequest struct {
@@ -35,11 +52,11 @@ REDACTED
 
 // GroupService 分组管理服务
 type GroupService struct {
-	groupRepo ports.GroupRepository
+	groupRepo GroupRepository
 REDACTED
 
 // NewGroupService 创建分组服务实例
-func NewGroupService(groupRepo ports.GroupRepository) *GroupService {
+func NewGroupService(groupRepo GroupRepository) *GroupService {
 	return &GroupService{
 		groupRepo: groupRepo,
 REDACTED

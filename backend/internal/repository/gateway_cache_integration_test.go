@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -15,7 +15,7 @@ import (
 
 type GatewayCacheSuite struct {
 	IntegrationRedisSuite
-	cache ports.GatewayCache
+	cache service.GatewayCache
 REDACTED
 
 func (s *GatewayCacheSuite) SetupTest() {

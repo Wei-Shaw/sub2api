@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -19,7 +18,7 @@ type apiKeyCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewApiKeyCache(rdb *redis.Client) ports.ApiKeyCache {
+func NewApiKeyCache(rdb *redis.Client) service.ApiKeyCache {
 	return &apiKeyCache{rdb: rdbREDACTED
 REDACTED
 

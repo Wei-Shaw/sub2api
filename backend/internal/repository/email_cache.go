@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -16,24 +15,24 @@ type emailCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewEmailCache(rdb *redis.Client) ports.EmailCache {
+func NewEmailCache(rdb *redis.Client) service.EmailCache {
 	return &emailCache{rdb: rdbREDACTED
 REDACTED
 
-func (c *emailCache) GetVerificationCode(ctx context.Context, email string) (*ports.VerificationCodeData, error) {
+func (c *emailCache) GetVerificationCode(ctx context.Context, email string) (*service.VerificationCodeData, error) {
 	key := verifyCodeKeyPrefix + email
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
 		return nil, err
 REDACTED
-	var data ports.VerificationCodeData
+	var data service.VerificationCodeData
 	if err := json.Unmarshal([]byte(val), &data); err != nil {
 		return nil, err
 REDACTED
 	return &data, nil
 REDACTED
 
-func (c *emailCache) SetVerificationCode(ctx context.Context, email string, data *ports.VerificationCodeData, ttl time.Duration) error {
+func (c *emailCache) SetVerificationCode(ctx context.Context, email string, data *service.VerificationCodeData, ttl time.Duration) error {
 	key := verifyCodeKeyPrefix + email
 	val, err := json.Marshal(data)
 	if err != nil {

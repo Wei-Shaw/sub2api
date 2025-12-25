@@ -3,10 +3,11 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-	"time"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -357,7 +358,7 @@ REDACTED
 
 // BulkUpdate updates multiple accounts with the provided fields.
 // It merges credentials/extra JSONB fields instead of overwriting them.
-func (r *AccountRepository) BulkUpdate(ctx context.Context, ids []int64, updates ports.AccountBulkUpdate) (int64, error) {
+func (r *AccountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 REDACTED

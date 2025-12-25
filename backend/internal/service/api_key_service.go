@@ -6,13 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-	"time"
-
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -30,6 +29,32 @@ const (
 	apiKeyMaxErrorsPerHour = 20
 )
 
+type ApiKeyRepository interface {
+	Create(ctx context.Context, key *model.ApiKey) error
+	GetByID(ctx context.Context, id int64) (*model.ApiKey, error)
+	GetByKey(ctx context.Context, key string) (*model.ApiKey, error)
+	Update(ctx context.Context, key *model.ApiKey) error
+	Delete(ctx context.Context, id int64) error
+
+	ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.ApiKey, *pagination.PaginationResult, error)
+	CountByUserID(ctx context.Context, userID int64) (int64, error)
+	ExistsByKey(ctx context.Context, key string) (bool, error)
+	ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]model.ApiKey, *pagination.PaginationResult, error)
+	SearchApiKeys(ctx context.Context, userID int64, keyword string, limit int) ([]model.ApiKey, error)
+	ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error)
+	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
+REDACTED
+
+// ApiKeyCache defines cache operations for API key service
+type ApiKeyCache interface {
+	GetCreateAttemptCount(ctx context.Context, userID int64) (int, error)
+	IncrementCreateAttemptCount(ctx context.Context, userID int64) error
+	DeleteCreateAttemptCount(ctx context.Context, userID int64) error
+
+	IncrementDailyUsage(ctx context.Context, apiKey string) error
+	SetDailyUsageExpiry(ctx context.Context, apiKey string, ttl time.Duration) error
+REDACTED
+
 // CreateApiKeyRequest 创建API Key请求
 type CreateApiKeyRequest struct {
 	Name      string  `json:"name"`
@@ -46,21 +71,21 @@ REDACTED
 
 // ApiKeyService API Key服务
 type ApiKeyService struct {
-	apiKeyRepo  ports.ApiKeyRepository
-	userRepo    ports.UserRepository
-	groupRepo   ports.GroupRepository
-	userSubRepo ports.UserSubscriptionRepository
-	cache       ports.ApiKeyCache
+	apiKeyRepo  ApiKeyRepository
+	userRepo    UserRepository
+	groupRepo   GroupRepository
+	userSubRepo UserSubscriptionRepository
+	cache       ApiKeyCache
 	cfg         *config.Config
 REDACTED
 
 // NewApiKeyService 创建API Key服务实例
 func NewApiKeyService(
-	apiKeyRepo ports.ApiKeyRepository,
-	userRepo ports.UserRepository,
-	groupRepo ports.GroupRepository,
-	userSubRepo ports.UserSubscriptionRepository,
-	cache ports.ApiKeyCache,
+	apiKeyRepo ApiKeyRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	userSubRepo UserSubscriptionRepository,
+	cache ApiKeyCache,
 	cfg *config.Config,
 ) *ApiKeyService {
 	return &ApiKeyService{

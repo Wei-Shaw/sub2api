@@ -19,7 +19,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
@@ -54,6 +53,13 @@ var allowedHeaders = map[string]bool{
 	"content-type":                              true,
 REDACTED
 
+// GatewayCache defines cache operations for gateway service
+type GatewayCache interface {
+	GetSessionAccountID(ctx context.Context, sessionHash string) (int64, error)
+	SetSessionAccountID(ctx context.Context, sessionHash string, accountID int64, ttl time.Duration) error
+	RefreshSessionTTL(ctx context.Context, sessionHash string, ttl time.Duration) error
+REDACTED
+
 // ClaudeUsage 表示Claude API返回的usage信息
 type ClaudeUsage struct {
 	InputTokens              int `json:"input_tokens"`
@@ -74,32 +80,32 @@ REDACTED
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
-	accountRepo         ports.AccountRepository
-	usageLogRepo        ports.UsageLogRepository
-	userRepo            ports.UserRepository
-	userSubRepo         ports.UserSubscriptionRepository
-	cache               ports.GatewayCache
+	accountRepo         AccountRepository
+	usageLogRepo        UsageLogRepository
+	userRepo            UserRepository
+	userSubRepo         UserSubscriptionRepository
+	cache               GatewayCache
 	cfg                 *config.Config
 	billingService      *BillingService
 	rateLimitService    *RateLimitService
 	billingCacheService *BillingCacheService
 	identityService     *IdentityService
-	httpUpstream        ports.HTTPUpstream
+	httpUpstream        HTTPUpstream
 REDACTED
 
 // NewGatewayService creates a new GatewayService
 func NewGatewayService(
-	accountRepo ports.AccountRepository,
-	usageLogRepo ports.UsageLogRepository,
-	userRepo ports.UserRepository,
-	userSubRepo ports.UserSubscriptionRepository,
-	cache ports.GatewayCache,
+	accountRepo AccountRepository,
+	usageLogRepo UsageLogRepository,
+	userRepo UserRepository,
+	userSubRepo UserSubscriptionRepository,
+	cache GatewayCache,
 	cfg *config.Config,
 	billingService *BillingService,
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
 	identityService *IdentityService,
-	httpUpstream ports.HTTPUpstream,
+	httpUpstream HTTPUpstream,
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
@@ -507,7 +513,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 REDACTED
 
 	// OAuth账号：应用统一指纹
-	var fingerprint *ports.Fingerprint
+	var fingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)

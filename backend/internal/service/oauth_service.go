@@ -8,8 +8,14 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
+
+// OpenAIOAuthClient interface for OpenAI OAuth operations
+type OpenAIOAuthClient interface {
+	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL string) (*openai.TokenResponse, error)
+	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error)
+REDACTED
 
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows
 type ClaudeOAuthClient interface {
@@ -22,12 +28,12 @@ REDACTED
 // OAuthService handles OAuth authentication flows
 type OAuthService struct {
 	sessionStore *oauth.SessionStore
-	proxyRepo    ports.ProxyRepository
+	proxyRepo    ProxyRepository
 	oauthClient  ClaudeOAuthClient
 REDACTED
 
 // NewOAuthService creates a new OAuth service
-func NewOAuthService(proxyRepo ports.ProxyRepository, oauthClient ClaudeOAuthClient) *OAuthService {
+func NewOAuthService(proxyRepo ProxyRepository, oauthClient ClaudeOAuthClient) *OAuthService {
 	return &OAuthService{
 		sessionStore: oauth.NewSessionStore(),
 		proxyRepo:    proxyRepo,

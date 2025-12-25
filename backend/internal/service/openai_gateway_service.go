@@ -17,8 +17,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -71,30 +69,30 @@ REDACTED
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	accountRepo         ports.AccountRepository
-	usageLogRepo        ports.UsageLogRepository
-	userRepo            ports.UserRepository
-	userSubRepo         ports.UserSubscriptionRepository
-	cache               ports.GatewayCache
+	accountRepo         AccountRepository
+	usageLogRepo        UsageLogRepository
+	userRepo            UserRepository
+	userSubRepo         UserSubscriptionRepository
+	cache               GatewayCache
 	cfg                 *config.Config
 	billingService      *BillingService
 	rateLimitService    *RateLimitService
 	billingCacheService *BillingCacheService
-	httpUpstream        ports.HTTPUpstream
+	httpUpstream        HTTPUpstream
 REDACTED
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
 func NewOpenAIGatewayService(
-	accountRepo ports.AccountRepository,
-	usageLogRepo ports.UsageLogRepository,
-	userRepo ports.UserRepository,
-	userSubRepo ports.UserSubscriptionRepository,
-	cache ports.GatewayCache,
+	accountRepo AccountRepository,
+	usageLogRepo UsageLogRepository,
+	userRepo UserRepository,
+	userSubRepo UserSubscriptionRepository,
+	cache GatewayCache,
 	cfg *config.Config,
 	billingService *BillingService,
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
-	httpUpstream ports.HTTPUpstream,
+	httpUpstream HTTPUpstream,
 ) *OpenAIGatewayService {
 	return &OpenAIGatewayService{
 		accountRepo:         accountRepo,

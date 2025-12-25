@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // httpUpstreamService is a generic HTTP upstream service that can be used for
@@ -17,7 +17,7 @@ type httpUpstreamService struct {
 REDACTED
 
 // NewHTTPUpstream creates a new generic HTTP upstream service
-func NewHTTPUpstream(cfg *config.Config) ports.HTTPUpstream {
+func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 	responseHeaderTimeout := time.Duration(cfg.Gateway.ResponseHeaderTimeout) * time.Second
 	if responseHeaderTimeout == 0 {
 		responseHeaderTimeout = 300 * time.Second

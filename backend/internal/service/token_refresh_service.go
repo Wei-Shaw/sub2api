@@ -9,13 +9,12 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
 type TokenRefreshService struct {
-	accountRepo ports.AccountRepository
+	accountRepo AccountRepository
 	refreshers  []TokenRefresher
 	cfg         *config.TokenRefreshConfig
 
@@ -25,7 +24,7 @@ REDACTED
 
 // NewTokenRefreshService 创建token刷新服务
 func NewTokenRefreshService(
-	accountRepo ports.AccountRepository,
+	accountRepo AccountRepository,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	cfg *config.Config,

@@ -4,16 +4,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
 	"gorm.io/gorm"
 )
 
 var (
 	ErrProxyNotFound = errors.New("proxy not found")
 )
+
+type ProxyRepository interface {
+	Create(ctx context.Context, proxy *model.Proxy) error
+	GetByID(ctx context.Context, id int64) (*model.Proxy, error)
+	Update(ctx context.Context, proxy *model.Proxy) error
+	Delete(ctx context.Context, id int64) error
+
+	List(ctx context.Context, params pagination.PaginationParams) ([]model.Proxy, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]model.Proxy, *pagination.PaginationResult, error)
+	ListActive(ctx context.Context) ([]model.Proxy, error)
+	ListActiveWithAccountCount(ctx context.Context) ([]model.ProxyWithAccountCount, error)
+
+	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error)
+	CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error)
+REDACTED
 
 // CreateProxyRequest 创建代理请求
 type CreateProxyRequest struct {
@@ -38,11 +52,11 @@ REDACTED
 
 // ProxyService 代理管理服务
 type ProxyService struct {
-	proxyRepo ports.ProxyRepository
+	proxyRepo ProxyRepository
 REDACTED
 
 // NewProxyService 创建代理服务实例
-func NewProxyService(proxyRepo ports.ProxyRepository) *ProxyService {
+func NewProxyService(proxyRepo ProxyRepository) *ProxyService {
 	return &ProxyService{
 		proxyRepo: proxyRepo,
 REDACTED

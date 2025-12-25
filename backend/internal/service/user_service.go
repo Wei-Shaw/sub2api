@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -17,6 +16,24 @@ var (
 	ErrPasswordIncorrect = errors.New("current password is incorrect")
 	ErrInsufficientPerms = errors.New("insufficient permissions")
 )
+
+type UserRepository interface {
+	Create(ctx context.Context, user *model.User) error
+	GetByID(ctx context.Context, id int64) (*model.User, error)
+	GetByEmail(ctx context.Context, email string) (*model.User, error)
+	GetFirstAdmin(ctx context.Context) (*model.User, error)
+	Update(ctx context.Context, user *model.User) error
+	Delete(ctx context.Context, id int64) error
+
+	List(ctx context.Context, params pagination.PaginationParams) ([]model.User, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, role, search string) ([]model.User, *pagination.PaginationResult, error)
+
+	UpdateBalance(ctx context.Context, id int64, amount float64) error
+	DeductBalance(ctx context.Context, id int64, amount float64) error
+	UpdateConcurrency(ctx context.Context, id int64, amount int) error
+	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
+REDACTED
 
 // UpdateProfileRequest 更新用户资料请求
 type UpdateProfileRequest struct {
@@ -34,11 +51,11 @@ REDACTED
 
 // UserService 用户服务
 type UserService struct {
-	userRepo ports.UserRepository
+	userRepo UserRepository
 REDACTED
 
 // NewUserService 创建用户服务实例
-func NewUserService(userRepo ports.UserRepository) *UserService {
+func NewUserService(userRepo UserRepository) *UserService {
 	return &UserService{
 		userRepo: userRepo,
 REDACTED

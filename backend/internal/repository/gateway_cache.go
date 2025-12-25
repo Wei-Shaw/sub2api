@@ -4,8 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -15,7 +14,7 @@ type gatewayCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewGatewayCache(rdb *redis.Client) ports.GatewayCache {
+func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdbREDACTED
 REDACTED
 

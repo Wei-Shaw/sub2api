@@ -13,19 +13,18 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 type CRSSyncService struct {
-	accountRepo        ports.AccountRepository
-	proxyRepo          ports.ProxyRepository
+	accountRepo        AccountRepository
+	proxyRepo          ProxyRepository
 	oauthService       *OAuthService
 	openaiOAuthService *OpenAIOAuthService
 REDACTED
 
 func NewCRSSyncService(
-	accountRepo ports.AccountRepository,
-	proxyRepo ports.ProxyRepository,
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 ) *CRSSyncService {

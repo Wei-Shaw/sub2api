@@ -2,8 +2,6 @@ package service
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
 	"github.com/google/wire"
 )
 
@@ -24,7 +22,7 @@ REDACTED
 REDACTED
 
 // ProvideUpdateService creates UpdateService with BuildInfo
-func ProvideUpdateService(cache ports.UpdateCache, githubClient GitHubReleaseClient, buildInfo BuildInfo) *UpdateService {
+func ProvideUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, buildInfo BuildInfo) *UpdateService {
 	return NewUpdateService(cache, githubClient, buildInfo.Version, buildInfo.BuildType)
 REDACTED
 
@@ -35,7 +33,7 @@ REDACTED
 
 // ProvideTokenRefreshService creates and starts TokenRefreshService
 func ProvideTokenRefreshService(
-	accountRepo ports.AccountRepository,
+	accountRepo AccountRepository,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	cfg *config.Config,

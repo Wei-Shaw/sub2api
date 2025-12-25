@@ -1,11 +1,29 @@
 package service
 
 import (
+	"context"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/config"
+
 	"log"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
+
+// BillingCache defines cache operations for billing service
+type BillingCache interface {
+	// Balance operations
+	GetUserBalance(ctx context.Context, userID int64) (float64, error)
+	SetUserBalance(ctx context.Context, userID int64, balance float64) error
+	DeductUserBalance(ctx context.Context, userID int64, amount float64) error
+	InvalidateUserBalance(ctx context.Context, userID int64) error
+
+	// Subscription operations
+	GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error)
+	SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) error
+	UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error
+	InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error
+REDACTED
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {

@@ -4,8 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -15,7 +14,7 @@ type updateCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewUpdateCache(rdb *redis.Client) ports.UpdateCache {
+func NewUpdateCache(rdb *redis.Client) service.UpdateCache {
 	return &updateCache{rdb: rdbREDACTED
 REDACTED
 

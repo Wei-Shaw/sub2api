@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -20,7 +19,7 @@ type redeemCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewRedeemCache(rdb *redis.Client) ports.RedeemCache {
+func NewRedeemCache(rdb *redis.Client) service.RedeemCache {
 	return &redeemCache{rdb: rdbREDACTED
 REDACTED
 

@@ -9,8 +9,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
-
 	"gorm.io/gorm"
 )
 
@@ -221,24 +219,24 @@ REDACTED
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo            ports.UserRepository
-	groupRepo           ports.GroupRepository
-	accountRepo         ports.AccountRepository
-	proxyRepo           ports.ProxyRepository
-	apiKeyRepo          ports.ApiKeyRepository
-	redeemCodeRepo      ports.RedeemCodeRepository
+	userRepo            UserRepository
+	groupRepo           GroupRepository
+	accountRepo         AccountRepository
+	proxyRepo           ProxyRepository
+	apiKeyRepo          ApiKeyRepository
+	redeemCodeRepo      RedeemCodeRepository
 	billingCacheService *BillingCacheService
 	proxyProber         ProxyExitInfoProber
 REDACTED
 
 // NewAdminService creates a new AdminService
 func NewAdminService(
-	userRepo ports.UserRepository,
-	groupRepo ports.GroupRepository,
-	accountRepo ports.AccountRepository,
-	proxyRepo ports.ProxyRepository,
-	apiKeyRepo ports.ApiKeyRepository,
-	redeemCodeRepo ports.RedeemCodeRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	apiKeyRepo ApiKeyRepository,
+	redeemCodeRepo RedeemCodeRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
 ) AdminService {
@@ -734,7 +732,7 @@ REDACTED
 REDACTED
 
 	// Prepare bulk updates for columns and JSONB fields.
-	repoUpdates := ports.AccountBulkUpdate{
+	repoUpdates := AccountBulkUpdate{
 		Credentials: input.Credentials,
 		Extra:       input.Extra,
 REDACTED
