@@ -14,6 +14,7 @@ require (
 	github.com/redis/go-redis/v9 v9.3.0
 	github.com/spf13/viper v1.18.2
 	github.com/tidwall/gjson v1.18.0
+	github.com/tidwall/sjson v1.2.5
 	golang.org/x/crypto v0.44.0
 	golang.org/x/net v0.47.0
 	golang.org/x/term v0.37.0
