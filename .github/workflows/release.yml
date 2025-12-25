@@ -198,6 +198,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: weishaw/sub2api
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/sub2api
           short-description: "Sub2API - AI API Gateway Platform"
           readme-filepath: ./deploy/DOCKER.md
