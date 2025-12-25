@@ -623,7 +623,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.JSON(http.StatusBadRequest, string(body))
+		c.Data(http.StatusBadRequest, "application/json", body)
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 	case 401:
 		statusCode = http.StatusBadGateway
