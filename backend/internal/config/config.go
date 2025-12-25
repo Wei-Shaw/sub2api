@@ -18,6 +18,17 @@ type Config struct {
 	Gateway      GatewayConfig      `mapstructure:"gateway"`
 	TokenRefresh TokenRefreshConfig `mapstructure:"token_refresh"`
 	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini       GeminiConfig       `mapstructure:"gemini"`
+REDACTED
+
+type GeminiConfig struct {
+	OAuth GeminiOAuthConfig `mapstructure:"oauth"`
+REDACTED
+
+type GeminiOAuthConfig struct {
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+	Scopes       string `mapstructure:"scopes"`
 REDACTED
 
 // TokenRefreshConfig OAuth token自动刷新配置
@@ -214,6 +225,11 @@ func setDefaults() {
 	viper.SetDefault("token_refresh.refresh_before_expiry_hours", 1.5) // 提前1.5小时刷新
 	viper.SetDefault("token_refresh.max_retries", 3)                   // 最多重试3次
 	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)         // 重试退避基础2秒
+
+	// Gemini (optional)
+	viper.SetDefault("gemini.oauth.client_id", "")
+	viper.SetDefault("gemini.oauth.client_secret", "")
+	viper.SetDefault("gemini.oauth.scopes", "")
 REDACTED
 
 func (c *Config) Validate() error {

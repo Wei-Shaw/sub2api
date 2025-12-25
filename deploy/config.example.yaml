@@ -87,3 +87,14 @@ pricing:
   update_interval_hours: 24
   # Hash check interval in minutes
   hash_check_interval_minutes: 10
+
+# =============================================================================
+# Gemini (Optional)
+# =============================================================================
+gemini:
+  oauth:
+    # Google OAuth Client ID / Secret (for GeminiCli / Code Assist internal API)
+    client_id: ""
+    client_secret: ""
+    # Optional scopes (space-separated). Leave empty to use default cloud-platform scope.
+    scopes: ""
