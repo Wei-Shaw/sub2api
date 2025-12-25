@@ -10,7 +10,7 @@
   REDACTED
 
   html {
-    @apply antialiased scroll-smooth;
+    @apply scroll-smooth antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   REDACTED
 
@@ -21,7 +21,7 @@
 
   /* 自定义滚动条 */
   ::-webkit-scrollbar {
-    @apply w-2 h-2;
+    @apply h-2 w-2;
   REDACTED
 
   ::-webkit-scrollbar-track {
@@ -29,7 +29,7 @@
   REDACTED
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-dark-600 rounded-full;
+    @apply rounded-full bg-gray-300 dark:bg-dark-600;
   REDACTED
 
   ::-webkit-scrollbar-thumb:hover {
@@ -46,10 +46,10 @@ REDACTED
   /* ============ 按钮样式 ============ */
   .btn {
     @apply inline-flex items-center justify-center gap-2;
-    @apply px-4 py-2.5 rounded-xl font-medium text-sm;
+    @apply rounded-xl px-4 py-2.5 text-sm font-medium;
     @apply transition-all duration-200 ease-out;
-    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500/50;
-    @apply disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
+    @apply disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50;
     @apply active:scale-[0.98];
   REDACTED
 
@@ -80,53 +80,53 @@ REDACTED
   REDACTED
 
   .btn-sm {
-    @apply px-3 py-1.5 text-xs rounded-lg;
+    @apply rounded-lg px-3 py-1.5 text-xs;
   REDACTED
 
   .btn-lg {
-    @apply px-6 py-3 text-base rounded-2xl;
+    @apply rounded-2xl px-6 py-3 text-base;
   REDACTED
 
   .btn-icon {
-    @apply p-2.5 rounded-xl;
+    @apply rounded-xl p-2.5;
   REDACTED
 
   /* ============ 输入框样式 ============ */
   .input {
-    @apply w-full px-4 py-2.5 rounded-xl text-sm;
+    @apply w-full rounded-xl px-4 py-2.5 text-sm;
     @apply bg-white dark:bg-dark-800;
     @apply border border-gray-200 dark:border-dark-600;
     @apply text-gray-900 dark:text-gray-100;
     @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
     @apply transition-all duration-200;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500;
-    @apply disabled:bg-gray-100 dark:disabled:bg-dark-900 disabled:cursor-not-allowed;
+    @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+    @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-900;
   REDACTED
 
   .input-error {
-    @apply border-red-500 focus:ring-red-500/30 focus:border-red-500;
+    @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
   REDACTED
 
   .input-label {
-    @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5;
+    @apply mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300;
   REDACTED
 
   .input-hint {
-    @apply text-xs text-gray-500 dark:text-dark-400 mt-1;
+    @apply mt-1 text-xs text-gray-500 dark:text-dark-400;
   REDACTED
 
   .input-error-text {
-    @apply text-xs text-red-500 mt-1;
+    @apply mt-1 text-xs text-red-500;
   REDACTED
 
   /* Hide number input spinner buttons for cleaner UI */
-  input[type="number"]::-webkit-inner-spin-button,
-  input[type="number"]::-webkit-outer-spin-button {
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
   REDACTED
 
-  input[type="number"] {
+  input[type='number'] {
     -moz-appearance: textfield;
   REDACTED
 
@@ -140,7 +140,7 @@ REDACTED
   REDACTED
 
   .card-hover {
-    @apply hover:shadow-card-hover hover:-translate-y-0.5;
+    @apply hover:-translate-y-0.5 hover:shadow-card-hover;
     @apply hover:border-gray-200 dark:hover:border-dark-600;
   REDACTED
 
@@ -158,7 +158,7 @@ REDACTED
   REDACTED
 
   .stat-icon {
-    @apply w-12 h-12 rounded-xl;
+    @apply h-12 w-12 rounded-xl;
     @apply flex items-center justify-center;
     @apply text-xl;
   REDACTED
@@ -188,7 +188,7 @@ REDACTED
   REDACTED
 
   .stat-trend {
-    @apply text-xs font-medium flex items-center gap-1 mt-1;
+    @apply mt-1 flex items-center gap-1 text-xs font-medium;
   REDACTED
 
   .stat-trend-up {
@@ -233,7 +233,7 @@ REDACTED
   /* ============ 徽章样式 ============ */
   .badge {
     @apply inline-flex items-center gap-1;
-    @apply px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply rounded-full px-2.5 py-0.5 text-xs font-medium;
   REDACTED
 
   .badge-primary {
@@ -264,7 +264,7 @@ REDACTED
     @apply border border-gray-200 dark:border-dark-700;
     @apply shadow-lg;
     @apply py-1;
-    @apply animate-scale-in origin-top-right;
+    @apply origin-top-right animate-scale-in;
   REDACTED
 
   .dropdown-item {
@@ -290,7 +290,7 @@ REDACTED
   REDACTED
 
   .modal-header {
-    @apply px-6 py-4 border-b border-gray-100 dark:border-dark-700;
+    @apply border-b border-gray-100 px-6 py-4 dark:border-dark-700;
     @apply flex items-center justify-between;
   REDACTED
 
@@ -303,13 +303,13 @@ REDACTED
   REDACTED
 
   .modal-footer {
-    @apply px-6 py-4 border-t border-gray-100 dark:border-dark-700;
+    @apply border-t border-gray-100 px-6 py-4 dark:border-dark-700;
     @apply flex items-center justify-end gap-3;
   REDACTED
 
   /* ============ Toast 通知 ============ */
   .toast {
-    @apply fixed top-4 right-4 z-[100];
+    @apply fixed right-4 top-4 z-[100];
     @apply min-w-[320px] max-w-md;
     @apply bg-white dark:bg-dark-800;
     @apply rounded-xl shadow-lg;
@@ -350,11 +350,11 @@ REDACTED
   REDACTED
 
   .sidebar-nav {
-    @apply flex-1 overflow-y-auto py-4 px-3;
+    @apply flex-1 overflow-y-auto px-3 py-4;
   REDACTED
 
   .sidebar-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl;
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5;
     @apply text-sm font-medium;
     @apply text-gray-600 dark:text-dark-300;
     @apply transition-all duration-200;
@@ -373,7 +373,7 @@ REDACTED
   REDACTED
 
   .sidebar-section-title {
-    @apply px-3 mb-2;
+    @apply mb-2 px-3;
     @apply text-xs font-semibold uppercase tracking-wider;
     @apply text-gray-400 dark:text-dark-500;
   REDACTED
@@ -388,51 +388,51 @@ REDACTED
   REDACTED
 
   .page-description {
-    @apply text-sm text-gray-500 dark:text-dark-400 mt-1;
+    @apply mt-1 text-sm text-gray-500 dark:text-dark-400;
   REDACTED
 
   /* ============ 空状态 ============ */
   .empty-state {
-    @apply flex flex-col items-center justify-center py-12 px-4;
+    @apply flex flex-col items-center justify-center px-4 py-12;
     @apply text-center;
   REDACTED
 
   .empty-state-icon {
-    @apply w-16 h-16 mb-4;
+    @apply mb-4 h-16 w-16;
     @apply text-gray-300 dark:text-dark-600;
   REDACTED
 
   .empty-state-title {
-    @apply text-lg font-medium text-gray-900 dark:text-white mb-1;
+    @apply mb-1 text-lg font-medium text-gray-900 dark:text-white;
   REDACTED
 
   .empty-state-description {
-    @apply text-sm text-gray-500 dark:text-dark-400 max-w-sm;
+    @apply max-w-sm text-sm text-gray-500 dark:text-dark-400;
   REDACTED
 
   /* ============ 加载状态 ============ */
   .spinner {
-    @apply w-5 h-5 border-2 border-current border-t-transparent rounded-full;
+    @apply h-5 w-5 rounded-full border-2 border-current border-t-transparent;
     @apply animate-spin;
   REDACTED
 
   .skeleton {
-    @apply bg-gray-200 dark:bg-dark-700 rounded animate-pulse;
+    @apply animate-pulse rounded bg-gray-200 dark:bg-dark-700;
   REDACTED
 
   /* ============ 分隔线 ============ */
   .divider {
-    @apply h-px bg-gray-200 dark:bg-dark-700 my-4;
+    @apply my-4 h-px bg-gray-200 dark:bg-dark-700;
   REDACTED
 
   /* ============ 标签页 ============ */
   .tabs {
     @apply flex gap-1 p-1;
-    @apply bg-gray-100 dark:bg-dark-800 rounded-xl;
+    @apply rounded-xl bg-gray-100 dark:bg-dark-800;
   REDACTED
 
   .tab {
-    @apply px-4 py-2 rounded-lg text-sm font-medium;
+    @apply rounded-lg px-4 py-2 text-sm font-medium;
     @apply text-gray-600 dark:text-dark-400;
     @apply transition-all duration-200;
     @apply hover:text-gray-900 dark:hover:text-white;
@@ -446,7 +446,7 @@ REDACTED
 
   /* ============ 进度条 ============ */
   .progress {
-    @apply h-2 bg-gray-200 dark:bg-dark-700 rounded-full overflow-hidden;
+    @apply h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700;
   REDACTED
 
   .progress-bar {
@@ -456,7 +456,7 @@ REDACTED
 
   /* ============ 开关 ============ */
   .switch {
-    @apply relative w-11 h-6 rounded-full cursor-pointer;
+    @apply relative h-6 w-11 cursor-pointer rounded-full;
     @apply bg-gray-300 dark:bg-dark-600;
     @apply transition-colors duration-200;
   REDACTED
@@ -466,7 +466,7 @@ REDACTED
   REDACTED
 
   .switch-thumb {
-    @apply absolute top-0.5 left-0.5 w-5 h-5 rounded-full;
+    @apply absolute left-0.5 top-0.5 h-5 w-5 rounded-full;
     @apply bg-white shadow-sm;
     @apply transition-transform duration-200;
   REDACTED
@@ -479,14 +479,14 @@ REDACTED
   .code {
     @apply font-mono text-sm;
     @apply bg-gray-100 dark:bg-dark-800;
-    @apply px-1.5 py-0.5 rounded;
+    @apply rounded px-1.5 py-0.5;
     @apply text-primary-600 dark:text-primary-400;
   REDACTED
 
   .code-block {
     @apply font-mono text-sm;
     @apply bg-gray-900 text-gray-100;
-    @apply p-4 rounded-xl overflow-x-auto;
+    @apply overflow-x-auto rounded-xl p-4;
   REDACTED
 REDACTED
 
@@ -498,7 +498,7 @@ REDACTED
 
   /* 玻璃效果 */
   .glass {
-    @apply bg-white/80 dark:bg-dark-800/80 backdrop-blur-xl;
+    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
   REDACTED
 
   /* 隐藏滚动条 */

@@ -53,9 +53,10 @@ export function useAccountOAuth() {
 
     try {
       const proxyConfig = proxyId ? { proxy_id: proxyId REDACTED : {REDACTED
-      const endpoint = addMethod === 'oauth'
-        ? '/admin/accounts/generate-auth-url'
-        : '/admin/accounts/generate-setup-token-url'
+      const endpoint =
+        addMethod === 'oauth'
+          ? '/admin/accounts/generate-auth-url'
+          : '/admin/accounts/generate-setup-token-url'
 
       const response = await adminAPI.accounts.generateAuthUrl(endpoint, proxyConfig)
       authUrl.value = response.auth_url
@@ -85,9 +86,10 @@ export function useAccountOAuth() {
 
     try {
       const proxyConfig = proxyId ? { proxy_id: proxyId REDACTED : {REDACTED
-      const endpoint = addMethod === 'oauth'
-        ? '/admin/accounts/exchange-code'
-        : '/admin/accounts/exchange-setup-token-code'
+      const endpoint =
+        addMethod === 'oauth'
+          ? '/admin/accounts/exchange-code'
+          : '/admin/accounts/exchange-setup-token-code'
 
       const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
         session_id: sessionId.value,
@@ -121,9 +123,10 @@ export function useAccountOAuth() {
 
     try {
       const proxyConfig = proxyId ? { proxy_id: proxyId REDACTED : {REDACTED
-      const endpoint = addMethod === 'oauth'
-        ? '/admin/accounts/cookie-auth'
-        : '/admin/accounts/setup-token-cookie-auth'
+      const endpoint =
+        addMethod === 'oauth'
+          ? '/admin/accounts/cookie-auth'
+          : '/admin/accounts/setup-token-cookie-auth'
 
       const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
         session_id: '',
@@ -142,7 +145,10 @@ export function useAccountOAuth() {
 
   // Parse multiple session keys
   const parseSessionKeys = (input: string): string[] => {
-    return input.split('\n').map(k => k.trim()).filter(k => k)
+    return input
+      .split('\n')
+      .map((k) => k.trim())
+      .filter((k) => k)
   REDACTED
 
   // Build extra info from token response
