@@ -13,38 +13,38 @@ This directory contains the Vue Router configuration for the Sub2API frontend ap
 
 ### Public Routes (No Authentication Required)
 
-| Path | Component | Description |
-|------|-----------|-------------|
-| `/login` | LoginView | User login page |
+| Path        | Component    | Description            |
+| ----------- | ------------ | ---------------------- |
+| `/login`    | LoginView    | User login page        |
 | `/register` | RegisterView | User registration page |
 
 ### User Routes (Authentication Required)
 
-| Path | Component | Description |
-|------|-----------|-------------|
-| `/` | - | Redirects to `/dashboard` |
-| `/dashboard` | DashboardView | User dashboard with stats |
-| `/keys` | KeysView | API key management |
-| `/usage` | UsageView | Usage records and statistics |
-| `/redeem` | RedeemView | Redeem code interface |
-| `/profile` | ProfileView | User profile settings |
+| Path         | Component     | Description                  |
+| ------------ | ------------- | ---------------------------- |
+| `/`          | -             | Redirects to `/dashboard`    |
+| `/dashboard` | DashboardView | User dashboard with stats    |
+| `/keys`      | KeysView      | API key management           |
+| `/usage`     | UsageView     | Usage records and statistics |
+| `/redeem`    | RedeemView    | Redeem code interface        |
+| `/profile`   | ProfileView   | User profile settings        |
 
 ### Admin Routes (Admin Role Required)
 
-| Path | Component | Description |
-|------|-----------|-------------|
-| `/admin` | - | Redirects to `/admin/dashboard` |
-| `/admin/dashboard` | AdminDashboardView | Admin dashboard |
-| `/admin/users` | AdminUsersView | User management |
-| `/admin/groups` | AdminGroupsView | Group management |
-| `/admin/accounts` | AdminAccountsView | Account management |
-| `/admin/proxies` | AdminProxiesView | Proxy management |
-| `/admin/redeem` | AdminRedeemView | Redeem code management |
+| Path               | Component          | Description                     |
+| ------------------ | ------------------ | ------------------------------- |
+| `/admin`           | -                  | Redirects to `/admin/dashboard` |
+| `/admin/dashboard` | AdminDashboardView | Admin dashboard                 |
+| `/admin/users`     | AdminUsersView     | User management                 |
+| `/admin/groups`    | AdminGroupsView    | Group management                |
+| `/admin/accounts`  | AdminAccountsView  | Account management              |
+| `/admin/proxies`   | AdminProxiesView   | Proxy management                |
+| `/admin/redeem`    | AdminRedeemView    | Redeem code management          |
 
 ### Special Routes
 
-| Path | Component | Description |
-|------|-----------|-------------|
+| Path              | Component    | Description    |
+| ----------------- | ------------ | -------------- |
 | `/:pathMatch(.*)` | NotFoundView | 404 error page |
 
 ## Navigation Guards
@@ -92,15 +92,16 @@ Each route can define the following meta fields:
 
 ```typescript
 interface RouteMeta {
-  requiresAuth?: boolean;      // Default: true (requires authentication)
-  requiresAdmin?: boolean;     // Default: false (admin access only)
-  title?: string;              // Page title
-  breadcrumbs?: Array<{        // Breadcrumb navigation
-    label: string;
-    to?: string;
-  REDACTED>;
-  icon?: string;               // Icon for navigation menu
-  hideInMenu?: boolean;        // Hide from navigation menu
+  requiresAuth?: boolean // Default: true (requires authentication)
+  requiresAdmin?: boolean // Default: false (admin access only)
+  title?: string // Page title
+  breadcrumbs?: Array<{
+    // Breadcrumb navigation
+    label: string
+    to?: string
+  REDACTED>
+  icon?: string // Icon for navigation menu
+  hideInMenu?: boolean // Hide from navigation menu
 REDACTED
 ```
 
@@ -113,6 +114,7 @@ component: () => import('@/views/user/DashboardView.vue')
 ```
 
 Benefits:
+
 - Reduced initial bundle size
 - Faster initial page load
 - Components loaded on-demand
@@ -123,7 +125,7 @@ Benefits:
 The router integrates with the Pinia auth store (`@/stores/auth`):
 
 ```typescript
-const authStore = useAuthStore();
+const authStore = useAuthStore()
 
 // Check authentication status
 authStore.isAuthenticated
@@ -137,21 +139,21 @@ authStore.isAdmin
 ### Programmatic Navigation
 
 ```typescript
-import { useRouter REDACTED from 'vue-router';
+import { useRouter REDACTED from 'vue-router'
 
-const router = useRouter();
+const router = useRouter()
 
 // Navigate to a route
-router.push('/dashboard');
+router.push('/dashboard')
 
 // Navigate with query parameters
 router.push({
   path: '/usage',
   query: { filter: 'today' REDACTED
-REDACTED);
+REDACTED)
 
 // Navigate to admin route (will be blocked if not admin)
-router.push('/admin/users');
+router.push('/admin/users')
 ```
 
 ### Route Links
@@ -165,24 +167,22 @@ router.push('/admin/users');
   <router-link :to="{ name: 'Keys' REDACTED">API Keys</router-link>
 
   <!-- With query parameters -->
-  <router-link :to="{ path: '/usage', query: { page: 1 REDACTED REDACTED">
-    Usage
-  </router-link>
+  <router-link :to="{ path: '/usage', query: { page: 1 REDACTED REDACTED"> Usage </router-link>
 </template>
 ```
 
 ### Checking Current Route
 
 ```typescript
-import { useRoute REDACTED from 'vue-router';
+import { useRoute REDACTED from 'vue-router'
 
-const route = useRoute();
+const route = useRoute()
 
 // Check if on admin page
-const isAdminPage = route.path.startsWith('/admin');
+const isAdminPage = route.path.startsWith('/admin')
 
 // Get route meta
-const requiresAdmin = route.meta.requiresAdmin;
+const requiresAdmin = route.meta.requiresAdmin
 ```
 
 ## Scroll Behavior
@@ -199,8 +199,8 @@ The router includes error handling for navigation failures:
 
 ```typescript
 router.onError((error) => {
-  console.error('Router error:', error);
-REDACTED);
+  console.error('Router error:', error)
+REDACTED)
 ```
 
 ## Testing Routes
@@ -229,7 +229,7 @@ Enable Vue Router debug mode:
 
 ```typescript
 // In browser console
-window.__VUE_ROUTER__ = router;
+window.__VUE_ROUTER__ = router
 
 // Check current route
 router.currentRoute.value
@@ -238,14 +238,17 @@ router.currentRoute.value
 ### Common Issues
 
 **Issue**: 404 on page refresh
+
 - **Cause**: Server not configured for SPA
 - **Solution**: Configure server to serve `index.html` for all routes
 
 **Issue**: Navigation guard runs twice
+
 - **Cause**: Multiple `next()` calls
 - **Solution**: Ensure only one `next()` call per code path
 
 **Issue**: User data not loaded
+
 - **Cause**: Auth store not initialized
 - **Solution**: Call `authStore.checkAuth()` in App.vue or main.ts
 

@@ -3,7 +3,7 @@
  * Extends the RouteMeta interface with custom properties
  */
 
-import 'vue-router';
+import 'vue-router'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -11,36 +11,36 @@ declare module 'vue-router' {
      * Whether this route requires authentication
      * @default true
      */
-    requiresAuth?: boolean;
+    requiresAuth?: boolean
 
     /**
      * Whether this route requires admin role
      * @default false
      */
-    requiresAdmin?: boolean;
+    requiresAdmin?: boolean
 
     /**
      * Page title for this route
      */
-    title?: string;
+    title?: string
 
     /**
      * Optional breadcrumb items for navigation
      */
     breadcrumbs?: Array<{
-      label: string;
-      to?: string;
-    REDACTED>;
+      label: string
+      to?: string
+    REDACTED>
 
     /**
      * Icon name for this route (for sidebar navigation)
      */
-    icon?: string;
+    icon?: string
 
     /**
      * Whether to hide this route from navigation menu
      * @default false
      */
-    hideInMenu?: boolean;
+    hideInMenu?: boolean
   REDACTED
 REDACTED
