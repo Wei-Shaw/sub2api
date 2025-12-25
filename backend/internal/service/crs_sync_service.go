@@ -906,7 +906,8 @@ func (s *CRSSyncService) refreshOAuthToken(ctx context.Context, account *model.A
 	var newCredentials map[string]any
 	var err error
 
-	if account.Platform == model.PlatformAnthropic {
+	switch account.Platform {
+	case model.PlatformAnthropic:
 		if s.oauthService == nil {
 			return nil
 		}
@@ -931,7 +932,7 @@ func (s *CRSSyncService) refreshOAuthToken(ctx context.Context, account *model.A
 				newCredentials["scope"] = tokenInfo.Scope
 			}
 		}
-	} else if account.Platform == model.PlatformOpenAI {
+	case model.PlatformOpenAI:
 		if s.openaiOAuthService == nil {
 			return nil
 		}
@@ -947,6 +948,8 @@ func (s *CRSSyncService) refreshOAuthToken(ctx context.Context, account *model.A
 				}
 			}
 		}
+	default:
+		return nil
 	}
 
 	if err != nil {
