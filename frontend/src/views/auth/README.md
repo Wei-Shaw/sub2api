@@ -9,6 +9,7 @@ This directory contains Vue 3 authentication views for the Sub2API frontend appl
 Login page for existing users to authenticate.
 
 **Features:**
+
 - Username and password inputs with validation
 - Remember me checkbox for persistent sessions
 - Form validation with real-time error display
@@ -18,26 +19,30 @@ Login page for existing users to authenticate.
 - Link to registration page for new users
 
 **Usage:**
+
 ```vue
 <template>
   <LoginView />
 </template>
 
 <script setup lang="ts">
-import { LoginView REDACTED from '@/views/auth';
+import { LoginView REDACTED from '@/views/auth'
 </script>
 ```
 
 **Route:**
+
 - Path: `/login`
 - Name: `Login`
 - Meta: `{ requiresAuth: false REDACTED`
 
 **Validation Rules:**
+
 - Username: Required, minimum 3 characters
 - Password: Required, minimum 6 characters
 
 **Behavior:**
+
 - Calls `authStore.login()` with credentials
 - Shows success toast on successful login
 - Shows error toast and inline error message on failure
@@ -49,6 +54,7 @@ import { LoginView REDACTED from '@/views/auth';
 Registration page for new users to create accounts.
 
 **Features:**
+
 - Username, email, password, and confirm password inputs
 - Comprehensive form validation
 - Password strength requirements (8+ characters, letters + numbers)
@@ -60,22 +66,25 @@ Registration page for new users to create accounts.
 - Link to login page for existing users
 
 **Usage:**
+
 ```vue
 <template>
   <RegisterView />
 </template>
 
 <script setup lang="ts">
-import { RegisterView REDACTED from '@/views/auth';
+import { RegisterView REDACTED from '@/views/auth'
 </script>
 ```
 
 **Route:**
+
 - Path: `/register`
 - Name: `Register`
 - Meta: `{ requiresAuth: false REDACTED`
 
 **Validation Rules:**
+
 - Username:
   - Required
   - 3-50 characters
@@ -92,6 +101,7 @@ import { RegisterView REDACTED from '@/views/auth';
   - Must match password
 
 **Behavior:**
+
 - Calls `authStore.register()` with user data
 - Shows success toast on successful registration
 - Shows error toast and inline error message on failure
@@ -131,6 +141,7 @@ Both views follow a consistent structure:
 ### State Management
 
 Both views use:
+
 - `useAuthStore()` - For authentication actions (login, register)
 - `useAppStore()` - For toast notifications and UI feedback
 - `useRouter()` - For navigation and redirects
@@ -138,12 +149,14 @@ Both views use:
 ### Validation Strategy
 
 **Client-side Validation:**
+
 - Real-time validation on form submission
 - Field-level error messages
 - Comprehensive validation rules
 - TypeScript type safety
 
 **Server-side Validation:**
+
 - Backend API validates all inputs
 - Error responses handled gracefully
 - User-friendly error messages displayed
@@ -151,6 +164,7 @@ Both views use:
 ### Styling
 
 **Design System:**
+
 - TailwindCSS utility classes
 - Consistent color scheme (indigo primary)
 - Responsive design
@@ -158,6 +172,7 @@ Both views use:
 - Loading states with spinner animations
 
 **Visual Feedback:**
+
 - Red border on invalid fields
 - Error messages below inputs
 - Global error banner for API errors
@@ -167,13 +182,16 @@ Both views use:
 ## Dependencies
 
 ### Components
+
 - `AuthLayout` - Layout wrapper for auth pages from `@/components/layout`
 
 ### Stores
+
 - `authStore` - Authentication state management from `@/stores/auth`
 - `appStore` - Application state and toasts from `@/stores/app`
 
 ### Libraries
+
 - Vue 3 Composition API
 - Vue Router for navigation
 - Pinia for state management
@@ -185,11 +203,11 @@ Both views use:
 
 ```typescript
 // User enters credentials
-formData.username = 'john_doe';
-formData.password = 'SecurePass123';
+formData.username = 'john_doe'
+formData.password = 'SecurePass123'
 
 // Submit form
-await handleLogin();
+await handleLogin()
 
 // On success:
 // - authStore.login() called
@@ -207,13 +225,13 @@ await handleLogin();
 
 ```typescript
 // User enters registration data
-formData.username = 'jane_smith';
-formData.email = 'jane@example.com';
-formData.password = 'SecurePass123';
-formData.confirmPassword = 'SecurePass123';
+formData.username = 'jane_smith'
+formData.email = 'jane@example.com'
+formData.password = 'SecurePass123'
+formData.confirmPassword = 'SecurePass123'
 
 // Submit form
-await handleRegister();
+await handleRegister()
 
 // On success:
 // - authStore.register() called
@@ -233,10 +251,10 @@ await handleRegister();
 
 ```typescript
 // Validation errors
-errors.username = 'Username must be at least 3 characters';
-errors.email = 'Please enter a valid email address';
-errors.password = 'Password must be at least 8 characters with letters and numbers';
-errors.confirmPassword = 'Passwords do not match';
+errors.username = 'Username must be at least 3 characters'
+errors.email = 'Please enter a valid email address'
+errors.password = 'Password must be at least 8 characters with letters and numbers'
+errors.confirmPassword = 'Passwords do not match'
 ```
 
 ### Server-side Errors
@@ -252,8 +270,8 @@ errors.confirmPassword = 'Passwords do not match';
 REDACTED
 
 // Displayed as:
-errorMessage.value = 'Username already exists';
-appStore.showError('Username already exists');
+errorMessage.value = 'Username already exists'
+appStore.showError('Username already exists')
 ```
 
 ## Accessibility
@@ -269,18 +287,21 @@ appStore.showError('Username already exists');
 ## Testing Considerations
 
 ### Unit Tests
+
 - Form validation logic
 - Error handling
 - State management
 - Router navigation
 
 ### Integration Tests
+
 - Full login flow
 - Full registration flow
 - Error scenarios
 - Redirect behavior
 
 ### E2E Tests
+
 - Complete user journeys
 - Form interactions
 - API integration
@@ -289,6 +310,7 @@ appStore.showError('Username already exists');
 ## Future Enhancements
 
 Potential improvements:
+
 - OAuth/SSO integration (Google, GitHub)
 - Two-factor authentication (2FA)
 - Password strength meter

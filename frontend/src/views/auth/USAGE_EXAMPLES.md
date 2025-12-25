@@ -75,43 +75,43 @@ This document provides practical examples of how to use the authentication views
 
 ```typescript
 // Method 1: Direct import
-import LoginView from '@/views/auth/LoginView.vue';
-import RegisterView from '@/views/auth/RegisterView.vue';
+import LoginView from '@/views/auth/LoginView.vue'
+import RegisterView from '@/views/auth/RegisterView.vue'
 
 // Method 2: Named exports from index
-import { LoginView, RegisterView REDACTED from '@/views/auth';
+import { LoginView, RegisterView REDACTED from '@/views/auth'
 
 // Method 3: Lazy loading (recommended for routes)
-const LoginView = () => import('@/views/auth/LoginView.vue');
-const RegisterView = () => import('@/views/auth/RegisterView.vue');
+const LoginView = () => import('@/views/auth/LoginView.vue')
+const RegisterView = () => import('@/views/auth/RegisterView.vue')
 ```
 
 ### Using in Router
 
 ```typescript
-import { createRouter, createWebHistory REDACTED from 'vue-router';
+import { createRouter, createWebHistory REDACTED from 'vue-router'
 
 const routes = [
   {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
-    meta: { requiresAuth: false REDACTED,
+    meta: { requiresAuth: false REDACTED
   REDACTED,
   {
     path: '/register',
     name: 'Register',
     component: () => import('@/views/auth/RegisterView.vue'),
-    meta: { requiresAuth: false REDACTED,
-  REDACTED,
-];
+    meta: { requiresAuth: false REDACTED
+  REDACTED
+]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes,
-REDACTED);
+  routes
+REDACTED)
 
-export default router;
+export default router
 ```
 
 ### Navigation to Auth Views
@@ -142,13 +142,13 @@ REDACTED);
 ### Programmatic Auth Flow
 
 ```typescript
-import { useAuthStore REDACTED from '@/stores';
-import { useAppStore REDACTED from '@/stores';
-import { useRouter REDACTED from 'vue-router';
+import { useAuthStore REDACTED from '@/stores'
+import { useAppStore REDACTED from '@/stores'
+import { useRouter REDACTED from 'vue-router'
 
-const authStore = useAuthStore();
-const appStore = useAppStore();
-const router = useRouter();
+const authStore = useAuthStore()
+const appStore = useAppStore()
+const router = useRouter()
 
 // Login
 async function login() {
@@ -156,12 +156,12 @@ async function login() {
     await authStore.login({
       username: 'john_doe',
       password: 'MySecurePass123'
-    REDACTED);
+    REDACTED)
 
-    appStore.showSuccess('Login successful!');
-    router.push('/dashboard');
+    appStore.showSuccess('Login successful!')
+    router.push('/dashboard')
   REDACTED catch (error) {
-    appStore.showError('Login failed. Please check your credentials.');
+    appStore.showError('Login failed. Please check your credentials.')
   REDACTED
 REDACTED
 
@@ -172,12 +172,12 @@ async function register() {
       username: 'jane_smith',
       email: 'jane@example.com',
       password: 'SecurePass123'
-    REDACTED);
+    REDACTED)
 
-    appStore.showSuccess('Account created successfully!');
-    router.push('/dashboard');
+    appStore.showSuccess('Account created successfully!')
+    router.push('/dashboard')
   REDACTED catch (error) {
-    appStore.showError('Registration failed. Please try again.');
+    appStore.showError('Registration failed. Please try again.')
   REDACTED
 REDACTED
 ```
@@ -236,7 +236,7 @@ REDACTED
 {
   response: {
     data: {
-      detail: "Invalid username or password"
+      detail: 'Invalid username or password'
     REDACTED
   REDACTED
 REDACTED
@@ -244,12 +244,13 @@ REDACTED
 
 // Example 3: Network error
 {
-  message: "Network Error"
+  message: 'Network Error'
 REDACTED
 // Displayed: "Network Error" + Error toast
 
 // Example 4: Unknown error
-{REDACTED
+{
+REDACTED
 // Displayed: "Login failed. Please check your credentials and try again." (default)
 ```
 
@@ -258,10 +259,10 @@ REDACTED
 ```typescript
 // Multiple validation errors displayed simultaneously
 errors = {
-  username: "Username must be at least 3 characters",
-  email: "Please enter a valid email address",
-  password: "Password must be at least 8 characters with letters and numbers",
-  confirmPassword: "Passwords do not match"
+  username: 'Username must be at least 3 characters',
+  email: 'Please enter a valid email address',
+  password: 'Password must be at least 8 characters with letters and numbers',
+  confirmPassword: 'Passwords do not match'
 REDACTED
 
 // Each error appears below its respective input field with red styling
@@ -272,86 +273,86 @@ REDACTED
 ### Unit Test: Login View
 
 ```typescript
-import { describe, it, expect, vi REDACTED from 'vitest';
-import { mount REDACTED from '@vue/test-utils';
-import { createPinia REDACTED from 'pinia';
-import LoginView from '@/views/auth/LoginView.vue';
+import { describe, it, expect, vi REDACTED from 'vitest'
+import { mount REDACTED from '@vue/test-utils'
+import { createPinia REDACTED from 'pinia'
+import LoginView from '@/views/auth/LoginView.vue'
 
 describe('LoginView', () => {
   it('validates required fields', async () => {
     const wrapper = mount(LoginView, {
       global: {
-        plugins: [createPinia()],
-      REDACTED,
-    REDACTED);
+        plugins: [createPinia()]
+      REDACTED
+    REDACTED)
 
     // Submit empty form
-    await wrapper.find('form').trigger('submit');
+    await wrapper.find('form').trigger('submit')
 
     // Check for validation errors
-    expect(wrapper.text()).toContain('Username is required');
-    expect(wrapper.text()).toContain('Password is required');
-  REDACTED);
+    expect(wrapper.text()).toContain('Username is required')
+    expect(wrapper.text()).toContain('Password is required')
+  REDACTED)
 
   it('calls authStore.login on valid submission', async () => {
     const wrapper = mount(LoginView, {
       global: {
-        plugins: [createPinia()],
-      REDACTED,
-    REDACTED);
+        plugins: [createPinia()]
+      REDACTED
+    REDACTED)
 
     // Fill in form
-    await wrapper.find('#username').setValue('john_doe');
-    await wrapper.find('#password').setValue('SecurePass123');
+    await wrapper.find('#username').setValue('john_doe')
+    await wrapper.find('#password').setValue('SecurePass123')
 
     // Submit form
-    await wrapper.find('form').trigger('submit');
+    await wrapper.find('form').trigger('submit')
 
     // Verify authStore.login was called
     // (mock implementation needed)
-  REDACTED);
-REDACTED);
+  REDACTED)
+REDACTED)
 ```
 
 ### E2E Test: Registration Flow
 
 ```typescript
-import { test, expect REDACTED from '@playwright/test';
+import { test, expect REDACTED from '@playwright/test'
 
 test('user can register successfully', async ({ page REDACTED) => {
   // Navigate to register page
-  await page.goto('/register');
+  await page.goto('/register')
 
   // Fill in registration form
-  await page.fill('#username', 'new_user');
-  await page.fill('#email', 'new_user@example.com');
-  await page.fill('#password', 'SecurePass123');
-  await page.fill('#confirmPassword', 'SecurePass123');
+  await page.fill('#username', 'new_user')
+  await page.fill('#email', 'new_user@example.com')
+  await page.fill('#password', 'SecurePass123')
+  await page.fill('#confirmPassword', 'SecurePass123')
 
   // Submit form
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]')
 
   // Wait for redirect to dashboard
-  await page.waitForURL('/dashboard');
+  await page.waitForURL('/dashboard')
 
   // Verify success toast appears
-  await expect(page.locator('.toast-success')).toBeVisible();
-  await expect(page.locator('.toast-success')).toContainText('Account created successfully');
-REDACTED);
+  await expect(page.locator('.toast-success')).toBeVisible()
+  await expect(page.locator('.toast-success')).toContainText('Account created successfully')
+REDACTED)
 
 test('shows validation errors for invalid inputs', async ({ page REDACTED) => {
-  await page.goto('/register');
+  await page.goto('/register')
 
   // Enter mismatched passwords
-  await page.fill('#password', 'SecurePass123');
-  await page.fill('#confirmPassword', 'DifferentPass');
+  await page.fill('#password', 'SecurePass123')
+  await page.fill('#confirmPassword', 'DifferentPass')
 
   // Submit form
-  await page.click('button[type="submit"]');
+  await page.click('button[type="submit"]')
 
   // Verify error message
-  await expect(page.locator('text=Passwords do not match')).toBeVisible();
-REDACTED);
+  await expect(page.locator('text=Passwords do not match')).toBeVisible()
+REDACTED)
 ```
 
 ## Integration with Navigation Guards
@@ -359,15 +360,15 @@ REDACTED);
 ### Router Guard Example
 
 ```typescript
-import { useAuthStore REDACTED from '@/stores';
+import { useAuthStore REDACTED from '@/stores'
 
 router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore();
+  const authStore = useAuthStore()
 
   // Redirect authenticated users away from auth pages
   if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
-    next('/dashboard');
-    return;
+    next('/dashboard')
+    return
   REDACTED
 
   // Redirect unauthenticated users to login
@@ -375,12 +376,12 @@ router.beforeEach((to, from, next) => {
     next({
       path: '/login',
       query: { redirect: to.fullPath REDACTED
-    REDACTED);
-    return;
+    REDACTED)
+    return
   REDACTED
 
-  next();
-REDACTED);
+  next()
+REDACTED)
 ```
 
 ## Customization Examples
@@ -393,16 +394,16 @@ async function handleLogin(): Promise<void> {
   try {
     await authStore.login({
       username: formData.username,
-      password: formData.password,
-    REDACTED);
+      password: formData.password
+    REDACTED)
 
-    appStore.showSuccess('Login successful!');
+    appStore.showSuccess('Login successful!')
 
     // Custom redirect logic
-    const isAdmin = authStore.isAdmin;
-    const redirectTo = isAdmin ? '/admin/dashboard' : '/dashboard';
+    const isAdmin = authStore.isAdmin
+    const redirectTo = isAdmin ? '/admin/dashboard' : '/dashboard'
 
-    await router.push(redirectTo);
+    await router.push(redirectTo)
   REDACTED catch (error) {
     // Error handling...
   REDACTED
@@ -414,19 +415,20 @@ REDACTED
 ```typescript
 // Custom password strength validation
 function validatePasswordStrength(password: string): boolean {
-  const hasMinLength = password.length >= 12;
-  const hasUpperCase = /[A-Z]/.test(password);
-  const hasLowerCase = /[a-z]/.test(password);
-  const hasNumber = /[0-9]/.test(password);
-  const hasSpecialChar = /[!@#$%^&*(),.?":{REDACTED|<>]/.test(password);
+  const hasMinLength = password.length >= 12
+  const hasUpperCase = /[A-Z]/.test(password)
+  const hasLowerCase = /[a-z]/.test(password)
+  const hasNumber = /[0-9]/.test(password)
+  const hasSpecialChar = /[!@#$%^&*(),.?":{REDACTED|<>]/.test(password)
 
-  return hasMinLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar;
+  return hasMinLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar
 REDACTED
 
 // Use in validation
 if (!validatePasswordStrength(formData.password)) {
-  errors.password = 'Password must be at least 12 characters with uppercase, lowercase, numbers, and special characters';
-  isValid = false;
+  errors.password =
+    'Password must be at least 12 characters with uppercase, lowercase, numbers, and special characters'
+  isValid = false
 REDACTED
 ```
 
@@ -439,26 +441,27 @@ async function handleRegister(): Promise<void> {
     await authStore.register({
       username: formData.username,
       email: formData.email,
-      password: formData.password,
-    REDACTED);
+      password: formData.password
+    REDACTED)
 
-    appStore.showSuccess('Account created successfully!');
-    await router.push('/dashboard');
+    appStore.showSuccess('Account created successfully!')
+    await router.push('/dashboard')
   REDACTED catch (error: unknown) {
-    const err = error as { response?: { status?: number; data?: { detail?: string REDACTED REDACTED REDACTED;
+    const err = error as { response?: { status?: number; data?: { detail?: string REDACTED REDACTED REDACTED
 
     // Custom error handling based on status code
     if (err.response?.status === 409) {
-      errorMessage.value = 'This username or email is already registered. Please use a different one.';
+      errorMessage.value =
+        'This username or email is already registered. Please use a different one.'
     REDACTED else if (err.response?.status === 422) {
-      errorMessage.value = 'Invalid input. Please check your information and try again.';
+      errorMessage.value = 'Invalid input. Please check your information and try again.'
     REDACTED else if (err.response?.status === 500) {
-      errorMessage.value = 'Server error. Please try again later.';
+      errorMessage.value = 'Server error. Please try again later.'
     REDACTED else {
-      errorMessage.value = err.response?.data?.detail || 'Registration failed. Please try again.';
+      errorMessage.value = err.response?.data?.detail || 'Registration failed. Please try again.'
     REDACTED
 
-    appStore.showError(errorMessage.value);
+    appStore.showError(errorMessage.value)
   REDACTED
 REDACTED
 ```
@@ -483,9 +486,7 @@ REDACTED
 
 ```html
 <!-- Proper labels for screen readers -->
-<label for="username" class="block text-sm font-medium text-gray-700 mb-1">
-  Username
-</label>
+<label for="username" class="mb-1 block text-sm font-medium text-gray-700"> Username </label>
 <input
   id="username"
   type="text"
@@ -548,10 +549,10 @@ import LoginView from '@/views/auth/LoginView.vue'; // ❌ Eager loaded
 ```typescript
 // Solution: Initialize auth state on app mount
 // In main.ts or App.vue
-import { useAuthStore REDACTED from '@/stores';
+import { useAuthStore REDACTED from '@/stores'
 
-const authStore = useAuthStore();
-authStore.checkAuth(); // Restore auth from localStorage
+const authStore = useAuthStore()
+authStore.checkAuth() // Restore auth from localStorage
 ```
 
 ### Issue: Redirect loop after login
@@ -559,12 +560,12 @@ authStore.checkAuth(); // Restore auth from localStorage
 ```typescript
 // Solution: Check router guard logic
 router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore();
+  const authStore = useAuthStore()
 
   // ✅ Correct: Check specific routes
   if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
-    next('/dashboard');
-    return;
+    next('/dashboard')
+    return
   REDACTED
 
   // ❌ Wrong: Blanket redirect
@@ -572,8 +573,8 @@ router.beforeEach((to, from, next) => {
   //   next('/dashboard'); // This causes loops!
   // REDACTED
 
-  next();
-REDACTED);
+  next()
+REDACTED)
 ```
 
 ### Issue: Form not clearing after successful submission

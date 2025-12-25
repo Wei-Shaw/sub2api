@@ -3,20 +3,32 @@
     <div class="space-y-6">
       <!-- Title -->
       <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
-          Verify Your Email
-        </h2>
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Verify Your Email</h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-          We'll send a verification code to <span class="font-medium text-gray-700 dark:text-gray-300">{{ email REDACTEDREDACTED</span>
+          We'll send a verification code to
+          <span class="font-medium text-gray-700 dark:text-gray-300">{{ email REDACTEDREDACTED</span>
         </p>
       </div>
 
       <!-- No Data Warning -->
-      <div v-if="!hasRegisterData" class="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+      <div
+        v-if="!hasRegisterData"
+        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
+      >
         <div class="flex items-start gap-3">
           <div class="flex-shrink-0">
-            <svg class="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            <svg
+              class="h-5 w-5 text-amber-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+              />
             </svg>
           </div>
           <div class="text-sm text-amber-700 dark:text-amber-400">
@@ -30,9 +42,7 @@
       <form v-else @submit.prevent="handleVerify" class="space-y-5">
         <!-- Verification Code Input -->
         <div>
-          <label for="code" class="input-label text-center">
-            Verification Code
-          </label>
+          <label for="code" class="input-label text-center"> Verification Code </label>
           <input
             id="code"
             v-model="verifyCode"
@@ -42,24 +52,35 @@
             inputmode="numeric"
             maxlength="6"
             :disabled="isLoading"
-            class="input text-center text-xl tracking-[0.5em] font-mono py-3"
+            class="input py-3 text-center font-mono text-xl tracking-[0.5em]"
             :class="{ 'input-error': errors.code REDACTED"
             placeholder="000000"
           />
           <p v-if="errors.code" class="input-error-text text-center">
             {{ errors.code REDACTEDREDACTED
           </p>
-          <p v-else class="input-hint text-center">
-            Enter the 6-digit code sent to your email
-          </p>
+          <p v-else class="input-hint text-center">Enter the 6-digit code sent to your email</p>
         </div>
 
         <!-- Code Status -->
-        <div v-if="codeSent" class="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50">
+        <div
+          v-if="codeSent"
+          class="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800/50 dark:bg-green-900/20"
+        >
           <div class="flex items-start gap-3">
             <div class="flex-shrink-0">
-              <svg class="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                class="h-5 w-5 text-green-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </div>
             <p class="text-sm text-green-700 dark:text-green-400">
@@ -77,7 +98,7 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
-          <p v-if="errors.turnstile" class="input-error-text text-center mt-2">
+          <p v-if="errors.turnstile" class="input-error-text mt-2 text-center">
             {{ errors.turnstile REDACTEDREDACTED
           </p>
         </div>
@@ -86,12 +107,22 @@
         <transition name="fade">
           <div
             v-if="errorMessage"
-            class="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50"
+            class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
           >
             <div class="flex items-start gap-3">
               <div class="flex-shrink-0">
-                <svg class="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                <svg
+                  class="h-5 w-5 text-red-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                  />
                 </svg>
               </div>
               <p class="text-sm text-red-700 dark:text-red-400">
@@ -102,22 +133,40 @@
         </transition>
 
         <!-- Submit Button -->
-        <button
-          type="submit"
-          :disabled="isLoading || !verifyCode"
-          class="btn btn-primary w-full"
-        >
+        <button type="submit" :disabled="isLoading || !verifyCode" class="btn btn-primary w-full">
           <svg
             v-if="isLoading"
-            class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+            class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
             fill="none"
             viewBox="0 0 24 24"
           >
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
-          <svg v-else class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            v-else
+            class="mr-2 h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           {{ isLoading ? 'Verifying...' : 'Verify & Create Account' REDACTEDREDACTED
         </button>
@@ -128,7 +177,7 @@
             v-if="countdown > 0"
             type="button"
             disabled
-            class="text-sm text-gray-400 dark:text-dark-500 cursor-not-allowed"
+            class="cursor-not-allowed text-sm text-gray-400 dark:text-dark-500"
           >
             Resend code in {{ countdown REDACTEDREDACTEDs
           </button>
@@ -136,8 +185,10 @@
             v-else
             type="button"
             @click="handleResendCode"
-            :disabled="isSendingCode || (turnstileEnabled && showResendTurnstile && !resendTurnstileToken)"
-            class="text-sm text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="
+              isSendingCode || (turnstileEnabled && showResendTurnstile && !resendTurnstileToken)
+            "
+            class="text-sm text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
           >
             <span v-if="isSendingCode">Sending...</span>
             <span v-else-if="turnstileEnabled && !showResendTurnstile">Click to resend code</span>
@@ -151,10 +202,20 @@
     <template #footer>
       <button
         @click="handleBack"
-        class="text-gray-500 dark:text-dark-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-2"
+        class="flex items-center gap-2 text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-gray-300"
       >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
+          />
         </svg>
         Back to registration
       </button>
@@ -163,163 +224,162 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted REDACTED from 'vue';
-import { useRouter REDACTED from 'vue-router';
-import { AuthLayout REDACTED from '@/components/layout';
-import TurnstileWidget from '@/components/TurnstileWidget.vue';
-import { useAuthStore, useAppStore REDACTED from '@/stores';
-import { getPublicSettings, sendVerifyCode REDACTED from '@/api/auth';
+import { ref, onMounted, onUnmounted REDACTED from 'vue'
+import { useRouter REDACTED from 'vue-router'
+import { AuthLayout REDACTED from '@/components/layout'
+import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import { useAuthStore, useAppStore REDACTED from '@/stores'
+import { getPublicSettings, sendVerifyCode REDACTED from '@/api/auth'
 
 // ==================== Router & Stores ====================
 
-const router = useRouter();
-const authStore = useAuthStore();
-const appStore = useAppStore();
+const router = useRouter()
+const authStore = useAuthStore()
+const appStore = useAppStore()
 
 // ==================== State ====================
 
-const isLoading = ref<boolean>(false);
-const isSendingCode = ref<boolean>(false);
-const errorMessage = ref<string>('');
-const codeSent = ref<boolean>(false);
-const verifyCode = ref<string>('');
-const countdown = ref<number>(0);
-let countdownTimer: ReturnType<typeof setInterval> | null = null;
+const isLoading = ref<boolean>(false)
+const isSendingCode = ref<boolean>(false)
+const errorMessage = ref<string>('')
+const codeSent = ref<boolean>(false)
+const verifyCode = ref<string>('')
+const countdown = ref<number>(0)
+let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 // Registration data from sessionStorage
-const email = ref<string>('');
-const password = ref<string>('');
-const initialTurnstileToken = ref<string>('');
-const hasRegisterData = ref<boolean>(false);
+const email = ref<string>('')
+const password = ref<string>('')
+const initialTurnstileToken = ref<string>('')
+const hasRegisterData = ref<boolean>(false)
 
 // Public settings
-const turnstileEnabled = ref<boolean>(false);
-const turnstileSiteKey = ref<string>('');
-const siteName = ref<string>('Sub2API');
+const turnstileEnabled = ref<boolean>(false)
+const turnstileSiteKey = ref<string>('')
+const siteName = ref<string>('Sub2API')
 
 // Turnstile for resend
-const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null);
-const resendTurnstileToken = ref<string>('');
-const showResendTurnstile = ref<boolean>(false);
+const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const resendTurnstileToken = ref<string>('')
+const showResendTurnstile = ref<boolean>(false)
 
 const errors = ref({
   code: '',
-  turnstile: '',
-REDACTED);
+  turnstile: ''
+REDACTED)
 
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
   // Load registration data from sessionStorage
-  const registerDataStr = sessionStorage.getItem('register_data');
+  const registerDataStr = sessionStorage.getItem('register_data')
   if (registerDataStr) {
     try {
-      const registerData = JSON.parse(registerDataStr);
-      email.value = registerData.email || '';
-      password.value = registerData.password || '';
-      initialTurnstileToken.value = registerData.turnstile_token || '';
-      hasRegisterData.value = !!(email.value && password.value);
+      const registerData = JSON.parse(registerDataStr)
+      email.value = registerData.email || ''
+      password.value = registerData.password || ''
+      initialTurnstileToken.value = registerData.turnstile_token || ''
+      hasRegisterData.value = !!(email.value && password.value)
     REDACTED catch {
-      hasRegisterData.value = false;
+      hasRegisterData.value = false
     REDACTED
   REDACTED
 
   // Load public settings
   try {
-    const settings = await getPublicSettings();
-    turnstileEnabled.value = settings.turnstile_enabled;
-    turnstileSiteKey.value = settings.turnstile_site_key || '';
-    siteName.value = settings.site_name || 'Sub2API';
+    const settings = await getPublicSettings()
+    turnstileEnabled.value = settings.turnstile_enabled
+    turnstileSiteKey.value = settings.turnstile_site_key || ''
+    siteName.value = settings.site_name || 'Sub2API'
   REDACTED catch (error) {
-    console.error('Failed to load public settings:', error);
+    console.error('Failed to load public settings:', error)
   REDACTED
 
   // Auto-send verification code if we have valid data
   if (hasRegisterData.value) {
-    await sendCode();
+    await sendCode()
   REDACTED
-REDACTED);
+REDACTED)
 
 onUnmounted(() => {
   if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
+    clearInterval(countdownTimer)
+    countdownTimer = null
   REDACTED
-REDACTED);
+REDACTED)
 
 // ==================== Countdown ====================
 
 function startCountdown(seconds: number): void {
-  countdown.value = seconds;
+  countdown.value = seconds
 
   if (countdownTimer) {
-    clearInterval(countdownTimer);
+    clearInterval(countdownTimer)
   REDACTED
 
   countdownTimer = setInterval(() => {
     if (countdown.value > 0) {
-      countdown.value--;
+      countdown.value--
     REDACTED else {
       if (countdownTimer) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
+        clearInterval(countdownTimer)
+        countdownTimer = null
       REDACTED
     REDACTED
-  REDACTED, 1000);
+  REDACTED, 1000)
 REDACTED
 
 // ==================== Turnstile Handlers ====================
 
 function onTurnstileVerify(token: string): void {
-  resendTurnstileToken.value = token;
-  errors.value.turnstile = '';
+  resendTurnstileToken.value = token
+  errors.value.turnstile = ''
 REDACTED
 
 function onTurnstileExpire(): void {
-  resendTurnstileToken.value = '';
-  errors.value.turnstile = 'Verification expired, please try again';
+  resendTurnstileToken.value = ''
+  errors.value.turnstile = 'Verification expired, please try again'
 REDACTED
 
 function onTurnstileError(): void {
-  resendTurnstileToken.value = '';
-  errors.value.turnstile = 'Verification failed, please try again';
+  resendTurnstileToken.value = ''
+  errors.value.turnstile = 'Verification failed, please try again'
 REDACTED
 
 // ==================== Send Code ====================
 
 async function sendCode(): Promise<void> {
-  isSendingCode.value = true;
-  errorMessage.value = '';
+  isSendingCode.value = true
+  errorMessage.value = ''
 
   try {
     const response = await sendVerifyCode({
       email: email.value,
       // 优先使用重发时新获取的 token（因为初始 token 可能已被使用）
-      turnstile_token: resendTurnstileToken.value || initialTurnstileToken.value || undefined,
-    REDACTED);
+      turnstile_token: resendTurnstileToken.value || initialTurnstileToken.value || undefined
+    REDACTED)
 
-    codeSent.value = true;
-    startCountdown(response.countdown);
+    codeSent.value = true
+    startCountdown(response.countdown)
 
     // Reset turnstile state（token 已使用，清除以避免重复使用）
-    initialTurnstileToken.value = '';
-    showResendTurnstile.value = false;
-    resendTurnstileToken.value = '';
-
+    initialTurnstileToken.value = ''
+    showResendTurnstile.value = false
+    resendTurnstileToken.value = ''
   REDACTED catch (error: unknown) {
-    const err = error as { message?: string; response?: { data?: { detail?: string REDACTED REDACTED REDACTED;
+    const err = error as { message?: string; response?: { data?: { detail?: string REDACTED REDACTED REDACTED
 
     if (err.response?.data?.detail) {
-      errorMessage.value = err.response.data.detail;
+      errorMessage.value = err.response.data.detail
     REDACTED else if (err.message) {
-      errorMessage.value = err.message;
+      errorMessage.value = err.message
     REDACTED else {
-      errorMessage.value = 'Failed to send verification code. Please try again.';
+      errorMessage.value = 'Failed to send verification code. Please try again.'
     REDACTED
 
-    appStore.showError(errorMessage.value);
+    appStore.showError(errorMessage.value)
   REDACTED finally {
-    isSendingCode.value = false;
+    isSendingCode.value = false
   REDACTED
 REDACTED
 
@@ -328,43 +388,43 @@ REDACTED
 async function handleResendCode(): Promise<void> {
   // If turnstile is enabled and we haven't shown it yet, show it
   if (turnstileEnabled.value && !showResendTurnstile.value) {
-    showResendTurnstile.value = true;
-    return;
+    showResendTurnstile.value = true
+    return
   REDACTED
 
   // If turnstile is enabled but no token yet, wait
   if (turnstileEnabled.value && !resendTurnstileToken.value) {
-    errors.value.turnstile = 'Please complete the verification';
-    return;
+    errors.value.turnstile = 'Please complete the verification'
+    return
   REDACTED
 
-  await sendCode();
+  await sendCode()
 REDACTED
 
 function validateForm(): boolean {
-  errors.value.code = '';
+  errors.value.code = ''
 
   if (!verifyCode.value.trim()) {
-    errors.value.code = 'Verification code is required';
-    return false;
+    errors.value.code = 'Verification code is required'
+    return false
   REDACTED
 
   if (!/^\d{6REDACTED$/.test(verifyCode.value.trim())) {
-    errors.value.code = 'Please enter a valid 6-digit code';
-    return false;
+    errors.value.code = 'Please enter a valid 6-digit code'
+    return false
   REDACTED
 
-  return true;
+  return true
 REDACTED
 
 async function handleVerify(): Promise<void> {
-  errorMessage.value = '';
+  errorMessage.value = ''
 
   if (!validateForm()) {
-    return;
+    return
   REDACTED
 
-  isLoading.value = true;
+  isLoading.value = true
 
   try {
     // Register with verification code
@@ -372,40 +432,40 @@ async function handleVerify(): Promise<void> {
       email: email.value,
       password: password.value,
       verify_code: verifyCode.value.trim(),
-      turnstile_token: initialTurnstileToken.value || undefined,
-    REDACTED);
+      turnstile_token: initialTurnstileToken.value || undefined
+    REDACTED)
 
     // Clear session data
-    sessionStorage.removeItem('register_data');
+    sessionStorage.removeItem('register_data')
 
     // Show success toast
-    appStore.showSuccess('Account created successfully! Welcome to ' + siteName.value + '.');
+    appStore.showSuccess('Account created successfully! Welcome to ' + siteName.value + '.')
 
     // Redirect to dashboard
-    await router.push('/dashboard');
+    await router.push('/dashboard')
   REDACTED catch (error: unknown) {
-    const err = error as { message?: string; response?: { data?: { detail?: string REDACTED REDACTED REDACTED;
+    const err = error as { message?: string; response?: { data?: { detail?: string REDACTED REDACTED REDACTED
 
     if (err.response?.data?.detail) {
-      errorMessage.value = err.response.data.detail;
+      errorMessage.value = err.response.data.detail
     REDACTED else if (err.message) {
-      errorMessage.value = err.message;
+      errorMessage.value = err.message
     REDACTED else {
-      errorMessage.value = 'Verification failed. Please try again.';
+      errorMessage.value = 'Verification failed. Please try again.'
     REDACTED
 
-    appStore.showError(errorMessage.value);
+    appStore.showError(errorMessage.value)
   REDACTED finally {
-    isLoading.value = false;
+    isLoading.value = false
   REDACTED
 REDACTED
 
 function handleBack(): void {
   // Clear session data
-  sessionStorage.removeItem('register_data');
+  sessionStorage.removeItem('register_data')
 
   // Go back to registration
-  router.push('/register');
+  router.push('/register')
 REDACTED
 </script>
 
