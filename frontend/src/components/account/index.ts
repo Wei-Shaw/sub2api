@@ -1,5 +1,6 @@
 export { default as CreateAccountModal REDACTED from './CreateAccountModal.vue'
 export { default as EditAccountModal REDACTED from './EditAccountModal.vue'
+export { default as BulkEditAccountModal REDACTED from './BulkEditAccountModal.vue'
 export { default as ReAuthAccountModal REDACTED from './ReAuthAccountModal.vue'
 export { default as OAuthAuthorizationFlow REDACTED from './OAuthAuthorizationFlow.vue'
 export { default as AccountStatusIndicator REDACTED from './AccountStatusIndicator.vue'

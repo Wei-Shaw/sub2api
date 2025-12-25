@@ -10,6 +10,9 @@
       <div class="text-sm text-gray-600 dark:text-dark-300">
         {{ t('admin.accounts.syncFromCrsDesc') REDACTEDREDACTED
       </div>
+      <div class="text-xs text-gray-500 dark:text-dark-400 bg-gray-50 dark:bg-dark-700/60 rounded-lg p-3">
+        已有账号仅同步 CRS 返回的字段，缺失字段保持原值；凭据按键合并，不会清空未下发的键；未勾选“同步代理”时保留原有代理。
+      </div>
 
       <div class="grid grid-cols-1 gap-4">
         <div>
@@ -162,4 +165,3 @@ const handleSync = async () => {
   REDACTED
 REDACTED
 </script>
-

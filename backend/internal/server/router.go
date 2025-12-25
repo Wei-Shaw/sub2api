@@ -193,6 +193,7 @@ REDACTED)
 				accounts.POST("/:id/schedulable", h.Admin.Account.SetSchedulable)
 				accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
 				accounts.POST("/batch", h.Admin.Account.BatchCreate)
+				accounts.POST("/batch-update-credentials", h.Admin.Account.BatchUpdateCredentials)
 
 				// Claude OAuth routes
 				accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)
