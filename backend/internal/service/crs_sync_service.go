@@ -783,7 +783,7 @@ REDACTED
 	if err != nil {
 		return "", err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -818,7 +818,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
