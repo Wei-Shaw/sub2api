@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div
-      class="fixed top-4 right-4 z-[9999] space-y-3 pointer-events-none"
+      class="pointer-events-none fixed right-4 top-4 z-[9999] space-y-3"
       aria-live="polite"
       aria-atomic="true"
     >
@@ -26,26 +26,25 @@
           <div class="p-4">
             <div class="flex items-start gap-3">
               <!-- Icon -->
-              <div class="flex-shrink-0 mt-0.5">
+              <div class="mt-0.5 flex-shrink-0">
                 <component
                   :is="getIcon(toast.type)"
-                  :class="['w-5 h-5', getIconColor(toast.type)]"
+                  :class="['h-5 w-5', getIconColor(toast.type)]"
                   aria-hidden="true"
                 />
               </div>
 
               <!-- Content -->
-              <div class="flex-1 min-w-0">
-                <p
-                  v-if="toast.title"
-                  class="text-sm font-semibold text-gray-900 dark:text-white"
-                >
+              <div class="min-w-0 flex-1">
+                <p v-if="toast.title" class="text-sm font-semibold text-gray-900 dark:text-white">
                   {{ toast.title REDACTEDREDACTED
                 </p>
                 <p
                   :class="[
                     'text-sm leading-relaxed',
-                    toast.title ? 'mt-1 text-gray-600 dark:text-gray-300' : 'text-gray-900 dark:text-white'
+                    toast.title
+                      ? 'mt-1 text-gray-600 dark:text-gray-300'
+                      : 'text-gray-900 dark:text-white'
                   ]"
                 >
                   {{ toast.message REDACTEDREDACTED
@@ -55,10 +54,10 @@
               <!-- Close button -->
               <button
                 @click="removeToast(toast.id)"
-                class="flex-shrink-0 p-1 -m-1 text-gray-400 dark:text-gray-500 transition-colors rounded hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-700"
+                class="-m-1 flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-dark-700 dark:hover:text-gray-300"
                 aria-label="Close notification"
               >
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     fill-rule="evenodd"
                     d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
@@ -70,10 +69,7 @@
           </div>
 
           <!-- Progress bar -->
-          <div
-            v-if="toast.duration"
-            class="h-1 bg-gray-100 dark:bg-dark-700"
-          >
+          <div v-if="toast.duration" class="h-1 bg-gray-100 dark:bg-dark-700">
             <div
               :class="['h-full transition-all', getProgressBarColor(toast.type)]"
               :style="{ width: `${getProgress(toast)REDACTED%` REDACTED"

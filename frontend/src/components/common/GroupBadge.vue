@@ -1,7 +1,7 @@
 <template>
   <span
     :class="[
-      'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium transition-colors',
+      'inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium transition-colors',
       badgeClass
     ]"
   >
@@ -10,10 +10,7 @@
     <!-- Group name -->
     <span class="truncate">{{ name REDACTEDREDACTED</span>
     <!-- Right side label -->
-    <span
-      v-if="showLabel"
-      :class="labelClass"
-    >
+    <span v-if="showLabel" :class="labelClass">
       {{ labelText REDACTEDREDACTED
     </span>
   </span>
@@ -31,7 +28,7 @@ interface Props {
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   showRate?: boolean
-  daysRemaining?: number | null  // 剩余天数（订阅类型时使用）
+  daysRemaining?: number | null // 剩余天数（订阅类型时使用）
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -97,6 +94,9 @@ const labelClass = computed(() => {
   if (props.platform === 'openai') {
     return `${baseREDACTED bg-emerald-200/60 text-emerald-800 dark:bg-emerald-800/40 dark:text-emerald-300`
   REDACTED
+  if (props.platform === 'gemini') {
+    return `${baseREDACTED bg-blue-200/60 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300`
+  REDACTED
   return `${baseREDACTED bg-violet-200/60 text-violet-800 dark:bg-violet-800/40 dark:text-violet-300`
 REDACTED)
 
@@ -112,6 +112,11 @@ const badgeClass = computed(() => {
     return isSubscription.value
       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
       : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+  REDACTED
+  if (props.platform === 'gemini') {
+    return isSubscription.value
+      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+      : 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
   REDACTED
   // Fallback: original colors
   return isSubscription.value

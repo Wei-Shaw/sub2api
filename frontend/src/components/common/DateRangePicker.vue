@@ -3,14 +3,21 @@
     <button
       type="button"
       @click="toggle"
-      :class="[
-        'date-picker-trigger',
-        isOpen && 'date-picker-trigger-open'
-      ]"
+      :class="['date-picker-trigger', isOpen && 'date-picker-trigger-open']"
     >
       <span class="date-picker-icon">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          stroke-width="1.5"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+          />
         </svg>
       </span>
       <span class="date-picker-value">
@@ -18,7 +25,7 @@
       </span>
       <span class="date-picker-chevron">
         <svg
-          :class="['w-4 h-4 transition-transform duration-200', isOpen && 'rotate-180']"
+          :class="['h-4 w-4 transition-transform duration-200', isOpen && 'rotate-180']"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -30,20 +37,14 @@
     </button>
 
     <Transition name="date-picker-dropdown">
-      <div
-        v-if="isOpen"
-        class="date-picker-dropdown"
-      >
+      <div v-if="isOpen" class="date-picker-dropdown">
         <!-- Quick presets -->
         <div class="date-picker-presets">
           <button
             v-for="preset in presets"
             :key="preset.value"
             @click="selectPreset(preset)"
-            :class="[
-              'date-picker-preset',
-              isPresetActive(preset) && 'date-picker-preset-active'
-            ]"
+            :class="['date-picker-preset', isPresetActive(preset) && 'date-picker-preset-active']"
           >
             {{ t(preset.labelKey) REDACTEDREDACTED
           </button>
@@ -64,8 +65,18 @@
             />
           </div>
           <div class="date-picker-separator">
-            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H3" />
+            <svg
+              class="h-4 w-4 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H3"
+              />
             </svg>
           </div>
           <div class="date-picker-field">
@@ -83,10 +94,7 @@
 
         <!-- Apply button -->
         <div class="date-picker-actions">
-          <button
-            @click="apply"
-            class="date-picker-apply"
-          >
+          <button @click="apply" class="date-picker-apply">
             {{ t('dates.apply') REDACTEDREDACTED
           </button>
         </div>
@@ -204,7 +212,7 @@ const presets: DatePreset[] = [
 
 const displayValue = computed(() => {
   if (activePreset.value) {
-    const preset = presets.find(p => p.value === activePreset.value)
+    const preset = presets.find((p) => p.value === activePreset.value)
     if (preset) return t(preset.labelKey)
   REDACTED
 
@@ -275,15 +283,21 @@ const handleEscape = (event: KeyboardEvent) => {
 REDACTED
 
 // Sync local state with props
-watch(() => props.startDate, (val) => {
-  localStartDate.value = val
-  onDateChange()
-REDACTED)
+watch(
+  () => props.startDate,
+  (val) => {
+    localStartDate.value = val
+    onDateChange()
+  REDACTED
+)
 
-watch(() => props.endDate, (val) => {
-  localEndDate.value = val
-  onDateChange()
-REDACTED)
+watch(
+  () => props.endDate,
+  (val) => {
+    localEndDate.value = val
+    onDateChange()
+  REDACTED
+)
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
@@ -301,18 +315,18 @@ REDACTED)
 <style scoped>
 .date-picker-trigger {
   @apply flex items-center gap-2;
-  @apply px-3 py-2 rounded-lg text-sm;
+  @apply rounded-lg px-3 py-2 text-sm;
   @apply bg-white dark:bg-dark-800;
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-700 dark:text-gray-300;
   @apply transition-all duration-200;
-  @apply focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500;
+  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
   @apply hover:border-gray-300 dark:hover:border-dark-500;
   @apply cursor-pointer;
 REDACTED
 
 .date-picker-trigger-open {
-  @apply ring-2 ring-primary-500/30 border-primary-500;
+  @apply border-primary-500 ring-2 ring-primary-500/30;
 REDACTED
 
 .date-picker-icon {
@@ -328,7 +342,7 @@ REDACTED
 REDACTED
 
 .date-picker-dropdown {
-  @apply absolute z-[100] mt-2 left-0;
+  @apply absolute left-0 z-[100] mt-2;
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;
@@ -342,7 +356,7 @@ REDACTED
 REDACTED
 
 .date-picker-preset {
-  @apply px-3 py-1.5 text-xs font-medium rounded-md;
+  @apply rounded-md px-3 py-1.5 text-xs font-medium;
   @apply text-gray-600 dark:text-gray-400;
   @apply hover:bg-gray-100 dark:hover:bg-dark-700;
   @apply transition-colors duration-150;
@@ -366,15 +380,15 @@ REDACTED
 REDACTED
 
 .date-picker-label {
-  @apply block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1;
+  @apply mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400;
 REDACTED
 
 .date-picker-input {
-  @apply w-full px-2 py-1.5 text-sm rounded-md;
+  @apply w-full rounded-md px-2 py-1.5 text-sm;
   @apply bg-gray-50 dark:bg-dark-700;
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
-  @apply focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500;
+  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
 REDACTED
 
 .date-picker-input::-webkit-calendar-picker-indicator {
@@ -395,7 +409,7 @@ REDACTED
 REDACTED
 
 .date-picker-apply {
-  @apply px-4 py-1.5 text-sm font-medium rounded-lg;
+  @apply rounded-lg px-4 py-1.5 text-sm font-medium;
   @apply bg-primary-600 text-white;
   @apply hover:bg-primary-700;
   @apply transition-colors duration-150;

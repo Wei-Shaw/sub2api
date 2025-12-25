@@ -1,13 +1,18 @@
 <template>
   <div class="card p-4">
-    <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">{{ t('admin.dashboard.tokenUsageTrend') REDACTEDREDACTED</h3>
-    <div v-if="loading" class="flex items-center justify-center h-48">
+    <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
+      {{ t('admin.dashboard.tokenUsageTrend') REDACTEDREDACTED
+    </h3>
+    <div v-if="loading" class="flex h-48 items-center justify-center">
       <LoadingSpinner />
     </div>
     <div v-else-if="trendData.length > 0 && chartData" class="h-48">
       <Line :data="chartData" :options="lineOptions" />
     </div>
-    <div v-else class="flex items-center justify-center h-48 text-gray-500 dark:text-gray-400 text-sm">
+    <div
+      v-else
+      class="flex h-48 items-center justify-center text-sm text-gray-500 dark:text-gray-400"
+    >
       {{ t('admin.dashboard.noDataAvailable') REDACTEDREDACTED
     </div>
   </div>
@@ -58,40 +63,40 @@ const chartColors = computed(() => ({
   grid: isDarkMode.value ? '#374151' : '#e5e7eb',
   input: '#3b82f6',
   output: '#10b981',
-  cache: '#f59e0b',
+  cache: '#f59e0b'
 REDACTED))
 
 const chartData = computed(() => {
   if (!props.trendData?.length) return null
 
   return {
-    labels: props.trendData.map(d => d.date),
+    labels: props.trendData.map((d) => d.date),
     datasets: [
       {
         label: 'Input',
-        data: props.trendData.map(d => d.input_tokens),
+        data: props.trendData.map((d) => d.input_tokens),
         borderColor: chartColors.value.input,
         backgroundColor: `${chartColors.value.inputREDACTED20`,
         fill: true,
-        tension: 0.3,
+        tension: 0.3
       REDACTED,
       {
         label: 'Output',
-        data: props.trendData.map(d => d.output_tokens),
+        data: props.trendData.map((d) => d.output_tokens),
         borderColor: chartColors.value.output,
         backgroundColor: `${chartColors.value.outputREDACTED20`,
         fill: true,
-        tension: 0.3,
+        tension: 0.3
       REDACTED,
       {
         label: 'Cache',
-        data: props.trendData.map(d => d.cache_tokens),
+        data: props.trendData.map((d) => d.cache_tokens),
         borderColor: chartColors.value.cache,
         backgroundColor: `${chartColors.value.cacheREDACTED20`,
         fill: true,
-        tension: 0.3,
-      REDACTED,
-    ],
+        tension: 0.3
+      REDACTED
+    ]
   REDACTED
 REDACTED)
 
@@ -100,7 +105,7 @@ const lineOptions = computed(() => ({
   maintainAspectRatio: false,
   interaction: {
     intersect: false,
-    mode: 'index' as const,
+    mode: 'index' as const
   REDACTED,
   plugins: {
     legend: {
@@ -111,9 +116,9 @@ const lineOptions = computed(() => ({
         pointStyle: 'circle',
         padding: 15,
         font: {
-          size: 11,
-        REDACTED,
-      REDACTED,
+          size: 11
+        REDACTED
+      REDACTED
     REDACTED,
     tooltip: {
       callbacks: {
@@ -127,35 +132,35 @@ const lineOptions = computed(() => ({
             return `Actual: $${formatCost(data.actual_cost)REDACTED | Standard: $${formatCost(data.cost)REDACTED`
           REDACTED
           return ''
-        REDACTED,
-      REDACTED,
-    REDACTED,
+        REDACTED
+      REDACTED
+    REDACTED
   REDACTED,
   scales: {
     x: {
       grid: {
-        color: chartColors.value.grid,
+        color: chartColors.value.grid
       REDACTED,
       ticks: {
         color: chartColors.value.text,
         font: {
-          size: 10,
-        REDACTED,
-      REDACTED,
+          size: 10
+        REDACTED
+      REDACTED
     REDACTED,
     y: {
       grid: {
-        color: chartColors.value.grid,
+        color: chartColors.value.grid
       REDACTED,
       ticks: {
         color: chartColors.value.text,
         font: {
-          size: 10,
+          size: 10
         REDACTED,
-        callback: (value: string | number) => formatTokens(Number(value)),
-      REDACTED,
-    REDACTED,
-  REDACTED,
+        callback: (value: string | number) => formatTokens(Number(value))
+      REDACTED
+    REDACTED
+  REDACTED
 REDACTED))
 
 const formatTokens = (value: number): string => {

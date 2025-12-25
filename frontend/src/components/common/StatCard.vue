@@ -1,24 +1,16 @@
 <template>
   <div class="stat-card">
     <div :class="['stat-icon', iconClass]">
-      <component
-        v-if="icon"
-        :is="icon"
-        class="w-6 h-6"
-        aria-hidden="true"
-      />
+      <component v-if="icon" :is="icon" class="h-6 w-6" aria-hidden="true" />
     </div>
-    <div class="flex-1 min-w-0">
+    <div class="min-w-0 flex-1">
       <p class="stat-label truncate">{{ title REDACTEDREDACTED</p>
-      <div class="flex items-baseline gap-2 mt-1">
+      <div class="mt-1 flex items-baseline gap-2">
         <p class="stat-value">{{ formattedValue REDACTEDREDACTED</p>
-        <span
-          v-if="change !== undefined"
-          :class="['stat-trend', trendClass]"
-        >
+        <span v-if="change !== undefined" :class="['stat-trend', trendClass]">
           <svg
             v-if="changeType !== 'neutral'"
-            :class="['w-3 h-3', changeType === 'down' && 'rotate-180']"
+            :class="['h-3 w-3', changeType === 'down' && 'rotate-180']"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
