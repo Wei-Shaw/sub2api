@@ -20,6 +20,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"github.com/gin-gonic/gin"
 )
@@ -388,6 +390,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *m
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	if !gjson.GetBytes(body, "system").Exists() {
+		body, _ = sjson.SetBytes(body, "system", []any{
+			map[string]any{
+				"type": "text",
+				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+				"cache_control": map[string]string{
+					"type": "ephemeral",
+				},
+			},
+		})
 	}
 
 	// 应用模型映射（仅对apikey类型账号）
