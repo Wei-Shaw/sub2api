@@ -16,6 +16,7 @@ const turnstileVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/sitev
 
 type turnstileVerifier struct {
 	httpClient *http.Client
+	verifyURL  string
 }
 
 func NewTurnstileVerifier() service.TurnstileVerifier {
@@ -23,6 +24,7 @@ func NewTurnstileVerifier() service.TurnstileVerifier {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		verifyURL: turnstileVerifyURL,
 	}
 }
 
@@ -34,7 +36,7 @@ func (v *turnstileVerifier) VerifyToken(ctx context.Context, secretKey, token, r
 		formData.Set("remoteip", remoteIP)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, turnstileVerifyURL, strings.NewReader(formData.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, v.verifyURL, strings.NewReader(formData.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

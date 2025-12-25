@@ -12,10 +12,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-type claudeUsageService struct{}
+const defaultClaudeUsageURL = "https://api.anthropic.com/api/oauth/usage"
+
+type claudeUsageService struct {
+	usageURL string
+}
 
 func NewClaudeUsageFetcher() service.ClaudeUsageFetcher {
-	return &claudeUsageService{}
+	return &claudeUsageService{usageURL: defaultClaudeUsageURL}
 }
 
 func (s *claudeUsageService) FetchUsage(ctx context.Context, accessToken, proxyURL string) (*service.ClaudeUsageResponse, error) {
@@ -35,7 +39,7 @@ func (s *claudeUsageService) FetchUsage(ctx context.Context, accessToken, proxyU
 		Timeout:   30 * time.Second,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.anthropic.com/api/oauth/usage", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", s.usageURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request failed: %w", err)
 	}

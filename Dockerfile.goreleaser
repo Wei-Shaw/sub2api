@@ -1,0 +1,40 @@
+# =============================================================================
+# Sub2API Dockerfile for GoReleaser
+# =============================================================================
+# This Dockerfile is used by GoReleaser to build Docker images.
+# It only packages the pre-built binary, no compilation needed.
+# =============================================================================
+
+FROM alpine:3.19
+
+LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
+LABEL description="Sub2API - AI API Gateway Platform"
+LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user
+RUN addgroup -g 1000 sub2api && \
+    adduser -u 1000 -G sub2api -s /bin/sh -D sub2api
+
+WORKDIR /app
+
+# Copy pre-built binary from GoReleaser
+COPY sub2api /app/sub2api
+
+# Create data directory
+RUN mkdir -p /app/data && chown -R sub2api:sub2api /app
+
+USER sub2api
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${SERVER_PORT:-8080}/health || exit 1
+
+ENTRYPOINT ["/app/sub2api"]

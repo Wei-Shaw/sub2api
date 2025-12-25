@@ -16,11 +16,11 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: ${SUB2API_IMAGE:-sub2api:local}
+    image: sub2api:latest
     container_name: sub2api
     restart: unless-stopped
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-9899}:8080"
+      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
@@ -140,6 +140,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    ports:
+      - 5433:5432
 
   # ===========================================================================
   # Redis Cache

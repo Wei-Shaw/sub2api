@@ -17,6 +17,15 @@
           </svg>
         </button>
         <button
+          @click="showCrsSyncModal = true"
+          class="btn btn-secondary"
+          title="从 CRS 同步"
+        >
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+          </svg>
+        </button>
+        <button
           @click="showCreateModal = true"
           class="btn btn-primary"
         >
@@ -66,9 +75,63 @@
         </div>
       </div>
 
+      <!-- Bulk Actions Bar -->
+      <div v-if="selectedAccountIds.length > 0" class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 px-4 py-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-primary-900 dark:text-primary-100">
+              {{ t('admin.accounts.bulkActions.selected', { count: selectedAccountIds.length }) }}
+            </span>
+            <button
+              @click="selectCurrentPageAccounts"
+              class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+            >
+              {{ t('admin.accounts.bulkActions.selectCurrentPage') }}
+            </button>
+            <span class="text-gray-300 dark:text-primary-800">•</span>
+            <button
+              @click="selectedAccountIds = []"
+              class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+            >
+              {{ t('admin.accounts.bulkActions.clear') }}
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              @click="handleBulkDelete"
+              class="btn btn-danger btn-sm"
+            >
+              <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+              {{ t('admin.accounts.bulkActions.delete') }}
+            </button>
+            <button
+              @click="showBulkEditModal = true"
+              class="btn btn-primary btn-sm"
+            >
+              <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+              </svg>
+              {{ t('admin.accounts.bulkActions.edit') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Accounts Table -->
       <div class="card overflow-hidden">
         <DataTable :columns="columns" :data="accounts" :loading="loading">
+          <template #cell-select="{ row }">
+            <input
+              type="checkbox"
+              :checked="selectedAccountIds.includes(row.id)"
+              @change="toggleAccountSelection(row.id)"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+          </template>
+
           <template #cell-name="{ value }">
             <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
           </template>
@@ -315,6 +378,32 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
+    <ConfirmDialog
+      :show="showBulkDeleteDialog"
+      :title="t('admin.accounts.bulkDeleteTitle')"
+      :message="t('admin.accounts.bulkDeleteConfirm', { count: selectedAccountIds.length })"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmBulkDelete"
+      @cancel="showBulkDeleteDialog = false"
+    />
+
+    <SyncFromCrsModal
+      :show="showCrsSyncModal"
+      @close="showCrsSyncModal = false"
+      @synced="handleCrsSynced"
+    />
+
+    <!-- Bulk Edit Account Modal -->
+    <BulkEditAccountModal
+      :show="showBulkEditModal"
+      :account-ids="selectedAccountIds"
+      :proxies="proxies"
+      :groups="groups"
+      @close="showBulkEditModal = false"
+      @updated="handleBulkUpdated"
+    />
   </AppLayout>
 </template>
 
@@ -331,7 +420,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
-import { CreateAccountModal, EditAccountModal, ReAuthAccountModal, AccountStatsModal } from '@/components/account'
+import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, ReAuthAccountModal, AccountStatsModal, SyncFromCrsModal } from '@/components/account'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
@@ -345,6 +434,7 @@ const appStore = useAppStore()
 
 // Table columns
 const columns = computed<Column[]>(() => [
+  { key: 'select', label: '', sortable: false },
   { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
   { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
   { key: 'concurrency', label: t('admin.accounts.columns.concurrencyStatus'), sortable: false },
@@ -402,14 +492,26 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showReAuthModal = ref(false)
 const showDeleteDialog = ref(false)
+const showBulkDeleteDialog = ref(false)
 const showTestModal = ref(false)
 const showStatsModal = ref(false)
+const showCrsSyncModal = ref(false)
+const showBulkEditModal = ref(false)
 const editingAccount = ref<Account | null>(null)
 const reAuthAccount = ref<Account | null>(null)
 const deletingAccount = ref<Account | null>(null)
 const testingAccount = ref<Account | null>(null)
 const statsAccount = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
+const bulkDeleting = ref(false)
+
+// Bulk selection
+const selectedAccountIds = ref<number[]>([])
+const selectCurrentPageAccounts = () => {
+  const pageIds = accounts.value.map(account => account.id)
+  const merged = new Set([...selectedAccountIds.value, ...pageIds])
+  selectedAccountIds.value = Array.from(merged)
+}
 
 // Rate limit / Overload helpers
 const isRateLimited = (account: Account): boolean => {
@@ -480,6 +582,11 @@ const handlePageChange = (page: number) => {
   loadAccounts()
 }
 
+const handleCrsSynced = () => {
+  showCrsSyncModal.value = false
+  loadAccounts()
+}
+
 // Edit modal
 const handleEdit = (account: Account) => {
   editingAccount.value = account
@@ -532,6 +639,38 @@ const confirmDelete = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToDelete'))
     console.error('Error deleting account:', error)
+  }
+}
+
+const handleBulkDelete = () => {
+  if (selectedAccountIds.value.length === 0) return
+  showBulkDeleteDialog.value = true
+}
+
+const confirmBulkDelete = async () => {
+  if (bulkDeleting.value || selectedAccountIds.value.length === 0) return
+
+  bulkDeleting.value = true
+  const ids = [...selectedAccountIds.value]
+  try {
+    const results = await Promise.allSettled(ids.map(id => adminAPI.accounts.delete(id)))
+    const success = results.filter(result => result.status === 'fulfilled').length
+    const failed = results.length - success
+
+    if (failed === 0) {
+      appStore.showSuccess(t('admin.accounts.bulkDeleteSuccess', { count: success }))
+    } else {
+      appStore.showError(t('admin.accounts.bulkDeletePartial', { success, failed }))
+    }
+
+    showBulkDeleteDialog.value = false
+    selectedAccountIds.value = []
+    loadAccounts()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.accounts.bulkDeleteFailed'))
+    console.error('Error deleting accounts:', error)
+  } finally {
+    bulkDeleting.value = false
   }
 }
 
@@ -606,6 +745,23 @@ const handleViewStats = (account: Account) => {
 const closeStatsModal = () => {
   showStatsModal.value = false
   statsAccount.value = null
+}
+
+// Bulk selection toggle
+const toggleAccountSelection = (accountId: number) => {
+  const index = selectedAccountIds.value.indexOf(accountId)
+  if (index === -1) {
+    selectedAccountIds.value.push(accountId)
+  } else {
+    selectedAccountIds.value.splice(index, 1)
+  }
+}
+
+// Bulk update handler
+const handleBulkUpdated = () => {
+  showBulkEditModal.value = false
+  selectedAccountIds.value = []
+  loadAccounts()
 }
 
 // Initialize

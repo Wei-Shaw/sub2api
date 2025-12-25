@@ -17,9 +17,12 @@ jobs:
           go-version-file: backend/go.mod
           check-latest: true
           cache: true
-      - name: Run tests
+      - name: Unit tests
         working-directory: backend
-        run: go test ./...
+        run: make test-unit
+      - name: Integration tests
+        working-directory: backend
+        run: make test-integration
 
   golangci-lint:
     runs-on: ubuntu-latest

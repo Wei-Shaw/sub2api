@@ -17,13 +17,19 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+const defaultIPInfoURL = "https://ipinfo.io/json"
+
 type proxyProbeService struct {
+	ipInfoURL          string
 	insecureSkipVerify bool
 }
 
 func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
 	// 默认启用 TLS 校验，只有显式配置才会跳过验证。
-	return &proxyProbeService{insecureSkipVerify: cfg.Proxy.TLSInsecureSkipVerify}
+	return &proxyProbeService{
+		ipInfoURL:           defaultIPInfoURL,
+		insecureSkipVerify: cfg.Proxy.TLSInsecureSkipVerify,
+	}
 }
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
@@ -38,7 +44,7 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 	}
 
 	startTime := time.Now()
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://ipinfo.io/json", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", s.ipInfoURL, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}

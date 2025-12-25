@@ -20,6 +20,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"github.com/gin-gonic/gin"
 )
@@ -360,8 +362,8 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *model.Accou
 
 // 重试相关常量
 const (
-	maxRetries = 3               // 最大重试次数
-	retryDelay = 2 * time.Second // 重试等待时间
+	maxRetries = 5               // 最大重试次数
+	retryDelay = 6 * time.Second // 重试等待时间
 )
 
 // shouldRetryUpstreamError 判断是否应该重试上游错误
@@ -388,6 +390,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *m
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, fmt.Errorf("parse request: %w", err)
+	}
+
+	if !gjson.GetBytes(body, "system").Exists() {
+		body, _ = sjson.SetBytes(body, "system", []any{
+			map[string]any{
+				"type": "text",
+				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+				"cache_control": map[string]string{
+					"type": "ephemeral",
+				},
+			},
+		})
 	}
 
 	// 应用模型映射（仅对apikey类型账号）
@@ -635,6 +649,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	var statusCode int
 
 	switch resp.StatusCode {
+	case 400:
+		c.Data(http.StatusBadRequest, "application/json", body)
+		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
