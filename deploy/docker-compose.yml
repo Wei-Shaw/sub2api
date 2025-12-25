@@ -16,7 +16,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: sub2api:latest
     container_name: sub2api
     restart: unless-stopped
     ports:
@@ -114,6 +114,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    ports:
+      - 5433:5432
 
   # ===========================================================================
   # Redis Cache

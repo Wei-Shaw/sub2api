@@ -2,11 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AccountRepository struct {
@@ -35,6 +38,22 @@ func (r *AccountRepository) GetByID(ctx context.Context, id int64) (*model.Accou
 		if ag.Group != nil {
 			account.Groups = append(account.Groups, ag.Group)
 		}
+	}
+	return &account, nil
+}
+
+func (r *AccountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*model.Account, error) {
+	if crsAccountID == "" {
+		return nil, nil
+	}
+
+	var account model.Account
+	err := r.db.WithContext(ctx).Where("extra->>'crs_account_id' = ?", crsAccountID).First(&account).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	return &account, nil
 }
@@ -334,4 +353,48 @@ func (r *AccountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	// Save updated Extra
 	return r.db.WithContext(ctx).Model(&model.Account{}).Where("id = ?", id).
 		Update("extra", account.Extra).Error
+}
+
+// BulkUpdate updates multiple accounts with the provided fields.
+// It merges credentials/extra JSONB fields instead of overwriting them.
+func (r *AccountRepository) BulkUpdate(ctx context.Context, ids []int64, updates ports.AccountBulkUpdate) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	updateMap := map[string]any{}
+
+	if updates.Name != nil {
+		updateMap["name"] = *updates.Name
+	}
+	if updates.ProxyID != nil {
+		updateMap["proxy_id"] = updates.ProxyID
+	}
+	if updates.Concurrency != nil {
+		updateMap["concurrency"] = *updates.Concurrency
+	}
+	if updates.Priority != nil {
+		updateMap["priority"] = *updates.Priority
+	}
+	if updates.Status != nil {
+		updateMap["status"] = *updates.Status
+	}
+	if len(updates.Credentials) > 0 {
+		updateMap["credentials"] = gorm.Expr("COALESCE(credentials,'{}') || ?", updates.Credentials)
+	}
+	if len(updates.Extra) > 0 {
+		updateMap["extra"] = gorm.Expr("COALESCE(extra,'{}') || ?", updates.Extra)
+	}
+
+	if len(updateMap) == 0 {
+		return 0, nil
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&model.Account{}).
+		Where("id IN ?", ids).
+		Clauses(clause.Returning{}).
+		Updates(updateMap)
+
+	return result.RowsAffected, result.Error
 }

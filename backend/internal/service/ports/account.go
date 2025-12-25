@@ -11,6 +11,9 @@ import (
 type AccountRepository interface {
 	Create(ctx context.Context, account *model.Account) error
 	GetByID(ctx context.Context, id int64) (*model.Account, error)
+	// GetByCRSAccountID finds an account previously synced from CRS.
+	// Returns (nil, nil) if not found.
+	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*model.Account, error)
 	Update(ctx context.Context, account *model.Account) error
 	Delete(ctx context.Context, id int64) error
 
@@ -35,4 +38,17 @@ type AccountRepository interface {
 	ClearRateLimit(ctx context.Context, id int64) error
 	UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error
 	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
+	BulkUpdate(ctx context.Context, ids []int64, updates AccountBulkUpdate) (int64, error)
+}
+
+// AccountBulkUpdate describes the fields that can be updated in a bulk operation.
+// Nil pointers mean "do not change".
+type AccountBulkUpdate struct {
+	Name        *string
+	ProxyID     *int64
+	Concurrency *int
+	Priority    *int
+	Status      *string
+	Credentials map[string]any
+	Extra       map[string]any
 }
