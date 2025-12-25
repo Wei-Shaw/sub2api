@@ -785,6 +785,7 @@ export default {
       syncFromCrsTitle: '从 CRS 同步账号',
       syncFromCrsDesc:
         '将 claude-relay-service（CRS）中的账号同步到当前系统（不会在浏览器侧直接请求 CRS）。',
+      crsVersionRequirement: '⚠️ 注意：CRS 版本必须 ≥ v1.1.240 才支持此功能',
       crsBaseUrl: 'CRS 服务地址',
       crsBaseUrlPlaceholder: '例如：http://127.0.0.1:3000',
       crsUsername: '用户名',
