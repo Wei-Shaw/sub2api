@@ -13,7 +13,7 @@ export default {
     tags: {
       subscriptionToApi: 'Subscription to API',
       stickySession: 'Sticky Session',
-      realtimeBilling: 'Real-time Billing',
+      realtimeBilling: 'Real-time Billing'
     REDACTED,
     features: {
       unifiedGateway: 'Unified API Gateway',
@@ -24,17 +24,17 @@ export default {
         'Manage multiple upstream accounts with smart load balancing. Support OAuth and API Key authentication.',
       balanceQuota: 'Balance & Quota',
       balanceQuotaDesc:
-        'Token-based billing with precise usage tracking. Manage quotas and recharge with redeem codes.',
+        'Token-based billing with precise usage tracking. Manage quotas and recharge with redeem codes.'
     REDACTED,
     providers: {
       title: 'Supported Providers',
       description: 'Unified API interface for AI services',
       supported: 'Supported',
-      soon: 'Soon',
+      soon: 'Soon'
     REDACTED,
     footer: {
-      allRightsReserved: 'All rights reserved.',
-    REDACTED,
+      allRightsReserved: 'All rights reserved.'
+    REDACTED
   REDACTED,
 
   // Common
@@ -84,7 +84,7 @@ export default {
     searchPlaceholder: 'Search...',
     noOptionsFound: 'No options found',
     saving: 'Saving...',
-    refresh: 'Refresh',
+    refresh: 'Refresh'
   REDACTED,
 
   // Navigation
@@ -108,7 +108,7 @@ export default {
     expand: 'Expand',
     logout: 'Logout',
     github: 'GitHub',
-    mySubscriptions: 'My Subscriptions',
+    mySubscriptions: 'My Subscriptions'
   REDACTED,
 
   // Auth
@@ -142,7 +142,7 @@ export default {
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteNameREDACTED.',
     turnstileExpired: 'Verification expired, please try again',
     turnstileFailed: 'Verification failed, please try again',
-    completeVerification: 'Please complete the verification',
+    completeVerification: 'Please complete the verification'
   REDACTED,
 
   // Dashboard
@@ -185,12 +185,12 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code',
+    addBalanceWithCode: 'Add balance with a code'
   REDACTED,
 
   // Groups (shared)
   groups: {
-    subscription: 'Sub',
+    subscription: 'Sub'
   REDACTED,
 
   // API Keys
@@ -257,7 +257,7 @@ export default {
     customKeyHint: 'Only letters, numbers, underscores and hyphens allowed. Minimum 16 characters.',
     customKeyTooShort: 'Custom key must be at least 16 characters',
     customKeyInvalidChars: 'Custom key can only contain letters, numbers, underscores, and hyphens',
-    customKeyRequired: 'Please enter a custom key',
+    customKeyRequired: 'Please enter a custom key'
   REDACTED,
 
   // Usage
@@ -298,7 +298,7 @@ export default {
     exportSuccess: 'Usage data exported successfully',
     billingType: 'Billing',
     balance: 'Balance',
-    subscription: 'Subscription',
+    subscription: 'Subscription'
   REDACTED,
 
   // Redeem
@@ -338,7 +338,7 @@ export default {
     subscriptionDays: '{daysREDACTED days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
-    failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
+    failedToRedeem: 'Failed to redeem code. Please check the code and try again.'
   REDACTED,
 
   // Profile
@@ -369,12 +369,12 @@ export default {
     passwordsNotMatch: 'New passwords do not match',
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
-    passwordChangeFailed: 'Failed to change password',
+    passwordChangeFailed: 'Failed to change password'
   REDACTED,
 
   // Empty States
   empty: {
-    noData: 'No data found',
+    noData: 'No data found'
   REDACTED,
 
   // Pagination
@@ -388,7 +388,7 @@ export default {
     previous: 'Previous',
     next: 'Next',
     perPage: 'Per page',
-    goToPage: 'Go to page {pageREDACTED',
+    goToPage: 'Go to page {pageREDACTED'
   REDACTED,
 
   // Errors
@@ -400,7 +400,7 @@ export default {
     serverError: 'Server error',
     networkError: 'Network error',
     timeout: 'Request timeout',
-    tryAgain: 'Please try again',
+    tryAgain: 'Please try again'
   REDACTED,
 
   // Dates
@@ -418,7 +418,7 @@ export default {
     startDate: 'Start Date',
     endDate: 'End Date',
     apply: 'Apply',
-    selectDateRange: 'Select date range',
+    selectDateRange: 'Select date range'
   REDACTED,
 
   // Admin
@@ -455,7 +455,7 @@ export default {
       actual: 'Actual',
       standard: 'Standard',
       noDataAvailable: 'No data available',
-      failedToLoad: 'Failed to load dashboard statistics',
+      failedToLoad: 'Failed to load dashboard statistics'
     REDACTED,
 
     // Users
@@ -500,7 +500,7 @@ export default {
         concurrency: 'Concurrency',
         status: 'Status',
         created: 'Created',
-        actions: 'Actions',
+        actions: 'Actions'
       REDACTED,
       today: 'Today',
       total: 'Total',
@@ -558,7 +558,7 @@ export default {
       failedToDeposit: 'Failed to deposit',
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
-      insufficientBalance: 'Insufficient balance, balance cannot be negative after withdrawal',
+      insufficientBalance: 'Insufficient balance, balance cannot be negative after withdrawal'
     REDACTED,
 
     // Groups
@@ -582,7 +582,7 @@ export default {
         accounts: 'Accounts',
         status: 'Status',
         actions: 'Actions',
-        billingType: 'Billing Type',
+        billingType: 'Billing Type'
       REDACTED,
       accountsCount: '{countREDACTED accounts',
       form: {
@@ -590,7 +590,7 @@ export default {
         description: 'Description',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
-        status: 'Status',
+        status: 'Status'
       REDACTED,
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
@@ -629,8 +629,8 @@ export default {
         monthlyLimit: 'Monthly Limit (USD)',
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
-        noLimit: 'No limit',
-      REDACTED,
+        noLimit: 'No limit'
+      REDACTED
     REDACTED,
 
     // Subscriptions
@@ -656,7 +656,7 @@ export default {
       status: {
         active: 'Active',
         expired: 'Expired',
-        revoked: 'Revoked',
+        revoked: 'Revoked'
       REDACTED,
       columns: {
         user: 'User',
@@ -664,13 +664,13 @@ export default {
         usage: 'Usage',
         expires: 'Expires',
         status: 'Status',
-        actions: 'Actions',
+        actions: 'Actions'
       REDACTED,
       form: {
         user: 'User',
         group: 'Subscription Group',
         validityDays: 'Validity (Days)',
-        extendDays: 'Extend by (Days)',
+        extendDays: 'Extend by (Days)'
       REDACTED,
       selectUser: 'Select a user',
       selectGroup: 'Select a subscription group',
@@ -693,7 +693,7 @@ export default {
       failedToExtend: 'Failed to extend subscription',
       failedToRevoke: 'Failed to revoke subscription',
       revokeConfirm:
-        "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone.",
+        "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone."
     REDACTED,
 
     // Accounts
@@ -740,6 +740,7 @@ export default {
         anthropic: 'Anthropic',
         claude: 'Claude',
         openai: 'OpenAI',
+        gemini: 'Gemini'
       REDACTED,
       columns: {
         name: 'Name',
@@ -754,7 +755,7 @@ export default {
         usageWindows: 'Usage Windows',
         priority: 'Priority',
         lastUsed: 'Last Used',
-        actions: 'Actions',
+        actions: 'Actions'
       REDACTED,
       clearRateLimit: 'Clear Rate Limit',
       testConnection: 'Test Connection',
@@ -770,7 +771,7 @@ export default {
         selectCurrentPage: 'Select this page',
         clear: 'Clear selection',
         edit: 'Bulk Edit',
-        delete: 'Bulk Delete',
+        delete: 'Bulk Delete'
       REDACTED,
       bulkEdit: {
         title: 'Bulk Edit Accounts',
@@ -784,7 +785,7 @@ export default {
         partialSuccess: 'Partially updated: {successREDACTED succeeded, {failedREDACTED failed',
         failed: 'Bulk update failed',
         noSelection: 'Please select accounts to edit',
-        noFieldsSelected: 'Select at least one field to update',
+        noFieldsSelected: 'Select at least one field to update'
       REDACTED,
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {countREDACTED account(s)? This action cannot be undone.',
@@ -919,13 +920,49 @@ export default {
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
           authCodeHint:
-            'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+            'You can copy the entire URL or just the code parameter value, the system will auto-detect'
         REDACTED,
+        // Gemini specific
+        gemini: {
+          title: 'Gemini Account Authorization',
+          followSteps: 'Follow these steps to authorize your Gemini account:',
+          step1GenerateUrl: 'Generate the authorization URL (requires a redirect URI)',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc:
+            'Open the authorization URL in a new tab, log in to your Google account and authorize.',
+          step3EnterCode: 'Enter Authorization URL or Code',
+          authCodeDesc:
+            'After authorization, you will be redirected to the redirect URI with <code>code</code> and <code>state</code>. Paste the full URL or just the code below:',
+          authCode: 'Authorization URL or Code',
+          authCodePlaceholder:
+            'Option 1: Paste the complete callback URL\n(https://your-domain/auth/callback?code=...&state=...)\nOption 2: Paste only the code value',
+          authCodeHint:
+            'If you paste the full URL, the system will auto-extract code/state for you',
+          redirectUri: 'Redirect URI',
+          redirectUriHint:
+            'This must be configured in your Google OAuth client and must match exactly.',
+          confirmRedirectUri:
+            'I have configured this Redirect URI in the Google OAuth client (must match exactly)',
+          invalidRedirectUri: 'Redirect URI must be a valid http(s) URL',
+          redirectUriNotConfirmed: 'Please confirm the Redirect URI is configured correctly',
+          missingRedirectUri: 'Missing redirect URI',
+          failedToGenerateUrl: 'Failed to generate Gemini auth URL',
+          missingExchangeParams: 'Missing auth code, session ID, state, or redirect URI',
+          failedToExchangeCode: 'Failed to exchange Gemini auth code',
+          modelPassthrough: 'Gemini Model Passthrough',
+          modelPassthroughDesc:
+            'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
+          stateWarningTitle: '⚠️ Important: Gemini requires both code and state',
+          stateWarningDesc:
+            'We recommend pasting the complete callback URL so the system can auto-extract both code and state. Pasting only the code will cause authorization to fail.'
+        REDACTED
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',
       claudeCodeAccount: 'Claude Code Account',
       openaiAccount: 'OpenAI Account',
+      geminiAccount: 'Gemini Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
@@ -979,8 +1016,8 @@ export default {
         todayTokens: 'Today Tokens',
         todayCost: 'Today Cost',
         usageTrend: '30-Day Cost & Request Trend',
-        noData: 'No usage data available for this account',
-      REDACTED,
+        noData: 'No usage data available for this account'
+      REDACTED
     REDACTED,
 
     // Proxies
@@ -998,7 +1035,7 @@ export default {
         protocol: 'Protocol',
         address: 'Address',
         status: 'Status',
-        actions: 'Actions',
+        actions: 'Actions'
       REDACTED,
       testConnection: 'Test Connection',
       batchTest: 'Test All Proxies',
@@ -1046,7 +1083,7 @@ export default {
       failedToDelete: 'Failed to delete proxy',
       failedToTest: 'Failed to test proxy',
       deleteConfirm:
-        "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed.",
+        "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed."
     REDACTED,
 
     // Redeem Codes
@@ -1069,7 +1106,7 @@ export default {
         status: 'Status',
         usedBy: 'Used By',
         usedAt: 'Used At',
-        actions: 'Actions',
+        actions: 'Actions'
       REDACTED,
       userPrefix: 'User #{idREDACTED',
       exportCsv: 'Export CSV',
@@ -1106,7 +1143,7 @@ export default {
       selectGroupPlaceholder: 'Choose a subscription group',
       validityDays: 'Validity Days',
       groupRequired: 'Please select a subscription group',
-      days: ' days',
+      days: ' days'
     REDACTED,
 
     // Usage Records
@@ -1117,7 +1154,7 @@ export default {
       searchUserPlaceholder: 'Search user by email...',
       selectedUser: 'Selected',
       user: 'User',
-      failedToLoad: 'Failed to load usage records',
+      failedToLoad: 'Failed to load usage records'
     REDACTED,
 
     // Settings
@@ -1130,7 +1167,7 @@ export default {
         enableRegistration: 'Enable Registration',
         enableRegistrationHint: 'Allow new users to register',
         emailVerification: 'Email Verification',
-        emailVerificationHint: 'Require email verification for new registrations',
+        emailVerificationHint: 'Require email verification for new registrations'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',
@@ -1140,7 +1177,7 @@ export default {
         siteKey: 'Site Key',
         secretKey: 'Secret Key',
         siteKeyHint: 'Get this from your Cloudflare Dashboard',
-        secretKeyHint: 'Server-side verification key (keep this secret)',
+        secretKeyHint: 'Server-side verification key (keep this secret)'
       REDACTED,
       defaults: {
         title: 'Default User Settings',
@@ -1148,7 +1185,7 @@ export default {
         defaultBalance: 'Default Balance',
         defaultBalanceHint: 'Initial balance for new users',
         defaultConcurrency: 'Default Concurrency',
-        defaultConcurrencyHint: 'Maximum concurrent requests for new users',
+        defaultConcurrencyHint: 'Maximum concurrent requests for new users'
       REDACTED,
       site: {
         title: 'Site Settings',
@@ -1171,7 +1208,7 @@ export default {
         logoHint: 'PNG, JPG, or SVG. Max 300KB. Recommended: 80x80px square image.',
         logoSizeError: 'Image size exceeds 300KB limit ({sizeREDACTEDKB)',
         logoTypeError: 'Please select an image file',
-        logoReadError: 'Failed to read the image file',
+        logoReadError: 'Failed to read the image file'
       REDACTED,
       smtp: {
         title: 'SMTP Settings',
@@ -1186,7 +1223,7 @@ export default {
         fromEmail: 'From Email',
         fromName: 'From Name',
         useTls: 'Use TLS',
-        useTlsHint: 'Enable TLS encryption for SMTP connection',
+        useTlsHint: 'Enable TLS encryption for SMTP connection'
       REDACTED,
       testEmail: {
         title: 'Send Test Email',
@@ -1194,7 +1231,7 @@ export default {
         recipientEmail: 'Recipient Email',
         sendTestEmail: 'Send Test Email',
         sending: 'Sending...',
-        enterRecipientHint: 'Please enter a recipient email address',
+        enterRecipientHint: 'Please enter a recipient email address'
       REDACTED,
       adminApiKey: {
         title: 'Admin API Key',
@@ -1217,7 +1254,7 @@ export default {
         keyCopied: 'Key copied to clipboard',
         keyWarning: 'This key will only be shown once. Please copy it now.',
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
-        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>',
+        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
       REDACTED,
       saveSettings: 'Save Settings',
       saving: 'Saving...',
@@ -1227,8 +1264,8 @@ export default {
       failedToLoad: 'Failed to load settings',
       failedToSave: 'Failed to save settings',
       failedToTestSmtp: 'SMTP connection test failed',
-      failedToSendTestEmail: 'Failed to send test email',
-    REDACTED,
+      failedToSendTestEmail: 'Failed to send test email'
+    REDACTED
   REDACTED,
 
   // Subscription Progress (Header component)
@@ -1244,7 +1281,7 @@ export default {
     expiresToday: 'Expires today',
     expiresTomorrow: 'Expires tomorrow',
     viewAll: 'View all subscriptions',
-    noSubscriptions: 'No active subscriptions',
+    noSubscriptions: 'No active subscriptions'
   REDACTED,
 
   // Version Badge
@@ -1268,7 +1305,7 @@ export default {
     restartRequired: 'Please restart the service to apply the update',
     restartNow: 'Restart Now',
     restarting: 'Restarting...',
-    retry: 'Retry',
+    retry: 'Retry'
   REDACTED,
 
   // User Subscriptions Page
@@ -1281,7 +1318,7 @@ export default {
     status: {
       active: 'Active',
       expired: 'Expired',
-      revoked: 'Revoked',
+      revoked: 'Revoked'
     REDACTED,
     usage: 'Usage',
     expires: 'Expires',
@@ -1294,6 +1331,6 @@ export default {
     expiresOn: 'Expires on {dateREDACTED',
     resetIn: 'Resets in {timeREDACTED',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{usedREDACTED of {limitREDACTED',
-  REDACTED,
+    usageOf: '{usedREDACTED of {limitREDACTED'
+  REDACTED
 REDACTED

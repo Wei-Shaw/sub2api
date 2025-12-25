@@ -26,8 +26,8 @@ export const i18n = createI18n({
   fallbackLocale: 'en',
   messages: {
     en,
-    zh,
-  REDACTED,
+    zh
+  REDACTED
 REDACTED)
 
 export function setLocale(locale: string) {
@@ -44,7 +44,7 @@ REDACTED
 
 export const availableLocales = [
   { code: 'en', name: 'English', flag: '🇺🇸' REDACTED,
-  { code: 'zh', name: '中文', flag: '🇨🇳' REDACTED,
+  { code: 'zh', name: '中文', flag: '🇨🇳' REDACTED
 ]
 
 export default i18n
