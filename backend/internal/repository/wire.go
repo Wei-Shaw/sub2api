@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 
 	"github.com/google/wire"
 )

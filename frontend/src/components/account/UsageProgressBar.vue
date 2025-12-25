@@ -1,37 +1,50 @@
 <template>
-  <div class="flex items-center gap-1">
-    <!-- Label badge (fixed width for alignment) -->
-    <span
-      :class="[
-        'text-[10px] font-medium px-1 rounded w-[32px] text-center shrink-0',
-        labelClass
-      ]"
-    >
-      {{ label }}
-    </span>
-
-    <!-- Progress bar container -->
-    <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
-      <div
-        :class="['h-full transition-all duration-300', barClass]"
-        :style="{ width: barWidth }"
-      ></div>
+  <div>
+    <!-- Window stats row (above progress bar, left-right aligned with progress bar) -->
+    <div v-if="windowStats" class="flex items-center justify-between mb-0.5" :title="`5h 窗口用量统计`">
+      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400 cursor-help">
+        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+          {{ formatRequests }} req
+        </span>
+        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+          {{ formatTokens }}
+        </span>
+        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+          ${{ formatCost }}
+        </span>
+      </div>
     </div>
 
-    <!-- Percentage -->
-    <span :class="['text-[10px] font-medium w-[32px] text-right shrink-0', textClass]">
-      {{ displayPercent }}
-    </span>
+    <!-- Progress bar row -->
+    <div class="flex items-center gap-1">
+      <!-- Label badge (fixed width for alignment) -->
+      <span
+        :class="[
+          'text-[10px] font-medium px-1 rounded w-[32px] text-center shrink-0',
+          labelClass
+        ]"
+      >
+        {{ label }}
+      </span>
 
-    <!-- Reset time -->
-    <span v-if="resetsAt" class="text-[10px] text-gray-400 shrink-0">
-      {{ formatResetTime }}
-    </span>
+      <!-- Progress bar container -->
+      <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+        <div
+          :class="['h-full transition-all duration-300', barClass]"
+          :style="{ width: barWidth }"
+        ></div>
+      </div>
 
-    <!-- Window stats (only for 5h window) -->
-    <span v-if="windowStats" class="text-[10px] text-gray-400 shrink-0 ml-1">
-      ({{ formatStats }})
-    </span>
+      <!-- Percentage -->
+      <span :class="['text-[10px] font-medium w-[32px] text-right shrink-0', textClass]">
+        {{ displayPercent }}
+      </span>
+
+      <!-- Reset time -->
+      <span v-if="resetsAt" class="text-[10px] text-gray-400 shrink-0">
+        {{ formatResetTime }}
+      </span>
+    </div>
   </div>
 </template>
 
@@ -113,17 +126,25 @@ const formatResetTime = computed(() => {
 })
 
 // Format window stats
-const formatStats = computed(() => {
+const formatRequests = computed(() => {
   if (!props.windowStats) return ''
-  const { requests, tokens, cost } = props.windowStats
+  const r = props.windowStats.requests
+  if (r >= 1000000) return `${(r / 1000000).toFixed(1)}M`
+  if (r >= 1000) return `${(r / 1000).toFixed(1)}K`
+  return r.toString()
+})
 
-  // Format tokens (e.g., 1234567 -> 1.2M)
-  const formatTokens = (t: number): string => {
-    if (t >= 1000000) return `${(t / 1000000).toFixed(1)}M`
-    if (t >= 1000) return `${(t / 1000).toFixed(1)}K`
-    return t.toString()
-  }
+const formatTokens = computed(() => {
+  if (!props.windowStats) return ''
+  const t = props.windowStats.tokens
+  if (t >= 1000000000) return `${(t / 1000000000).toFixed(1)}B`
+  if (t >= 1000000) return `${(t / 1000000).toFixed(1)}M`
+  if (t >= 1000) return `${(t / 1000).toFixed(1)}K`
+  return t.toString()
+})
 
-  return `${requests}req ${formatTokens(tokens)}tok $${cost.toFixed(2)}`
+const formatCost = computed(() => {
+  if (!props.windowStats) return '0.00'
+  return props.windowStats.cost.toFixed(2)
 })
 </script>

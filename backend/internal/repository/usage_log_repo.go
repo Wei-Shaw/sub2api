@@ -2,10 +2,10 @@ package repository
 
 import (
 	"context"
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/pagination"
-	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"time"
 
 	"gorm.io/gorm"
@@ -19,9 +19,9 @@ func NewUsageLogRepository(db *gorm.DB) *UsageLogRepository {
 	return &UsageLogRepository{db: db}
 }
 
-// getPerformanceStats 获取 RPM 和 TPM（可选按用户过滤）
+// getPerformanceStats 获取 RPM 和 TPM（近5分钟平均值，可选按用户过滤）
 func (r *UsageLogRepository) getPerformanceStats(ctx context.Context, userID int64) (rpm, tpm int64) {
-	oneMinuteAgo := time.Now().Add(-1 * time.Minute)
+	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
 	var perfStats struct {
 		RequestCount int64 `gorm:"column:request_count"`
 		TokenCount   int64 `gorm:"column:token_count"`
@@ -32,14 +32,15 @@ func (r *UsageLogRepository) getPerformanceStats(ctx context.Context, userID int
 			COUNT(*) as request_count,
 			COALESCE(SUM(input_tokens + output_tokens), 0) as token_count
 		`).
-		Where("created_at >= ?", oneMinuteAgo)
+		Where("created_at >= ?", fiveMinutesAgo)
 
 	if userID > 0 {
 		db = db.Where("user_id = ?", userID)
 	}
 
 	db.Scan(&perfStats)
-	return perfStats.RequestCount, perfStats.TokenCount
+	// 返回5分钟平均值
+	return perfStats.RequestCount / 5, perfStats.TokenCount / 5
 }
 
 func (r *UsageLogRepository) Create(ctx context.Context, log *model.UsageLog) error {

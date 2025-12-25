@@ -15,11 +15,11 @@ import (
 	"syscall"
 	"time"
 
-	"sub2api/internal/config"
-	"sub2api/internal/handler"
-	"sub2api/internal/middleware"
-	"sub2api/internal/setup"
-	"sub2api/internal/web"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/setup"
+	"github.com/Wei-Shaw/sub2api/internal/web"
 
 	"github.com/gin-gonic/gin"
 )

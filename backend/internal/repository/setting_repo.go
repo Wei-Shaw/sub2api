@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"time"
 
 	"gorm.io/gorm"

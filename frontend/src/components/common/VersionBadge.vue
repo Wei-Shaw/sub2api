@@ -109,7 +109,7 @@
                   </div>
                 </div>
 
-                <!-- Restart button -->
+                <!-- Restart button with countdown -->
                 <button
                   @click="handleRestart"
                   :disabled="restarting"
@@ -122,7 +122,11 @@
                   <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  {{ restarting ? t('version.restarting') : t('version.restartNow') }}
+                  <template v-if="restarting">
+                    <span>{{ t('version.restarting') }}</span>
+                    <span v-if="restartCountdown > 0" class="tabular-nums">({{ restartCountdown }}s)</span>
+                  </template>
+                  <span v-else>{{ t('version.restartNow') }}</span>
                 </button>
               </div>
 
@@ -266,6 +270,7 @@ const restarting = ref(false);
 const needRestart = ref(false);
 const updateError = ref('');
 const updateSuccess = ref(false);
+const restartCountdown = ref(0);
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release');
@@ -314,6 +319,7 @@ async function handleRestart() {
   if (restarting.value) return;
 
   restarting.value = true;
+  restartCountdown.value = 8;
 
   try {
     await restartService();
@@ -323,10 +329,43 @@ async function handleRestart() {
     console.log('Service restarting...');
   }
 
-  // Show restarting state for a while, then reload
-  setTimeout(() => {
-    window.location.reload();
-  }, 3000);
+  // Start countdown
+  const countdownInterval = setInterval(() => {
+    restartCountdown.value--;
+    if (restartCountdown.value <= 0) {
+      clearInterval(countdownInterval);
+      // Try to check if service is back before reload
+      checkServiceAndReload();
+    }
+  }, 1000);
+}
+
+async function checkServiceAndReload() {
+  const maxRetries = 5;
+  const retryDelay = 1000;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch('/api/health', {
+        method: 'GET',
+        cache: 'no-cache'
+      });
+      if (response.ok) {
+        // Service is back, reload page
+        window.location.reload();
+        return;
+      }
+    } catch {
+      // Service not ready yet
+    }
+
+    if (i < maxRetries - 1) {
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+  }
+
+  // After retries, reload anyway
+  window.location.reload();
 }
 
 function handleClickOutside(event: MouseEvent) {

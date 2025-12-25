@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 // OpenAIOAuthClient interface for OpenAI OAuth operations

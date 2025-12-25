@@ -1,7 +1,7 @@
 package infrastructure
 
 import (
-	"sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 
 	"github.com/redis/go-redis/v9"
 )

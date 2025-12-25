@@ -53,6 +53,7 @@ export interface PublicSettings {
   site_subtitle: string;
   api_base_url: string;
   contact_info: string;
+  doc_url: string;
   version: string;
 }
 
@@ -322,6 +323,7 @@ export interface Account {
   extra?: CodexUsageSnapshot & Record<string, unknown>; // Extra fields including Codex usage
   proxy_id: number | null;
   concurrency: number;
+  current_concurrency?: number; // Real-time concurrency count from Redis
   priority: number;
   status: 'active' | 'inactive' | 'error';
   error_message: string | null;
@@ -522,8 +524,8 @@ export interface DashboardStats {
   uptime: number;               // 系统运行时间(秒)
 
   // 性能指标
-  rpm: number;  // 最近1分钟的请求数
-  tpm: number;  // 最近1分钟的Token数
+  rpm: number;  // 近5分钟平均每分钟请求数
+  tpm: number;  // 近5分钟平均每分钟Token数
 }
 
 export interface UsageStatsResponse {

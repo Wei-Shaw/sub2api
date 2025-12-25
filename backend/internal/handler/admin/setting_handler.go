@@ -1,9 +1,9 @@
 package admin
 
 import (
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/response"
-	"sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -60,6 +60,7 @@ type UpdateSettingsRequest struct {
 	SiteSubtitle string `json:"site_subtitle"`
 	ApiBaseUrl   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
+	DocUrl       string `json:"doc_url"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
@@ -104,6 +105,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteSubtitle:        req.SiteSubtitle,
 		ApiBaseUrl:          req.ApiBaseUrl,
 		ContactInfo:         req.ContactInfo,
+		DocUrl:              req.DocUrl,
 		DefaultConcurrency:  req.DefaultConcurrency,
 		DefaultBalance:      req.DefaultBalance,
 	}

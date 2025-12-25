@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"sub2api/internal/config"
-	"sub2api/internal/pkg/response"
-	"sub2api/internal/pkg/sysutil"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/sysutil"
 
 	"github.com/gin-gonic/gin"
 )

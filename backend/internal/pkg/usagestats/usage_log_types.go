@@ -44,8 +44,8 @@ type DashboardStats struct {
 	AverageDurationMs float64 `json:"average_duration_ms"` // 平均响应时间
 
 	// 性能指标
-	Rpm int64 `json:"rpm"` // 最近1分钟的请求数
-	Tpm int64 `json:"tpm"` // 最近1分钟的Token数
+	Rpm int64 `json:"rpm"` // 近5分钟平均每分钟请求数
+	Tpm int64 `json:"tpm"` // 近5分钟平均每分钟Token数
 }
 
 // TrendDataPoint represents a single point in trend data
@@ -121,8 +121,8 @@ type UserDashboardStats struct {
 	AverageDurationMs float64 `json:"average_duration_ms"`
 
 	// 性能指标
-	Rpm int64 `json:"rpm"` // 最近1分钟的请求数
-	Tpm int64 `json:"tpm"` // 最近1分钟的Token数
+	Rpm int64 `json:"rpm"` // 近5分钟平均每分钟请求数
+	Tpm int64 `json:"tpm"` // 近5分钟平均每分钟Token数
 }
 
 // UsageLogFilters represents filters for usage log queries

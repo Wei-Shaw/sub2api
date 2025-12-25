@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"

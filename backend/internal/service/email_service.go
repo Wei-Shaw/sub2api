@@ -6,11 +6,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 	"math/big"
 	"net/smtp"
 	"strconv"
-	"sub2api/internal/model"
-	"sub2api/internal/service/ports"
 	"time"
 )
 

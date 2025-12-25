@@ -1,11 +1,11 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"net/http"
 	"strings"
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/response"
-	"sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

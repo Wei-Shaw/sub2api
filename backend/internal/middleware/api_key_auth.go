@@ -3,9 +3,9 @@ package middleware
 import (
 	"context"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"log"
 	"strings"
-	"sub2api/internal/model"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

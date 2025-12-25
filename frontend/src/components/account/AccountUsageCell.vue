@@ -1,24 +1,27 @@
 <template>
   <div v-if="showUsageWindows">
-    <!-- Anthropic OAuth accounts: fetch real usage data -->
-    <template v-if="account.platform === 'anthropic' && account.type === 'oauth'">
+    <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
+    <template v-if="account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')">
       <!-- Loading state -->
       <div v-if="loading" class="space-y-1.5">
+        <!-- OAuth: 3 rows, Setup Token: 1 row -->
         <div class="flex items-center gap-1">
           <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
           <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
           <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
         </div>
-        <div class="flex items-center gap-1">
-          <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-          <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
-          <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-        </div>
-        <div class="flex items-center gap-1">
-          <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-          <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
-          <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-        </div>
+        <template v-if="account.type === 'oauth'">
+          <div class="flex items-center gap-1">
+            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
+            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+          </div>
+          <div class="flex items-center gap-1">
+            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
+            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+          </div>
+        </template>
       </div>
 
       <!-- Error state -->
@@ -38,7 +41,7 @@
           color="indigo"
         />
 
-        <!-- 7d Window -->
+        <!-- 7d Window (OAuth only) -->
         <UsageProgressBar
           v-if="usageInfo.seven_day"
           label="7d"
@@ -47,7 +50,7 @@
           color="emerald"
         />
 
-        <!-- 7d Sonnet Window -->
+        <!-- 7d Sonnet Window (OAuth only) -->
         <UsageProgressBar
           v-if="usageInfo.seven_day_sonnet"
           label="7d S"
@@ -61,11 +64,6 @@
       <div v-else class="text-xs text-gray-400">
         -
       </div>
-    </template>
-
-    <!-- Anthropic Setup Token accounts: show time-based window progress -->
-    <template v-else-if="account.platform === 'anthropic' && account.type === 'setup-token'">
-      <SetupTokenTimeWindow :account="account" />
     </template>
 
     <!-- OpenAI OAuth accounts: show Codex usage from extra field -->
@@ -109,7 +107,6 @@ import { ref, computed, onMounted } from 'vue'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo } from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
-import SetupTokenTimeWindow from './SetupTokenTimeWindow.vue'
 
 const props = defineProps<{
   account: Account
@@ -160,9 +157,10 @@ const codexSecondaryResetAt = computed(() => {
 })
 
 const loadUsage = async () => {
-  // Only fetch usage for Anthropic OAuth accounts
+  // Fetch usage for Anthropic OAuth and Setup Token accounts
   // OpenAI usage comes from account.extra field (updated during forwarding)
-  if (props.account.platform !== 'anthropic' || props.account.type !== 'oauth') return
+  if (props.account.platform !== 'anthropic') return
+  if (props.account.type !== 'oauth' && props.account.type !== 'setup-token') return
 
   loading.value = true
   error.value = null

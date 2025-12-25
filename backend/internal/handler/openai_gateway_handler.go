@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"sub2api/internal/middleware"
-	"sub2api/internal/pkg/openai"
-	"sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

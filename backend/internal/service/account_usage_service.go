@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/usagestats"
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // usageCache 用于缓存usage数据

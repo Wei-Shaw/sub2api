@@ -287,6 +287,20 @@
               <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.site.contactInfoHint') }}</p>
             </div>
 
+            <!-- Doc URL -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                {{ t('admin.settings.site.docUrl') }}
+              </label>
+              <input
+                v-model="form.doc_url"
+                type="url"
+                class="input font-mono text-sm"
+                placeholder="https://docs.example.com"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.site.docUrlHint') }}</p>
+            </div>
+
             <!-- Site Logo Upload -->
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -541,6 +555,7 @@ const form = reactive<SystemSettings>({
   site_subtitle: 'Subscription to API Conversion Platform',
   api_base_url: '',
   contact_info: '',
+  doc_url: '',
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',

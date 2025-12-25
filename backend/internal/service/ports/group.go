@@ -3,8 +3,8 @@ package ports
 import (
 	"context"
 
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 
 	"gorm.io/gorm"
 )

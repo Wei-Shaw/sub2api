@@ -1,11 +1,11 @@
 package server
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"net/http"
-	"sub2api/internal/config"
-	"sub2api/internal/handler"
-	"sub2api/internal/repository"
-	"sub2api/internal/service"
 	"time"
 
 	"github.com/gin-gonic/gin"

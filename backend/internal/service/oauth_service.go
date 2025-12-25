@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"sub2api/internal/model"
-	"sub2api/internal/pkg/oauth"
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows

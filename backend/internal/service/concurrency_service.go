@@ -2,11 +2,25 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"time"
 
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
+
+// generateRequestID generates a unique request ID for concurrency slot tracking
+// Uses 8 random bytes (16 hex chars) for uniqueness
+func generateRequestID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to nanosecond timestamp (extremely rare case)
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
 
 const (
 	// Default extra wait slots beyond concurrency limit
@@ -41,7 +55,10 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 		}, nil
 	}
 
-	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	// Generate unique request ID for this slot
+	requestID := generateRequestID()
+
+	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -52,8 +69,8 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 			ReleaseFunc: func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID); err != nil {
-					log.Printf("Warning: failed to release account slot for %d: %v", accountID, err)
+				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
+					log.Printf("Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
 				}
 			},
 		}, nil
@@ -77,7 +94,10 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 		}, nil
 	}
 
-	acquired, err := s.cache.AcquireUserSlot(ctx, userID, maxConcurrency)
+	// Generate unique request ID for this slot
+	requestID := generateRequestID()
+
+	acquired, err := s.cache.AcquireUserSlot(ctx, userID, maxConcurrency, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -88,8 +108,8 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 			ReleaseFunc: func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				if err := s.cache.ReleaseUserSlot(bgCtx, userID); err != nil {
-					log.Printf("Warning: failed to release user slot for %d: %v", userID, err)
+				if err := s.cache.ReleaseUserSlot(bgCtx, userID, requestID); err != nil {
+					log.Printf("Warning: failed to release user slot for %d (req=%s): %v", userID, requestID, err)
 				}
 			},
 		}, nil
@@ -146,4 +166,21 @@ func CalculateMaxWait(userConcurrency int) int {
 		userConcurrency = 1
 	}
 	return userConcurrency + defaultExtraWaitSlots
+}
+
+// GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts
+// Returns a map of accountID -> current concurrency count
+func (s *ConcurrencyService) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int)
+
+	for _, accountID := range accountIDs {
+		count, err := s.cache.GetAccountConcurrency(ctx, accountID)
+		if err != nil {
+			// If key doesn't exist in Redis, count is 0
+			count = 0
+		}
+		result[accountID] = count
+	}
+
+	return result, nil
 }

@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"time"
 
-	"sub2api/internal/pkg/openai"
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 
 	"github.com/imroc/req/v3"
 )

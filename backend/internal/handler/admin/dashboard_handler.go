@@ -1,10 +1,10 @@
 package admin
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"strconv"
-	"sub2api/internal/pkg/response"
-	"sub2api/internal/pkg/timezone"
-	"sub2api/internal/service"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -107,6 +107,10 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 		// 系统运行统计
 		"average_duration_ms": stats.AverageDurationMs,
 		"uptime":              uptime,
+
+		// 性能指标
+		"rpm": stats.Rpm,
+		"tpm": stats.Tpm,
 	})
 }
 

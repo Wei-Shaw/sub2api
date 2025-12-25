@@ -25,6 +25,7 @@ export const useAppStore = defineStore('app', () => {
   const siteVersion = ref<string>('');
   const contactInfo = ref<string>('');
   const apiBaseUrl = ref<string>('');
+  const docUrl = ref<string>('');
 
   // Version cache state
   const versionLoaded = ref<boolean>(false);
@@ -297,6 +298,7 @@ export const useAppStore = defineStore('app', () => {
         site_subtitle: '',
         api_base_url: apiBaseUrl.value,
         contact_info: contactInfo.value,
+        doc_url: docUrl.value,
         version: siteVersion.value,
       };
     }
@@ -314,6 +316,7 @@ export const useAppStore = defineStore('app', () => {
       siteVersion.value = data.version || '';
       contactInfo.value = data.contact_info || '';
       apiBaseUrl.value = data.api_base_url || '';
+      docUrl.value = data.doc_url || '';
       publicSettingsLoaded.value = true;
       return data;
     } catch (error) {
@@ -347,6 +350,7 @@ export const useAppStore = defineStore('app', () => {
     siteVersion,
     contactInfo,
     apiBaseUrl,
+    docUrl,
 
     // Version state
     versionLoaded,

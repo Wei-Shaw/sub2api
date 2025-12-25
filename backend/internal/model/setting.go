@@ -42,6 +42,7 @@ const (
 	SettingKeySiteSubtitle = "site_subtitle" // 网站副标题
 	SettingKeyApiBaseUrl   = "api_base_url"  // API端点地址（用于客户端配置和导入）
 	SettingKeyContactInfo  = "contact_info"  // 客服联系方式
+	SettingKeyDocUrl       = "doc_url"       // 文档链接
 
 	// 默认配置
 	SettingKeyDefaultConcurrency = "default_concurrency" // 新用户默认并发量
@@ -84,6 +85,7 @@ type SystemSettings struct {
 	SiteSubtitle string `json:"site_subtitle"`
 	ApiBaseUrl   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
+	DocUrl       string `json:"doc_url"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
@@ -101,5 +103,6 @@ type PublicSettings struct {
 	SiteSubtitle        string `json:"site_subtitle"`
 	ApiBaseUrl          string `json:"api_base_url"`
 	ContactInfo         string `json:"contact_info"`
+	DocUrl              string `json:"doc_url"`
 	Version             string `json:"version"`
 }

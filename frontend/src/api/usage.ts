@@ -35,8 +35,8 @@ export interface UserDashboardStats {
   today_cost: number;         // 今日标准计费
   today_actual_cost: number;  // 今日实际扣除
   average_duration_ms: number;
-  rpm: number;                // 最近1分钟的请求数
-  tpm: number;                // 最近1分钟的Token数
+  rpm: number;                // 近5分钟平均每分钟请求数
+  tpm: number;                // 近5分钟平均每分钟Token数
 }
 
 export interface TrendParams {

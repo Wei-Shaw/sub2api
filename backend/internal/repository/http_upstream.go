@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"time"
 
-	"sub2api/internal/config"
-	"sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 // httpUpstreamService is a generic HTTP upstream service that can be used for

@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 type claudeUsageService struct{}
