@@ -16,10 +16,14 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-type proxyProbeService struct{REDACTED
-
 func NewProxyExitInfoProber() service.ProxyExitInfoProber {
-	return &proxyProbeService{REDACTED
+	return &proxyProbeService{ipInfoURL: defaultIPInfoURLREDACTED
+REDACTED
+
+const defaultIPInfoURL = "https://ipinfo.io/json"
+
+type proxyProbeService struct {
+	ipInfoURL string
 REDACTED
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
@@ -34,7 +38,7 @@ REDACTED
 REDACTED
 
 	startTime := time.Now()
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://ipinfo.io/json", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", s.ipInfoURL, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 REDACTED

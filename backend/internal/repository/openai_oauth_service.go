@@ -12,11 +12,13 @@ import (
 	"github.com/imroc/req/v3"
 )
 
-type openaiOAuthService struct{REDACTED
-
 // NewOpenAIOAuthClient creates a new OpenAI OAuth client
 func NewOpenAIOAuthClient() ports.OpenAIOAuthClient {
-	return &openaiOAuthService{REDACTED
+	return &openaiOAuthService{tokenURL: openai.TokenURLREDACTED
+REDACTED
+
+type openaiOAuthService struct {
+	tokenURL string
 REDACTED
 
 func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL string) (*openai.TokenResponse, error) {
@@ -39,7 +41,7 @@ REDACTED
 		SetContext(ctx).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
-		Post(openai.TokenURL)
+		Post(s.tokenURL)
 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
@@ -67,7 +69,7 @@ func (s *openaiOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 		SetContext(ctx).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
-		Post(openai.TokenURL)
+		Post(s.tokenURL)
 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
