@@ -16,7 +16,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: sub2api:latest
+    image: weishaw/sub2api:latest
     container_name: sub2api
     restart: unless-stopped
     ports:
