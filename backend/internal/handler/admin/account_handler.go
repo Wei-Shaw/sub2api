@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -375,18 +376,22 @@ REDACTED else {
 			newCredentials[k] = v
 	REDACTED
 
-		// Update token-related fields
-		newCredentials["access_token"] = tokenInfo.AccessToken
-		newCredentials["token_type"] = tokenInfo.TokenType
-		newCredentials["expires_in"] = tokenInfo.ExpiresIn
-		newCredentials["expires_at"] = tokenInfo.ExpiresAt
-		newCredentials["refresh_token"] = tokenInfo.RefreshToken
-		newCredentials["scope"] = tokenInfo.Scope
-REDACTED
+			// Update token-related fields
+			newCredentials["access_token"] = tokenInfo.AccessToken
+			newCredentials["token_type"] = tokenInfo.TokenType
+			newCredentials["expires_in"] = strconv.FormatInt(tokenInfo.ExpiresIn, 10)
+			newCredentials["expires_at"] = strconv.FormatInt(tokenInfo.ExpiresAt, 10)
+			if strings.TrimSpace(tokenInfo.RefreshToken) != "" {
+				newCredentials["refresh_token"] = tokenInfo.RefreshToken
+		REDACTED
+			if strings.TrimSpace(tokenInfo.Scope) != "" {
+				newCredentials["scope"] = tokenInfo.Scope
+		REDACTED
+	REDACTED
 
-	updatedAccount, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
-		Credentials: newCredentials,
-REDACTED)
+		updatedAccount, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+			Credentials: newCredentials,
+	REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

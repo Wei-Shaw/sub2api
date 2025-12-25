@@ -139,7 +139,8 @@ REDACTED
 REDACTED
 	s.sessionStore.Delete(input.SessionID)
 
-	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn
+	// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
+	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
 	projectID, _ := s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
 
 	return &GeminiTokenInfo{
@@ -167,7 +168,8 @@ func (s *GeminiOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 
 		tokenResp, err := s.oauthClient.RefreshToken(ctx, refreshToken, proxyURL)
 		if err == nil {
-			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn
+			// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
+			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
 			return &GeminiTokenInfo{
 				AccessToken:  tokenResp.AccessToken,
 				RefreshToken: tokenResp.RefreshToken,

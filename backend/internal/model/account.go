@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
@@ -128,8 +129,37 @@ func (a *Account) GetCredential(key string) string {
 		return ""
 REDACTED
 	if v, ok := a.Credentials[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
+		switch vv := v.(type) {
+		case string:
+			return vv
+		case json.Number:
+			return vv.String()
+		case float64:
+			// JSON numbers decode to float64; keep integer formatting for integer-like values.
+			i := int64(vv)
+			if vv == float64(i) {
+				return strconv.FormatInt(i, 10)
+		REDACTED
+			return strconv.FormatFloat(vv, 'f', -1, 64)
+		case float32:
+			f := float64(vv)
+			i := int64(f)
+			if f == float64(i) {
+				return strconv.FormatInt(i, 10)
+		REDACTED
+			return strconv.FormatFloat(f, 'f', -1, 64)
+		case int:
+			return strconv.FormatInt(int64(vv), 10)
+		case int64:
+			return strconv.FormatInt(vv, 10)
+		case int32:
+			return strconv.FormatInt(int64(vv), 10)
+		case uint:
+			return strconv.FormatUint(uint64(vv), 10)
+		case uint64:
+			return strconv.FormatUint(vv, 10)
+		case uint32:
+			return strconv.FormatUint(uint64(vv), 10)
 	REDACTED
 REDACTED
 	return ""
@@ -289,6 +319,11 @@ REDACTED
 // IsAnthropic 检查是否为 Anthropic 平台账号
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
+REDACTED
+
+// IsGemini 检查是否为 Gemini 平台账号
+func (a *Account) IsGemini() bool {
+	return a.Platform == PlatformGemini
 REDACTED
 
 // IsOpenAIOAuth 检查是否为 OpenAI OAuth 类型账号
