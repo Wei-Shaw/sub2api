@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ type CRSSyncService struct {
 	proxyRepo          ProxyRepository
 	oauthService       *OAuthService
 	openaiOAuthService *OpenAIOAuthService
+	geminiOAuthService *GeminiOAuthService
 REDACTED
 
 func NewCRSSyncService(
@@ -27,12 +29,14 @@ func NewCRSSyncService(
 	proxyRepo ProxyRepository,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
+	geminiOAuthService *GeminiOAuthService,
 ) *CRSSyncService {
 	return &CRSSyncService{
 		accountRepo:        accountRepo,
 		proxyRepo:          proxyRepo,
 		oauthService:       oauthService,
 		openaiOAuthService: openaiOAuthService,
+		geminiOAuthService: geminiOAuthService,
 REDACTED
 REDACTED
 
@@ -77,6 +81,8 @@ type crsExportResponse struct {
 		ClaudeConsoleAccounts   []crsConsoleAccount         `json:"claudeConsoleAccounts"`
 		OpenAIOAuthAccounts     []crsOpenAIOAuthAccount     `json:"openaiOAuthAccounts"`
 		OpenAIResponsesAccounts []crsOpenAIResponsesAccount `json:"openaiResponsesAccounts"`
+		GeminiOAuthAccounts     []crsGeminiOAuthAccount     `json:"geminiOAuthAccounts"`
+		GeminiAPIKeyAccounts    []crsGeminiAPIKeyAccount    `json:"geminiApiKeyAccounts"`
 REDACTED `json:"data"`
 REDACTED
 
@@ -149,6 +155,37 @@ type crsOpenAIOAuthAccount struct {
 	Extra       map[string]any `json:"extra"`
 REDACTED
 
+type crsGeminiOAuthAccount struct {
+	Kind        string         `json:"kind"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Platform    string         `json:"platform"`
+	AuthType    string         `json:"authType"` // oauth
+	IsActive    bool           `json:"isActive"`
+	Schedulable bool           `json:"schedulable"`
+	Priority    int            `json:"priority"`
+	Status      string         `json:"status"`
+	Proxy       *crsProxy      `json:"proxy"`
+	Credentials map[string]any `json:"credentials"`
+	Extra       map[string]any `json:"extra"`
+REDACTED
+
+type crsGeminiAPIKeyAccount struct {
+	Kind        string         `json:"kind"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Platform    string         `json:"platform"`
+	IsActive    bool           `json:"isActive"`
+	Schedulable bool           `json:"schedulable"`
+	Priority    int            `json:"priority"`
+	Status      string         `json:"status"`
+	Proxy       *crsProxy      `json:"proxy"`
+	Credentials map[string]any `json:"credentials"`
+	Extra       map[string]any `json:"extra"`
+REDACTED
+
 func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput) (*SyncFromCRSResult, error) {
 	baseURL, err := normalizeBaseURL(input.BaseURL)
 	if err != nil {
@@ -176,7 +213,7 @@ REDACTED
 		Items: make(
 			[]SyncFromCRSItemResult,
 			0,
-			len(exported.Data.ClaudeAccounts)+len(exported.Data.ClaudeConsoleAccounts)+len(exported.Data.OpenAIOAuthAccounts)+len(exported.Data.OpenAIResponsesAccounts),
+			len(exported.Data.ClaudeAccounts)+len(exported.Data.ClaudeConsoleAccounts)+len(exported.Data.OpenAIOAuthAccounts)+len(exported.Data.OpenAIResponsesAccounts)+len(exported.Data.GeminiOAuthAccounts)+len(exported.Data.GeminiAPIKeyAccounts),
 		),
 REDACTED
 
@@ -680,6 +717,225 @@ REDACTED
 		result.Items = append(result.Items, item)
 REDACTED
 
+	// Gemini OAuth -> sub2api gemini oauth
+	for _, src := range exported.Data.GeminiOAuthAccounts {
+		item := SyncFromCRSItemResult{
+			CRSAccountID: src.ID,
+			Kind:         src.Kind,
+			Name:         src.Name,
+	REDACTED
+
+		refreshToken, _ := src.Credentials["refresh_token"].(string)
+		if strings.TrimSpace(refreshToken) == "" {
+			item.Action = "failed"
+			item.Error = "missing refresh_token"
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		proxyID, err := s.mapOrCreateProxy(ctx, input.SyncProxies, &proxies, src.Proxy, fmt.Sprintf("crs-%s", src.Name))
+		if err != nil {
+			item.Action = "failed"
+			item.Error = "proxy sync failed: " + err.Error()
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		credentials := sanitizeCredentialsMap(src.Credentials)
+		if v, ok := credentials["token_type"].(string); !ok || strings.TrimSpace(v) == "" {
+			credentials["token_type"] = "Bearer"
+	REDACTED
+		// Convert expires_at from RFC3339 to Unix seconds string (recommended to keep consistent with GetCredential())
+		if expiresAtStr, ok := credentials["expires_at"].(string); ok && strings.TrimSpace(expiresAtStr) != "" {
+			if t, err := time.Parse(time.RFC3339, expiresAtStr); err == nil {
+				credentials["expires_at"] = strconv.FormatInt(t.Unix(), 10)
+		REDACTED
+	REDACTED
+
+		extra := make(map[string]any)
+		if src.Extra != nil {
+			for k, v := range src.Extra {
+				extra[k] = v
+		REDACTED
+	REDACTED
+		extra["crs_account_id"] = src.ID
+		extra["crs_kind"] = src.Kind
+		extra["crs_synced_at"] = now
+
+		existing, err := s.accountRepo.GetByCRSAccountID(ctx, src.ID)
+		if err != nil {
+			item.Action = "failed"
+			item.Error = "db lookup failed: " + err.Error()
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		if existing == nil {
+			account := &model.Account{
+				Name:        defaultName(src.Name, src.ID),
+				Platform:    model.PlatformGemini,
+				Type:        model.AccountTypeOAuth,
+				Credentials: model.JSONB(credentials),
+				Extra:       model.JSONB(extra),
+				ProxyID:     proxyID,
+				Concurrency: 3,
+				Priority:    clampPriority(src.Priority),
+				Status:      mapCRSStatus(src.IsActive, src.Status),
+				Schedulable: src.Schedulable,
+		REDACTED
+			if err := s.accountRepo.Create(ctx, account); err != nil {
+				item.Action = "failed"
+				item.Error = "create failed: " + err.Error()
+				result.Failed++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
+			if refreshedCreds := s.refreshOAuthToken(ctx, account); refreshedCreds != nil {
+				account.Credentials = refreshedCreds
+				_ = s.accountRepo.Update(ctx, account)
+		REDACTED
+			item.Action = "created"
+			result.Created++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		existing.Extra = mergeJSONB(existing.Extra, extra)
+		existing.Name = defaultName(src.Name, src.ID)
+		existing.Platform = model.PlatformGemini
+		existing.Type = model.AccountTypeOAuth
+		existing.Credentials = mergeJSONB(existing.Credentials, credentials)
+		if proxyID != nil {
+			existing.ProxyID = proxyID
+	REDACTED
+		existing.Concurrency = 3
+		existing.Priority = clampPriority(src.Priority)
+		existing.Status = mapCRSStatus(src.IsActive, src.Status)
+		existing.Schedulable = src.Schedulable
+
+		if err := s.accountRepo.Update(ctx, existing); err != nil {
+			item.Action = "failed"
+			item.Error = "update failed: " + err.Error()
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		if refreshedCreds := s.refreshOAuthToken(ctx, existing); refreshedCreds != nil {
+			existing.Credentials = refreshedCreds
+			_ = s.accountRepo.Update(ctx, existing)
+	REDACTED
+
+		item.Action = "updated"
+		result.Updated++
+		result.Items = append(result.Items, item)
+REDACTED
+
+	// Gemini API Key -> sub2api gemini apikey
+	for _, src := range exported.Data.GeminiAPIKeyAccounts {
+		item := SyncFromCRSItemResult{
+			CRSAccountID: src.ID,
+			Kind:         src.Kind,
+			Name:         src.Name,
+	REDACTED
+
+		apiKey, _ := src.Credentials["api_key"].(string)
+		if strings.TrimSpace(apiKey) == "" {
+			item.Action = "failed"
+			item.Error = "missing api_key"
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		proxyID, err := s.mapOrCreateProxy(ctx, input.SyncProxies, &proxies, src.Proxy, fmt.Sprintf("crs-%s", src.Name))
+		if err != nil {
+			item.Action = "failed"
+			item.Error = "proxy sync failed: " + err.Error()
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		credentials := sanitizeCredentialsMap(src.Credentials)
+		if baseURL, ok := credentials["base_url"].(string); !ok || strings.TrimSpace(baseURL) == "" {
+			credentials["base_url"] = "https://generativelanguage.googleapis.com"
+	REDACTED
+
+		extra := make(map[string]any)
+		if src.Extra != nil {
+			for k, v := range src.Extra {
+				extra[k] = v
+		REDACTED
+	REDACTED
+		extra["crs_account_id"] = src.ID
+		extra["crs_kind"] = src.Kind
+		extra["crs_synced_at"] = now
+
+		existing, err := s.accountRepo.GetByCRSAccountID(ctx, src.ID)
+		if err != nil {
+			item.Action = "failed"
+			item.Error = "db lookup failed: " + err.Error()
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		if existing == nil {
+			account := &model.Account{
+				Name:        defaultName(src.Name, src.ID),
+				Platform:    model.PlatformGemini,
+				Type:        model.AccountTypeApiKey,
+				Credentials: model.JSONB(credentials),
+				Extra:       model.JSONB(extra),
+				ProxyID:     proxyID,
+				Concurrency: 3,
+				Priority:    clampPriority(src.Priority),
+				Status:      mapCRSStatus(src.IsActive, src.Status),
+				Schedulable: src.Schedulable,
+		REDACTED
+			if err := s.accountRepo.Create(ctx, account); err != nil {
+				item.Action = "failed"
+				item.Error = "create failed: " + err.Error()
+				result.Failed++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
+			item.Action = "created"
+			result.Created++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		existing.Extra = mergeJSONB(existing.Extra, extra)
+		existing.Name = defaultName(src.Name, src.ID)
+		existing.Platform = model.PlatformGemini
+		existing.Type = model.AccountTypeApiKey
+		existing.Credentials = mergeJSONB(existing.Credentials, credentials)
+		if proxyID != nil {
+			existing.ProxyID = proxyID
+	REDACTED
+		existing.Concurrency = 3
+		existing.Priority = clampPriority(src.Priority)
+		existing.Status = mapCRSStatus(src.IsActive, src.Status)
+		existing.Schedulable = src.Schedulable
+
+		if err := s.accountRepo.Update(ctx, existing); err != nil {
+			item.Action = "failed"
+			item.Error = "update failed: " + err.Error()
+			result.Failed++
+			result.Items = append(result.Items, item)
+			continue
+	REDACTED
+
+		item.Action = "updated"
+		result.Updated++
+		result.Items = append(result.Items, item)
+REDACTED
+
 	return result, nil
 REDACTED
 
@@ -941,6 +1197,21 @@ REDACTED
 	REDACTED else {
 			newCredentials = s.openaiOAuthService.BuildAccountCredentials(tokenInfo)
 			// Preserve non-token settings from existing credentials
+			for k, v := range account.Credentials {
+				if _, exists := newCredentials[k]; !exists {
+					newCredentials[k] = v
+			REDACTED
+		REDACTED
+	REDACTED
+	case model.PlatformGemini:
+		if s.geminiOAuthService == nil {
+			return nil
+	REDACTED
+		tokenInfo, refreshErr := s.geminiOAuthService.RefreshAccountToken(ctx, account)
+		if refreshErr != nil {
+			err = refreshErr
+	REDACTED else {
+			newCredentials = s.geminiOAuthService.BuildAccountCredentials(tokenInfo)
 			for k, v := range account.Credentials {
 				if _, exists := newCredentials[k]; !exists {
 					newCredentials[k] = v

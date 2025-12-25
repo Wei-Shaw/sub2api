@@ -27,6 +27,7 @@ func NewTokenRefreshService(
 	accountRepo AccountRepository,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
+	geminiOAuthService *GeminiOAuthService,
 	cfg *config.Config,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
@@ -39,6 +40,7 @@ REDACTED
 	s.refreshers = []TokenRefresher{
 		NewClaudeTokenRefresher(oauthService),
 		NewOpenAITokenRefresher(openaiOAuthService),
+		NewGeminiTokenRefresher(geminiOAuthService),
 REDACTED
 
 	return s
