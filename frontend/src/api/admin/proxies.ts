@@ -3,13 +3,8 @@
  * Handles proxy server management for administrators
  */
 
-import { apiClient REDACTED from '../client';
-import type {
-  Proxy,
-  CreateProxyRequest,
-  UpdateProxyRequest,
-  PaginatedResponse,
-REDACTED from '@/types';
+import { apiClient REDACTED from '../client'
+import type { Proxy, CreateProxyRequest, UpdateProxyRequest, PaginatedResponse REDACTED from '@/types'
 
 /**
  * List all proxies with pagination
@@ -22,19 +17,19 @@ export async function list(
   page: number = 1,
   pageSize: number = 20,
   filters?: {
-    protocol?: string;
-    status?: 'active' | 'inactive';
-    search?: string;
+    protocol?: string
+    status?: 'active' | 'inactive'
+    search?: string
   REDACTED
 ): Promise<PaginatedResponse<Proxy>> {
   const { data REDACTED = await apiClient.get<PaginatedResponse<Proxy>>('/admin/proxies', {
     params: {
       page,
       page_size: pageSize,
-      ...filters,
-    REDACTED,
-  REDACTED);
-  return data;
+      ...filters
+    REDACTED
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -42,8 +37,8 @@ REDACTED
  * @returns List of all active proxies
  */
 export async function getAll(): Promise<Proxy[]> {
-  const { data REDACTED = await apiClient.get<Proxy[]>('/admin/proxies/all');
-  return data;
+  const { data REDACTED = await apiClient.get<Proxy[]>('/admin/proxies/all')
+  return data
 REDACTED
 
 /**
@@ -52,9 +47,9 @@ REDACTED
  */
 export async function getAllWithCount(): Promise<Proxy[]> {
   const { data REDACTED = await apiClient.get<Proxy[]>('/admin/proxies/all', {
-    params: { with_count: 'true' REDACTED,
-  REDACTED);
-  return data;
+    params: { with_count: 'true' REDACTED
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -63,8 +58,8 @@ REDACTED
  * @returns Proxy details
  */
 export async function getById(id: number): Promise<Proxy> {
-  const { data REDACTED = await apiClient.get<Proxy>(`/admin/proxies/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.get<Proxy>(`/admin/proxies/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -73,8 +68,8 @@ REDACTED
  * @returns Created proxy
  */
 export async function create(proxyData: CreateProxyRequest): Promise<Proxy> {
-  const { data REDACTED = await apiClient.post<Proxy>('/admin/proxies', proxyData);
-  return data;
+  const { data REDACTED = await apiClient.post<Proxy>('/admin/proxies', proxyData)
+  return data
 REDACTED
 
 /**
@@ -84,8 +79,8 @@ REDACTED
  * @returns Updated proxy
  */
 export async function update(id: number, updates: UpdateProxyRequest): Promise<Proxy> {
-  const { data REDACTED = await apiClient.put<Proxy>(`/admin/proxies/${idREDACTED`, updates);
-  return data;
+  const { data REDACTED = await apiClient.put<Proxy>(`/admin/proxies/${idREDACTED`, updates)
+  return data
 REDACTED
 
 /**
@@ -94,8 +89,8 @@ REDACTED
  * @returns Success confirmation
  */
 export async function deleteProxy(id: number): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/admin/proxies/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/admin/proxies/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -104,11 +99,8 @@ REDACTED
  * @param status - New status
  * @returns Updated proxy
  */
-export async function toggleStatus(
-  id: number,
-  status: 'active' | 'inactive'
-): Promise<Proxy> {
-  return update(id, { status REDACTED);
+export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<Proxy> {
+  return update(id, { status REDACTED)
 REDACTED
 
 /**
@@ -117,24 +109,24 @@ REDACTED
  * @returns Test result with IP info
  */
 export async function testProxy(id: number): Promise<{
-  success: boolean;
-  message: string;
-  latency_ms?: number;
-  ip_address?: string;
-  city?: string;
-  region?: string;
-  country?: string;
+  success: boolean
+  message: string
+  latency_ms?: number
+  ip_address?: string
+  city?: string
+  region?: string
+  country?: string
 REDACTED> {
   const { data REDACTED = await apiClient.post<{
-    success: boolean;
-    message: string;
-    latency_ms?: number;
-    ip_address?: string;
-    city?: string;
-    region?: string;
-    country?: string;
-  REDACTED>(`/admin/proxies/${idREDACTED/test`);
-  return data;
+    success: boolean
+    message: string
+    latency_ms?: number
+    ip_address?: string
+    city?: string
+    region?: string
+    country?: string
+  REDACTED>(`/admin/proxies/${idREDACTED/test`)
+  return data
 REDACTED
 
 /**
@@ -143,20 +135,20 @@ REDACTED
  * @returns Proxy usage statistics
  */
 export async function getStats(id: number): Promise<{
-  total_accounts: number;
-  active_accounts: number;
-  total_requests: number;
-  success_rate: number;
-  average_latency: number;
+  total_accounts: number
+  active_accounts: number
+  total_requests: number
+  success_rate: number
+  average_latency: number
 REDACTED> {
   const { data REDACTED = await apiClient.get<{
-    total_accounts: number;
-    active_accounts: number;
-    total_requests: number;
-    success_rate: number;
-    average_latency: number;
-  REDACTED>(`/admin/proxies/${idREDACTED/stats`);
-  return data;
+    total_accounts: number
+    active_accounts: number
+    total_requests: number
+    success_rate: number
+    average_latency: number
+  REDACTED>(`/admin/proxies/${idREDACTED/stats`)
+  return data
 REDACTED
 
 /**
@@ -165,10 +157,8 @@ REDACTED
  * @returns List of accounts using the proxy
  */
 export async function getProxyAccounts(id: number): Promise<PaginatedResponse<any>> {
-  const { data REDACTED = await apiClient.get<PaginatedResponse<any>>(
-    `/admin/proxies/${idREDACTED/accounts`
-  );
-  return data;
+  const { data REDACTED = await apiClient.get<PaginatedResponse<any>>(`/admin/proxies/${idREDACTED/accounts`)
+  return data
 REDACTED
 
 /**
@@ -176,21 +166,23 @@ REDACTED
  * @param proxies - Array of proxy data to create
  * @returns Creation result with count of created and skipped
  */
-export async function batchCreate(proxies: Array<{
-  protocol: string;
-  host: string;
-  port: number;
-  username?: string;
-  password?: string;
-REDACTED>): Promise<{
-  created: number;
-  skipped: number;
+export async function batchCreate(
+  proxies: Array<{
+    protocol: string
+    host: string
+    port: number
+    username?: string
+    password?: string
+  REDACTED>
+): Promise<{
+  created: number
+  skipped: number
 REDACTED> {
   const { data REDACTED = await apiClient.post<{
-    created: number;
-    skipped: number;
-  REDACTED>('/admin/proxies/batch', { proxies REDACTED);
-  return data;
+    created: number
+    skipped: number
+  REDACTED>('/admin/proxies/batch', { proxies REDACTED)
+  return data
 REDACTED
 
 export const proxiesAPI = {
@@ -205,7 +197,7 @@ export const proxiesAPI = {
   testProxy,
   getStats,
   getProxyAccounts,
-  batchCreate,
-REDACTED;
+  batchCreate
+REDACTED
 
-export default proxiesAPI;
+export default proxiesAPI

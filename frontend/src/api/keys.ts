@@ -3,13 +3,8 @@
  * Handles CRUD operations for user API keys
  */
 
-import { apiClient REDACTED from './client';
-import type {
-  ApiKey,
-  CreateApiKeyRequest,
-  UpdateApiKeyRequest,
-  PaginatedResponse,
-REDACTED from '@/types';
+import { apiClient REDACTED from './client'
+import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse REDACTED from '@/types'
 
 /**
  * List all API keys for current user
@@ -17,11 +12,14 @@ REDACTED from '@/types';
  * @param pageSize - Items per page (default: 10)
  * @returns Paginated list of API keys
  */
-export async function list(page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<ApiKey>> {
+export async function list(
+  page: number = 1,
+  pageSize: number = 10
+): Promise<PaginatedResponse<ApiKey>> {
   const { data REDACTED = await apiClient.get<PaginatedResponse<ApiKey>>('/keys', {
-    params: { page, page_size: pageSize REDACTED,
-  REDACTED);
-  return data;
+    params: { page, page_size: pageSize REDACTED
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -30,8 +28,8 @@ REDACTED
  * @returns API key details
  */
 export async function getById(id: number): Promise<ApiKey> {
-  const { data REDACTED = await apiClient.get<ApiKey>(`/keys/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.get<ApiKey>(`/keys/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -41,17 +39,21 @@ REDACTED
  * @param customKey - Optional custom key value
  * @returns Created API key
  */
-export async function create(name: string, groupId?: number | null, customKey?: string): Promise<ApiKey> {
-  const payload: CreateApiKeyRequest = { name REDACTED;
+export async function create(
+  name: string,
+  groupId?: number | null,
+  customKey?: string
+): Promise<ApiKey> {
+  const payload: CreateApiKeyRequest = { name REDACTED
   if (groupId !== undefined) {
-    payload.group_id = groupId;
+    payload.group_id = groupId
   REDACTED
   if (customKey) {
-    payload.custom_key = customKey;
+    payload.custom_key = customKey
   REDACTED
 
-  const { data REDACTED = await apiClient.post<ApiKey>('/keys', payload);
-  return data;
+  const { data REDACTED = await apiClient.post<ApiKey>('/keys', payload)
+  return data
 REDACTED
 
 /**
@@ -61,8 +63,8 @@ REDACTED
  * @returns Updated API key
  */
 export async function update(id: number, updates: UpdateApiKeyRequest): Promise<ApiKey> {
-  const { data REDACTED = await apiClient.put<ApiKey>(`/keys/${idREDACTED`, updates);
-  return data;
+  const { data REDACTED = await apiClient.put<ApiKey>(`/keys/${idREDACTED`, updates)
+  return data
 REDACTED
 
 /**
@@ -71,8 +73,8 @@ REDACTED
  * @returns Success confirmation
  */
 export async function deleteKey(id: number): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/keys/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/keys/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -81,11 +83,8 @@ REDACTED
  * @param status - New status
  * @returns Updated API key
  */
-export async function toggleStatus(
-  id: number,
-  status: 'active' | 'inactive'
-): Promise<ApiKey> {
-  return update(id, { status REDACTED);
+export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<ApiKey> {
+  return update(id, { status REDACTED)
 REDACTED
 
 export const keysAPI = {
@@ -94,7 +93,7 @@ export const keysAPI = {
   create,
   update,
   delete: deleteKey,
-  toggleStatus,
-REDACTED;
+  toggleStatus
+REDACTED
 
-export default keysAPI;
+export default keysAPI

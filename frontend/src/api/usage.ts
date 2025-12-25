@@ -3,59 +3,59 @@
  * Handles usage logs and statistics retrieval
  */
 
-import { apiClient REDACTED from './client';
+import { apiClient REDACTED from './client'
 import type {
   UsageLog,
   UsageQueryParams,
   UsageStatsResponse,
   PaginatedResponse,
   TrendDataPoint,
-  ModelStat,
-REDACTED from '@/types';
+  ModelStat
+REDACTED from '@/types'
 
 // ==================== Dashboard Types ====================
 
 export interface UserDashboardStats {
-  total_api_keys: number;
-  active_api_keys: number;
-  total_requests: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cache_creation_tokens: number;
-  total_cache_read_tokens: number;
-  total_tokens: number;
-  total_cost: number;         // 标准计费
-  total_actual_cost: number;  // 实际扣除
-  today_requests: number;
-  today_input_tokens: number;
-  today_output_tokens: number;
-  today_cache_creation_tokens: number;
-  today_cache_read_tokens: number;
-  today_tokens: number;
-  today_cost: number;         // 今日标准计费
-  today_actual_cost: number;  // 今日实际扣除
-  average_duration_ms: number;
-  rpm: number;                // 近5分钟平均每分钟请求数
-  tpm: number;                // 近5分钟平均每分钟Token数
+  total_api_keys: number
+  active_api_keys: number
+  total_requests: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cache_creation_tokens: number
+  total_cache_read_tokens: number
+  total_tokens: number
+  total_cost: number // 标准计费
+  total_actual_cost: number // 实际扣除
+  today_requests: number
+  today_input_tokens: number
+  today_output_tokens: number
+  today_cache_creation_tokens: number
+  today_cache_read_tokens: number
+  today_tokens: number
+  today_cost: number // 今日标准计费
+  today_actual_cost: number // 今日实际扣除
+  average_duration_ms: number
+  rpm: number // 近5分钟平均每分钟请求数
+  tpm: number // 近5分钟平均每分钟Token数
 REDACTED
 
 export interface TrendParams {
-  start_date?: string;
-  end_date?: string;
-  granularity?: 'day' | 'hour';
+  start_date?: string
+  end_date?: string
+  granularity?: 'day' | 'hour'
 REDACTED
 
 export interface TrendResponse {
-  trend: TrendDataPoint[];
-  start_date: string;
-  end_date: string;
-  granularity: string;
+  trend: TrendDataPoint[]
+  start_date: string
+  end_date: string
+  granularity: string
 REDACTED
 
 export interface ModelStatsResponse {
-  models: ModelStat[];
-  start_date: string;
-  end_date: string;
+  models: ModelStat[]
+  start_date: string
+  end_date: string
 REDACTED
 
 /**
@@ -72,17 +72,17 @@ export async function list(
 ): Promise<PaginatedResponse<UsageLog>> {
   const params: UsageQueryParams = {
     page,
-    page_size: pageSize,
-  REDACTED;
+    page_size: pageSize
+  REDACTED
 
   if (apiKeyId !== undefined) {
-    params.api_key_id = apiKeyId;
+    params.api_key_id = apiKeyId
   REDACTED
 
   const { data REDACTED = await apiClient.get<PaginatedResponse<UsageLog>>('/usage', {
-    params,
-  REDACTED);
-  return data;
+    params
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -92,9 +92,9 @@ REDACTED
  */
 export async function query(params: UsageQueryParams): Promise<PaginatedResponse<UsageLog>> {
   const { data REDACTED = await apiClient.get<PaginatedResponse<UsageLog>>('/usage', {
-    params,
-  REDACTED);
-  return data;
+    params
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -107,16 +107,16 @@ export async function getStats(
   period: string = 'today',
   apiKeyId?: number
 ): Promise<UsageStatsResponse> {
-  const params: Record<string, unknown> = { period REDACTED;
+  const params: Record<string, unknown> = { period REDACTED
 
   if (apiKeyId !== undefined) {
-    params.api_key_id = apiKeyId;
+    params.api_key_id = apiKeyId
   REDACTED
 
   const { data REDACTED = await apiClient.get<UsageStatsResponse>('/usage/stats', {
-    params,
-  REDACTED);
-  return data;
+    params
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -133,17 +133,17 @@ export async function getStatsByDateRange(
 ): Promise<UsageStatsResponse> {
   const params: Record<string, unknown> = {
     start_date: startDate,
-    end_date: endDate,
-  REDACTED;
+    end_date: endDate
+  REDACTED
 
   if (apiKeyId !== undefined) {
-    params.api_key_id = apiKeyId;
+    params.api_key_id = apiKeyId
   REDACTED
 
   const { data REDACTED = await apiClient.get<UsageStatsResponse>('/usage/stats', {
-    params,
-  REDACTED);
-  return data;
+    params
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -162,17 +162,17 @@ export async function getByDateRange(
     start_date: startDate,
     end_date: endDate,
     page: 1,
-    page_size: 100,
-  REDACTED;
+    page_size: 100
+  REDACTED
 
   if (apiKeyId !== undefined) {
-    params.api_key_id = apiKeyId;
+    params.api_key_id = apiKeyId
   REDACTED
 
   const { data REDACTED = await apiClient.get<PaginatedResponse<UsageLog>>('/usage', {
-    params,
-  REDACTED);
-  return data;
+    params
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -181,8 +181,8 @@ REDACTED
  * @returns Usage log details
  */
 export async function getById(id: number): Promise<UsageLog> {
-  const { data REDACTED = await apiClient.get<UsageLog>(`/usage/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.get<UsageLog>(`/usage/${idREDACTED`)
+  return data
 REDACTED
 
 // ==================== Dashboard API ====================
@@ -192,8 +192,8 @@ REDACTED
  * @returns Dashboard statistics for current user
  */
 export async function getDashboardStats(): Promise<UserDashboardStats> {
-  const { data REDACTED = await apiClient.get<UserDashboardStats>('/usage/dashboard/stats');
-  return data;
+  const { data REDACTED = await apiClient.get<UserDashboardStats>('/usage/dashboard/stats')
+  return data
 REDACTED
 
 /**
@@ -202,8 +202,8 @@ REDACTED
  * @returns Usage trend data for current user
  */
 export async function getDashboardTrend(params?: TrendParams): Promise<TrendResponse> {
-  const { data REDACTED = await apiClient.get<TrendResponse>('/usage/dashboard/trend', { params REDACTED);
-  return data;
+  const { data REDACTED = await apiClient.get<TrendResponse>('/usage/dashboard/trend', { params REDACTED)
+  return data
 REDACTED
 
 /**
@@ -211,19 +211,22 @@ REDACTED
  * @param params - Query parameters for filtering
  * @returns Model usage statistics for current user
  */
-export async function getDashboardModels(params?: { start_date?: string; end_date?: string REDACTED): Promise<ModelStatsResponse> {
-  const { data REDACTED = await apiClient.get<ModelStatsResponse>('/usage/dashboard/models', { params REDACTED);
-  return data;
+export async function getDashboardModels(params?: {
+  start_date?: string
+  end_date?: string
+REDACTED): Promise<ModelStatsResponse> {
+  const { data REDACTED = await apiClient.get<ModelStatsResponse>('/usage/dashboard/models', { params REDACTED)
+  return data
 REDACTED
 
 export interface BatchApiKeyUsageStats {
-  api_key_id: number;
-  today_actual_cost: number;
-  total_actual_cost: number;
+  api_key_id: number
+  today_actual_cost: number
+  total_actual_cost: number
 REDACTED
 
 export interface BatchApiKeysUsageResponse {
-  stats: Record<string, BatchApiKeyUsageStats>;
+  stats: Record<string, BatchApiKeyUsageStats>
 REDACTED
 
 /**
@@ -231,11 +234,16 @@ REDACTED
  * @param apiKeyIds - Array of API key IDs
  * @returns Usage stats map keyed by API key ID
  */
-export async function getDashboardApiKeysUsage(apiKeyIds: number[]): Promise<BatchApiKeysUsageResponse> {
-  const { data REDACTED = await apiClient.post<BatchApiKeysUsageResponse>('/usage/dashboard/api-keys-usage', {
-    api_key_ids: apiKeyIds,
-  REDACTED);
-  return data;
+export async function getDashboardApiKeysUsage(
+  apiKeyIds: number[]
+): Promise<BatchApiKeysUsageResponse> {
+  const { data REDACTED = await apiClient.post<BatchApiKeysUsageResponse>(
+    '/usage/dashboard/api-keys-usage',
+    {
+      api_key_ids: apiKeyIds
+    REDACTED
+  )
+  return data
 REDACTED
 
 export const usageAPI = {
@@ -249,7 +257,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
-  getDashboardApiKeysUsage,
-REDACTED;
+  getDashboardApiKeysUsage
+REDACTED
 
-export default usageAPI;
+export default usageAPI

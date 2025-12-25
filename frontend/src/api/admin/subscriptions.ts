@@ -3,15 +3,15 @@
  * Handles user subscription management for administrators
  */
 
-import { apiClient REDACTED from '../client';
+import { apiClient REDACTED from '../client'
 import type {
   UserSubscription,
   SubscriptionProgress,
   AssignSubscriptionRequest,
   BulkAssignSubscriptionRequest,
   ExtendSubscriptionRequest,
-  PaginatedResponse,
-REDACTED from '@/types';
+  PaginatedResponse
+REDACTED from '@/types'
 
 /**
  * List all subscriptions with pagination
@@ -24,19 +24,22 @@ export async function list(
   page: number = 1,
   pageSize: number = 20,
   filters?: {
-    status?: 'active' | 'expired' | 'revoked';
-    user_id?: number;
-    group_id?: number;
+    status?: 'active' | 'expired' | 'revoked'
+    user_id?: number
+    group_id?: number
   REDACTED
 ): Promise<PaginatedResponse<UserSubscription>> {
-  const { data REDACTED = await apiClient.get<PaginatedResponse<UserSubscription>>('/admin/subscriptions', {
-    params: {
-      page,
-      page_size: pageSize,
-      ...filters,
-    REDACTED,
-  REDACTED);
-  return data;
+  const { data REDACTED = await apiClient.get<PaginatedResponse<UserSubscription>>(
+    '/admin/subscriptions',
+    {
+      params: {
+        page,
+        page_size: pageSize,
+        ...filters
+      REDACTED
+    REDACTED
+  )
+  return data
 REDACTED
 
 /**
@@ -45,8 +48,8 @@ REDACTED
  * @returns Subscription details
  */
 export async function getById(id: number): Promise<UserSubscription> {
-  const { data REDACTED = await apiClient.get<UserSubscription>(`/admin/subscriptions/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.get<UserSubscription>(`/admin/subscriptions/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -55,8 +58,8 @@ REDACTED
  * @returns Subscription progress with usage stats
  */
 export async function getProgress(id: number): Promise<SubscriptionProgress> {
-  const { data REDACTED = await apiClient.get<SubscriptionProgress>(`/admin/subscriptions/${idREDACTED/progress`);
-  return data;
+  const { data REDACTED = await apiClient.get<SubscriptionProgress>(`/admin/subscriptions/${idREDACTED/progress`)
+  return data
 REDACTED
 
 /**
@@ -65,8 +68,8 @@ REDACTED
  * @returns Created subscription
  */
 export async function assign(request: AssignSubscriptionRequest): Promise<UserSubscription> {
-  const { data REDACTED = await apiClient.post<UserSubscription>('/admin/subscriptions/assign', request);
-  return data;
+  const { data REDACTED = await apiClient.post<UserSubscription>('/admin/subscriptions/assign', request)
+  return data
 REDACTED
 
 /**
@@ -74,9 +77,14 @@ REDACTED
  * @param request - Bulk assignment request
  * @returns Created subscriptions
  */
-export async function bulkAssign(request: BulkAssignSubscriptionRequest): Promise<UserSubscription[]> {
-  const { data REDACTED = await apiClient.post<UserSubscription[]>('/admin/subscriptions/bulk-assign', request);
-  return data;
+export async function bulkAssign(
+  request: BulkAssignSubscriptionRequest
+): Promise<UserSubscription[]> {
+  const { data REDACTED = await apiClient.post<UserSubscription[]>(
+    '/admin/subscriptions/bulk-assign',
+    request
+  )
+  return data
 REDACTED
 
 /**
@@ -85,9 +93,15 @@ REDACTED
  * @param request - Extension request with days
  * @returns Updated subscription
  */
-export async function extend(id: number, request: ExtendSubscriptionRequest): Promise<UserSubscription> {
-  const { data REDACTED = await apiClient.post<UserSubscription>(`/admin/subscriptions/${idREDACTED/extend`, request);
-  return data;
+export async function extend(
+  id: number,
+  request: ExtendSubscriptionRequest
+): Promise<UserSubscription> {
+  const { data REDACTED = await apiClient.post<UserSubscription>(
+    `/admin/subscriptions/${idREDACTED/extend`,
+    request
+  )
+  return data
 REDACTED
 
 /**
@@ -96,8 +110,8 @@ REDACTED
  * @returns Success confirmation
  */
 export async function revoke(id: number): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/admin/subscriptions/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/admin/subscriptions/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -115,10 +129,10 @@ export async function listByGroup(
   const { data REDACTED = await apiClient.get<PaginatedResponse<UserSubscription>>(
     `/admin/groups/${groupIdREDACTED/subscriptions`,
     {
-      params: { page, page_size: pageSize REDACTED,
+      params: { page, page_size: pageSize REDACTED
     REDACTED
-  );
-  return data;
+  )
+  return data
 REDACTED
 
 /**
@@ -136,10 +150,10 @@ export async function listByUser(
   const { data REDACTED = await apiClient.get<PaginatedResponse<UserSubscription>>(
     `/admin/users/${userIdREDACTED/subscriptions`,
     {
-      params: { page, page_size: pageSize REDACTED,
+      params: { page, page_size: pageSize REDACTED
     REDACTED
-  );
-  return data;
+  )
+  return data
 REDACTED
 
 export const subscriptionsAPI = {
@@ -151,7 +165,7 @@ export const subscriptionsAPI = {
   extend,
   revoke,
   listByGroup,
-  listByUser,
-REDACTED;
+  listByUser
+REDACTED
 
-export default subscriptionsAPI;
+export default subscriptionsAPI
