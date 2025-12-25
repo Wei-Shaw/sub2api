@@ -117,6 +117,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_MESSAGE: ${{ steps.tag_message.outputs.message }}
+          GITHUB_REPO_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO_NAME: ${{ github.event.repository.name }}
 
   # ===========================================================================
   # Docker Build and Push
@@ -168,7 +170,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            weishaw/sub2api
+            ${{ secrets.DOCKERHUB_USERNAME }}/sub2api
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

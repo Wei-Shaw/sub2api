@@ -54,8 +54,8 @@ changelog:
 
 release:
   github:
-    owner: Wei-Shaw
-    name: sub2api
+    owner: "{{ .Env.GITHUB_REPO_OWNER }}"
+    name: "{{ .Env.GITHUB_REPO_NAME }}"
   draft: false
   prerelease: auto
   name_template: "Sub2API {{.Version}}"
@@ -73,7 +73,7 @@ release:
 
     **One-line install (Linux):**
     ```bash
-    curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+    curl -sSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}/main/deploy/install.sh | sudo bash
     ```
 
     **Manual download:**
@@ -81,5 +81,5 @@ release:
 
     ## 📚 Documentation
 
-    - [GitHub Repository](https://github.com/Wei-Shaw/sub2api)
-    - [Installation Guide](https://github.com/Wei-Shaw/sub2api/blob/main/deploy/README.md)
+    - [GitHub Repository](https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }})
+    - [Installation Guide](https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}/blob/main/deploy/README.md)
