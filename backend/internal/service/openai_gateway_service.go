@@ -879,8 +879,12 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 		// No window_minutes available: cannot reliably determine window types
 		// Fall back to legacy assumption (may be incorrect)
 		// Assume primary=7d, secondary=5h based on historical observation
-		use5hFromSecondary = snapshot.SecondaryUsedPercent != nil
-		use7dFromPrimary = snapshot.PrimaryUsedPercent != nil
+		if snapshot.SecondaryUsedPercent != nil || snapshot.SecondaryResetAfterSeconds != nil || snapshot.SecondaryWindowMinutes != nil {
+			use5hFromSecondary = true
+		}
+		if snapshot.PrimaryUsedPercent != nil || snapshot.PrimaryResetAfterSeconds != nil || snapshot.PrimaryWindowMinutes != nil {
+			use7dFromPrimary = true
+		}
 	}
 
 	// Write canonical 5h fields
