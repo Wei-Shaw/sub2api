@@ -52,10 +52,58 @@ changelog:
   # 禁用自动 changelog，完全使用 tag 消息
   disable: true
 
+# Docker images
+dockers:
+  - id: amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.version={{ .Version REDACTEDREDACTED"
+      - "--label=org.opencontainers.image.revision={{ .Commit REDACTEDREDACTED"
+
+  - id: arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.version={{ .Version REDACTEDREDACTED"
+      - "--label=org.opencontainers.image.revision={{ .Commit REDACTEDREDACTED"
+
+# Docker manifests for multi-arch support
+docker_manifests:
+  - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED"
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
+  - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:latest"
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
+  - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Major REDACTEDREDACTED.{{ .Minor REDACTEDREDACTED"
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
+  - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Major REDACTEDREDACTED"
+    image_templates:
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
 release:
   github:
-    owner: Wei-Shaw
-    name: sub2api
+    owner: "{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED"
+    name: "{{ .Env.GITHUB_REPO_NAME REDACTEDREDACTED"
   draft: false
   prerelease: auto
   name_template: "Sub2API {{.VersionREDACTEDREDACTED"
@@ -73,7 +121,7 @@ release:
 
     **One-line install (Linux):**
     ```bash
-    curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+    curl -sSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/{{ .Env.GITHUB_REPO_NAME REDACTEDREDACTED/main/deploy/install.sh | sudo bash
     ```
 
     **Manual download:**
@@ -81,5 +129,5 @@ release:
 
     ## 📚 Documentation
 
-    - [GitHub Repository](https://github.com/Wei-Shaw/sub2api)
-    - [Installation Guide](https://github.com/Wei-Shaw/sub2api/blob/main/deploy/README.md)
+    - [GitHub Repository](https://github.com/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/{{ .Env.GITHUB_REPO_NAME REDACTEDREDACTED)
+    - [Installation Guide](https://github.com/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/{{ .Env.GITHUB_REPO_NAME REDACTEDREDACTED/blob/main/deploy/README.md)

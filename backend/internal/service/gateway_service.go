@@ -20,6 +20,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"github.com/gin-gonic/gin"
 )
@@ -390,6 +392,18 @@ REDACTED
 		return nil, fmt.Errorf("parse request: %w", err)
 REDACTED
 
+	if !gjson.GetBytes(body, "system").Exists() {
+		body, _ = sjson.SetBytes(body, "system", []any{
+			map[string]any{
+				"type": "text",
+				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+				"cache_control": map[string]string{
+					"type": "ephemeral",
+			REDACTED,
+		REDACTED,
+	REDACTED)
+REDACTED
+
 	// 应用模型映射（仅对apikey类型账号）
 	originalModel := req.Model
 	if account.Type == model.AccountTypeApiKey {
@@ -622,6 +636,9 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	var statusCode int
 
 	switch resp.StatusCode {
+	case 400:
+		c.Data(http.StatusBadRequest, "application/json", body)
+		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
