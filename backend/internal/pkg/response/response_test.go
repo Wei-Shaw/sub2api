@@ -143,7 +143,7 @@ func TestErrorFrom(t *testing.T) {
 			wantHTTPCode: http.StatusInternalServerError,
 			wantBody: Response{
 				Code:    http.StatusInternalServerError,
-				Message: "boom",
+				Message: infraerrors.UnknownMessage,
 			},
 		},
 	}

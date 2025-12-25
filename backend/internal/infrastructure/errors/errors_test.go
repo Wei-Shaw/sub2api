@@ -111,14 +111,14 @@ func TestFromError_Generic(t *testing.T) {
 			err:        stderrors.New("boom"),
 			wantCode:   UnknownCode,
 			wantReason: UnknownReason,
-			wantMsg:    "boom",
+			wantMsg:    UnknownMessage,
 		},
 		{
 			name:       "wrapped_plain_error",
 			err:        fmt.Errorf("wrap: %w", io.EOF),
 			wantCode:   UnknownCode,
 			wantReason: UnknownReason,
-			wantMsg:    "wrap: EOF",
+			wantMsg:    UnknownMessage,
 		},
 	}
 

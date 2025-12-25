@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	UnknownCode   = http.StatusInternalServerError
-	UnknownReason = ""
+	UnknownCode    = http.StatusInternalServerError
+	UnknownReason  = ""
+	UnknownMessage = "internal error"
 )
 
 type Status struct {
@@ -153,5 +154,5 @@ func FromError(err error) *ApplicationError {
 	}
 
 	// Fall back to a generic internal error.
-	return New(UnknownCode, UnknownReason, err.Error()).WithCause(err)
+	return New(UnknownCode, UnknownReason, UnknownMessage).WithCause(err)
 }

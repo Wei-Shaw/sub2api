@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"net/http"
@@ -25,7 +26,7 @@ func ProvideRouter(cfg *config.Config, handlers *handler.Handlers, services *ser
 	}
 
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(middleware.Recovery())
 
 	return SetupRouter(r, cfg, handlers, services, repos)
 }
