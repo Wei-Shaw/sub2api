@@ -17,14 +17,23 @@ import (
 )
 
 type CRSSyncService struct {
-	accountRepo ports.AccountRepository
-	proxyRepo   ports.ProxyRepository
+	accountRepo        ports.AccountRepository
+	proxyRepo          ports.ProxyRepository
+	oauthService       *OAuthService
+	openaiOAuthService *OpenAIOAuthService
 }
 
-func NewCRSSyncService(accountRepo ports.AccountRepository, proxyRepo ports.ProxyRepository) *CRSSyncService {
+func NewCRSSyncService(
+	accountRepo ports.AccountRepository,
+	proxyRepo ports.ProxyRepository,
+	oauthService *OAuthService,
+	openaiOAuthService *OpenAIOAuthService,
+) *CRSSyncService {
 	return &CRSSyncService{
-		accountRepo: accountRepo,
-		proxyRepo:   proxyRepo,
+		accountRepo:        accountRepo,
+		proxyRepo:          proxyRepo,
+		oauthService:       oauthService,
+		openaiOAuthService: openaiOAuthService,
 	}
 }
 
@@ -232,12 +241,23 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		concurrency := 3
 		status := mapCRSStatus(src.IsActive, src.Status)
 
-		// 🔧 Use CRS extra data directly, add sync metadata
-		extra := src.Extra
-		if extra == nil {
-			extra = make(map[string]any)
+		// 🔧 Preserve all CRS extra fields and add sync metadata
+		extra := make(map[string]any)
+		if src.Extra != nil {
+			for k, v := range src.Extra {
+				extra[k] = v
+			}
 		}
+		extra["crs_account_id"] = src.ID
+		extra["crs_kind"] = src.Kind
 		extra["crs_synced_at"] = now
+		// Extract org_uuid and account_uuid from CRS credentials to extra
+		if orgUUID, ok := src.Credentials["org_uuid"]; ok {
+			extra["org_uuid"] = orgUUID
+		}
+		if accountUUID, ok := src.Credentials["account_uuid"]; ok {
+			extra["account_uuid"] = accountUUID
+		}
 
 		existing, err := s.accountRepo.GetByCRSAccountID(ctx, src.ID)
 		if err != nil {
@@ -268,6 +288,13 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				result.Items = append(result.Items, item)
 				continue
 			}
+			// 🔄 Refresh OAuth token after creation
+			if targetType == model.AccountTypeOAuth {
+				if refreshedCreds := s.refreshOAuthToken(ctx, account); refreshedCreds != nil {
+					account.Credentials = refreshedCreds
+					_ = s.accountRepo.Update(ctx, account)
+				}
+			}
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -294,6 +321,14 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			result.Failed++
 			result.Items = append(result.Items, item)
 			continue
+		}
+
+		// 🔄 Refresh OAuth token after update
+		if targetType == model.AccountTypeOAuth {
+			if refreshedCreds := s.refreshOAuthToken(ctx, existing); refreshedCreds != nil {
+				existing.Credentials = refreshedCreds
+				_ = s.accountRepo.Update(ctx, existing)
+			}
 		}
 
 		item.Action = "updated"
@@ -449,12 +484,20 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		concurrency := 3
 		status := mapCRSStatus(src.IsActive, src.Status)
 
-		// 🔧 Use CRS extra data directly, add sync metadata
-		extra := src.Extra
-		if extra == nil {
-			extra = make(map[string]any)
+		// 🔧 Preserve all CRS extra fields and add sync metadata
+		extra := make(map[string]any)
+		if src.Extra != nil {
+			for k, v := range src.Extra {
+				extra[k] = v
+			}
 		}
+		extra["crs_account_id"] = src.ID
+		extra["crs_kind"] = src.Kind
 		extra["crs_synced_at"] = now
+		// Extract email from CRS extra (crs_email -> email)
+		if crsEmail, ok := src.Extra["crs_email"]; ok {
+			extra["email"] = crsEmail
+		}
 
 		existing, err := s.accountRepo.GetByCRSAccountID(ctx, src.ID)
 		if err != nil {
@@ -485,6 +528,11 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				result.Items = append(result.Items, item)
 				continue
 			}
+			// 🔄 Refresh OAuth token after creation
+			if refreshedCreds := s.refreshOAuthToken(ctx, account); refreshedCreds != nil {
+				account.Credentials = refreshedCreds
+				_ = s.accountRepo.Update(ctx, account)
+			}
 			item.Action = "created"
 			result.Created++
 			result.Items = append(result.Items, item)
@@ -510,6 +558,12 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 			result.Failed++
 			result.Items = append(result.Items, item)
 			continue
+		}
+
+		// 🔄 Refresh OAuth token after update
+		if refreshedCreds := s.refreshOAuthToken(ctx, existing); refreshedCreds != nil {
+			existing.Credentials = refreshedCreds
+			_ = s.accountRepo.Update(ctx, existing)
 		}
 
 		item.Action = "updated"
@@ -840,4 +894,65 @@ func crsExportAccounts(ctx context.Context, client *http.Client, baseURL, adminT
 		return nil, errors.New("crs export failed: " + msg)
 	}
 	return &parsed, nil
+}
+
+// refreshOAuthToken attempts to refresh OAuth token for a synced account
+// Returns updated credentials or nil if refresh failed/not applicable
+func (s *CRSSyncService) refreshOAuthToken(ctx context.Context, account *model.Account) model.JSONB {
+	if account.Type != model.AccountTypeOAuth {
+		return nil
+	}
+
+	var newCredentials map[string]any
+	var err error
+
+	if account.Platform == model.PlatformAnthropic {
+		if s.oauthService == nil {
+			return nil
+		}
+		tokenInfo, refreshErr := s.oauthService.RefreshAccountToken(ctx, account)
+		if refreshErr != nil {
+			err = refreshErr
+		} else {
+			// Preserve existing credentials
+			newCredentials = make(map[string]any)
+			for k, v := range account.Credentials {
+				newCredentials[k] = v
+			}
+			// Update token fields
+			newCredentials["access_token"] = tokenInfo.AccessToken
+			newCredentials["token_type"] = tokenInfo.TokenType
+			newCredentials["expires_in"] = tokenInfo.ExpiresIn
+			newCredentials["expires_at"] = tokenInfo.ExpiresAt
+			if tokenInfo.RefreshToken != "" {
+				newCredentials["refresh_token"] = tokenInfo.RefreshToken
+			}
+			if tokenInfo.Scope != "" {
+				newCredentials["scope"] = tokenInfo.Scope
+			}
+		}
+	} else if account.Platform == model.PlatformOpenAI {
+		if s.openaiOAuthService == nil {
+			return nil
+		}
+		tokenInfo, refreshErr := s.openaiOAuthService.RefreshAccountToken(ctx, account)
+		if refreshErr != nil {
+			err = refreshErr
+		} else {
+			newCredentials = s.openaiOAuthService.BuildAccountCredentials(tokenInfo)
+			// Preserve non-token settings from existing credentials
+			for k, v := range account.Credentials {
+				if _, exists := newCredentials[k]; !exists {
+					newCredentials[k] = v
+				}
+			}
+		}
+	}
+
+	if err != nil {
+		// Log but don't fail the sync - token might still be valid or refreshable later
+		return nil
+	}
+
+	return model.JSONB(newCredentials)
 }
