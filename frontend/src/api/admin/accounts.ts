@@ -255,7 +255,7 @@ REDACTED> {
     results: Array<{ account_id: number; success: boolean; error?: string REDACTED>;
   REDACTED>('/admin/accounts/bulk-update', {
     account_ids: accountIds,
-    updates
+    ...updates
   REDACTED);
   return data;
 REDACTED

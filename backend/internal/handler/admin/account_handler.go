@@ -87,6 +87,19 @@ type UpdateAccountRequest struct {
 	GroupIDs    *[]int64       `json:"group_ids"`
 REDACTED
 
+// BulkUpdateAccountsRequest represents the payload for bulk editing accounts
+type BulkUpdateAccountsRequest struct {
+	AccountIDs  []int64        `json:"account_ids" binding:"required,min=1"`
+	Name        string         `json:"name"`
+	ProxyID     *int64         `json:"proxy_id"`
+	Concurrency *int           `json:"concurrency"`
+	Priority    *int           `json:"priority"`
+	Status      string         `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs    *[]int64       `json:"group_ids"`
+	Credentials map[string]any `json:"credentials"`
+	Extra       map[string]any `json:"extra"`
+REDACTED
+
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*model.Account
@@ -520,6 +533,48 @@ REDACTED
 		"failed":  failed,
 		"results": results,
 REDACTED)
+REDACTED
+
+// BulkUpdate handles bulk updating accounts with selected fields/credentials.
+// POST /api/v1/admin/accounts/bulk-update
+func (h *AccountHandler) BulkUpdate(c *gin.Context) {
+	var req BulkUpdateAccountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	hasUpdates := req.Name != "" ||
+		req.ProxyID != nil ||
+		req.Concurrency != nil ||
+		req.Priority != nil ||
+		req.Status != "" ||
+		req.GroupIDs != nil ||
+		len(req.Credentials) > 0 ||
+		len(req.Extra) > 0
+
+	if !hasUpdates {
+		response.BadRequest(c, "No updates provided")
+		return
+REDACTED
+
+	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
+		AccountIDs:  req.AccountIDs,
+		Name:        req.Name,
+		ProxyID:     req.ProxyID,
+		Concurrency: req.Concurrency,
+		Priority:    req.Priority,
+		Status:      req.Status,
+		GroupIDs:    req.GroupIDs,
+		Credentials: req.Credentials,
+		Extra:       req.Extra,
+REDACTED)
+	if err != nil {
+		response.InternalError(c, "Failed to bulk update accounts: "+err.Error())
+		return
+REDACTED
+
+	response.Success(c, result)
 REDACTED
 
 // ========== OAuth Handlers ==========

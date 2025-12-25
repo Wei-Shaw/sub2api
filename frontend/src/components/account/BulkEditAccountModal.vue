@@ -443,7 +443,7 @@ import { ref, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Proxy, Group, Account REDACTED from '@/types'
+import type { Proxy, Group REDACTED from '@/types'
 import Modal from '@/components/common/Modal.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -496,7 +496,6 @@ const concurrency = ref(1)
 const priority = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
-const accountCache = ref<Record<number, Account>>({REDACTED)
 
 // All models list (combined Anthropic + OpenAI)
 const allModels = [
@@ -613,22 +612,10 @@ const buildModelMappingObject = (): Record<string, string> | null => {
   return Object.keys(mapping).length > 0 ? mapping : null
 REDACTED
 
-const getDefaultBaseUrl = (platform: string) => {
-  return platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
-REDACTED
-
-const getAccountDetails = async (accountId: number): Promise<Account> => {
-  if (accountCache.value[accountId]) return accountCache.value[accountId]
-  const account = await adminAPI.accounts.getById(accountId)
-  accountCache.value[accountId] = account
-  return account
-REDACTED
-
-const buildUpdatePayload = (account: Account): Record<string, unknown> | null => {
+const buildUpdatePayload = (): Record<string, unknown> | null => {
   const updates: Record<string, unknown> = {REDACTED
-  let credentials: Record<string, unknown> | null = null
+  const credentials: Record<string, unknown> = {REDACTED
   let credentialsChanged = false
-  const isAnthropic = account.platform === 'anthropic'
 
   if (enableProxy.value) {
     updates.proxy_id = proxyId.value
@@ -650,47 +637,34 @@ const buildUpdatePayload = (account: Account): Record<string, unknown> | null =>
     updates.group_ids = groupIds.value
   REDACTED
 
-  if (account.type === 'apikey') {
-    const baseCredentials = (account.credentials || {REDACTED) as Record<string, unknown>
-    credentials = { ...baseCredentials REDACTED
-
-    if (enableBaseUrl.value) {
-      credentials.base_url = baseUrl.value.trim() || getDefaultBaseUrl(account.platform)
+  if (enableBaseUrl.value) {
+    const baseUrlValue = baseUrl.value.trim()
+    if (baseUrlValue) {
+      credentials.base_url = baseUrlValue
       credentialsChanged = true
     REDACTED
+  REDACTED
 
-    if (enableModelRestriction.value) {
-      const modelMapping = buildModelMappingObject()
-      if (modelMapping) {
-        credentials.model_mapping = modelMapping
-      REDACTED else {
-        delete credentials.model_mapping
-      REDACTED
+  if (enableModelRestriction.value) {
+    const modelMapping = buildModelMappingObject()
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
       credentialsChanged = true
     REDACTED
+  REDACTED
 
-    if (enableCustomErrorCodes.value) {
-      credentials.custom_error_codes_enabled = true
-      credentials.custom_error_codes = [...selectedErrorCodes.value]
-      credentialsChanged = true
-    REDACTED
-
-    if (enableInterceptWarmup.value && isAnthropic) {
-      credentials.intercept_warmup_requests = interceptWarmupRequests.value
-      credentialsChanged = true
-    REDACTED
-  REDACTED else if (enableInterceptWarmup.value && isAnthropic) {
-    const baseCredentials = (account.credentials || {REDACTED) as Record<string, unknown>
-    credentials = { ...baseCredentials REDACTED
-    if (interceptWarmupRequests.value) {
-      credentials.intercept_warmup_requests = true
-    REDACTED else {
-      delete credentials.intercept_warmup_requests
-    REDACTED
+  if (enableCustomErrorCodes.value) {
+    credentials.custom_error_codes_enabled = true
+    credentials.custom_error_codes = [...selectedErrorCodes.value]
     credentialsChanged = true
   REDACTED
 
-  if (credentials && credentialsChanged) {
+  if (enableInterceptWarmup.value) {
+    credentials.intercept_warmup_requests = interceptWarmupRequests.value
+    credentialsChanged = true
+  REDACTED
+
+  if (credentialsChanged) {
     updates.credentials = credentials
   REDACTED
 
@@ -722,39 +696,37 @@ const handleSubmit = async () => {
     return
   REDACTED
 
+  const updates = buildUpdatePayload()
+  if (!updates) {
+    appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
+    return
+  REDACTED
+
   submitting.value = true
-  let success = 0
-  let failed = 0
 
-  for (const accountId of props.accountIds) {
-    try {
-      const account = await getAccountDetails(accountId)
-      const updates = buildUpdatePayload(account)
-      if (!updates) {
-        continue
-      REDACTED
-      await adminAPI.accounts.update(accountId, updates)
-      success++
-    REDACTED catch (error: any) {
-      failed++
-      console.error(`Error bulk updating account ${accountIdREDACTED:`, error)
+  try {
+    const res = await adminAPI.accounts.bulkUpdate(props.accountIds, updates)
+    const success = res.success || 0
+    const failed = res.failed || 0
+
+    if (success > 0 && failed === 0) {
+      appStore.showSuccess(t('admin.accounts.bulkEdit.success', { count: success REDACTED))
+    REDACTED else if (success > 0) {
+      appStore.showError(t('admin.accounts.bulkEdit.partialSuccess', { success, failed REDACTED))
+    REDACTED else {
+      appStore.showError(t('admin.accounts.bulkEdit.failed'))
     REDACTED
-  REDACTED
 
-  if (success > 0 && failed === 0) {
-    appStore.showSuccess(t('admin.accounts.bulkEdit.success', { count: success REDACTED))
-  REDACTED else if (success > 0) {
-    appStore.showError(t('admin.accounts.bulkEdit.partialSuccess', { success, failed REDACTED))
-  REDACTED else {
-    appStore.showError(t('admin.accounts.bulkEdit.failed'))
+    if (success > 0) {
+      emit('updated')
+      handleClose()
+    REDACTED
+  REDACTED catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.accounts.bulkEdit.failed'))
+    console.error('Error bulk updating accounts:', error)
+  REDACTED finally {
+    submitting.value = false
   REDACTED
-
-  if (success > 0) {
-    emit('updated')
-    handleClose()
-  REDACTED
-
-  submitting.value = false
 REDACTED
 
 // Reset form when modal closes
@@ -784,7 +756,6 @@ watch(() => props.show, (newShow) => {
     priority.value = 1
     status.value = 'active'
     groupIds.value = []
-    accountCache.value = {REDACTED
   REDACTED
 REDACTED)
 </script>

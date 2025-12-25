@@ -887,7 +887,7 @@ export default {
         title: '批量编辑账号',
         selectionInfo: '已选择 {countREDACTED 个账号。只更新您勾选或填写的字段，未勾选的字段保持不变。',
         baseUrlPlaceholder: 'https://api.anthropic.com 或 https://api.openai.com',
-        baseUrlNotice: '仅适用于 API Key 账号，留空使用对应平台默认地址',
+        baseUrlNotice: '仅适用于 API Key 账号，留空则不修改',
         submit: '批量更新',
         updating: '更新中...',
         success: '成功更新 {countREDACTED 个账号',

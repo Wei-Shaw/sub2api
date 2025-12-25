@@ -756,7 +756,7 @@ export default {
         title: 'Bulk Edit Accounts',
         selectionInfo: '{countREDACTED account(s) selected. Only checked or filled fields will be updated; others stay unchanged.',
         baseUrlPlaceholder: 'https://api.anthropic.com or https://api.openai.com',
-        baseUrlNotice: 'Applies to API Key accounts only; leave empty to use the platform default',
+        baseUrlNotice: 'Applies to API Key accounts only; leave empty to keep existing value',
         submit: 'Update Accounts',
         updating: 'Updating...',
         success: 'Updated {countREDACTED account(s)',
