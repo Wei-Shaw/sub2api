@@ -829,63 +829,101 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 
 	// Normalize to canonical 5h/7d fields based on window_minutes
 	// This fixes the issue where OpenAI's primary/secondary naming is reversed
-	var primary5h, secondary5h bool
+	// Strategy: Compare the two windows and assign the smaller one to 5h, larger one to 7d
 
-	// Determine which is 5h using window_minutes (most reliable)
+	// Get window sizes (in minutes)
+	var primaryWindowMins, secondaryWindowMins int
+	var hasPrimary, hasSecondary bool
+
 	if snapshot.PrimaryWindowMinutes != nil {
-		primary5h = *snapshot.PrimaryWindowMinutes <= 360
+		primaryWindowMins = *snapshot.PrimaryWindowMinutes
+		hasPrimary = true
 	} else if snapshot.PrimaryResetAfterSeconds != nil {
-		// Fallback: use reset_after_seconds (<= 6h means 5h window)
-		primary5h = *snapshot.PrimaryResetAfterSeconds <= 21600
-	} else {
-		// Default assumption (may be incorrect): primary=7d, secondary=5h
-		primary5h = false
+		primaryWindowMins = *snapshot.PrimaryResetAfterSeconds / 60
+		hasPrimary = true
 	}
 
 	if snapshot.SecondaryWindowMinutes != nil {
-		secondary5h = *snapshot.SecondaryWindowMinutes <= 360
+		secondaryWindowMins = *snapshot.SecondaryWindowMinutes
+		hasSecondary = true
 	} else if snapshot.SecondaryResetAfterSeconds != nil {
-		secondary5h = *snapshot.SecondaryResetAfterSeconds <= 21600
-	} else {
-		secondary5h = true // Default assumption
+		secondaryWindowMins = *snapshot.SecondaryResetAfterSeconds / 60
+		hasSecondary = true
+	}
+
+	// Determine which is 5h and which is 7d by comparing sizes
+	var use5hFromPrimary, use7dFromPrimary bool
+	var use5hFromSecondary, use7dFromSecondary bool
+
+	if hasPrimary && hasSecondary {
+		// Both windows present: smaller is 5h, larger is 7d
+		if primaryWindowMins < secondaryWindowMins {
+			use5hFromPrimary = true
+			use7dFromSecondary = true
+		} else {
+			use5hFromSecondary = true
+			use7dFromPrimary = true
+		}
+	} else if hasPrimary {
+		// Only primary present: decide based on size
+		if primaryWindowMins <= 360 {
+			use5hFromPrimary = true
+		} else {
+			use7dFromPrimary = true
+		}
+	} else if hasSecondary {
+		// Only secondary present: decide based on size
+		if secondaryWindowMins <= 360 {
+			use5hFromSecondary = true
+		} else {
+			use7dFromSecondary = true
+		}
 	}
 
 	// Write canonical 5h fields
-	if primary5h && snapshot.PrimaryUsedPercent != nil {
-		updates["codex_5h_used_percent"] = *snapshot.PrimaryUsedPercent
-	} else if secondary5h && snapshot.SecondaryUsedPercent != nil {
-		updates["codex_5h_used_percent"] = *snapshot.SecondaryUsedPercent
-	}
-
-	if primary5h && snapshot.PrimaryResetAfterSeconds != nil {
-		updates["codex_5h_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
-	} else if secondary5h && snapshot.SecondaryResetAfterSeconds != nil {
-		updates["codex_5h_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
-	}
-
-	if primary5h && snapshot.PrimaryWindowMinutes != nil {
-		updates["codex_5h_window_minutes"] = *snapshot.PrimaryWindowMinutes
-	} else if secondary5h && snapshot.SecondaryWindowMinutes != nil {
-		updates["codex_5h_window_minutes"] = *snapshot.SecondaryWindowMinutes
+	if use5hFromPrimary {
+		if snapshot.PrimaryUsedPercent != nil {
+			updates["codex_5h_used_percent"] = *snapshot.PrimaryUsedPercent
+		}
+		if snapshot.PrimaryResetAfterSeconds != nil {
+			updates["codex_5h_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
+		}
+		if snapshot.PrimaryWindowMinutes != nil {
+			updates["codex_5h_window_minutes"] = *snapshot.PrimaryWindowMinutes
+		}
+	} else if use5hFromSecondary {
+		if snapshot.SecondaryUsedPercent != nil {
+			updates["codex_5h_used_percent"] = *snapshot.SecondaryUsedPercent
+		}
+		if snapshot.SecondaryResetAfterSeconds != nil {
+			updates["codex_5h_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
+		}
+		if snapshot.SecondaryWindowMinutes != nil {
+			updates["codex_5h_window_minutes"] = *snapshot.SecondaryWindowMinutes
+		}
 	}
 
 	// Write canonical 7d fields
-	if !primary5h && snapshot.PrimaryUsedPercent != nil {
-		updates["codex_7d_used_percent"] = *snapshot.PrimaryUsedPercent
-	} else if !secondary5h && snapshot.SecondaryUsedPercent != nil {
-		updates["codex_7d_used_percent"] = *snapshot.SecondaryUsedPercent
-	}
-
-	if !primary5h && snapshot.PrimaryResetAfterSeconds != nil {
-		updates["codex_7d_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
-	} else if !secondary5h && snapshot.SecondaryResetAfterSeconds != nil {
-		updates["codex_7d_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
-	}
-
-	if !primary5h && snapshot.PrimaryWindowMinutes != nil {
-		updates["codex_7d_window_minutes"] = *snapshot.PrimaryWindowMinutes
-	} else if !secondary5h && snapshot.SecondaryWindowMinutes != nil {
-		updates["codex_7d_window_minutes"] = *snapshot.SecondaryWindowMinutes
+	if use7dFromPrimary {
+		if snapshot.PrimaryUsedPercent != nil {
+			updates["codex_7d_used_percent"] = *snapshot.PrimaryUsedPercent
+		}
+		if snapshot.PrimaryResetAfterSeconds != nil {
+			updates["codex_7d_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
+		}
+		if snapshot.PrimaryWindowMinutes != nil {
+			updates["codex_7d_window_minutes"] = *snapshot.PrimaryWindowMinutes
+		}
+	} else if use7dFromSecondary {
+		if snapshot.SecondaryUsedPercent != nil {
+			updates["codex_7d_used_percent"] = *snapshot.SecondaryUsedPercent
+		}
+		if snapshot.SecondaryResetAfterSeconds != nil {
+			updates["codex_7d_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
+		}
+		if snapshot.SecondaryWindowMinutes != nil {
+			updates["codex_7d_window_minutes"] = *snapshot.SecondaryWindowMinutes
+		}
 	}
 
 	// Update account's Extra field asynchronously
