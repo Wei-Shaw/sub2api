@@ -827,6 +827,67 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	}
 	updates["codex_usage_updated_at"] = snapshot.UpdatedAt
 
+	// Normalize to canonical 5h/7d fields based on window_minutes
+	// This fixes the issue where OpenAI's primary/secondary naming is reversed
+	var primary5h, secondary5h bool
+
+	// Determine which is 5h using window_minutes (most reliable)
+	if snapshot.PrimaryWindowMinutes != nil {
+		primary5h = *snapshot.PrimaryWindowMinutes <= 360
+	} else if snapshot.PrimaryResetAfterSeconds != nil {
+		// Fallback: use reset_after_seconds (<= 6h means 5h window)
+		primary5h = *snapshot.PrimaryResetAfterSeconds <= 21600
+	} else {
+		// Default assumption (may be incorrect): primary=7d, secondary=5h
+		primary5h = false
+	}
+
+	if snapshot.SecondaryWindowMinutes != nil {
+		secondary5h = *snapshot.SecondaryWindowMinutes <= 360
+	} else if snapshot.SecondaryResetAfterSeconds != nil {
+		secondary5h = *snapshot.SecondaryResetAfterSeconds <= 21600
+	} else {
+		secondary5h = true // Default assumption
+	}
+
+	// Write canonical 5h fields
+	if primary5h && snapshot.PrimaryUsedPercent != nil {
+		updates["codex_5h_used_percent"] = *snapshot.PrimaryUsedPercent
+	} else if secondary5h && snapshot.SecondaryUsedPercent != nil {
+		updates["codex_5h_used_percent"] = *snapshot.SecondaryUsedPercent
+	}
+
+	if primary5h && snapshot.PrimaryResetAfterSeconds != nil {
+		updates["codex_5h_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
+	} else if secondary5h && snapshot.SecondaryResetAfterSeconds != nil {
+		updates["codex_5h_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
+	}
+
+	if primary5h && snapshot.PrimaryWindowMinutes != nil {
+		updates["codex_5h_window_minutes"] = *snapshot.PrimaryWindowMinutes
+	} else if secondary5h && snapshot.SecondaryWindowMinutes != nil {
+		updates["codex_5h_window_minutes"] = *snapshot.SecondaryWindowMinutes
+	}
+
+	// Write canonical 7d fields
+	if !primary5h && snapshot.PrimaryUsedPercent != nil {
+		updates["codex_7d_used_percent"] = *snapshot.PrimaryUsedPercent
+	} else if !secondary5h && snapshot.SecondaryUsedPercent != nil {
+		updates["codex_7d_used_percent"] = *snapshot.SecondaryUsedPercent
+	}
+
+	if !primary5h && snapshot.PrimaryResetAfterSeconds != nil {
+		updates["codex_7d_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
+	} else if !secondary5h && snapshot.SecondaryResetAfterSeconds != nil {
+		updates["codex_7d_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
+	}
+
+	if !primary5h && snapshot.PrimaryWindowMinutes != nil {
+		updates["codex_7d_window_minutes"] = *snapshot.PrimaryWindowMinutes
+	} else if !secondary5h && snapshot.SecondaryWindowMinutes != nil {
+		updates["codex_7d_window_minutes"] = *snapshot.SecondaryWindowMinutes
+	}
+
 	// Update account's Extra field asynchronously
 	go func() {
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
