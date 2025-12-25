@@ -8,17 +8,17 @@ export default defineConfig({
     vue(),
     checker({
       typescript: true,
-      vueTsc: true,
-    REDACTED),
+      vueTsc: true
+    REDACTED)
   ],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-    REDACTED,
+      '@': resolve(__dirname, 'src')
+    REDACTED
   REDACTED,
   build: {
     outDir: '../backend/internal/web/dist',
-    emptyOutDir: true,
+    emptyOutDir: true
   REDACTED,
   server: {
     host: '0.0.0.0',
@@ -26,12 +26,12 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true,
+        changeOrigin: true
       REDACTED,
       '/setup': {
         target: 'http://localhost:8080',
-        changeOrigin: true,
-      REDACTED,
-    REDACTED,
-  REDACTED,
+        changeOrigin: true
+      REDACTED
+    REDACTED
+  REDACTED
 REDACTED)
