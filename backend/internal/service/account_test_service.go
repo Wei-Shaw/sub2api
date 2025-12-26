@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// sseDataPrefix matches SSE data lines with optional whitespace after colon
+var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 
 const (
 	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages"
@@ -573,11 +577,17 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 		}
 
 		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "data: ") {
+		if line == "" {
 			continue
 		}
 
-		jsonStr := strings.TrimPrefix(line, "data: ")
+		// Handle SSE data lines (supports both "data: " and "data:" formats)
+		// Some upstream APIs return non-standard "data:" without space
+		if !sseDataPrefix.MatchString(line) {
+			continue
+		}
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
@@ -588,15 +598,18 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 			continue
 		}
 
-		// Extract text from candidates[0].content.parts[].text
-		if candidates, ok := data["candidates"].([]any); ok && len(candidates) > 0 {
-			if candidate, ok := candidates[0].(map[string]any); ok {
-				// Check for completion
-				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-					return nil
-				}
+		// Handle both response formats:
+		// - AI Studio: {"candidates": [...]}
+		// - Gemini CLI: {"response": {"candidates": [...]}}
+		candidates, ok := data["candidates"].([]any)
+		if !ok {
+			if response, ok := data["response"].(map[string]any); ok {
+				candidates, _ = response["candidates"].([]any)
+			}
+		}
 
+		if len(candidates) > 0 {
+			if candidate, ok := candidates[0].(map[string]any); ok {
 				// Extract content
 				if content, ok := candidate["content"].(map[string]any); ok {
 					if parts, ok := content["parts"].([]any); ok {
@@ -608,6 +621,12 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 							}
 						}
 					}
+				}
+
+				// Check for completion
+				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+					return nil
 				}
 			}
 		}
@@ -667,11 +686,17 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		}
 
 		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "data: ") {
+		if line == "" {
 			continue
 		}
 
-		jsonStr := strings.TrimPrefix(line, "data: ")
+		// Handle SSE data lines (supports both "data: " and "data:" formats)
+		// Some upstream APIs return non-standard "data:" without space
+		if !sseDataPrefix.MatchString(line) {
+			continue
+		}
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
@@ -721,11 +746,17 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		}
 
 		line = strings.TrimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "data: ") {
+		if line == "" {
 			continue
 		}
 
-		jsonStr := strings.TrimPrefix(line, "data: ")
+		// Handle SSE data lines (supports both "data: " and "data:" formats)
+		// Some upstream APIs return non-standard "data:" without space
+		if !sseDataPrefix.MatchString(line) {
+			continue
+		}
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+
 		if jsonStr == "[DONE]" {
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil

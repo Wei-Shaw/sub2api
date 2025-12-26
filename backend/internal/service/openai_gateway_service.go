@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,9 @@ const (
 	openaiPlatformAPIURL   = "https://api.openai.com/v1/responses"
 	openaiStickySessionTTL = time.Hour // 粘性会话TTL
 )
+
+// openaiSSEDataRe matches SSE data lines with optional whitespace after colon
+var openaiSSEDataRe = regexp.MustCompile(`^data:\s*`)
 
 // OpenAI allowed headers whitelist (for non-OAuth accounts)
 var openaiAllowedHeaders = map[string]bool{
@@ -473,26 +477,33 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Replace model in response if needed
-		if needModelReplace && strings.HasPrefix(line, "data: ") {
-			line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-		}
+		// Extract data from SSE line (handle both "data: " and "data:" formats)
+		if openaiSSEDataRe.MatchString(line) {
+			data := openaiSSEDataRe.ReplaceAllString(line, "")
 
-		// Forward line
-		if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-			return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs}, err
-		}
-		flusher.Flush()
+			// Replace model in response if needed
+			if needModelReplace {
+				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			}
 
-		// Parse usage data
-		if strings.HasPrefix(line, "data: ") {
-			data := line[6:]
+			// Forward line
+			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs}, err
+			}
+			flusher.Flush()
+
 			// Record first token time
 			if firstTokenMs == nil && data != "" && data != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsage(data, usage)
+		} else {
+			// Forward non-data lines as-is
+			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs}, err
+			}
+			flusher.Flush()
 		}
 	}
 
@@ -504,7 +515,10 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 }
 
 func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
-	data := line[6:]
+	if !openaiSSEDataRe.MatchString(line) {
+		return line
+	}
+	data := openaiSSEDataRe.ReplaceAllString(line, "")
 	if data == "" || data == "[DONE]" {
 		return line
 	}
