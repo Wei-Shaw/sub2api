@@ -122,6 +122,10 @@ declare -A MSG_ZH=(
     ["removing_user"]="正在移除用户..."
     ["config_not_removed"]="配置目录未被移除"
     ["remove_manually"]="如不再需要，请手动删除"
+    ["removing_install_lock"]="正在移除安装锁文件..."
+    ["install_lock_removed"]="安装锁文件已移除，重新安装时将进入设置向导"
+    ["purge_prompt"]="是否同时删除配置目录？这将清除所有配置和数据 [y/N]: "
+    ["removing_config_dir"]="正在移除配置目录..."
     ["uninstall_complete"]="Sub2API 已卸载"
 
     # Help
@@ -243,6 +247,10 @@ declare -A MSG_EN=(
     ["removing_user"]="Removing user..."
     ["config_not_removed"]="Config directory was NOT removed."
     ["remove_manually"]="Remove it manually if you no longer need it."
+    ["removing_install_lock"]="Removing install lock file..."
+    ["install_lock_removed"]="Install lock removed. Setup wizard will appear on next install."
+    ["purge_prompt"]="Also remove config directory? This will delete all config and data [y/N]: "
+    ["removing_config_dir"]="Removing config directory..."
     ["uninstall_complete"]="Sub2API has been uninstalled"
 
     # Help
@@ -926,8 +934,31 @@ uninstall() {
     print_info "$(msg 'removing_user')"
     userdel "$SERVICE_USER" 2>/dev/null || true
 
-    print_warning "$(msg 'config_not_removed'): $CONFIG_DIR"
-    print_warning "$(msg 'remove_manually')"
+    # Remove install lock file (.installed) to allow fresh setup on reinstall
+    print_info "$(msg 'removing_install_lock')"
+    rm -f "$CONFIG_DIR/.installed" 2>/dev/null || true
+    rm -f "$INSTALL_DIR/.installed" 2>/dev/null || true
+    print_success "$(msg 'install_lock_removed')"
+
+    # Ask about config directory removal (interactive mode only)
+    local remove_config=false
+    if [ "${PURGE:-}" = "true" ]; then
+        remove_config=true
+    elif is_interactive; then
+        read -p "$(msg 'purge_prompt')" -n 1 -r < /dev/tty
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            remove_config=true
+        fi
+    fi
+
+    if [ "$remove_config" = true ]; then
+        print_info "$(msg 'removing_config_dir')"
+        rm -rf "$CONFIG_DIR"
+    else
+        print_warning "$(msg 'config_not_removed'): $CONFIG_DIR"
+        print_warning "$(msg 'remove_manually')"
+    fi
 
     print_success "$(msg 'uninstall_complete')"
 }
@@ -942,6 +973,10 @@ main() {
         case "$1" in
             -y|--yes)
                 FORCE_YES="true"
+                shift
+                ;;
+            --purge)
+                PURGE="true"
                 shift
                 ;;
             -v|--version)
