@@ -28,10 +28,20 @@ REDACTED
 func (c *geminiOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL string) (*geminicli.TokenResponse, error) {
 	client := createGeminiReqClient(proxyURL)
 
+	// Both Code Assist and AI Studio OAuth use the same token endpoint and OAuth client.
+	oauthCfg, err := geminicli.EffectiveOAuthConfig(geminicli.OAuthConfig{
+		ClientID:     c.cfg.Gemini.OAuth.ClientID,
+		ClientSecret: c.cfg.Gemini.OAuth.ClientSecret,
+		Scopes:       c.cfg.Gemini.OAuth.Scopes,
+REDACTED, "code_assist")
+	if err != nil {
+		return nil, err
+REDACTED
+
 	formData := url.Values{REDACTED
 	formData.Set("grant_type", "authorization_code")
-	formData.Set("client_id", c.cfg.Gemini.OAuth.ClientID)
-	formData.Set("client_secret", c.cfg.Gemini.OAuth.ClientSecret)
+	formData.Set("client_id", oauthCfg.ClientID)
+	formData.Set("client_secret", oauthCfg.ClientSecret)
 	formData.Set("code", code)
 	formData.Set("code_verifier", codeVerifier)
 	formData.Set("redirect_uri", redirectURI)
@@ -54,11 +64,21 @@ REDACTED
 func (c *geminiOAuthClient) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*geminicli.TokenResponse, error) {
 	client := createGeminiReqClient(proxyURL)
 
+	// Both Code Assist and AI Studio OAuth use the same token endpoint and OAuth client.
+	oauthCfg, err := geminicli.EffectiveOAuthConfig(geminicli.OAuthConfig{
+		ClientID:     c.cfg.Gemini.OAuth.ClientID,
+		ClientSecret: c.cfg.Gemini.OAuth.ClientSecret,
+		Scopes:       c.cfg.Gemini.OAuth.Scopes,
+REDACTED, "code_assist")
+	if err != nil {
+		return nil, err
+REDACTED
+
 	formData := url.Values{REDACTED
 	formData.Set("grant_type", "refresh_token")
 	formData.Set("refresh_token", refreshToken)
-	formData.Set("client_id", c.cfg.Gemini.OAuth.ClientID)
-	formData.Set("client_secret", c.cfg.Gemini.OAuth.ClientSecret)
+	formData.Set("client_id", oauthCfg.ClientID)
+	formData.Set("client_secret", oauthCfg.ClientSecret)
 
 	var tokenResp geminicli.TokenResponse
 	resp, err := client.R().
