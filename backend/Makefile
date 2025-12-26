@@ -16,14 +16,14 @@ build-embed:
 	@echo "构建完成: bin/server (with embedded frontend)"
 
 test-unit:
-	@go test ./... $(TEST_ARGS)
+	@go test -tags unit ./... -count=1
 
 test-integration:
-	@go test -tags integration ./internal/repository -count=1 -race -parallel=8
+	@go test -tags integration ./... -count=1 -race -parallel=8
 
 test-cover-integration:
 	@echo "运行集成测试并生成覆盖率报告..."
-	@go test -tags=integration -cover -coverprofile=coverage.out -count=1 -race -parallel=8 ./internal/repository/...
+	@go test -tags=integration -cover -coverprofile=coverage.out -count=1 -race -parallel=8 ./...
 	@go tool cover -func=coverage.out | tail -1
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "覆盖率报告已生成: coverage.html"
