@@ -25,6 +25,11 @@ type GeminiOAuthService struct {
 	cfg          *config.Config
 REDACTED
 
+type GeminiOAuthCapabilities struct {
+	AIStudioOAuthEnabled bool     `json:"ai_studio_oauth_enabled"`
+	RequiredRedirectURIs []string `json:"required_redirect_uris"`
+REDACTED
+
 func NewGeminiOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient GeminiOAuthClient,
@@ -37,6 +42,19 @@ func NewGeminiOAuthService(
 		oauthClient:  oauthClient,
 		codeAssist:   codeAssist,
 		cfg:          cfg,
+REDACTED
+REDACTED
+
+func (s *GeminiOAuthService) GetOAuthConfig() *GeminiOAuthCapabilities {
+	// AI Studio OAuth is only enabled when the operator configures a custom OAuth client.
+	clientID := strings.TrimSpace(s.cfg.Gemini.OAuth.ClientID)
+	clientSecret := strings.TrimSpace(s.cfg.Gemini.OAuth.ClientSecret)
+	enabled := clientID != "" && clientSecret != "" &&
+		!(clientID == geminicli.GeminiCLIOAuthClientID && clientSecret == geminicli.GeminiCLIOAuthClientSecret)
+
+	return &GeminiOAuthCapabilities{
+		AIStudioOAuthEnabled: enabled,
+		RequiredRedirectURIs: []string{geminicli.AIStudioOAuthRedirectURIREDACTED,
 REDACTED
 REDACTED
 
@@ -69,12 +87,17 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 两种 OAuth 模式都使用相同的配置，只是 scopes 不同
-	// scopes 会在 EffectiveOAuthConfig 中根据 oauthType 自动选择
+	// OAuth client selection:
+	// - code_assist: always use built-in Gemini CLI OAuth client (public), regardless of configured client_id/secret.
+	// - ai_studio: requires a user-provided OAuth client.
 	oauthCfg := geminicli.OAuthConfig{
 		ClientID:     s.cfg.Gemini.OAuth.ClientID,
 		ClientSecret: s.cfg.Gemini.OAuth.ClientSecret,
 		Scopes:       s.cfg.Gemini.OAuth.Scopes,
+REDACTED
+	if oauthType == "code_assist" {
+		oauthCfg.ClientID = ""
+		oauthCfg.ClientSecret = ""
 REDACTED
 
 	session := &geminicli.OAuthSession{
@@ -93,12 +116,24 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// For Code Assist with Gemini CLI credentials, use the CLI's redirect URI
+	isBuiltinClient := effectiveCfg.ClientID == geminicli.GeminiCLIOAuthClientID &&
+		effectiveCfg.ClientSecret == geminicli.GeminiCLIOAuthClientSecret
+
+	// AI Studio OAuth requires a user-provided OAuth client (built-in Gemini CLI client is scope-restricted).
+	if oauthType == "ai_studio" && isBuiltinClient {
+		return nil, fmt.Errorf("AI Studio OAuth requires a custom OAuth Client (GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET). If you don't want to configure an OAuth client, please use an AI Studio API Key account instead")
+REDACTED
+
+	// Redirect URI strategy:
+	// - code_assist: use Gemini CLI redirect URI (codeassist.google.com/authcode)
+	// - ai_studio: use localhost callback for manual copy/paste flow
 	if oauthType == "code_assist" {
 		redirectURI = geminicli.GeminiCLIRedirectURI
-		session.RedirectURI = redirectURI
-		s.sessionStore.Set(sessionID, session)
+REDACTED else {
+		redirectURI = geminicli.AIStudioOAuthRedirectURI
 REDACTED
+	session.RedirectURI = redirectURI
+	s.sessionStore.Set(sessionID, session)
 
 	authURL, err := geminicli.BuildAuthorizationURL(effectiveCfg, state, codeChallenge, redirectURI, session.ProjectID, oauthType)
 	if err != nil {
@@ -150,15 +185,39 @@ REDACTED
 
 	redirectURI := session.RedirectURI
 
-	tokenResp, err := s.oauthClient.ExchangeCode(ctx, input.Code, session.CodeVerifier, redirectURI, proxyURL)
+	// Resolve oauth_type early (defaults to code_assist for backward compatibility).
+	oauthType := session.OAuthType
+	if oauthType == "" {
+		oauthType = "code_assist"
+REDACTED
+
+	// If the session was created for AI Studio OAuth, ensure a custom OAuth client is configured.
+	if oauthType == "ai_studio" {
+		effectiveCfg, err := geminicli.EffectiveOAuthConfig(geminicli.OAuthConfig{
+			ClientID:     s.cfg.Gemini.OAuth.ClientID,
+			ClientSecret: s.cfg.Gemini.OAuth.ClientSecret,
+			Scopes:       s.cfg.Gemini.OAuth.Scopes,
+	REDACTED, "ai_studio")
+		if err != nil {
+			return nil, err
+	REDACTED
+		isBuiltinClient := effectiveCfg.ClientID == geminicli.GeminiCLIOAuthClientID &&
+			effectiveCfg.ClientSecret == geminicli.GeminiCLIOAuthClientSecret
+		if isBuiltinClient {
+			return nil, fmt.Errorf("AI Studio OAuth requires a custom OAuth Client. Please use an AI Studio API Key account, or configure GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and re-authorize")
+	REDACTED
+REDACTED
+
+	// code_assist always uses the built-in client and its fixed redirect URI.
+	if oauthType == "code_assist" {
+		redirectURI = geminicli.GeminiCLIRedirectURI
+REDACTED
+
+	tokenResp, err := s.oauthClient.ExchangeCode(ctx, oauthType, input.Code, session.CodeVerifier, redirectURI, proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 REDACTED
 	sessionProjectID := strings.TrimSpace(session.ProjectID)
-	oauthType := session.OAuthType
-	if oauthType == "" {
-		oauthType = "code_assist" // 默认为 code_assist 以兼容旧 session
-REDACTED
 	s.sessionStore.Delete(input.SessionID)
 
 	// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
@@ -194,7 +253,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *GeminiOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*GeminiTokenInfo, error) {
+func (s *GeminiOAuthService) RefreshToken(ctx context.Context, oauthType, refreshToken, proxyURL string) (*GeminiTokenInfo, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= 3; attempt++ {
@@ -206,7 +265,7 @@ func (s *GeminiOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 			time.Sleep(backoff)
 	REDACTED
 
-		tokenResp, err := s.oauthClient.RefreshToken(ctx, refreshToken, proxyURL)
+		tokenResp, err := s.oauthClient.RefreshToken(ctx, oauthType, refreshToken, proxyURL)
 		if err == nil {
 			// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
 			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
@@ -255,6 +314,12 @@ REDACTED
 		return nil, fmt.Errorf("no refresh token available")
 REDACTED
 
+	// Preserve oauth_type from the account (defaults to code_assist for backward compatibility).
+	oauthType := strings.TrimSpace(account.GetCredential("oauth_type"))
+	if oauthType == "" {
+		oauthType = "code_assist"
+REDACTED
+
 	var proxyURL string
 	if account.ProxyID != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
@@ -263,16 +328,25 @@ REDACTED
 	REDACTED
 REDACTED
 
-	tokenInfo, err := s.RefreshToken(ctx, refreshToken, proxyURL)
+	tokenInfo, err := s.RefreshToken(ctx, oauthType, refreshToken, proxyURL)
+	// Backward compatibility:
+	// Older versions could refresh Code Assist tokens using a user-provided OAuth client when configured.
+	// If the refresh token was originally issued to that custom client, forcing the built-in client will
+	// fail with "unauthorized_client". In that case, retry with the custom client (ai_studio path) when available.
+	if err != nil && oauthType == "code_assist" && strings.Contains(err.Error(), "unauthorized_client") && s.GetOAuthConfig().AIStudioOAuthEnabled {
+		if alt, altErr := s.RefreshToken(ctx, "ai_studio", refreshToken, proxyURL); altErr == nil {
+			tokenInfo = alt
+			err = nil
+	REDACTED
+REDACTED
 	if err != nil {
+		// Provide a more actionable error for common OAuth client mismatch issues.
+		if strings.Contains(err.Error(), "unauthorized_client") {
+			return nil, fmt.Errorf("%w (OAuth client mismatch: the refresh_token is bound to the OAuth client used during authorization; please re-authorize this account or restore the original GEMINI_OAUTH_CLIENT_ID/SECRET)", err)
+	REDACTED
 		return nil, err
 REDACTED
 
-	// Preserve oauth_type from the account (defaults to code_assist for backward compatibility).
-	oauthType := strings.TrimSpace(account.GetCredential("oauth_type"))
-	if oauthType == "" {
-		oauthType = "code_assist"
-REDACTED
 	tokenInfo.OAuthType = oauthType
 
 	// Preserve account's project_id when present.

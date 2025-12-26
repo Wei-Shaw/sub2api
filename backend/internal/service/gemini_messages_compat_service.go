@@ -386,12 +386,21 @@ REDACTED
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
-			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
+			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries: "+sanitizeUpstreamErrorMessage(err.Error()))
 	REDACTED
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			_ = resp.Body.Close()
+			// Don't treat insufficient-scope as transient.
+			if resp.StatusCode == 403 && isGeminiInsufficientScope(resp.Header, respBody) {
+				resp = &http.Response{
+					StatusCode: resp.StatusCode,
+					Header:     resp.Header.Clone(),
+					Body:       io.NopCloser(bytes.NewReader(respBody)),
+			REDACTED
+				break
+		REDACTED
 			if resp.StatusCode == 429 {
 				// Mark as rate-limited early so concurrent requests avoid this account.
 				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
@@ -401,7 +410,13 @@ REDACTED
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
-			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
+			// Final attempt: surface the upstream error body (mapped below) instead of a generic retry error.
+			resp = &http.Response{
+				StatusCode: resp.StatusCode,
+				Header:     resp.Header.Clone(),
+				Body:       io.NopCloser(bytes.NewReader(respBody)),
+		REDACTED
+			break
 	REDACTED
 
 		break
@@ -633,12 +648,21 @@ REDACTED
 					FirstTokenMs: nil,
 			REDACTED, nil
 		REDACTED
-			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
+			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries: "+sanitizeUpstreamErrorMessage(err.Error()))
 	REDACTED
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			_ = resp.Body.Close()
+			// Don't treat insufficient-scope as transient.
+			if resp.StatusCode == 403 && isGeminiInsufficientScope(resp.Header, respBody) {
+				resp = &http.Response{
+					StatusCode: resp.StatusCode,
+					Header:     resp.Header.Clone(),
+					Body:       io.NopCloser(bytes.NewReader(respBody)),
+			REDACTED
+				break
+		REDACTED
 			if resp.StatusCode == 429 {
 				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		REDACTED
@@ -659,7 +683,13 @@ REDACTED
 					FirstTokenMs: nil,
 			REDACTED, nil
 		REDACTED
-			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
+			// Final attempt: surface the upstream error body (passed through below) instead of a generic retry error.
+			resp = &http.Response{
+				StatusCode: resp.StatusCode,
+				Header:     resp.Header.Clone(),
+				Body:       io.NopCloser(bytes.NewReader(respBody)),
+		REDACTED
+			break
 	REDACTED
 
 		break
@@ -752,7 +782,15 @@ func (s *GeminiMessagesCompatService) shouldRetryGeminiUpstreamError(account *mo
 		return true
 	case 403:
 		// GeminiCli OAuth occasionally returns 403 transiently (activation/quota propagation); allow retry.
-		return account != nil && account.Type == model.AccountTypeOAuth
+		if account == nil || account.Type != model.AccountTypeOAuth {
+			return false
+	REDACTED
+		oauthType := strings.ToLower(strings.TrimSpace(account.GetCredential("oauth_type")))
+		if oauthType == "" && strings.TrimSpace(account.GetCredential("project_id")) != "" {
+			// Legacy/implicit Code Assist OAuth accounts.
+			oauthType = "code_assist"
+	REDACTED
+		return oauthType == "code_assist"
 	default:
 		return false
 REDACTED
@@ -772,6 +810,15 @@ REDACTED
 		sleepFor = 0
 REDACTED
 	time.Sleep(sleepFor)
+REDACTED
+
+var sensitiveQueryParamRegex = regexp.MustCompile(`(?i)([?&](?:key|client_secret|access_token|refresh_token)=)[^&"\s]+`)
+
+func sanitizeUpstreamErrorMessage(msg string) string {
+	if msg == "" {
+		return msg
+REDACTED
+	return sensitiveQueryParamRegex.ReplaceAllString(msg, `$1***`)
 REDACTED
 
 func (s *GeminiMessagesCompatService) writeGeminiMappedError(c *gin.Context, upstreamStatus int, body []byte) error {
