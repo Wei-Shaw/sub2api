@@ -15,7 +15,6 @@ var ProviderSet = wire.NewSet(
 	NewUsageLogRepository,
 	NewSettingRepository,
 	NewUserSubscriptionRepository,
-	wire.Struct(new(Repositories), "*"),
 
 	// Cache implementations
 	NewGatewayCache,

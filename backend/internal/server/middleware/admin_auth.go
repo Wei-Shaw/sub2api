@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"crypto/subtle"
 	"errors"
 	"strings"
@@ -12,23 +11,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// AdminAuth 管理员认证中间件
+// NewAdminAuthMiddleware 创建管理员认证中间件
+func NewAdminAuthMiddleware(
+	authService *service.AuthService,
+	userService *service.UserService,
+	settingService *service.SettingService,
+) AdminAuthMiddleware {
+	return AdminAuthMiddleware(adminAuth(authService, userService, settingService))
+REDACTED
+
+// adminAuth 管理员认证中间件实现
 // 支持两种认证方式（通过不同的 header 区分）：
 // 1. Admin API Key: x-api-key: <admin-api-key>
 // 2. JWT Token: Authorization: Bearer <jwt-token> (需要管理员角色)
-func AdminAuth(
+func adminAuth(
 	authService *service.AuthService,
-	userRepo interface {
-		GetByID(ctx context.Context, id int64) (*model.User, error)
-		GetFirstAdmin(ctx context.Context) (*model.User, error)
-REDACTED,
+	userService *service.UserService,
 	settingService *service.SettingService,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 检查 x-api-key header（Admin API Key 认证）
 		apiKey := c.GetHeader("x-api-key")
 		if apiKey != "" {
-			if !validateAdminApiKey(c, apiKey, settingService, userRepo) {
+			if !validateAdminApiKey(c, apiKey, settingService, userService) {
 				return
 		REDACTED
 			c.Next()
@@ -40,7 +45,7 @@ REDACTED,
 		if authHeader != "" {
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) == 2 && parts[0] == "Bearer" {
-				if !validateJWTForAdmin(c, parts[1], authService, userRepo) {
+				if !validateJWTForAdmin(c, parts[1], authService, userService) {
 					return
 			REDACTED
 				c.Next()
@@ -58,9 +63,7 @@ func validateAdminApiKey(
 	c *gin.Context,
 	key string,
 	settingService *service.SettingService,
-	userRepo interface {
-		GetFirstAdmin(ctx context.Context) (*model.User, error)
-REDACTED,
+	userService *service.UserService,
 ) bool {
 	storedKey, err := settingService.GetAdminApiKey(c.Request.Context())
 	if err != nil {
@@ -75,7 +78,7 @@ REDACTED
 REDACTED
 
 	// 获取真实的管理员用户
-	admin, err := userRepo.GetFirstAdmin(c.Request.Context())
+	admin, err := userService.GetFirstAdmin(c.Request.Context())
 	if err != nil {
 		AbortWithError(c, 500, "INTERNAL_ERROR", "No admin user found")
 		return false
@@ -91,9 +94,7 @@ func validateJWTForAdmin(
 	c *gin.Context,
 	token string,
 	authService *service.AuthService,
-	userRepo interface {
-		GetByID(ctx context.Context, id int64) (*model.User, error)
-REDACTED,
+	userService *service.UserService,
 ) bool {
 	// 验证 JWT token
 	claims, err := authService.ValidateToken(token)
@@ -107,7 +108,7 @@ REDACTED,
 REDACTED
 
 	// 从数据库获取用户
-	user, err := userRepo.GetByID(c.Request.Context(), claims.UserID)
+	user, err := userService.GetByID(c.Request.Context(), claims.UserID)
 	if err != nil {
 		AbortWithError(c, 401, "USER_NOT_FOUND", "User not found")
 		return false

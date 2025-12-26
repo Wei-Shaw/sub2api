@@ -4,17 +4,18 @@
 package main
 
 import (
+	"context"
+	"log"
+	"net/http"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-
-	"context"
-	"log"
-	"net/http"
-	"time"
 
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -35,6 +36,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// 业务层 ProviderSets
 		repository.ProviderSet,
 		service.ProviderSet,
+		middleware.ProviderSet,
 		handler.ProviderSet,
 
 		// 服务器层 ProviderSet
@@ -62,7 +64,11 @@ REDACTED
 func provideCleanup(
 	db *gorm.DB,
 	rdb *redis.Client,
-	services *service.Services,
+	tokenRefresh *service.TokenRefreshService,
+	pricing *service.PricingService,
+	emailQueue *service.EmailQueueService,
+	oauth *service.OAuthService,
+	openaiOAuth *service.OpenAIOAuthService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -74,23 +80,23 @@ func provideCleanup(
 			fn   func() error
 	REDACTED{
 			{"TokenRefreshService", func() error {
-				services.TokenRefresh.Stop()
+				tokenRefresh.Stop()
 				return nil
 	REDACTED
 			{"PricingService", func() error {
-				services.Pricing.Stop()
+				pricing.Stop()
 				return nil
 	REDACTED
 			{"EmailQueueService", func() error {
-				services.EmailQueue.Stop()
+				emailQueue.Stop()
 				return nil
 	REDACTED
 			{"OAuthService", func() error {
-				services.OAuth.Stop()
+				oauth.Stop()
 				return nil
 	REDACTED
 			{"OpenAIOAuthService", func() error {
-				services.OpenAIOAuth.Stop()
+				openaiOAuth.Stop()
 				return nil
 	REDACTED
 			{"Redis", func() error {

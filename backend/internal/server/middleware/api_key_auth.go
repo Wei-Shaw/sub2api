@@ -1,37 +1,24 @@
 package middleware
 
 import (
-	"context"
 	"errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"log"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-// ApiKeyAuthService 定义API Key认证服务需要的接口
-type ApiKeyAuthService interface {
-	GetByKey(ctx context.Context, key string) (*model.ApiKey, error)
+// NewApiKeyAuthMiddleware 创建 API Key 认证中间件
+func NewApiKeyAuthMiddleware(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService) ApiKeyAuthMiddleware {
+	return ApiKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService))
 REDACTED
 
-// SubscriptionAuthService 定义订阅认证服务需要的接口
-type SubscriptionAuthService interface {
-	GetActiveSubscription(ctx context.Context, userID, groupID int64) (*model.UserSubscription, error)
-	ValidateSubscription(ctx context.Context, sub *model.UserSubscription) error
-	CheckAndActivateWindow(ctx context.Context, sub *model.UserSubscription) error
-	CheckAndResetWindows(ctx context.Context, sub *model.UserSubscription) error
-	CheckUsageLimits(ctx context.Context, sub *model.UserSubscription, group *model.Group, additionalCost float64) error
-REDACTED
-
-// ApiKeyAuth API Key认证中间件
-func ApiKeyAuth(apiKeyRepo ApiKeyAuthService) gin.HandlerFunc {
-	return ApiKeyAuthWithSubscription(apiKeyRepo, nil)
-REDACTED
-
-// ApiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）
-func ApiKeyAuthWithSubscription(apiKeyRepo ApiKeyAuthService, subscriptionService SubscriptionAuthService) gin.HandlerFunc {
+// apiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）
+func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 尝试从Authorization header中提取API key (Bearer scheme)
 		authHeader := c.GetHeader("Authorization")
@@ -57,7 +44,7 @@ func ApiKeyAuthWithSubscription(apiKeyRepo ApiKeyAuthService, subscriptionServic
 	REDACTED
 
 		// 从数据库验证API key
-		apiKey, err := apiKeyRepo.GetByKey(c.Request.Context(), apiKeyString)
+		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				AbortWithError(c, 401, "INVALID_API_KEY", "Invalid API key")

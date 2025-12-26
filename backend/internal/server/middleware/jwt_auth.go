@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"errors"
 	"strings"
 
@@ -11,10 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// JWTAuth JWT认证中间件
-func JWTAuth(authService *service.AuthService, userRepo interface {
-	GetByID(ctx context.Context, id int64) (*model.User, error)
-REDACTED) gin.HandlerFunc {
+// NewJWTAuthMiddleware 创建 JWT 认证中间件
+func NewJWTAuthMiddleware(authService *service.AuthService, userService *service.UserService) JWTAuthMiddleware {
+	return JWTAuthMiddleware(jwtAuth(authService, userService))
+REDACTED
+
+// jwtAuth JWT认证中间件实现
+func jwtAuth(authService *service.AuthService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从Authorization header中提取token
 		authHeader := c.GetHeader("Authorization")
@@ -48,7 +50,7 @@ REDACTED) gin.HandlerFunc {
 	REDACTED
 
 		// 从数据库获取最新的用户信息
-		user, err := userRepo.GetByID(c.Request.Context(), claims.UserID)
+		user, err := userService.GetByID(c.Request.Context(), claims.UserID)
 		if err != nil {
 			AbortWithError(c, 401, "USER_NOT_FOUND", "User not found")
 			return

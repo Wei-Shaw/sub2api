@@ -60,6 +60,15 @@ func NewUserService(userRepo UserRepository) *UserService {
 REDACTED
 REDACTED
 
+// GetFirstAdmin 获取首个管理员用户（用于 Admin API Key 认证）
+func (s *UserService) GetFirstAdmin(ctx context.Context) (*model.User, error) {
+	admin, err := s.userRepo.GetFirstAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get first admin: %w", err)
+REDACTED
+	return admin, nil
+REDACTED
+
 // GetProfile 获取用户资料
 func (s *UserService) GetProfile(ctx context.Context, userID int64) (*model.User, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)

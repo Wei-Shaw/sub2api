@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -40,13 +40,13 @@ REDACTED
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Get apiKey and user from context (set by ApiKeyAuth middleware)
-	apiKey, ok := middleware.GetApiKeyFromContext(c)
+	apiKey, ok := middleware2.GetApiKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 REDACTED
 
-	user, ok := middleware.GetUserFromContext(c)
+	user, ok := middleware2.GetUserFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
@@ -91,7 +91,7 @@ REDACTED
 	streamStarted := false
 
 	// Get subscription info (may be nil)
-	subscription, _ := middleware.GetSubscriptionFromContext(c)
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	// 0. Check if wait queue is full
 	maxWait := service.CalculateMaxWait(user.Concurrency)

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -41,13 +41,13 @@ REDACTED
 // POST /v1/messages
 func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
-	apiKey, ok := middleware.GetApiKeyFromContext(c)
+	apiKey, ok := middleware2.GetApiKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 REDACTED
 
-	user, ok := middleware.GetUserFromContext(c)
+	user, ok := middleware2.GetUserFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
@@ -79,7 +79,7 @@ REDACTED
 	streamStarted := false
 
 	// 获取订阅信息（可能为nil）- 提前获取用于后续检查
-	subscription, _ := middleware.GetSubscriptionFromContext(c)
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	// 0. 检查wait队列是否已满
 	maxWait := service.CalculateMaxWait(user.Concurrency)
@@ -171,7 +171,7 @@ REDACTED
 // GET /v1/models
 // Returns different model lists based on the API key's group platform
 func (h *GatewayHandler) Models(c *gin.Context) {
-	apiKey, _ := middleware.GetApiKeyFromContext(c)
+	apiKey, _ := middleware2.GetApiKeyFromContext(c)
 
 	// Return OpenAI models for OpenAI platform groups
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == "openai" {
@@ -192,13 +192,13 @@ REDACTED
 // Usage handles getting account balance for CC Switch integration
 // GET /v1/usage
 func (h *GatewayHandler) Usage(c *gin.Context) {
-	apiKey, ok := middleware.GetApiKeyFromContext(c)
+	apiKey, ok := middleware2.GetApiKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 REDACTED
 
-	user, ok := middleware.GetUserFromContext(c)
+	user, ok := middleware2.GetUserFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
@@ -206,7 +206,7 @@ REDACTED
 
 	// 订阅模式：返回订阅限额信息
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
-		subscription, ok := middleware.GetSubscriptionFromContext(c)
+		subscription, ok := middleware2.GetSubscriptionFromContext(c)
 		if !ok {
 			h.errorResponse(c, http.StatusForbidden, "subscription_error", "No active subscription")
 			return
@@ -328,13 +328,13 @@ REDACTED
 // 特点：校验订阅/余额，但不计算并发、不记录使用量
 func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
-	apiKey, ok := middleware.GetApiKeyFromContext(c)
+	apiKey, ok := middleware2.GetApiKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 REDACTED
 
-	user, ok := middleware.GetUserFromContext(c)
+	user, ok := middleware2.GetUserFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
@@ -362,7 +362,7 @@ REDACTED
 REDACTED
 
 	// 获取订阅信息（可能为nil）
-	subscription, _ := middleware.GetSubscriptionFromContext(c)
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
