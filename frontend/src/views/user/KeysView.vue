@@ -336,6 +336,7 @@
       :show="showUseKeyModal"
       :api-key="selectedKey?.key || ''"
       :base-url="publicSettings?.api_base_url || ''"
+      :platform="selectedKey?.group?.platform || null"
       @close="closeUseKeyModal"
     />
 
