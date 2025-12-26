@@ -218,6 +218,7 @@ REDACTED)
 			// Gemini OAuth routes
 			gemini := admin.Group("/gemini")
 			{
+				gemini.GET("/oauth/capabilities", h.Admin.GeminiOAuth.GetCapabilities)
 				gemini.POST("/oauth/auth-url", h.Admin.GeminiOAuth.GenerateAuthURL)
 				gemini.POST("/oauth/exchange-code", h.Admin.GeminiOAuth.ExchangeCode)
 		REDACTED

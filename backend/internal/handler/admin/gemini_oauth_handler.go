@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -17,6 +16,12 @@ REDACTED
 
 func NewGeminiOAuthHandler(geminiOAuthService *service.GeminiOAuthService) *GeminiOAuthHandler {
 	return &GeminiOAuthHandler{geminiOAuthService: geminiOAuthServiceREDACTED
+REDACTED
+
+// GET /api/v1/admin/gemini/oauth/capabilities
+func (h *GeminiOAuthHandler) GetCapabilities(c *gin.Context) {
+	cfg := h.geminiOAuthService.GetOAuthConfig()
+	response.Success(c, cfg)
 REDACTED
 
 type GeminiGenerateAuthURLRequest struct {
@@ -46,12 +51,9 @@ REDACTED
 		return
 REDACTED
 
+	// Always pass the "hosted" callback URI; the OAuth service may override it depending on
+	// oauth_type and whether the built-in Gemini CLI OAuth client is used.
 	redirectURI := deriveGeminiRedirectURI(c)
-	if oauthType == "ai_studio" {
-		// AI Studio OAuth uses a localhost redirect URI to support the "copy/paste callback URL"
-		// flow (no server-side callback endpoint needed).
-		redirectURI = geminicli.AIStudioOAuthRedirectURI
-REDACTED
 	result, err := h.geminiOAuthService.GenerateAuthURL(c.Request.Context(), req.ProxyID, redirectURI, req.ProjectID, oauthType)
 	if err != nil {
 		msg := err.Error()

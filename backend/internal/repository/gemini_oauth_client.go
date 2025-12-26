@@ -25,15 +25,23 @@ func NewGeminiOAuthClient(cfg *config.Config) service.GeminiOAuthClient {
 REDACTED
 REDACTED
 
-func (c *geminiOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL string) (*geminicli.TokenResponse, error) {
+func (c *geminiOAuthClient) ExchangeCode(ctx context.Context, oauthType, code, codeVerifier, redirectURI, proxyURL string) (*geminicli.TokenResponse, error) {
 	client := createGeminiReqClient(proxyURL)
 
-	// Both Code Assist and AI Studio OAuth use the same token endpoint and OAuth client.
-	oauthCfg, err := geminicli.EffectiveOAuthConfig(geminicli.OAuthConfig{
+	// Use different OAuth clients based on oauthType:
+	// - code_assist: always use built-in Gemini CLI OAuth client (public)
+	// - ai_studio: requires a user-provided OAuth client
+	oauthCfgInput := geminicli.OAuthConfig{
 		ClientID:     c.cfg.Gemini.OAuth.ClientID,
 		ClientSecret: c.cfg.Gemini.OAuth.ClientSecret,
 		Scopes:       c.cfg.Gemini.OAuth.Scopes,
-REDACTED, "code_assist")
+REDACTED
+	if oauthType == "code_assist" {
+		oauthCfgInput.ClientID = ""
+		oauthCfgInput.ClientSecret = ""
+REDACTED
+
+	oauthCfg, err := geminicli.EffectiveOAuthConfig(oauthCfgInput, oauthType)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -61,15 +69,20 @@ REDACTED
 	return &tokenResp, nil
 REDACTED
 
-func (c *geminiOAuthClient) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*geminicli.TokenResponse, error) {
+func (c *geminiOAuthClient) RefreshToken(ctx context.Context, oauthType, refreshToken, proxyURL string) (*geminicli.TokenResponse, error) {
 	client := createGeminiReqClient(proxyURL)
 
-	// Both Code Assist and AI Studio OAuth use the same token endpoint and OAuth client.
-	oauthCfg, err := geminicli.EffectiveOAuthConfig(geminicli.OAuthConfig{
+	oauthCfgInput := geminicli.OAuthConfig{
 		ClientID:     c.cfg.Gemini.OAuth.ClientID,
 		ClientSecret: c.cfg.Gemini.OAuth.ClientSecret,
 		Scopes:       c.cfg.Gemini.OAuth.Scopes,
-REDACTED, "code_assist")
+REDACTED
+	if oauthType == "code_assist" {
+		oauthCfgInput.ClientID = ""
+		oauthCfgInput.ClientSecret = ""
+REDACTED
+
+	oauthCfg, err := geminicli.EffectiveOAuthConfig(oauthCfgInput, oauthType)
 	if err != nil {
 		return nil, err
 REDACTED
