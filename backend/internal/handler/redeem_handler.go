@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -37,15 +38,9 @@ REDACTED
 // Redeem handles redeeming a code
 // POST /api/v1/redeem
 func (h *RedeemHandler) Redeem(c *gin.Context) {
-	userValue, exists := c.Get("user")
-	if !exists {
-		response.Unauthorized(c, "User not authenticated")
-		return
-REDACTED
-
-	user, ok := userValue.(*model.User)
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
-		response.InternalError(c, "Invalid user context")
+		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
 
@@ -55,38 +50,36 @@ REDACTED
 		return
 REDACTED
 
-	result, err := h.redeemService.Redeem(c.Request.Context(), user.ID, req.Code)
+	result, err := h.redeemService.Redeem(c.Request.Context(), subject.UserID, req.Code)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, result)
+	response.Success(c, dto.RedeemCodeFromService(result))
 REDACTED
 
 // GetHistory returns the user's redemption history
 // GET /api/v1/redeem/history
 func (h *RedeemHandler) GetHistory(c *gin.Context) {
-	userValue, exists := c.Get("user")
-	if !exists {
-		response.Unauthorized(c, "User not authenticated")
-		return
-REDACTED
-
-	user, ok := userValue.(*model.User)
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
-		response.InternalError(c, "Invalid user context")
+		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
 
 	// Default limit is 25
 	limit := 25
 
-	codes, err := h.redeemService.GetUserHistory(c.Request.Context(), user.ID, limit)
+	codes, err := h.redeemService.GetUserHistory(c.Request.Context(), subject.UserID, limit)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, codes)
+	out := make([]dto.RedeemCode, 0, len(codes))
+	for i := range codes {
+		out = append(out, *dto.RedeemCodeFromService(&codes[i]))
+REDACTED
+	response.Success(c, out)
 REDACTED

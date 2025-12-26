@@ -1,7 +1,7 @@
 package admin
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -31,7 +31,28 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		return
 REDACTED
 
-	response.Success(c, settings)
+	response.Success(c, dto.SystemSettings{
+		RegistrationEnabled: settings.RegistrationEnabled,
+		EmailVerifyEnabled:  settings.EmailVerifyEnabled,
+		SmtpHost:            settings.SmtpHost,
+		SmtpPort:            settings.SmtpPort,
+		SmtpUsername:        settings.SmtpUsername,
+		SmtpPassword:        settings.SmtpPassword,
+		SmtpFrom:            settings.SmtpFrom,
+		SmtpFromName:        settings.SmtpFromName,
+		SmtpUseTLS:          settings.SmtpUseTLS,
+		TurnstileEnabled:    settings.TurnstileEnabled,
+		TurnstileSiteKey:    settings.TurnstileSiteKey,
+		TurnstileSecretKey:  settings.TurnstileSecretKey,
+		SiteName:            settings.SiteName,
+		SiteLogo:            settings.SiteLogo,
+		SiteSubtitle:        settings.SiteSubtitle,
+		ApiBaseUrl:          settings.ApiBaseUrl,
+		ContactInfo:         settings.ContactInfo,
+		DocUrl:              settings.DocUrl,
+		DefaultConcurrency:  settings.DefaultConcurrency,
+		DefaultBalance:      settings.DefaultBalance,
+REDACTED)
 REDACTED
 
 // UpdateSettingsRequest 更新设置请求
@@ -87,7 +108,7 @@ REDACTED
 		req.SmtpPort = 587
 REDACTED
 
-	settings := &model.SystemSettings{
+	settings := &service.SystemSettings{
 		RegistrationEnabled: req.RegistrationEnabled,
 		EmailVerifyEnabled:  req.EmailVerifyEnabled,
 		SmtpHost:            req.SmtpHost,
@@ -122,7 +143,28 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, updatedSettings)
+	response.Success(c, dto.SystemSettings{
+		RegistrationEnabled: updatedSettings.RegistrationEnabled,
+		EmailVerifyEnabled:  updatedSettings.EmailVerifyEnabled,
+		SmtpHost:            updatedSettings.SmtpHost,
+		SmtpPort:            updatedSettings.SmtpPort,
+		SmtpUsername:        updatedSettings.SmtpUsername,
+		SmtpPassword:        updatedSettings.SmtpPassword,
+		SmtpFrom:            updatedSettings.SmtpFrom,
+		SmtpFromName:        updatedSettings.SmtpFromName,
+		SmtpUseTLS:          updatedSettings.SmtpUseTLS,
+		TurnstileEnabled:    updatedSettings.TurnstileEnabled,
+		TurnstileSiteKey:    updatedSettings.TurnstileSiteKey,
+		TurnstileSecretKey:  updatedSettings.TurnstileSecretKey,
+		SiteName:            updatedSettings.SiteName,
+		SiteLogo:            updatedSettings.SiteLogo,
+		SiteSubtitle:        updatedSettings.SiteSubtitle,
+		ApiBaseUrl:          updatedSettings.ApiBaseUrl,
+		ContactInfo:         updatedSettings.ContactInfo,
+		DocUrl:              updatedSettings.DocUrl,
+		DefaultConcurrency:  updatedSettings.DefaultConcurrency,
+		DefaultBalance:      updatedSettings.DefaultBalance,
+REDACTED)
 REDACTED
 
 // TestSmtpRequest 测试SMTP连接请求

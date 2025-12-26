@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -35,19 +36,13 @@ REDACTED
 // GetProfile handles getting user profile
 // GET /api/v1/users/me
 func (h *UserHandler) GetProfile(c *gin.Context) {
-	userValue, exists := c.Get("user")
-	if !exists {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
 
-	user, ok := userValue.(*model.User)
-	if !ok {
-		response.InternalError(c, "Invalid user context")
-		return
-REDACTED
-
-	userData, err := h.userService.GetByID(c.Request.Context(), user.ID)
+	userData, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -56,21 +51,15 @@ REDACTED
 	// 清空notes字段，普通用户不应看到备注
 	userData.Notes = ""
 
-	response.Success(c, userData)
+	response.Success(c, dto.UserFromService(userData))
 REDACTED
 
 // ChangePassword handles changing user password
 // POST /api/v1/users/me/password
 func (h *UserHandler) ChangePassword(c *gin.Context) {
-	userValue, exists := c.Get("user")
-	if !exists {
-		response.Unauthorized(c, "User not authenticated")
-		return
-REDACTED
-
-	user, ok := userValue.(*model.User)
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
-		response.InternalError(c, "Invalid user context")
+		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
 
@@ -84,7 +73,7 @@ REDACTED
 		CurrentPassword: req.OldPassword,
 		NewPassword:     req.NewPassword,
 REDACTED
-	err := h.userService.ChangePassword(c.Request.Context(), user.ID, svcReq)
+	err := h.userService.ChangePassword(c.Request.Context(), subject.UserID, svcReq)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -96,15 +85,9 @@ REDACTED
 // UpdateProfile handles updating user profile
 // PUT /api/v1/users/me
 func (h *UserHandler) UpdateProfile(c *gin.Context) {
-	userValue, exists := c.Get("user")
-	if !exists {
-		response.Unauthorized(c, "User not authenticated")
-		return
-REDACTED
-
-	user, ok := userValue.(*model.User)
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
-		response.InternalError(c, "Invalid user context")
+		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
 
@@ -118,7 +101,7 @@ REDACTED
 		Username: req.Username,
 		Wechat:   req.Wechat,
 REDACTED
-	updatedUser, err := h.userService.UpdateProfile(c.Request.Context(), user.ID, svcReq)
+	updatedUser, err := h.userService.UpdateProfile(c.Request.Context(), subject.UserID, svcReq)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -127,5 +110,5 @@ REDACTED
 	// 清空notes字段，普通用户不应看到备注
 	updatedUser.Notes = ""
 
-	response.Success(c, updatedUser)
+	response.Success(c, dto.UserFromService(updatedUser))
 REDACTED

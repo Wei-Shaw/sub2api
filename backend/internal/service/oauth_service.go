@@ -6,7 +6,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
@@ -274,7 +273,7 @@ REDACTED, nil
 REDACTED
 
 // RefreshAccountToken refreshes token for an account
-func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *model.Account) (*TokenInfo, error) {
+func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*TokenInfo, error) {
 	refreshToken := account.GetCredential("refresh_token")
 	if refreshToken == "" {
 		return nil, fmt.Errorf("no refresh token available")

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
@@ -200,7 +199,7 @@ REDACTED
 REDACTED
 
 // RefreshAccountToken refreshes token for an OpenAI account
-func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *model.Account) (*OpenAITokenInfo, error) {
+func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*OpenAITokenInfo, error) {
 	if !account.IsOpenAI() {
 		return nil, fmt.Errorf("account is not an OpenAI account")
 REDACTED

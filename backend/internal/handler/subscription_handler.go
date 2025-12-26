@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ REDACTED
 
 // SubscriptionProgressInfo represents subscription with progress info
 type SubscriptionProgressInfo struct {
-	Subscription *model.UserSubscription       `json:"subscription"`
+	Subscription *dto.UserSubscription         `json:"subscription"`
 	Progress     *service.SubscriptionProgress `json:"progress"`
 REDACTED
 
@@ -44,68 +45,58 @@ REDACTED
 // List handles listing current user's subscriptions
 // GET /api/v1/subscriptions
 func (h *SubscriptionHandler) List(c *gin.Context) {
-	user, exists := c.Get("user")
-	if !exists {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "User not found in context")
 		return
 REDACTED
 
-	u, ok := user.(*model.User)
-	if !ok {
-		response.InternalError(c, "Invalid user in context")
-		return
-REDACTED
-
-	subscriptions, err := h.subscriptionService.ListUserSubscriptions(c.Request.Context(), u.ID)
+	subscriptions, err := h.subscriptionService.ListUserSubscriptions(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, subscriptions)
+	out := make([]dto.UserSubscription, 0, len(subscriptions))
+	for i := range subscriptions {
+		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+REDACTED
+	response.Success(c, out)
 REDACTED
 
 // GetActive handles getting current user's active subscriptions
 // GET /api/v1/subscriptions/active
 func (h *SubscriptionHandler) GetActive(c *gin.Context) {
-	user, exists := c.Get("user")
-	if !exists {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "User not found in context")
 		return
 REDACTED
 
-	u, ok := user.(*model.User)
-	if !ok {
-		response.InternalError(c, "Invalid user in context")
-		return
-REDACTED
-
-	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), u.ID)
+	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, subscriptions)
+	out := make([]dto.UserSubscription, 0, len(subscriptions))
+	for i := range subscriptions {
+		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+REDACTED
+	response.Success(c, out)
 REDACTED
 
 // GetProgress handles getting subscription progress for current user
 // GET /api/v1/subscriptions/progress
 func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
-	user, exists := c.Get("user")
-	if !exists {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "User not found in context")
 		return
 REDACTED
 
-	u, ok := user.(*model.User)
-	if !ok {
-		response.InternalError(c, "Invalid user in context")
-		return
-REDACTED
-
 	// Get all active subscriptions with progress
-	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), u.ID)
+	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -120,7 +111,7 @@ REDACTED
 			continue
 	REDACTED
 		result = append(result, SubscriptionProgressInfo{
-			Subscription: sub,
+			Subscription: dto.UserSubscriptionFromService(sub),
 			Progress:     progress,
 	REDACTED)
 REDACTED
@@ -131,20 +122,14 @@ REDACTED
 // GetSummary handles getting a summary of current user's subscription status
 // GET /api/v1/subscriptions/summary
 func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
-	user, exists := c.Get("user")
-	if !exists {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "User not found in context")
 		return
 REDACTED
 
-	u, ok := user.(*model.User)
-	if !ok {
-		response.InternalError(c, "Invalid user in context")
-		return
-REDACTED
-
 	// Get all active subscriptions
-	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), u.ID)
+	subscriptions, err := h.subscriptionService.ListActiveUserSubscriptions(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

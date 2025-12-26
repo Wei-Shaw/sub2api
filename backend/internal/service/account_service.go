@@ -6,7 +6,6 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -15,29 +14,29 @@ var (
 )
 
 type AccountRepository interface {
-	Create(ctx context.Context, account *model.Account) error
-	GetByID(ctx context.Context, id int64) (*model.Account, error)
+	Create(ctx context.Context, account *Account) error
+	GetByID(ctx context.Context, id int64) (*Account, error)
 	// GetByCRSAccountID finds an account previously synced from CRS.
 	// Returns (nil, nil) if not found.
-	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*model.Account, error)
-	Update(ctx context.Context, account *model.Account) error
+	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
+	Update(ctx context.Context, account *Account) error
 	Delete(ctx context.Context, id int64) error
 
-	List(ctx context.Context, params pagination.PaginationParams) ([]model.Account, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string) ([]model.Account, *pagination.PaginationResult, error)
-	ListByGroup(ctx context.Context, groupID int64) ([]model.Account, error)
-	ListActive(ctx context.Context) ([]model.Account, error)
-	ListByPlatform(ctx context.Context, platform string) ([]model.Account, error)
+	List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string) ([]Account, *pagination.PaginationResult, error)
+	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
+	ListActive(ctx context.Context) ([]Account, error)
+	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
 
 	UpdateLastUsed(ctx context.Context, id int64) error
 	SetError(ctx context.Context, id int64, errorMsg string) error
 	SetSchedulable(ctx context.Context, id int64, schedulable bool) error
 	BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error
 
-	ListSchedulable(ctx context.Context) ([]model.Account, error)
-	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]model.Account, error)
-	ListSchedulableByPlatform(ctx context.Context, platform string) ([]model.Account, error)
-	ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]model.Account, error)
+	ListSchedulable(ctx context.Context) ([]Account, error)
+	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error)
+	ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error)
+	ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
@@ -99,7 +98,7 @@ REDACTED
 REDACTED
 
 // Create 创建账号
-func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (*model.Account, error) {
+func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (*Account, error) {
 	// 验证分组是否存在（如果指定了分组）
 	if len(req.GroupIDs) > 0 {
 		for _, groupID := range req.GroupIDs {
@@ -111,7 +110,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 REDACTED
 
 	// 创建账号
-	account := &model.Account{
+	account := &Account{
 		Name:        req.Name,
 		Platform:    req.Platform,
 		Type:        req.Type,
@@ -120,7 +119,7 @@ REDACTED
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
-		Status:      model.StatusActive,
+		Status:      StatusActive,
 REDACTED
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -138,7 +137,7 @@ REDACTED
 REDACTED
 
 // GetByID 根据ID获取账号
-func (s *AccountService) GetByID(ctx context.Context, id int64) (*model.Account, error) {
+func (s *AccountService) GetByID(ctx context.Context, id int64) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get account: %w", err)
@@ -147,7 +146,7 @@ REDACTED
 REDACTED
 
 // List 获取账号列表
-func (s *AccountService) List(ctx context.Context, params pagination.PaginationParams) ([]model.Account, *pagination.PaginationResult, error) {
+func (s *AccountService) List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
 	accounts, pagination, err := s.accountRepo.List(ctx, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list accounts: %w", err)
@@ -156,7 +155,7 @@ REDACTED
 REDACTED
 
 // ListByPlatform 根据平台获取账号列表
-func (s *AccountService) ListByPlatform(ctx context.Context, platform string) ([]model.Account, error) {
+func (s *AccountService) ListByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	accounts, err := s.accountRepo.ListByPlatform(ctx, platform)
 	if err != nil {
 		return nil, fmt.Errorf("list accounts by platform: %w", err)
@@ -165,7 +164,7 @@ REDACTED
 REDACTED
 
 // ListByGroup 根据分组获取账号列表
-func (s *AccountService) ListByGroup(ctx context.Context, groupID int64) ([]model.Account, error) {
+func (s *AccountService) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
 	accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("list accounts by group: %w", err)
@@ -174,7 +173,7 @@ REDACTED
 REDACTED
 
 // Update 更新账号
-func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccountRequest) (*model.Account, error) {
+func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccountRequest) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get account: %w", err)
@@ -290,13 +289,13 @@ REDACTED
 
 	// 根据平台执行不同的测试逻辑
 	switch account.Platform {
-	case model.PlatformAnthropic:
+	case PlatformAnthropic:
 		// TODO: 测试Anthropic API凭证
 		return nil
-	case model.PlatformOpenAI:
+	case PlatformOpenAI:
 		// TODO: 测试OpenAI API凭证
 		return nil
-	case model.PlatformGemini:
+	case PlatformGemini:
 		// TODO: 测试Gemini API凭证
 		return nil
 	default:

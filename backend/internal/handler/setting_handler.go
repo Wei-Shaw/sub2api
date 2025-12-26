@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -30,6 +31,17 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		return
 REDACTED
 
-	settings.Version = h.version
-	response.Success(c, settings)
+	response.Success(c, dto.PublicSettings{
+		RegistrationEnabled: settings.RegistrationEnabled,
+		EmailVerifyEnabled:  settings.EmailVerifyEnabled,
+		TurnstileEnabled:    settings.TurnstileEnabled,
+		TurnstileSiteKey:    settings.TurnstileSiteKey,
+		SiteName:            settings.SiteName,
+		SiteLogo:            settings.SiteLogo,
+		SiteSubtitle:        settings.SiteSubtitle,
+		ApiBaseUrl:          settings.ApiBaseUrl,
+		ContactInfo:         settings.ContactInfo,
+		DocUrl:              settings.DocUrl,
+		Version:             h.version,
+REDACTED)
 REDACTED

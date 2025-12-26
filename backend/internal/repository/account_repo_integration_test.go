@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -34,11 +34,16 @@ REDACTED
 // --- Create / GetByID / Update / Delete ---
 
 func (s *AccountRepoSuite) TestCreate() {
-	account := &model.Account{
-		Name:     "test-create",
-		Platform: model.PlatformAnthropic,
-		Type:     model.AccountTypeOAuth,
-		Status:   model.StatusActive,
+	account := &service.Account{
+		Name:        "test-create",
+		Platform:    service.PlatformAnthropic,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+REDACTEDREDACTED,
+		Extra:       map[string]any{REDACTED,
+		Concurrency: 3,
+		Priority:    50,
+		Schedulable: true,
 REDACTED
 
 	err := s.repo.Create(s.ctx, account)
@@ -56,7 +61,7 @@ func (s *AccountRepoSuite) TestGetByID_NotFound() {
 REDACTED
 
 func (s *AccountRepoSuite) TestUpdate() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "original"REDACTED)
+	account := accountModelToService(mustCreateAccount(s.T(), s.db, &accountModel{Name: "original"REDACTED))
 
 	account.Name = "updated"
 	err := s.repo.Update(s.ctx, account)
@@ -68,7 +73,7 @@ func (s *AccountRepoSuite) TestUpdate() {
 REDACTED
 
 func (s *AccountRepoSuite) TestDelete() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "to-delete"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "to-delete"REDACTED)
 
 	err := s.repo.Delete(s.ctx, account.ID)
 	s.Require().NoError(err, "Delete")
@@ -78,23 +83,23 @@ func (s *AccountRepoSuite) TestDelete() {
 REDACTED
 
 func (s *AccountRepoSuite) TestDelete_WithGroupBindings() {
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-del"REDACTED)
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-del"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-del"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-del"REDACTED)
 	mustBindAccountToGroup(s.T(), s.db, account.ID, group.ID, 1)
 
 	err := s.repo.Delete(s.ctx, account.ID)
 	s.Require().NoError(err, "Delete should cascade remove bindings")
 
 	var count int64
-	s.db.Model(&model.AccountGroup{REDACTED).Where("account_id = ?", account.ID).Count(&count)
+	s.db.Model(&accountGroupModel{REDACTED).Where("account_id = ?", account.ID).Count(&count)
 	s.Require().Zero(count, "expected bindings to be removed")
 REDACTED
 
 // --- List / ListWithFilters ---
 
 func (s *AccountRepoSuite) TestList() {
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc1"REDACTED)
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc2"REDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc1"REDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc2"REDACTED)
 
 	accounts, page, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "List")
@@ -111,53 +116,53 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 		status    string
 		search    string
 		wantCount int
-		validate  func(accounts []model.Account)
+		validate  func(accounts []service.Account)
 REDACTED{
 		{
 			name: "filter_by_platform",
 			setup: func(db *gorm.DB) {
-				mustCreateAccount(s.T(), db, &model.Account{Name: "a1", Platform: model.PlatformAnthropicREDACTED)
-				mustCreateAccount(s.T(), db, &model.Account{Name: "a2", Platform: model.PlatformOpenAIREDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "a1", Platform: service.PlatformAnthropicREDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "a2", Platform: service.PlatformOpenAIREDACTED)
 		REDACTED,
-			platform:  model.PlatformOpenAI,
+			platform:  service.PlatformOpenAI,
 			wantCount: 1,
-			validate: func(accounts []model.Account) {
-				s.Require().Equal(model.PlatformOpenAI, accounts[0].Platform)
+			validate: func(accounts []service.Account) {
+				s.Require().Equal(service.PlatformOpenAI, accounts[0].Platform)
 		REDACTED,
 	REDACTED,
 		{
 			name: "filter_by_type",
 			setup: func(db *gorm.DB) {
-				mustCreateAccount(s.T(), db, &model.Account{Name: "t1", Type: model.AccountTypeOAuthREDACTED)
-				mustCreateAccount(s.T(), db, &model.Account{Name: "t2", Type: model.AccountTypeApiKeyREDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "t1", Type: service.AccountTypeOAuthREDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "t2", Type: service.AccountTypeApiKeyREDACTED)
 		REDACTED,
-			accType:   model.AccountTypeApiKey,
+			accType:   service.AccountTypeApiKey,
 			wantCount: 1,
-			validate: func(accounts []model.Account) {
-				s.Require().Equal(model.AccountTypeApiKey, accounts[0].Type)
+			validate: func(accounts []service.Account) {
+				s.Require().Equal(service.AccountTypeApiKey, accounts[0].Type)
 		REDACTED,
 	REDACTED,
 		{
 			name: "filter_by_status",
 			setup: func(db *gorm.DB) {
-				mustCreateAccount(s.T(), db, &model.Account{Name: "s1", Status: model.StatusActiveREDACTED)
-				mustCreateAccount(s.T(), db, &model.Account{Name: "s2", Status: model.StatusDisabledREDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "s1", Status: service.StatusActiveREDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "s2", Status: service.StatusDisabledREDACTED)
 		REDACTED,
-			status:    model.StatusDisabled,
+			status:    service.StatusDisabled,
 			wantCount: 1,
-			validate: func(accounts []model.Account) {
-				s.Require().Equal(model.StatusDisabled, accounts[0].Status)
+			validate: func(accounts []service.Account) {
+				s.Require().Equal(service.StatusDisabled, accounts[0].Status)
 		REDACTED,
 	REDACTED,
 		{
 			name: "filter_by_search",
 			setup: func(db *gorm.DB) {
-				mustCreateAccount(s.T(), db, &model.Account{Name: "alpha-account"REDACTED)
-				mustCreateAccount(s.T(), db, &model.Account{Name: "beta-account"REDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "alpha-account"REDACTED)
+				mustCreateAccount(s.T(), db, &accountModel{Name: "beta-account"REDACTED)
 		REDACTED,
 			search:    "alpha",
 			wantCount: 1,
-			validate: func(accounts []model.Account) {
+			validate: func(accounts []service.Account) {
 				s.Require().Contains(accounts[0].Name, "alpha")
 		REDACTED,
 	REDACTED,
@@ -185,9 +190,9 @@ REDACTED
 // --- ListByGroup / ListActive / ListByPlatform ---
 
 func (s *AccountRepoSuite) TestListByGroup() {
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-list"REDACTED)
-	acc1 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a1", Status: model.StatusActiveREDACTED)
-	acc2 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a2", Status: model.StatusActiveREDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-list"REDACTED)
+	acc1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1", Status: service.StatusActiveREDACTED)
+	acc2 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2", Status: service.StatusActiveREDACTED)
 	mustBindAccountToGroup(s.T(), s.db, acc1.ID, group.ID, 2)
 	mustBindAccountToGroup(s.T(), s.db, acc2.ID, group.ID, 1)
 
@@ -199,8 +204,8 @@ func (s *AccountRepoSuite) TestListByGroup() {
 REDACTED
 
 func (s *AccountRepoSuite) TestListActive() {
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "active1", Status: model.StatusActiveREDACTED)
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "inactive1", Status: model.StatusDisabledREDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "active1", Status: service.StatusActiveREDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "inactive1", Status: service.StatusDisabledREDACTED)
 
 	accounts, err := s.repo.ListActive(s.ctx)
 	s.Require().NoError(err, "ListActive")
@@ -209,22 +214,22 @@ func (s *AccountRepoSuite) TestListActive() {
 REDACTED
 
 func (s *AccountRepoSuite) TestListByPlatform() {
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "p1", Platform: model.PlatformAnthropic, Status: model.StatusActiveREDACTED)
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "p2", Platform: model.PlatformOpenAI, Status: model.StatusActiveREDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "p1", Platform: service.PlatformAnthropic, Status: service.StatusActiveREDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "p2", Platform: service.PlatformOpenAI, Status: service.StatusActiveREDACTED)
 
-	accounts, err := s.repo.ListByPlatform(s.ctx, model.PlatformAnthropic)
+	accounts, err := s.repo.ListByPlatform(s.ctx, service.PlatformAnthropic)
 	s.Require().NoError(err, "ListByPlatform")
 	s.Require().Len(accounts, 1)
-	s.Require().Equal(model.PlatformAnthropic, accounts[0].Platform)
+	s.Require().Equal(service.PlatformAnthropic, accounts[0].Platform)
 REDACTED
 
 // --- Preload and VirtualFields ---
 
 func (s *AccountRepoSuite) TestPreload_And_VirtualFields() {
-	proxy := mustCreateProxy(s.T(), s.db, &model.Proxy{Name: "p1"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g1"REDACTED)
+	proxy := mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p1"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1"REDACTED)
 
-	account := mustCreateAccount(s.T(), s.db, &model.Account{
+	account := mustCreateAccount(s.T(), s.db, &accountModel{
 		Name:    "acc1",
 		ProxyID: &proxy.ID,
 REDACTED)
@@ -252,9 +257,9 @@ REDACTED
 // --- GroupBinding / AddToGroup / RemoveFromGroup / BindGroups / GetGroups ---
 
 func (s *AccountRepoSuite) TestGroupBinding_And_BindGroups() {
-	g1 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g1"REDACTED)
-	g2 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g2"REDACTED)
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc"REDACTED)
+	g1 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1"REDACTED)
+	g2 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc"REDACTED)
 
 	s.Require().NoError(s.repo.AddToGroup(s.ctx, account.ID, g1.ID, 10), "AddToGroup")
 	groups, err := s.repo.GetGroups(s.ctx, account.ID)
@@ -274,8 +279,8 @@ func (s *AccountRepoSuite) TestGroupBinding_And_BindGroups() {
 REDACTED
 
 func (s *AccountRepoSuite) TestBindGroups_EmptyList() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-empty"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-empty"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-empty"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-empty"REDACTED)
 	mustBindAccountToGroup(s.T(), s.db, account.ID, group.ID, 1)
 
 	s.Require().NoError(s.repo.BindGroups(s.ctx, account.ID, []int64{REDACTED), "BindGroups empty")
@@ -289,13 +294,13 @@ REDACTED
 
 func (s *AccountRepoSuite) TestListSchedulable() {
 	now := time.Now()
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-sched"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-sched"REDACTED)
 
-	okAcc := mustCreateAccount(s.T(), s.db, &model.Account{Name: "ok", Schedulable: trueREDACTED)
+	okAcc := mustCreateAccount(s.T(), s.db, &accountModel{Name: "ok", Schedulable: trueREDACTED)
 	mustBindAccountToGroup(s.T(), s.db, okAcc.ID, group.ID, 1)
 
 	future := now.Add(10 * time.Minute)
-	overloaded := mustCreateAccount(s.T(), s.db, &model.Account{Name: "over", Schedulable: true, OverloadUntil: &futureREDACTED)
+	overloaded := mustCreateAccount(s.T(), s.db, &accountModel{Name: "over", Schedulable: true, OverloadUntil: &futureREDACTED)
 	mustBindAccountToGroup(s.T(), s.db, overloaded.ID, group.ID, 1)
 
 	sched, err := s.repo.ListSchedulable(s.ctx)
@@ -307,16 +312,16 @@ REDACTED
 
 func (s *AccountRepoSuite) TestListSchedulableByGroupID_TimeBoundaries_And_StatusUpdates() {
 	now := time.Now()
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-sched"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-sched"REDACTED)
 
-	okAcc := mustCreateAccount(s.T(), s.db, &model.Account{Name: "ok", Schedulable: trueREDACTED)
+	okAcc := mustCreateAccount(s.T(), s.db, &accountModel{Name: "ok", Schedulable: trueREDACTED)
 	mustBindAccountToGroup(s.T(), s.db, okAcc.ID, group.ID, 1)
 
 	future := now.Add(10 * time.Minute)
-	overloaded := mustCreateAccount(s.T(), s.db, &model.Account{Name: "over", Schedulable: true, OverloadUntil: &futureREDACTED)
+	overloaded := mustCreateAccount(s.T(), s.db, &accountModel{Name: "over", Schedulable: true, OverloadUntil: &futureREDACTED)
 	mustBindAccountToGroup(s.T(), s.db, overloaded.ID, group.ID, 1)
 
-	rateLimited := mustCreateAccount(s.T(), s.db, &model.Account{Name: "rl", Schedulable: trueREDACTED)
+	rateLimited := mustCreateAccount(s.T(), s.db, &accountModel{Name: "rl", Schedulable: trueREDACTED)
 	mustBindAccountToGroup(s.T(), s.db, rateLimited.ID, group.ID, 1)
 	s.Require().NoError(s.repo.SetRateLimited(s.ctx, rateLimited.ID, now.Add(10*time.Minute)), "SetRateLimited")
 
@@ -334,30 +339,30 @@ func (s *AccountRepoSuite) TestListSchedulableByGroupID_TimeBoundaries_And_Statu
 REDACTED
 
 func (s *AccountRepoSuite) TestListSchedulableByPlatform() {
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "a1", Platform: model.PlatformAnthropic, Schedulable: trueREDACTED)
-	mustCreateAccount(s.T(), s.db, &model.Account{Name: "a2", Platform: model.PlatformOpenAI, Schedulable: trueREDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1", Platform: service.PlatformAnthropic, Schedulable: trueREDACTED)
+	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2", Platform: service.PlatformOpenAI, Schedulable: trueREDACTED)
 
-	accounts, err := s.repo.ListSchedulableByPlatform(s.ctx, model.PlatformAnthropic)
+	accounts, err := s.repo.ListSchedulableByPlatform(s.ctx, service.PlatformAnthropic)
 	s.Require().NoError(err)
 	s.Require().Len(accounts, 1)
-	s.Require().Equal(model.PlatformAnthropic, accounts[0].Platform)
+	s.Require().Equal(service.PlatformAnthropic, accounts[0].Platform)
 REDACTED
 
 func (s *AccountRepoSuite) TestListSchedulableByGroupIDAndPlatform() {
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-sp"REDACTED)
-	a1 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a1", Platform: model.PlatformAnthropic, Schedulable: trueREDACTED)
-	a2 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a2", Platform: model.PlatformOpenAI, Schedulable: trueREDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-sp"REDACTED)
+	a1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1", Platform: service.PlatformAnthropic, Schedulable: trueREDACTED)
+	a2 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2", Platform: service.PlatformOpenAI, Schedulable: trueREDACTED)
 	mustBindAccountToGroup(s.T(), s.db, a1.ID, group.ID, 1)
 	mustBindAccountToGroup(s.T(), s.db, a2.ID, group.ID, 2)
 
-	accounts, err := s.repo.ListSchedulableByGroupIDAndPlatform(s.ctx, group.ID, model.PlatformAnthropic)
+	accounts, err := s.repo.ListSchedulableByGroupIDAndPlatform(s.ctx, group.ID, service.PlatformAnthropic)
 	s.Require().NoError(err)
 	s.Require().Len(accounts, 1)
 	s.Require().Equal(a1.ID, accounts[0].ID)
 REDACTED
 
 func (s *AccountRepoSuite) TestSetSchedulable() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-sched", Schedulable: trueREDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-sched", Schedulable: trueREDACTED)
 
 	s.Require().NoError(s.repo.SetSchedulable(s.ctx, account.ID, false))
 
@@ -369,7 +374,7 @@ REDACTED
 // --- SetOverloaded / SetRateLimited / ClearRateLimit ---
 
 func (s *AccountRepoSuite) TestSetOverloaded() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-over"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-over"REDACTED)
 	until := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 
 	s.Require().NoError(s.repo.SetOverloaded(s.ctx, account.ID, until))
@@ -381,7 +386,7 @@ func (s *AccountRepoSuite) TestSetOverloaded() {
 REDACTED
 
 func (s *AccountRepoSuite) TestSetRateLimited() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-rl"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-rl"REDACTED)
 	resetAt := time.Date(2025, 6, 15, 14, 0, 0, 0, time.UTC)
 
 	s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, resetAt))
@@ -394,7 +399,7 @@ func (s *AccountRepoSuite) TestSetRateLimited() {
 REDACTED
 
 func (s *AccountRepoSuite) TestClearRateLimit() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-clear"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-clear"REDACTED)
 	until := time.Now().Add(1 * time.Hour)
 	s.Require().NoError(s.repo.SetOverloaded(s.ctx, account.ID, until))
 	s.Require().NoError(s.repo.SetRateLimited(s.ctx, account.ID, until))
@@ -411,7 +416,7 @@ REDACTED
 // --- UpdateLastUsed ---
 
 func (s *AccountRepoSuite) TestUpdateLastUsed() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-used"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-used"REDACTED)
 	s.Require().Nil(account.LastUsedAt)
 
 	s.Require().NoError(s.repo.UpdateLastUsed(s.ctx, account.ID))
@@ -424,20 +429,20 @@ REDACTED
 // --- SetError ---
 
 func (s *AccountRepoSuite) TestSetError() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-err", Status: model.StatusActiveREDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-err", Status: service.StatusActiveREDACTED)
 
 	s.Require().NoError(s.repo.SetError(s.ctx, account.ID, "something went wrong"))
 
 	got, err := s.repo.GetByID(s.ctx, account.ID)
 	s.Require().NoError(err)
-	s.Require().Equal(model.StatusError, got.Status)
+	s.Require().Equal(service.StatusError, got.Status)
 	s.Require().Equal("something went wrong", got.ErrorMessage)
 REDACTED
 
 // --- UpdateSessionWindow ---
 
 func (s *AccountRepoSuite) TestUpdateSessionWindow() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-win"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-win"REDACTED)
 	start := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 6, 15, 15, 0, 0, 0, time.UTC)
 
@@ -453,9 +458,9 @@ REDACTED
 // --- UpdateExtra ---
 
 func (s *AccountRepoSuite) TestUpdateExtra_MergesFields() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{
+	account := mustCreateAccount(s.T(), s.db, &accountModel{
 		Name:  "acc-extra",
-		Extra: model.JSONB{"a": "1"REDACTED,
+		Extra: datatypes.JSONMap{"a": "1"REDACTED,
 REDACTED)
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{"b": "2"REDACTED), "UpdateExtra")
 
@@ -466,12 +471,12 @@ REDACTED)
 REDACTED
 
 func (s *AccountRepoSuite) TestUpdateExtra_EmptyUpdates() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-extra-empty"REDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-extra-empty"REDACTED)
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{REDACTED))
 REDACTED
 
 func (s *AccountRepoSuite) TestUpdateExtra_NilExtra() {
-	account := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-nil-extra", Extra: nilREDACTED)
+	account := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-nil-extra", Extra: nilREDACTED)
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{"key": "val"REDACTED))
 
 	got, err := s.repo.GetByID(s.ctx, account.ID)
@@ -483,9 +488,9 @@ REDACTED
 
 func (s *AccountRepoSuite) TestGetByCRSAccountID() {
 	crsID := "crs-12345"
-	mustCreateAccount(s.T(), s.db, &model.Account{
+	mustCreateAccount(s.T(), s.db, &accountModel{
 		Name:  "acc-crs",
-		Extra: model.JSONB{"crs_account_id": crsIDREDACTED,
+		Extra: datatypes.JSONMap{"crs_account_id": crsIDREDACTED,
 REDACTED)
 
 	got, err := s.repo.GetByCRSAccountID(s.ctx, crsID)
@@ -509,8 +514,8 @@ REDACTED
 // --- BulkUpdate ---
 
 func (s *AccountRepoSuite) TestBulkUpdate() {
-	a1 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "bulk1", Priority: 1REDACTED)
-	a2 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "bulk2", Priority: 1REDACTED)
+	a1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "bulk1", Priority: 1REDACTED)
+	a2 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "bulk2", Priority: 1REDACTED)
 
 	newPriority := 99
 	affected, err := s.repo.BulkUpdate(s.ctx, []int64{a1.ID, a2.IDREDACTED, service.AccountBulkUpdate{
@@ -526,13 +531,13 @@ REDACTED)
 REDACTED
 
 func (s *AccountRepoSuite) TestBulkUpdate_MergeCredentials() {
-	a1 := mustCreateAccount(s.T(), s.db, &model.Account{
+	a1 := mustCreateAccount(s.T(), s.db, &accountModel{
 		Name:        "bulk-cred",
-		Credentials: model.JSONB{"existing": "value"REDACTED,
+		Credentials: datatypes.JSONMap{"existing": "value"REDACTED,
 REDACTED)
 
 	_, err := s.repo.BulkUpdate(s.ctx, []int64{a1.IDREDACTED, service.AccountBulkUpdate{
-		Credentials: model.JSONB{"new_key": "new_value"REDACTED,
+		Credentials: datatypes.JSONMap{"new_key": "new_value"REDACTED,
 REDACTED)
 	s.Require().NoError(err)
 
@@ -542,13 +547,13 @@ REDACTED)
 REDACTED
 
 func (s *AccountRepoSuite) TestBulkUpdate_MergeExtra() {
-	a1 := mustCreateAccount(s.T(), s.db, &model.Account{
+	a1 := mustCreateAccount(s.T(), s.db, &accountModel{
 		Name:  "bulk-extra",
-		Extra: model.JSONB{"existing": "val"REDACTED,
+		Extra: datatypes.JSONMap{"existing": "val"REDACTED,
 REDACTED)
 
 	_, err := s.repo.BulkUpdate(s.ctx, []int64{a1.IDREDACTED, service.AccountBulkUpdate{
-		Extra: model.JSONB{"new_key": "new_val"REDACTED,
+		Extra: datatypes.JSONMap{"new_key": "new_val"REDACTED,
 REDACTED)
 	s.Require().NoError(err)
 
@@ -564,14 +569,14 @@ func (s *AccountRepoSuite) TestBulkUpdate_EmptyIDs() {
 REDACTED
 
 func (s *AccountRepoSuite) TestBulkUpdate_EmptyUpdates() {
-	a1 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "bulk-empty"REDACTED)
+	a1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "bulk-empty"REDACTED)
 
 	affected, err := s.repo.BulkUpdate(s.ctx, []int64{a1.IDREDACTED, service.AccountBulkUpdate{REDACTED)
 	s.Require().NoError(err)
 	s.Require().Zero(affected)
 REDACTED
 
-func idsOfAccounts(accounts []model.Account) []int64 {
+func idsOfAccounts(accounts []service.Account) []int64 {
 	out := make([]int64, 0, len(accounts))
 	for i := range accounts {
 		out = append(out, accounts[i].ID)
