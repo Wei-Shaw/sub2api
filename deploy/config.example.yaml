@@ -89,12 +89,21 @@ pricing:
   hash_check_interval_minutes: 10
 
 # =============================================================================
-# Gemini (Optional)
+# Gemini OAuth (Required for Gemini accounts)
 # =============================================================================
+# Sub2API supports TWO Gemini OAuth modes:
+#
+# 1. Code Assist OAuth (需要 GCP project_id)
+#    - Uses: cloudcode-pa.googleapis.com (Code Assist API)
+#
+# 2. AI Studio OAuth (不需要 project_id)
+#    - Uses: generativelanguage.googleapis.com (AI Studio API)
+#
+# Default: Uses Gemini CLI's public OAuth credentials (same as Google's official CLI tool)
 gemini:
   oauth:
-    # Google OAuth Client ID / Secret (for GeminiCli / Code Assist internal API)
-    client_id: ""
-    client_secret: ""
-    # Optional scopes (space-separated). Leave empty to use default cloud-platform scope.
+    # Gemini CLI public OAuth credentials (works for both Code Assist and AI Studio)
+    client_id: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+    client_secret: "REDACTED"
+    # Optional scopes (space-separated). Leave empty to auto-select based on oauth_type.
     scopes: ""

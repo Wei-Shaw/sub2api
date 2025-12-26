@@ -16,7 +16,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: sub2api:latest
+    image: weishaw/sub2api:latest
     container_name: sub2api
     restart: unless-stopped
     ports:
@@ -78,6 +78,13 @@ services:
       # Common values: Asia/Shanghai, America/New_York, Europe/London, UTC
       # =======================================================================
       - TZ=${TZ:-Asia/ShanghaiREDACTED
+
+      # =======================================================================
+      # Gemini OAuth Configuration (for Gemini accounts)
+      # =======================================================================
+      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-REDACTED
+      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-REDACTED
+      - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-REDACTED
     depends_on:
       postgres:
         condition: service_healthy
