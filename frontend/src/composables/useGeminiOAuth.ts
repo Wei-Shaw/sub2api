@@ -10,6 +10,7 @@ export interface GeminiTokenInfo {
   scope?: string
   expires_at?: number | string
   project_id?: string
+  oauth_type?: string
   [key: string]: unknown
 REDACTED
 
@@ -33,7 +34,8 @@ export function useGeminiOAuth() {
 
   const generateAuthUrl = async (
     proxyId: number | null | undefined,
-    redirectUri: string
+    projectId?: string | null,
+    oauthType?: string
   ): Promise<boolean> => {
     loading.value = true
     authUrl.value = ''
@@ -42,14 +44,11 @@ export function useGeminiOAuth() {
     error.value = ''
 
     try {
-      if (!redirectUri?.trim()) {
-        error.value = t('admin.accounts.oauth.gemini.missingRedirectUri')
-        appStore.showError(error.value)
-        return false
-      REDACTED
-
-      const payload: Record<string, unknown> = { redirect_uri: redirectUri.trim() REDACTED
+      const payload: Record<string, unknown> = {REDACTED
       if (proxyId) payload.proxy_id = proxyId
+      const trimmedProjectID = projectId?.trim()
+      if (trimmedProjectID) payload.project_id = trimmedProjectID
+      if (oauthType) payload.oauth_type = oauthType
 
       const response = await adminAPI.gemini.generateAuthUrl(payload as any)
       authUrl.value = response.auth_url
@@ -69,11 +68,11 @@ export function useGeminiOAuth() {
     code: string
     sessionId: string
     state: string
-    redirectUri: string
     proxyId?: number | null
+    oauthType?: string
   REDACTED): Promise<GeminiTokenInfo | null> => {
     const code = params.code?.trim()
-    if (!code || !params.sessionId || !params.state || !params.redirectUri?.trim()) {
+    if (!code || !params.sessionId || !params.state) {
       error.value = t('admin.accounts.oauth.gemini.missingExchangeParams')
       return null
     REDACTED
@@ -85,10 +84,10 @@ export function useGeminiOAuth() {
       const payload: Record<string, unknown> = {
         session_id: params.sessionId,
         state: params.state,
-        code,
-        redirect_uri: params.redirectUri.trim()
+        code
       REDACTED
       if (params.proxyId) payload.proxy_id = params.proxyId
+      if (params.oauthType) payload.oauth_type = params.oauthType
 
       const tokenInfo = await adminAPI.gemini.exchangeCode(payload as any)
       return tokenInfo as GeminiTokenInfo
@@ -115,7 +114,8 @@ export function useGeminiOAuth() {
       token_type: tokenInfo.token_type,
       expires_at: expiresAt,
       scope: tokenInfo.scope,
-      project_id: tokenInfo.project_id
+      project_id: tokenInfo.project_id,
+      oauth_type: tokenInfo.oauth_type
     REDACTED
   REDACTED
 

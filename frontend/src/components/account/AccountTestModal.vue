@@ -329,11 +329,18 @@ const loadAvailableModels = async () => {
   selectedModelId.value = '' // Reset selection before loading
   try {
     availableModels.value = await adminAPI.accounts.getAvailableModels(props.account.id)
-    // Default to first model (usually Sonnet)
+    // Default selection by platform
     if (availableModels.value.length > 0) {
-      // Try to select Sonnet as default, otherwise use first model
-      const sonnetModel = availableModels.value.find((m) => m.id.includes('sonnet'))
-      selectedModelId.value = sonnetModel?.id || availableModels.value[0].id
+      if (props.account.platform === 'gemini') {
+        const preferred =
+          availableModels.value.find((m) => m.id === 'gemini-2.5-pro') ||
+          availableModels.value.find((m) => m.id === 'gemini-3-pro')
+        selectedModelId.value = preferred?.id || availableModels.value[0].id
+      REDACTED else {
+        // Try to select Sonnet as default, otherwise use first model
+        const sonnetModel = availableModels.value.find((m) => m.id.includes('sonnet'))
+        selectedModelId.value = sonnetModel?.id || availableModels.value[0].id
+      REDACTED
     REDACTED
   REDACTED catch (error) {
     console.error('Failed to load available models:', error)

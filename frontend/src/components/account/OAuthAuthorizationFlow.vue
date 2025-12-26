@@ -229,6 +229,31 @@
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
                   {{ oauthStep1GenerateUrl REDACTEDREDACTED
                 </p>
+                <div v-if="showProjectId && platform === 'gemini'" class="mb-3">
+                  <label class="input-label flex items-center gap-2">
+                    {{ t('admin.accounts.oauth.gemini.projectIdLabel') REDACTEDREDACTED
+                    <a
+                      href="https://console.cloud.google.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="inline-flex items-center gap-1 text-xs font-normal text-blue-500 hover:text-blue-600 dark:text-blue-400"
+                    >
+                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                      </svg>
+                      {{ t('admin.accounts.oauth.gemini.howToGetProjectId') REDACTEDREDACTED
+                    </a>
+                  </label>
+                  <input
+                    v-model="projectId"
+                    type="text"
+                    class="input w-full font-mono text-sm"
+                    :placeholder="t('admin.accounts.oauth.gemini.projectIdPlaceholder')"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.accounts.oauth.gemini.projectIdHint') REDACTEDREDACTED
+                  </p>
+                </div>
                 <button
                   v-if="!authUrl"
                   type="button"
@@ -503,6 +528,7 @@ interface Props {
   methodLabel?: string
   showCookieOption?: boolean // Whether to show cookie auto-auth option
   platform?: 'anthropic' | 'openai' | 'gemini' // Platform type for different UI/text
+  showProjectId?: boolean // New prop to control project ID visibility
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -515,7 +541,8 @@ const props = withDefaults(defineProps<Props>(), {
   allowMultiple: false,
   methodLabel: 'Authorization Method',
   showCookieOption: true,
-  platform: 'anthropic'
+  platform: 'anthropic',
+  showProjectId: true
 REDACTED)
 
 const emit = defineEmits<{
@@ -558,6 +585,7 @@ const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
+const projectId = ref('')
 
 // Clipboard
 const { copied, copyToClipboard REDACTED = useClipboard()
@@ -635,11 +663,13 @@ REDACTED
 defineExpose({
   authCode: authCodeInput,
   oauthState,
+  projectId,
   sessionKey: sessionKeyInput,
   inputMethod,
   reset: () => {
     authCodeInput.value = ''
     oauthState.value = ''
+    projectId.value = ''
     sessionKeyInput.value = ''
     inputMethod.value = 'manual'
     showHelpDialog.value = false

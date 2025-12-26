@@ -79,33 +79,96 @@
         </div>
       </div>
 
-      <!-- OAuth Authorization Section -->
-      <div
-        v-if="isGemini"
-        class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700"
-      >
-        <label class="input-label">{{ t('admin.accounts.oauth.gemini.redirectUri') REDACTEDREDACTED</label>
-        <input
-          v-model="geminiRedirectUri"
-          type="text"
-          class="input font-mono text-sm"
-          :placeholder="defaultCallbackUrl"
-        />
-        <p class="input-hint">{{ t('admin.accounts.oauth.gemini.redirectUriHint') REDACTEDREDACTED</p>
-        <div class="mt-3 flex items-start gap-2">
-          <input
-            id="gemini-redirect-uri-confirm"
-            v-model="geminiRedirectUriConfirmed"
-            type="checkbox"
-            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
-          />
-          <label for="gemini-redirect-uri-confirm" class="text-sm text-gray-700 dark:text-gray-300">
-            {{ t('admin.accounts.oauth.gemini.confirmRedirectUri') REDACTEDREDACTED
-          </label>
+      <!-- Gemini OAuth Type Selection -->
+      <div v-if="isGemini">
+        <label class="input-label">{{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED</label>
+        <div class="mt-2 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            @click="geminiOAuthType = 'code_assist'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              geminiOAuthType === 'code_assist'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : 'border-gray-200 hover:border-blue-300 dark:border-dark-600 dark:hover:border-blue-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 items-center justify-center rounded-lg',
+                geminiOAuthType === 'code_assist'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <svg
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"
+                />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">Code Assist</span>
+              <span class="block text-xs font-medium text-blue-600 dark:text-blue-400">{{
+                t('admin.accounts.oauth.gemini.needsProjectId')
+              REDACTEDREDACTED</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.oauth.gemini.needsProjectIdDesc')
+              REDACTEDREDACTED</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="geminiOAuthType = 'ai_studio'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              geminiOAuthType === 'ai_studio'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 items-center justify-center rounded-lg',
+                geminiOAuthType === 'ai_studio'
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <svg
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">AI Studio</span>
+              <span class="block text-xs font-medium text-purple-600 dark:text-purple-400">{{
+                t('admin.accounts.oauth.gemini.noProjectIdNeeded')
+              REDACTEDREDACTED</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.oauth.gemini.noProjectIdNeededDesc')
+              REDACTEDREDACTED</span>
+            </div>
+          </button>
         </div>
-        <p v-if="geminiRedirectUri && !isValidGeminiRedirectUri" class="mt-2 text-xs text-red-600">
-          {{ t('admin.accounts.oauth.gemini.invalidRedirectUri') REDACTEDREDACTED
-        </p>
       </div>
 
       <OAuthAuthorizationFlow
@@ -121,6 +184,7 @@
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
         :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : 'anthropic'"
+        :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
       />
@@ -188,6 +252,7 @@ import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 interface OAuthFlowExposed {
   authCode: string
   oauthState: string
+  projectId: string
   sessionKey: string
   inputMethod: AuthInputMethod
   reset: () => void
@@ -217,6 +282,7 @@ const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 
 // State
 const addMethod = ref<AddMethod>('oauth')
+const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
 
 // Computed - check if this is an OpenAI account
 const isOpenAI = computed(() => props.account?.platform === 'openai')
@@ -263,15 +329,6 @@ const canExchangeCode = computed(() => {
     : isGemini.value
       ? geminiOAuth.loading.value
       : claudeOAuth.loading.value
-  if (isGemini.value) {
-    return (
-      authCode.trim() &&
-      sessionId &&
-      !loading &&
-      geminiRedirectUriConfirmed.value &&
-      isValidGeminiRedirectUri.value
-    )
-  REDACTED
   return authCode.trim() && sessionId && !loading
 REDACTED)
 
@@ -287,6 +344,10 @@ watch(
       ) {
         addMethod.value = props.account.type as AddMethod
       REDACTED
+      if (isGemini.value) {
+        const creds = (props.account.credentials || {REDACTED) as Record<string, unknown>
+        geminiOAuthType.value = creds.oauth_type === 'ai_studio' ? 'ai_studio' : 'code_assist'
+      REDACTED
     REDACTED else {
       resetState()
     REDACTED
@@ -296,11 +357,10 @@ watch(
 // Methods
 const resetState = () => {
   addMethod.value = 'oauth'
+  geminiOAuthType.value = 'code_assist'
   claudeOAuth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
-  geminiRedirectUri.value = defaultCallbackUrl
-  geminiRedirectUriConfirmed.value = false
   oauthFlowRef.value?.reset()
 REDACTED
 
@@ -314,15 +374,8 @@ const handleGenerateUrl = async () => {
   if (isOpenAI.value) {
     await openaiOAuth.generateAuthUrl(props.account.proxy_id)
   REDACTED else if (isGemini.value) {
-    if (!isValidGeminiRedirectUri.value) {
-      appStore.showError(t('admin.accounts.oauth.gemini.invalidRedirectUri'))
-      return
-    REDACTED
-    if (!geminiRedirectUriConfirmed.value) {
-      appStore.showError(t('admin.accounts.oauth.gemini.redirectUriNotConfirmed'))
-      return
-    REDACTED
-    await geminiOAuth.generateAuthUrl(props.account.proxy_id, geminiRedirectUri.value)
+    const projectId = geminiOAuthType.value === 'code_assist' ? oauthFlowRef.value?.projectId : undefined
+    await geminiOAuth.generateAuthUrl(props.account.proxy_id, projectId, geminiOAuthType.value)
   REDACTED else {
     await claudeOAuth.generateAuthUrl(addMethod.value, props.account.proxy_id)
   REDACTED
@@ -372,17 +425,6 @@ const handleExchangeCode = async () => {
     const sessionId = geminiOAuth.sessionId.value
     if (!sessionId) return
 
-    if (!isValidGeminiRedirectUri.value) {
-      geminiOAuth.error.value = t('admin.accounts.oauth.gemini.invalidRedirectUri')
-      appStore.showError(geminiOAuth.error.value)
-      return
-    REDACTED
-    if (!geminiRedirectUriConfirmed.value) {
-      geminiOAuth.error.value = t('admin.accounts.oauth.gemini.redirectUriNotConfirmed')
-      appStore.showError(geminiOAuth.error.value)
-      return
-    REDACTED
-
     const stateFromInput = oauthFlowRef.value?.oauthState || ''
     const stateToUse = stateFromInput || geminiOAuth.state.value
     if (!stateToUse) return
@@ -391,8 +433,8 @@ const handleExchangeCode = async () => {
       code: authCode.trim(),
       sessionId,
       state: stateToUse,
-      redirectUri: geminiRedirectUri.value,
-      proxyId: props.account.proxy_id
+      proxyId: props.account.proxy_id,
+      oauthType: geminiOAuthType.value
     REDACTED)
     if (!tokenInfo) return
 
@@ -455,28 +497,6 @@ const handleExchangeCode = async () => {
     REDACTED
   REDACTED
 REDACTED
-
-// 优先使用环境变量配置的 Redirect URI,否则使用当前域名
-const defaultCallbackUrl =
-  import.meta.env.VITE_OAUTH_CALLBACK_URL ||
-  (typeof window !== 'undefined' ? `${window.location.originREDACTED/auth/callback` : '')
-const geminiRedirectUri = ref(defaultCallbackUrl)
-const geminiRedirectUriConfirmed = ref(false)
-
-const isValidGeminiRedirectUri = computed(() => {
-  const raw = geminiRedirectUri.value?.trim()
-  if (!raw) return false
-  try {
-    const parsed = new URL(raw)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  REDACTED catch {
-    return false
-  REDACTED
-REDACTED)
-
-watch(geminiRedirectUri, () => {
-  geminiRedirectUriConfirmed.value = false
-REDACTED)
 
 const handleCookieAuth = async (sessionKey: string) => {
   if (!props.account || isOpenAI.value) return
