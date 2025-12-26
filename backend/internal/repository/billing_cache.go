@@ -18,6 +18,16 @@ const (
 	billingCacheTTL         = 5 * time.Minute
 )
 
+// billingBalanceKey generates the Redis key for user balance cache.
+func billingBalanceKey(userID int64) string {
+	return fmt.Sprintf("%s%d", billingBalanceKeyPrefix, userID)
+REDACTED
+
+// billingSubKey generates the Redis key for subscription cache.
+func billingSubKey(userID, groupID int64) string {
+	return fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
+REDACTED
+
 const (
 	subFieldStatus       = "status"
 	subFieldExpiresAt    = "expires_at"
@@ -62,7 +72,7 @@ func NewBillingCache(rdb *redis.Client) service.BillingCache {
 REDACTED
 
 func (c *billingCache) GetUserBalance(ctx context.Context, userID int64) (float64, error) {
-	key := fmt.Sprintf("%s%d", billingBalanceKeyPrefix, userID)
+	key := billingBalanceKey(userID)
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err != nil {
 		return 0, err
@@ -71,12 +81,12 @@ REDACTED
 REDACTED
 
 func (c *billingCache) SetUserBalance(ctx context.Context, userID int64, balance float64) error {
-	key := fmt.Sprintf("%s%d", billingBalanceKeyPrefix, userID)
+	key := billingBalanceKey(userID)
 	return c.rdb.Set(ctx, key, balance, billingCacheTTL).Err()
 REDACTED
 
 func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amount float64) error {
-	key := fmt.Sprintf("%s%d", billingBalanceKeyPrefix, userID)
+	key := billingBalanceKey(userID)
 	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{keyREDACTED, amount, int(billingCacheTTL.Seconds())).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: deduct balance cache failed for user %d: %v", userID, err)
@@ -85,12 +95,12 @@ REDACTED
 REDACTED
 
 func (c *billingCache) InvalidateUserBalance(ctx context.Context, userID int64) error {
-	key := fmt.Sprintf("%s%d", billingBalanceKeyPrefix, userID)
+	key := billingBalanceKey(userID)
 	return c.rdb.Del(ctx, key).Err()
 REDACTED
 
 func (c *billingCache) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*service.SubscriptionCacheData, error) {
-	key := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
+	key := billingSubKey(userID, groupID)
 	result, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
 		return nil, err
@@ -140,7 +150,7 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 		return nil
 REDACTED
 
-	key := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
+	key := billingSubKey(userID, groupID)
 
 	fields := map[string]any{
 		subFieldStatus:       data.Status,
@@ -159,7 +169,7 @@ REDACTED
 REDACTED
 
 func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error {
-	key := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
+	key := billingSubKey(userID, groupID)
 	_, err := updateSubUsageScript.Run(ctx, c.rdb, []string{keyREDACTED, cost, int(billingCacheTTL.Seconds())).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: update subscription usage cache failed for user %d group %d: %v", userID, groupID, err)
@@ -168,6 +178,6 @@ REDACTED
 REDACTED
 
 func (c *billingCache) InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error {
-	key := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
+	key := billingSubKey(userID, groupID)
 	return c.rdb.Del(ctx, key).Err()
 REDACTED

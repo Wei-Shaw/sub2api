@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -47,7 +48,11 @@ func (h *RedeemHandler) List(c *gin.Context) {
 		return
 REDACTED
 
-	response.Paginated(c, codes, total, page, pageSize)
+	out := make([]dto.RedeemCode, 0, len(codes))
+	for i := range codes {
+		out = append(out, *dto.RedeemCodeFromService(&codes[i]))
+REDACTED
+	response.Paginated(c, out, total, page, pageSize)
 REDACTED
 
 // GetByID handles getting a redeem code by ID
@@ -65,7 +70,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, code)
+	response.Success(c, dto.RedeemCodeFromService(code))
 REDACTED
 
 // Generate handles generating new redeem codes
@@ -89,7 +94,11 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, codes)
+	out := make([]dto.RedeemCode, 0, len(codes))
+	for i := range codes {
+		out = append(out, *dto.RedeemCodeFromService(&codes[i]))
+REDACTED
+	response.Success(c, out)
 REDACTED
 
 // Delete handles deleting a redeem code
@@ -148,7 +157,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, code)
+	response.Success(c, dto.RedeemCodeFromService(code))
 REDACTED
 
 // GetStats handles getting redeem code statistics

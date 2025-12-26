@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -94,7 +93,7 @@ REDACTED
 		log.Printf("failed to open gorm db: %v", err)
 		os.Exit(1)
 REDACTED
-	if err := model.AutoMigrate(integrationDB); err != nil {
+	if err := AutoMigrate(integrationDB); err != nil {
 		log.Printf("failed to automigrate db: %v", err)
 		os.Exit(1)
 REDACTED

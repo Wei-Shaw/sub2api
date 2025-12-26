@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 // TokenRefreshService OAuth token自动刷新服务
@@ -144,19 +143,19 @@ REDACTED
 
 // listActiveAccounts 获取所有active状态的账号
 // 使用ListActive确保刷新所有活跃账号的token（包括临时禁用的）
-func (s *TokenRefreshService) listActiveAccounts(ctx context.Context) ([]model.Account, error) {
+func (s *TokenRefreshService) listActiveAccounts(ctx context.Context) ([]Account, error) {
 	return s.accountRepo.ListActive(ctx)
 REDACTED
 
 // refreshWithRetry 带重试的刷新
-func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *model.Account, refresher TokenRefresher) error {
+func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Account, refresher TokenRefresher) error {
 	var lastErr error
 
 	for attempt := 1; attempt <= s.cfg.MaxRetries; attempt++ {
 		newCredentials, err := refresher.Refresh(ctx, account)
 		if err == nil {
 			// 刷新成功，更新账号credentials
-			account.Credentials = model.JSONB(newCredentials)
+			account.Credentials = newCredentials
 			if err := s.accountRepo.Update(ctx, account); err != nil {
 				return fmt.Errorf("failed to save credentials: %w", err)
 		REDACTED

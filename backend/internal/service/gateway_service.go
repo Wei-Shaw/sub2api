@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -30,6 +29,10 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 )
+
+// sseDataRe matches SSE data lines with optional whitespace after colon.
+// Some upstream APIs return non-standard "data:" without space (should be "data: ").
+var sseDataRe = regexp.MustCompile(`^data:\s*`)
 
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
@@ -265,12 +268,12 @@ REDACTED
 REDACTED
 
 // SelectAccount 选择账号（粘性会话+优先级）
-func (s *GatewayService) SelectAccount(ctx context.Context, groupID *int64, sessionHash string) (*model.Account, error) {
+func (s *GatewayService) SelectAccount(ctx context.Context, groupID *int64, sessionHash string) (*Account, error) {
 	return s.SelectAccountForModel(ctx, groupID, sessionHash, "")
 REDACTED
 
 // SelectAccountForModel 选择支持指定模型的账号（粘性会话+优先级+模型映射）
-func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int64, sessionHash string, requestedModel string) (*model.Account, error) {
+func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int64, sessionHash string, requestedModel string) (*Account, error) {
 	// 1. 查询粘性会话
 	if sessionHash != "" {
 		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
@@ -289,19 +292,19 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 REDACTED
 
 	// 2. 获取可调度账号列表（排除限流和过载的账号，仅限 Anthropic 平台）
-	var accounts []model.Account
+	var accounts []Account
 	var err error
 	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, model.PlatformAnthropic)
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformAnthropic)
 REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, model.PlatformAnthropic)
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformAnthropic)
 REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 REDACTED
 
 	// 3. 按优先级+最久未用选择（考虑模型支持）
-	var selected *model.Account
+	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
 		// 检查模型支持
@@ -350,12 +353,12 @@ REDACTED
 REDACTED
 
 // GetAccessToken 获取账号凭证
-func (s *GatewayService) GetAccessToken(ctx context.Context, account *model.Account) (string, string, error) {
+func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
 	switch account.Type {
-	case model.AccountTypeOAuth, model.AccountTypeSetupToken:
+	case AccountTypeOAuth, AccountTypeSetupToken:
 		// Both oauth and setup-token use OAuth token flow
 		return s.getOAuthToken(ctx, account)
-	case model.AccountTypeApiKey:
+	case AccountTypeApiKey:
 		apiKey := account.GetCredential("api_key")
 		if apiKey == "" {
 			return "", "", errors.New("api_key not found in credentials")
@@ -366,7 +369,7 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *model.Acco
 REDACTED
 REDACTED
 
-func (s *GatewayService) getOAuthToken(ctx context.Context, account *model.Account) (string, string, error) {
+func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (string, string, error) {
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
 		return "", "", errors.New("access_token not found in credentials")
@@ -381,10 +384,7 @@ const (
 	retryDelay = 3 * time.Second // 重试等待时间
 )
 
-// shouldRetryUpstreamError 判断是否应该重试上游错误
-// OAuth/Setup Token 账号：仅 403 重试
-// API Key 账号：未配置的错误码重试
-func (s *GatewayService) shouldRetryUpstreamError(account *model.Account, statusCode int) bool {
+func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
 	// OAuth/Setup Token 账号：仅 403 重试
 	if account.IsOAuth() {
 		return statusCode == 403
@@ -395,7 +395,7 @@ REDACTED
 REDACTED
 
 // Forward 转发请求到Claude API
-func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *model.Account, body []byte) (*ForwardResult, error) {
+func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
 	startTime := time.Now()
 
 	// 解析请求获取model和stream
@@ -421,7 +421,7 @@ REDACTED
 
 	// 应用模型映射（仅对apikey类型账号）
 	originalModel := req.Model
-	if account.Type == model.AccountTypeApiKey {
+	if account.Type == AccountTypeApiKey {
 		mappedModel := account.GetMappedModel(req.Model)
 		if mappedModel != req.Model {
 			// 替换请求体中的模型名
@@ -513,10 +513,10 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *model.Account, body []byte, token, tokenType string) (*http.Request, error) {
+func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType string) (*http.Request, error) {
 	// 确定目标URL
 	targetURL := claudeAPIURL
-	if account.Type == model.AccountTypeApiKey {
+	if account.Type == AccountTypeApiKey {
 		baseURL := account.GetBaseURL()
 		targetURL = baseURL + "/v1/messages"
 REDACTED
@@ -640,7 +640,7 @@ REDACTED
 	return claude.DefaultBetaHeader
 REDACTED
 
-func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *model.Account) (*ForwardResult, error) {
+func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
 	body, _ := io.ReadAll(resp.Body)
 
 	// 处理上游错误，标记账号状态
@@ -695,7 +695,7 @@ REDACTED
 // handleRetryExhaustedError 处理重试耗尽后的错误
 // OAuth 403：标记账号异常
 // API Key 未配置错误码：仅返回错误，不标记账号
-func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *http.Response, c *gin.Context, account *model.Account) (*ForwardResult, error) {
+func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
 	body, _ := io.ReadAll(resp.Body)
 	statusCode := resp.StatusCode
 
@@ -726,7 +726,7 @@ type streamingResult struct {
 	firstTokenMs *int
 REDACTED
 
-func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *model.Account, startTime time.Time, originalModel, mappedModel string) (*streamingResult, error) {
+func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*streamingResult, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
@@ -758,26 +758,33 @@ REDACTED
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// 如果有模型映射，替换响应中的model字段
-		if needModelReplace && strings.HasPrefix(line, "data: ") {
-			line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-	REDACTED
+		// Extract data from SSE line (supports both "data: " and "data:" formats)
+		if sseDataRe.MatchString(line) {
+			data := sseDataRe.ReplaceAllString(line, "")
 
-		// 转发行
-		if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-			return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
-	REDACTED
-		flusher.Flush()
+			// 如果有模型映射，替换响应中的model字段
+			if needModelReplace {
+				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+		REDACTED
 
-		// 解析usage数据
-		if strings.HasPrefix(line, "data: ") {
-			data := line[6:]
+			// 转发行
+			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+		REDACTED
+			flusher.Flush()
+
 			// 记录首字时间：第一个有效的 content_block_delta 或 message_start
 			if firstTokenMs == nil && data != "" && data != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 		REDACTED
 			s.parseSSEUsage(data, usage)
+	REDACTED else {
+			// 非 data 行直接转发
+			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+		REDACTED
+			flusher.Flush()
 	REDACTED
 REDACTED
 
@@ -790,7 +797,10 @@ REDACTED
 
 // replaceModelInSSELine 替换SSE数据行中的model字段
 func (s *GatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
-	data := line[6:] // 去掉 "data: " 前缀
+	if !sseDataRe.MatchString(line) {
+		return line
+REDACTED
+	data := sseDataRe.ReplaceAllString(line, "")
 	if data == "" || data == "[DONE]" {
 		return line
 REDACTED
@@ -865,7 +875,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *model.Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
+func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
@@ -924,10 +934,10 @@ REDACTED
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
 	Result       *ForwardResult
-	ApiKey       *model.ApiKey
-	User         *model.User
-	Account      *model.Account
-	Subscription *model.UserSubscription // 可选：订阅信息
+	ApiKey       *ApiKey
+	User         *User
+	Account      *Account
+	Subscription *UserSubscription // 可选：订阅信息
 REDACTED
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -961,14 +971,14 @@ REDACTED
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
-	billingType := model.BillingTypeBalance
+	billingType := BillingTypeBalance
 	if isSubscriptionBilling {
-		billingType = model.BillingTypeSubscription
+		billingType = BillingTypeSubscription
 REDACTED
 
 	// 创建使用日志
 	durationMs := int(result.Duration.Milliseconds())
-	usageLog := &model.UsageLog{
+	usageLog := &UsageLog{
 		UserID:              user.ID,
 		ApiKeyID:            apiKey.ID,
 		AccountID:           account.ID,
@@ -1047,9 +1057,9 @@ REDACTED
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
 // 特点：不记录使用量、仅支持非流式响应
-func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *model.Account, body []byte) error {
+func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
 	// 应用模型映射（仅对 apikey 类型账号）
-	if account.Type == model.AccountTypeApiKey {
+	if account.Type == AccountTypeApiKey {
 		var req struct {
 			Model string `json:"model"`
 	REDACTED
@@ -1122,10 +1132,10 @@ REDACTED
 REDACTED
 
 // buildCountTokensRequest 构建 count_tokens 上游请求
-func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *model.Account, body []byte, token, tokenType string) (*http.Request, error) {
+func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType string) (*http.Request, error) {
 	// 确定目标 URL
 	targetURL := claudeAPICountTokensURL
-	if account.Type == model.AccountTypeApiKey {
+	if account.Type == AccountTypeApiKey {
 		baseURL := account.GetBaseURL()
 		targetURL = baseURL + "/v1/messages/count_tokens"
 REDACTED

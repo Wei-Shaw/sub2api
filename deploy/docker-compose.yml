@@ -141,6 +141,8 @@ services:
       ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORDREDACTEDREDACTED
     environment:
       - TZ=${TZ:-Asia/ShanghaiREDACTED
+      # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
+      - REDISCLI_AUTH=${REDIS_PASSWORD:-REDACTED
     networks:
       - sub2api-network
     healthcheck:

@@ -3,7 +3,7 @@ package admin
 import (
 	"strconv"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -69,7 +69,11 @@ REDACTED
 		return
 REDACTED
 
-	response.Paginated(c, groups, total, page, pageSize)
+	outGroups := make([]dto.Group, 0, len(groups))
+	for i := range groups {
+		outGroups = append(outGroups, *dto.GroupFromService(&groups[i]))
+REDACTED
+	response.Paginated(c, outGroups, total, page, pageSize)
 REDACTED
 
 // GetAll handles getting all active groups without pagination
@@ -77,7 +81,7 @@ REDACTED
 func (h *GroupHandler) GetAll(c *gin.Context) {
 	platform := c.Query("platform")
 
-	var groups []model.Group
+	var groups []service.Group
 	var err error
 
 	if platform != "" {
@@ -91,7 +95,11 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, groups)
+	outGroups := make([]dto.Group, 0, len(groups))
+	for i := range groups {
+		outGroups = append(outGroups, *dto.GroupFromService(&groups[i]))
+REDACTED
+	response.Success(c, outGroups)
 REDACTED
 
 // GetByID handles getting a group by ID
@@ -109,7 +117,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, group)
+	response.Success(c, dto.GroupFromService(group))
 REDACTED
 
 // Create handles creating a new group
@@ -137,7 +145,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, group)
+	response.Success(c, dto.GroupFromService(group))
 REDACTED
 
 // Update handles updating a group
@@ -172,7 +180,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, group)
+	response.Success(c, dto.GroupFromService(group))
 REDACTED
 
 // Delete handles deleting a group
@@ -229,5 +237,9 @@ REDACTED
 		return
 REDACTED
 
-	response.Paginated(c, keys, total, page, pageSize)
+	outKeys := make([]dto.ApiKey, 0, len(keys))
+	for i := range keys {
+		outKeys = append(outKeys, *dto.ApiKeyFromService(&keys[i]))
+REDACTED
+	response.Paginated(c, outKeys, total, page, pageSize)
 REDACTED

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
@@ -66,7 +65,7 @@ REDACTED
 REDACTED
 
 // Create 创建使用日志
-func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*model.UsageLog, error) {
+func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, error) {
 	// 验证用户存在
 	_, err := s.userRepo.GetByID(ctx, req.UserID)
 	if err != nil {
@@ -74,7 +73,7 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 REDACTED
 
 	// 创建使用日志
-	usageLog := &model.UsageLog{
+	usageLog := &UsageLog{
 		UserID:                req.UserID,
 		ApiKeyID:              req.ApiKeyID,
 		AccountID:             req.AccountID,
@@ -112,7 +111,7 @@ REDACTED
 REDACTED
 
 // GetByID 根据ID获取使用日志
-func (s *UsageService) GetByID(ctx context.Context, id int64) (*model.UsageLog, error) {
+func (s *UsageService) GetByID(ctx context.Context, id int64) (*UsageLog, error) {
 	log, err := s.usageRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get usage log: %w", err)
@@ -121,7 +120,7 @@ REDACTED
 REDACTED
 
 // ListByUser 获取用户的使用日志列表
-func (s *UsageService) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (s *UsageService) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error) {
 	logs, pagination, err := s.usageRepo.ListByUser(ctx, userID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs: %w", err)
@@ -130,7 +129,7 @@ REDACTED
 REDACTED
 
 // ListByApiKey 获取API Key的使用日志列表
-func (s *UsageService) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (s *UsageService) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error) {
 	logs, pagination, err := s.usageRepo.ListByApiKey(ctx, apiKeyID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs: %w", err)
@@ -139,7 +138,7 @@ REDACTED
 REDACTED
 
 // ListByAccount 获取账号的使用日志列表
-func (s *UsageService) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (s *UsageService) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error) {
 	logs, pagination, err := s.usageRepo.ListByAccount(ctx, accountID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs: %w", err)
@@ -243,7 +242,7 @@ REDACTED
 REDACTED
 
 // calculateStats 计算统计数据
-func (s *UsageService) calculateStats(logs []model.UsageLog) *UsageStats {
+func (s *UsageService) calculateStats(logs []UsageLog) *UsageStats {
 	stats := &UsageStats{REDACTED
 
 	for _, log := range logs {
@@ -313,7 +312,7 @@ REDACTED
 REDACTED
 
 // ListWithFilters lists usage logs with admin filters.
-func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]model.UsageLog, *pagination.PaginationResult, error) {
+func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error) {
 	logs, result, err := s.usageRepo.ListWithFilters(ctx, params, filters)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs with filters: %w", err)

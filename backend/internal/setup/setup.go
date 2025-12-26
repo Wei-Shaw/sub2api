@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/redis/go-redis/v9"
-	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -271,8 +271,7 @@ REDACTED
 	REDACTED
 REDACTED()
 
-	// 使用 model 包的 AutoMigrate，确保模型定义统一
-	return model.AutoMigrate(db)
+	return repository.AutoMigrate(db)
 REDACTED
 
 func createAdminUser(cfg *SetupConfig) error {
@@ -299,29 +298,28 @@ REDACTED()
 
 	// Check if admin already exists
 	var count int64
-	db.Model(&model.User{REDACTED).Where("role = ?", "admin").Count(&count)
+	if err := db.Table("users").Where("role = ?", service.RoleAdmin).Count(&count).Error; err != nil {
+		return err
+REDACTED
 	if count > 0 {
 		return nil // Admin already exists
 REDACTED
 
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(cfg.Admin.Password), bcrypt.DefaultCost)
-	if err != nil {
+	admin := &service.User{
+		Email:       cfg.Admin.Email,
+		Role:        service.RoleAdmin,
+		Status:      service.StatusActive,
+		Balance:     0,
+		Concurrency: 5,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+REDACTED
+
+	if err := admin.SetPassword(cfg.Admin.Password); err != nil {
 		return err
 REDACTED
 
-	// Create admin user
-	admin := &model.User{
-		Email:        cfg.Admin.Email,
-		PasswordHash: string(hashedPassword),
-		Role:         model.RoleAdmin,
-		Status:       model.StatusActive,
-		Balance:      0,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-REDACTED
-
-	return db.Create(admin).Error
+	return repository.NewUserRepository(db).Create(context.Background(), admin)
 REDACTED
 
 func writeConfigFile(cfg *SetupConfig) error {

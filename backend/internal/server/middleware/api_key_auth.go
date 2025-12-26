@@ -5,11 +5,9 @@ import (
 	"log"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 // NewApiKeyAuthMiddleware 创建 API Key 认证中间件
@@ -61,7 +59,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 		// 从数据库验证API key
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, service.ErrApiKeyNotFound) {
 				AbortWithError(c, 401, "INVALID_API_KEY", "Invalid API key")
 				return
 		REDACTED
@@ -136,28 +134,32 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 
 		// 将API key和用户信息存入上下文
 		c.Set(string(ContextKeyApiKey), apiKey)
-		c.Set(string(ContextKeyUser), apiKey.User)
+		c.Set(string(ContextKeyUser), AuthSubject{
+			UserID:      apiKey.User.ID,
+			Concurrency: apiKey.User.Concurrency,
+	REDACTED)
+		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 
 		c.Next()
 REDACTED
 REDACTED
 
 // GetApiKeyFromContext 从上下文中获取API key
-func GetApiKeyFromContext(c *gin.Context) (*model.ApiKey, bool) {
+func GetApiKeyFromContext(c *gin.Context) (*service.ApiKey, bool) {
 	value, exists := c.Get(string(ContextKeyApiKey))
 	if !exists {
 		return nil, false
 REDACTED
-	apiKey, ok := value.(*model.ApiKey)
+	apiKey, ok := value.(*service.ApiKey)
 	return apiKey, ok
 REDACTED
 
 // GetSubscriptionFromContext 从上下文中获取订阅信息
-func GetSubscriptionFromContext(c *gin.Context) (*model.UserSubscription, bool) {
+func GetSubscriptionFromContext(c *gin.Context) (*service.UserSubscription, bool) {
 	value, exists := c.Get(string(ContextKeySubscription))
 	if !exists {
 		return nil, false
 REDACTED
-	subscription, ok := value.(*model.UserSubscription)
+	subscription, ok := value.(*service.UserSubscription)
 	return subscription, ok
 REDACTED

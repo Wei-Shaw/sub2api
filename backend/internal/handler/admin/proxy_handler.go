@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -57,7 +58,11 @@ func (h *ProxyHandler) List(c *gin.Context) {
 		return
 REDACTED
 
-	response.Paginated(c, proxies, total, page, pageSize)
+	out := make([]dto.Proxy, 0, len(proxies))
+	for i := range proxies {
+		out = append(out, *dto.ProxyFromService(&proxies[i]))
+REDACTED
+	response.Paginated(c, out, total, page, pageSize)
 REDACTED
 
 // GetAll handles getting all active proxies without pagination
@@ -72,7 +77,11 @@ func (h *ProxyHandler) GetAll(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 	REDACTED
-		response.Success(c, proxies)
+		out := make([]dto.ProxyWithAccountCount, 0, len(proxies))
+		for i := range proxies {
+			out = append(out, *dto.ProxyWithAccountCountFromService(&proxies[i]))
+	REDACTED
+		response.Success(c, out)
 		return
 REDACTED
 
@@ -82,7 +91,11 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, proxies)
+	out := make([]dto.Proxy, 0, len(proxies))
+	for i := range proxies {
+		out = append(out, *dto.ProxyFromService(&proxies[i]))
+REDACTED
+	response.Success(c, out)
 REDACTED
 
 // GetByID handles getting a proxy by ID
@@ -100,7 +113,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, proxy)
+	response.Success(c, dto.ProxyFromService(proxy))
 REDACTED
 
 // Create handles creating a new proxy
@@ -125,7 +138,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, proxy)
+	response.Success(c, dto.ProxyFromService(proxy))
 REDACTED
 
 // Update handles updating a proxy
@@ -157,7 +170,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, proxy)
+	response.Success(c, dto.ProxyFromService(proxy))
 REDACTED
 
 // Delete handles deleting a proxy
@@ -233,7 +246,11 @@ REDACTED
 		return
 REDACTED
 
-	response.Paginated(c, accounts, total, page, pageSize)
+	out := make([]dto.Account, 0, len(accounts))
+	for i := range accounts {
+		out = append(out, *dto.AccountFromService(&accounts[i]))
+REDACTED
+	response.Paginated(c, out, total, page, pageSize)
 REDACTED
 
 // BatchCreateProxyItem represents a single proxy in batch create request

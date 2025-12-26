@@ -46,7 +46,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 REDACTED
 
-	user, ok := middleware2.GetUserFromContext(c)
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
@@ -94,8 +94,8 @@ REDACTED
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	// 0. Check if wait queue is full
-	maxWait := service.CalculateMaxWait(user.Concurrency)
-	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), user.ID, maxWait)
+	maxWait := service.CalculateMaxWait(subject.Concurrency)
+	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
 	if err != nil {
 		log.Printf("Increment wait count failed: %v", err)
 		// On error, allow request to proceed
@@ -104,10 +104,10 @@ REDACTED else if !canWait {
 		return
 REDACTED
 	// Ensure wait count is decremented when function exits
-	defer h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), user.ID)
+	defer h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
 
 	// 1. First acquire user concurrency slot
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, user, reqStream, &streamStarted)
+	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
 	if err != nil {
 		log.Printf("User concurrency acquire failed: %v", err)
 		h.handleConcurrencyError(c, err, "user", streamStarted)
@@ -118,7 +118,7 @@ REDACTED
 REDACTED
 
 	// 2. Re-check billing eligibility after wait
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), user, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		log.Printf("Billing eligibility check failed after wait: %v", err)
 		h.handleStreamingAwareError(c, http.StatusForbidden, "billing_error", err.Error(), streamStarted)
 		return
@@ -138,7 +138,7 @@ REDACTED
 	log.Printf("[OpenAI Handler] Selected account: id=%d name=%s", account.ID, account.Name)
 
 	// 3. Acquire account concurrency slot
-	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account, reqStream, &streamStarted)
+	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, reqStream, &streamStarted)
 	if err != nil {
 		log.Printf("Account concurrency acquire failed: %v", err)
 		h.handleConcurrencyError(c, err, "account", streamStarted)
@@ -163,7 +163,7 @@ REDACTED
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:       result,
 			ApiKey:       apiKey,
-			User:         user,
+			User:         apiKey.User,
 			Account:      account,
 			Subscription: subscription,
 	REDACTED); err != nil {

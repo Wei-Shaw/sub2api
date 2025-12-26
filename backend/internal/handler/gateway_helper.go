@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -69,11 +68,11 @@ REDACTED
 // AcquireUserSlotWithWait acquires a user concurrency slot, waiting if necessary.
 // For streaming requests, sends ping events during the wait.
 // streamStarted is updated if streaming response has begun.
-func (h *ConcurrencyHelper) AcquireUserSlotWithWait(c *gin.Context, user *model.User, isStream bool, streamStarted *bool) (func(), error) {
+func (h *ConcurrencyHelper) AcquireUserSlotWithWait(c *gin.Context, userID int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
 	ctx := c.Request.Context()
 
 	// Try to acquire immediately
-	result, err := h.concurrencyService.AcquireUserSlot(ctx, user.ID, user.Concurrency)
+	result, err := h.concurrencyService.AcquireUserSlot(ctx, userID, maxConcurrency)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -83,17 +82,17 @@ REDACTED
 REDACTED
 
 	// Need to wait - handle streaming ping if needed
-	return h.waitForSlotWithPing(c, "user", user.ID, user.Concurrency, isStream, streamStarted)
+	return h.waitForSlotWithPing(c, "user", userID, maxConcurrency, isStream, streamStarted)
 REDACTED
 
 // AcquireAccountSlotWithWait acquires an account concurrency slot, waiting if necessary.
 // For streaming requests, sends ping events during the wait.
 // streamStarted is updated if streaming response has begun.
-func (h *ConcurrencyHelper) AcquireAccountSlotWithWait(c *gin.Context, account *model.Account, isStream bool, streamStarted *bool) (func(), error) {
+func (h *ConcurrencyHelper) AcquireAccountSlotWithWait(c *gin.Context, accountID int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
 	ctx := c.Request.Context()
 
 	// Try to acquire immediately
-	result, err := h.concurrencyService.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	result, err := h.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -103,7 +102,7 @@ REDACTED
 REDACTED
 
 	// Need to wait - handle streaming ping if needed
-	return h.waitForSlotWithPing(c, "account", account.ID, account.Concurrency, isStream, streamStarted)
+	return h.waitForSlotWithPing(c, "account", accountID, maxConcurrency, isStream, streamStarted)
 REDACTED
 
 // waitForSlotWithPing waits for a concurrency slot, sending ping events for streaming requests.

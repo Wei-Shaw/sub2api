@@ -7,7 +7,6 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 // 错误定义
@@ -224,7 +223,7 @@ REDACTED
 // CheckBillingEligibility 检查用户是否有资格发起请求
 // 余额模式：检查缓存余额 > 0
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
-func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *model.User, apiKey *model.ApiKey, group *model.Group, subscription *model.UserSubscription) error {
+func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *ApiKey, group *Group, subscription *UserSubscription) error {
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
@@ -252,7 +251,7 @@ REDACTED
 REDACTED
 
 // checkSubscriptionEligibility 检查订阅模式资格
-func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, group *model.Group, subscription *model.UserSubscription) error {
+func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, userID int64, group *Group, subscription *UserSubscription) error {
 	// 获取订阅缓存数据
 	subData, err := s.GetSubscriptionStatus(ctx, userID, group.ID)
 	if err != nil {
@@ -262,7 +261,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 REDACTED
 
 	// 检查订阅状态
-	if subData.Status != model.SubscriptionStatusActive {
+	if subData.Status != SubscriptionStatusActive {
 		return ErrSubscriptionInvalid
 REDACTED
 
@@ -288,7 +287,7 @@ REDACTED
 REDACTED
 
 // checkSubscriptionLimitsFallback 降级检查订阅限额
-func (s *BillingCacheService) checkSubscriptionLimitsFallback(subscription *model.UserSubscription, group *model.Group) error {
+func (s *BillingCacheService) checkSubscriptionLimitsFallback(subscription *UserSubscription, group *Group) error {
 	if subscription == nil {
 		return ErrSubscriptionInvalid
 REDACTED

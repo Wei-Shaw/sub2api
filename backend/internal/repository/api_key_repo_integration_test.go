@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
 )
@@ -32,13 +32,13 @@ REDACTED
 // --- Create / GetByID / GetByKey ---
 
 func (s *ApiKeyRepoSuite) TestCreate() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "create@test.com"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "create@test.com"REDACTED)
 
-	key := &model.ApiKey{
+	key := &service.ApiKey{
 		UserID: user.ID,
 		Key:    "sk-create-test",
 		Name:   "Test Key",
-		Status: model.StatusActive,
+		Status: service.StatusActive,
 REDACTED
 
 	err := s.repo.Create(s.ctx, key)
@@ -56,15 +56,15 @@ func (s *ApiKeyRepoSuite) TestGetByID_NotFound() {
 REDACTED
 
 func (s *ApiKeyRepoSuite) TestGetByKey() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "getbykey@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-key"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "getbykey@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-key"REDACTED)
 
-	key := mustCreateApiKey(s.T(), s.db, &model.ApiKey{
+	key := mustCreateApiKey(s.T(), s.db, &apiKeyModel{
 		UserID:  user.ID,
 		Key:     "sk-getbykey",
 		Name:    "My Key",
 		GroupID: &group.ID,
-		Status:  model.StatusActive,
+		Status:  service.StatusActive,
 REDACTED)
 
 	got, err := s.repo.GetByKey(s.ctx, key.Key)
@@ -84,16 +84,16 @@ REDACTED
 // --- Update ---
 
 func (s *ApiKeyRepoSuite) TestUpdate() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "update@test.com"REDACTED)
-	key := mustCreateApiKey(s.T(), s.db, &model.ApiKey{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "update@test.com"REDACTED)
+	key := apiKeyModelToService(mustCreateApiKey(s.T(), s.db, &apiKeyModel{
 		UserID: user.ID,
 		Key:    "sk-update",
 		Name:   "Original",
-		Status: model.StatusActive,
-REDACTED)
+		Status: service.StatusActive,
+REDACTED))
 
 	key.Name = "Renamed"
-	key.Status = model.StatusDisabled
+	key.Status = service.StatusDisabled
 	err := s.repo.Update(s.ctx, key)
 	s.Require().NoError(err, "Update")
 
@@ -102,18 +102,18 @@ REDACTED)
 	s.Require().Equal("sk-update", got.Key, "Update should not change key")
 	s.Require().Equal(user.ID, got.UserID, "Update should not change user_id")
 	s.Require().Equal("Renamed", got.Name)
-	s.Require().Equal(model.StatusDisabled, got.Status)
+	s.Require().Equal(service.StatusDisabled, got.Status)
 REDACTED
 
 func (s *ApiKeyRepoSuite) TestUpdate_ClearGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "cleargroup@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-clear"REDACTED)
-	key := mustCreateApiKey(s.T(), s.db, &model.ApiKey{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "cleargroup@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-clear"REDACTED)
+	key := apiKeyModelToService(mustCreateApiKey(s.T(), s.db, &apiKeyModel{
 		UserID:  user.ID,
 		Key:     "sk-clear-group",
 		Name:    "Group Key",
 		GroupID: &group.ID,
-REDACTED)
+REDACTED))
 
 	key.GroupID = nil
 	err := s.repo.Update(s.ctx, key)
@@ -127,8 +127,8 @@ REDACTED
 // --- Delete ---
 
 func (s *ApiKeyRepoSuite) TestDelete() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "delete@test.com"REDACTED)
-	key := mustCreateApiKey(s.T(), s.db, &model.ApiKey{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "delete@test.com"REDACTED)
+	key := mustCreateApiKey(s.T(), s.db, &apiKeyModel{
 		UserID: user.ID,
 		Key:    "sk-delete",
 		Name:   "Delete Me",
@@ -144,9 +144,9 @@ REDACTED
 // --- ListByUserID / CountByUserID ---
 
 func (s *ApiKeyRepoSuite) TestListByUserID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "listbyuser@test.com"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-list-1", Name: "Key 1"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-list-2", Name: "Key 2"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "listbyuser@test.com"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-list-1", Name: "Key 1"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-list-2", Name: "Key 2"REDACTED)
 
 	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "ListByUserID")
@@ -155,9 +155,9 @@ func (s *ApiKeyRepoSuite) TestListByUserID() {
 REDACTED
 
 func (s *ApiKeyRepoSuite) TestListByUserID_Pagination() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "paging@test.com"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "paging@test.com"REDACTED)
 	for i := 0; i < 5; i++ {
-		mustCreateApiKey(s.T(), s.db, &model.ApiKey{
+		mustCreateApiKey(s.T(), s.db, &apiKeyModel{
 			UserID: user.ID,
 			Key:    "sk-page-" + string(rune('a'+i)),
 			Name:   "Key",
@@ -172,9 +172,9 @@ REDACTED
 REDACTED
 
 func (s *ApiKeyRepoSuite) TestCountByUserID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "count@test.com"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-count-1", Name: "K1"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-count-2", Name: "K2"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "count@test.com"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-count-1", Name: "K1"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-count-2", Name: "K2"REDACTED)
 
 	count, err := s.repo.CountByUserID(s.ctx, user.ID)
 	s.Require().NoError(err, "CountByUserID")
@@ -184,12 +184,12 @@ REDACTED
 // --- ListByGroupID / CountByGroupID ---
 
 func (s *ApiKeyRepoSuite) TestListByGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "listbygroup@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-list"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "listbygroup@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-list"REDACTED)
 
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-grp-1", Name: "K1", GroupID: &group.IDREDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-grp-2", Name: "K2", GroupID: &group.IDREDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-grp-3", Name: "K3"REDACTED) // no group
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-grp-1", Name: "K1", GroupID: &group.IDREDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-grp-2", Name: "K2", GroupID: &group.IDREDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-grp-3", Name: "K3"REDACTED) // no group
 
 	keys, page, err := s.repo.ListByGroupID(s.ctx, group.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "ListByGroupID")
@@ -200,10 +200,10 @@ func (s *ApiKeyRepoSuite) TestListByGroupID() {
 REDACTED
 
 func (s *ApiKeyRepoSuite) TestCountByGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "countgroup@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-count"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "countgroup@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-count"REDACTED)
 
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-gc-1", Name: "K1", GroupID: &group.IDREDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-gc-1", Name: "K1", GroupID: &group.IDREDACTED)
 
 	count, err := s.repo.CountByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "CountByGroupID")
@@ -213,8 +213,8 @@ REDACTED
 // --- ExistsByKey ---
 
 func (s *ApiKeyRepoSuite) TestExistsByKey() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "exists@test.com"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-exists", Name: "K"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "exists@test.com"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-exists", Name: "K"REDACTED)
 
 	exists, err := s.repo.ExistsByKey(s.ctx, "sk-exists")
 	s.Require().NoError(err, "ExistsByKey")
@@ -228,9 +228,9 @@ REDACTED
 // --- SearchApiKeys ---
 
 func (s *ApiKeyRepoSuite) TestSearchApiKeys() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "search@test.com"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-search-1", Name: "Production Key"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-search-2", Name: "Development Key"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "search@test.com"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-search-1", Name: "Production Key"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-search-2", Name: "Development Key"REDACTED)
 
 	found, err := s.repo.SearchApiKeys(s.ctx, user.ID, "prod", 10)
 	s.Require().NoError(err, "SearchApiKeys")
@@ -239,9 +239,9 @@ func (s *ApiKeyRepoSuite) TestSearchApiKeys() {
 REDACTED
 
 func (s *ApiKeyRepoSuite) TestSearchApiKeys_NoKeyword() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "searchnokw@test.com"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-nk-1", Name: "K1"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-nk-2", Name: "K2"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "searchnokw@test.com"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-nk-1", Name: "K1"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-nk-2", Name: "K2"REDACTED)
 
 	found, err := s.repo.SearchApiKeys(s.ctx, user.ID, "", 10)
 	s.Require().NoError(err)
@@ -249,8 +249,8 @@ func (s *ApiKeyRepoSuite) TestSearchApiKeys_NoKeyword() {
 REDACTED
 
 func (s *ApiKeyRepoSuite) TestSearchApiKeys_NoUserID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "searchnouid@test.com"REDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-nu-1", Name: "TestKey"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "searchnouid@test.com"REDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-nu-1", Name: "TestKey"REDACTED)
 
 	found, err := s.repo.SearchApiKeys(s.ctx, 0, "testkey", 10)
 	s.Require().NoError(err)
@@ -260,12 +260,12 @@ REDACTED
 // --- ClearGroupIDByGroupID ---
 
 func (s *ApiKeyRepoSuite) TestClearGroupIDByGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "cleargrp@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-clear-bulk"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "cleargrp@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-clear-bulk"REDACTED)
 
-	k1 := mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-clr-1", Name: "K1", GroupID: &group.IDREDACTED)
-	k2 := mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-clr-2", Name: "K2", GroupID: &group.IDREDACTED)
-	mustCreateApiKey(s.T(), s.db, &model.ApiKey{UserID: user.ID, Key: "sk-clr-3", Name: "K3"REDACTED) // no group
+	k1 := mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-clr-1", Name: "K1", GroupID: &group.IDREDACTED)
+	k2 := mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-clr-2", Name: "K2", GroupID: &group.IDREDACTED)
+	mustCreateApiKey(s.T(), s.db, &apiKeyModel{UserID: user.ID, Key: "sk-clr-3", Name: "K3"REDACTED) // no group
 
 	affected, err := s.repo.ClearGroupIDByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "ClearGroupIDByGroupID")
@@ -283,16 +283,16 @@ REDACTED
 // --- Combined CRUD/Search/ClearGroupID (original test preserved as integration) ---
 
 func (s *ApiKeyRepoSuite) TestCRUD_Search_ClearGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "k@example.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-k"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "k@example.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-k"REDACTED)
 
-	key := mustCreateApiKey(s.T(), s.db, &model.ApiKey{
+	key := apiKeyModelToService(mustCreateApiKey(s.T(), s.db, &apiKeyModel{
 		UserID:  user.ID,
 		Key:     "sk-test-1",
 		Name:    "My Key",
 		GroupID: &group.ID,
-		Status:  model.StatusActive,
-REDACTED)
+		Status:  service.StatusActive,
+REDACTED))
 
 	got, err := s.repo.GetByKey(s.ctx, key.Key)
 	s.Require().NoError(err, "GetByKey")
@@ -303,7 +303,7 @@ REDACTED)
 	s.Require().Equal(group.ID, got.Group.ID)
 
 	key.Name = "Renamed"
-	key.Status = model.StatusDisabled
+	key.Status = service.StatusDisabled
 	key.GroupID = nil
 	s.Require().NoError(s.repo.Update(s.ctx, key), "Update")
 
@@ -312,7 +312,7 @@ REDACTED)
 	s.Require().Equal("sk-test-1", got2.Key, "Update should not change key")
 	s.Require().Equal(user.ID, got2.UserID, "Update should not change user_id")
 	s.Require().Equal("Renamed", got2.Name)
-	s.Require().Equal(model.StatusDisabled, got2.Status)
+	s.Require().Equal(service.StatusDisabled, got2.Status)
 	s.Require().Nil(got2.GroupID)
 
 	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
@@ -330,7 +330,7 @@ REDACTED)
 	s.Require().Equal(key.ID, found[0].ID)
 
 	// ClearGroupIDByGroupID
-	k2 := mustCreateApiKey(s.T(), s.db, &model.ApiKey{
+	k2 := mustCreateApiKey(s.T(), s.db, &apiKeyModel{
 		UserID:  user.ID,
 		Key:     "sk-test-2",
 		Name:    "Group Key",

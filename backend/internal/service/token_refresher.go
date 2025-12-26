@@ -4,22 +4,20 @@ import (
 	"context"
 	"strconv"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 // TokenRefresher 定义平台特定的token刷新策略接口
 // 通过此接口可以扩展支持不同平台（Anthropic/OpenAI/Gemini）
 type TokenRefresher interface {
 	// CanRefresh 检查此刷新器是否能处理指定账号
-	CanRefresh(account *model.Account) bool
+	CanRefresh(account *Account) bool
 
 	// NeedsRefresh 检查账号的token是否需要刷新
-	NeedsRefresh(account *model.Account, refreshWindow time.Duration) bool
+	NeedsRefresh(account *Account, refreshWindow time.Duration) bool
 
 	// Refresh 执行token刷新，返回更新后的credentials
 	// 注意：返回的map应该保留原有credentials中的所有字段，只更新token相关字段
-	Refresh(ctx context.Context, account *model.Account) (map[string]any, error)
+	Refresh(ctx context.Context, account *Account) (map[string]any, error)
 REDACTED
 
 // ClaudeTokenRefresher 处理Anthropic/Claude OAuth token刷新
@@ -37,14 +35,14 @@ REDACTED
 // CanRefresh 检查是否能处理此账号
 // 只处理 anthropic 平台的 oauth 类型账号
 // setup-token 虽然也是OAuth，但有效期1年，不需要频繁刷新
-func (r *ClaudeTokenRefresher) CanRefresh(account *model.Account) bool {
-	return account.Platform == model.PlatformAnthropic &&
-		account.Type == model.AccountTypeOAuth
+func (r *ClaudeTokenRefresher) CanRefresh(account *Account) bool {
+	return account.Platform == PlatformAnthropic &&
+		account.Type == AccountTypeOAuth
 REDACTED
 
 // NeedsRefresh 检查token是否需要刷新
 // 基于 expires_at 字段判断是否在刷新窗口内
-func (r *ClaudeTokenRefresher) NeedsRefresh(account *model.Account, refreshWindow time.Duration) bool {
+func (r *ClaudeTokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
 	expiresAtStr := account.GetCredential("expires_at")
 	if expiresAtStr == "" {
 		return false
@@ -61,7 +59,7 @@ REDACTED
 
 // Refresh 执行token刷新
 // 保留原有credentials中的所有字段，只更新token相关字段
-func (r *ClaudeTokenRefresher) Refresh(ctx context.Context, account *model.Account) (map[string]any, error) {
+func (r *ClaudeTokenRefresher) Refresh(ctx context.Context, account *Account) (map[string]any, error) {
 	tokenInfo, err := r.oauthService.RefreshAccountToken(ctx, account)
 	if err != nil {
 		return nil, err
@@ -103,14 +101,14 @@ REDACTED
 
 // CanRefresh 检查是否能处理此账号
 // 只处理 openai 平台的 oauth 类型账号
-func (r *OpenAITokenRefresher) CanRefresh(account *model.Account) bool {
-	return account.Platform == model.PlatformOpenAI &&
-		account.Type == model.AccountTypeOAuth
+func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
+	return account.Platform == PlatformOpenAI &&
+		account.Type == AccountTypeOAuth
 REDACTED
 
 // NeedsRefresh 检查token是否需要刷新
 // 基于 expires_at 字段判断是否在刷新窗口内
-func (r *OpenAITokenRefresher) NeedsRefresh(account *model.Account, refreshWindow time.Duration) bool {
+func (r *OpenAITokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
 	expiresAt := account.GetOpenAITokenExpiresAt()
 	if expiresAt == nil {
 		return false
@@ -121,7 +119,7 @@ REDACTED
 
 // Refresh 执行token刷新
 // 保留原有credentials中的所有字段，只更新token相关字段
-func (r *OpenAITokenRefresher) Refresh(ctx context.Context, account *model.Account) (map[string]any, error) {
+func (r *OpenAITokenRefresher) Refresh(ctx context.Context, account *Account) (map[string]any, error) {
 	tokenInfo, err := r.openaiOAuthService.RefreshAccountToken(ctx, account)
 	if err != nil {
 		return nil, err

@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -68,7 +69,11 @@ func (h *UserHandler) List(c *gin.Context) {
 		return
 REDACTED
 
-	response.Paginated(c, users, total, page, pageSize)
+	out := make([]dto.User, 0, len(users))
+	for i := range users {
+		out = append(out, *dto.UserFromService(&users[i]))
+REDACTED
+	response.Paginated(c, out, total, page, pageSize)
 REDACTED
 
 // GetByID handles getting a user by ID
@@ -86,7 +91,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, user)
+	response.Success(c, dto.UserFromService(user))
 REDACTED
 
 // Create handles creating a new user
@@ -113,7 +118,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, user)
+	response.Success(c, dto.UserFromService(user))
 REDACTED
 
 // Update handles updating a user
@@ -148,7 +153,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, user)
+	response.Success(c, dto.UserFromService(user))
 REDACTED
 
 // Delete handles deleting a user
@@ -190,7 +195,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, user)
+	response.Success(c, dto.UserFromService(user))
 REDACTED
 
 // GetUserAPIKeys handles getting user's API keys
@@ -210,7 +215,11 @@ REDACTED
 		return
 REDACTED
 
-	response.Paginated(c, keys, total, page, pageSize)
+	out := make([]dto.ApiKey, 0, len(keys))
+	for i := range keys {
+		out = append(out, *dto.ApiKeyFromService(&keys[i]))
+REDACTED
+	response.Paginated(c, out, total, page, pageSize)
 REDACTED
 
 // GetUserUsage handles getting user's usage statistics

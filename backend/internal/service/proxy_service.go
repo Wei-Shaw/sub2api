@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -14,15 +13,15 @@ var (
 )
 
 type ProxyRepository interface {
-	Create(ctx context.Context, proxy *model.Proxy) error
-	GetByID(ctx context.Context, id int64) (*model.Proxy, error)
-	Update(ctx context.Context, proxy *model.Proxy) error
+	Create(ctx context.Context, proxy *Proxy) error
+	GetByID(ctx context.Context, id int64) (*Proxy, error)
+	Update(ctx context.Context, proxy *Proxy) error
 	Delete(ctx context.Context, id int64) error
 
-	List(ctx context.Context, params pagination.PaginationParams) ([]model.Proxy, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]model.Proxy, *pagination.PaginationResult, error)
-	ListActive(ctx context.Context) ([]model.Proxy, error)
-	ListActiveWithAccountCount(ctx context.Context) ([]model.ProxyWithAccountCount, error)
+	List(ctx context.Context, params pagination.PaginationParams) ([]Proxy, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, protocol, status, search string) ([]Proxy, *pagination.PaginationResult, error)
+	ListActive(ctx context.Context) ([]Proxy, error)
+	ListActiveWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
 
 	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error)
 	CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error)
@@ -62,16 +61,16 @@ REDACTED
 REDACTED
 
 // Create 创建代理
-func (s *ProxyService) Create(ctx context.Context, req CreateProxyRequest) (*model.Proxy, error) {
+func (s *ProxyService) Create(ctx context.Context, req CreateProxyRequest) (*Proxy, error) {
 	// 创建代理
-	proxy := &model.Proxy{
+	proxy := &Proxy{
 		Name:     req.Name,
 		Protocol: req.Protocol,
 		Host:     req.Host,
 		Port:     req.Port,
 		Username: req.Username,
 		Password: req.Password,
-		Status:   model.StatusActive,
+		Status:   StatusActive,
 REDACTED
 
 	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
@@ -82,7 +81,7 @@ REDACTED
 REDACTED
 
 // GetByID 根据ID获取代理
-func (s *ProxyService) GetByID(ctx context.Context, id int64) (*model.Proxy, error) {
+func (s *ProxyService) GetByID(ctx context.Context, id int64) (*Proxy, error) {
 	proxy, err := s.proxyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get proxy: %w", err)
@@ -91,7 +90,7 @@ REDACTED
 REDACTED
 
 // List 获取代理列表
-func (s *ProxyService) List(ctx context.Context, params pagination.PaginationParams) ([]model.Proxy, *pagination.PaginationResult, error) {
+func (s *ProxyService) List(ctx context.Context, params pagination.PaginationParams) ([]Proxy, *pagination.PaginationResult, error) {
 	proxies, pagination, err := s.proxyRepo.List(ctx, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list proxies: %w", err)
@@ -100,7 +99,7 @@ REDACTED
 REDACTED
 
 // ListActive 获取活跃代理列表
-func (s *ProxyService) ListActive(ctx context.Context) ([]model.Proxy, error) {
+func (s *ProxyService) ListActive(ctx context.Context) ([]Proxy, error) {
 	proxies, err := s.proxyRepo.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list active proxies: %w", err)
@@ -109,7 +108,7 @@ REDACTED
 REDACTED
 
 // Update 更新代理
-func (s *ProxyService) Update(ctx context.Context, id int64, req UpdateProxyRequest) (*model.Proxy, error) {
+func (s *ProxyService) Update(ctx context.Context, id int64, req UpdateProxyRequest) (*Proxy, error) {
 	proxy, err := s.proxyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get proxy: %w", err)
