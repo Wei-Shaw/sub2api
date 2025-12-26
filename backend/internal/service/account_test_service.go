@@ -387,7 +387,7 @@ REDACTED
 REDACTED
 
 // testGeminiAccountConnection tests a Gemini account's connection
-func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *model.Account, modelID string) error {
+func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -397,7 +397,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 REDACTED
 
 	// For API Key accounts with model mapping, map the model
-	if account.Type == model.AccountTypeApiKey {
+	if account.Type == AccountTypeApiKey {
 		mapping := account.GetModelMapping()
 		if len(mapping) > 0 {
 			if mappedModel, exists := mapping[testModelID]; exists {
@@ -421,9 +421,9 @@ REDACTED
 	var err error
 
 	switch account.Type {
-	case model.AccountTypeApiKey:
+	case AccountTypeApiKey:
 		req, err = s.buildGeminiAPIKeyRequest(ctx, account, testModelID, payload)
-	case model.AccountTypeOAuth:
+	case AccountTypeOAuth:
 		req, err = s.buildGeminiOAuthRequest(ctx, account, testModelID, payload)
 	default:
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
@@ -458,7 +458,7 @@ REDACTED
 REDACTED
 
 // buildGeminiAPIKeyRequest builds request for Gemini API Key accounts
-func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, account *model.Account, modelID string, payload []byte) (*http.Request, error) {
+func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, account *Account, modelID string, payload []byte) (*http.Request, error) {
 	apiKey := account.GetCredential("api_key")
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, fmt.Errorf("no API key available")
@@ -485,7 +485,7 @@ REDACTED
 REDACTED
 
 // buildGeminiOAuthRequest builds request for Gemini OAuth accounts
-func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, account *model.Account, modelID string, payload []byte) (*http.Request, error) {
+func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, account *Account, modelID string, payload []byte) (*http.Request, error) {
 	if s.geminiTokenProvider == nil {
 		return nil, fmt.Errorf("gemini token provider not configured")
 REDACTED

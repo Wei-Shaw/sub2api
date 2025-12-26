@@ -128,8 +128,8 @@ REDACTED
 REDACTED
 
 	// 选择支持该模型的账号
-	var account *model.Account
-	if platform == model.PlatformGemini {
+	var account *service.Account
+	if platform == service.PlatformGemini {
 		account, err = h.geminiCompatService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
 REDACTED else {
 		account, err = h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
@@ -162,7 +162,7 @@ REDACTED
 
 	// 转发请求
 	var result *service.ForwardResult
-	if platform == model.PlatformGemini {
+	if platform == service.PlatformGemini {
 		result, err = h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
 REDACTED else {
 		result, err = h.gatewayService.Forward(c.Request.Context(), c, account, body)

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -25,7 +24,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 REDACTED
-	if apiKey.Group == nil || apiKey.Group.Platform != model.PlatformGemini {
+	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 REDACTED
@@ -56,7 +55,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 REDACTED
-	if apiKey.Group == nil || apiKey.Group.Platform != model.PlatformGemini {
+	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 REDACTED
@@ -94,13 +93,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 REDACTED
-	user, ok := middleware.GetUserFromContext(c)
-	if !ok || user == nil {
+	authSubject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
 		googleError(c, http.StatusInternalServerError, "User context not found")
 		return
 REDACTED
 
-	if apiKey.Group == nil || apiKey.Group.Platform != model.PlatformGemini {
+	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 REDACTED
@@ -130,19 +129,19 @@ REDACTED
 	geminiConcurrency := NewConcurrencyHelper(h.concurrencyHelper.concurrencyService, SSEPingFormatNone)
 
 	// 0) wait queue check
-	maxWait := service.CalculateMaxWait(user.Concurrency)
-	canWait, err := geminiConcurrency.IncrementWaitCount(c.Request.Context(), user.ID, maxWait)
+	maxWait := service.CalculateMaxWait(authSubject.Concurrency)
+	canWait, err := geminiConcurrency.IncrementWaitCount(c.Request.Context(), authSubject.UserID, maxWait)
 	if err != nil {
 		log.Printf("Increment wait count failed: %v", err)
 REDACTED else if !canWait {
 		googleError(c, http.StatusTooManyRequests, "Too many pending requests, please retry later")
 		return
 REDACTED
-	defer geminiConcurrency.DecrementWaitCount(c.Request.Context(), user.ID)
+	defer geminiConcurrency.DecrementWaitCount(c.Request.Context(), authSubject.UserID)
 
 	// 1) user concurrency slot
 	streamStarted := false
-	userReleaseFunc, err := geminiConcurrency.AcquireUserSlotWithWait(c, user, stream, &streamStarted)
+	userReleaseFunc, err := geminiConcurrency.AcquireUserSlotWithWait(c, authSubject.UserID, authSubject.Concurrency, stream, &streamStarted)
 	if err != nil {
 		googleError(c, http.StatusTooManyRequests, err.Error())
 		return
@@ -152,7 +151,7 @@ REDACTED
 REDACTED
 
 	// 2) billing eligibility check (after wait)
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), user, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		googleError(c, http.StatusForbidden, err.Error())
 		return
 REDACTED
@@ -166,7 +165,7 @@ REDACTED
 REDACTED
 
 	// 4) account concurrency slot
-	accountReleaseFunc, err := geminiConcurrency.AcquireAccountSlotWithWait(c, account, stream, &streamStarted)
+	accountReleaseFunc, err := geminiConcurrency.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, stream, &streamStarted)
 	if err != nil {
 		googleError(c, http.StatusTooManyRequests, err.Error())
 		return
@@ -190,7 +189,7 @@ REDACTED
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 			Result:       result,
 			ApiKey:       apiKey,
-			User:         user,
+			User:         apiKey.User,
 			Account:      account,
 			Subscription: subscription,
 	REDACTED); err != nil {

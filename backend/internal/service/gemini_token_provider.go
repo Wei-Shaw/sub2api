@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 const (
@@ -34,11 +33,11 @@ func NewGeminiTokenProvider(
 REDACTED
 REDACTED
 
-func (p *GeminiTokenProvider) GetAccessToken(ctx context.Context, account *model.Account) (string, error) {
+func (p *GeminiTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
 	if account == nil {
 		return "", errors.New("account is nil")
 REDACTED
-	if account.Platform != model.PlatformGemini || account.Type != model.AccountTypeOAuth {
+	if account.Platform != PlatformGemini || account.Type != AccountTypeOAuth {
 		return "", errors.New("not a gemini oauth account")
 REDACTED
 
@@ -83,7 +82,7 @@ REDACTED
 						newCredentials[k] = v
 				REDACTED
 			REDACTED
-				account.Credentials = model.JSONB(newCredentials)
+				account.Credentials = newCredentials
 				_ = p.accountRepo.Update(ctx, account)
 				expiresAt = parseExpiresAt(account)
 		REDACTED
@@ -122,7 +121,7 @@ REDACTED
 		detected = strings.TrimSpace(detected)
 		if detected != "" {
 			if account.Credentials == nil {
-				account.Credentials = model.JSONB{REDACTED
+				account.Credentials = make(map[string]any)
 		REDACTED
 			account.Credentials["project_id"] = detected
 			_ = p.accountRepo.Update(ctx, account)
@@ -149,7 +148,7 @@ REDACTED
 	return accessToken, nil
 REDACTED
 
-func geminiTokenCacheKey(account *model.Account) string {
+func geminiTokenCacheKey(account *Account) string {
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
 	if projectID != "" {
 		return projectID
@@ -157,7 +156,7 @@ REDACTED
 	return "account:" + strconv.FormatInt(account.ID, 10)
 REDACTED
 
-func parseExpiresAt(account *model.Account) *time.Time {
+func parseExpiresAt(account *Account) *time.Time {
 	raw := strings.TrimSpace(account.GetCredential("expires_at"))
 	if raw == "" {
 		return nil

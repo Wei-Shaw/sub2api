@@ -70,6 +70,10 @@ func (a *Account) IsOAuth() bool {
 	return a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken
 REDACTED
 
+func (a *Account) IsGemini() bool {
+	return a.Platform == PlatformGemini
+REDACTED
+
 func (a *Account) CanGetUsage() bool {
 	return a.Type == AccountTypeOAuth
 REDACTED
@@ -321,4 +325,18 @@ func (a *Account) IsOpenAITokenExpired() bool {
 		return false
 REDACTED
 	return time.Now().Add(60 * time.Second).After(*expiresAt)
+REDACTED
+
+// mergeJSONB merges source map into target map (for preserving extra fields during account sync)
+func mergeJSONB(target, source map[string]any) map[string]any {
+	if target == nil {
+		target = make(map[string]any)
+REDACTED
+	if source == nil {
+		return target
+REDACTED
+	for k, v := range source {
+		target[k] = v
+REDACTED
+	return target
 REDACTED

@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 type GeminiTokenRefresher struct {
@@ -16,11 +15,11 @@ func NewGeminiTokenRefresher(geminiOAuthService *GeminiOAuthService) *GeminiToke
 	return &GeminiTokenRefresher{geminiOAuthService: geminiOAuthServiceREDACTED
 REDACTED
 
-func (r *GeminiTokenRefresher) CanRefresh(account *model.Account) bool {
-	return account.Platform == model.PlatformGemini && account.Type == model.AccountTypeOAuth
+func (r *GeminiTokenRefresher) CanRefresh(account *Account) bool {
+	return account.Platform == PlatformGemini && account.Type == AccountTypeOAuth
 REDACTED
 
-func (r *GeminiTokenRefresher) NeedsRefresh(account *model.Account, refreshWindow time.Duration) bool {
+func (r *GeminiTokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
 	if !r.CanRefresh(account) {
 		return false
 REDACTED
@@ -36,7 +35,7 @@ REDACTED
 	return time.Until(expiryTime) < refreshWindow
 REDACTED
 
-func (r *GeminiTokenRefresher) Refresh(ctx context.Context, account *model.Account) (map[string]any, error) {
+func (r *GeminiTokenRefresher) Refresh(ctx context.Context, account *Account) (map[string]any, error) {
 	tokenInfo, err := r.geminiOAuthService.RefreshAccountToken(ctx, account)
 	if err != nil {
 		return nil, err
