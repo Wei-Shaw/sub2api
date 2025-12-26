@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,10 @@ const (
 	openaiPlatformAPIURL   = "https://api.openai.com/v1/responses"
 	openaiStickySessionTTL = time.Hour // 粘性会话TTL
 )
+
+// openaiSSEDataRe matches SSE data lines with optional whitespace after colon.
+// Some upstream APIs return non-standard "data:" without space (should be "data: ").
+var openaiSSEDataRe = regexp.MustCompile(`^data:\s*`)
 
 // OpenAI allowed headers whitelist (for non-OAuth accounts)
 var openaiAllowedHeaders = map[string]bool{
@@ -464,26 +469,33 @@ REDACTED
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Replace model in response if needed
-		if needModelReplace && strings.HasPrefix(line, "data: ") {
-			line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-	REDACTED
+		// Extract data from SSE line (supports both "data: " and "data:" formats)
+		if openaiSSEDataRe.MatchString(line) {
+			data := openaiSSEDataRe.ReplaceAllString(line, "")
 
-		// Forward line
-		if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-			return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
-	REDACTED
-		flusher.Flush()
+			// Replace model in response if needed
+			if needModelReplace {
+				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+		REDACTED
 
-		// Parse usage data
-		if strings.HasPrefix(line, "data: ") {
-			data := line[6:]
+			// Forward line
+			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+		REDACTED
+			flusher.Flush()
+
 			// Record first token time
 			if firstTokenMs == nil && data != "" && data != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 		REDACTED
 			s.parseSSEUsage(data, usage)
+	REDACTED else {
+			// Forward non-data lines as-is
+			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+		REDACTED
+			flusher.Flush()
 	REDACTED
 REDACTED
 
@@ -495,7 +507,10 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
-	data := line[6:]
+	if !openaiSSEDataRe.MatchString(line) {
+		return line
+REDACTED
+	data := openaiSSEDataRe.ReplaceAllString(line, "")
 	if data == "" || data == "[DONE]" {
 		return line
 REDACTED
