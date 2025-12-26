@@ -43,7 +43,6 @@ type AccountTestService struct {
 	accountRepo         AccountRepository
 	oauthService        *OAuthService
 	openaiOAuthService  *OpenAIOAuthService
-	geminiOAuthService  *GeminiOAuthService
 	geminiTokenProvider *GeminiTokenProvider
 	httpUpstream        HTTPUpstream
 REDACTED
@@ -53,7 +52,6 @@ func NewAccountTestService(
 	accountRepo AccountRepository,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
-	geminiOAuthService *GeminiOAuthService,
 	geminiTokenProvider *GeminiTokenProvider,
 	httpUpstream HTTPUpstream,
 ) *AccountTestService {
@@ -61,7 +59,6 @@ func NewAccountTestService(
 		accountRepo:         accountRepo,
 		oauthService:        oauthService,
 		openaiOAuthService:  openaiOAuthService,
-		geminiOAuthService:  geminiOAuthService,
 		geminiTokenProvider: geminiTokenProvider,
 		httpUpstream:        httpUpstream,
 REDACTED
@@ -460,7 +457,7 @@ REDACTED
 func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, account *model.Account, modelID string, payload []byte) (*http.Request, error) {
 	apiKey := account.GetCredential("api_key")
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("No API key available")
+		return nil, fmt.Errorf("no API key available")
 REDACTED
 
 	baseURL := account.GetCredential("base_url")
@@ -486,13 +483,13 @@ REDACTED
 // buildGeminiOAuthRequest builds request for Gemini OAuth accounts
 func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, account *model.Account, modelID string, payload []byte) (*http.Request, error) {
 	if s.geminiTokenProvider == nil {
-		return nil, fmt.Errorf("Gemini token provider not configured")
+		return nil, fmt.Errorf("gemini token provider not configured")
 REDACTED
 
 	// Get access token (auto-refreshes if needed)
 	accessToken, err := s.geminiTokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get access token: %w", err)
+		return nil, fmt.Errorf("failed to get access token: %w", err)
 REDACTED
 
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))

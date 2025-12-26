@@ -436,7 +436,7 @@ REDACTED
 	if err != nil {
 		return "", fmt.Errorf("resource manager request failed: %w", err)
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -152,7 +152,7 @@ REDACTED
 
 	// Require OAuth credentials to be configured
 	if effective.ClientID == "" || effective.ClientSecret == "" {
-		return OAuthConfig{REDACTED, fmt.Errorf("Gemini OAuth credentials not configured. Set GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET environment variables")
+		return OAuthConfig{REDACTED, fmt.Errorf("gemini OAuth credentials not configured, set GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET environment variables")
 REDACTED
 
 	if effective.Scopes == "" {

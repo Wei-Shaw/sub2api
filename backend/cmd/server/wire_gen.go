@@ -88,7 +88,7 @@ REDACTED
 	geminiTokenCache := repository.NewGeminiTokenCache(client)
 	geminiTokenProvider := service.NewGeminiTokenProvider(accountRepository, geminiTokenCache, geminiOAuthService)
 	httpUpstream := repository.NewHTTPUpstream(configConfig)
-	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, openAIOAuthService, geminiOAuthService, geminiTokenProvider, httpUpstream)
+	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, openAIOAuthService, geminiTokenProvider, httpUpstream)
 	concurrencyCache := repository.NewConcurrencyCache(client)
 	concurrencyService := service.NewConcurrencyService(concurrencyCache)
 	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService, geminiOAuthService)

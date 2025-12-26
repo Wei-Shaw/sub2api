@@ -365,10 +365,6 @@ REDACTED
 		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
 REDACTED
 
-	if buildReq == nil {
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Gemini upstream not configured")
-REDACTED
-
 	var resp *http.Response
 	for attempt := 1; attempt <= geminiMaxRetries; attempt++ {
 		upstreamReq, idHeader, err := buildReq(ctx)
@@ -1128,7 +1124,6 @@ REDACTED
 						"index": openToolIndex,
 				REDACTED)
 					openToolIndex = -1
-					openToolID = ""
 					openToolName = ""
 					seenToolJSON = ""
 			REDACTED
@@ -2069,7 +2064,7 @@ func extractClaudeContentText(v any) string {
 		REDACTED
 			if pm["type"] == "text" {
 				if text, ok := pm["text"].(string); ok {
-					sb.WriteString(text)
+					_, _ = sb.WriteString(text)
 			REDACTED
 		REDACTED
 	REDACTED

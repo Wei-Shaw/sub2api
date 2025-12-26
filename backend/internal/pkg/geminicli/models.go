@@ -19,4 +19,3 @@ REDACTED
 
 // DefaultTestModel is the default model to preselect in test flows.
 const DefaultTestModel = "gemini-2.5-pro"
-

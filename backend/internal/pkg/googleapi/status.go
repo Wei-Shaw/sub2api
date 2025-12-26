@@ -22,4 +22,3 @@ func HTTPStatusToGoogleStatus(status int) string {
 		return "UNKNOWN"
 REDACTED
 REDACTED
-
