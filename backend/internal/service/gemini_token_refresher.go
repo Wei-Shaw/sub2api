@@ -4,7 +4,6 @@ import (
 	"context"
 	"strconv"
 	"time"
-
 )
 
 type GeminiTokenRefresher struct {
