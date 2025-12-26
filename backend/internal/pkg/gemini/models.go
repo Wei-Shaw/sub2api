@@ -40,4 +40,3 @@ REDACTED
 REDACTED
 	return Model{Name: "models/" + model, SupportedGenerationMethods: methodsREDACTED
 REDACTED
-

@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 
 	"github.com/gin-gonic/gin"
@@ -265,7 +265,7 @@ REDACTED
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			apiKey := account.GetCredential("api_key")
 			if strings.TrimSpace(apiKey) == "" {
-				return nil, "", errors.New("Gemini api_key not configured")
+				return nil, "", errors.New("gemini api_key not configured")
 		REDACTED
 
 			baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
@@ -295,7 +295,7 @@ REDACTED
 	case model.AccountTypeOAuth:
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			if s.tokenProvider == nil {
-				return nil, "", errors.New("Gemini token provider not configured")
+				return nil, "", errors.New("gemini token provider not configured")
 		REDACTED
 			accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 			if err != nil {
@@ -509,7 +509,7 @@ REDACTED
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			apiKey := account.GetCredential("api_key")
 			if strings.TrimSpace(apiKey) == "" {
-				return nil, "", errors.New("Gemini api_key not configured")
+				return nil, "", errors.New("gemini api_key not configured")
 		REDACTED
 
 			baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
@@ -535,7 +535,7 @@ REDACTED
 	case model.AccountTypeOAuth:
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			if s.tokenProvider == nil {
-				return nil, "", errors.New("Gemini token provider not configured")
+				return nil, "", errors.New("gemini token provider not configured")
 		REDACTED
 			accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 			if err != nil {
@@ -637,31 +637,31 @@ REDACTED
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
 	REDACTED
 
-			if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
-				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-				_ = resp.Body.Close()
-				if resp.StatusCode == 429 {
-					s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			REDACTED
-				if attempt < geminiMaxRetries {
-					log.Printf("Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
-					sleepGeminiBackoff(attempt)
-					continue
-			REDACTED
-				if action == "countTokens" {
-					estimated := estimateGeminiCountTokens(body)
-					c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
-					return &ForwardResult{
-						RequestID:    "",
-						Usage:        ClaudeUsage{REDACTED,
-						Model:        originalModel,
-						Stream:       false,
-						Duration:     time.Since(startTime),
-						FirstTokenMs: nil,
-				REDACTED, nil
-			REDACTED
-				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
+		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			if resp.StatusCode == 429 {
+				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		REDACTED
+			if attempt < geminiMaxRetries {
+				log.Printf("Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
+				sleepGeminiBackoff(attempt)
+				continue
+		REDACTED
+			if action == "countTokens" {
+				estimated := estimateGeminiCountTokens(body)
+				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
+				return &ForwardResult{
+					RequestID:    "",
+					Usage:        ClaudeUsage{REDACTED,
+					Model:        originalModel,
+					Stream:       false,
+					Duration:     time.Since(startTime),
+					FirstTokenMs: nil,
+			REDACTED, nil
+		REDACTED
+			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
+	REDACTED
 
 		break
 REDACTED
@@ -1582,12 +1582,12 @@ REDACTED
 	case model.AccountTypeApiKey:
 		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 		if apiKey == "" {
-			return nil, errors.New("Gemini api_key not configured")
+			return nil, errors.New("gemini api_key not configured")
 	REDACTED
 		req.Header.Set("x-goog-api-key", apiKey)
 	case model.AccountTypeOAuth:
 		if s.tokenProvider == nil {
-			return nil, errors.New("Gemini token provider not configured")
+			return nil, errors.New("gemini token provider not configured")
 	REDACTED
 		accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 		if err != nil {
