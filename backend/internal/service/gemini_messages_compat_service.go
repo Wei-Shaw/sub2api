@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 
@@ -55,6 +56,11 @@ func NewGeminiMessagesCompatService(
 		rateLimitService: rateLimitService,
 		httpUpstream:     httpUpstream,
 REDACTED
+REDACTED
+
+// GetTokenProvider returns the token provider for OAuth accounts
+func (s *GeminiMessagesCompatService) GetTokenProvider() *GeminiTokenProvider {
+	return s.tokenProvider
 REDACTED
 
 func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context, groupID *int64, sessionHash string, requestedModel string) (*model.Account, error) {
@@ -94,8 +100,20 @@ REDACTED
 		if acc.Priority < selected.Priority {
 			selected = acc
 	REDACTED else if acc.Priority == selected.Priority {
-			if acc.LastUsedAt == nil || (selected.LastUsedAt != nil && acc.LastUsedAt.Before(*selected.LastUsedAt)) {
+			switch {
+			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc
+			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+				// keep selected (never used is preferred)
+			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+				// Prefer OAuth accounts when both are unused (more compatible for Code Assist flows).
+				if acc.Type == model.AccountTypeOAuth && selected.Type != model.AccountTypeOAuth {
+					selected = acc
+			REDACTED
+			default:
+				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+					selected = acc
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
@@ -111,6 +129,96 @@ REDACTED
 		_ = s.cache.SetSessionAccountID(ctx, cacheKey, selected.ID, geminiStickySessionTTL)
 REDACTED
 
+	return selected, nil
+REDACTED
+
+// SelectAccountForAIStudioEndpoints selects an account that is likely to succeed against
+// generativelanguage.googleapis.com (e.g. GET /v1beta/models).
+//
+// Preference order:
+// 1) API key accounts (AI Studio)
+// 2) OAuth accounts without project_id (AI Studio OAuth)
+// 3) OAuth accounts explicitly marked as ai_studio
+// 4) Any remaining Gemini accounts (fallback)
+func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx context.Context, groupID *int64) (*model.Account, error) {
+	var accounts []model.Account
+	var err error
+	if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, model.PlatformGemini)
+REDACTED else {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, model.PlatformGemini)
+REDACTED
+	if err != nil {
+		return nil, fmt.Errorf("query accounts failed: %w", err)
+REDACTED
+	if len(accounts) == 0 {
+		return nil, errors.New("no available Gemini accounts")
+REDACTED
+
+	rank := func(a *model.Account) int {
+		if a == nil {
+			return 999
+	REDACTED
+		switch a.Type {
+		case model.AccountTypeApiKey:
+			if strings.TrimSpace(a.GetCredential("api_key")) != "" {
+				return 0
+		REDACTED
+			return 9
+		case model.AccountTypeOAuth:
+			if strings.TrimSpace(a.GetCredential("project_id")) == "" {
+				return 1
+		REDACTED
+			if strings.TrimSpace(a.GetCredential("oauth_type")) == "ai_studio" {
+				return 2
+		REDACTED
+			// Code Assist OAuth tokens often lack AI Studio scopes for models listing.
+			return 3
+		default:
+			return 10
+	REDACTED
+REDACTED
+
+	var selected *model.Account
+	for i := range accounts {
+		acc := &accounts[i]
+		if selected == nil {
+			selected = acc
+			continue
+	REDACTED
+
+		r1, r2 := rank(acc), rank(selected)
+		if r1 < r2 {
+			selected = acc
+			continue
+	REDACTED
+		if r1 > r2 {
+			continue
+	REDACTED
+
+		if acc.Priority < selected.Priority {
+			selected = acc
+	REDACTED else if acc.Priority == selected.Priority {
+			switch {
+			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
+				selected = acc
+			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+				// keep selected
+			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+				if acc.Type == model.AccountTypeOAuth && selected.Type != model.AccountTypeOAuth {
+					selected = acc
+			REDACTED
+			default:
+				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+					selected = acc
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if selected == nil {
+		return nil, errors.New("no available Gemini accounts")
+REDACTED
 	return selected, nil
 REDACTED
 
@@ -146,6 +254,11 @@ REDACTED
 
 	var requestIDHeader string
 	var buildReq func(ctx context.Context) (*http.Request, string, error)
+	useUpstreamStream := req.Stream
+	if account.Type == model.AccountTypeOAuth && !req.Stream && strings.TrimSpace(account.GetCredential("project_id")) != "" {
+		// Code Assist's non-streaming generateContent may return no content; use streaming upstream and aggregate.
+		useUpstreamStream = true
+REDACTED
 
 	switch account.Type {
 	case model.AccountTypeApiKey:
@@ -190,38 +303,61 @@ REDACTED
 		REDACTED
 
 			projectID := strings.TrimSpace(account.GetCredential("project_id"))
-			if projectID == "" {
-				return nil, "", errors.New("missing project_id in account credentials")
-		REDACTED
 
 			action := "generateContent"
-			if req.Stream {
+			if useUpstreamStream {
 				action = "streamGenerateContent"
 		REDACTED
-			fullURL := fmt.Sprintf("%s/v1internal:%s", geminicli.GeminiCliBaseURL, action)
-			if req.Stream {
-				fullURL += "?alt=sse"
-		REDACTED
 
-			wrapped := map[string]any{
-				"model":   mappedModel,
-				"project": projectID,
-		REDACTED
-			var inner any
-			if err := json.Unmarshal(geminiReq, &inner); err != nil {
-				return nil, "", fmt.Errorf("failed to parse gemini request: %w", err)
-		REDACTED
-			wrapped["request"] = inner
-			wrappedBytes, _ := json.Marshal(wrapped)
+			// Two modes for OAuth:
+			// 1. With project_id -> Code Assist API (wrapped request)
+			// 2. Without project_id -> AI Studio API (direct OAuth, like API key but with Bearer token)
+			if projectID != "" {
+				// Mode 1: Code Assist API
+				fullURL := fmt.Sprintf("%s/v1internal:%s", geminicli.GeminiCliBaseURL, action)
+				if useUpstreamStream {
+					fullURL += "?alt=sse"
+			REDACTED
 
-			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(wrappedBytes))
-			if err != nil {
-				return nil, "", err
+				wrapped := map[string]any{
+					"model":   mappedModel,
+					"project": projectID,
+			REDACTED
+				var inner any
+				if err := json.Unmarshal(geminiReq, &inner); err != nil {
+					return nil, "", fmt.Errorf("failed to parse gemini request: %w", err)
+			REDACTED
+				wrapped["request"] = inner
+				wrappedBytes, _ := json.Marshal(wrapped)
+
+				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(wrappedBytes))
+				if err != nil {
+					return nil, "", err
+			REDACTED
+				upstreamReq.Header.Set("Content-Type", "application/json")
+				upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
+				upstreamReq.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
+				return upstreamReq, "x-request-id", nil
+		REDACTED else {
+				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
+				baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
+				if baseURL == "" {
+					baseURL = geminicli.AIStudioBaseURL
+			REDACTED
+
+				fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", baseURL, mappedModel, action)
+				if useUpstreamStream {
+					fullURL += "?alt=sse"
+			REDACTED
+
+				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(geminiReq))
+				if err != nil {
+					return nil, "", err
+			REDACTED
+				upstreamReq.Header.Set("Content-Type", "application/json")
+				upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
+				return upstreamReq, "x-request-id", nil
 		REDACTED
-			upstreamReq.Header.Set("Content-Type", "application/json")
-			upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
-			upstreamReq.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
-			return upstreamReq, "x-request-id", nil
 	REDACTED
 		requestIDHeader = "x-request-id"
 
@@ -301,9 +437,22 @@ REDACTED
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
 REDACTED else {
-		usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
-		if err != nil {
-			return nil, err
+		if useUpstreamStream {
+			collected, usageObj, err := collectGeminiSSE(resp.Body, true)
+			if err != nil {
+				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
+		REDACTED
+			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel)
+			c.JSON(http.StatusOK, claudeResp)
+			usage = usageObj2
+			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
+				usage = usageObj
+		REDACTED
+	REDACTED else {
+			usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
+			if err != nil {
+				return nil, err
+		REDACTED
 	REDACTED
 REDACTED
 
@@ -312,6 +461,291 @@ REDACTED
 		Usage:        *usage,
 		Model:        originalModel,
 		Stream:       req.Stream,
+		Duration:     time.Since(startTime),
+		FirstTokenMs: firstTokenMs,
+REDACTED, nil
+REDACTED
+
+func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.Context, account *model.Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {
+	startTime := time.Now()
+
+	if strings.TrimSpace(originalModel) == "" {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Missing model in URL")
+REDACTED
+	if strings.TrimSpace(action) == "" {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Missing action in URL")
+REDACTED
+	if len(body) == 0 {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Request body is empty")
+REDACTED
+
+	switch action {
+	case "generateContent", "streamGenerateContent", "countTokens":
+		// ok
+	default:
+		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
+REDACTED
+
+	mappedModel := originalModel
+	if account.Type == model.AccountTypeApiKey {
+		mappedModel = account.GetMappedModel(originalModel)
+REDACTED
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	useUpstreamStream := stream
+	upstreamAction := action
+	if account.Type == model.AccountTypeOAuth && !stream && action == "generateContent" && strings.TrimSpace(account.GetCredential("project_id")) != "" {
+		// Code Assist's non-streaming generateContent may return no content; use streaming upstream and aggregate.
+		useUpstreamStream = true
+		upstreamAction = "streamGenerateContent"
+REDACTED
+	forceAIStudio := action == "countTokens"
+
+	var requestIDHeader string
+	var buildReq func(ctx context.Context) (*http.Request, string, error)
+
+	switch account.Type {
+	case model.AccountTypeApiKey:
+		buildReq = func(ctx context.Context) (*http.Request, string, error) {
+			apiKey := account.GetCredential("api_key")
+			if strings.TrimSpace(apiKey) == "" {
+				return nil, "", errors.New("Gemini api_key not configured")
+		REDACTED
+
+			baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
+			if baseURL == "" {
+				baseURL = geminicli.AIStudioBaseURL
+		REDACTED
+
+			fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", strings.TrimRight(baseURL, "/"), mappedModel, upstreamAction)
+			if useUpstreamStream {
+				fullURL += "?alt=sse"
+		REDACTED
+
+			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(body))
+			if err != nil {
+				return nil, "", err
+		REDACTED
+			upstreamReq.Header.Set("Content-Type", "application/json")
+			upstreamReq.Header.Set("x-goog-api-key", apiKey)
+			return upstreamReq, "x-request-id", nil
+	REDACTED
+		requestIDHeader = "x-request-id"
+
+	case model.AccountTypeOAuth:
+		buildReq = func(ctx context.Context) (*http.Request, string, error) {
+			if s.tokenProvider == nil {
+				return nil, "", errors.New("Gemini token provider not configured")
+		REDACTED
+			accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return nil, "", err
+		REDACTED
+
+			projectID := strings.TrimSpace(account.GetCredential("project_id"))
+
+			// Two modes for OAuth:
+			// 1. With project_id -> Code Assist API (wrapped request)
+			// 2. Without project_id -> AI Studio API (direct OAuth, like API key but with Bearer token)
+			if projectID != "" && !forceAIStudio {
+				// Mode 1: Code Assist API
+				fullURL := fmt.Sprintf("%s/v1internal:%s", geminicli.GeminiCliBaseURL, upstreamAction)
+				if useUpstreamStream {
+					fullURL += "?alt=sse"
+			REDACTED
+
+				wrapped := map[string]any{
+					"model":   mappedModel,
+					"project": projectID,
+			REDACTED
+				var inner any
+				if err := json.Unmarshal(body, &inner); err != nil {
+					return nil, "", fmt.Errorf("failed to parse gemini request: %w", err)
+			REDACTED
+				wrapped["request"] = inner
+				wrappedBytes, _ := json.Marshal(wrapped)
+
+				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(wrappedBytes))
+				if err != nil {
+					return nil, "", err
+			REDACTED
+				upstreamReq.Header.Set("Content-Type", "application/json")
+				upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
+				upstreamReq.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
+				return upstreamReq, "x-request-id", nil
+		REDACTED else {
+				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
+				baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
+				if baseURL == "" {
+					baseURL = geminicli.AIStudioBaseURL
+			REDACTED
+
+				fullURL := fmt.Sprintf("%s/v1beta/models/%s:%s", baseURL, mappedModel, upstreamAction)
+				if useUpstreamStream {
+					fullURL += "?alt=sse"
+			REDACTED
+
+				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(body))
+				if err != nil {
+					return nil, "", err
+			REDACTED
+				upstreamReq.Header.Set("Content-Type", "application/json")
+				upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
+				return upstreamReq, "x-request-id", nil
+		REDACTED
+	REDACTED
+		requestIDHeader = "x-request-id"
+
+	default:
+		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Unsupported account type: "+account.Type)
+REDACTED
+
+	var resp *http.Response
+	for attempt := 1; attempt <= geminiMaxRetries; attempt++ {
+		upstreamReq, idHeader, err := buildReq(ctx)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+		REDACTED
+			// Local build error: don't retry.
+			if strings.Contains(err.Error(), "missing project_id") {
+				return nil, s.writeGoogleError(c, http.StatusBadRequest, err.Error())
+		REDACTED
+			return nil, s.writeGoogleError(c, http.StatusBadGateway, err.Error())
+	REDACTED
+		requestIDHeader = idHeader
+
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL)
+		if err != nil {
+			if attempt < geminiMaxRetries {
+				log.Printf("Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
+				sleepGeminiBackoff(attempt)
+				continue
+		REDACTED
+			if action == "countTokens" {
+				estimated := estimateGeminiCountTokens(body)
+				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
+				return &ForwardResult{
+					RequestID:    "",
+					Usage:        ClaudeUsage{REDACTED,
+					Model:        originalModel,
+					Stream:       false,
+					Duration:     time.Since(startTime),
+					FirstTokenMs: nil,
+			REDACTED, nil
+		REDACTED
+			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
+	REDACTED
+
+			if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
+				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+				_ = resp.Body.Close()
+				if resp.StatusCode == 429 {
+					s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+			REDACTED
+				if attempt < geminiMaxRetries {
+					log.Printf("Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
+					sleepGeminiBackoff(attempt)
+					continue
+			REDACTED
+				if action == "countTokens" {
+					estimated := estimateGeminiCountTokens(body)
+					c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
+					return &ForwardResult{
+						RequestID:    "",
+						Usage:        ClaudeUsage{REDACTED,
+						Model:        originalModel,
+						Stream:       false,
+						Duration:     time.Since(startTime),
+						FirstTokenMs: nil,
+				REDACTED, nil
+			REDACTED
+				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
+		REDACTED
+
+		break
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	requestID := resp.Header.Get(requestIDHeader)
+	if requestID == "" {
+		requestID = resp.Header.Get("x-goog-request-id")
+REDACTED
+	if requestID != "" {
+		c.Header("x-request-id", requestID)
+REDACTED
+
+	isOAuth := account.Type == model.AccountTypeOAuth
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+
+		// Best-effort fallback for OAuth tokens missing AI Studio scopes when calling countTokens.
+		// This avoids Gemini SDKs failing hard during preflight token counting.
+		if action == "countTokens" && isOAuth && isGeminiInsufficientScope(resp.Header, respBody) {
+			estimated := estimateGeminiCountTokens(body)
+			c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
+			return &ForwardResult{
+				RequestID:    requestID,
+				Usage:        ClaudeUsage{REDACTED,
+				Model:        originalModel,
+				Stream:       false,
+				Duration:     time.Since(startTime),
+				FirstTokenMs: nil,
+		REDACTED, nil
+	REDACTED
+
+		respBody = unwrapIfNeeded(isOAuth, respBody)
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/json"
+	REDACTED
+		c.Data(resp.StatusCode, contentType, respBody)
+		return nil, fmt.Errorf("gemini upstream error: %d", resp.StatusCode)
+REDACTED
+
+	var usage *ClaudeUsage
+	var firstTokenMs *int
+
+	if stream {
+		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth)
+		if err != nil {
+			return nil, err
+	REDACTED
+		usage = streamRes.usage
+		firstTokenMs = streamRes.firstTokenMs
+REDACTED else {
+		if useUpstreamStream {
+			collected, usageObj, err := collectGeminiSSE(resp.Body, isOAuth)
+			if err != nil {
+				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to read upstream stream")
+		REDACTED
+			b, _ := json.Marshal(collected)
+			c.Data(http.StatusOK, "application/json", b)
+			usage = usageObj
+	REDACTED else {
+			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth)
+			if err != nil {
+				return nil, err
+		REDACTED
+			usage = usageResp
+	REDACTED
+REDACTED
+
+	if usage == nil {
+		usage = &ClaudeUsage{REDACTED
+REDACTED
+
+	return &ForwardResult{
+		RequestID:    requestID,
+		Usage:        *usage,
+		Model:        originalModel,
+		Stream:       stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
 REDACTED, nil
@@ -590,22 +1024,29 @@ REDACTED
 	openBlockIndex := -1
 	openBlockType := ""
 	seenText := ""
+	openToolIndex := -1
+	openToolID := ""
+	openToolName := ""
+	seenToolJSON := ""
 
 	reader := bufio.NewReader(resp.Body)
 	for {
 		line, err := reader.ReadString('\n')
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-		REDACTED
+		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("stream read error: %w", err)
 	REDACTED
 
 		if !strings.HasPrefix(line, "data:") {
+			if errors.Is(err, io.EOF) {
+				break
+		REDACTED
 			continue
 	REDACTED
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		if payload == "" || payload == "[DONE]" {
+			if errors.Is(err, io.EOF) {
+				break
+		REDACTED
 			continue
 	REDACTED
 
@@ -670,7 +1111,7 @@ REDACTED
 					name = "tool"
 			REDACTED
 
-				// Close any open block before tool_use.
+				// Close any open text block before tool_use.
 				if openBlockIndex >= 0 {
 					writeSSE(c.Writer, "content_block_stop", map[string]any{
 						"type":  "content_block_stop",
@@ -680,40 +1121,63 @@ REDACTED
 					openBlockType = ""
 			REDACTED
 
-				toolID := "toolu_" + randomHex(8)
-				toolIndex := nextBlockIndex
-				nextBlockIndex++
-				sawToolUse = true
+				// If we receive streamed tool args in pieces, keep a single tool block open and emit deltas.
+				if openToolIndex >= 0 && openToolName != name {
+					writeSSE(c.Writer, "content_block_stop", map[string]any{
+						"type":  "content_block_stop",
+						"index": openToolIndex,
+				REDACTED)
+					openToolIndex = -1
+					openToolID = ""
+					openToolName = ""
+					seenToolJSON = ""
+			REDACTED
 
-				writeSSE(c.Writer, "content_block_start", map[string]any{
-					"type":  "content_block_start",
-					"index": toolIndex,
-					"content_block": map[string]any{
-						"type":  "tool_use",
-						"id":    toolID,
-						"name":  name,
-						"input": map[string]any{REDACTED,
-				REDACTED,
-			REDACTED)
+				if openToolIndex < 0 {
+					openToolID = "toolu_" + randomHex(8)
+					openToolIndex = nextBlockIndex
+					openToolName = name
+					nextBlockIndex++
+					sawToolUse = true
 
-				argsJSON := "{REDACTED"
-				if args != nil {
-					if b, err := json.Marshal(args); err == nil {
-						argsJSON = string(b)
+					writeSSE(c.Writer, "content_block_start", map[string]any{
+						"type":  "content_block_start",
+						"index": openToolIndex,
+						"content_block": map[string]any{
+							"type":  "tool_use",
+							"id":    openToolID,
+							"name":  name,
+							"input": map[string]any{REDACTED,
+					REDACTED,
+				REDACTED)
+			REDACTED
+
+				argsJSONText := "{REDACTED"
+				switch v := args.(type) {
+				case nil:
+					// keep default "{REDACTED"
+				case string:
+					if strings.TrimSpace(v) != "" {
+						argsJSONText = v
+				REDACTED
+				default:
+					if b, err := json.Marshal(args); err == nil && len(b) > 0 {
+						argsJSONText = string(b)
 				REDACTED
 			REDACTED
-				writeSSE(c.Writer, "content_block_delta", map[string]any{
-					"type":  "content_block_delta",
-					"index": toolIndex,
-					"delta": map[string]any{
-						"type":         "input_json_delta",
-						"partial_json": argsJSON,
-				REDACTED,
-			REDACTED)
-				writeSSE(c.Writer, "content_block_stop", map[string]any{
-					"type":  "content_block_stop",
-					"index": toolIndex,
-			REDACTED)
+
+				delta, newSeen := computeGeminiTextDelta(seenToolJSON, argsJSONText)
+				seenToolJSON = newSeen
+				if delta != "" {
+					writeSSE(c.Writer, "content_block_delta", map[string]any{
+						"type":  "content_block_delta",
+						"index": openToolIndex,
+						"delta": map[string]any{
+							"type":         "input_json_delta",
+							"partial_json": delta,
+					REDACTED,
+				REDACTED)
+			REDACTED
 				flusher.Flush()
 		REDACTED
 	REDACTED
@@ -721,12 +1185,23 @@ REDACTED
 		if u := extractGeminiUsage(geminiResp); u != nil {
 			usage = *u
 	REDACTED
+
+		// Process the final unterminated line at EOF as well.
+		if errors.Is(err, io.EOF) {
+			break
+	REDACTED
 REDACTED
 
 	if openBlockIndex >= 0 {
 		writeSSE(c.Writer, "content_block_stop", map[string]any{
 			"type":  "content_block_stop",
 			"index": openBlockIndex,
+	REDACTED)
+REDACTED
+	if openToolIndex >= 0 {
+		writeSSE(c.Writer, "content_block_stop", map[string]any{
+			"type":  "content_block_stop",
+			"index": openToolIndex,
 	REDACTED)
 REDACTED
 
@@ -777,6 +1252,369 @@ func (s *GeminiMessagesCompatService) writeClaudeError(c *gin.Context, status in
 		"error": gin.H{"type": errType, "message": messageREDACTED,
 REDACTED)
 	return fmt.Errorf("%s", message)
+REDACTED
+
+func (s *GeminiMessagesCompatService) writeGoogleError(c *gin.Context, status int, message string) error {
+	c.JSON(status, gin.H{
+		"error": gin.H{
+			"code":    status,
+			"message": message,
+			"status":  googleapi.HTTPStatusToGoogleStatus(status),
+	REDACTED,
+REDACTED)
+	return fmt.Errorf("%s", message)
+REDACTED
+
+func unwrapIfNeeded(isOAuth bool, raw []byte) []byte {
+	if !isOAuth {
+		return raw
+REDACTED
+	inner, err := unwrapGeminiResponse(raw)
+	if err != nil {
+		return raw
+REDACTED
+	b, err := json.Marshal(inner)
+	if err != nil {
+		return raw
+REDACTED
+	return b
+REDACTED
+
+func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsage, error) {
+	reader := bufio.NewReader(body)
+
+	var last map[string]any
+	var lastWithParts map[string]any
+	usage := &ClaudeUsage{REDACTED
+
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			trimmed := strings.TrimRight(line, "\r\n")
+			if strings.HasPrefix(trimmed, "data:") {
+				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+				switch payload {
+				case "", "[DONE]":
+					if payload == "[DONE]" {
+						return pickGeminiCollectResult(last, lastWithParts), usage, nil
+				REDACTED
+				default:
+					var parsed map[string]any
+					if isOAuth {
+						inner, err := unwrapGeminiResponse([]byte(payload))
+						if err == nil && inner != nil {
+							parsed = inner
+					REDACTED
+				REDACTED else {
+						_ = json.Unmarshal([]byte(payload), &parsed)
+				REDACTED
+					if parsed != nil {
+						last = parsed
+						if u := extractGeminiUsage(parsed); u != nil {
+							usage = u
+					REDACTED
+						if parts := extractGeminiParts(parsed); len(parts) > 0 {
+							lastWithParts = parsed
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if errors.Is(err, io.EOF) {
+			break
+	REDACTED
+		if err != nil {
+			return nil, nil, err
+	REDACTED
+REDACTED
+
+	return pickGeminiCollectResult(last, lastWithParts), usage, nil
+REDACTED
+
+func pickGeminiCollectResult(last map[string]any, lastWithParts map[string]any) map[string]any {
+	if lastWithParts != nil {
+		return lastWithParts
+REDACTED
+	if last != nil {
+		return last
+REDACTED
+	return map[string]any{REDACTED
+REDACTED
+
+type geminiNativeStreamResult struct {
+	usage        *ClaudeUsage
+	firstTokenMs *int
+REDACTED
+
+func isGeminiInsufficientScope(headers http.Header, body []byte) bool {
+	if strings.Contains(strings.ToLower(headers.Get("Www-Authenticate")), "insufficient_scope") {
+		return true
+REDACTED
+	lower := strings.ToLower(string(body))
+	return strings.Contains(lower, "insufficient authentication scopes") || strings.Contains(lower, "access_token_scope_insufficient")
+REDACTED
+
+func estimateGeminiCountTokens(reqBody []byte) int {
+	var obj map[string]any
+	if err := json.Unmarshal(reqBody, &obj); err != nil {
+		return 0
+REDACTED
+
+	var texts []string
+
+	// systemInstruction.parts[].text
+	if si, ok := obj["systemInstruction"].(map[string]any); ok {
+		if parts, ok := si["parts"].([]any); ok {
+			for _, p := range parts {
+				if pm, ok := p.(map[string]any); ok {
+					if t, ok := pm["text"].(string); ok && strings.TrimSpace(t) != "" {
+						texts = append(texts, t)
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// contents[].parts[].text
+	if contents, ok := obj["contents"].([]any); ok {
+		for _, c := range contents {
+			cm, ok := c.(map[string]any)
+			if !ok {
+				continue
+		REDACTED
+			parts, ok := cm["parts"].([]any)
+			if !ok {
+				continue
+		REDACTED
+			for _, p := range parts {
+				pm, ok := p.(map[string]any)
+				if !ok {
+					continue
+			REDACTED
+				if t, ok := pm["text"].(string); ok && strings.TrimSpace(t) != "" {
+					texts = append(texts, t)
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	total := 0
+	for _, t := range texts {
+		total += estimateTokensForText(t)
+REDACTED
+	if total < 0 {
+		return 0
+REDACTED
+	return total
+REDACTED
+
+func estimateTokensForText(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+REDACTED
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return 0
+REDACTED
+	ascii := 0
+	for _, r := range runes {
+		if r <= 0x7f {
+			ascii++
+	REDACTED
+REDACTED
+	asciiRatio := float64(ascii) / float64(len(runes))
+	if asciiRatio >= 0.8 {
+		// Roughly 4 chars per token for English-like text.
+		return (len(runes) + 3) / 4
+REDACTED
+	// For CJK-heavy text, approximate 1 rune per token.
+	return len(runes)
+REDACTED
+
+type UpstreamHTTPResult struct {
+	StatusCode int
+	Headers    http.Header
+	Body       []byte
+REDACTED
+
+func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	var parsed map[string]any
+	if isOAuth {
+		parsed, err = unwrapGeminiResponse(respBody)
+		if err == nil && parsed != nil {
+			respBody, _ = json.Marshal(parsed)
+	REDACTED
+REDACTED else {
+		_ = json.Unmarshal(respBody, &parsed)
+REDACTED
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json"
+REDACTED
+	c.Data(resp.StatusCode, contentType, respBody)
+
+	if parsed != nil {
+		if u := extractGeminiUsage(parsed); u != nil {
+			return u, nil
+	REDACTED
+REDACTED
+	return &ClaudeUsage{REDACTED, nil
+REDACTED
+
+func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
+	c.Status(resp.StatusCode)
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "text/event-stream; charset=utf-8"
+REDACTED
+	c.Header("Content-Type", contentType)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return nil, errors.New("streaming not supported")
+REDACTED
+
+	reader := bufio.NewReader(resp.Body)
+	usage := &ClaudeUsage{REDACTED
+	var firstTokenMs *int
+
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			trimmed := strings.TrimRight(line, "\r\n")
+			if strings.HasPrefix(trimmed, "data:") {
+				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+				// Keepalive / done markers
+				if payload == "" || payload == "[DONE]" {
+					_, _ = io.WriteString(c.Writer, line)
+					flusher.Flush()
+			REDACTED else {
+					var rawToWrite string
+					rawToWrite = payload
+
+					var parsed map[string]any
+					if isOAuth {
+						inner, err := unwrapGeminiResponse([]byte(payload))
+						if err == nil && inner != nil {
+							parsed = inner
+							if b, err := json.Marshal(inner); err == nil {
+								rawToWrite = string(b)
+						REDACTED
+					REDACTED
+				REDACTED else {
+						_ = json.Unmarshal([]byte(payload), &parsed)
+				REDACTED
+
+					if parsed != nil {
+						if u := extractGeminiUsage(parsed); u != nil {
+							usage = u
+					REDACTED
+				REDACTED
+
+					if firstTokenMs == nil {
+						ms := int(time.Since(startTime).Milliseconds())
+						firstTokenMs = &ms
+				REDACTED
+
+					if isOAuth {
+						// SSE format requires double newline (\n\n) to separate events
+						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
+				REDACTED else {
+						// Pass-through for AI Studio responses.
+						_, _ = io.WriteString(c.Writer, line)
+				REDACTED
+					flusher.Flush()
+			REDACTED
+		REDACTED else {
+				_, _ = io.WriteString(c.Writer, line)
+				flusher.Flush()
+		REDACTED
+	REDACTED
+
+		if errors.Is(err, io.EOF) {
+			break
+	REDACTED
+		if err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
+	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
+REDACTED
+
+// ForwardAIStudioGET forwards a GET request to AI Studio (generativelanguage.googleapis.com) for
+// endpoints like /v1beta/models and /v1beta/models/{modelREDACTED.
+//
+// This is used to support Gemini SDKs that call models listing endpoints before generation.
+func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, account *model.Account, path string) (*UpstreamHTTPResult, error) {
+	if account == nil {
+		return nil, errors.New("account is nil")
+REDACTED
+	path = strings.TrimSpace(path)
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return nil, errors.New("invalid path")
+REDACTED
+
+	baseURL := strings.TrimRight(account.GetCredential("base_url"), "/")
+	if baseURL == "" {
+		baseURL = geminicli.AIStudioBaseURL
+REDACTED
+	fullURL := strings.TrimRight(baseURL, "/") + path
+
+	var proxyURL string
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	switch account.Type {
+	case model.AccountTypeApiKey:
+		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+		if apiKey == "" {
+			return nil, errors.New("Gemini api_key not configured")
+	REDACTED
+		req.Header.Set("x-goog-api-key", apiKey)
+	case model.AccountTypeOAuth:
+		if s.tokenProvider == nil {
+			return nil, errors.New("Gemini token provider not configured")
+	REDACTED
+		accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return nil, err
+	REDACTED
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	default:
+		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
+REDACTED
+
+	resp, err := s.httpUpstream.Do(req, proxyURL)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	return &UpstreamHTTPResult{
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Header.Clone(),
+		Body:       body,
+REDACTED, nil
 REDACTED
 
 func unwrapGeminiResponse(raw []byte) (map[string]any, error) {
