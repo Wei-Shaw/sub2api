@@ -393,27 +393,32 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 		return nil
 REDACTED
 
-	// 标准化模型名称
-	modelLower := strings.ToLower(modelName)
+	// 标准化模型名称（同时兼容 "models/xxx"、VertexAI 资源名等前缀）
+	modelLower := strings.ToLower(strings.TrimSpace(modelName))
+	lookupCandidates := s.buildModelLookupCandidates(modelLower)
 
 	// 1. 精确匹配
-	if pricing, ok := s.pricingData[modelLower]; ok {
-		return pricing
-REDACTED
-	if pricing, ok := s.pricingData[modelName]; ok {
-		return pricing
+	for _, candidate := range lookupCandidates {
+		if candidate == "" {
+			continue
+	REDACTED
+		if pricing, ok := s.pricingData[candidate]; ok {
+			return pricing
+	REDACTED
 REDACTED
 
 	// 2. 处理常见的模型名称变体
 	// claude-opus-4-5-20251101 -> claude-opus-4.5-20251101
-	normalized := strings.ReplaceAll(modelLower, "-4-5-", "-4.5-")
-	if pricing, ok := s.pricingData[normalized]; ok {
-		return pricing
+	for _, candidate := range lookupCandidates {
+		normalized := strings.ReplaceAll(candidate, "-4-5-", "-4.5-")
+		if pricing, ok := s.pricingData[normalized]; ok {
+			return pricing
+	REDACTED
 REDACTED
 
 	// 3. 尝试模糊匹配（去掉版本号后缀）
 	// claude-opus-4-5-20251101 -> claude-opus-4.5
-	baseName := s.extractBaseName(modelLower)
+	baseName := s.extractBaseName(lookupCandidates[0])
 	for key, pricing := range s.pricingData {
 		keyBase := s.extractBaseName(strings.ToLower(key))
 		if keyBase == baseName {
@@ -422,16 +427,75 @@ REDACTED
 REDACTED
 
 	// 4. 基于模型系列匹配（Claude）
-	if pricing := s.matchByModelFamily(modelLower); pricing != nil {
+	if pricing := s.matchByModelFamily(lookupCandidates[0]); pricing != nil {
 		return pricing
 REDACTED
 
 	// 5. OpenAI 模型回退策略
-	if strings.HasPrefix(modelLower, "gpt-") {
-		return s.matchOpenAIModel(modelLower)
+	if strings.HasPrefix(lookupCandidates[0], "gpt-") {
+		return s.matchOpenAIModel(lookupCandidates[0])
 REDACTED
 
 	return nil
+REDACTED
+
+func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {
+	// Prefer canonical model name first (this also improves billing compatibility with "models/xxx").
+	candidates := []string{
+		normalizeModelNameForPricing(modelLower),
+		modelLower,
+REDACTED
+	candidates = append(candidates,
+		strings.TrimPrefix(modelLower, "models/"),
+		lastSegment(modelLower),
+		lastSegment(strings.TrimPrefix(modelLower, "models/")),
+	)
+
+	seen := make(map[string]struct{REDACTED, len(candidates))
+	out := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+	REDACTED
+		if _, ok := seen[c]; ok {
+			continue
+	REDACTED
+		seen[c] = struct{REDACTED{REDACTED
+		out = append(out, c)
+REDACTED
+	if len(out) == 0 {
+		return []string{modelLowerREDACTED
+REDACTED
+	return out
+REDACTED
+
+func normalizeModelNameForPricing(model string) string {
+	// Common Gemini/VertexAI forms:
+	// - models/gemini-2.0-flash-exp
+	// - publishers/google/models/gemini-1.5-pro
+	// - projects/.../locations/.../publishers/google/models/gemini-1.5-pro
+	model = strings.TrimSpace(model)
+	model = strings.TrimLeft(model, "/")
+	model = strings.TrimPrefix(model, "models/")
+	model = strings.TrimPrefix(model, "publishers/google/models/")
+
+	if idx := strings.LastIndex(model, "/publishers/google/models/"); idx != -1 {
+		model = model[idx+len("/publishers/google/models/"):]
+REDACTED
+	if idx := strings.LastIndex(model, "/models/"); idx != -1 {
+		model = model[idx+len("/models/"):]
+REDACTED
+
+	model = strings.TrimLeft(model, "/")
+	return model
+REDACTED
+
+func lastSegment(model string) string {
+	if idx := strings.LastIndex(model, "/"); idx != -1 {
+		return model[idx+1:]
+REDACTED
+	return model
 REDACTED
 
 // extractBaseName 提取基础模型名称（去掉日期版本号）

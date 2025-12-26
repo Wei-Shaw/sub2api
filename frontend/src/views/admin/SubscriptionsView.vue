@@ -10,17 +10,27 @@
           :title="t('common.refresh')"
         >
           <svg
-            :class="['w-5 h-5', loading ? 'animate-spin' : '']"
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"
+            :class="['h-5 w-5', loading ? 'animate-spin' : '']"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+            />
           </svg>
         </button>
-        <button
-          @click="showAssignModal = true"
-          class="btn btn-primary"
-        >
-          <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <button @click="showAssignModal = true" class="btn btn-primary">
+          <svg
+            class="mr-2 h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
           {{ t('admin.subscriptions.assignSubscription') REDACTEDREDACTED
@@ -50,12 +60,16 @@
         <DataTable :columns="columns" :data="subscriptions" :loading="loading">
           <template #cell-user="{ row REDACTED">
             <div class="flex items-center gap-2">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
+              <div
+                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
+              >
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
                   {{ row.user?.email?.charAt(0).toUpperCase() || '?' REDACTEDREDACTED
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ row.user?.email || `User #${row.user_idREDACTED` REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{
+                row.user?.email || `User #${row.user_idREDACTED`
+              REDACTEDREDACTED</span>
             </div>
           </template>
 
@@ -72,16 +86,18 @@
           </template>
 
           <template #cell-usage="{ row REDACTED">
-            <div class="space-y-2 min-w-[280px]">
+            <div class="min-w-[280px] space-y-2">
               <!-- Daily Usage -->
               <div v-if="row.group?.daily_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.daily') REDACTEDREDACTED</span>
-                  <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
                       :class="getProgressClass(row.daily_usage_usd, row.group?.daily_limit_usd)"
-                      :style="{ width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd) REDACTED"
+                      :style="{
+                        width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd)
+                      REDACTED"
                     ></div>
                   </div>
                   <span class="usage-amount">
@@ -91,8 +107,18 @@
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.daily_window_start">
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                   <span>{{ formatResetTime(row.daily_window_start, 'daily') REDACTEDREDACTED</span>
                 </div>
@@ -102,11 +128,13 @@
               <div v-if="row.group?.weekly_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.weekly') REDACTEDREDACTED</span>
-                  <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
                       :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
-                      :style="{ width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd) REDACTED"
+                      :style="{
+                        width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd)
+                      REDACTED"
                     ></div>
                   </div>
                   <span class="usage-amount">
@@ -116,8 +144,18 @@
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.weekly_window_start">
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                   <span>{{ formatResetTime(row.weekly_window_start, 'weekly') REDACTEDREDACTED</span>
                 </div>
@@ -127,11 +165,13 @@
               <div v-if="row.group?.monthly_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.monthly') REDACTEDREDACTED</span>
-                  <div class="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-1.5">
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
                       :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
-                      :style="{ width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd) REDACTED"
+                      :style="{
+                        width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd)
+                      REDACTED"
                     ></div>
                   </div>
                   <span class="usage-amount">
@@ -141,15 +181,32 @@
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.monthly_window_start">
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                   <span>{{ formatResetTime(row.monthly_window_start, 'monthly') REDACTEDREDACTED</span>
                 </div>
               </div>
 
               <!-- No Limits -->
-              <div v-if="!row.group?.daily_limit_usd && !row.group?.weekly_limit_usd && !row.group?.monthly_limit_usd" class="text-xs text-gray-500">
+              <div
+                v-if="
+                  !row.group?.daily_limit_usd &&
+                  !row.group?.weekly_limit_usd &&
+                  !row.group?.monthly_limit_usd
+                "
+                class="text-xs text-gray-500"
+              >
                 {{ t('admin.subscriptions.noLimits') REDACTEDREDACTED
               </div>
             </div>
@@ -157,21 +214,34 @@
 
           <template #cell-expires_at="{ value REDACTED">
             <div v-if="value">
-              <span class="text-sm" :class="isExpiringSoon(value) ? 'text-orange-600 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'">
+              <span
+                class="text-sm"
+                :class="
+                  isExpiringSoon(value)
+                    ? 'text-orange-600 dark:text-orange-400'
+                    : 'text-gray-700 dark:text-gray-300'
+                "
+              >
                 {{ formatDate(value) REDACTEDREDACTED
               </span>
               <div v-if="getDaysRemaining(value) !== null" class="text-xs text-gray-500">
                 {{ getDaysRemaining(value) REDACTEDREDACTED {{ t('admin.subscriptions.daysRemaining') REDACTEDREDACTED
               </div>
             </div>
-            <span v-else class="text-sm text-gray-500">{{ t('admin.subscriptions.noExpiration') REDACTEDREDACTED</span>
+            <span v-else class="text-sm text-gray-500">{{
+              t('admin.subscriptions.noExpiration')
+            REDACTEDREDACTED</span>
           </template>
 
           <template #cell-status="{ value REDACTED">
             <span
               :class="[
                 'badge',
-                value === 'active' ? 'badge-success' : value === 'expired' ? 'badge-warning' : 'badge-danger'
+                value === 'active'
+                  ? 'badge-success'
+                  : value === 'expired'
+                    ? 'badge-warning'
+                    : 'badge-danger'
               ]"
             >
               {{ t(`admin.subscriptions.status.${valueREDACTED`) REDACTEDREDACTED
@@ -183,21 +253,41 @@
               <button
                 v-if="row.status === 'active'"
                 @click="handleExtend(row)"
-                class="p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
                 :title="t('admin.subscriptions.extend')"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               </button>
               <button
                 v-if="row.status === 'active'"
                 @click="handleRevoke(row)"
-                class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                 :title="t('admin.subscriptions.revoke')"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
                 </svg>
               </button>
             </div>
@@ -252,36 +342,34 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.subscriptions.form.validityDays') REDACTEDREDACTED</label>
-          <input
-            v-model.number="assignForm.validity_days"
-            type="number"
-            min="1"
-            class="input"
-          />
+          <input v-model.number="assignForm.validity_days" type="number" min="1" class="input" />
           <p class="input-hint">{{ t('admin.subscriptions.validityHint') REDACTEDREDACTED</p>
         </div>
 
         <div class="flex justify-end gap-3 pt-4">
-          <button
-            @click="closeAssignModal"
-            type="button"
-            class="btn btn-secondary"
-          >
+          <button @click="closeAssignModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button
-            type="submit"
-            :disabled="submitting"
-            class="btn btn-primary"
-          >
+          <button type="submit" :disabled="submitting" class="btn btn-primary">
             <svg
               v-if="submitting"
-              class="animate-spin -ml-1 mr-2 h-4 w-4"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
               fill="none"
               viewBox="0 0 24 24"
             >
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             {{ submitting ? t('admin.subscriptions.assigning') : t('admin.subscriptions.assign') REDACTEDREDACTED
           </button>
@@ -296,43 +384,39 @@
       size="md"
       @close="closeExtendModal"
     >
-      <form v-if="extendingSubscription" @submit.prevent="handleExtendSubscription" class="space-y-5">
-        <div class="p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
+      <form
+        v-if="extendingSubscription"
+        @submit.prevent="handleExtendSubscription"
+        class="space-y-5"
+      >
+        <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
           <p class="text-sm text-gray-600 dark:text-gray-400">
             {{ t('admin.subscriptions.extendingFor') REDACTEDREDACTED
-            <span class="font-medium text-gray-900 dark:text-white">{{ extendingSubscription.user?.email REDACTEDREDACTED</span>
+            <span class="font-medium text-gray-900 dark:text-white">{{
+              extendingSubscription.user?.email
+            REDACTEDREDACTED</span>
           </p>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             {{ t('admin.subscriptions.currentExpiration') REDACTEDREDACTED:
             <span class="font-medium text-gray-900 dark:text-white">
-              {{ extendingSubscription.expires_at ? formatDate(extendingSubscription.expires_at) : t('admin.subscriptions.noExpiration') REDACTEDREDACTED
+              {{
+                extendingSubscription.expires_at
+                  ? formatDate(extendingSubscription.expires_at)
+                  : t('admin.subscriptions.noExpiration')
+              REDACTEDREDACTED
             </span>
           </p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.subscriptions.form.extendDays') REDACTEDREDACTED</label>
-          <input
-            v-model.number="extendForm.days"
-            type="number"
-            min="1"
-            required
-            class="input"
-          />
+          <input v-model.number="extendForm.days" type="number" min="1" required class="input" />
         </div>
 
         <div class="flex justify-end gap-3 pt-4">
-          <button
-            @click="closeExtendModal"
-            type="button"
-            class="btn btn-secondary"
-          >
+          <button @click="closeExtendModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button
-            type="submit"
-            :disabled="submitting"
-            class="btn btn-primary"
-          >
+          <button type="submit" :disabled="submitting" class="btn btn-primary">
             {{ submitting ? t('admin.subscriptions.extending') : t('admin.subscriptions.extend') REDACTEDREDACTED
           </button>
         </div>
@@ -424,32 +508,26 @@ REDACTED)
 // Group options for filter (all groups)
 const groupOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allGroups') REDACTED,
-  ...groups.value.map(g => ({ value: g.id.toString(), label: g.name REDACTED))
+  ...groups.value.map((g) => ({ value: g.id.toString(), label: g.name REDACTED))
 ])
 
 // Group options for assign (only subscription type groups)
 const subscriptionGroupOptions = computed(() =>
   groups.value
-    .filter(g => g.subscription_type === 'subscription' && g.status === 'active')
-    .map(g => ({ value: g.id, label: g.name REDACTED))
+    .filter((g) => g.subscription_type === 'subscription' && g.status === 'active')
+    .map((g) => ({ value: g.id, label: g.name REDACTED))
 )
 
 // User options for assign
-const userOptions = computed(() =>
-  users.value.map(u => ({ value: u.id, label: u.email REDACTED))
-)
+const userOptions = computed(() => users.value.map((u) => ({ value: u.id, label: u.email REDACTED)))
 
 const loadSubscriptions = async () => {
   loading.value = true
   try {
-    const response = await adminAPI.subscriptions.list(
-      pagination.page,
-      pagination.page_size,
-      {
-        status: filters.status as any || undefined,
-        group_id: filters.group_id ? parseInt(filters.group_id) : undefined
-      REDACTED
-    )
+    const response = await adminAPI.subscriptions.list(pagination.page, pagination.page_size, {
+      status: (filters.status as any) || undefined,
+      group_id: filters.group_id ? parseInt(filters.group_id) : undefined
+    REDACTED)
     subscriptions.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
@@ -648,14 +726,14 @@ REDACTED)
 REDACTED
 
 .usage-label {
-  @apply text-xs font-medium text-gray-500 dark:text-gray-400 w-10 flex-shrink-0;
+  @apply w-10 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400;
 REDACTED
 
 .usage-amount {
-  @apply text-xs text-gray-600 dark:text-gray-300 tabular-nums whitespace-nowrap;
+  @apply whitespace-nowrap text-xs tabular-nums text-gray-600 dark:text-gray-300;
 REDACTED
 
 .reset-info {
-  @apply flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 pl-12;
+  @apply flex items-center gap-1 pl-12 text-[10px] text-blue-600 dark:text-blue-400;
 REDACTED
 </style>

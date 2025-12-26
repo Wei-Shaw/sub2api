@@ -21,15 +21,23 @@ import (
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
 	gatewayService      *service.GatewayService
+	geminiCompatService *service.GeminiMessagesCompatService
 	userService         *service.UserService
 	billingCacheService *service.BillingCacheService
 	concurrencyHelper   *ConcurrencyHelper
 REDACTED
 
 // NewGatewayHandler creates a new GatewayHandler
-func NewGatewayHandler(gatewayService *service.GatewayService, userService *service.UserService, concurrencyService *service.ConcurrencyService, billingCacheService *service.BillingCacheService) *GatewayHandler {
+func NewGatewayHandler(
+	gatewayService *service.GatewayService,
+	geminiCompatService *service.GeminiMessagesCompatService,
+	userService *service.UserService,
+	concurrencyService *service.ConcurrencyService,
+	billingCacheService *service.BillingCacheService,
+) *GatewayHandler {
 	return &GatewayHandler{
 		gatewayService:      gatewayService,
+		geminiCompatService: geminiCompatService,
 		userService:         userService,
 		billingCacheService: billingCacheService,
 		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude),
@@ -114,8 +122,18 @@ REDACTED
 	// 计算粘性会话hash
 	sessionHash := h.gatewayService.GenerateSessionHash(body)
 
+	platform := ""
+	if apiKey.Group != nil {
+		platform = apiKey.Group.Platform
+REDACTED
+
 	// 选择支持该模型的账号
-	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
+	var account *service.Account
+	if platform == service.PlatformGemini {
+		account, err = h.geminiCompatService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
+REDACTED else {
+		account, err = h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
+REDACTED
 	if err != nil {
 		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 		return
@@ -143,7 +161,12 @@ REDACTED
 REDACTED
 
 	// 转发请求
-	result, err := h.gatewayService.Forward(c.Request.Context(), c, account, body)
+	var result *service.ForwardResult
+	if platform == service.PlatformGemini {
+		result, err = h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
+REDACTED else {
+		result, err = h.gatewayService.Forward(c.Request.Context(), c, account, body)
+REDACTED
 	if err != nil {
 		// 错误响应已在Forward中处理，这里只记录日志
 		log.Printf("Forward request failed: %v", err)

@@ -1,17 +1,14 @@
 <template>
   <div class="empty-state">
     <!-- Icon -->
-    <div class="w-20 h-20 mb-5 rounded-2xl bg-gray-100 dark:bg-dark-800 flex items-center justify-center">
+    <div
+      class="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-gray-100 dark:bg-dark-800"
+    >
       <slot name="icon">
-        <component
-          v-if="icon"
-          :is="icon"
-          class="empty-state-icon w-10 h-10"
-          aria-hidden="true"
-        />
+        <component v-if="icon" :is="icon" class="empty-state-icon h-10 w-10" aria-hidden="true" />
         <svg
           v-else
-          class="empty-state-icon w-10 h-10"
+          class="empty-state-icon h-10 w-10"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -48,17 +45,13 @@
         >
           <svg
             v-if="actionIcon"
-            class="w-5 h-5 mr-2"
+            class="mr-2 h-5 w-5"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
             stroke-width="1.5"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
-            />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
           {{ actionText REDACTEDREDACTED
         </component>

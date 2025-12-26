@@ -3,31 +3,31 @@
  * Manages user authentication state, login/logout, and token persistence
  */
 
-import { defineStore REDACTED from 'pinia';
-import { ref, computed REDACTED from 'vue';
-import { authAPI REDACTED from '@/api';
-import type { User, LoginRequest, RegisterRequest REDACTED from '@/types';
+import { defineStore REDACTED from 'pinia'
+import { ref, computed REDACTED from 'vue'
+import { authAPI REDACTED from '@/api'
+import type { User, LoginRequest, RegisterRequest REDACTED from '@/types'
 
-const AUTH_TOKEN_KEY = 'auth_token';
-const AUTH_USER_KEY = 'auth_user';
-const AUTO_REFRESH_INTERVAL = 60 * 1000; // 60 seconds
+const AUTH_TOKEN_KEY = 'auth_token'
+const AUTH_USER_KEY = 'auth_user'
+const AUTO_REFRESH_INTERVAL = 60 * 1000 // 60 seconds
 
 export const useAuthStore = defineStore('auth', () => {
   // ==================== State ====================
 
-  const user = ref<User | null>(null);
-  const token = ref<string | null>(null);
-  let refreshIntervalId: ReturnType<typeof setInterval> | null = null;
+  const user = ref<User | null>(null)
+  const token = ref<string | null>(null)
+  let refreshIntervalId: ReturnType<typeof setInterval> | null = null
 
   // ==================== Computed ====================
 
   const isAuthenticated = computed(() => {
-    return !!token.value && !!user.value;
-  REDACTED);
+    return !!token.value && !!user.value
+  REDACTED)
 
   const isAdmin = computed(() => {
-    return user.value?.role === 'admin';
-  REDACTED);
+    return user.value?.role === 'admin'
+  REDACTED)
 
   // ==================== Actions ====================
 
@@ -37,24 +37,24 @@ export const useAuthStore = defineStore('auth', () => {
    * Also starts auto-refresh and immediately fetches latest user data
    */
   function checkAuth(): void {
-    const savedToken = localStorage.getItem(AUTH_TOKEN_KEY);
-    const savedUser = localStorage.getItem(AUTH_USER_KEY);
+    const savedToken = localStorage.getItem(AUTH_TOKEN_KEY)
+    const savedUser = localStorage.getItem(AUTH_USER_KEY)
 
     if (savedToken && savedUser) {
       try {
-        token.value = savedToken;
-        user.value = JSON.parse(savedUser);
+        token.value = savedToken
+        user.value = JSON.parse(savedUser)
 
         // Immediately refresh user data from backend (async, don't block)
         refreshUser().catch((error) => {
-          console.error('Failed to refresh user on init:', error);
-        REDACTED);
+          console.error('Failed to refresh user on init:', error)
+        REDACTED)
 
         // Start auto-refresh interval
-        startAutoRefresh();
+        startAutoRefresh()
       REDACTED catch (error) {
-        console.error('Failed to parse saved user data:', error);
-        clearAuth();
+        console.error('Failed to parse saved user data:', error)
+        clearAuth()
       REDACTED
     REDACTED
   REDACTED
@@ -65,15 +65,15 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function startAutoRefresh(): void {
     // Clear existing interval if any
-    stopAutoRefresh();
+    stopAutoRefresh()
 
     refreshIntervalId = setInterval(() => {
       if (token.value) {
         refreshUser().catch((error) => {
-          console.error('Auto-refresh user failed:', error);
-        REDACTED);
+          console.error('Auto-refresh user failed:', error)
+        REDACTED)
       REDACTED
-    REDACTED, AUTO_REFRESH_INTERVAL);
+    REDACTED, AUTO_REFRESH_INTERVAL)
   REDACTED
 
   /**
@@ -81,8 +81,8 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function stopAutoRefresh(): void {
     if (refreshIntervalId) {
-      clearInterval(refreshIntervalId);
-      refreshIntervalId = null;
+      clearInterval(refreshIntervalId)
+      refreshIntervalId = null
     REDACTED
   REDACTED
 
@@ -94,24 +94,24 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function login(credentials: LoginRequest): Promise<User> {
     try {
-      const response = await authAPI.login(credentials);
+      const response = await authAPI.login(credentials)
 
       // Store token and user
-      token.value = response.access_token;
-      user.value = response.user;
+      token.value = response.access_token
+      user.value = response.user
 
       // Persist to localStorage
-      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.user));
+      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token)
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.user))
 
       // Start auto-refresh interval
-      startAutoRefresh();
+      startAutoRefresh()
 
-      return response.user;
+      return response.user
     REDACTED catch (error) {
       // Clear any partial state on error
-      clearAuth();
-      throw error;
+      clearAuth()
+      throw error
     REDACTED
   REDACTED
 
@@ -123,24 +123,24 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function register(userData: RegisterRequest): Promise<User> {
     try {
-      const response = await authAPI.register(userData);
+      const response = await authAPI.register(userData)
 
       // Store token and user
-      token.value = response.access_token;
-      user.value = response.user;
+      token.value = response.access_token
+      user.value = response.user
 
       // Persist to localStorage
-      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.user));
+      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token)
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.user))
 
       // Start auto-refresh interval
-      startAutoRefresh();
+      startAutoRefresh()
 
-      return response.user;
+      return response.user
     REDACTED catch (error) {
       // Clear any partial state on error
-      clearAuth();
-      throw error;
+      clearAuth()
+      throw error
     REDACTED
   REDACTED
 
@@ -150,10 +150,10 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function logout(): void {
     // Call API logout (client-side cleanup)
-    authAPI.logout();
+    authAPI.logout()
 
     // Clear state
-    clearAuth();
+    clearAuth()
   REDACTED
 
   /**
@@ -164,23 +164,23 @@ export const useAuthStore = defineStore('auth', () => {
    */
   async function refreshUser(): Promise<User> {
     if (!token.value) {
-      throw new Error('Not authenticated');
+      throw new Error('Not authenticated')
     REDACTED
 
     try {
-      const updatedUser = await authAPI.getCurrentUser();
-      user.value = updatedUser;
-      
-      // Update localStorage
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
+      const updatedUser = await authAPI.getCurrentUser()
+      user.value = updatedUser
 
-      return updatedUser;
+      // Update localStorage
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser))
+
+      return updatedUser
     REDACTED catch (error) {
       // If refresh fails with 401, clear auth state
       if ((error as { status?: number REDACTED).status === 401) {
-        clearAuth();
+        clearAuth()
       REDACTED
-      throw error;
+      throw error
     REDACTED
   REDACTED
 
@@ -190,12 +190,12 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function clearAuth(): void {
     // Stop auto-refresh
-    stopAutoRefresh();
+    stopAutoRefresh()
 
-    token.value = null;
-    user.value = null;
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_USER_KEY);
+    token.value = null
+    user.value = null
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    localStorage.removeItem(AUTH_USER_KEY)
   REDACTED
 
   // ==================== Return Store API ====================
@@ -214,6 +214,6 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     logout,
     checkAuth,
-    refreshUser,
-  REDACTED;
-REDACTED);
+    refreshUser
+  REDACTED
+REDACTED)

@@ -2,9 +2,9 @@
   <div>
     <!-- Loading state -->
     <div v-if="loading" class="space-y-0.5">
-      <div class="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-      <div class="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-      <div class="h-3 w-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+      <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+      <div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+      <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
     </div>
 
     <!-- Error state -->
@@ -17,24 +17,28 @@
       <!-- Requests -->
       <div class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400">Req:</span>
-        <span class="font-medium text-gray-700 dark:text-gray-300">{{ formatNumber(stats.requests) REDACTEDREDACTED</span>
+        <span class="font-medium text-gray-700 dark:text-gray-300">{{
+          formatNumber(stats.requests)
+        REDACTEDREDACTED</span>
       </div>
       <!-- Tokens -->
       <div class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400">Tok:</span>
-        <span class="font-medium text-gray-700 dark:text-gray-300">{{ formatTokens(stats.tokens) REDACTEDREDACTED</span>
+        <span class="font-medium text-gray-700 dark:text-gray-300">{{
+          formatTokens(stats.tokens)
+        REDACTEDREDACTED</span>
       </div>
       <!-- Cost -->
       <div class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400">Cost:</span>
-        <span class="font-medium text-emerald-600 dark:text-emerald-400">{{ formatCurrency(stats.cost) REDACTEDREDACTED</span>
+        <span class="font-medium text-emerald-600 dark:text-emerald-400">{{
+          formatCurrency(stats.cost)
+        REDACTEDREDACTED</span>
       </div>
     </div>
 
     <!-- No data -->
-    <div v-else class="text-xs text-gray-400">
-      -
-    </div>
+    <div v-else class="text-xs text-gray-400">-</div>
   </div>
 </template>
 

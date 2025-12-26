@@ -3,14 +3,14 @@
  * Handles API key group management for administrators
  */
 
-import { apiClient REDACTED from '../client';
+import { apiClient REDACTED from '../client'
 import type {
   Group,
   GroupPlatform,
   CreateGroupRequest,
   UpdateGroupRequest,
-  PaginatedResponse,
-REDACTED from '@/types';
+  PaginatedResponse
+REDACTED from '@/types'
 
 /**
  * List all groups with pagination
@@ -23,19 +23,19 @@ export async function list(
   page: number = 1,
   pageSize: number = 20,
   filters?: {
-    platform?: GroupPlatform;
-    status?: 'active' | 'inactive';
-    is_exclusive?: boolean;
+    platform?: GroupPlatform
+    status?: 'active' | 'inactive'
+    is_exclusive?: boolean
   REDACTED
 ): Promise<PaginatedResponse<Group>> {
   const { data REDACTED = await apiClient.get<PaginatedResponse<Group>>('/admin/groups', {
     params: {
       page,
       page_size: pageSize,
-      ...filters,
-    REDACTED,
-  REDACTED);
-  return data;
+      ...filters
+    REDACTED
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -46,8 +46,8 @@ REDACTED
 export async function getAll(platform?: GroupPlatform): Promise<Group[]> {
   const { data REDACTED = await apiClient.get<Group[]>('/admin/groups/all', {
     params: platform ? { platform REDACTED : undefined
-  REDACTED);
-  return data;
+  REDACTED)
+  return data
 REDACTED
 
 /**
@@ -56,7 +56,7 @@ REDACTED
  * @returns List of groups for the specified platform
  */
 export async function getByPlatform(platform: GroupPlatform): Promise<Group[]> {
-  return getAll(platform);
+  return getAll(platform)
 REDACTED
 
 /**
@@ -65,8 +65,8 @@ REDACTED
  * @returns Group details
  */
 export async function getById(id: number): Promise<Group> {
-  const { data REDACTED = await apiClient.get<Group>(`/admin/groups/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.get<Group>(`/admin/groups/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -75,8 +75,8 @@ REDACTED
  * @returns Created group
  */
 export async function create(groupData: CreateGroupRequest): Promise<Group> {
-  const { data REDACTED = await apiClient.post<Group>('/admin/groups', groupData);
-  return data;
+  const { data REDACTED = await apiClient.post<Group>('/admin/groups', groupData)
+  return data
 REDACTED
 
 /**
@@ -86,8 +86,8 @@ REDACTED
  * @returns Updated group
  */
 export async function update(id: number, updates: UpdateGroupRequest): Promise<Group> {
-  const { data REDACTED = await apiClient.put<Group>(`/admin/groups/${idREDACTED`, updates);
-  return data;
+  const { data REDACTED = await apiClient.put<Group>(`/admin/groups/${idREDACTED`, updates)
+  return data
 REDACTED
 
 /**
@@ -96,8 +96,8 @@ REDACTED
  * @returns Success confirmation
  */
 export async function deleteGroup(id: number): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/admin/groups/${idREDACTED`);
-  return data;
+  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(`/admin/groups/${idREDACTED`)
+  return data
 REDACTED
 
 /**
@@ -106,11 +106,8 @@ REDACTED
  * @param status - New status
  * @returns Updated group
  */
-export async function toggleStatus(
-  id: number,
-  status: 'active' | 'inactive'
-): Promise<Group> {
-  return update(id, { status REDACTED);
+export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<Group> {
+  return update(id, { status REDACTED)
 REDACTED
 
 /**
@@ -119,18 +116,18 @@ REDACTED
  * @returns Group usage statistics
  */
 export async function getStats(id: number): Promise<{
-  total_api_keys: number;
-  active_api_keys: number;
-  total_requests: number;
-  total_cost: number;
+  total_api_keys: number
+  active_api_keys: number
+  total_requests: number
+  total_cost: number
 REDACTED> {
   const { data REDACTED = await apiClient.get<{
-    total_api_keys: number;
-    active_api_keys: number;
-    total_requests: number;
-    total_cost: number;
-  REDACTED>(`/admin/groups/${idREDACTED/stats`);
-  return data;
+    total_api_keys: number
+    active_api_keys: number
+    total_requests: number
+    total_cost: number
+  REDACTED>(`/admin/groups/${idREDACTED/stats`)
+  return data
 REDACTED
 
 /**
@@ -145,13 +142,10 @@ export async function getGroupApiKeys(
   page: number = 1,
   pageSize: number = 20
 ): Promise<PaginatedResponse<any>> {
-  const { data REDACTED = await apiClient.get<PaginatedResponse<any>>(
-    `/admin/groups/${idREDACTED/api-keys`,
-    {
-      params: { page, page_size: pageSize REDACTED,
-    REDACTED
-  );
-  return data;
+  const { data REDACTED = await apiClient.get<PaginatedResponse<any>>(`/admin/groups/${idREDACTED/api-keys`, {
+    params: { page, page_size: pageSize REDACTED
+  REDACTED)
+  return data
 REDACTED
 
 export const groupsAPI = {
@@ -164,7 +158,7 @@ export const groupsAPI = {
   delete: deleteGroup,
   toggleStatus,
   getStats,
-  getGroupApiKeys,
-REDACTED;
+  getGroupApiKeys
+REDACTED
 
-export default groupsAPI;
+export default groupsAPI

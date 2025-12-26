@@ -1,25 +1,30 @@
 <template>
   <div v-if="showUsageWindows">
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
-    <template v-if="account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')">
+    <template
+      v-if="
+        account.platform === 'anthropic' &&
+        (account.type === 'oauth' || account.type === 'setup-token')
+      "
+    >
       <!-- Loading state -->
       <div v-if="loading" class="space-y-1.5">
         <!-- OAuth: 3 rows, Setup Token: 1 row -->
         <div class="flex items-center gap-1">
-          <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-          <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
-          <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
         </div>
         <template v-if="account.type === 'oauth'">
           <div class="flex items-center gap-1">
-            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-            <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
-            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
           </div>
           <div class="flex items-center gap-1">
-            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-            <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse"></div>
-            <div class="w-[32px] h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
           </div>
         </template>
       </div>
@@ -61,9 +66,7 @@
       </div>
 
       <!-- No data yet -->
-      <div v-else class="text-xs text-gray-400">
-        -
-      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
     <!-- OpenAI OAuth accounts: show Codex usage from extra field -->
@@ -97,9 +100,7 @@
   </div>
 
   <!-- Non-OAuth/Setup-Token accounts -->
-  <div v-else class="text-xs text-gray-400">
-    -
-  </div>
+  <div v-else class="text-xs text-gray-400">-</div>
 </template>
 
 <script setup lang="ts">
@@ -117,20 +118,21 @@ const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
 
 // Show usage windows for OAuth and Setup Token accounts
-const showUsageWindows = computed(() =>
-  props.account.type === 'oauth' || props.account.type === 'setup-token'
+const showUsageWindows = computed(
+  () => props.account.type === 'oauth' || props.account.type === 'setup-token'
 )
 
 // OpenAI Codex usage computed properties
 const hasCodexUsage = computed(() => {
   const extra = props.account.extra
-  return extra && (
+  return (
+    extra &&
     // Check for new canonical fields first
-    extra.codex_5h_used_percent !== undefined ||
-    extra.codex_7d_used_percent !== undefined ||
-    // Fallback to legacy fields
-    extra.codex_primary_used_percent !== undefined ||
-    extra.codex_secondary_used_percent !== undefined
+    (extra.codex_5h_used_percent !== undefined ||
+      extra.codex_7d_used_percent !== undefined ||
+      // Fallback to legacy fields
+      extra.codex_primary_used_percent !== undefined ||
+      extra.codex_secondary_used_percent !== undefined)
   )
 REDACTED)
 
@@ -145,10 +147,16 @@ const codex5hUsedPercent = computed(() => {
   REDACTED
 
   // Fallback: detect from legacy fields using window_minutes
-  if (extra.codex_primary_window_minutes !== undefined && extra.codex_primary_window_minutes <= 360) {
+  if (
+    extra.codex_primary_window_minutes !== undefined &&
+    extra.codex_primary_window_minutes <= 360
+  ) {
     return extra.codex_primary_used_percent ?? null
   REDACTED
-  if (extra.codex_secondary_window_minutes !== undefined && extra.codex_secondary_window_minutes <= 360) {
+  if (
+    extra.codex_secondary_window_minutes !== undefined &&
+    extra.codex_secondary_window_minutes <= 360
+  ) {
     return extra.codex_secondary_used_percent ?? null
   REDACTED
 
@@ -167,13 +175,19 @@ const codex5hResetAt = computed(() => {
   REDACTED
 
   // Fallback: detect from legacy fields using window_minutes
-  if (extra.codex_primary_window_minutes !== undefined && extra.codex_primary_window_minutes <= 360) {
+  if (
+    extra.codex_primary_window_minutes !== undefined &&
+    extra.codex_primary_window_minutes <= 360
+  ) {
     if (extra.codex_primary_reset_after_seconds !== undefined) {
       const resetTime = new Date(Date.now() + extra.codex_primary_reset_after_seconds * 1000)
       return resetTime.toISOString()
     REDACTED
   REDACTED
-  if (extra.codex_secondary_window_minutes !== undefined && extra.codex_secondary_window_minutes <= 360) {
+  if (
+    extra.codex_secondary_window_minutes !== undefined &&
+    extra.codex_secondary_window_minutes <= 360
+  ) {
     if (extra.codex_secondary_reset_after_seconds !== undefined) {
       const resetTime = new Date(Date.now() + extra.codex_secondary_reset_after_seconds * 1000)
       return resetTime.toISOString()
@@ -200,10 +214,16 @@ const codex7dUsedPercent = computed(() => {
   REDACTED
 
   // Fallback: detect from legacy fields using window_minutes
-  if (extra.codex_primary_window_minutes !== undefined && extra.codex_primary_window_minutes >= 10000) {
+  if (
+    extra.codex_primary_window_minutes !== undefined &&
+    extra.codex_primary_window_minutes >= 10000
+  ) {
     return extra.codex_primary_used_percent ?? null
   REDACTED
-  if (extra.codex_secondary_window_minutes !== undefined && extra.codex_secondary_window_minutes >= 10000) {
+  if (
+    extra.codex_secondary_window_minutes !== undefined &&
+    extra.codex_secondary_window_minutes >= 10000
+  ) {
     return extra.codex_secondary_used_percent ?? null
   REDACTED
 
@@ -222,13 +242,19 @@ const codex7dResetAt = computed(() => {
   REDACTED
 
   // Fallback: detect from legacy fields using window_minutes
-  if (extra.codex_primary_window_minutes !== undefined && extra.codex_primary_window_minutes >= 10000) {
+  if (
+    extra.codex_primary_window_minutes !== undefined &&
+    extra.codex_primary_window_minutes >= 10000
+  ) {
     if (extra.codex_primary_reset_after_seconds !== undefined) {
       const resetTime = new Date(Date.now() + extra.codex_primary_reset_after_seconds * 1000)
       return resetTime.toISOString()
     REDACTED
   REDACTED
-  if (extra.codex_secondary_window_minutes !== undefined && extra.codex_secondary_window_minutes >= 10000) {
+  if (
+    extra.codex_secondary_window_minutes !== undefined &&
+    extra.codex_secondary_window_minutes >= 10000
+  ) {
     if (extra.codex_secondary_reset_after_seconds !== undefined) {
       const resetTime = new Date(Date.now() + extra.codex_secondary_reset_after_seconds * 1000)
       return resetTime.toISOString()

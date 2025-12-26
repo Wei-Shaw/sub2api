@@ -7,7 +7,7 @@
             v-for="column in columns"
             :key="column.key"
             scope="col"
-            class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-dark-400 uppercase tracking-wider"
+            class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400"
             :class="{ 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable REDACTED"
             @click="column.sortable && handleSort(column.key)"
           >
@@ -16,8 +16,8 @@
               <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
                 <svg
                   v-if="sortKey === column.key"
-                  class="w-4 h-4"
-                  :class="{ 'transform rotate-180': sortOrder === 'desc' REDACTED"
+                  class="h-4 w-4"
+                  :class="{ 'rotate-180 transform': sortOrder === 'desc' REDACTED"
                   fill="currentColor"
                   viewBox="0 0 20 20"
                 >
@@ -27,7 +27,7 @@
                     clip-rule="evenodd"
                   />
                 </svg>
-                <svg v-else class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
                   />
@@ -37,22 +37,30 @@
           </th>
         </tr>
       </thead>
-      <tbody class="bg-white dark:bg-dark-900 divide-y divide-gray-200 dark:divide-dark-700">
+      <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
         <!-- Loading skeleton -->
         <tr v-if="loading" v-for="i in 5" :key="i">
-          <td v-for="column in columns" :key="column.key" class="px-6 py-4 whitespace-nowrap">
+          <td v-for="column in columns" :key="column.key" class="whitespace-nowrap px-6 py-4">
             <div class="animate-pulse">
-              <div class="h-4 bg-gray-200 dark:bg-dark-700 rounded w-3/4"></div>
+              <div class="h-4 w-3/4 rounded bg-gray-200 dark:bg-dark-700"></div>
             </div>
           </td>
         </tr>
 
         <!-- Empty state -->
         <tr v-else-if="!data || data.length === 0">
-          <td :colspan="columns.length" class="px-6 py-12 text-center text-gray-500 dark:text-dark-400">
+          <td
+            :colspan="columns.length"
+            class="px-6 py-12 text-center text-gray-500 dark:text-dark-400"
+          >
             <slot name="empty">
               <div class="flex flex-col items-center">
-                <svg class="w-12 h-12 text-gray-400 dark:text-dark-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg
+                  class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -60,18 +68,25 @@
                     d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                   />
                 </svg>
-                <p class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('empty.noData') REDACTEDREDACTED</p>
+                <p class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                  {{ t('empty.noData') REDACTEDREDACTED
+                </p>
               </div>
             </slot>
           </td>
         </tr>
 
         <!-- Data rows -->
-        <tr v-else v-for="(row, index) in sortedData" :key="index" class="hover:bg-gray-50 dark:hover:bg-dark-800">
+        <tr
+          v-else
+          v-for="(row, index) in sortedData"
+          :key="index"
+          class="hover:bg-gray-50 dark:hover:bg-dark-800"
+        >
           <td
             v-for="column in columns"
             :key="column.key"
-            class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100"
+            class="whitespace-nowrap px-6 py-4 text-sm text-gray-900 dark:text-gray-100"
           >
             <slot :name="`cell-${column.keyREDACTED`" :row="row" :value="row[column.key]">
               {{ column.formatter ? column.formatter(row[column.key], row) : row[column.key] REDACTEDREDACTED

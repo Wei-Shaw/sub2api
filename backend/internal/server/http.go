@@ -7,6 +7,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
@@ -25,6 +26,8 @@ func ProvideRouter(
 	jwtAuth middleware2.JWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
 	apiKeyAuth middleware2.ApiKeyAuthMiddleware,
+	apiKeyService *service.ApiKeyService,
+	subscriptionService *service.SubscriptionService,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -33,7 +36,7 @@ REDACTED
 	r := gin.New()
 	r.Use(middleware2.Recovery())
 
-	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth)
+	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService)
 REDACTED
 
 // ProvideHTTPServer 提供 HTTP 服务器

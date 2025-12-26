@@ -3,8 +3,8 @@
  * Handles group-related operations for regular users
  */
 
-import { apiClient REDACTED from './client';
-import type { Group REDACTED from '@/types';
+import { apiClient REDACTED from './client'
+import type { Group REDACTED from '@/types'
 
 /**
  * Get available groups that the current user can bind to API keys
@@ -14,12 +14,12 @@ import type { Group REDACTED from '@/types';
  * @returns List of available groups
  */
 export async function getAvailable(): Promise<Group[]> {
-  const { data REDACTED = await apiClient.get<Group[]>('/groups/available');
-  return data;
+  const { data REDACTED = await apiClient.get<Group[]>('/groups/available')
+  return data
 REDACTED
 
 export const userGroupsAPI = {
-  getAvailable,
-REDACTED;
+  getAvailable
+REDACTED
 
-export default userGroupsAPI;
+export default userGroupsAPI

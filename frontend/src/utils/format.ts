@@ -90,7 +90,10 @@ REDACTED
  * @param format 格式字符串，支持 YYYY, MM, DD, HH, mm, ss
  * @returns 格式化后的日期字符串
  */
-export function formatDate(date: string | Date | null | undefined, format: string = 'YYYY-MM-DD HH:mm:ss'): string {
+export function formatDate(
+  date: string | Date | null | undefined,
+  format: string = 'YYYY-MM-DD HH:mm:ss'
+): string {
   if (!date) return ''
 
   const d = new Date(date)

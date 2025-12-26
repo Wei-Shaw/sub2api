@@ -320,8 +320,17 @@ REDACTED
 			selected = acc
 	REDACTED else if acc.Priority == selected.Priority {
 			// 优先级相同时，选最久未用的
-			if acc.LastUsedAt == nil || (selected.LastUsedAt != nil && acc.LastUsedAt.Before(*selected.LastUsedAt)) {
+			switch {
+			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc
+			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+				// keep selected (never used is preferred)
+			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+				// keep selected (both never used)
+			default:
+				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+					selected = acc
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED

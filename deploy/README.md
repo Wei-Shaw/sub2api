@@ -96,8 +96,104 @@ docker-compose down -v
 | `ADMIN_PASSWORD` | No | *(auto-generated)* | Admin password |
 | `JWT_SECRET` | No | *(auto-generated)* | JWT secret |
 | `TZ` | No | `Asia/Shanghai` | Timezone |
+| `GEMINI_OAUTH_CLIENT_ID` | No | *(builtin)* | Google OAuth client ID (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
+| `GEMINI_OAUTH_CLIENT_SECRET` | No | *(builtin)* | Google OAuth client secret (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
+| `GEMINI_OAUTH_SCOPES` | No | *(default)* | OAuth scopes (Gemini OAuth) |
 
 See `.env.example` for all available options.
+
+---
+
+## Gemini OAuth Configuration
+
+Sub2API supports three methods to connect to Gemini:
+
+### Method 1: Code Assist OAuth (Recommended for GCP Users)
+
+**No configuration needed** - always uses the built-in Gemini CLI OAuth client (public).
+
+1. Leave `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET` empty
+2. In the Admin UI, create a Gemini OAuth account and select **"Code Assist"** type
+3. Complete the OAuth flow in your browser
+
+> Note: Even if you configure `GEMINI_OAUTH_CLIENT_ID` / `GEMINI_OAUTH_CLIENT_SECRET` for AI Studio OAuth,
+> Code Assist OAuth will still use the built-in Gemini CLI client.
+
+**Requirements:**
+- Google account with access to Google Cloud Platform
+- A GCP project (auto-detected or manually specified)
+
+**How to get Project ID (if auto-detection fails):**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Click the project dropdown at the top of the page
+3. Copy the Project ID (not the project name) from the list
+4. Common formats: `my-project-123456` or `cloud-ai-companion-xxxxx`
+
+### Method 2: AI Studio OAuth (For Regular Google Accounts)
+
+Requires your own OAuth client credentials.
+
+**Step 1: Create OAuth Client in Google Cloud Console**
+
+1. Go to [Google Cloud Console - Credentials](https://console.cloud.google.com/apis/credentials)
+2. Create a new project or select an existing one
+3. **Enable the Generative Language API:**
+   - Go to "APIs & Services" → "Library"
+   - Search for "Generative Language API"
+   - Click "Enable"
+4. **Configure OAuth Consent Screen** (if not done):
+   - Go to "APIs & Services" → "OAuth consent screen"
+   - Choose "External" user type
+   - Fill in app name, user support email, developer contact
+   - Add scopes: `https://www.googleapis.com/auth/generative-language.retriever` (and optionally `https://www.googleapis.com/auth/cloud-platform`)
+   - Add test users (your Google account email)
+5. **Create OAuth 2.0 credentials:**
+   - Go to "APIs & Services" → "Credentials"
+   - Click "Create Credentials" → "OAuth client ID"
+   - Application type: **Web application** (or **Desktop app**)
+   - Name: e.g., "Sub2API Gemini"
+   - Authorized redirect URIs: Add `http://localhost:1455/auth/callback`
+6. Copy the **Client ID** and **Client Secret**
+7. **⚠️ Publish to Production (IMPORTANT):**
+   - Go to "APIs & Services" → "OAuth consent screen"
+   - Click "PUBLISH APP" to move from Testing to Production
+   - **Testing mode limitations:**
+     - Only manually added test users can authenticate (max 100 users)
+     - Refresh tokens expire after 7 days
+     - Users must be re-added periodically
+   - **Production mode:** Any Google user can authenticate, tokens don't expire
+   - Note: For sensitive scopes, Google may require verification (demo video, privacy policy)
+
+**Step 2: Configure Environment Variables**
+
+```bash
+GEMINI_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GEMINI_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
+```
+
+**Step 3: Create Account in Admin UI**
+
+1. Create a Gemini OAuth account and select **"AI Studio"** type
+2. Complete the OAuth flow
+   - After consent, your browser will be redirected to `http://localhost:1455/auth/callback?code=...&state=...`
+   - Copy the full callback URL (recommended) or just the `code` and paste it back into the Admin UI
+
+### Method 3: API Key (Simplest)
+
+1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Click "Create API key"
+3. In Admin UI, create a Gemini **API Key** account
+4. Paste your API key (starts with `AIza...`)
+
+### Comparison Table
+
+| Feature | Code Assist OAuth | AI Studio OAuth | API Key |
+|---------|-------------------|-----------------|---------|
+| Setup Complexity | Easy (no config) | Medium (OAuth client) | Easy |
+| GCP Project Required | Yes | No | No |
+| Custom OAuth Client | No (built-in) | Yes (required) | N/A |
+| Rate Limits | GCP quota | Standard | Standard |
+| Best For | GCP developers | Regular users needing OAuth | Quick testing |
 
 ---
 

@@ -120,10 +120,9 @@ REDACTED
 
 func (s *PricingServiceSuite) TestFetchPricingJSON_ContextCancel() {
 	started := make(chan struct{REDACTED)
-	block := make(chan struct{REDACTED)
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		close(started)
-		<-block
+		<-r.Context().Done()
 REDACTED))
 
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -136,7 +135,6 @@ REDACTED()
 
 	<-started
 	cancel()
-	close(block)
 
 	err := <-done
 	require.Error(s.T(), err)

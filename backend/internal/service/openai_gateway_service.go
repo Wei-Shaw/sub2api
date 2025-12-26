@@ -170,9 +170,18 @@ REDACTED
 		if acc.Priority < selected.Priority {
 			selected = acc
 	REDACTED else if acc.Priority == selected.Priority {
-			// Same priority, select least recently used
-			if acc.LastUsedAt == nil || (selected.LastUsedAt != nil && acc.LastUsedAt.Before(*selected.LastUsedAt)) {
+			switch {
+			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc
+			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+				// keep selected (never used is preferred)
+			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+				// keep selected (both never used)
+			default:
+				// Same priority, select least recently used
+				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+					selected = acc
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED

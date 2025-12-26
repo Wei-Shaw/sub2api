@@ -21,6 +21,9 @@ coverage.html
 # 依赖（使用 go mod）
 vendor/
 
+# Go 编译缓存
+backend/.gocache/
+
 # ===================
 # Node.js / Vue 前端
 # ===================

@@ -3,6 +3,7 @@ package service
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -42,19 +44,27 @@ REDACTED
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
-	accountRepo        AccountRepository
-	oauthService       *OAuthService
-	openaiOAuthService *OpenAIOAuthService
-	httpUpstream       HTTPUpstream
+	accountRepo         AccountRepository
+	oauthService        *OAuthService
+	openaiOAuthService  *OpenAIOAuthService
+	geminiTokenProvider *GeminiTokenProvider
+	httpUpstream        HTTPUpstream
 REDACTED
 
 // NewAccountTestService creates a new AccountTestService
-func NewAccountTestService(accountRepo AccountRepository, oauthService *OAuthService, openaiOAuthService *OpenAIOAuthService, httpUpstream HTTPUpstream) *AccountTestService {
+func NewAccountTestService(
+	accountRepo AccountRepository,
+	oauthService *OAuthService,
+	openaiOAuthService *OpenAIOAuthService,
+	geminiTokenProvider *GeminiTokenProvider,
+	httpUpstream HTTPUpstream,
+) *AccountTestService {
 	return &AccountTestService{
-		accountRepo:        accountRepo,
-		oauthService:       oauthService,
-		openaiOAuthService: openaiOAuthService,
-		httpUpstream:       httpUpstream,
+		accountRepo:         accountRepo,
+		oauthService:        oauthService,
+		openaiOAuthService:  openaiOAuthService,
+		geminiTokenProvider: geminiTokenProvider,
+		httpUpstream:        httpUpstream,
 REDACTED
 REDACTED
 
@@ -125,6 +135,10 @@ REDACTED
 	// Route to platform-specific test method
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID)
+REDACTED
+
+	if account.IsGemini() {
+		return s.testGeminiAccountConnection(c, account, modelID)
 REDACTED
 
 	return s.testClaudeAccountConnection(c, account, modelID)
@@ -370,6 +384,252 @@ REDACTED
 
 	// Process SSE stream
 	return s.processOpenAIStream(c, resp.Body)
+REDACTED
+
+// testGeminiAccountConnection tests a Gemini account's connection
+func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	// Determine the model to use
+	testModelID := modelID
+	if testModelID == "" {
+		testModelID = geminicli.DefaultTestModel
+REDACTED
+
+	// For API Key accounts with model mapping, map the model
+	if account.Type == AccountTypeApiKey {
+		mapping := account.GetModelMapping()
+		if len(mapping) > 0 {
+			if mappedModel, exists := mapping[testModelID]; exists {
+				testModelID = mappedModel
+		REDACTED
+	REDACTED
+REDACTED
+
+	// Set SSE headers
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	// Create test payload (Gemini format)
+	payload := createGeminiTestPayload()
+
+	// Build request based on account type
+	var req *http.Request
+	var err error
+
+	switch account.Type {
+	case AccountTypeApiKey:
+		req, err = s.buildGeminiAPIKeyRequest(ctx, account, testModelID, payload)
+	case AccountTypeOAuth:
+		req, err = s.buildGeminiOAuthRequest(ctx, account, testModelID, payload)
+	default:
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
+REDACTED
+
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request: %s", err.Error()))
+REDACTED
+
+	// Send test_start event
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+
+	// Get proxy and execute request
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	resp, err := s.httpUpstream.Do(req, proxyURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+REDACTED
+
+	// Process SSE stream
+	return s.processGeminiStream(c, resp.Body)
+REDACTED
+
+// buildGeminiAPIKeyRequest builds request for Gemini API Key accounts
+func (s *AccountTestService) buildGeminiAPIKeyRequest(ctx context.Context, account *Account, modelID string, payload []byte) (*http.Request, error) {
+	apiKey := account.GetCredential("api_key")
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, fmt.Errorf("no API key available")
+REDACTED
+
+	baseURL := account.GetCredential("base_url")
+	if baseURL == "" {
+		baseURL = geminicli.AIStudioBaseURL
+REDACTED
+
+	// Use streamGenerateContent for real-time feedback
+	fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse",
+		strings.TrimRight(baseURL, "/"), modelID)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+REDACTED
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	return req, nil
+REDACTED
+
+// buildGeminiOAuthRequest builds request for Gemini OAuth accounts
+func (s *AccountTestService) buildGeminiOAuthRequest(ctx context.Context, account *Account, modelID string, payload []byte) (*http.Request, error) {
+	if s.geminiTokenProvider == nil {
+		return nil, fmt.Errorf("gemini token provider not configured")
+REDACTED
+
+	// Get access token (auto-refreshes if needed)
+	accessToken, err := s.geminiTokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get access token: %w", err)
+REDACTED
+
+	projectID := strings.TrimSpace(account.GetCredential("project_id"))
+	if projectID == "" {
+		// AI Studio OAuth mode (no project_id): call generativelanguage API directly with Bearer token.
+		baseURL := account.GetCredential("base_url")
+		if strings.TrimSpace(baseURL) == "" {
+			baseURL = geminicli.AIStudioBaseURL
+	REDACTED
+		fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse", strings.TrimRight(baseURL, "/"), modelID)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+	REDACTED
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		return req, nil
+REDACTED
+
+	// Wrap payload in Code Assist format
+	var inner map[string]any
+	if err := json.Unmarshal(payload, &inner); err != nil {
+		return nil, err
+REDACTED
+
+	wrapped := map[string]any{
+		"model":   modelID,
+		"project": projectID,
+		"request": inner,
+REDACTED
+	wrappedBytes, _ := json.Marshal(wrapped)
+
+	fullURL := fmt.Sprintf("%s/v1internal:streamGenerateContent?alt=sse", geminicli.GeminiCliBaseURL)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(wrappedBytes))
+	if err != nil {
+		return nil, err
+REDACTED
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
+
+	return req, nil
+REDACTED
+
+// createGeminiTestPayload creates a minimal test payload for Gemini API
+func createGeminiTestPayload() []byte {
+	payload := map[string]any{
+		"contents": []map[string]any{
+			{
+				"role": "user",
+				"parts": []map[string]any{
+					{"text": "hi"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		"systemInstruction": map[string]any{
+			"parts": []map[string]any{
+				{"text": "You are a helpful AI assistant."REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	bytes, _ := json.Marshal(payload)
+	return bytes
+REDACTED
+
+// processGeminiStream processes SSE stream from Gemini API
+func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader) error {
+	reader := bufio.NewReader(body)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+				return nil
+		REDACTED
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+	REDACTED
+
+		line = strings.TrimSpace(line)
+		if line == "" || !strings.HasPrefix(line, "data: ") {
+			continue
+	REDACTED
+
+		jsonStr := strings.TrimPrefix(line, "data: ")
+		if jsonStr == "[DONE]" {
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+			return nil
+	REDACTED
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+	REDACTED
+
+		// Support two Gemini response formats:
+		// - AI Studio: {"candidates": [...]REDACTED
+		// - Gemini CLI: {"response": {"candidates": [...]REDACTEDREDACTED
+		if resp, ok := data["response"].(map[string]any); ok && resp != nil {
+			data = resp
+	REDACTED
+		if candidates, ok := data["candidates"].([]any); ok && len(candidates) > 0 {
+			if candidate, ok := candidates[0].(map[string]any); ok {
+				// Check for completion
+				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+					return nil
+			REDACTED
+
+				// Extract content
+				if content, ok := candidate["content"].(map[string]any); ok {
+					if parts, ok := content["parts"].([]any); ok {
+						for _, part := range parts {
+							if partMap, ok := part.(map[string]any); ok {
+								if text, ok := partMap["text"].(string); ok && text != "" {
+									s.sendEvent(c, TestEvent{Type: "content", Text: textREDACTED)
+							REDACTED
+						REDACTED
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// Handle errors
+		if errData, ok := data["error"].(map[string]any); ok {
+			errorMsg := "Unknown error"
+			if msg, ok := errData["message"].(string); ok {
+				errorMsg = msg
+		REDACTED
+			return s.sendErrorAndEnd(c, errorMsg)
+	REDACTED
+REDACTED
 REDACTED
 
 // createOpenAITestPayload creates a test payload for OpenAI Responses API

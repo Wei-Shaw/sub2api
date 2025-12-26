@@ -3,16 +3,16 @@
  * Handles user profile management and password changes
  */
 
-import { apiClient REDACTED from './client';
-import type { User, ChangePasswordRequest REDACTED from '@/types';
+import { apiClient REDACTED from './client'
+import type { User, ChangePasswordRequest REDACTED from '@/types'
 
 /**
  * Get current user profile
  * @returns User profile data
  */
 export async function getProfile(): Promise<User> {
-  const { data REDACTED = await apiClient.get<User>('/user/profile');
-  return data;
+  const { data REDACTED = await apiClient.get<User>('/user/profile')
+  return data
 REDACTED
 
 /**
@@ -21,11 +21,11 @@ REDACTED
  * @returns Updated user profile data
  */
 export async function updateProfile(profile: {
-  username?: string;
-  wechat?: string;
+  username?: string
+  wechat?: string
 REDACTED): Promise<User> {
-  const { data REDACTED = await apiClient.put<User>('/user', profile);
-  return data;
+  const { data REDACTED = await apiClient.put<User>('/user', profile)
+  return data
 REDACTED
 
 /**
@@ -39,17 +39,17 @@ export async function changePassword(
 ): Promise<{ message: string REDACTED> {
   const payload: ChangePasswordRequest = {
     old_password: oldPassword,
-    new_password: newPassword,
-  REDACTED;
+    new_password: newPassword
+  REDACTED
 
-  const { data REDACTED = await apiClient.put<{ message: string REDACTED>('/user/password', payload);
-  return data;
+  const { data REDACTED = await apiClient.put<{ message: string REDACTED>('/user/password', payload)
+  return data
 REDACTED
 
 export const userAPI = {
   getProfile,
   updateProfile,
-  changePassword,
-REDACTED;
+  changePassword
+REDACTED
 
-export default userAPI;
+export default userAPI

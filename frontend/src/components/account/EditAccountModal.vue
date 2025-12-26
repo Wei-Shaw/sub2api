@@ -1,19 +1,9 @@
 <template>
-  <Modal
-    :show="show"
-    :title="t('admin.accounts.editAccount')"
-    size="lg"
-    @close="handleClose"
-  >
+  <Modal :show="show" :title="t('admin.accounts.editAccount')" size="lg" @close="handleClose">
     <form v-if="account" @submit.prevent="handleSubmit" class="space-y-5">
       <div>
         <label class="input-label">{{ t('common.name') REDACTEDREDACTED</label>
-        <input
-          v-model="form.name"
-          type="text"
-          required
-          class="input"
-        />
+        <input v-model="form.name" type="text" required class="input" />
       </div>
 
       <!-- API Key fields (only for apikey type) -->
@@ -24,7 +14,13 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
-            :placeholder="account.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'"
+            :placeholder="
+              account.platform === 'openai'
+                ? 'https://api.openai.com'
+                : account.platform === 'gemini'
+                  ? 'https://generativelanguage.googleapis.com'
+                  : 'https://api.anthropic.com'
+            "
           />
           <p class="input-hint">{{ t('admin.accounts.baseUrlHint') REDACTEDREDACTED</p>
         </div>
@@ -34,17 +30,23 @@
             v-model="editApiKey"
             type="password"
             class="input font-mono"
-            :placeholder="account.platform === 'openai' ? 'sk-proj-...' : 'sk-ant-...'"
+            :placeholder="
+              account.platform === 'openai'
+                ? 'sk-proj-...'
+                : account.platform === 'gemini'
+                  ? 'AIza...'
+                  : 'sk-ant-...'
+            "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') REDACTEDREDACTED</p>
         </div>
 
-        <!-- Model Restriction Section -->
-        <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
+        <!-- Model Restriction Section (不适用于 Gemini) -->
+        <div v-if="account.platform !== 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
 
           <!-- Mode Toggle -->
-          <div class="flex gap-2 mb-4">
+          <div class="mb-4 flex gap-2">
             <button
               type="button"
               @click="modelRestrictionMode = 'whitelist'"
@@ -55,8 +57,18 @@
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
               ]"
             >
-              <svg class="w-4 h-4 inline mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                class="mr-1.5 inline h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
             </button>
@@ -70,8 +82,18 @@
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
               ]"
             >
-              <svg class="w-4 h-4 inline mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              <svg
+                class="mr-1.5 inline h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                />
               </svg>
               {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
             </button>
@@ -79,22 +101,36 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <div class="mb-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3">
+            <div class="mb-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
               <p class="text-xs text-blue-700 dark:text-blue-400">
-                <svg class="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  class="mr-1 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
                 {{ t('admin.accounts.selectAllowedModels') REDACTEDREDACTED
               </p>
             </div>
 
             <!-- Model Checkbox List -->
-            <div class="grid grid-cols-2 gap-2 mb-3">
+            <div class="mb-3 grid grid-cols-2 gap-2">
               <label
                 v-for="model in commonModels"
                 :key="model.value"
                 class="flex cursor-pointer items-center rounded-lg border p-3 transition-all hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
-                :class="allowedModels.includes(model.value) ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200'"
+                :class="
+                  allowedModels.includes(model.value)
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                    : 'border-gray-200'
+                "
               >
                 <input
                   type="checkbox"
@@ -108,23 +144,35 @@
 
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') REDACTEDREDACTED</span>
+              <span v-if="allowedModels.length === 0">{{
+                t('admin.accounts.supportsAllModels')
+              REDACTEDREDACTED</span>
             </p>
           </div>
 
           <!-- Mapping Mode -->
           <div v-else>
-            <div class="mb-3 rounded-lg bg-purple-50 dark:bg-purple-900/20 p-3">
+            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
               <p class="text-xs text-purple-700 dark:text-purple-400">
-                <svg class="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  class="mr-1 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
                 {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
               </p>
             </div>
 
             <!-- Model Mapping List -->
-            <div v-if="modelMappings.length > 0" class="space-y-2 mb-3">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="index"
@@ -136,8 +184,18 @@
                   class="input flex-1"
                   :placeholder="t('admin.accounts.requestModel')"
                 />
-                <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                <svg
+                  class="h-4 w-4 flex-shrink-0 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                  />
                 </svg>
                 <input
                   v-model="mapping.to"
@@ -148,10 +206,15 @@
                 <button
                   type="button"
                   @click="removeModelMapping(index)"
-                  class="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                 >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
                   </svg>
                 </button>
               </div>
@@ -160,10 +223,20 @@
             <button
               type="button"
               @click="addModelMapping"
-              class="w-full rounded-lg border-2 border-dashed border-gray-300 dark:border-dark-500 px-4 py-2 text-gray-600 dark:text-gray-400 transition-colors hover:border-gray-400 hover:text-gray-700 dark:hover:border-dark-400 dark:hover:text-gray-300 mb-3"
+              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
             >
-              <svg class="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              <svg
+                class="mr-1 inline h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
               {{ t('admin.accounts.addMapping') REDACTEDREDACTED
             </button>
@@ -175,10 +248,7 @@
                 :key="preset.label"
                 type="button"
                 @click="addPresetMapping(preset.from, preset.to)"
-                :class="[
-                  'rounded-lg px-3 py-1 text-xs transition-colors',
-                  preset.color
-                ]"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
               >
                 + {{ preset.label REDACTEDREDACTED
               </button>
@@ -187,11 +257,13 @@
         </div>
 
         <!-- Custom Error Codes Section -->
-        <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
-          <div class="flex items-center justify-between mb-3">
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.customErrorCodes') REDACTEDREDACTED</label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.accounts.customErrorCodesHint') REDACTEDREDACTED</p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.customErrorCodesHint') REDACTEDREDACTED
+              </p>
             </div>
             <button
               type="button"
@@ -211,10 +283,20 @@
           </div>
 
           <div v-if="customErrorCodesEnabled" class="space-y-3">
-            <div class="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3">
+            <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
               <p class="text-xs text-amber-700 dark:text-amber-400">
-                <svg class="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <svg
+                  class="mr-1 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
                 {{ t('admin.accounts.customErrorCodesWarning') REDACTEDREDACTED
               </p>
@@ -230,7 +312,7 @@
                 :class="[
                   'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
                   selectedErrorCodes.includes(code.value)
-                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 ring-1 ring-red-500'
+                    ? 'bg-red-100 text-red-700 ring-1 ring-red-500 dark:bg-red-900/30 dark:text-red-400'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
                 ]"
               >
@@ -249,13 +331,14 @@
                 :placeholder="t('admin.accounts.enterErrorCode')"
                 @keyup.enter="addCustomErrorCode"
               />
-              <button
-                type="button"
-                @click="addCustomErrorCode"
-                class="btn btn-secondary px-3"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              <button type="button" @click="addCustomErrorCode" class="btn btn-secondary px-3">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 4v16m8-8H4"
+                  />
                 </svg>
               </button>
             </div>
@@ -265,7 +348,7 @@
               <span
                 v-for="code in selectedErrorCodes.sort((a, b) => a - b)"
                 :key="code"
-                class="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:text-red-400"
+                class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
               >
                 {{ code REDACTEDREDACTED
                 <button
@@ -273,8 +356,13 @@
                   @click="removeErrorCode(code)"
                   class="hover:text-red-900 dark:hover:text-red-300"
                 >
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </span>
@@ -284,14 +372,50 @@
             </div>
           </div>
         </div>
+
+        <!-- Gemini 模型说明 -->
+        <div v-if="account.platform === 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
+            <div class="flex items-start gap-3">
+              <svg
+                class="h-5 w-5 flex-shrink-0 text-blue-600 dark:text-blue-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <div>
+                <p class="text-sm font-medium text-blue-800 dark:text-blue-300">
+                  {{ t('admin.accounts.gemini.modelPassthrough') REDACTEDREDACTED
+                </p>
+                <p class="mt-1 text-xs text-blue-700 dark:text-blue-400">
+                  {{ t('admin.accounts.gemini.modelPassthroughDesc') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Intercept Warmup Requests (Anthropic only) -->
-      <div v-if="account?.platform === 'anthropic'" class="border-t border-gray-200 dark:border-dark-600 pt-4">
+      <div
+        v-if="account?.platform === 'anthropic'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
         <div class="flex items-center justify-between">
           <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.interceptWarmupRequests') REDACTEDREDACTED</label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ t('admin.accounts.interceptWarmupRequestsDesc') REDACTEDREDACTED</p>
+            <label class="input-label mb-0">{{
+              t('admin.accounts.interceptWarmupRequests')
+            REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.interceptWarmupRequestsDesc') REDACTEDREDACTED
+            </p>
           </div>
           <button
             type="button"
@@ -313,69 +437,52 @@
 
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') REDACTEDREDACTED</label>
-        <ProxySelector
-          v-model="form.proxy_id"
-          :proxies="proxies"
-        />
+        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
-          <input
-            v-model.number="form.concurrency"
-            type="number"
-            min="1"
-            class="input"
-          />
+          <input v-model.number="form.concurrency" type="number" min="1" class="input" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
-          <input
-            v-model.number="form.priority"
-            type="number"
-            min="1"
-            class="input"
-          />
+          <input v-model.number="form.priority" type="number" min="1" class="input" />
         </div>
       </div>
 
       <div>
         <label class="input-label">{{ t('common.status') REDACTEDREDACTED</label>
-        <Select
-          v-model="form.status"
-          :options="statusOptions"
-        />
+        <Select v-model="form.status" :options="statusOptions" />
       </div>
 
       <!-- Group Selection -->
-      <GroupSelector
-        v-model="form.group_ids"
-        :groups="groups"
-        :platform="account?.platform"
-      />
+      <GroupSelector v-model="form.group_ids" :groups="groups" :platform="account?.platform" />
 
       <div class="flex justify-end gap-3 pt-4">
-        <button
-          @click="handleClose"
-          type="button"
-          class="btn btn-secondary"
-        >
+        <button @click="handleClose" type="button" class="btn btn-secondary">
           {{ t('common.cancel') REDACTEDREDACTED
         </button>
-        <button
-          type="submit"
-          :disabled="submitting"
-          class="btn btn-primary"
-        >
+        <button type="submit" :disabled="submitting" class="btn btn-primary">
           <svg
             v-if="submitting"
-            class="animate-spin -ml-1 mr-2 h-4 w-4"
+            class="-ml-1 mr-2 h-4 w-4 animate-spin"
             fill="none"
             viewBox="0 0 24 24"
           >
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
           {{ submitting ? t('admin.accounts.updating') : t('common.update') REDACTEDREDACTED
         </button>
@@ -452,39 +559,150 @@ const openaiModels = [
   { value: 'gpt-5-2025-08-07', label: 'GPT-5' REDACTED
 ]
 
+// Common models for whitelist - Gemini
+const geminiModels = [
+  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' REDACTED,
+  { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' REDACTED,
+  { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' REDACTED,
+  { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' REDACTED
+]
+
 // Computed: current models based on platform
 const commonModels = computed(() => {
-  return props.account?.platform === 'openai' ? openaiModels : anthropicModels
+  if (props.account?.platform === 'openai') return openaiModels
+  if (props.account?.platform === 'gemini') return geminiModels
+  return anthropicModels
 REDACTED)
 
 // Preset mappings for quick add - Anthropic
 const anthropicPresetMappings = [
-  { label: 'Sonnet 4', from: 'claude-sonnet-4-20250514', to: 'claude-sonnet-4-20250514', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' REDACTED,
-  { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-5-20250929', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
-  { label: 'Opus 4.5', from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-5-20251101', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
-  { label: 'Haiku 3.5', from: 'claude-3-5-haiku-20241022', to: 'claude-3-5-haiku-20241022', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' REDACTED,
-  { label: 'Haiku 4.5', from: 'REDACTED', to: 'REDACTED', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
-  { label: 'Opus->Sonnet', from: 'claude-opus-4-5-20251101', to: 'claude-sonnet-4-5-20250929', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED
+  {
+    label: 'Sonnet 4',
+    from: 'claude-sonnet-4-20250514',
+    to: 'claude-sonnet-4-20250514',
+    color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400'
+  REDACTED,
+  {
+    label: 'Sonnet 4.5',
+    from: 'claude-sonnet-4-5-20250929',
+    to: 'claude-sonnet-4-5-20250929',
+    color:
+      'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400'
+  REDACTED,
+  {
+    label: 'Opus 4.5',
+    from: 'claude-opus-4-5-20251101',
+    to: 'claude-opus-4-5-20251101',
+    color:
+      'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400'
+  REDACTED,
+  {
+    label: 'Haiku 3.5',
+    from: 'claude-3-5-haiku-20241022',
+    to: 'claude-3-5-haiku-20241022',
+    color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
+  REDACTED,
+  {
+    label: 'Haiku 4.5',
+    from: 'REDACTED',
+    to: 'REDACTED',
+    color:
+      'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+  REDACTED,
+  {
+    label: 'Opus->Sonnet',
+    from: 'claude-opus-4-5-20251101',
+    to: 'claude-sonnet-4-5-20250929',
+    color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
+  REDACTED
 ]
 
 // Preset mappings for quick add - OpenAI
 const openaiPresetMappings = [
-  { label: 'GPT-5.2', from: 'gpt-5.2-2025-12-11', to: 'gpt-5.2-2025-12-11', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' REDACTED,
-  { label: 'GPT-5.2 Codex', from: 'gpt-5.2-codex', to: 'gpt-5.2-codex', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' REDACTED,
-  { label: 'GPT-5.1 Codex', from: 'gpt-5.1-codex', to: 'gpt-5.1-codex', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
-  { label: 'Codex Max', from: 'gpt-5.1-codex-max', to: 'gpt-5.1-codex-max', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
-  { label: 'Codex Mini', from: 'gpt-5.1-codex-mini', to: 'gpt-5.1-codex-mini', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
-  { label: 'Max->Codex', from: 'gpt-5.1-codex-max', to: 'gpt-5.1-codex', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED
+  {
+    label: 'GPT-5.2',
+    from: 'gpt-5.2-2025-12-11',
+    to: 'gpt-5.2-2025-12-11',
+    color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
+  REDACTED,
+  {
+    label: 'GPT-5.2 Codex',
+    from: 'gpt-5.2-codex',
+    to: 'gpt-5.2-codex',
+    color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400'
+  REDACTED,
+  {
+    label: 'GPT-5.1 Codex',
+    from: 'gpt-5.1-codex',
+    to: 'gpt-5.1-codex',
+    color:
+      'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400'
+  REDACTED,
+  {
+    label: 'Codex Max',
+    from: 'gpt-5.1-codex-max',
+    to: 'gpt-5.1-codex-max',
+    color:
+      'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400'
+  REDACTED,
+  {
+    label: 'Codex Mini',
+    from: 'gpt-5.1-codex-mini',
+    to: 'gpt-5.1-codex-mini',
+    color:
+      'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+  REDACTED,
+  {
+    label: 'Max->Codex',
+    from: 'gpt-5.1-codex-max',
+    to: 'gpt-5.1-codex',
+    color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
+  REDACTED
+]
+
+// Preset mappings for quick add - Gemini
+const geminiPresetMappings = [
+  {
+    label: 'Flash',
+    from: 'gemini-2.0-flash',
+    to: 'gemini-2.0-flash',
+    color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400'
+  REDACTED,
+  {
+    label: 'Flash Lite',
+    from: 'gemini-2.0-flash-lite',
+    to: 'gemini-2.0-flash-lite',
+    color:
+      'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400'
+  REDACTED,
+  {
+    label: '1.5 Pro',
+    from: 'gemini-1.5-pro',
+    to: 'gemini-1.5-pro',
+    color:
+      'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400'
+  REDACTED,
+  {
+    label: '1.5 Flash',
+    from: 'gemini-1.5-flash',
+    to: 'gemini-1.5-flash',
+    color:
+      'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+  REDACTED
 ]
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => {
-  return props.account?.platform === 'openai' ? openaiPresetMappings : anthropicPresetMappings
+  if (props.account?.platform === 'openai') return openaiPresetMappings
+  if (props.account?.platform === 'gemini') return geminiPresetMappings
+  return anthropicPresetMappings
 REDACTED)
 
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
-  return props.account?.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+  if (props.account?.platform === 'openai') return 'https://api.openai.com'
+  if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
+  return 'https://api.anthropic.com'
 REDACTED)
 
 // Common HTTP error codes for quick selection
@@ -513,71 +731,85 @@ const statusOptions = computed(() => [
 ])
 
 // Watchers
-watch(() => props.account, (newAccount) => {
-  if (newAccount) {
-    form.name = newAccount.name
-    form.proxy_id = newAccount.proxy_id
-    form.concurrency = newAccount.concurrency
-    form.priority = newAccount.priority
-    form.status = newAccount.status as 'active' | 'inactive'
-    form.group_ids = newAccount.group_ids || []
+watch(
+  () => props.account,
+  (newAccount) => {
+    if (newAccount) {
+      form.name = newAccount.name
+      form.proxy_id = newAccount.proxy_id
+      form.concurrency = newAccount.concurrency
+      form.priority = newAccount.priority
+      form.status = newAccount.status as 'active' | 'inactive'
+      form.group_ids = newAccount.group_ids || []
 
-    // Load intercept warmup requests setting (applies to all account types)
-    const credentials = newAccount.credentials as Record<string, unknown> | undefined
-    interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
+      // Load intercept warmup requests setting (applies to all account types)
+      const credentials = newAccount.credentials as Record<string, unknown> | undefined
+      interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
 
-    // Initialize API Key fields for apikey type
-    if (newAccount.type === 'apikey' && newAccount.credentials) {
-      const credentials = newAccount.credentials as Record<string, unknown>
-      const platformDefaultUrl = newAccount.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
-      editBaseUrl.value = credentials.base_url as string || platformDefaultUrl
+      // Initialize API Key fields for apikey type
+      if (newAccount.type === 'apikey' && newAccount.credentials) {
+        const credentials = newAccount.credentials as Record<string, unknown>
+        const platformDefaultUrl =
+          newAccount.platform === 'openai'
+            ? 'https://api.openai.com'
+            : newAccount.platform === 'gemini'
+              ? 'https://generativelanguage.googleapis.com'
+              : 'https://api.anthropic.com'
+        editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
-      // Load model mappings and detect mode
-      const existingMappings = credentials.model_mapping as Record<string, string> | undefined
-      if (existingMappings && typeof existingMappings === 'object') {
-        const entries = Object.entries(existingMappings)
+        // Load model mappings and detect mode
+        const existingMappings = credentials.model_mapping as Record<string, string> | undefined
+        if (existingMappings && typeof existingMappings === 'object') {
+          const entries = Object.entries(existingMappings)
 
-        // Detect if this is whitelist mode (all from === to) or mapping mode
-        const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+          // Detect if this is whitelist mode (all from === to) or mapping mode
+          const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
 
-        if (isWhitelistMode) {
-          // Whitelist mode: populate allowedModels
-          modelRestrictionMode.value = 'whitelist'
-          allowedModels.value = entries.map(([from]) => from)
-          modelMappings.value = []
+          if (isWhitelistMode) {
+            // Whitelist mode: populate allowedModels
+            modelRestrictionMode.value = 'whitelist'
+            allowedModels.value = entries.map(([from]) => from)
+            modelMappings.value = []
+          REDACTED else {
+            // Mapping mode: populate modelMappings
+            modelRestrictionMode.value = 'mapping'
+            modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+            allowedModels.value = []
+          REDACTED
         REDACTED else {
-          // Mapping mode: populate modelMappings
-          modelRestrictionMode.value = 'mapping'
-          modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+          // No mappings: default to whitelist mode with empty selection (allow all)
+          modelRestrictionMode.value = 'whitelist'
+          modelMappings.value = []
           allowedModels.value = []
         REDACTED
+
+        // Load custom error codes
+        customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
+        const existingErrorCodes = credentials.custom_error_codes as number[] | undefined
+        if (existingErrorCodes && Array.isArray(existingErrorCodes)) {
+          selectedErrorCodes.value = [...existingErrorCodes]
+        REDACTED else {
+          selectedErrorCodes.value = []
+        REDACTED
       REDACTED else {
-        // No mappings: default to whitelist mode with empty selection (allow all)
+        const platformDefaultUrl =
+          newAccount.platform === 'openai'
+            ? 'https://api.openai.com'
+            : newAccount.platform === 'gemini'
+              ? 'https://generativelanguage.googleapis.com'
+              : 'https://api.anthropic.com'
+        editBaseUrl.value = platformDefaultUrl
         modelRestrictionMode.value = 'whitelist'
         modelMappings.value = []
         allowedModels.value = []
-      REDACTED
-
-      // Load custom error codes
-      customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
-      const existingErrorCodes = credentials.custom_error_codes as number[] | undefined
-      if (existingErrorCodes && Array.isArray(existingErrorCodes)) {
-        selectedErrorCodes.value = [...existingErrorCodes]
-      REDACTED else {
+        customErrorCodesEnabled.value = false
         selectedErrorCodes.value = []
       REDACTED
-    REDACTED else {
-      const platformDefaultUrl = newAccount.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
-      editBaseUrl.value = platformDefaultUrl
-      modelRestrictionMode.value = 'whitelist'
-      modelMappings.value = []
-      allowedModels.value = []
-      customErrorCodesEnabled.value = false
-      selectedErrorCodes.value = []
+      editApiKey.value = ''
     REDACTED
-    editApiKey.value = ''
-  REDACTED
-REDACTED, { immediate: true REDACTED)
+  REDACTED,
+  { immediate: true REDACTED
+)
 
 // Model mapping helpers
 const addModelMapping = () => {
@@ -589,7 +821,7 @@ const removeModelMapping = (index: number) => {
 REDACTED
 
 const addPresetMapping = (from: string, to: string) => {
-  const exists = modelMappings.value.some(m => m.from === from)
+  const exists = modelMappings.value.some((m) => m.from === from)
   if (exists) {
     appStore.showInfo(t('admin.accounts.mappingExists', { model: from REDACTED))
     return
@@ -666,7 +898,7 @@ const handleSubmit = async () => {
 
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
-      const currentCredentials = props.account.credentials as Record<string, unknown> || {REDACTED
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {REDACTED
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
       const modelMapping = buildModelMappingObject()
 
@@ -707,7 +939,7 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     REDACTED else {
       // For oauth/setup-token types, only update intercept_warmup_requests if changed
-      const currentCredentials = props.account.credentials as Record<string, unknown> || {REDACTED
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {REDACTED
       const newCredentials: Record<string, unknown> = { ...currentCredentials REDACTED
 
       if (interceptWarmupRequests.value) {

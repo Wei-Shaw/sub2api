@@ -69,6 +69,7 @@ func provideCleanup(
 	emailQueue *service.EmailQueueService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
+	geminiOAuth *service.GeminiOAuthService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -97,6 +98,10 @@ func provideCleanup(
 	REDACTED
 			{"OpenAIOAuthService", func() error {
 				openaiOAuth.Stop()
+				return nil
+	REDACTED
+			{"GeminiOAuthService", func() error {
+				geminiOAuth.Stop()
 				return nil
 	REDACTED
 			{"Redis", func() error {

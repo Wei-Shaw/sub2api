@@ -1,0 +1,21 @@
+package geminicli
+
+// Model represents a selectable Gemini model for UI/testing purposes.
+// Keep JSON fields consistent with existing frontend expectations.
+type Model struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	DisplayName string `json:"display_name"`
+	CreatedAt   string `json:"created_at"`
+REDACTED
+
+// DefaultModels is the curated Gemini model list used by the admin UI "test account" flow.
+var DefaultModels = []Model{
+	{ID: "gemini-3-pro", Type: "model", DisplayName: "Gemini 3 Pro", CreatedAt: ""REDACTED,
+	{ID: "gemini-3-flash", Type: "model", DisplayName: "Gemini 3 Flash", CreatedAt: ""REDACTED,
+	{ID: "gemini-2.5-pro", Type: "model", DisplayName: "Gemini 2.5 Pro", CreatedAt: ""REDACTED,
+	{ID: "gemini-2.5-flash", Type: "model", DisplayName: "Gemini 2.5 Flash", CreatedAt: ""REDACTED,
+REDACTED
+
+// DefaultTestModel is the default model to preselect in test flows.
+const DefaultTestModel = "gemini-2.5-pro"

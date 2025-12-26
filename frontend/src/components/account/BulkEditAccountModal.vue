@@ -2,9 +2,9 @@
   <Modal :show="show" :title="t('admin.accounts.bulkEdit.title')" size="lg" @close="handleClose">
     <form class="space-y-5" @submit.prevent="handleSubmit">
       <!-- Info -->
-      <div class="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
+      <div class="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
         <p class="text-sm text-blue-700 dark:text-blue-400">
-          <svg class="w-5 h-5 inline mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg class="mr-1.5 inline h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -17,8 +17,8 @@
       </div>
 
       <!-- Base URL (API Key only) -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
-        <div class="flex items-center justify-between mb-3">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.baseUrl') REDACTEDREDACTED</label>
           <input
             v-model="enableBaseUrl"
@@ -31,7 +31,7 @@
           type="text"
           :disabled="!enableBaseUrl"
           class="input"
-          :class="!enableBaseUrl && 'opacity-50 cursor-not-allowed'"
+          :class="!enableBaseUrl && 'cursor-not-allowed opacity-50'"
           :placeholder="t('admin.accounts.bulkEdit.baseUrlPlaceholder')"
         />
         <p class="input-hint">
@@ -40,8 +40,8 @@
       </div>
 
       <!-- Model restriction -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
-        <div class="flex items-center justify-between mb-3">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
           <input
             v-model="enableModelRestriction"
@@ -50,21 +50,21 @@
           />
         </div>
 
-        <div :class="!enableModelRestriction && 'opacity-50 pointer-events-none'">
+        <div :class="!enableModelRestriction && 'pointer-events-none opacity-50'">
           <!-- Mode Toggle -->
-          <div class="flex gap-2 mb-4">
+          <div class="mb-4 flex gap-2">
             <button
               type="button"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'whitelist'
                   ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500',
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
               ]"
               @click="modelRestrictionMode = 'whitelist'"
             >
               <svg
-                class="w-4 h-4 inline mr-1.5"
+                class="mr-1.5 inline h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -84,12 +84,12 @@
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'mapping'
                   ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500',
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
               ]"
               @click="modelRestrictionMode = 'mapping'"
             >
               <svg
-                class="w-4 h-4 inline mr-1.5"
+                class="mr-1.5 inline h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -107,10 +107,10 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <div class="mb-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3">
+            <div class="mb-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
               <p class="text-xs text-blue-700 dark:text-blue-400">
                 <svg
-                  class="w-4 h-4 inline mr-1"
+                  class="mr-1 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -127,7 +127,7 @@
             </div>
 
             <!-- Model Checkbox List -->
-            <div class="grid grid-cols-2 gap-2 mb-3">
+            <div class="mb-3 grid grid-cols-2 gap-2">
               <label
                 v-for="model in allModels"
                 :key="model.value"
@@ -158,10 +158,10 @@
 
           <!-- Mapping Mode -->
           <div v-else>
-            <div class="mb-3 rounded-lg bg-purple-50 dark:bg-purple-900/20 p-3">
+            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
               <p class="text-xs text-purple-700 dark:text-purple-400">
                 <svg
-                  class="w-4 h-4 inline mr-1"
+                  class="mr-1 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -178,7 +178,7 @@
             </div>
 
             <!-- Model Mapping List -->
-            <div v-if="modelMappings.length > 0" class="space-y-2 mb-3">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="index"
@@ -191,7 +191,7 @@
                   :placeholder="t('admin.accounts.requestModel')"
                 />
                 <svg
-                  class="w-4 h-4 text-gray-400 flex-shrink-0"
+                  class="h-4 w-4 flex-shrink-0 text-gray-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -211,10 +211,10 @@
                 />
                 <button
                   type="button"
-                  class="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                   @click="removeModelMapping(index)"
                 >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -228,11 +228,11 @@
 
             <button
               type="button"
-              class="w-full rounded-lg border-2 border-dashed border-gray-300 dark:border-dark-500 px-4 py-2 text-gray-600 dark:text-gray-400 transition-colors hover:border-gray-400 hover:text-gray-700 dark:hover:border-dark-400 dark:hover:text-gray-300 mb-3"
+              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
               @click="addModelMapping"
             >
               <svg
-                class="w-4 h-4 inline mr-1"
+                class="mr-1 inline h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -264,11 +264,11 @@
       </div>
 
       <!-- Custom error codes -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
-        <div class="flex items-center justify-between mb-3">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.customErrorCodes') REDACTEDREDACTED</label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.customErrorCodesHint') REDACTEDREDACTED
             </p>
           </div>
@@ -280,10 +280,10 @@
         </div>
 
         <div v-if="enableCustomErrorCodes" class="space-y-3">
-          <div class="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3">
+          <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
             <p class="text-xs text-amber-700 dark:text-amber-400">
               <svg
-                class="w-4 h-4 inline mr-1"
+                class="mr-1 inline h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -308,8 +308,8 @@
               :class="[
                 'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
                 selectedErrorCodes.includes(code.value)
-                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 ring-1 ring-red-500'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500',
+                  ? 'bg-red-100 text-red-700 ring-1 ring-red-500 dark:bg-red-900/30 dark:text-red-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
               ]"
               @click="toggleErrorCode(code.value)"
             >
@@ -329,7 +329,7 @@
               @keyup.enter="addCustomErrorCode"
             />
             <button type="button" class="btn btn-secondary px-3" @click="addCustomErrorCode">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -345,7 +345,7 @@
             <span
               v-for="code in selectedErrorCodes.sort((a, b) => a - b)"
               :key="code"
-              class="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/30 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:text-red-400"
+              class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
             >
               {{ code REDACTEDREDACTED
               <button
@@ -353,7 +353,7 @@
                 class="hover:text-red-900 dark:hover:text-red-300"
                 @click="removeErrorCode(code)"
               >
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -371,13 +371,13 @@
       </div>
 
       <!-- Intercept warmup requests (Anthropic only) -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between">
           <div class="flex-1 pr-4">
             <label class="input-label mb-0">{{
               t('admin.accounts.interceptWarmupRequests')
             REDACTEDREDACTED</label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.interceptWarmupRequestsDesc') REDACTEDREDACTED
             </p>
           </div>
@@ -392,14 +392,14 @@
             type="button"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              interceptWarmupRequests ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600',
+              interceptWarmupRequests ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
             ]"
             @click="interceptWarmupRequests = !interceptWarmupRequests"
           >
             <span
               :class="[
                 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                interceptWarmupRequests ? 'translate-x-5' : 'translate-x-0',
+                interceptWarmupRequests ? 'translate-x-5' : 'translate-x-0'
               ]"
             />
           </button>
@@ -407,8 +407,8 @@
       </div>
 
       <!-- Proxy -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
-        <div class="flex items-center justify-between mb-3">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') REDACTEDREDACTED</label>
           <input
             v-model="enableProxy"
@@ -416,15 +416,15 @@
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
-        <div :class="!enableProxy && 'opacity-50 pointer-events-none'">
+        <div :class="!enableProxy && 'pointer-events-none opacity-50'">
           <ProxySelector v-model="proxyId" :proxies="proxies" />
         </div>
       </div>
 
       <!-- Concurrency & Priority -->
-      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 dark:border-dark-600 pt-4">
+      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600">
         <div>
-          <div class="flex items-center justify-between mb-3">
+          <div class="mb-3 flex items-center justify-between">
             <label class="input-label mb-0">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
             <input
               v-model="enableConcurrency"
@@ -438,11 +438,11 @@
             min="1"
             :disabled="!enableConcurrency"
             class="input"
-            :class="!enableConcurrency && 'opacity-50 cursor-not-allowed'"
+            :class="!enableConcurrency && 'cursor-not-allowed opacity-50'"
           />
         </div>
         <div>
-          <div class="flex items-center justify-between mb-3">
+          <div class="mb-3 flex items-center justify-between">
             <label class="input-label mb-0">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
             <input
               v-model="enablePriority"
@@ -456,14 +456,14 @@
             min="1"
             :disabled="!enablePriority"
             class="input"
-            :class="!enablePriority && 'opacity-50 cursor-not-allowed'"
+            :class="!enablePriority && 'cursor-not-allowed opacity-50'"
           />
         </div>
       </div>
 
       <!-- Status -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
-        <div class="flex items-center justify-between mb-3">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('common.status') REDACTEDREDACTED</label>
           <input
             v-model="enableStatus"
@@ -471,14 +471,14 @@
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
-        <div :class="!enableStatus && 'opacity-50 pointer-events-none'">
+        <div :class="!enableStatus && 'pointer-events-none opacity-50'">
           <Select v-model="status" :options="statusOptions" />
         </div>
       </div>
 
       <!-- Groups -->
-      <div class="border-t border-gray-200 dark:border-dark-600 pt-4">
-        <div class="flex items-center justify-between mb-3">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('nav.groups') REDACTEDREDACTED</label>
           <input
             v-model="enableGroups"
@@ -486,7 +486,7 @@
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
         </div>
-        <div :class="!enableGroups && 'opacity-50 pointer-events-none'">
+        <div :class="!enableGroups && 'pointer-events-none opacity-50'">
           <GroupSelector v-model="groupIds" :groups="groups" />
         </div>
       </div>
@@ -499,7 +499,7 @@
         <button type="submit" :disabled="submitting" class="btn btn-primary">
           <svg
             v-if="submitting"
-            class="animate-spin -ml-1 mr-2 h-4 w-4"
+            class="-ml-1 mr-2 h-4 w-4 animate-spin"
             fill="none"
             viewBox="0 0 24 24"
           >
@@ -601,7 +601,7 @@ const allModels = [
   { value: 'gpt-5.1-codex', label: 'GPT-5.1 Codex' REDACTED,
   { value: 'gpt-5.1-2025-11-13', label: 'GPT-5.1' REDACTED,
   { value: 'gpt-5.1-codex-mini', label: 'GPT-5.1 Codex Mini' REDACTED,
-  { value: 'gpt-5-2025-08-07', label: 'GPT-5' REDACTED,
+  { value: 'gpt-5-2025-08-07', label: 'GPT-5' REDACTED
 ]
 
 // Preset mappings (combined Anthropic + OpenAI)
@@ -610,48 +610,46 @@ const presetMappings = [
     label: 'Sonnet 4',
     from: 'claude-sonnet-4-20250514',
     to: 'claude-sonnet-4-20250514',
-    color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400',
+    color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400'
   REDACTED,
   {
     label: 'Sonnet 4.5',
     from: 'claude-sonnet-4-5-20250929',
     to: 'claude-sonnet-4-5-20250929',
     color:
-      'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400',
+      'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400'
   REDACTED,
   {
     label: 'Opus 4.5',
     from: 'claude-opus-4-5-20251101',
     to: 'claude-opus-4-5-20251101',
     color:
-      'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400',
+      'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400'
   REDACTED,
   {
     label: 'Opus->Sonnet',
     from: 'claude-opus-4-5-20251101',
     to: 'claude-sonnet-4-5-20250929',
-    color:
-      'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400',
+    color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
   REDACTED,
   {
     label: 'GPT-5.2',
     from: 'gpt-5.2-2025-12-11',
     to: 'gpt-5.2-2025-12-11',
-    color:
-      'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400',
+    color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
   REDACTED,
   {
     label: 'GPT-5.2 Codex',
     from: 'gpt-5.2-codex',
     to: 'gpt-5.2-codex',
-    color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400',
+    color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400'
   REDACTED,
   {
     label: 'Max->Codex',
     from: 'gpt-5.1-codex-max',
     to: 'gpt-5.1-codex',
-    color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400',
-  REDACTED,
+    color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400'
+  REDACTED
 ]
 
 // Common HTTP error codes
@@ -662,12 +660,12 @@ const commonErrorCodes = [
   { value: 500, label: 'Server Error' REDACTED,
   { value: 502, label: 'Bad Gateway' REDACTED,
   { value: 503, label: 'Unavailable' REDACTED,
-  { value: 529, label: 'Overloaded' REDACTED,
+  { value: 529, label: 'Overloaded' REDACTED
 ]
 
 const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') REDACTED,
-  { value: 'inactive', label: t('common.inactive') REDACTED,
+  { value: 'inactive', label: t('common.inactive') REDACTED
 ])
 
 // Model mapping helpers

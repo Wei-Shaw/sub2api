@@ -55,7 +55,10 @@ export function useOpenAIOAuth() {
         payload.redirect_uri = redirectUri
       REDACTED
 
-      const response = await adminAPI.accounts.generateAuthUrl('/admin/openai/generate-auth-url', payload)
+      const response = await adminAPI.accounts.generateAuthUrl(
+        '/admin/openai/generate-auth-url',
+        payload
+      )
       authUrl.value = response.auth_url
       sessionId.value = response.session_id
       return true

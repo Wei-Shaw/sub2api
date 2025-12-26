@@ -9,24 +9,24 @@
       @click.self="handleClose"
     >
       <!-- Modal panel -->
-      <div
-        :class="['modal-content', sizeClasses]"
-        @click.stop
-      >
+      <div :class="['modal-content', sizeClasses]" @click.stop>
         <!-- Header -->
         <div class="modal-header">
-          <h3
-            id="modal-title"
-            class="modal-title"
-          >
+          <h3 id="modal-title" class="modal-title">
             {{ title REDACTEDREDACTED
           </h3>
           <button
             @click="emit('close')"
-            class="p-2 -mr-2 rounded-xl text-gray-400 dark:text-dark-500 hover:text-gray-600 dark:hover:text-dark-300 hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors"
+            class="-mr-2 rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700 dark:hover:text-dark-300"
             aria-label="Close modal"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+            <svg
+              class="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+            >
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -38,10 +38,7 @@
         </div>
 
         <!-- Footer -->
-        <div
-          v-if="$slots.footer"
-          class="modal-footer"
-        >
+        <div v-if="$slots.footer" class="modal-footer">
           <slot name="footer"></slot>
         </div>
       </div>

@@ -13,7 +13,7 @@ export default {
     tags: {
       subscriptionToApi: '订阅转 API',
       stickySession: '粘性会话',
-      realtimeBilling: '实时计费',
+      realtimeBilling: '实时计费'
     REDACTED,
     features: {
       unifiedGateway: '统一 API 网关',
@@ -21,17 +21,17 @@ export default {
       multiAccount: '多账号池',
       multiAccountDesc: '智能负载均衡管理多个上游账号，支持 OAuth 和 API Key 认证。',
       balanceQuota: '余额与配额',
-      balanceQuotaDesc: '基于 Token 的精确计费和用量追踪，支持配额管理和兑换码充值。',
+      balanceQuotaDesc: '基于 Token 的精确计费和用量追踪，支持配额管理和兑换码充值。'
     REDACTED,
     providers: {
       title: '支持的服务商',
       description: 'AI 服务的统一 API 接口',
       supported: '已支持',
-      soon: '即将推出',
+      soon: '即将推出'
     REDACTED,
     footer: {
-      allRightsReserved: '保留所有权利。',
-    REDACTED,
+      allRightsReserved: '保留所有权利。'
+    REDACTED
   REDACTED,
 
   // Common
@@ -81,7 +81,7 @@ export default {
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
     saving: '保存中...',
-    refresh: '刷新',
+    refresh: '刷新'
   REDACTED,
 
   // Navigation
@@ -105,7 +105,7 @@ export default {
     expand: '展开',
     logout: '退出登录',
     github: 'GitHub',
-    mySubscriptions: '我的订阅',
+    mySubscriptions: '我的订阅'
   REDACTED,
 
   // Auth
@@ -139,7 +139,7 @@ export default {
     accountCreatedSuccess: '账户创建成功！欢迎使用 {siteNameREDACTED。',
     turnstileExpired: '验证已过期，请重试',
     turnstileFailed: '验证失败，请重试',
-    completeVerification: '请完成验证',
+    completeVerification: '请完成验证'
   REDACTED,
 
   // Dashboard
@@ -182,12 +182,12 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值',
+    addBalanceWithCode: '使用兑换码充值'
   REDACTED,
 
   // Groups (shared)
   groups: {
-    subscription: '订阅',
+    subscription: '订阅'
   REDACTED,
 
   // API Keys
@@ -253,7 +253,7 @@ export default {
     customKeyHint: '仅允许字母、数字、下划线和连字符，最少16个字符。',
     customKeyTooShort: '自定义密钥至少需要16个字符',
     customKeyInvalidChars: '自定义密钥只能包含字母、数字、下划线和连字符',
-    customKeyRequired: '请输入自定义密钥',
+    customKeyRequired: '请输入自定义密钥'
   REDACTED,
 
   // Usage
@@ -294,7 +294,7 @@ export default {
     exportSuccess: '使用数据导出成功',
     billingType: '消费类型',
     balance: '余额',
-    subscription: '订阅',
+    subscription: '订阅'
   REDACTED,
 
   // Redeem
@@ -334,7 +334,7 @@ export default {
     subscriptionDays: '{daysREDACTED 天',
     days: '天',
     codeRedeemSuccess: '兑换成功！',
-    failedToRedeem: '兑换失败，请检查兑换码后重试。',
+    failedToRedeem: '兑换失败，请检查兑换码后重试。'
   REDACTED,
 
   // Profile
@@ -365,12 +365,12 @@ export default {
     passwordsNotMatch: '两次输入的密码不一致',
     passwordTooShort: '密码至少需要 8 个字符',
     passwordChangeSuccess: '密码修改成功',
-    passwordChangeFailed: '密码修改失败',
+    passwordChangeFailed: '密码修改失败'
   REDACTED,
 
   // Empty States
   empty: {
-    noData: '暂无数据',
+    noData: '暂无数据'
   REDACTED,
 
   // Pagination
@@ -384,7 +384,7 @@ export default {
     previous: '上一页',
     next: '下一页',
     perPage: '每页',
-    goToPage: '跳转到第 {pageREDACTED 页',
+    goToPage: '跳转到第 {pageREDACTED 页'
   REDACTED,
 
   // Errors
@@ -396,7 +396,7 @@ export default {
     serverError: '服务器错误',
     networkError: '网络错误',
     timeout: '请求超时',
-    tryAgain: '请重试',
+    tryAgain: '请重试'
   REDACTED,
 
   // Dates
@@ -414,7 +414,7 @@ export default {
     startDate: '开始日期',
     endDate: '结束日期',
     apply: '应用',
-    selectDateRange: '选择日期范围',
+    selectDateRange: '选择日期范围'
   REDACTED,
 
   // Admin
@@ -469,7 +469,7 @@ export default {
       configureAiAccounts: '配置 AI 平台账号',
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
-      failedToLoad: '加载仪表盘数据失败',
+      failedToLoad: '加载仪表盘数据失败'
     REDACTED,
 
     // Users Management
@@ -520,7 +520,7 @@ export default {
         concurrency: '并发数',
         status: '状态',
         created: '创建时间',
-        actions: '操作',
+        actions: '操作'
       REDACTED,
       today: '今日',
       total: '累计',
@@ -550,11 +550,11 @@ export default {
       deleteConfirm: "确定要删除用户 '{emailREDACTED' 吗？此操作无法撤销。",
       roles: {
         admin: '管理员',
-        user: '用户',
+        user: '用户'
       REDACTED,
       statuses: {
         active: '正常',
-        banned: '禁用',
+        banned: '禁用'
       REDACTED,
       form: {
         emailLabel: '邮箱',
@@ -573,7 +573,7 @@ export default {
         balanceLabel: '余额',
         concurrencyLabel: '并发数',
         statusLabel: '状态',
-        selectStatus: '选择状态',
+        selectStatus: '选择状态'
       REDACTED,
       adjustBalance: '调整余额',
       adjustConcurrency: '调整并发数',
@@ -617,7 +617,7 @@ export default {
       failedToDeposit: '充值失败',
       failedToWithdraw: '退款失败',
       useDepositWithdrawButtons: '请使用充值/退款按钮调整余额',
-      insufficientBalance: '余额不足，退款后余额不能为负数',
+      insufficientBalance: '余额不足，退款后余额不能为负数'
     REDACTED,
 
     // Groups Management
@@ -641,7 +641,7 @@ export default {
         accounts: '账号数',
         status: '状态',
         actions: '操作',
-        billingType: '计费类型',
+        billingType: '计费类型'
       REDACTED,
       form: {
         name: '名称',
@@ -663,16 +663,16 @@ export default {
         accountsPlaceholder: '选择账号（留空则不限制）',
         priorityLabel: '优先级',
         priorityHint: '数值越高优先级越高，用于账号调度',
-        statusLabel: '状态',
+        statusLabel: '状态'
       REDACTED,
       exclusive: {
         yes: '是',
-        no: '否',
+        no: '否'
       REDACTED,
       platforms: {
         all: '全部平台',
         claude: 'Claude',
-        openai: 'OpenAI',
+        openai: 'OpenAI'
       REDACTED,
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -718,8 +718,8 @@ export default {
         monthlyLimit: '每月限额（USD）',
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
-        noLimit: '无限制',
-      REDACTED,
+        noLimit: '无限制'
+      REDACTED
     REDACTED,
 
     // Subscriptions Management
@@ -745,7 +745,7 @@ export default {
       status: {
         active: '生效中',
         expired: '已过期',
-        revoked: '已撤销',
+        revoked: '已撤销'
       REDACTED,
       columns: {
         user: '用户',
@@ -753,13 +753,13 @@ export default {
         usage: '用量',
         expires: '到期时间',
         status: '状态',
-        actions: '操作',
+        actions: '操作'
       REDACTED,
       form: {
         user: '用户',
         group: '订阅分组',
         validityDays: '有效期（天）',
-        extendDays: '延长天数',
+        extendDays: '延长天数'
       REDACTED,
       selectUser: '选择用户',
       selectGroup: '选择订阅分组',
@@ -781,7 +781,7 @@ export default {
       failedToAssign: '分配订阅失败',
       failedToExtend: '延长订阅失败',
       failedToRevoke: '撤销订阅失败',
-      revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。",
+      revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。"
     REDACTED,
 
     // Accounts Management
@@ -838,23 +838,24 @@ export default {
         groups: '分组',
         usageWindows: '用量窗口',
         lastUsed: '最近使用',
-        actions: '操作',
+        actions: '操作'
       REDACTED,
       platforms: {
         claude: 'Claude',
         openai: 'OpenAI',
         anthropic: 'Anthropic',
+        gemini: 'Gemini'
       REDACTED,
       types: {
         oauth: 'OAuth',
         api_key: 'API Key',
-        cookie: 'Cookie',
+        cookie: 'Cookie'
       REDACTED,
       statuses: {
         active: '正常',
         inactive: '停用',
         error: '错误',
-        cooldown: '冷却中',
+        cooldown: '冷却中'
       REDACTED,
       form: {
         nameLabel: '账号名称',
@@ -869,7 +870,7 @@ export default {
         priorityHint: '数值越高优先级越高',
         weightLabel: '权重',
         weightHint: '用于负载均衡的权重值',
-        statusLabel: '状态',
+        statusLabel: '状态'
       REDACTED,
       filters: {
         platform: '平台',
@@ -877,7 +878,7 @@ export default {
         type: '类型',
         allTypes: '全部类型',
         status: '状态',
-        allStatuses: '全部状态',
+        allStatuses: '全部状态'
       REDACTED,
       saving: '保存中...',
       refreshing: '刷新中...',
@@ -892,7 +893,7 @@ export default {
         selectCurrentPage: '本页全选',
         clear: '清除选择',
         edit: '批量编辑账号',
-        delete: '批量删除',
+        delete: '批量删除'
       REDACTED,
       bulkEdit: {
         title: '批量编辑账号',
@@ -905,7 +906,7 @@ export default {
         partialSuccess: '部分更新成功：成功 {successREDACTED 个，失败 {failedREDACTED 个',
         failed: '批量更新失败',
         noSelection: '请选择要编辑的账号',
-        noFieldsSelected: '请至少选择一个要更新的字段',
+        noFieldsSelected: '请至少选择一个要更新的字段'
       REDACTED,
       bulkDeleteTitle: '批量删除账号',
       bulkDeleteConfirm: '确定要删除选中的 {countREDACTED 个账号吗？此操作无法撤销。',
@@ -1034,13 +1035,59 @@ export default {
           authCode: '授权链接或 Code',
           authCodePlaceholder:
             '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
-          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别'
         REDACTED,
+        // Gemini specific
+	        gemini: {
+	          title: 'Gemini 账户授权',
+	          followSteps: '请按照以下步骤完成 Gemini 账户的授权：',
+	          step1GenerateUrl: '生成授权链接',
+	          generateAuthUrl: '生成授权链接',
+	          projectIdLabel: 'Project ID（可选）',
+	          projectIdPlaceholder: '例如：my-gcp-project 或 cloud-ai-companion-xxxxx',
+	          projectIdHint: '留空则在兑换授权码后自动探测；若自动探测失败，可填写后重新生成授权链接再授权。',
+	          howToGetProjectId: '如何获取',
+	          step2OpenUrl: '在浏览器中打开链接并完成授权',
+	          openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
+	          step3EnterCode: '输入回调链接或 Code',
+	          authCodeDesc: '授权完成后，复制浏览器跳转后的回调链接（推荐）或仅复制 <code>code</code>，粘贴到下方即可。',
+	          authCode: '回调链接或 Code',
+	          authCodePlaceholder: '方式1（推荐）：粘贴回调链接\n方式2：仅粘贴 code 参数的值',
+	          authCodeHint: '系统会自动从链接中解析 code/state。',
+          redirectUri: 'Redirect URI',
+          redirectUriHint: '需要在 Google OAuth Client 中配置，且必须与此处完全一致。',
+          confirmRedirectUri: '我已在 Google OAuth Client 中配置了该 Redirect URI（必须完全一致）',
+          invalidRedirectUri: 'Redirect URI 必须是合法的 http(s) URL',
+	          redirectUriNotConfirmed: '请确认 Redirect URI 已在 Google OAuth Client 中正确配置',
+	          missingRedirectUri: '缺少 Redirect URI',
+	          failedToGenerateUrl: '生成 Gemini 授权链接失败',
+	          missingExchangeParams: '缺少 code / session_id / state',
+	          failedToExchangeCode: 'Gemini 授权码兑换失败',
+	          modelPassthrough: 'Gemini 直接转发模型',
+	          modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
+	          stateWarningTitle: '提示',
+	          stateWarningDesc: '建议粘贴完整回调链接（包含 code 和 state）。',
+	          oauthTypeLabel: 'OAuth 类型',
+	          needsProjectId: '适合 GCP 开发者',
+	          needsProjectIdDesc: '需 GCP 项目',
+	          noProjectIdNeeded: '适合普通用户',
+	          noProjectIdNeededDesc: '需管理员配置 OAuth Client',
+	          aiStudioNotConfiguredShort: '未配置',
+	          aiStudioNotConfiguredTip: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback（Consent Screen scopes 需包含 https://www.googleapis.com/auth/generative-language.retriever）',
+	          aiStudioNotConfigured: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback'
+	        REDACTED
+	      REDACTED,
+      // Gemini specific (platform-wide)
+      gemini: {
+        modelPassthrough: 'Gemini 直接转发模型',
+        modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
+        apiKeyHint: 'Your Gemini API Key（以 AIza 开头）'
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
       claudeCodeAccount: 'Claude Code 账号',
       openaiAccount: 'OpenAI 账号',
+      geminiAccount: 'Gemini 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
@@ -1058,9 +1105,9 @@ export default {
       copyOutput: '复制输出',
       startingTestForAccount: '开始测试账号：{nameREDACTED',
       testAccountTypeLabel: '账号类型：{typeREDACTED',
-      selectTestModel: '选择测试模型',
-      testModel: 'claude-sonnet-4-5-20250929',
-      testPrompt: '提示词："hi"',
+	      selectTestModel: '选择测试模型',
+	      testModel: '测试模型',
+	      testPrompt: '提示词："hi"',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
@@ -1092,8 +1139,8 @@ export default {
         todayTokens: '今日 Token',
         todayCost: '今日费用',
         usageTrend: '30天费用与请求趋势',
-        noData: '该账号暂无使用数据',
-      REDACTED,
+        noData: '该账号暂无使用数据'
+      REDACTED
     REDACTED,
 
     // Proxies Management
@@ -1112,17 +1159,17 @@ export default {
         priority: '优先级',
         status: '状态',
         lastCheck: '最近检测',
-        actions: '操作',
+        actions: '操作'
       REDACTED,
       protocols: {
         http: 'HTTP',
         https: 'HTTPS',
-        socks5: 'SOCKS5',
+        socks5: 'SOCKS5'
       REDACTED,
       statuses: {
         active: '正常',
         inactive: '停用',
-        error: '错误',
+        error: '错误'
       REDACTED,
       form: {
         nameLabel: '名称',
@@ -1138,13 +1185,13 @@ export default {
         passwordLabel: '密码（可选）',
         passwordPlaceholder: '请输入密码',
         priorityLabel: '优先级',
-        statusLabel: '状态',
+        statusLabel: '状态'
       REDACTED,
       filters: {
         protocol: '协议',
         allProtocols: '全部协议',
         status: '状态',
-        allStatuses: '全部状态',
+        allStatuses: '全部状态'
       REDACTED,
       // Additional keys used in ProxiesView
       allProtocols: '全部协议',
@@ -1203,7 +1250,7 @@ export default {
       failedToCreate: '创建代理失败',
       failedToUpdate: '更新代理失败',
       failedToTest: '测试代理失败',
-      deleteConfirm: "确定要删除代理 '{nameREDACTED' 吗？使用此代理的账号将被移除代理设置。",
+      deleteConfirm: "确定要删除代理 '{nameREDACTED' 吗？使用此代理的账号将被移除代理设置。"
     REDACTED,
 
     // Redeem Codes Management
@@ -1219,12 +1266,12 @@ export default {
         usedBy: '使用者',
         usedAt: '使用时间',
         createdAt: '创建时间',
-        actions: '操作',
+        actions: '操作'
       REDACTED,
       types: {
         balance: '余额',
         concurrency: '并发数',
-        subscription: '订阅',
+        subscription: '订阅'
       REDACTED,
       // 用于选择器和筛选器的直接键
       balance: '余额',
@@ -1267,7 +1314,7 @@ export default {
         unused: '未使用',
         used: '已使用',
         expired: '已过期',
-        disabled: '已禁用',
+        disabled: '已禁用'
       REDACTED,
       form: {
         typeLabel: '类型',
@@ -1281,14 +1328,14 @@ export default {
         countHint: '要生成的兑换码数量',
         prefixLabel: '前缀（可选）',
         prefixPlaceholder: '例如：GIFT',
-        expiresLabel: '过期时间（可选）',
+        expiresLabel: '过期时间（可选）'
       REDACTED,
       filters: {
         type: '类型',
         allTypes: '全部类型',
         status: '状态',
         allStatuses: '全部状态',
-        search: '搜索兑换码',
+        search: '搜索兑换码'
       REDACTED,
       generating: '生成中...',
       copyCode: '复制',
@@ -1306,7 +1353,7 @@ export default {
       failedToLoad: '加载兑换码列表失败',
       failedToGenerate: '生成兑换码失败',
       failedToUpdate: '更新兑换码失败',
-      failedToDelete: '删除兑换码失败',
+      failedToDelete: '删除兑换码失败'
     REDACTED,
 
     // Usage Records
@@ -1317,7 +1364,7 @@ export default {
       searchUserPlaceholder: '按邮箱搜索用户...',
       selectedUser: '已选择',
       user: '用户',
-      failedToLoad: '加载使用记录失败',
+      failedToLoad: '加载使用记录失败'
     REDACTED,
 
     // Settings
@@ -1330,7 +1377,7 @@ export default {
         enableRegistration: '开放注册',
         enableRegistrationHint: '允许新用户注册',
         emailVerification: '邮箱验证',
-        emailVerificationHint: '新用户注册时需要验证邮箱',
+        emailVerificationHint: '新用户注册时需要验证邮箱'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',
@@ -1340,7 +1387,7 @@ export default {
         siteKey: '站点密钥',
         secretKey: '私密密钥',
         siteKeyHint: '从 Cloudflare Dashboard 获取',
-        secretKeyHint: '服务端验证密钥（请保密）',
+        secretKeyHint: '服务端验证密钥（请保密）'
       REDACTED,
       defaults: {
         title: '用户默认设置',
@@ -1348,7 +1395,7 @@ export default {
         defaultBalance: '默认余额',
         defaultBalanceHint: '新用户的初始余额',
         defaultConcurrency: '默认并发数',
-        defaultConcurrencyHint: '新用户的最大并发请求数',
+        defaultConcurrencyHint: '新用户的最大并发请求数'
       REDACTED,
       site: {
         title: '站点设置',
@@ -1370,7 +1417,7 @@ export default {
         logoHint: 'PNG、JPG 或 SVG 格式，最大 300KB。建议：80x80px 正方形图片。',
         logoSizeError: '图片大小超过 300KB 限制（{sizeREDACTEDKB）',
         logoTypeError: '请选择图片文件',
-        logoReadError: '读取图片文件失败',
+        logoReadError: '读取图片文件失败'
       REDACTED,
       smtp: {
         title: 'SMTP 设置',
@@ -1385,7 +1432,7 @@ export default {
         fromEmail: '发件人邮箱',
         fromName: '发件人名称',
         useTls: '使用 TLS',
-        useTlsHint: '为 SMTP 连接启用 TLS 加密',
+        useTlsHint: '为 SMTP 连接启用 TLS 加密'
       REDACTED,
       testEmail: {
         title: '发送测试邮件',
@@ -1393,7 +1440,7 @@ export default {
         recipientEmail: '收件人邮箱',
         sendTestEmail: '发送测试邮件',
         sending: '发送中...',
-        enterRecipientHint: '请输入收件人邮箱地址',
+        enterRecipientHint: '请输入收件人邮箱地址'
       REDACTED,
       adminApiKey: {
         title: '管理员 API Key',
@@ -1415,7 +1462,7 @@ export default {
         keyCopied: '密钥已复制到剪贴板',
         keyWarning: '此密钥仅显示一次，请立即复制保存。',
         securityWarning: '警告：此密钥拥有完整的管理员权限，请妥善保管。',
-        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>',
+        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>'
       REDACTED,
       saveSettings: '保存设置',
       saving: '保存中...',
@@ -1425,8 +1472,8 @@ export default {
       failedToLoad: '加载设置失败',
       failedToSave: '保存设置失败',
       failedToTestSmtp: 'SMTP 连接测试失败',
-      failedToSendTestEmail: '发送测试邮件失败',
-    REDACTED,
+      failedToSendTestEmail: '发送测试邮件失败'
+    REDACTED
   REDACTED,
 
   // Subscription Progress (Header component)
@@ -1442,7 +1489,7 @@ export default {
     expiresToday: '今天到期',
     expiresTomorrow: '明天到期',
     viewAll: '查看全部订阅',
-    noSubscriptions: '暂无有效订阅',
+    noSubscriptions: '暂无有效订阅'
   REDACTED,
 
   // Version Badge
@@ -1466,7 +1513,7 @@ export default {
     restartRequired: '请重启服务以应用更新',
     restartNow: '立即重启',
     restarting: '正在重启...',
-    retry: '重试',
+    retry: '重试'
   REDACTED,
 
   // User Subscriptions Page
@@ -1478,7 +1525,7 @@ export default {
     status: {
       active: '有效',
       expired: '已过期',
-      revoked: '已撤销',
+      revoked: '已撤销'
     REDACTED,
     usage: '用量',
     expires: '到期时间',
@@ -1491,6 +1538,6 @@ export default {
     expiresOn: '{dateREDACTED 到期',
     resetIn: '{timeREDACTED 后重置',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {usedREDACTED / {limitREDACTED',
-  REDACTED,
+    usageOf: '已用 {usedREDACTED / {limitREDACTED'
+  REDACTED
 REDACTED

@@ -1,17 +1,21 @@
 <template>
   <div>
     <!-- Window stats row (above progress bar, left-right aligned with progress bar) -->
-    <div v-if="windowStats" class="flex items-center justify-between mb-0.5" :title="`5h 窗口用量统计`">
-      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400 cursor-help">
-        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+    <div
+      v-if="windowStats"
+      class="mb-0.5 flex items-center justify-between"
+      :title="`5h 窗口用量统计`"
+    >
+      <div
+        class="flex cursor-help items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400"
+      >
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatRequests REDACTEDREDACTED req
         </span>
-        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatTokens REDACTEDREDACTED
         </span>
-        <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
-          ${{ formatCost REDACTEDREDACTED
-        </span>
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"> ${{ formatCost REDACTEDREDACTED </span>
       </div>
     </div>
 
@@ -19,16 +23,13 @@
     <div class="flex items-center gap-1">
       <!-- Label badge (fixed width for alignment) -->
       <span
-        :class="[
-          'text-[10px] font-medium px-1 rounded w-[32px] text-center shrink-0',
-          labelClass
-        ]"
+        :class="['w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium', labelClass]"
       >
         {{ label REDACTEDREDACTED
       </span>
 
       <!-- Progress bar container -->
-      <div class="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shrink-0">
+      <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
         <div
           :class="['h-full transition-all duration-300', barClass]"
           :style="{ width: barWidth REDACTED"
@@ -36,12 +37,12 @@
       </div>
 
       <!-- Percentage -->
-      <span :class="['text-[10px] font-medium w-[32px] text-right shrink-0', textClass]">
+      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
         {{ displayPercent REDACTEDREDACTED
       </span>
 
       <!-- Reset time -->
-      <span v-if="resetsAt" class="text-[10px] text-gray-400 shrink-0">
+      <span v-if="resetsAt" class="shrink-0 text-[10px] text-gray-400">
         {{ formatResetTime REDACTEDREDACTED
       </span>
     </div>
@@ -54,7 +55,7 @@ import type { WindowStats REDACTED from '@/types'
 
 const props = defineProps<{
   label: string
-  utilization: number  // Percentage (0-100+)
+  utilization: number // Percentage (0-100+)
   resetsAt?: string | null
   color: 'indigo' | 'emerald' | 'purple'
   windowStats?: WindowStats | null

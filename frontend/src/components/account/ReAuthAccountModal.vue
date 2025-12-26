@@ -7,29 +7,55 @@
   >
     <div v-if="account" class="space-y-5">
       <!-- Account Info -->
-      <div class="rounded-lg border border-gray-200 dark:border-dark-600 bg-gray-50 dark:bg-dark-700 p-4">
+      <div
+        class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700"
+      >
         <div class="flex items-center gap-3">
-          <div :class="[
-            'flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br',
-            isOpenAI ? 'from-green-500 to-green-600' : 'from-orange-500 to-orange-600'
-          ]">
-            <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+          <div
+            :class="[
+              'flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br',
+              isOpenAI
+                ? 'from-green-500 to-green-600'
+                : isGemini
+                  ? 'from-blue-500 to-blue-600'
+                  : 'from-orange-500 to-orange-600'
+            ]"
+          >
+            <svg
+              class="h-5 w-5 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+              />
             </svg>
           </div>
           <div>
-            <span class="block font-semibold text-gray-900 dark:text-white">{{ account.name REDACTEDREDACTED</span>
+            <span class="block font-semibold text-gray-900 dark:text-white">{{
+              account.name
+            REDACTEDREDACTED</span>
             <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{ isOpenAI ? t('admin.accounts.openaiAccount') : t('admin.accounts.claudeCodeAccount') REDACTEDREDACTED
+              {{
+                isOpenAI
+                  ? t('admin.accounts.openaiAccount')
+                  : isGemini
+                    ? t('admin.accounts.geminiAccount')
+                    : t('admin.accounts.claudeCodeAccount')
+              REDACTEDREDACTED
             </span>
           </div>
         </div>
       </div>
 
       <!-- Add Method Selection (Claude only) -->
-      <div v-if="!isOpenAI">
+      <div v-if="isAnthropic">
         <label class="input-label">{{ t('admin.accounts.oauth.authMethod') REDACTEDREDACTED</label>
-        <div class="flex gap-4 mt-2">
+        <div class="mt-2 flex gap-4">
           <label class="flex cursor-pointer items-center">
             <input
               v-model="addMethod"
@@ -46,12 +72,119 @@
               value="setup-token"
               class="mr-2 text-primary-600 focus:ring-primary-500"
             />
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.setupTokenLongLived') REDACTEDREDACTED</span>
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{
+              t('admin.accounts.setupTokenLongLived')
+            REDACTEDREDACTED</span>
           </label>
         </div>
       </div>
 
-      <!-- OAuth Authorization Section -->
+      <!-- Gemini OAuth Type Selection -->
+      <div v-if="isGemini">
+        <label class="input-label">{{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED</label>
+        <div class="mt-2 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            @click="handleSelectGeminiOAuthType('code_assist')"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              geminiOAuthType === 'code_assist'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                : 'border-gray-200 hover:border-blue-300 dark:border-dark-600 dark:hover:border-blue-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 items-center justify-center rounded-lg',
+                geminiOAuthType === 'code_assist'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <svg
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"
+                />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">Code Assist</span>
+              <span class="block text-xs font-medium text-blue-600 dark:text-blue-400">{{
+                t('admin.accounts.oauth.gemini.needsProjectId')
+              REDACTEDREDACTED</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.oauth.gemini.needsProjectIdDesc')
+              REDACTEDREDACTED</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            :disabled="!geminiAIStudioOAuthEnabled"
+            @click="handleSelectGeminiOAuthType('ai_studio')"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
+              geminiOAuthType === 'ai_studio'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 items-center justify-center rounded-lg',
+                geminiOAuthType === 'ai_studio'
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <svg
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">AI Studio</span>
+              <span class="block text-xs font-medium text-purple-600 dark:text-purple-400">{{
+                t('admin.accounts.oauth.gemini.noProjectIdNeeded')
+              REDACTEDREDACTED</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.oauth.gemini.noProjectIdNeededDesc')
+              REDACTEDREDACTED</span>
+              <div v-if="!geminiAIStudioOAuthEnabled" class="group relative mt-1 inline-block">
+                <span
+                  class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                >
+                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') REDACTEDREDACTED
+                </span>
+                <div
+                  class="pointer-events-none absolute left-0 top-full z-10 mt-2 w-[28rem] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                >
+                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
         :add-method="addMethod"
@@ -59,22 +192,19 @@
         :session-id="currentSessionId"
         :loading="currentLoading"
         :error="currentError"
-        :show-help="!isOpenAI"
-        :show-proxy-warning="!isOpenAI"
-        :show-cookie-option="!isOpenAI"
+        :show-help="isAnthropic"
+        :show-proxy-warning="isAnthropic"
+        :show-cookie-option="isAnthropic"
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
-        :platform="isOpenAI ? 'openai' : 'anthropic'"
+        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : 'anthropic'"
+        :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
       />
 
       <div class="flex justify-between gap-3 pt-4">
-        <button
-          type="button"
-          class="btn btn-secondary"
-          @click="handleClose"
-        >
+        <button type="button" class="btn btn-secondary" @click="handleClose">
           {{ t('common.cancel') REDACTEDREDACTED
         </button>
         <button
@@ -86,14 +216,29 @@
         >
           <svg
             v-if="currentLoading"
-            class="animate-spin -ml-1 mr-2 h-4 w-4"
+            class="-ml-1 mr-2 h-4 w-4 animate-spin"
             fill="none"
             viewBox="0 0 24 24"
           >
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
-          {{ currentLoading ? t('admin.accounts.oauth.verifying') : t('admin.accounts.oauth.completeAuth') REDACTEDREDACTED
+          {{
+            currentLoading
+              ? t('admin.accounts.oauth.verifying')
+              : t('admin.accounts.oauth.completeAuth')
+          REDACTEDREDACTED
         </button>
       </div>
     </div>
@@ -105,8 +250,13 @@ import { ref, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import { useAccountOAuth, type AddMethod, type AuthInputMethod REDACTED from '@/composables/useAccountOAuth'
+import {
+  useAccountOAuth,
+  type AddMethod,
+  type AuthInputMethod
+REDACTED from '@/composables/useAccountOAuth'
 import { useOpenAIOAuth REDACTED from '@/composables/useOpenAIOAuth'
+import { useGeminiOAuth REDACTED from '@/composables/useGeminiOAuth'
 import type { Account REDACTED from '@/types'
 import Modal from '@/components/common/Modal.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
@@ -115,6 +265,8 @@ import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
 interface OAuthFlowExposed {
   authCode: string
+  oauthState: string
+  projectId: string
   sessionKey: string
   inputMethod: AuthInputMethod
   reset: () => void
@@ -137,53 +289,111 @@ const { t REDACTED = useI18n()
 // OAuth composables - use both Claude and OpenAI
 const claudeOAuth = useAccountOAuth()
 const openaiOAuth = useOpenAIOAuth()
+const geminiOAuth = useGeminiOAuth()
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 
 // State
 const addMethod = ref<AddMethod>('oauth')
+const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
+const geminiAIStudioOAuthEnabled = ref(false)
 
 // Computed - check if this is an OpenAI account
 const isOpenAI = computed(() => props.account?.platform === 'openai')
+const isGemini = computed(() => props.account?.platform === 'gemini')
+const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 
 // Computed - current OAuth state based on platform
-const currentAuthUrl = computed(() => isOpenAI.value ? openaiOAuth.authUrl.value : claudeOAuth.authUrl.value)
-const currentSessionId = computed(() => isOpenAI.value ? openaiOAuth.sessionId.value : claudeOAuth.sessionId.value)
-const currentLoading = computed(() => isOpenAI.value ? openaiOAuth.loading.value : claudeOAuth.loading.value)
-const currentError = computed(() => isOpenAI.value ? openaiOAuth.error.value : claudeOAuth.error.value)
+const currentAuthUrl = computed(() => {
+  if (isOpenAI.value) return openaiOAuth.authUrl.value
+  if (isGemini.value) return geminiOAuth.authUrl.value
+  return claudeOAuth.authUrl.value
+REDACTED)
+const currentSessionId = computed(() => {
+  if (isOpenAI.value) return openaiOAuth.sessionId.value
+  if (isGemini.value) return geminiOAuth.sessionId.value
+  return claudeOAuth.sessionId.value
+REDACTED)
+const currentLoading = computed(() => {
+  if (isOpenAI.value) return openaiOAuth.loading.value
+  if (isGemini.value) return geminiOAuth.loading.value
+  return claudeOAuth.loading.value
+REDACTED)
+const currentError = computed(() => {
+  if (isOpenAI.value) return openaiOAuth.error.value
+  if (isGemini.value) return geminiOAuth.error.value
+  return claudeOAuth.error.value
+REDACTED)
 
 // Computed
 const isManualInputMethod = computed(() => {
   // OpenAI always uses manual input (no cookie auth option)
-  return isOpenAI.value || oauthFlowRef.value?.inputMethod === 'manual'
+  return isOpenAI.value || isGemini.value || oauthFlowRef.value?.inputMethod === 'manual'
 REDACTED)
 
 const canExchangeCode = computed(() => {
   const authCode = oauthFlowRef.value?.authCode || ''
-  const sessionId = isOpenAI.value ? openaiOAuth.sessionId.value : claudeOAuth.sessionId.value
-  const loading = isOpenAI.value ? openaiOAuth.loading.value : claudeOAuth.loading.value
+  const sessionId = isOpenAI.value
+    ? openaiOAuth.sessionId.value
+    : isGemini.value
+      ? geminiOAuth.sessionId.value
+      : claudeOAuth.sessionId.value
+  const loading = isOpenAI.value
+    ? openaiOAuth.loading.value
+    : isGemini.value
+      ? geminiOAuth.loading.value
+      : claudeOAuth.loading.value
   return authCode.trim() && sessionId && !loading
 REDACTED)
 
 // Watchers
-watch(() => props.show, (newVal) => {
-  if (newVal && props.account) {
-    // Initialize addMethod based on current account type (Claude only)
-    if (!isOpenAI.value && (props.account.type === 'oauth' || props.account.type === 'setup-token')) {
-      addMethod.value = props.account.type as AddMethod
+watch(
+  () => props.show,
+  (newVal) => {
+    if (newVal && props.account) {
+      // Initialize addMethod based on current account type (Claude only)
+      if (
+        isAnthropic.value &&
+        (props.account.type === 'oauth' || props.account.type === 'setup-token')
+      ) {
+        addMethod.value = props.account.type as AddMethod
+      REDACTED
+      if (isGemini.value) {
+        const creds = (props.account.credentials || {REDACTED) as Record<string, unknown>
+        geminiOAuthType.value = creds.oauth_type === 'ai_studio' ? 'ai_studio' : 'code_assist'
+      REDACTED
+      if (isGemini.value) {
+        geminiOAuth.getCapabilities().then((caps) => {
+          geminiAIStudioOAuthEnabled.value = !!caps?.ai_studio_oauth_enabled
+          if (!geminiAIStudioOAuthEnabled.value && geminiOAuthType.value === 'ai_studio') {
+            geminiOAuthType.value = 'code_assist'
+          REDACTED
+        REDACTED)
+      REDACTED
+    REDACTED else {
+      resetState()
     REDACTED
-  REDACTED else {
-    resetState()
   REDACTED
-REDACTED)
+)
 
 // Methods
 const resetState = () => {
   addMethod.value = 'oauth'
+  geminiOAuthType.value = 'code_assist'
+  geminiAIStudioOAuthEnabled.value = false
   claudeOAuth.resetState()
   openaiOAuth.resetState()
+  geminiOAuth.resetState()
   oauthFlowRef.value?.reset()
+REDACTED
+
+const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'ai_studio') => {
+  if (oauthType === 'ai_studio' && !geminiAIStudioOAuthEnabled.value) {
+    appStore.showError(t('admin.accounts.oauth.gemini.aiStudioNotConfigured'))
+    return
+  REDACTED
+  geminiOAuthType.value = oauthType
 REDACTED
 
 const handleClose = () => {
@@ -195,6 +405,9 @@ const handleGenerateUrl = async () => {
 
   if (isOpenAI.value) {
     await openaiOAuth.generateAuthUrl(props.account.proxy_id)
+  REDACTED else if (isGemini.value) {
+    const projectId = geminiOAuthType.value === 'code_assist' ? oauthFlowRef.value?.projectId : undefined
+    await geminiOAuth.generateAuthUrl(props.account.proxy_id, projectId, geminiOAuthType.value)
   REDACTED else {
     await claudeOAuth.generateAuthUrl(addMethod.value, props.account.proxy_id)
   REDACTED
@@ -211,7 +424,11 @@ const handleExchangeCode = async () => {
     const sessionId = openaiOAuth.sessionId.value
     if (!sessionId) return
 
-    const tokenInfo = await openaiOAuth.exchangeAuthCode(authCode.trim(), sessionId, props.account.proxy_id)
+    const tokenInfo = await openaiOAuth.exchangeAuthCode(
+      authCode.trim(),
+      sessionId,
+      props.account.proxy_id
+    )
     if (!tokenInfo) return
 
     // Build credentials and extra info
@@ -236,6 +453,38 @@ const handleExchangeCode = async () => {
       openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
       appStore.showError(openaiOAuth.error.value)
     REDACTED
+  REDACTED else if (isGemini.value) {
+    const sessionId = geminiOAuth.sessionId.value
+    if (!sessionId) return
+
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || geminiOAuth.state.value
+    if (!stateToUse) return
+
+    const tokenInfo = await geminiOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId,
+      state: stateToUse,
+      proxyId: props.account.proxy_id,
+      oauthType: geminiOAuthType.value
+    REDACTED)
+    if (!tokenInfo) return
+
+    const credentials = geminiOAuth.buildCredentials(tokenInfo)
+
+    try {
+      await adminAPI.accounts.update(props.account.id, {
+        type: 'oauth',
+        credentials
+      REDACTED)
+      await adminAPI.accounts.clearError(props.account.id)
+      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+      emit('reauthorized')
+      handleClose()
+    REDACTED catch (error: any) {
+      geminiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+      appStore.showError(geminiOAuth.error.value)
+    REDACTED
   REDACTED else {
     // Claude OAuth flow
     const sessionId = claudeOAuth.sessionId.value
@@ -246,9 +495,10 @@ const handleExchangeCode = async () => {
 
     try {
       const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id REDACTED : {REDACTED
-      const endpoint = addMethod.value === 'oauth'
-        ? '/admin/accounts/exchange-code'
-        : '/admin/accounts/exchange-setup-token-code'
+      const endpoint =
+        addMethod.value === 'oauth'
+          ? '/admin/accounts/exchange-code'
+          : '/admin/accounts/exchange-setup-token-code'
 
       const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
         session_id: sessionId,
@@ -288,9 +538,10 @@ const handleCookieAuth = async (sessionKey: string) => {
 
   try {
     const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id REDACTED : {REDACTED
-    const endpoint = addMethod.value === 'oauth'
-      ? '/admin/accounts/cookie-auth'
-      : '/admin/accounts/setup-token-cookie-auth'
+    const endpoint =
+      addMethod.value === 'oauth'
+        ? '/admin/accounts/cookie-auth'
+        : '/admin/accounts/setup-token-cookie-auth'
 
     const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
       session_id: '',
@@ -314,7 +565,8 @@ const handleCookieAuth = async (sessionKey: string) => {
     emit('reauthorized')
     handleClose()
   REDACTED catch (error: any) {
-    claudeOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.cookieAuthFailed')
+    claudeOAuth.error.value =
+      error.response?.data?.detail || t('admin.accounts.oauth.cookieAuthFailed')
   REDACTED finally {
     claudeOAuth.loading.value = false
   REDACTED

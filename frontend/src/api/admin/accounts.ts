@@ -12,7 +12,7 @@ import type {
   AccountUsageInfo,
   WindowStats,
   ClaudeModel,
-  AccountUsageStatsResponse,
+  AccountUsageStatsResponse
 REDACTED from '@/types'
 
 /**
@@ -36,8 +36,8 @@ export async function list(
     params: {
       page,
       page_size: pageSize,
-      ...filters,
-    REDACTED,
+      ...filters
+    REDACTED
   REDACTED)
   return data
 REDACTED
@@ -129,7 +129,7 @@ REDACTED
  */
 export async function getStats(id: number, days: number = 30): Promise<AccountUsageStatsResponse> {
   const { data REDACTED = await apiClient.get<AccountUsageStatsResponse>(`/admin/accounts/${idREDACTED/stats`, {
-    params: { days REDACTED,
+    params: { days REDACTED
   REDACTED)
   return data
 REDACTED
@@ -254,7 +254,7 @@ REDACTED> {
     results: Array<{ account_id: number; success: boolean; error?: string REDACTED>
   REDACTED>('/admin/accounts/bulk-update', {
     account_ids: accountIds,
-    ...updates,
+    ...updates
   REDACTED)
   return data
 REDACTED
@@ -277,7 +277,7 @@ REDACTED
  */
 export async function setSchedulable(id: number, schedulable: boolean): Promise<Account> {
   const { data REDACTED = await apiClient.post<Account>(`/admin/accounts/${idREDACTED/schedulable`, {
-    schedulable,
+    schedulable
   REDACTED)
   return data
 REDACTED
@@ -335,7 +335,7 @@ export const accountsAPI = {
   batchCreate,
   batchUpdateCredentials,
   bulkUpdate,
-  syncFromCrs,
+  syncFromCrs
 REDACTED
 
 export default accountsAPI

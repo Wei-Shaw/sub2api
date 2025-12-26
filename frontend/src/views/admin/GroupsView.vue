@@ -10,17 +10,27 @@
           :title="t('common.refresh')"
         >
           <svg
-            :class="['w-5 h-5', loading ? 'animate-spin' : '']"
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"
+            :class="['h-5 w-5', loading ? 'animate-spin' : '']"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
           >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+            />
           </svg>
         </button>
-        <button
-          @click="showCreateModal = true"
-          class="btn btn-primary"
-        >
-          <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <button @click="showCreateModal = true" class="btn btn-primary">
+          <svg
+            class="mr-2 h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
           {{ t('admin.groups.createGroup') REDACTEDREDACTED
@@ -62,14 +72,16 @@
           <template #cell-platform="{ value REDACTED">
             <span
               :class="[
-                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
                 value === 'anthropic'
                   ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                  : value === 'openai'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
-              {{ value === 'anthropic' ? 'Anthropic' : 'OpenAI' REDACTEDREDACTED
+              {{ value === 'anthropic' ? 'Anthropic' : value === 'openai' ? 'OpenAI' : 'Gemini' REDACTEDREDACTED
             </span>
           </template>
 
@@ -78,24 +90,49 @@
               <!-- Type Badge -->
               <span
                 :class="[
-                  'inline-block px-2 py-0.5 rounded-full text-xs font-medium',
+                  'inline-block rounded-full px-2 py-0.5 text-xs font-medium',
                   row.subscription_type === 'subscription'
                     ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
                     : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                 ]"
               >
-                {{ row.subscription_type === 'subscription' ? t('admin.groups.subscription.subscription') : t('admin.groups.subscription.standard') REDACTEDREDACTED
+                {{
+                  row.subscription_type === 'subscription'
+                    ? t('admin.groups.subscription.subscription')
+                    : t('admin.groups.subscription.standard')
+                REDACTEDREDACTED
               </span>
               <!-- Subscription Limits - compact single line -->
-              <div v-if="row.subscription_type === 'subscription'" class="text-xs text-gray-500 dark:text-gray-400">
-                <template v-if="row.daily_limit_usd || row.weekly_limit_usd || row.monthly_limit_usd">
-                  <span v-if="row.daily_limit_usd">${{ row.daily_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitDay') REDACTEDREDACTED</span>
-                  <span v-if="row.daily_limit_usd && (row.weekly_limit_usd || row.monthly_limit_usd)" class="mx-1 text-gray-300 dark:text-gray-600">·</span>
-                  <span v-if="row.weekly_limit_usd">${{ row.weekly_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitWeek') REDACTEDREDACTED</span>
-                  <span v-if="row.weekly_limit_usd && row.monthly_limit_usd" class="mx-1 text-gray-300 dark:text-gray-600">·</span>
-                  <span v-if="row.monthly_limit_usd">${{ row.monthly_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitMonth') REDACTEDREDACTED</span>
+              <div
+                v-if="row.subscription_type === 'subscription'"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
+                <template
+                  v-if="row.daily_limit_usd || row.weekly_limit_usd || row.monthly_limit_usd"
+                >
+                  <span v-if="row.daily_limit_usd"
+                    >${{ row.daily_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitDay') REDACTEDREDACTED</span
+                  >
+                  <span
+                    v-if="row.daily_limit_usd && (row.weekly_limit_usd || row.monthly_limit_usd)"
+                    class="mx-1 text-gray-300 dark:text-gray-600"
+                    >·</span
+                  >
+                  <span v-if="row.weekly_limit_usd"
+                    >${{ row.weekly_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitWeek') REDACTEDREDACTED</span
+                  >
+                  <span
+                    v-if="row.weekly_limit_usd && row.monthly_limit_usd"
+                    class="mx-1 text-gray-300 dark:text-gray-600"
+                    >·</span
+                  >
+                  <span v-if="row.monthly_limit_usd"
+                    >${{ row.monthly_limit_usd REDACTEDREDACTED/{{ t('admin.groups.limitMonth') REDACTEDREDACTED</span
+                  >
                 </template>
-                <span v-else class="text-gray-400 dark:text-gray-500">{{ t('admin.groups.subscription.noLimit') REDACTEDREDACTED</span>
+                <span v-else class="text-gray-400 dark:text-gray-500">{{
+                  t('admin.groups.subscription.noLimit')
+                REDACTEDREDACTED</span>
               </div>
             </div>
           </template>
@@ -105,29 +142,21 @@
           </template>
 
           <template #cell-is_exclusive="{ value REDACTED">
-            <span
-              :class="[
-                'badge',
-                value ? 'badge-primary' : 'badge-gray'
-              ]"
-            >
+            <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
               {{ value ? t('admin.groups.exclusive') : t('admin.groups.public') REDACTEDREDACTED
             </span>
           </template>
 
           <template #cell-account_count="{ value REDACTED">
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-dark-600 dark:text-gray-300">
+            <span
+              class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
+            >
               {{ t('admin.groups.accountsCount', { count: value || 0 REDACTED) REDACTEDREDACTED
             </span>
           </template>
 
           <template #cell-status="{ value REDACTED">
-            <span
-              :class="[
-                'badge',
-                value === 'active' ? 'badge-success' : 'badge-danger'
-              ]"
-            >
+            <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-danger']">
               {{ value REDACTEDREDACTED
             </span>
           </template>
@@ -136,22 +165,40 @@
             <div class="flex items-center gap-1">
               <button
                 @click="handleEdit(row)"
-                class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 text-gray-500 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
                 :title="t('common.edit')"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+                  />
                 </svg>
               </button>
               <button
                 @click="handleDelete(row)"
-                class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                 :title="t('common.delete')"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                  />
                 </svg>
               </button>
             </div>
@@ -207,10 +254,7 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.groups.form.platform') REDACTEDREDACTED</label>
-          <Select
-            v-model="createForm.platform"
-            :options="platformOptions"
-          />
+          <Select v-model="createForm.platform" :options="platformOptions" />
           <p class="input-hint">{{ t('admin.groups.platformHint') REDACTEDREDACTED</p>
         </div>
         <div v-if="createForm.subscription_type !== 'subscription'">
@@ -236,7 +280,7 @@
           >
             <span
               :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow',
+                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
                 createForm.is_exclusive ? 'translate-x-6' : 'translate-x-1'
               ]"
             />
@@ -247,20 +291,22 @@
         </div>
 
         <!-- Subscription Configuration -->
-        <div class="border-t pt-4 mt-4">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">{{ t('admin.groups.subscription.title') REDACTEDREDACTED</h4>
+        <div class="mt-4 border-t pt-4">
+          <h4 class="mb-4 text-sm font-medium text-gray-900 dark:text-white">
+            {{ t('admin.groups.subscription.title') REDACTEDREDACTED
+          </h4>
 
           <div class="mb-4">
             <label class="input-label">{{ t('admin.groups.subscription.type') REDACTEDREDACTED</label>
-            <Select
-              v-model="createForm.subscription_type"
-              :options="subscriptionTypeOptions"
-            />
+            <Select v-model="createForm.subscription_type" :options="subscriptionTypeOptions" />
             <p class="input-hint">{{ t('admin.groups.subscription.typeHint') REDACTEDREDACTED</p>
           </div>
 
           <!-- Subscription limits (only show when subscription type is selected) -->
-          <div v-if="createForm.subscription_type === 'subscription'" class="space-y-4 pl-4 border-l-2 border-primary-200 dark:border-primary-800">
+          <div
+            v-if="createForm.subscription_type === 'subscription'"
+            class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
+          >
             <div>
               <label class="input-label">{{ t('admin.groups.subscription.dailyLimit') REDACTEDREDACTED</label>
               <input
@@ -298,26 +344,29 @@
         </div>
 
         <div class="flex justify-end gap-3 pt-4">
-          <button
-            @click="closeCreateModal"
-            type="button"
-            class="btn btn-secondary"
-          >
+          <button @click="closeCreateModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button
-            type="submit"
-            :disabled="submitting"
-            class="btn btn-primary"
-          >
+          <button type="submit" :disabled="submitting" class="btn btn-primary">
             <svg
               v-if="submitting"
-              class="animate-spin -ml-1 mr-2 h-4 w-4"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
               fill="none"
               viewBox="0 0 24 24"
             >
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             {{ submitting ? t('admin.groups.creating') : t('common.create') REDACTEDREDACTED
           </button>
@@ -335,28 +384,15 @@
       <form v-if="editingGroup" @submit.prevent="handleUpdateGroup" class="space-y-5">
         <div>
           <label class="input-label">{{ t('admin.groups.form.name') REDACTEDREDACTED</label>
-          <input
-            v-model="editForm.name"
-            type="text"
-            required
-            class="input"
-          />
+          <input v-model="editForm.name" type="text" required class="input" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.groups.form.description') REDACTEDREDACTED</label>
-          <textarea
-            v-model="editForm.description"
-            rows="3"
-            class="input"
-          ></textarea>
+          <textarea v-model="editForm.description" rows="3" class="input"></textarea>
         </div>
         <div>
           <label class="input-label">{{ t('admin.groups.form.platform') REDACTEDREDACTED</label>
-          <Select
-            v-model="editForm.platform"
-            :options="platformOptions"
-            :disabled="true"
-          />
+          <Select v-model="editForm.platform" :options="platformOptions" :disabled="true" />
           <p class="input-hint">{{ t('admin.groups.platformNotEditable') REDACTEDREDACTED</p>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
@@ -381,7 +417,7 @@
           >
             <span
               :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow',
+                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
                 editForm.is_exclusive ? 'translate-x-6' : 'translate-x-1'
               ]"
             />
@@ -392,15 +428,14 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.groups.form.status') REDACTEDREDACTED</label>
-          <Select
-            v-model="editForm.status"
-            :options="editStatusOptions"
-          />
+          <Select v-model="editForm.status" :options="editStatusOptions" />
         </div>
 
         <!-- Subscription Configuration -->
-        <div class="border-t pt-4 mt-4">
-          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">{{ t('admin.groups.subscription.title') REDACTEDREDACTED</h4>
+        <div class="mt-4 border-t pt-4">
+          <h4 class="mb-4 text-sm font-medium text-gray-900 dark:text-white">
+            {{ t('admin.groups.subscription.title') REDACTEDREDACTED
+          </h4>
 
           <div class="mb-4">
             <label class="input-label">{{ t('admin.groups.subscription.type') REDACTEDREDACTED</label>
@@ -413,7 +448,10 @@
           </div>
 
           <!-- Subscription limits (only show when subscription type is selected) -->
-          <div v-if="editForm.subscription_type === 'subscription'" class="space-y-4 pl-4 border-l-2 border-primary-200 dark:border-primary-800">
+          <div
+            v-if="editForm.subscription_type === 'subscription'"
+            class="space-y-4 border-l-2 border-primary-200 pl-4 dark:border-primary-800"
+          >
             <div>
               <label class="input-label">{{ t('admin.groups.subscription.dailyLimit') REDACTEDREDACTED</label>
               <input
@@ -451,26 +489,29 @@
         </div>
 
         <div class="flex justify-end gap-3 pt-4">
-          <button
-            @click="closeEditModal"
-            type="button"
-            class="btn btn-secondary"
-          >
+          <button @click="closeEditModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button
-            type="submit"
-            :disabled="submitting"
-            class="btn btn-primary"
-          >
+          <button type="submit" :disabled="submitting" class="btn btn-primary">
             <svg
               v-if="submitting"
-              class="animate-spin -ml-1 mr-2 h-4 w-4"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
               fill="none"
               viewBox="0 0 24 24"
             >
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             {{ submitting ? t('admin.groups.updating') : t('common.update') REDACTEDREDACTED
           </button>
@@ -537,13 +578,15 @@ const exclusiveOptions = computed(() => [
 
 const platformOptions = computed(() => [
   { value: 'anthropic', label: 'Anthropic' REDACTED,
-  { value: 'openai', label: 'OpenAI' REDACTED
+  { value: 'openai', label: 'OpenAI' REDACTED,
+  { value: 'gemini', label: 'Gemini' REDACTED
 ])
 
 const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.groups.allPlatforms') REDACTED,
   { value: 'anthropic', label: 'Anthropic' REDACTED,
-  { value: 'openai', label: 'OpenAI' REDACTED
+  { value: 'openai', label: 'OpenAI' REDACTED,
+  { value: 'gemini', label: 'Gemini' REDACTED
 ])
 
 const editStatusOptions = computed(() => [
@@ -616,15 +659,11 @@ REDACTED)
 const loadGroups = async () => {
   loading.value = true
   try {
-    const response = await adminAPI.groups.list(
-      pagination.page,
-      pagination.page_size,
-      {
-        platform: (filters.platform as GroupPlatform) || undefined,
-        status: filters.status as any,
-        is_exclusive: filters.is_exclusive ? filters.is_exclusive === 'true' : undefined
-      REDACTED
-    )
+    const response = await adminAPI.groups.list(pagination.page, pagination.page_size, {
+      platform: (filters.platform as GroupPlatform) || undefined,
+      status: filters.status as any,
+      is_exclusive: filters.is_exclusive ? filters.is_exclusive === 'true' : undefined
+    REDACTED)
     groups.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
@@ -727,12 +766,15 @@ const confirmDelete = async () => {
 REDACTED
 
 // 监听 subscription_type 变化，订阅模式时重置 rate_multiplier 为 1，is_exclusive 为 true
-watch(() => createForm.subscription_type, (newVal) => {
-  if (newVal === 'subscription') {
-    createForm.rate_multiplier = 1.0
-    createForm.is_exclusive = true
+watch(
+  () => createForm.subscription_type,
+  (newVal) => {
+    if (newVal === 'subscription') {
+      createForm.rate_multiplier = 1.0
+      createForm.is_exclusive = true
+    REDACTED
   REDACTED
-REDACTED)
+)
 
 onMounted(() => {
   loadGroups()

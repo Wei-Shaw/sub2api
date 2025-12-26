@@ -5,9 +5,11 @@ Vue 3 layout components for the Sub2API frontend, built with Composition API, Ty
 ## Components
 
 ### 1. AppLayout.vue
+
 Main application layout with sidebar and header.
 
 **Usage:**
+
 ```vue
 <template>
   <AppLayout>
@@ -18,11 +20,12 @@ Main application layout with sidebar and header.
 </template>
 
 <script setup lang="ts">
-import { AppLayout REDACTED from '@/components/layout';
+import { AppLayout REDACTED from '@/components/layout'
 </script>
 ```
 
 **Features:**
+
 - Responsive sidebar (collapsible)
 - Fixed header at top
 - Main content area with slot
@@ -31,9 +34,11 @@ import { AppLayout REDACTED from '@/components/layout';
 ---
 
 ### 2. AppSidebar.vue
+
 Navigation sidebar with user and admin sections.
 
 **Features:**
+
 - Logo/brand at top
 - User navigation links:
   - Dashboard
@@ -58,9 +63,11 @@ Navigation sidebar with user and admin sections.
 ---
 
 ### 3. AppHeader.vue
+
 Top header with user info and actions.
 
 **Features:**
+
 - Mobile menu toggle button
 - Page title (from route meta or slot)
 - User balance display (desktop only)
@@ -72,12 +79,11 @@ Top header with user info and actions.
 - Responsive design
 
 **Usage with custom title:**
+
 ```vue
 <template>
   <AppLayout>
-    <template #title>
-      Custom Page Title
-    </template>
+    <template #title> Custom Page Title </template>
 
     <!-- Your content -->
   </AppLayout>
@@ -89,14 +95,16 @@ Top header with user info and actions.
 ---
 
 ### 4. AuthLayout.vue
+
 Simple centered layout for authentication pages (login/register).
 
 **Usage:**
+
 ```vue
 <template>
   <AuthLayout>
     <!-- Login/Register form content -->
-    <h2 class="text-2xl font-bold mb-6">Login</h2>
+    <h2 class="mb-6 text-2xl font-bold">Login</h2>
 
     <form @submit.prevent="handleLogin">
       <!-- Form fields -->
@@ -106,16 +114,14 @@ Simple centered layout for authentication pages (login/register).
     <template #footer>
       <p>
         Don't have an account?
-        <router-link to="/register" class="text-indigo-600 hover:underline">
-          Sign up
-        </router-link>
+        <router-link to="/register" class="text-indigo-600 hover:underline"> Sign up </router-link>
       </p>
     </template>
   </AuthLayout>
 </template>
 
 <script setup lang="ts">
-import { AuthLayout REDACTED from '@/components/layout';
+import { AuthLayout REDACTED from '@/components/layout'
 
 function handleLogin() {
   // Login logic
@@ -124,6 +130,7 @@ REDACTED
 ```
 
 **Features:**
+
 - Centered card container
 - Gradient background
 - Logo/brand at top
@@ -143,15 +150,15 @@ const routes = [
   {
     path: '/dashboard',
     component: DashboardView,
-    meta: { title: 'Dashboard' REDACTED,
+    meta: { title: 'Dashboard' REDACTED
   REDACTED,
   {
     path: '/api-keys',
     component: ApiKeysView,
-    meta: { title: 'API Keys' REDACTED,
-  REDACTED,
+    meta: { title: 'API Keys' REDACTED
+  REDACTED
   // ...
-];
+]
 ```
 
 ---
@@ -173,10 +180,7 @@ All components use TailwindCSS utility classes. Make sure your `tailwind.config.
 
 ```js
 module.exports = {
-  content: [
-    './index.html',
-    './src/**/*.{vue,js,ts,jsx,tsxREDACTED',
-  ],
+  content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsxREDACTED']
   // ...
 REDACTED
 ```
@@ -186,6 +190,7 @@ REDACTED
 ## Icons
 
 Components use HTML entity icons for simplicity:
+
 - &#128200; Chart (Dashboard)
 - &#128273; Key (API Keys)
 - &#128202; Bar Chart (Usage)
@@ -205,6 +210,7 @@ You can replace these with your preferred icon library (e.g., Heroicons, Font Aw
 ## Mobile Responsiveness
 
 All components are fully responsive:
+
 - **AppSidebar**: Fixed positioning on desktop, hidden by default on mobile
 - **AppHeader**: Shows mobile menu toggle on small screens, hides balance display
 - **AuthLayout**: Adapts padding and card size for mobile devices

@@ -70,6 +70,10 @@ func (a *Account) IsOAuth() bool {
 	return a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken
 REDACTED
 
+func (a *Account) IsGemini() bool {
+	return a.Platform == PlatformGemini
+REDACTED
+
 func (a *Account) CanGetUsage() bool {
 	return a.Type == AccountTypeOAuth
 REDACTED

@@ -3,8 +3,8 @@
  * Defines all application routes with lazy loading and navigation guards
  */
 
-import { createRouter, createWebHistory, type RouteRecordRaw REDACTED from 'vue-router';
-import { useAuthStore REDACTED from '@/stores/auth';
+import { createRouter, createWebHistory, type RouteRecordRaw REDACTED from 'vue-router'
+import { useAuthStore REDACTED from '@/stores/auth'
 
 /**
  * Route definitions with lazy loading
@@ -17,8 +17,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/setup/SetupWizardView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Setup',
-    REDACTED,
+      title: 'Setup'
+    REDACTED
   REDACTED,
 
   // ==================== Public Routes ====================
@@ -28,8 +28,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/HomeView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Home',
-    REDACTED,
+      title: 'Home'
+    REDACTED
   REDACTED,
   {
     path: '/login',
@@ -37,8 +37,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/LoginView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Login',
-    REDACTED,
+      title: 'Login'
+    REDACTED
   REDACTED,
   {
     path: '/register',
@@ -46,8 +46,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/RegisterView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Register',
-    REDACTED,
+      title: 'Register'
+    REDACTED
   REDACTED,
   {
     path: '/email-verify',
@@ -55,14 +55,23 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/EmailVerifyView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Verify Email',
-    REDACTED,
+      title: 'Verify Email'
+    REDACTED
+  REDACTED,
+  {
+    path: '/auth/callback',
+    name: 'OAuthCallback',
+    component: () => import('@/views/auth/OAuthCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'OAuth Callback'
+    REDACTED
   REDACTED,
 
   // ==================== User Routes ====================
   {
     path: '/',
-    redirect: '/home',
+    redirect: '/home'
   REDACTED,
   {
     path: '/dashboard',
@@ -73,8 +82,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Dashboard',
       titleKey: 'dashboard.title',
-      descriptionKey: 'dashboard.welcomeMessage',
-    REDACTED,
+      descriptionKey: 'dashboard.welcomeMessage'
+    REDACTED
   REDACTED,
   {
     path: '/keys',
@@ -85,8 +94,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'API Keys',
       titleKey: 'keys.title',
-      descriptionKey: 'keys.description',
-    REDACTED,
+      descriptionKey: 'keys.description'
+    REDACTED
   REDACTED,
   {
     path: '/usage',
@@ -97,8 +106,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Usage Records',
       titleKey: 'usage.title',
-      descriptionKey: 'usage.description',
-    REDACTED,
+      descriptionKey: 'usage.description'
+    REDACTED
   REDACTED,
   {
     path: '/redeem',
@@ -109,8 +118,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Redeem Code',
       titleKey: 'redeem.title',
-      descriptionKey: 'redeem.description',
-    REDACTED,
+      descriptionKey: 'redeem.description'
+    REDACTED
   REDACTED,
   {
     path: '/profile',
@@ -121,8 +130,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'Profile',
       titleKey: 'profile.title',
-      descriptionKey: 'profile.description',
-    REDACTED,
+      descriptionKey: 'profile.description'
+    REDACTED
   REDACTED,
   {
     path: '/subscriptions',
@@ -133,14 +142,14 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: false,
       title: 'My Subscriptions',
       titleKey: 'userSubscriptions.title',
-      descriptionKey: 'userSubscriptions.description',
-    REDACTED,
+      descriptionKey: 'userSubscriptions.description'
+    REDACTED
   REDACTED,
 
   // ==================== Admin Routes ====================
   {
     path: '/admin',
-    redirect: '/admin/dashboard',
+    redirect: '/admin/dashboard'
   REDACTED,
   {
     path: '/admin/dashboard',
@@ -151,8 +160,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Admin Dashboard',
       titleKey: 'admin.dashboard.title',
-      descriptionKey: 'admin.dashboard.description',
-    REDACTED,
+      descriptionKey: 'admin.dashboard.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/users',
@@ -163,8 +172,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'User Management',
       titleKey: 'admin.users.title',
-      descriptionKey: 'admin.users.description',
-    REDACTED,
+      descriptionKey: 'admin.users.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/groups',
@@ -175,8 +184,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Group Management',
       titleKey: 'admin.groups.title',
-      descriptionKey: 'admin.groups.description',
-    REDACTED,
+      descriptionKey: 'admin.groups.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/subscriptions',
@@ -187,8 +196,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Subscription Management',
       titleKey: 'admin.subscriptions.title',
-      descriptionKey: 'admin.subscriptions.description',
-    REDACTED,
+      descriptionKey: 'admin.subscriptions.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/accounts',
@@ -199,8 +208,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
-      descriptionKey: 'admin.accounts.description',
-    REDACTED,
+      descriptionKey: 'admin.accounts.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/proxies',
@@ -211,8 +220,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Proxy Management',
       titleKey: 'admin.proxies.title',
-      descriptionKey: 'admin.proxies.description',
-    REDACTED,
+      descriptionKey: 'admin.proxies.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/redeem',
@@ -223,8 +232,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Redeem Code Management',
       titleKey: 'admin.redeem.title',
-      descriptionKey: 'admin.redeem.description',
-    REDACTED,
+      descriptionKey: 'admin.redeem.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/settings',
@@ -235,8 +244,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'System Settings',
       titleKey: 'admin.settings.title',
-      descriptionKey: 'admin.settings.description',
-    REDACTED,
+      descriptionKey: 'admin.settings.description'
+    REDACTED
   REDACTED,
   {
     path: '/admin/usage',
@@ -247,8 +256,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Usage Records',
       titleKey: 'admin.usage.title',
-      descriptionKey: 'admin.usage.description',
-    REDACTED,
+      descriptionKey: 'admin.usage.description'
+    REDACTED
   REDACTED,
 
   // ==================== 404 Not Found ====================
@@ -257,10 +266,10 @@ const routes: RouteRecordRaw[] = [
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),
     meta: {
-      title: '404 Not Found',
-    REDACTED,
-  REDACTED,
-];
+      title: '404 Not Found'
+    REDACTED
+  REDACTED
+]
 
 /**
  * Create router instance
@@ -271,48 +280,48 @@ const router = createRouter({
   scrollBehavior(_to, _from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {
-      return savedPosition;
+      return savedPosition
     REDACTED
     // Scroll to top for new routes
-    return { top: 0 REDACTED;
-  REDACTED,
-REDACTED);
+    return { top: 0 REDACTED
+  REDACTED
+REDACTED)
 
 /**
  * Navigation guard: Authentication check
  */
-let authInitialized = false;
+let authInitialized = false
 
 router.beforeEach((to, _from, next) => {
-  const authStore = useAuthStore();
+  const authStore = useAuthStore()
 
   // Restore auth state from localStorage on first navigation (page refresh)
   if (!authInitialized) {
-    authStore.checkAuth();
-    authInitialized = true;
+    authStore.checkAuth()
+    authInitialized = true
   REDACTED
 
   // Set page title
   if (to.meta.title) {
-    document.title = `${to.meta.titleREDACTED - Sub2API`;
+    document.title = `${to.meta.titleREDACTED - Sub2API`
   REDACTED else {
-    document.title = 'Sub2API';
+    document.title = 'Sub2API'
   REDACTED
 
   // Check if route requires authentication
-  const requiresAuth = to.meta.requiresAuth !== false; // Default to true
-  const requiresAdmin = to.meta.requiresAdmin === true;
+  const requiresAuth = to.meta.requiresAuth !== false // Default to true
+  const requiresAdmin = to.meta.requiresAdmin === true
 
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
       // Admin users go to admin dashboard, regular users go to user dashboard
-      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard');
-      return;
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
     REDACTED
-    next();
-    return;
+    next()
+    return
   REDACTED
 
   // Route requires authentication
@@ -320,27 +329,27 @@ router.beforeEach((to, _from, next) => {
     // Not authenticated, redirect to login
     next({
       path: '/login',
-      query: { redirect: to.fullPath REDACTED, // Save intended destination
-    REDACTED);
-    return;
+      query: { redirect: to.fullPath REDACTED // Save intended destination
+    REDACTED)
+    return
   REDACTED
 
   // Check admin requirement
   if (requiresAdmin && !authStore.isAdmin) {
     // User is authenticated but not admin, redirect to user dashboard
-    next('/dashboard');
-    return;
+    next('/dashboard')
+    return
   REDACTED
 
   // All checks passed, allow navigation
-  next();
-REDACTED);
+  next()
+REDACTED)
 
 /**
  * Navigation guard: Error handling
  */
 router.onError((error) => {
-  console.error('Router error:', error);
-REDACTED);
+  console.error('Router error:', error)
+REDACTED)
 
-export default router;
+export default router

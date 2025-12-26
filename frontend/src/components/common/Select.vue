@@ -18,7 +18,7 @@
       </span>
       <span class="select-icon">
         <svg
-          :class="['w-5 h-5 transition-transform duration-200', isOpen && 'rotate-180']"
+          :class="['h-5 w-5 transition-transform duration-200', isOpen && 'rotate-180']"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -30,14 +30,21 @@
     </button>
 
     <Transition name="select-dropdown">
-      <div
-        v-if="isOpen"
-        class="select-dropdown"
-      >
+      <div v-if="isOpen" class="select-dropdown">
         <!-- Search input -->
         <div v-if="searchable" class="select-search">
-          <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          <svg
+            class="h-4 w-4 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+            />
           </svg>
           <input
             ref="searchInputRef"
@@ -55,16 +62,13 @@
             v-for="option in filteredOptions"
             :key="getOptionValue(option) ?? undefined"
             @click="selectOption(option)"
-            :class="[
-              'select-option',
-              isSelected(option) && 'select-option-selected'
-            ]"
+            :class="['select-option', isSelected(option) && 'select-option-selected']"
           >
             <slot name="option" :option="option" :selected="isSelected(option)">
               <span class="select-option-label">{{ getOptionLabel(option) REDACTEDREDACTED</span>
               <svg
                 v-if="isSelected(option)"
-                class="w-4 h-4 text-primary-500"
+                class="h-4 w-4 text-primary-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -126,7 +130,9 @@ REDACTED)
 
 // Use computed for i18n default values
 const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
-const searchPlaceholderText = computed(() => props.searchPlaceholder ?? t('common.searchPlaceholder'))
+const searchPlaceholderText = computed(
+  () => props.searchPlaceholder ?? t('common.searchPlaceholder')
+)
 const emptyTextDisplay = computed(() => props.emptyText ?? t('common.noOptionsFound'))
 
 const emit = defineEmits<Emits>()
@@ -136,7 +142,9 @@ const searchQuery = ref('')
 const containerRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 
-const getOptionValue = (option: SelectOption | Record<string, unknown>): string | number | null | undefined => {
+const getOptionValue = (
+  option: SelectOption | Record<string, unknown>
+): string | number | null | undefined => {
   if (typeof option === 'object' && option !== null) {
     return option[props.valueKey] as string | number | null | undefined
   REDACTED
@@ -151,7 +159,7 @@ const getOptionLabel = (option: SelectOption | Record<string, unknown>): string 
 REDACTED
 
 const selectedOption = computed(() => {
-  return props.options.find(opt => getOptionValue(opt) === props.modelValue) || null
+  return props.options.find((opt) => getOptionValue(opt) === props.modelValue) || null
 REDACTED)
 
 const selectedLabel = computed(() => {
@@ -166,7 +174,7 @@ const filteredOptions = computed(() => {
     return props.options
   REDACTED
   const query = searchQuery.value.toLowerCase()
-  return props.options.filter(opt => {
+  return props.options.filter((opt) => {
     const label = getOptionLabel(opt).toLowerCase()
     return label.includes(query)
   REDACTED)
@@ -227,31 +235,31 @@ REDACTED)
 
 <style scoped>
 .select-trigger {
-  @apply w-full flex items-center justify-between gap-2;
-  @apply px-4 py-2.5 rounded-xl text-sm;
+  @apply flex w-full items-center justify-between gap-2;
+  @apply rounded-xl px-4 py-2.5 text-sm;
   @apply bg-white dark:bg-dark-800;
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
-  @apply focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500;
+  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
   @apply hover:border-gray-300 dark:hover:border-dark-500;
   @apply cursor-pointer;
 REDACTED
 
 .select-trigger-open {
-  @apply ring-2 ring-primary-500/30 border-primary-500;
+  @apply border-primary-500 ring-2 ring-primary-500/30;
 REDACTED
 
 .select-trigger-error {
-  @apply border-red-500 focus:ring-red-500/30 focus:border-red-500;
+  @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
 REDACTED
 
 .select-trigger-disabled {
-  @apply bg-gray-100 dark:bg-dark-900 cursor-not-allowed opacity-60;
+  @apply cursor-not-allowed bg-gray-100 opacity-60 dark:bg-dark-900;
 REDACTED
 
 .select-value {
-  @apply flex-1 text-left truncate;
+  @apply flex-1 truncate text-left;
 REDACTED
 
 .select-icon {
@@ -259,7 +267,7 @@ REDACTED
 REDACTED
 
 .select-dropdown {
-  @apply absolute z-[100] w-full mt-2;
+  @apply absolute z-[100] mt-2 w-full;
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;

@@ -235,11 +235,13 @@ Centered: Both horizontally and vertically
 ## Color Palette
 
 ### Primary Colors
+
 - **Indigo-600**: `#4F46E5` - Primary buttons, links, brand color
 - **Indigo-700**: `#4338CA` - Button hover state
 - **Indigo-500**: `#6366F1` - Focus ring
 
 ### Neutral Colors
+
 - **Gray-900**: `#111827` - Headings
 - **Gray-700**: `#374151` - Labels
 - **Gray-600**: `#4B5563` - Body text
@@ -249,16 +251,19 @@ Centered: Both horizontally and vertically
 - **White**: `#FFFFFF` - Card backgrounds
 
 ### Error Colors
+
 - **Red-600**: `#DC2626` - Error text
 - **Red-500**: `#EF4444` - Error border, focus ring
 - **Red-50**: `#FEF2F2` - Error banner background
 - **Red-200**: `#FECACA` - Error banner border
 
 ### Success Colors
+
 - **Green-600**: `#16A34A` - Success text
 - **Green-50**: `#F0FDF4` - Success banner background
 
 ### Background Gradient
+
 - **From**: Indigo-100 (`#E0E7FF`)
 - **Via**: White (`#FFFFFF`)
 - **To**: Purple-100 (`#F3E8FF`)
@@ -266,9 +271,11 @@ Centered: Both horizontally and vertically
 ## Typography
 
 ### Font Family
+
 - **Default**: System font stack (`ui-sans-serif, system-ui, -apple-system, ...`)
 
 ### Font Sizes
+
 - **Headings (h2)**: `1.5rem` (24px), `font-bold`
 - **Body**: `0.875rem` (14px), `font-normal`
 - **Labels**: `0.875rem` (14px), `font-medium`
@@ -276,6 +283,7 @@ Centered: Both horizontally and vertically
 - **Error text**: `0.875rem` (14px), `font-normal`
 
 ### Line Heights
+
 - **Headings**: `1.5`
 - **Body**: `1.5`
 - **Helper text**: `1.25`
@@ -283,16 +291,19 @@ Centered: Both horizontally and vertically
 ## Spacing
 
 ### Card Spacing
+
 - **Padding**: `2rem` (32px) all sides
 - **Gap between sections**: `1.5rem` (24px)
 - **Gap between fields**: `1rem` (16px)
 
 ### Input Spacing
+
 - **Padding**: `0.5rem 1rem` (8px 16px)
 - **Label margin-bottom**: `0.25rem` (4px)
 - **Error text margin-top**: `0.25rem` (4px)
 
 ### Button Spacing
+
 - **Padding**: `0.5rem 1rem` (8px 16px)
 - **Margin-top**: `1rem` (16px)
 
@@ -301,18 +312,21 @@ Centered: Both horizontally and vertically
 ### Input States
 
 **Default:**
+
 ```css
 border: 1px solid #D1D5DB (gray-300)
 focus: 2px ring #6366F1 (indigo-500)
 ```
 
 **Error:**
+
 ```css
 border: 1px solid #EF4444 (red-500)
 focus: 2px ring #EF4444 (red-500)
 ```
 
 **Disabled:**
+
 ```css
 background: #F3F4F6 (gray-100)
 cursor: not-allowed
@@ -322,6 +336,7 @@ opacity: 0.6
 ### Button States
 
 **Default:**
+
 ```css
 background: #4F46E5 (indigo-600)
 text: #FFFFFF (white)
@@ -329,24 +344,28 @@ shadow: shadow-sm
 ```
 
 **Hover:**
+
 ```css
 background: #4338CA (indigo-700)
 transition: colors 150ms
 ```
 
 **Focus:**
+
 ```css
 outline: none
 ring: 2px offset-2 #6366F1 (indigo-500)
 ```
 
 **Disabled:**
+
 ```css
 opacity: 0.5
 cursor: not-allowed
 ```
 
 **Loading:**
+
 ```css
 opacity: 0.5
 cursor: not-allowed
@@ -356,12 +375,14 @@ cursor: not-allowed
 ### Link States
 
 **Default:**
+
 ```css
 color: #4F46E5 (indigo-600)
 font-weight: 500 (medium)
 ```
 
 **Hover:**
+
 ```css
 color: #6366F1 (indigo-500)
 transition: colors 150ms
@@ -372,6 +393,7 @@ transition: colors 150ms
 ### Breakpoints
 
 **Mobile (< 640px):**
+
 ```
 - Full width container
 - Padding: 1rem (16px)
@@ -379,6 +401,7 @@ transition: colors 150ms
 ```
 
 **Tablet (640px - 768px):**
+
 ```
 - Max width: 28rem (448px)
 - Centered layout
@@ -386,6 +409,7 @@ transition: colors 150ms
 ```
 
 **Desktop (> 768px):**
+
 ```
 - Max width: 28rem (448px)
 - Centered layout
@@ -404,20 +428,27 @@ transition: colors 150ms
 ## Animations
 
 ### Transitions
+
 - Color changes: `150ms ease-in-out`
 - Opacity changes: `150ms ease-in-out`
 - Transform: `150ms ease-in-out`
 
 ### Loading Spinner
+
 ```css
 @keyframes spin {
-  from { transform: rotate(0deg); REDACTED
-  to { transform: rotate(360deg); REDACTED
+  from {
+    transform: rotate(0deg);
+  REDACTED
+  to {
+    transform: rotate(360deg);
+  REDACTED
 REDACTED
 animation: spin 1s linear infinite;
 ```
 
 ### Toast Animations
+
 - Enter: Slide in from right + fade in
 - Exit: Slide out to right + fade out
 - Duration: 300ms
@@ -425,24 +456,28 @@ animation: spin 1s linear infinite;
 ## Accessibility Features
 
 ### Visual Indicators
+
 - Clear focus states (2px ring)
 - Error states (red border + red text)
 - Loading states (spinner + text)
 - Success states (green toast)
 
 ### Color Contrast
+
 - Text on white: > 7:1 (AAA)
 - Labels on white: > 4.5:1 (AA)
 - Buttons: > 4.5:1 (AA)
 - Error text: > 4.5:1 (AA)
 
 ### Interactive Elements
+
 - Minimum size: 44x44px (mobile)
 - Clear hover states
 - Distinct disabled states
 - Keyboard accessible
 
 ### Screen Reader Support
+
 - Proper labels on all inputs
 - ARIA attributes where needed
 - Error announcements
@@ -451,6 +486,7 @@ animation: spin 1s linear infinite;
 ## Icons
 
 ### Loading Spinner
+
 ```svg
 <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -459,6 +495,7 @@ animation: spin 1s linear infinite;
 ```
 
 ### Error Icon
+
 ```svg
 <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
   <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
@@ -468,6 +505,7 @@ animation: spin 1s linear infinite;
 ## Browser Compatibility
 
 ### Supported Browsers
+
 - Chrome/Edge: Latest 2 versions
 - Firefox: Latest 2 versions
 - Safari: Latest 2 versions
@@ -475,6 +513,7 @@ animation: spin 1s linear infinite;
 - Chrome Mobile: Latest 2 versions
 
 ### CSS Features Used
+
 - Flexbox (full support)
 - CSS Grid (full support)
 - CSS Transitions (full support)
@@ -482,6 +521,7 @@ animation: spin 1s linear infinite;
 - Gradient backgrounds (full support)
 
 ### JavaScript Features Used
+
 - ES2015+ syntax
 - Async/await
 - Optional chaining
@@ -495,6 +535,7 @@ animation: spin 1s linear infinite;
 ## Dark Mode Considerations
 
 **Future Enhancement:**
+
 - Dark mode toggle in user preferences
 - System preference detection
 - Persistent dark mode setting
@@ -510,6 +551,7 @@ dark:border-gray-700
 ## Performance Metrics
 
 ### Target Metrics
+
 - First Contentful Paint (FCP): < 1s
 - Largest Contentful Paint (LCP): < 2.5s
 - Time to Interactive (TTI): < 3s
@@ -517,6 +559,7 @@ dark:border-gray-700
 - First Input Delay (FID): < 100ms
 
 ### Optimization Strategies
+
 - Lazy load non-critical resources
 - Minimize initial bundle size
 - Use efficient animations (transform, opacity)
@@ -527,12 +570,14 @@ dark:border-gray-700
 ## Component Size
 
 ### Bundle Impact
+
 - LoginView.vue: ~4 KB (minified)
 - RegisterView.vue: ~6 KB (minified)
 - AuthLayout.vue: ~1 KB (minified)
 - Total: ~11 KB (excluding dependencies)
 
 ### Dependencies
+
 - Vue 3: ~40 KB (runtime)
 - Vue Router: ~15 KB
 - Pinia: ~10 KB
@@ -541,6 +586,7 @@ dark:border-gray-700
 ## Testing Checklist
 
 ### Visual Regression Tests
+
 - [ ] Default state (login)
 - [ ] Default state (register)
 - [ ] Loading state
@@ -554,6 +600,7 @@ dark:border-gray-700
 - [ ] Hover states
 
 ### Cross-browser Tests
+
 - [ ] Chrome (Windows, Mac, Linux)
 - [ ] Firefox (Windows, Mac, Linux)
 - [ ] Safari (Mac, iOS)
@@ -562,6 +609,7 @@ dark:border-gray-700
 - [ ] Safari Mobile (iOS)
 
 ### Accessibility Tests
+
 - [ ] Keyboard navigation
 - [ ] Screen reader (NVDA)
 - [ ] Screen reader (JAWS)
@@ -573,14 +621,17 @@ dark:border-gray-700
 ## Design Assets
 
 ### Figma/Sketch Files
+
 (Not applicable - designed directly in code with Tailwind)
 
 ### Design Tokens
+
 - Defined in Tailwind config
 - Consistent with design system
 - Reusable across all components
 
 ### Iconography
+
 - SVG icons inline
 - Heroicons (outline and solid)
 - Consistent stroke width

@@ -35,9 +35,24 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 			apiKeyString = c.GetHeader("x-api-key")
 	REDACTED
 
-		// 如果两个header都没有API key
+		// 如果x-api-key header中没有，尝试从x-goog-api-key header中提取（Gemini CLI兼容）
 		if apiKeyString == "" {
-			AbortWithError(c, 401, "API_KEY_REQUIRED", "API key is required in Authorization header (Bearer scheme) or x-api-key header")
+			apiKeyString = c.GetHeader("x-goog-api-key")
+	REDACTED
+
+		// 如果header中没有，尝试从query参数中提取（Google API key风格）
+		if apiKeyString == "" {
+			apiKeyString = c.Query("key")
+	REDACTED
+
+		// 兼容常见别名
+		if apiKeyString == "" {
+			apiKeyString = c.Query("api_key")
+	REDACTED
+
+		// 如果所有header都没有API key
+		if apiKeyString == "" {
+			AbortWithError(c, 401, "API_KEY_REQUIRED", "API key is required in Authorization header (Bearer scheme), x-api-key header, x-goog-api-key header, or key/api_key query parameter")
 			return
 	REDACTED
 
