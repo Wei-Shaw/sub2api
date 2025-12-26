@@ -368,8 +368,8 @@ REDACTED
 
 // 重试相关常量
 const (
-	maxRetries = 5               // 最大重试次数
-	retryDelay = 6 * time.Second // 重试等待时间
+	maxRetries = 10              // 最大重试次数
+	retryDelay = 3 * time.Second // 重试等待时间
 )
 
 // shouldRetryUpstreamError 判断是否应该重试上游错误
