@@ -314,6 +314,16 @@ REDACTED
 		gateway.POST("/responses", h.OpenAIGateway.Responses)
 REDACTED
 
+	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
+	gemini := r.Group("/v1beta")
+	gemini.Use(middleware.ApiKeyAuthWithSubscriptionGoogle(s.ApiKey, s.Subscription))
+	{
+		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
+		gemini.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
+		// Gin treats ":" as a param marker, but Gemini uses "{modelREDACTED:{actionREDACTED" in the same segment.
+		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+REDACTED
+
 	// OpenAI Responses API（不带v1前缀的别名）
 	r.POST("/responses", middleware.ApiKeyAuthWithSubscription(s.ApiKey, s.Subscription), h.OpenAIGateway.Responses)
 REDACTED

@@ -85,8 +85,10 @@ REDACTED
 	rateLimitService := service.NewRateLimitService(accountRepository, configConfig)
 	claudeUsageFetcher := repository.NewClaudeUsageFetcher()
 	accountUsageService := service.NewAccountUsageService(accountRepository, usageLogRepository, claudeUsageFetcher)
+	geminiTokenCache := repository.NewGeminiTokenCache(client)
+	geminiTokenProvider := service.NewGeminiTokenProvider(accountRepository, geminiTokenCache, geminiOAuthService)
 	httpUpstream := repository.NewHTTPUpstream(configConfig)
-	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, openAIOAuthService, httpUpstream)
+	accountTestService := service.NewAccountTestService(accountRepository, oAuthService, openAIOAuthService, geminiOAuthService, geminiTokenProvider, httpUpstream)
 	concurrencyCache := repository.NewConcurrencyCache(client)
 	concurrencyService := service.NewConcurrencyService(concurrencyCache)
 	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService, geminiOAuthService)
@@ -115,8 +117,6 @@ REDACTED
 	identityCache := repository.NewIdentityCache(client)
 	identityService := service.NewIdentityService(identityCache)
 	gatewayService := service.NewGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, billingService, rateLimitService, billingCacheService, identityService, httpUpstream)
-	geminiTokenCache := repository.NewGeminiTokenCache(client)
-	geminiTokenProvider := service.NewGeminiTokenProvider(accountRepository, geminiTokenCache, geminiOAuthService)
 	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, gatewayCache, geminiTokenProvider, rateLimitService, httpUpstream)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, userService, concurrencyService, billingCacheService)
 	openAIGatewayService := service.NewOpenAIGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, billingService, rateLimitService, billingCacheService, httpUpstream)
@@ -224,6 +224,10 @@ func provideCleanup(
 	REDACTED
 			{"OpenAIOAuthService", func() error {
 				services.OpenAIOAuth.Stop()
+				return nil
+	REDACTED
+			{"GeminiOAuthService", func() error {
+				services.GeminiOAuth.Stop()
 				return nil
 	REDACTED
 			{"Redis", func() error {
