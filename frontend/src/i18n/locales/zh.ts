@@ -1069,9 +1069,12 @@ export default {
 	          stateWarningDesc: '建议粘贴完整回调链接（包含 code 和 state）。',
 	          oauthTypeLabel: 'OAuth 类型',
 	          needsProjectId: '适合 GCP 开发者',
-	          needsProjectIdDesc: '使用内置客户端，需 GCP 项目',
+	          needsProjectIdDesc: '需 GCP 项目',
 	          noProjectIdNeeded: '适合普通用户',
-	          noProjectIdNeededDesc: '需自建 OAuth Client'
+	          noProjectIdNeededDesc: '需管理员配置 OAuth Client',
+	          aiStudioNotConfiguredShort: '未配置',
+	          aiStudioNotConfiguredTip: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback（Consent Screen scopes 需包含 https://www.googleapis.com/auth/generative-language.retriever）',
+	          aiStudioNotConfigured: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback'
 	        REDACTED
 	      REDACTED,
       // Gemini specific (platform-wide)

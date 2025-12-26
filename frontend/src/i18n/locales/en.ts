@@ -961,9 +961,14 @@ export default {
 	          stateWarningDesc: 'Recommended: paste the full callback URL (includes code & state).',
 	          oauthTypeLabel: 'OAuth Type',
 	          needsProjectId: 'For GCP Developers',
-	          needsProjectIdDesc: 'Uses built-in client, requires GCP project',
+	          needsProjectIdDesc: 'Requires GCP project',
 	          noProjectIdNeeded: 'For Regular Users',
-	          noProjectIdNeededDesc: 'Requires your own OAuth client'
+	          noProjectIdNeededDesc: 'Requires admin-configured OAuth client',
+	          aiStudioNotConfiguredShort: 'Not configured',
+	          aiStudioNotConfiguredTip:
+	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback (Consent screen scopes must include https://www.googleapis.com/auth/generative-language.retriever)',
+	          aiStudioNotConfigured:
+	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback'
 	        REDACTED
 	      REDACTED,
       // Gemini specific (platform-wide)
