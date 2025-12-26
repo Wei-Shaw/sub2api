@@ -923,40 +923,55 @@ export default {
             'You can copy the entire URL or just the code parameter value, the system will auto-detect'
         REDACTED,
         // Gemini specific
-        gemini: {
-          title: 'Gemini Account Authorization',
-          followSteps: 'Follow these steps to authorize your Gemini account:',
-          step1GenerateUrl: 'Generate the authorization URL (requires a redirect URI)',
-          generateAuthUrl: 'Generate Auth URL',
-          step2OpenUrl: 'Open the URL in your browser and complete authorization',
-          openUrlDesc:
-            'Open the authorization URL in a new tab, log in to your Google account and authorize.',
-          step3EnterCode: 'Enter Authorization URL or Code',
-          authCodeDesc:
-            'After authorization, you will be redirected to the redirect URI with <code>code</code> and <code>state</code>. Paste the full URL or just the code below:',
-          authCode: 'Authorization URL or Code',
-          authCodePlaceholder:
-            'Option 1: Paste the complete callback URL\n(https://your-domain/auth/callback?code=...&state=...)\nOption 2: Paste only the code value',
-          authCodeHint:
-            'If you paste the full URL, the system will auto-extract code/state for you',
+	        gemini: {
+	          title: 'Gemini Account Authorization',
+	          followSteps: 'Follow these steps to authorize your Gemini account:',
+	          step1GenerateUrl: 'Generate the authorization URL',
+	          generateAuthUrl: 'Generate Auth URL',
+	          projectIdLabel: 'Project ID (optional)',
+	          projectIdPlaceholder: 'e.g. my-gcp-project or cloud-ai-companion-xxxxx',
+	          projectIdHint:
+	            'Leave empty to auto-detect after code exchange. If auto-detection fails, fill it in and re-generate the auth URL to try again.',
+	          howToGetProjectId: 'How to get',
+	          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+	          openUrlDesc:
+	            'Open the authorization URL in a new tab, log in to your Google account and authorize.',
+	          step3EnterCode: 'Enter Authorization URL or Code',
+	          authCodeDesc:
+	            'After authorization, copy the callback URL (recommended) or just the <code>code</code> and paste it below.',
+	          authCode: 'Callback URL or Code',
+	          authCodePlaceholder:
+	            'Option 1 (recommended): Paste the callback URL\nOption 2: Paste only the code value',
+	          authCodeHint: 'The system will auto-extract code/state from the URL.',
           redirectUri: 'Redirect URI',
           redirectUriHint:
             'This must be configured in your Google OAuth client and must match exactly.',
           confirmRedirectUri:
             'I have configured this Redirect URI in the Google OAuth client (must match exactly)',
-          invalidRedirectUri: 'Redirect URI must be a valid http(s) URL',
-          redirectUriNotConfirmed: 'Please confirm the Redirect URI is configured correctly',
-          missingRedirectUri: 'Missing redirect URI',
-          failedToGenerateUrl: 'Failed to generate Gemini auth URL',
-          missingExchangeParams: 'Missing auth code, session ID, state, or redirect URI',
-          failedToExchangeCode: 'Failed to exchange Gemini auth code',
-          modelPassthrough: 'Gemini Model Passthrough',
-          modelPassthroughDesc:
-            'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
-          stateWarningTitle: '⚠️ Important: Gemini requires both code and state',
-          stateWarningDesc:
-            'We recommend pasting the complete callback URL so the system can auto-extract both code and state. Pasting only the code will cause authorization to fail.'
-        REDACTED
+	          invalidRedirectUri: 'Redirect URI must be a valid http(s) URL',
+	          redirectUriNotConfirmed: 'Please confirm the Redirect URI is configured correctly',
+	          missingRedirectUri: 'Missing redirect URI',
+	          failedToGenerateUrl: 'Failed to generate Gemini auth URL',
+	          missingExchangeParams: 'Missing auth code, session ID, or state',
+	          failedToExchangeCode: 'Failed to exchange Gemini auth code',
+	          modelPassthrough: 'Gemini Model Passthrough',
+	          modelPassthroughDesc:
+	            'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
+	          stateWarningTitle: 'Note',
+	          stateWarningDesc: 'Recommended: paste the full callback URL (includes code & state).',
+	          oauthTypeLabel: 'OAuth Type',
+	          needsProjectId: 'For GCP Developers',
+	          needsProjectIdDesc: 'Uses built-in client, requires GCP project',
+	          noProjectIdNeeded: 'For Regular Users',
+	          noProjectIdNeededDesc: 'Requires your own OAuth client'
+	        REDACTED
+	      REDACTED,
+      // Gemini specific (platform-wide)
+      gemini: {
+        modelPassthrough: 'Gemini Model Passthrough',
+        modelPassthroughDesc:
+          'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
+        apiKeyHint: 'Your Gemini API Key (starts with AIza)'
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',
@@ -983,7 +998,7 @@ export default {
       startingTestForAccount: 'Starting test for account: {nameREDACTED',
       testAccountTypeLabel: 'Account type: {typeREDACTED',
       selectTestModel: 'Select Test Model',
-      testModel: 'claude-sonnet-4-5-20250929',
+      testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',
       // Stats Modal
       viewStats: 'View Stats',

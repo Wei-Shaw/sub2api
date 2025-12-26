@@ -1038,35 +1038,47 @@ export default {
           authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别'
         REDACTED,
         // Gemini specific
-        gemini: {
-          title: 'Gemini 账户授权',
-          followSteps: '请按照以下步骤完成 Gemini 账户的授权：',
-          step1GenerateUrl: '先配置 Redirect URI，然后生成授权链接',
-          generateAuthUrl: '生成授权链接',
-          step2OpenUrl: '在浏览器中打开链接并完成授权',
-          openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
-          step3EnterCode: '输入回调链接或 Code',
-          authCodeDesc:
-            '授权完成后会跳转到 Redirect URI，并带上 <code>code</code> 与 <code>state</code> 参数。请粘贴完整链接或仅粘贴 code：',
-          authCode: '回调链接或 Code',
-          authCodePlaceholder:
-            '方式1：粘贴完整回调链接\n(https://your-domain/auth/callback?code=...&state=...)\n方式2：仅粘贴 code 参数的值',
-          authCodeHint: '如果粘贴完整链接，系统会自动提取 code/state',
+	        gemini: {
+	          title: 'Gemini 账户授权',
+	          followSteps: '请按照以下步骤完成 Gemini 账户的授权：',
+	          step1GenerateUrl: '生成授权链接',
+	          generateAuthUrl: '生成授权链接',
+	          projectIdLabel: 'Project ID（可选）',
+	          projectIdPlaceholder: '例如：my-gcp-project 或 cloud-ai-companion-xxxxx',
+	          projectIdHint: '留空则在兑换授权码后自动探测；若自动探测失败，可填写后重新生成授权链接再授权。',
+	          howToGetProjectId: '如何获取',
+	          step2OpenUrl: '在浏览器中打开链接并完成授权',
+	          openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
+	          step3EnterCode: '输入回调链接或 Code',
+	          authCodeDesc: '授权完成后，复制浏览器跳转后的回调链接（推荐）或仅复制 <code>code</code>，粘贴到下方即可。',
+	          authCode: '回调链接或 Code',
+	          authCodePlaceholder: '方式1（推荐）：粘贴回调链接\n方式2：仅粘贴 code 参数的值',
+	          authCodeHint: '系统会自动从链接中解析 code/state。',
           redirectUri: 'Redirect URI',
           redirectUriHint: '需要在 Google OAuth Client 中配置，且必须与此处完全一致。',
           confirmRedirectUri: '我已在 Google OAuth Client 中配置了该 Redirect URI（必须完全一致）',
           invalidRedirectUri: 'Redirect URI 必须是合法的 http(s) URL',
-          redirectUriNotConfirmed: '请确认 Redirect URI 已在 Google OAuth Client 中正确配置',
-          missingRedirectUri: '缺少 Redirect URI',
-          failedToGenerateUrl: '生成 Gemini 授权链接失败',
-          missingExchangeParams: '缺少 code / session_id / state / redirect_uri',
-          failedToExchangeCode: 'Gemini 授权码兑换失败',
-          modelPassthrough: 'Gemini 直接转发模型',
-          modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
-          stateWarningTitle: '⚠️ 重要：Gemini 需要 code 和 state 参数',
-          stateWarningDesc:
-            '建议直接粘贴完整的回调链接，系统会自动提取 code 和 state。如果只粘贴 code，授权将会失败。'
-        REDACTED
+	          redirectUriNotConfirmed: '请确认 Redirect URI 已在 Google OAuth Client 中正确配置',
+	          missingRedirectUri: '缺少 Redirect URI',
+	          failedToGenerateUrl: '生成 Gemini 授权链接失败',
+	          missingExchangeParams: '缺少 code / session_id / state',
+	          failedToExchangeCode: 'Gemini 授权码兑换失败',
+	          modelPassthrough: 'Gemini 直接转发模型',
+	          modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
+	          stateWarningTitle: '提示',
+	          stateWarningDesc: '建议粘贴完整回调链接（包含 code 和 state）。',
+	          oauthTypeLabel: 'OAuth 类型',
+	          needsProjectId: '适合 GCP 开发者',
+	          needsProjectIdDesc: '使用内置客户端，需 GCP 项目',
+	          noProjectIdNeeded: '适合普通用户',
+	          noProjectIdNeededDesc: '需自建 OAuth Client'
+	        REDACTED
+	      REDACTED,
+      // Gemini specific (platform-wide)
+      gemini: {
+        modelPassthrough: 'Gemini 直接转发模型',
+        modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
+        apiKeyHint: 'Your Gemini API Key（以 AIza 开头）'
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
@@ -1090,9 +1102,9 @@ export default {
       copyOutput: '复制输出',
       startingTestForAccount: '开始测试账号：{nameREDACTED',
       testAccountTypeLabel: '账号类型：{typeREDACTED',
-      selectTestModel: '选择测试模型',
-      testModel: 'claude-sonnet-4-5-20250929',
-      testPrompt: '提示词："hi"',
+	      selectTestModel: '选择测试模型',
+	      testModel: '测试模型',
+	      testPrompt: '提示词："hi"',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
