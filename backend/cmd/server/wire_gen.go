@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -123,55 +124,13 @@ REDACTED
 	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler)
-	groupService := service.NewGroupService(groupRepository)
-	accountService := service.NewAccountService(accountRepository, groupRepository)
-	proxyService := service.NewProxyService(proxyRepository)
-	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, openAIOAuthService, geminiOAuthService, configConfig)
-	services := &service.Services{
-		Auth:          authService,
-		User:          userService,
-		ApiKey:        apiKeyService,
-		Group:         groupService,
-		Account:       accountService,
-		Proxy:         proxyService,
-		Redeem:        redeemService,
-		Usage:         usageService,
-		Pricing:       pricingService,
-		Billing:       billingService,
-		BillingCache:  billingCacheService,
-		Admin:         adminService,
-		Gateway:       gatewayService,
-		OpenAIGateway: openAIGatewayService,
-		OAuth:         oAuthService,
-		OpenAIOAuth:   openAIOAuthService,
-		GeminiOAuth:   geminiOAuthService,
-		RateLimit:     rateLimitService,
-		AccountUsage:  accountUsageService,
-		AccountTest:   accountTestService,
-		Setting:       settingService,
-		Email:         emailService,
-		EmailQueue:    emailQueueService,
-		Turnstile:     turnstileService,
-		Subscription:  subscriptionService,
-		Concurrency:   concurrencyService,
-		Identity:      identityService,
-		Update:        updateService,
-		TokenRefresh:  tokenRefreshService,
-REDACTED
-	repositories := &repository.Repositories{
-		User:             userRepository,
-		ApiKey:           apiKeyRepository,
-		Group:            groupRepository,
-		Account:          accountRepository,
-		Proxy:            proxyRepository,
-		RedeemCode:       redeemCodeRepository,
-		UsageLog:         usageLogRepository,
-		Setting:          settingRepository,
-		UserSubscription: userSubscriptionRepository,
-REDACTED
-	engine := server.ProvideRouter(configConfig, handlers, services, repositories)
+	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
+	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
+	apiKeyAuthMiddleware := middleware.NewApiKeyAuthMiddleware(apiKeyService, subscriptionService)
+	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, apiKeyService, subscriptionService)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
-	v := provideCleanup(db, client, services)
+	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, openAIOAuthService, geminiOAuthService, configConfig)
+	v := provideCleanup(db, client, tokenRefreshService, pricingService, emailQueueService, oAuthService, openAIOAuthService, geminiOAuthService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -196,7 +155,12 @@ REDACTED
 func provideCleanup(
 	db *gorm.DB,
 	rdb *redis.Client,
-	services *service.Services,
+	tokenRefresh *service.TokenRefreshService,
+	pricing *service.PricingService,
+	emailQueue *service.EmailQueueService,
+	oauth *service.OAuthService,
+	openaiOAuth *service.OpenAIOAuthService,
+	geminiOAuth *service.GeminiOAuthService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -207,27 +171,27 @@ func provideCleanup(
 			fn   func() error
 	REDACTED{
 			{"TokenRefreshService", func() error {
-				services.TokenRefresh.Stop()
+				tokenRefresh.Stop()
 				return nil
 	REDACTED
 			{"PricingService", func() error {
-				services.Pricing.Stop()
+				pricing.Stop()
 				return nil
 	REDACTED
 			{"EmailQueueService", func() error {
-				services.EmailQueue.Stop()
+				emailQueue.Stop()
 				return nil
 	REDACTED
 			{"OAuthService", func() error {
-				services.OAuth.Stop()
+				oauth.Stop()
 				return nil
 	REDACTED
 			{"OpenAIOAuthService", func() error {
-				services.OpenAIOAuth.Stop()
+				openaiOAuth.Stop()
 				return nil
 	REDACTED
 			{"GeminiOAuthService", func() error {
-				services.GeminiOAuth.Stop()
+				geminiOAuth.Stop()
 				return nil
 	REDACTED
 			{"Redis", func() error {

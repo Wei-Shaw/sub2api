@@ -5,21 +5,22 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 // ApiKeyAuthGoogle is a Google-style error wrapper for API key auth.
-func ApiKeyAuthGoogle(apiKeyRepo ApiKeyAuthService) gin.HandlerFunc {
-	return ApiKeyAuthWithSubscriptionGoogle(apiKeyRepo, nil)
+func ApiKeyAuthGoogle(apiKeyService *service.ApiKeyService) gin.HandlerFunc {
+	return ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil)
 REDACTED
 
 // ApiKeyAuthWithSubscriptionGoogle behaves like ApiKeyAuthWithSubscription but returns Google-style errors:
 // {"error":{"code":401,"message":"...","status":"UNAUTHENTICATED"REDACTEDREDACTED
 //
 // It is intended for Gemini native endpoints (/v1beta) to match Gemini SDK expectations.
-func ApiKeyAuthWithSubscriptionGoogle(apiKeyRepo ApiKeyAuthService, subscriptionService SubscriptionAuthService) gin.HandlerFunc {
+func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKeyString := extractAPIKeyFromRequest(c)
 		if apiKeyString == "" {
@@ -27,7 +28,7 @@ func ApiKeyAuthWithSubscriptionGoogle(apiKeyRepo ApiKeyAuthService, subscription
 			return
 	REDACTED
 
-		apiKey, err := apiKeyRepo.GetByKey(c.Request.Context(), apiKeyString)
+		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				abortWithGoogleError(c, 401, "Invalid API key")
