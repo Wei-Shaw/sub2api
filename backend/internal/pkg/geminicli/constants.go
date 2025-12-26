@@ -22,10 +22,18 @@ const (
 	// DefaultScopes for AI Studio (uses generativelanguage API with OAuth)
 	// Reference: https://ai.google.dev/gemini-api/docs/oauth
 	// For regular Google accounts, supports API calls to generativelanguage.googleapis.com
-	DefaultAIStudioScopes = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language"
+	// Note: Google Auth platform currently documents the OAuth scope as
+	// https://www.googleapis.com/auth/generative-language.retriever (often with cloud-platform).
+	DefaultAIStudioScopes = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language.retriever"
 
 	// GeminiCLIRedirectURI is the redirect URI used by Gemini CLI for Code Assist OAuth.
 	GeminiCLIRedirectURI = "https://codeassist.google.com/authcode"
+
+	// GeminiCLIOAuthClientID/Secret are the public OAuth client credentials used by Google Gemini CLI.
+	// They enable the "login without creating your own OAuth client" experience, but Google may
+	// restrict which scopes are allowed for this client.
+	GeminiCLIOAuthClientID     = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+	GeminiCLIOAuthClientSecret = "REDACTED"
 
 	SessionTTL = 30 * time.Minute
 

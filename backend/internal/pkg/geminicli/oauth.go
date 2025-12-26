@@ -140,9 +140,13 @@ func base64URLEncode(data []byte) string {
 REDACTED
 
 // EffectiveOAuthConfig returns the effective OAuth configuration.
-// oauthType: "code_assist" or "ai_studio" (defaults to "code_assist" if empty)
-// Returns error if ClientID or ClientSecret is not configured.
-// Configure via GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET environment variables.
+// oauthType: "code_assist" or "ai_studio" (defaults to "code_assist" if empty).
+//
+// If ClientID/ClientSecret is not provided, this falls back to the built-in Gemini CLI OAuth client.
+//
+// Note: The built-in Gemini CLI OAuth client is restricted and may reject some scopes (e.g.
+// https://www.googleapis.com/auth/generative-language), which will surface as
+// "restricted_client" / "Unregistered scope(s)" errors during browser authorization.
 func EffectiveOAuthConfig(cfg OAuthConfig, oauthType string) (OAuthConfig, error) {
 	effective := OAuthConfig{
 		ClientID:     strings.TrimSpace(cfg.ClientID),
@@ -150,19 +154,61 @@ func EffectiveOAuthConfig(cfg OAuthConfig, oauthType string) (OAuthConfig, error
 		Scopes:       strings.TrimSpace(cfg.Scopes),
 REDACTED
 
-	// Require OAuth credentials to be configured
-	if effective.ClientID == "" || effective.ClientSecret == "" {
-		return OAuthConfig{REDACTED, fmt.Errorf("gemini OAuth credentials not configured, set GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET environment variables")
+	// Normalize scopes: allow comma-separated input but send space-delimited scopes to Google.
+	if effective.Scopes != "" {
+		effective.Scopes = strings.Join(strings.Fields(strings.ReplaceAll(effective.Scopes, ",", " ")), " ")
 REDACTED
+
+	// Fall back to built-in Gemini CLI OAuth client when not configured.
+	if effective.ClientID == "" && effective.ClientSecret == "" {
+		effective.ClientID = GeminiCLIOAuthClientID
+		effective.ClientSecret = GeminiCLIOAuthClientSecret
+REDACTED else if effective.ClientID == "" || effective.ClientSecret == "" {
+		return OAuthConfig{REDACTED, fmt.Errorf("OAuth client not configured: please set both client_id and client_secret (or leave both empty to use the built-in Gemini CLI client)")
+REDACTED
+
+	isBuiltinClient := effective.ClientID == GeminiCLIOAuthClientID &&
+		effective.ClientSecret == GeminiCLIOAuthClientSecret
 
 	if effective.Scopes == "" {
 		// Use different default scopes based on OAuth type
 		if oauthType == "ai_studio" {
-			effective.Scopes = DefaultAIStudioScopes
+			// Built-in client can't request some AI Studio scopes (notably generative-language).
+			if isBuiltinClient {
+				effective.Scopes = DefaultCodeAssistScopes
+		REDACTED else {
+				effective.Scopes = DefaultAIStudioScopes
+		REDACTED
 	REDACTED else {
 			// Default to Code Assist scopes
 			effective.Scopes = DefaultCodeAssistScopes
 	REDACTED
+REDACTED else if oauthType == "ai_studio" && isBuiltinClient {
+		// If user overrides scopes while still using the built-in client, strip restricted scopes.
+		parts := strings.Fields(effective.Scopes)
+		filtered := make([]string, 0, len(parts))
+		for _, s := range parts {
+			if strings.Contains(s, "generative-language") {
+				continue
+		REDACTED
+			filtered = append(filtered, s)
+	REDACTED
+		if len(filtered) == 0 {
+			effective.Scopes = DefaultCodeAssistScopes
+	REDACTED else {
+			effective.Scopes = strings.Join(filtered, " ")
+	REDACTED
+REDACTED
+
+	// Backward compatibility: normalize older AI Studio scope to the currently documented one.
+	if oauthType == "ai_studio" && effective.Scopes != "" {
+		parts := strings.Fields(effective.Scopes)
+		for i := range parts {
+			if parts[i] == "https://www.googleapis.com/auth/generative-language" {
+				parts[i] = "https://www.googleapis.com/auth/generative-language.retriever"
+		REDACTED
+	REDACTED
+		effective.Scopes = strings.Join(parts, " ")
 REDACTED
 
 	return effective, nil
