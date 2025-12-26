@@ -210,3 +210,10 @@ type UserSubscription struct {
 	Group          *Group `json:"group,omitempty"`
 	AssignedByUser *User  `json:"assigned_by_user,omitempty"`
 REDACTED
+
+type BulkAssignResult struct {
+	SuccessCount  int                `json:"success_count"`
+	FailedCount   int                `json:"failed_count"`
+	Subscriptions []UserSubscription `json:"subscriptions"`
+	Errors        []string           `json:"errors"`
+REDACTED

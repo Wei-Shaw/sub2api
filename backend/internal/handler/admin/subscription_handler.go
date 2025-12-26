@@ -177,7 +177,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, result)
+	response.Success(c, dto.BulkAssignResultFromService(result))
 REDACTED
 
 // Extend handles extending a subscription

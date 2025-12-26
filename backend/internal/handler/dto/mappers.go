@@ -292,3 +292,19 @@ REDACTED
 		AssignedByUser:     UserFromServiceShallow(sub.AssignedByUser),
 REDACTED
 REDACTED
+
+func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult {
+	if r == nil {
+		return nil
+REDACTED
+	subs := make([]UserSubscription, 0, len(r.Subscriptions))
+	for i := range r.Subscriptions {
+		subs = append(subs, *UserSubscriptionFromService(&r.Subscriptions[i]))
+REDACTED
+	return &BulkAssignResult{
+		SuccessCount:  r.SuccessCount,
+		FailedCount:   r.FailedCount,
+		Subscriptions: subs,
+		Errors:        r.Errors,
+REDACTED
+REDACTED

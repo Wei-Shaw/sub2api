@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -163,7 +164,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, updatedAccount)
+	response.Success(c, dto.AccountFromService(updatedAccount))
 REDACTED
 
 // CreateAccountFromOAuth creates a new OpenAI OAuth account from token info
@@ -224,5 +225,5 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, account)
+	response.Success(c, dto.AccountFromService(account))
 REDACTED

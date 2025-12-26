@@ -376,7 +376,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, updatedAccount)
+	response.Success(c, dto.AccountFromService(updatedAccount))
 REDACTED
 
 // GetStats handles getting account statistics
