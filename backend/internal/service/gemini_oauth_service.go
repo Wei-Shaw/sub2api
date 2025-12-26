@@ -15,21 +15,20 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 type GeminiOAuthService struct {
 	sessionStore *geminicli.SessionStore
-	proxyRepo    ports.ProxyRepository
-	oauthClient  ports.GeminiOAuthClient
-	codeAssist   ports.GeminiCliCodeAssistClient
+	proxyRepo    ProxyRepository
+	oauthClient  GeminiOAuthClient
+	codeAssist   GeminiCliCodeAssistClient
 	cfg          *config.Config
 REDACTED
 
 func NewGeminiOAuthService(
-	proxyRepo ports.ProxyRepository,
-	oauthClient ports.GeminiOAuthClient,
-	codeAssist ports.GeminiCliCodeAssistClient,
+	proxyRepo ProxyRepository,
+	oauthClient GeminiOAuthClient,
+	codeAssist GeminiCliCodeAssistClient,
 	cfg *config.Config,
 ) *GeminiOAuthService {
 	return &GeminiOAuthService{

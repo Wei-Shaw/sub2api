@@ -21,7 +21,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 
 	"github.com/gin-gonic/gin"
 )
@@ -35,19 +34,19 @@ const (
 )
 
 type GeminiMessagesCompatService struct {
-	accountRepo      ports.AccountRepository
-	cache            ports.GatewayCache
+	accountRepo      AccountRepository
+	cache            GatewayCache
 	tokenProvider    *GeminiTokenProvider
 	rateLimitService *RateLimitService
-	httpUpstream     ports.HTTPUpstream
+	httpUpstream     HTTPUpstream
 REDACTED
 
 func NewGeminiMessagesCompatService(
-	accountRepo ports.AccountRepository,
-	cache ports.GatewayCache,
+	accountRepo AccountRepository,
+	cache GatewayCache,
 	tokenProvider *GeminiTokenProvider,
 	rateLimitService *RateLimitService,
-	httpUpstream ports.HTTPUpstream,
+	httpUpstream HTTPUpstream,
 ) *GeminiMessagesCompatService {
 	return &GeminiMessagesCompatService{
 		accountRepo:      accountRepo,

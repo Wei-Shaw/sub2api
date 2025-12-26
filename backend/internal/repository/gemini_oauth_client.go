@@ -8,7 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/imroc/req/v3"
 )
@@ -18,7 +18,7 @@ type geminiOAuthClient struct {
 	cfg      *config.Config
 REDACTED
 
-func NewGeminiOAuthClient(cfg *config.Config) ports.GeminiOAuthClient {
+func NewGeminiOAuthClient(cfg *config.Config) service.GeminiOAuthClient {
 	return &geminiOAuthClient{
 		tokenURL: geminicli.TokenURL,
 		cfg:      cfg,

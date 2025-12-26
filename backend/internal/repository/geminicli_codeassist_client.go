@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/imroc/req/v3"
 )
@@ -15,7 +15,7 @@ type geminiCliCodeAssistClient struct {
 	baseURL string
 REDACTED
 
-func NewGeminiCliCodeAssistClient() ports.GeminiCliCodeAssistClient {
+func NewGeminiCliCodeAssistClient() service.GeminiCliCodeAssistClient {
 	return &geminiCliCodeAssistClient{baseURL: geminicli.GeminiCliBaseURLREDACTED
 REDACTED
 

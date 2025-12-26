@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
-	"github.com/Wei-Shaw/sub2api/internal/service/ports"
 )
 
 const (
@@ -18,14 +17,14 @@ const (
 )
 
 type GeminiTokenProvider struct {
-	accountRepo        ports.AccountRepository
-	tokenCache         ports.GeminiTokenCache
+	accountRepo        AccountRepository
+	tokenCache         GeminiTokenCache
 	geminiOAuthService *GeminiOAuthService
 REDACTED
 
 func NewGeminiTokenProvider(
-	accountRepo ports.AccountRepository,
-	tokenCache ports.GeminiTokenCache,
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
 	geminiOAuthService *GeminiOAuthService,
 ) *GeminiTokenProvider {
 	return &GeminiTokenProvider{
