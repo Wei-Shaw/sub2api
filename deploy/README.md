@@ -110,11 +110,14 @@ Sub2API supports three methods to connect to Gemini:
 
 ### Method 1: Code Assist OAuth (Recommended for GCP Users)
 
-**No configuration needed** - uses built-in Gemini CLI OAuth client.
+**No configuration needed** - always uses the built-in Gemini CLI OAuth client (public).
 
 1. Leave `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET` empty
 2. In the Admin UI, create a Gemini OAuth account and select **"Code Assist"** type
 3. Complete the OAuth flow in your browser
+
+> Note: Even if you configure `GEMINI_OAUTH_CLIENT_ID` / `GEMINI_OAUTH_CLIENT_SECRET` for AI Studio OAuth,
+> Code Assist OAuth will still use the built-in Gemini CLI client.
 
 **Requirements:**
 - Google account with access to Google Cloud Platform
@@ -142,15 +145,24 @@ Requires your own OAuth client credentials.
    - Go to "APIs & Services" → "OAuth consent screen"
    - Choose "External" user type
    - Fill in app name, user support email, developer contact
-   - Add scopes: `https://www.googleapis.com/auth/generative-language`
+   - Add scopes: `https://www.googleapis.com/auth/generative-language.retriever` (and optionally `https://www.googleapis.com/auth/cloud-platform`)
    - Add test users (your Google account email)
 5. **Create OAuth 2.0 credentials:**
    - Go to "APIs & Services" → "Credentials"
    - Click "Create Credentials" → "OAuth client ID"
-   - Application type: **Web application**
+   - Application type: **Web application** (or **Desktop app**)
    - Name: e.g., "Sub2API Gemini"
-   - Authorized redirect URIs: Add `https://your-domain.com/admin/accounts` (your frontend URL)
+   - Authorized redirect URIs: Add `http://localhost:1455/auth/callback`
 6. Copy the **Client ID** and **Client Secret**
+7. **⚠️ Publish to Production (IMPORTANT):**
+   - Go to "APIs & Services" → "OAuth consent screen"
+   - Click "PUBLISH APP" to move from Testing to Production
+   - **Testing mode limitations:**
+     - Only manually added test users can authenticate (max 100 users)
+     - Refresh tokens expire after 7 days
+     - Users must be re-added periodically
+   - **Production mode:** Any Google user can authenticate, tokens don't expire
+   - Note: For sensitive scopes, Google may require verification (demo video, privacy policy)
 
 **Step 2: Configure Environment Variables**
 
@@ -163,6 +175,8 @@ GEMINI_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
 
 1. Create a Gemini OAuth account and select **"AI Studio"** type
 2. Complete the OAuth flow
+   - After consent, your browser will be redirected to `http://localhost:1455/auth/callback?code=...&state=...`
+   - Copy the full callback URL (recommended) or just the `code` and paste it back into the Admin UI
 
 ### Method 3: API Key (Simplest)
 
