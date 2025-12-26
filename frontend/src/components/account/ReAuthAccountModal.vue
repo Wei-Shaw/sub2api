@@ -85,7 +85,7 @@
         <div class="mt-2 grid grid-cols-2 gap-3">
           <button
             type="button"
-            @click="geminiOAuthType = 'code_assist'"
+            @click="handleSelectGeminiOAuthType('code_assist')"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
               geminiOAuthType === 'code_assist'
@@ -128,9 +128,11 @@
 
           <button
             type="button"
-            @click="geminiOAuthType = 'ai_studio'"
+            :disabled="!geminiAIStudioOAuthEnabled"
+            @click="handleSelectGeminiOAuthType('ai_studio')"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
               geminiOAuthType === 'ai_studio'
                 ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
                 : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
@@ -166,6 +168,18 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{
                 t('admin.accounts.oauth.gemini.noProjectIdNeededDesc')
               REDACTEDREDACTED</span>
+              <div v-if="!geminiAIStudioOAuthEnabled" class="group relative mt-1 inline-block">
+                <span
+                  class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                >
+                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') REDACTEDREDACTED
+                </span>
+                <div
+                  class="pointer-events-none absolute left-0 top-full z-10 mt-2 w-[28rem] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                >
+                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
+                </div>
+              </div>
             </div>
           </button>
         </div>
@@ -283,6 +297,7 @@ const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 // State
 const addMethod = ref<AddMethod>('oauth')
 const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
+const geminiAIStudioOAuthEnabled = ref(false)
 
 // Computed - check if this is an OpenAI account
 const isOpenAI = computed(() => props.account?.platform === 'openai')
@@ -348,6 +363,14 @@ watch(
         const creds = (props.account.credentials || {REDACTED) as Record<string, unknown>
         geminiOAuthType.value = creds.oauth_type === 'ai_studio' ? 'ai_studio' : 'code_assist'
       REDACTED
+      if (isGemini.value) {
+        geminiOAuth.getCapabilities().then((caps) => {
+          geminiAIStudioOAuthEnabled.value = !!caps?.ai_studio_oauth_enabled
+          if (!geminiAIStudioOAuthEnabled.value && geminiOAuthType.value === 'ai_studio') {
+            geminiOAuthType.value = 'code_assist'
+          REDACTED
+        REDACTED)
+      REDACTED
     REDACTED else {
       resetState()
     REDACTED
@@ -358,10 +381,19 @@ watch(
 const resetState = () => {
   addMethod.value = 'oauth'
   geminiOAuthType.value = 'code_assist'
+  geminiAIStudioOAuthEnabled.value = false
   claudeOAuth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
   oauthFlowRef.value?.reset()
+REDACTED
+
+const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'ai_studio') => {
+  if (oauthType === 'ai_studio' && !geminiAIStudioOAuthEnabled.value) {
+    appStore.showError(t('admin.accounts.oauth.gemini.aiStudioNotConfigured'))
+    return
+  REDACTED
+  geminiOAuthType.value = oauthType
 REDACTED
 
 const handleClose = () => {

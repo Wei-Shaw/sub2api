@@ -387,7 +387,7 @@
           <div class="mt-2 grid grid-cols-2 gap-3">
             <button
               type="button"
-              @click="geminiOAuthType = 'code_assist'"
+              @click="handleSelectGeminiOAuthType('code_assist')"
               :class="[
                 'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
                 geminiOAuthType === 'code_assist'
@@ -414,34 +414,65 @@
               </div>
             </button>
 
-            <button
-              type="button"
-              @click="geminiOAuthType = 'ai_studio'"
-              :class="[
-                'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-                geminiOAuthType === 'ai_studio'
-                  ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                  : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
-              ]"
-            >
-              <div
+            <div class="group relative">
+              <button
+                type="button"
+                :disabled="!geminiAIStudioOAuthEnabled"
+                @click="handleSelectGeminiOAuthType('ai_studio')"
                 :class="[
-                  'flex h-8 w-8 items-center justify-center rounded-lg',
+                  'flex w-full items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                  !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
                   geminiOAuthType === 'ai_studio'
-                    ? 'bg-purple-500 text-white'
-                    : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                    : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
                 ]"
               >
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                </svg>
+                <div
+                  :class="[
+                    'flex h-8 w-8 items-center justify-center rounded-lg',
+                    geminiOAuthType === 'ai_studio'
+                      ? 'bg-purple-500 text-white'
+                      : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                  ]"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                    />
+                  </svg>
+                </div>
+                <div class="min-w-0">
+                  <span class="block text-sm font-medium text-gray-900 dark:text-white">AI Studio</span>
+                  <span class="block text-xs font-medium text-purple-600 dark:text-purple-400">{{
+                    t('admin.accounts.oauth.gemini.noProjectIdNeeded')
+                  REDACTEDREDACTED</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                    t('admin.accounts.oauth.gemini.noProjectIdNeededDesc')
+                  REDACTEDREDACTED</span>
+                </div>
+                <span
+                  v-if="!geminiAIStudioOAuthEnabled"
+                  class="ml-auto shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                >
+                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') REDACTEDREDACTED
+                </span>
+              </button>
+
+              <div
+                v-if="!geminiAIStudioOAuthEnabled"
+                class="pointer-events-none absolute left-0 top-full z-10 mt-2 w-[28rem] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+              >
+                {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
               </div>
-              <div>
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">AI Studio</span>
-                <span class="block text-xs font-medium text-purple-600 dark:text-purple-400">{{ t('admin.accounts.oauth.gemini.noProjectIdNeeded') REDACTEDREDACTED</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.oauth.gemini.noProjectIdNeededDesc') REDACTEDREDACTED</span>
-              </div>
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1134,6 +1165,7 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
+const geminiAIStudioOAuthEnabled = ref(false)
 
 // Common models for whitelist - Anthropic
 const anthropicModels = [
@@ -1384,6 +1416,31 @@ watch(
     geminiOAuth.resetState()
   REDACTED
 )
+
+// Gemini AI Studio OAuth availability (requires operator-configured OAuth client)
+watch(
+  [() => props.show, () => form.platform, accountCategory],
+  async ([show, platform, category]) => {
+    if (!show || platform !== 'gemini' || category !== 'oauth-based') {
+      geminiAIStudioOAuthEnabled.value = false
+      return
+    REDACTED
+    const caps = await geminiOAuth.getCapabilities()
+    geminiAIStudioOAuthEnabled.value = !!caps?.ai_studio_oauth_enabled
+    if (!geminiAIStudioOAuthEnabled.value && geminiOAuthType.value === 'ai_studio') {
+      geminiOAuthType.value = 'code_assist'
+    REDACTED
+  REDACTED,
+  { immediate: true REDACTED
+)
+
+const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'ai_studio') => {
+  if (oauthType === 'ai_studio' && !geminiAIStudioOAuthEnabled.value) {
+    appStore.showError(t('admin.accounts.oauth.gemini.aiStudioNotConfigured'))
+    return
+  REDACTED
+  geminiOAuthType.value = oauthType
+REDACTED
 
 // Model mapping helpers
 const addModelMapping = () => {
