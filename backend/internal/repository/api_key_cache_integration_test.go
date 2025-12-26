@@ -23,13 +23,14 @@ func (s *ApiKeyCacheSuite) TestCreateAttemptCount() {
 		fn   func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache)
 REDACTED{
 		{
-			name: "missing_key_returns_redis_nil",
+			name: "missing_key_returns_zero_nil",
 			fn: func(ctx context.Context, rdb *redis.Client, cache *apiKeyCache) {
 				userID := int64(1)
 
-				_, err := cache.GetCreateAttemptCount(ctx, userID)
+				count, err := cache.GetCreateAttemptCount(ctx, userID)
 
-				require.ErrorIs(s.T(), err, redis.Nil, "expected redis.Nil for missing key")
+				require.NoError(s.T(), err, "expected nil error for missing key")
+				require.Equal(s.T(), 0, count, "expected zero count for missing key")
 		REDACTED,
 	REDACTED,
 		{
@@ -58,8 +59,9 @@ REDACTED{
 				require.NoError(s.T(), cache.IncrementCreateAttemptCount(ctx, userID))
 				require.NoError(s.T(), cache.DeleteCreateAttemptCount(ctx, userID), "DeleteCreateAttemptCount")
 
-				_, err := cache.GetCreateAttemptCount(ctx, userID)
-				require.ErrorIs(s.T(), err, redis.Nil, "expected redis.Nil after delete")
+				count, err := cache.GetCreateAttemptCount(ctx, userID)
+				require.NoError(s.T(), err, "expected nil error after delete")
+				require.Equal(s.T(), 0, count, "expected zero count after delete")
 		REDACTED,
 	REDACTED,
 REDACTED

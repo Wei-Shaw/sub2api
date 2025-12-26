@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
-	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -143,7 +141,7 @@ func (s *ApiKeyService) checkApiKeyRateLimit(ctx context.Context, userID int64) 
 REDACTED
 
 	count, err := s.cache.GetCreateAttemptCount(ctx, userID)
-	if err != nil && !errors.Is(err, redis.Nil) {
+	if err != nil {
 		// Redis 出错时不阻止用户操作
 		return nil
 REDACTED

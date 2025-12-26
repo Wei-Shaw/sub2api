@@ -11,7 +11,6 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -163,7 +162,7 @@ func (s *RedeemService) checkRedeemRateLimit(ctx context.Context, userID int64) 
 REDACTED
 
 	count, err := s.cache.GetRedeemAttemptCount(ctx, userID)
-	if err != nil && !errors.Is(err, redis.Nil) {
+	if err != nil {
 		// Redis 出错时不阻止用户操作
 		return nil
 REDACTED

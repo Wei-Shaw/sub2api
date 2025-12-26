@@ -3,12 +3,10 @@
 package repository
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -25,9 +23,9 @@ REDACTED
 
 func (s *RedeemCacheSuite) TestGetRedeemAttemptCount_Missing() {
 	missingUserID := int64(99999)
-	_, err := s.cache.GetRedeemAttemptCount(s.ctx, missingUserID)
-	require.Error(s.T(), err, "expected redis.Nil for missing rate-limit key")
-	require.True(s.T(), errors.Is(err, redis.Nil))
+	count, err := s.cache.GetRedeemAttemptCount(s.ctx, missingUserID)
+	require.NoError(s.T(), err, "expected nil error for missing rate-limit key")
+	require.Equal(s.T(), 0, count, "expected zero count for missing key")
 REDACTED
 
 func (s *RedeemCacheSuite) TestIncrementAndGetRedeemAttemptCount() {
