@@ -50,7 +50,7 @@ func (s *GeminiOAuthService) GetOAuthConfig() *GeminiOAuthCapabilities {
 	clientID := strings.TrimSpace(s.cfg.Gemini.OAuth.ClientID)
 	clientSecret := strings.TrimSpace(s.cfg.Gemini.OAuth.ClientSecret)
 	enabled := clientID != "" && clientSecret != "" &&
-		!(clientID == geminicli.GeminiCLIOAuthClientID && clientSecret == geminicli.GeminiCLIOAuthClientSecret)
+		(clientID != geminicli.GeminiCLIOAuthClientID || clientSecret != geminicli.GeminiCLIOAuthClientSecret)
 
 	return &GeminiOAuthCapabilities{
 		AIStudioOAuthEnabled: enabled,
