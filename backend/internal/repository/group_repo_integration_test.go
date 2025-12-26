@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
 )
@@ -32,10 +32,10 @@ REDACTED
 // --- Create / GetByID / Update / Delete ---
 
 func (s *GroupRepoSuite) TestCreate() {
-	group := &model.Group{
+	group := &service.Group{
 		Name:     "test-create",
-		Platform: model.PlatformAnthropic,
-		Status:   model.StatusActive,
+		Platform: service.PlatformAnthropic,
+		Status:   service.StatusActive,
 REDACTED
 
 	err := s.repo.Create(s.ctx, group)
@@ -53,7 +53,7 @@ func (s *GroupRepoSuite) TestGetByID_NotFound() {
 REDACTED
 
 func (s *GroupRepoSuite) TestUpdate() {
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "original"REDACTED)
+	group := groupModelToService(mustCreateGroup(s.T(), s.db, &groupModel{Name: "original"REDACTED))
 
 	group.Name = "updated"
 	err := s.repo.Update(s.ctx, group)
@@ -65,7 +65,7 @@ func (s *GroupRepoSuite) TestUpdate() {
 REDACTED
 
 func (s *GroupRepoSuite) TestDelete() {
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "to-delete"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "to-delete"REDACTED)
 
 	err := s.repo.Delete(s.ctx, group.ID)
 	s.Require().NoError(err, "Delete")
@@ -77,8 +77,8 @@ REDACTED
 // --- List / ListWithFilters ---
 
 func (s *GroupRepoSuite) TestList() {
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g1"REDACTED)
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g2"REDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1"REDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2"REDACTED)
 
 	groups, page, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "List")
@@ -87,28 +87,28 @@ func (s *GroupRepoSuite) TestList() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_Platform() {
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g1", Platform: model.PlatformAnthropicREDACTED)
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g2", Platform: model.PlatformOpenAIREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", Platform: service.PlatformAnthropicREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", Platform: service.PlatformOpenAIREDACTED)
 
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, model.PlatformOpenAI, "", nil)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformOpenAI, "", nil)
 	s.Require().NoError(err)
 	s.Require().Len(groups, 1)
-	s.Require().Equal(model.PlatformOpenAI, groups[0].Platform)
+	s.Require().Equal(service.PlatformOpenAI, groups[0].Platform)
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_Status() {
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g1", Status: model.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g2", Status: model.StatusDisabledREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", Status: service.StatusActiveREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", Status: service.StatusDisabledREDACTED)
 
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", model.StatusDisabled, nil)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", service.StatusDisabled, nil)
 	s.Require().NoError(err)
 	s.Require().Len(groups, 1)
-	s.Require().Equal(model.StatusDisabled, groups[0].Status)
+	s.Require().Equal(service.StatusDisabled, groups[0].Status)
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_IsExclusive() {
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g1", IsExclusive: falseREDACTED)
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g2", IsExclusive: trueREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", IsExclusive: falseREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", IsExclusive: trueREDACTED)
 
 	isExclusive := true
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", &isExclusive)
@@ -118,24 +118,24 @@ func (s *GroupRepoSuite) TestListWithFilters_IsExclusive() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {
-	g1 := mustCreateGroup(s.T(), s.db, &model.Group{
+	g1 := mustCreateGroup(s.T(), s.db, &groupModel{
 		Name:     "g1",
-		Platform: model.PlatformAnthropic,
-		Status:   model.StatusActive,
+		Platform: service.PlatformAnthropic,
+		Status:   service.StatusActive,
 REDACTED)
-	g2 := mustCreateGroup(s.T(), s.db, &model.Group{
+	g2 := mustCreateGroup(s.T(), s.db, &groupModel{
 		Name:        "g2",
-		Platform:    model.PlatformAnthropic,
-		Status:      model.StatusActive,
+		Platform:    service.PlatformAnthropic,
+		Status:      service.StatusActive,
 		IsExclusive: true,
 REDACTED)
 
-	a := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc1"REDACTED)
+	a := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc1"REDACTED)
 	mustBindAccountToGroup(s.T(), s.db, a.ID, g1.ID, 1)
 	mustBindAccountToGroup(s.T(), s.db, a.ID, g2.ID, 1)
 
 	isExclusive := true
-	groups, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, model.PlatformAnthropic, model.StatusActive, &isExclusive)
+	groups, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformAnthropic, service.StatusActive, &isExclusive)
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(groups, 1)
@@ -146,8 +146,8 @@ REDACTED
 // --- ListActive / ListActiveByPlatform ---
 
 func (s *GroupRepoSuite) TestListActive() {
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "active1", Status: model.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "inactive1", Status: model.StatusDisabledREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "active1", Status: service.StatusActiveREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "inactive1", Status: service.StatusDisabledREDACTED)
 
 	groups, err := s.repo.ListActive(s.ctx)
 	s.Require().NoError(err, "ListActive")
@@ -156,11 +156,11 @@ func (s *GroupRepoSuite) TestListActive() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListActiveByPlatform() {
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g1", Platform: model.PlatformAnthropic, Status: model.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g2", Platform: model.PlatformOpenAI, Status: model.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "g3", Platform: model.PlatformAnthropic, Status: model.StatusDisabledREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", Platform: service.PlatformAnthropic, Status: service.StatusActiveREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", Platform: service.PlatformOpenAI, Status: service.StatusActiveREDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g3", Platform: service.PlatformAnthropic, Status: service.StatusDisabledREDACTED)
 
-	groups, err := s.repo.ListActiveByPlatform(s.ctx, model.PlatformAnthropic)
+	groups, err := s.repo.ListActiveByPlatform(s.ctx, service.PlatformAnthropic)
 	s.Require().NoError(err, "ListActiveByPlatform")
 	s.Require().Len(groups, 1)
 	s.Require().Equal("g1", groups[0].Name)
@@ -169,7 +169,7 @@ REDACTED
 // --- ExistsByName ---
 
 func (s *GroupRepoSuite) TestExistsByName() {
-	mustCreateGroup(s.T(), s.db, &model.Group{Name: "existing-group"REDACTED)
+	mustCreateGroup(s.T(), s.db, &groupModel{Name: "existing-group"REDACTED)
 
 	exists, err := s.repo.ExistsByName(s.ctx, "existing-group")
 	s.Require().NoError(err, "ExistsByName")
@@ -183,9 +183,9 @@ REDACTED
 // --- GetAccountCount ---
 
 func (s *GroupRepoSuite) TestGetAccountCount() {
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-count"REDACTED)
-	a1 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a1"REDACTED)
-	a2 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a2"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-count"REDACTED)
+	a1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1"REDACTED)
+	a2 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2"REDACTED)
 	mustBindAccountToGroup(s.T(), s.db, a1.ID, group.ID, 1)
 	mustBindAccountToGroup(s.T(), s.db, a2.ID, group.ID, 2)
 
@@ -195,7 +195,7 @@ func (s *GroupRepoSuite) TestGetAccountCount() {
 REDACTED
 
 func (s *GroupRepoSuite) TestGetAccountCount_Empty() {
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-empty"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-empty"REDACTED)
 
 	count, err := s.repo.GetAccountCount(s.ctx, group.ID)
 	s.Require().NoError(err)
@@ -205,8 +205,8 @@ REDACTED
 // --- DeleteAccountGroupsByGroupID ---
 
 func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
-	g := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-del"REDACTED)
-	a := mustCreateAccount(s.T(), s.db, &model.Account{Name: "acc-del"REDACTED)
+	g := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-del"REDACTED)
+	a := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-del"REDACTED)
 	mustBindAccountToGroup(s.T(), s.db, a.ID, g.ID, 1)
 
 	affected, err := s.repo.DeleteAccountGroupsByGroupID(s.ctx, g.ID)
@@ -219,10 +219,10 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
 REDACTED
 
 func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID_MultipleAccounts() {
-	g := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-multi"REDACTED)
-	a1 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a1"REDACTED)
-	a2 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a2"REDACTED)
-	a3 := mustCreateAccount(s.T(), s.db, &model.Account{Name: "a3"REDACTED)
+	g := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-multi"REDACTED)
+	a1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1"REDACTED)
+	a2 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2"REDACTED)
+	a3 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a3"REDACTED)
 	mustBindAccountToGroup(s.T(), s.db, a1.ID, g.ID, 1)
 	mustBindAccountToGroup(s.T(), s.db, a2.ID, g.ID, 2)
 	mustBindAccountToGroup(s.T(), s.db, a3.ID, g.ID, 3)

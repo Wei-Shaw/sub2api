@@ -6,7 +6,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
@@ -30,7 +29,7 @@ func (r *usageLogRepository) getPerformanceStats(ctx context.Context, userID int
 		TokenCount   int64 `gorm:"column:token_count"`
 REDACTED
 
-	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	db := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as request_count,
 			COALESCE(SUM(input_tokens + output_tokens), 0) as token_count
@@ -46,24 +45,29 @@ REDACTED
 	return perfStats.RequestCount / 5, perfStats.TokenCount / 5
 REDACTED
 
-func (r *usageLogRepository) Create(ctx context.Context, log *model.UsageLog) error {
-	return r.db.WithContext(ctx).Create(log).Error
+func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) error {
+	m := usageLogModelFromService(log)
+	err := r.db.WithContext(ctx).Create(m).Error
+	if err == nil {
+		applyUsageLogModelToService(log, m)
+REDACTED
+	return err
 REDACTED
 
-func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (*model.UsageLog, error) {
-	var log model.UsageLog
+func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (*service.UsageLog, error) {
+	var log usageLogModel
 	err := r.db.WithContext(ctx).First(&log, id).Error
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrUsageLogNotFound, nil)
 REDACTED
-	return &log, nil
+	return usageLogModelToService(&log), nil
 REDACTED
 
-func (r *usageLogRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	var total int64
 
-	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).Where("user_id = ?", userID)
+	db := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).Where("user_id = ?", userID)
 
 	if err := db.Count(&total).Error; err != nil {
 		return nil, nil, err
@@ -73,24 +77,14 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	pages := int(total) / params.Limit()
-	if int(total)%params.Limit() > 0 {
-		pages++
+	return usageLogModelsToService(logs), paginationResultFromTotal(total, params), nil
 REDACTED
 
-	return logs, &pagination.PaginationResult{
-		Total:    total,
-		Page:     params.Page,
-		PageSize: params.Limit(),
-		Pages:    pages,
-REDACTED, nil
-REDACTED
-
-func (r *usageLogRepository) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	var total int64
 
-	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).Where("api_key_id = ?", apiKeyID)
+	db := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).Where("api_key_id = ?", apiKeyID)
 
 	if err := db.Count(&total).Error; err != nil {
 		return nil, nil, err
@@ -100,17 +94,7 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	pages := int(total) / params.Limit()
-	if int(total)%params.Limit() > 0 {
-		pages++
-REDACTED
-
-	return logs, &pagination.PaginationResult{
-		Total:    total,
-		Page:     params.Page,
-		PageSize: params.Limit(),
-		Pages:    pages,
-REDACTED, nil
+	return usageLogModelsToService(logs), paginationResultFromTotal(total, params), nil
 REDACTED
 
 // UserStats 用户使用统计
@@ -125,7 +109,7 @@ REDACTED
 
 func (r *usageLogRepository) GetUserStats(ctx context.Context, userID int64, startTime, endTime time.Time) (*UserStats, error) {
 	var stats UserStats
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as total_requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
@@ -147,47 +131,47 @@ func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardS
 	today := timezone.Today()
 
 	// 总用户数
-	r.db.WithContext(ctx).Model(&model.User{REDACTED).Count(&stats.TotalUsers)
+	r.db.WithContext(ctx).Model(&userModel{REDACTED).Count(&stats.TotalUsers)
 
 	// 今日新增用户数
-	r.db.WithContext(ctx).Model(&model.User{REDACTED).
+	r.db.WithContext(ctx).Model(&userModel{REDACTED).
 		Where("created_at >= ?", today).
 		Count(&stats.TodayNewUsers)
 
 	// 今日活跃用户数 (今日有请求的用户)
-	r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Distinct("user_id").
 		Where("created_at >= ?", today).
 		Count(&stats.ActiveUsers)
 
 	// 总 API Key 数
-	r.db.WithContext(ctx).Model(&model.ApiKey{REDACTED).Count(&stats.TotalApiKeys)
+	r.db.WithContext(ctx).Model(&apiKeyModel{REDACTED).Count(&stats.TotalApiKeys)
 
 	// 活跃 API Key 数
-	r.db.WithContext(ctx).Model(&model.ApiKey{REDACTED).
-		Where("status = ?", model.StatusActive).
+	r.db.WithContext(ctx).Model(&apiKeyModel{REDACTED).
+		Where("status = ?", service.StatusActive).
 		Count(&stats.ActiveApiKeys)
 
 	// 总账户数
-	r.db.WithContext(ctx).Model(&model.Account{REDACTED).Count(&stats.TotalAccounts)
+	r.db.WithContext(ctx).Model(&accountModel{REDACTED).Count(&stats.TotalAccounts)
 
 	// 正常账户数 (schedulable=true, status=active)
-	r.db.WithContext(ctx).Model(&model.Account{REDACTED).
-		Where("status = ? AND schedulable = ?", model.StatusActive, true).
+	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
+		Where("status = ? AND schedulable = ?", service.StatusActive, true).
 		Count(&stats.NormalAccounts)
 
 	// 异常账户数 (status=error)
-	r.db.WithContext(ctx).Model(&model.Account{REDACTED).
-		Where("status = ?", model.StatusError).
+	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
+		Where("status = ?", service.StatusError).
 		Count(&stats.ErrorAccounts)
 
 	// 限流账户数
-	r.db.WithContext(ctx).Model(&model.Account{REDACTED).
+	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
 		Where("rate_limited_at IS NOT NULL AND rate_limit_reset_at > ?", time.Now()).
 		Count(&stats.RateLimitAccounts)
 
 	// 过载账户数
-	r.db.WithContext(ctx).Model(&model.Account{REDACTED).
+	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
 		Where("overload_until IS NOT NULL AND overload_until > ?", time.Now()).
 		Count(&stats.OverloadAccounts)
 
@@ -202,7 +186,7 @@ func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardS
 		TotalActualCost          float64 `gorm:"column:total_actual_cost"`
 		AverageDurationMs        float64 `gorm:"column:avg_duration_ms"`
 REDACTED
-	r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as total_requests,
 			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
@@ -235,7 +219,7 @@ REDACTED
 		TodayCost                float64 `gorm:"column:today_cost"`
 		TodayActualCost          float64 `gorm:"column:today_actual_cost"`
 REDACTED
-	r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as today_requests,
 			COALESCE(SUM(input_tokens), 0) as today_input_tokens,
@@ -263,11 +247,11 @@ REDACTED
 	return &stats, nil
 REDACTED
 
-func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	var total int64
 
-	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).Where("account_id = ?", accountID)
+	db := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).Where("account_id = ?", accountID)
 
 	if err := db.Count(&total).Error; err != nil {
 		return nil, nil, err
@@ -277,57 +261,47 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	pages := int(total) / params.Limit()
-	if int(total)%params.Limit() > 0 {
-		pages++
+	return usageLogModelsToService(logs), paginationResultFromTotal(total, params), nil
 REDACTED
 
-	return logs, &pagination.PaginationResult{
-		Total:    total,
-		Page:     params.Page,
-		PageSize: params.Limit(),
-		Pages:    pages,
-REDACTED, nil
-REDACTED
-
-func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, startTime, endTime).
 		Order("id DESC").
 		Find(&logs).Error
-	return logs, nil, err
+	return usageLogModelsToService(logs), nil, err
 REDACTED
 
-func (r *usageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	err := r.db.WithContext(ctx).
 		Where("api_key_id = ? AND created_at >= ? AND created_at < ?", apiKeyID, startTime, endTime).
 		Order("id DESC").
 		Find(&logs).Error
-	return logs, nil, err
+	return usageLogModelsToService(logs), nil, err
 REDACTED
 
-func (r *usageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	err := r.db.WithContext(ctx).
 		Where("account_id = ? AND created_at >= ? AND created_at < ?", accountID, startTime, endTime).
 		Order("id DESC").
 		Find(&logs).Error
-	return logs, nil, err
+	return usageLogModelsToService(logs), nil, err
 REDACTED
 
-func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	err := r.db.WithContext(ctx).
 		Where("model = ? AND created_at >= ? AND created_at < ?", modelName, startTime, endTime).
 		Order("id DESC").
 		Find(&logs).Error
-	return logs, nil, err
+	return usageLogModelsToService(logs), nil, err
 REDACTED
 
 func (r *usageLogRepository) Delete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Delete(&model.UsageLog{REDACTED, id).Error
+	return r.db.WithContext(ctx).Delete(&usageLogModel{REDACTED, id).Error
 REDACTED
 
 // GetAccountTodayStats 获取账号今日统计
@@ -340,7 +314,7 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 		Cost     float64 `gorm:"column:cost"`
 REDACTED
 
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
@@ -368,7 +342,7 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 		Cost     float64 `gorm:"column:cost"`
 REDACTED
 
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
@@ -499,12 +473,12 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	today := timezone.Today()
 
 	// API Key 统计
-	r.db.WithContext(ctx).Model(&model.ApiKey{REDACTED).
+	r.db.WithContext(ctx).Model(&apiKeyModel{REDACTED).
 		Where("user_id = ?", userID).
 		Count(&stats.TotalApiKeys)
 
-	r.db.WithContext(ctx).Model(&model.ApiKey{REDACTED).
-		Where("user_id = ? AND status = ?", userID, model.StatusActive).
+	r.db.WithContext(ctx).Model(&apiKeyModel{REDACTED).
+		Where("user_id = ? AND status = ?", userID, service.StatusActive).
 		Count(&stats.ActiveApiKeys)
 
 	// 累计 Token 统计
@@ -518,7 +492,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 		TotalActualCost          float64 `gorm:"column:total_actual_cost"`
 		AverageDurationMs        float64 `gorm:"column:avg_duration_ms"`
 REDACTED
-	r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as total_requests,
 			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
@@ -552,7 +526,7 @@ REDACTED
 		TodayCost                float64 `gorm:"column:today_cost"`
 		TodayActualCost          float64 `gorm:"column:today_actual_cost"`
 REDACTED
-	r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as today_requests,
 			COALESCE(SUM(input_tokens), 0) as today_input_tokens,
@@ -591,7 +565,7 @@ REDACTED else {
 		dateFormat = "YYYY-MM-DD"
 REDACTED
 
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			TO_CHAR(created_at, ?) as date,
 			COUNT(*) as requests,
@@ -618,7 +592,7 @@ REDACTED
 func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]ModelStat, error) {
 	var results []ModelStat
 
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			model,
 			COUNT(*) as requests,
@@ -644,11 +618,11 @@ REDACTED
 type UsageLogFilters = usagestats.UsageLogFilters
 
 // ListWithFilters lists usage logs with optional filters (for admin)
-func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]model.UsageLog, *pagination.PaginationResult, error) {
-	var logs []model.UsageLog
+func (r *usageLogRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	var logs []usageLogModel
 	var total int64
 
-	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED)
+	db := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED)
 
 	// Apply filters
 	if filters.UserID > 0 {
@@ -675,17 +649,7 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	pages := int(total) / params.Limit()
-	if int(total)%params.Limit() > 0 {
-		pages++
-REDACTED
-
-	return logs, &pagination.PaginationResult{
-		Total:    total,
-		Page:     params.Page,
-		PageSize: params.Limit(),
-		Pages:    pages,
-REDACTED, nil
+	return usageLogModelsToService(logs), paginationResultFromTotal(total, params), nil
 REDACTED
 
 // UsageStats represents usage statistics
@@ -713,7 +677,7 @@ REDACTED
 		UserID    int64   `gorm:"column:user_id"`
 		TotalCost float64 `gorm:"column:total_cost"`
 REDACTED
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select("user_id, COALESCE(SUM(actual_cost), 0) as total_cost").
 		Where("user_id IN ?", userIDs).
 		Group("user_id").
@@ -733,7 +697,7 @@ REDACTED
 		UserID    int64   `gorm:"column:user_id"`
 		TodayCost float64 `gorm:"column:today_cost"`
 REDACTED
-	err = r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err = r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select("user_id, COALESCE(SUM(actual_cost), 0) as today_cost").
 		Where("user_id IN ? AND created_at >= ?", userIDs, today).
 		Group("user_id").
@@ -773,7 +737,7 @@ REDACTED
 		ApiKeyID  int64   `gorm:"column:api_key_id"`
 		TotalCost float64 `gorm:"column:total_cost"`
 REDACTED
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select("api_key_id, COALESCE(SUM(actual_cost), 0) as total_cost").
 		Where("api_key_id IN ?", apiKeyIDs).
 		Group("api_key_id").
@@ -793,7 +757,7 @@ REDACTED
 		ApiKeyID  int64   `gorm:"column:api_key_id"`
 		TodayCost float64 `gorm:"column:today_cost"`
 REDACTED
-	err = r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err = r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select("api_key_id, COALESCE(SUM(actual_cost), 0) as today_cost").
 		Where("api_key_id IN ? AND created_at >= ?", apiKeyIDs, today).
 		Group("api_key_id").
@@ -822,7 +786,7 @@ REDACTED else {
 		dateFormat = "YYYY-MM-DD"
 REDACTED
 
-	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	db := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			TO_CHAR(created_at, ?) as date,
 			COUNT(*) as requests,
@@ -854,7 +818,7 @@ REDACTED
 func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) ([]ModelStat, error) {
 	var results []ModelStat
 
-	db := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	db := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			model,
 			COUNT(*) as requests,
@@ -896,7 +860,7 @@ func (r *usageLogRepository) GetGlobalStats(ctx context.Context, startTime, endT
 		AverageDurationMs float64 `gorm:"column:avg_duration_ms"`
 REDACTED
 
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			COUNT(*) as total_requests,
 			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
@@ -950,7 +914,7 @@ REDACTED
 		ActualCost float64 `gorm:"column:actual_cost"`
 REDACTED
 
-	err := r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select(`
 			TO_CHAR(created_at, 'YYYY-MM-DD') as date,
 			COUNT(*) as requests,
@@ -1011,7 +975,7 @@ REDACTED
 	var avgDuration struct {
 		AvgDurationMs float64 `gorm:"column:avg_duration_ms"`
 REDACTED
-	r.db.WithContext(ctx).Model(&model.UsageLog{REDACTED).
+	r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
 		Select("COALESCE(AVG(duration_ms), 0) as avg_duration_ms").
 		Where("account_id = ? AND created_at >= ? AND created_at < ?", accountID, startTime, endTime).
 		Scan(&avgDuration)
@@ -1089,4 +1053,138 @@ REDACTED
 		Summary: summary,
 		Models:  models,
 REDACTED, nil
+REDACTED
+
+type usageLogModel struct {
+	ID        int64  `gorm:"primaryKey"`
+	UserID    int64  `gorm:"index;not null"`
+	ApiKeyID  int64  `gorm:"index;not null"`
+	AccountID int64  `gorm:"index;not null"`
+	RequestID string `gorm:"size:64"`
+	Model     string `gorm:"size:100;index;not null"`
+
+	GroupID        *int64 `gorm:"index"`
+	SubscriptionID *int64 `gorm:"index"`
+
+	InputTokens         int `gorm:"default:0;not null"`
+	OutputTokens        int `gorm:"default:0;not null"`
+	CacheCreationTokens int `gorm:"default:0;not null"`
+	CacheReadTokens     int `gorm:"default:0;not null"`
+
+	CacheCreation5mTokens int `gorm:"default:0;not null"`
+	CacheCreation1hTokens int `gorm:"default:0;not null"`
+
+	InputCost         float64 `gorm:"type:decimal(20,10);default:0;not null"`
+	OutputCost        float64 `gorm:"type:decimal(20,10);default:0;not null"`
+	CacheCreationCost float64 `gorm:"type:decimal(20,10);default:0;not null"`
+	CacheReadCost     float64 `gorm:"type:decimal(20,10);default:0;not null"`
+	TotalCost         float64 `gorm:"type:decimal(20,10);default:0;not null"`
+	ActualCost        float64 `gorm:"type:decimal(20,10);default:0;not null"`
+	RateMultiplier    float64 `gorm:"type:decimal(10,4);default:1;not null"`
+
+	BillingType  int8 `gorm:"type:smallint;default:0;not null"`
+	Stream       bool `gorm:"default:false;not null"`
+	DurationMs   *int
+	FirstTokenMs *int
+
+	CreatedAt time.Time `gorm:"index;not null"`
+
+	User         *userModel             `gorm:"foreignKey:UserID"`
+	ApiKey       *apiKeyModel           `gorm:"foreignKey:ApiKeyID"`
+	Account      *accountModel          `gorm:"foreignKey:AccountID"`
+	Group        *groupModel            `gorm:"foreignKey:GroupID"`
+	Subscription *userSubscriptionModel `gorm:"foreignKey:SubscriptionID"`
+REDACTED
+
+func (usageLogModel) TableName() string { return "usage_logs" REDACTED
+
+func usageLogModelToService(m *usageLogModel) *service.UsageLog {
+	if m == nil {
+		return nil
+REDACTED
+	return &service.UsageLog{
+		ID:                    m.ID,
+		UserID:                m.UserID,
+		ApiKeyID:              m.ApiKeyID,
+		AccountID:             m.AccountID,
+		RequestID:             m.RequestID,
+		Model:                 m.Model,
+		GroupID:               m.GroupID,
+		SubscriptionID:        m.SubscriptionID,
+		InputTokens:           m.InputTokens,
+		OutputTokens:          m.OutputTokens,
+		CacheCreationTokens:   m.CacheCreationTokens,
+		CacheReadTokens:       m.CacheReadTokens,
+		CacheCreation5mTokens: m.CacheCreation5mTokens,
+		CacheCreation1hTokens: m.CacheCreation1hTokens,
+		InputCost:             m.InputCost,
+		OutputCost:            m.OutputCost,
+		CacheCreationCost:     m.CacheCreationCost,
+		CacheReadCost:         m.CacheReadCost,
+		TotalCost:             m.TotalCost,
+		ActualCost:            m.ActualCost,
+		RateMultiplier:        m.RateMultiplier,
+		BillingType:           m.BillingType,
+		Stream:                m.Stream,
+		DurationMs:            m.DurationMs,
+		FirstTokenMs:          m.FirstTokenMs,
+		CreatedAt:             m.CreatedAt,
+		User:                  userModelToService(m.User),
+		ApiKey:                apiKeyModelToService(m.ApiKey),
+		Account:               accountModelToService(m.Account),
+		Group:                 groupModelToService(m.Group),
+		Subscription:          userSubscriptionModelToService(m.Subscription),
+REDACTED
+REDACTED
+
+func usageLogModelsToService(models []usageLogModel) []service.UsageLog {
+	out := make([]service.UsageLog, 0, len(models))
+	for i := range models {
+		if s := usageLogModelToService(&models[i]); s != nil {
+			out = append(out, *s)
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func usageLogModelFromService(log *service.UsageLog) *usageLogModel {
+	if log == nil {
+		return nil
+REDACTED
+	return &usageLogModel{
+		ID:                    log.ID,
+		UserID:                log.UserID,
+		ApiKeyID:              log.ApiKeyID,
+		AccountID:             log.AccountID,
+		RequestID:             log.RequestID,
+		Model:                 log.Model,
+		GroupID:               log.GroupID,
+		SubscriptionID:        log.SubscriptionID,
+		InputTokens:           log.InputTokens,
+		OutputTokens:          log.OutputTokens,
+		CacheCreationTokens:   log.CacheCreationTokens,
+		CacheReadTokens:       log.CacheReadTokens,
+		CacheCreation5mTokens: log.CacheCreation5mTokens,
+		CacheCreation1hTokens: log.CacheCreation1hTokens,
+		InputCost:             log.InputCost,
+		OutputCost:            log.OutputCost,
+		CacheCreationCost:     log.CacheCreationCost,
+		CacheReadCost:         log.CacheReadCost,
+		TotalCost:             log.TotalCost,
+		ActualCost:            log.ActualCost,
+		RateMultiplier:        log.RateMultiplier,
+		BillingType:           log.BillingType,
+		Stream:                log.Stream,
+		DurationMs:            log.DurationMs,
+		FirstTokenMs:          log.FirstTokenMs,
+		CreatedAt:             log.CreatedAt,
+REDACTED
+REDACTED
+
+func applyUsageLogModelToService(log *service.UsageLog, m *usageLogModel) {
+	if log == nil || m == nil {
+		return
+REDACTED
+	log.ID = m.ID
+	log.CreatedAt = m.CreatedAt
 REDACTED

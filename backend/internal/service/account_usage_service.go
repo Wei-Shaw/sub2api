@@ -7,24 +7,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 type UsageLogRepository interface {
-	Create(ctx context.Context, log *model.UsageLog) error
-	GetByID(ctx context.Context, id int64) (*model.UsageLog, error)
+	Create(ctx context.Context, log *UsageLog) error
+	GetByID(ctx context.Context, id int64) (*UsageLog, error)
 	Delete(ctx context.Context, id int64) error
 
-	ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error)
-	ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error)
-	ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]model.UsageLog, *pagination.PaginationResult, error)
+	ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error)
+	ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error)
+	ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error)
 
-	ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error)
-	ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error)
-	ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error)
-	ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]model.UsageLog, *pagination.PaginationResult, error)
+	ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]UsageLog, *pagination.PaginationResult, error)
+	ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]UsageLog, *pagination.PaginationResult, error)
+	ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]UsageLog, *pagination.PaginationResult, error)
+	ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]UsageLog, *pagination.PaginationResult, error)
 
 	GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error)
 	GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error)
@@ -44,7 +43,7 @@ type UsageLogRepository interface {
 	GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error)
 
 	// Admin usage listing/stats
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]model.UsageLog, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error)
 	GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 
 	// Account stats
@@ -163,7 +162,7 @@ REDACTED
 REDACTED
 
 	// Setup Token账号：根据session_window推算（没有profile scope，无法调用usage API）
-	if account.Type == model.AccountTypeSetupToken {
+	if account.Type == AccountTypeSetupToken {
 		usage := s.estimateSetupTokenUsage(account)
 		// 添加窗口统计
 		s.addWindowStats(ctx, account, usage)
@@ -175,7 +174,7 @@ REDACTED
 REDACTED
 
 // addWindowStats 为usage数据添加窗口期统计
-func (s *AccountUsageService) addWindowStats(ctx context.Context, account *model.Account, usage *UsageInfo) {
+func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
 	if usage.FiveHour == nil {
 		return
 REDACTED
@@ -225,7 +224,7 @@ REDACTED
 REDACTED
 
 // fetchOAuthUsage 从Anthropic API获取OAuth账号的使用量
-func (s *AccountUsageService) fetchOAuthUsage(ctx context.Context, account *model.Account) (*UsageInfo, error) {
+func (s *AccountUsageService) fetchOAuthUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
 		return nil, fmt.Errorf("no access token available")
@@ -320,7 +319,7 @@ REDACTED
 REDACTED
 
 // estimateSetupTokenUsage 根据session_window推算Setup Token账号的使用量
-func (s *AccountUsageService) estimateSetupTokenUsage(account *model.Account) *UsageInfo {
+func (s *AccountUsageService) estimateSetupTokenUsage(account *Account) *UsageInfo {
 	info := &UsageInfo{REDACTED
 
 	// 如果有session_window信息

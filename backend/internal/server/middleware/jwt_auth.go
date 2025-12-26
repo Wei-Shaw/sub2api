@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -62,19 +61,14 @@ func jwtAuth(authService *service.AuthService, userService *service.UserService)
 			return
 	REDACTED
 
-		// 将用户信息存入上下文
-		c.Set(string(ContextKeyUser), user)
+		c.Set(string(ContextKeyUser), AuthSubject{
+			UserID:      user.ID,
+			Concurrency: user.Concurrency,
+	REDACTED)
+		c.Set(string(ContextKeyUserRole), user.Role)
 
 		c.Next()
 REDACTED
 REDACTED
 
-// GetUserFromContext 从上下文中获取用户
-func GetUserFromContext(c *gin.Context) (*model.User, bool) {
-	value, exists := c.Get(string(ContextKeyUser))
-	if !exists {
-		return nil, false
-REDACTED
-	user, ok := value.(*model.User)
-	return user, ok
-REDACTED
+// Deprecated: prefer GetAuthSubjectFromContext in auth_subject.go.

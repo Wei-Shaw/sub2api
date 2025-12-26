@@ -1,0 +1,294 @@
+package dto
+
+import "github.com/Wei-Shaw/sub2api/internal/service"
+
+func UserFromServiceShallow(u *service.User) *User {
+	if u == nil {
+		return nil
+REDACTED
+	return &User{
+		ID:            u.ID,
+		Email:         u.Email,
+		Username:      u.Username,
+		Wechat:        u.Wechat,
+		Notes:         u.Notes,
+		Role:          u.Role,
+		Balance:       u.Balance,
+		Concurrency:   u.Concurrency,
+		Status:        u.Status,
+		AllowedGroups: u.AllowedGroups,
+		CreatedAt:     u.CreatedAt,
+		UpdatedAt:     u.UpdatedAt,
+REDACTED
+REDACTED
+
+func UserFromService(u *service.User) *User {
+	if u == nil {
+		return nil
+REDACTED
+	out := UserFromServiceShallow(u)
+	if len(u.ApiKeys) > 0 {
+		out.ApiKeys = make([]ApiKey, 0, len(u.ApiKeys))
+		for i := range u.ApiKeys {
+			k := u.ApiKeys[i]
+			out.ApiKeys = append(out.ApiKeys, *ApiKeyFromService(&k))
+	REDACTED
+REDACTED
+	if len(u.Subscriptions) > 0 {
+		out.Subscriptions = make([]UserSubscription, 0, len(u.Subscriptions))
+		for i := range u.Subscriptions {
+			s := u.Subscriptions[i]
+			out.Subscriptions = append(out.Subscriptions, *UserSubscriptionFromService(&s))
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func ApiKeyFromService(k *service.ApiKey) *ApiKey {
+	if k == nil {
+		return nil
+REDACTED
+	return &ApiKey{
+		ID:        k.ID,
+		UserID:    k.UserID,
+		Key:       k.Key,
+		Name:      k.Name,
+		GroupID:   k.GroupID,
+		Status:    k.Status,
+		CreatedAt: k.CreatedAt,
+		UpdatedAt: k.UpdatedAt,
+		User:      UserFromServiceShallow(k.User),
+		Group:     GroupFromServiceShallow(k.Group),
+REDACTED
+REDACTED
+
+func GroupFromServiceShallow(g *service.Group) *Group {
+	if g == nil {
+		return nil
+REDACTED
+	return &Group{
+		ID:               g.ID,
+		Name:             g.Name,
+		Description:      g.Description,
+		Platform:         g.Platform,
+		RateMultiplier:   g.RateMultiplier,
+		IsExclusive:      g.IsExclusive,
+		Status:           g.Status,
+		SubscriptionType: g.SubscriptionType,
+		DailyLimitUSD:    g.DailyLimitUSD,
+		WeeklyLimitUSD:   g.WeeklyLimitUSD,
+		MonthlyLimitUSD:  g.MonthlyLimitUSD,
+		CreatedAt:        g.CreatedAt,
+		UpdatedAt:        g.UpdatedAt,
+		AccountCount:     g.AccountCount,
+REDACTED
+REDACTED
+
+func GroupFromService(g *service.Group) *Group {
+	if g == nil {
+		return nil
+REDACTED
+	out := GroupFromServiceShallow(g)
+	if len(g.AccountGroups) > 0 {
+		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
+		for i := range g.AccountGroups {
+			ag := g.AccountGroups[i]
+			out.AccountGroups = append(out.AccountGroups, *AccountGroupFromService(&ag))
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func AccountFromServiceShallow(a *service.Account) *Account {
+	if a == nil {
+		return nil
+REDACTED
+REDACTED
+		ID:                  a.ID,
+		Name:                a.Name,
+		Platform:            a.Platform,
+		Type:                a.Type,
+		Credentials:         a.Credentials,
+		Extra:               a.Extra,
+		ProxyID:             a.ProxyID,
+		Concurrency:         a.Concurrency,
+		Priority:            a.Priority,
+		Status:              a.Status,
+		ErrorMessage:        a.ErrorMessage,
+		LastUsedAt:          a.LastUsedAt,
+		CreatedAt:           a.CreatedAt,
+		UpdatedAt:           a.UpdatedAt,
+		Schedulable:         a.Schedulable,
+		RateLimitedAt:       a.RateLimitedAt,
+		RateLimitResetAt:    a.RateLimitResetAt,
+		OverloadUntil:       a.OverloadUntil,
+		SessionWindowStart:  a.SessionWindowStart,
+		SessionWindowEnd:    a.SessionWindowEnd,
+		SessionWindowStatus: a.SessionWindowStatus,
+		GroupIDs:            a.GroupIDs,
+REDACTED
+REDACTED
+
+func AccountFromService(a *service.Account) *Account {
+	if a == nil {
+		return nil
+REDACTED
+	out := AccountFromServiceShallow(a)
+	out.Proxy = ProxyFromService(a.Proxy)
+	if len(a.AccountGroups) > 0 {
+		out.AccountGroups = make([]AccountGroup, 0, len(a.AccountGroups))
+		for i := range a.AccountGroups {
+			ag := a.AccountGroups[i]
+			out.AccountGroups = append(out.AccountGroups, *AccountGroupFromService(&ag))
+	REDACTED
+REDACTED
+	if len(a.Groups) > 0 {
+		out.Groups = make([]*Group, 0, len(a.Groups))
+		for _, g := range a.Groups {
+			out.Groups = append(out.Groups, GroupFromServiceShallow(g))
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func AccountGroupFromService(ag *service.AccountGroup) *AccountGroup {
+	if ag == nil {
+		return nil
+REDACTED
+	return &AccountGroup{
+		AccountID: ag.AccountID,
+		GroupID:   ag.GroupID,
+		Priority:  ag.Priority,
+		CreatedAt: ag.CreatedAt,
+		Account:   AccountFromServiceShallow(ag.Account),
+		Group:     GroupFromServiceShallow(ag.Group),
+REDACTED
+REDACTED
+
+func ProxyFromService(p *service.Proxy) *Proxy {
+	if p == nil {
+		return nil
+REDACTED
+	return &Proxy{
+		ID:        p.ID,
+		Name:      p.Name,
+		Protocol:  p.Protocol,
+		Host:      p.Host,
+		Port:      p.Port,
+		Username:  p.Username,
+		Password:  p.Password,
+		Status:    p.Status,
+		CreatedAt: p.CreatedAt,
+		UpdatedAt: p.UpdatedAt,
+REDACTED
+REDACTED
+
+func ProxyWithAccountCountFromService(p *service.ProxyWithAccountCount) *ProxyWithAccountCount {
+	if p == nil {
+		return nil
+REDACTED
+	return &ProxyWithAccountCount{
+		Proxy:        *ProxyFromService(&p.Proxy),
+		AccountCount: p.AccountCount,
+REDACTED
+REDACTED
+
+func RedeemCodeFromService(rc *service.RedeemCode) *RedeemCode {
+	if rc == nil {
+		return nil
+REDACTED
+	return &RedeemCode{
+		ID:           rc.ID,
+		Code:         rc.Code,
+		Type:         rc.Type,
+		Value:        rc.Value,
+		Status:       rc.Status,
+		UsedBy:       rc.UsedBy,
+		UsedAt:       rc.UsedAt,
+		Notes:        rc.Notes,
+		CreatedAt:    rc.CreatedAt,
+		GroupID:      rc.GroupID,
+		ValidityDays: rc.ValidityDays,
+		User:         UserFromServiceShallow(rc.User),
+		Group:        GroupFromServiceShallow(rc.Group),
+REDACTED
+REDACTED
+
+func UsageLogFromService(l *service.UsageLog) *UsageLog {
+	if l == nil {
+		return nil
+REDACTED
+	return &UsageLog{
+		ID:                    l.ID,
+		UserID:                l.UserID,
+		ApiKeyID:              l.ApiKeyID,
+		AccountID:             l.AccountID,
+		RequestID:             l.RequestID,
+		Model:                 l.Model,
+		GroupID:               l.GroupID,
+		SubscriptionID:        l.SubscriptionID,
+		InputTokens:           l.InputTokens,
+		OutputTokens:          l.OutputTokens,
+		CacheCreationTokens:   l.CacheCreationTokens,
+		CacheReadTokens:       l.CacheReadTokens,
+		CacheCreation5mTokens: l.CacheCreation5mTokens,
+		CacheCreation1hTokens: l.CacheCreation1hTokens,
+		InputCost:             l.InputCost,
+		OutputCost:            l.OutputCost,
+		CacheCreationCost:     l.CacheCreationCost,
+		CacheReadCost:         l.CacheReadCost,
+		TotalCost:             l.TotalCost,
+		ActualCost:            l.ActualCost,
+		RateMultiplier:        l.RateMultiplier,
+		BillingType:           l.BillingType,
+		Stream:                l.Stream,
+		DurationMs:            l.DurationMs,
+		FirstTokenMs:          l.FirstTokenMs,
+		CreatedAt:             l.CreatedAt,
+		User:                  UserFromServiceShallow(l.User),
+		ApiKey:                ApiKeyFromService(l.ApiKey),
+		Account:               AccountFromService(l.Account),
+		Group:                 GroupFromServiceShallow(l.Group),
+		Subscription:          UserSubscriptionFromService(l.Subscription),
+REDACTED
+REDACTED
+
+func SettingFromService(s *service.Setting) *Setting {
+	if s == nil {
+		return nil
+REDACTED
+	return &Setting{
+		ID:        s.ID,
+		Key:       s.Key,
+		Value:     s.Value,
+		UpdatedAt: s.UpdatedAt,
+REDACTED
+REDACTED
+
+func UserSubscriptionFromService(sub *service.UserSubscription) *UserSubscription {
+	if sub == nil {
+		return nil
+REDACTED
+	return &UserSubscription{
+		ID:                 sub.ID,
+		UserID:             sub.UserID,
+		GroupID:            sub.GroupID,
+		StartsAt:           sub.StartsAt,
+		ExpiresAt:          sub.ExpiresAt,
+		Status:             sub.Status,
+		DailyWindowStart:   sub.DailyWindowStart,
+		WeeklyWindowStart:  sub.WeeklyWindowStart,
+		MonthlyWindowStart: sub.MonthlyWindowStart,
+		DailyUsageUSD:      sub.DailyUsageUSD,
+		WeeklyUsageUSD:     sub.WeeklyUsageUSD,
+		MonthlyUsageUSD:    sub.MonthlyUsageUSD,
+		AssignedBy:         sub.AssignedBy,
+		AssignedAt:         sub.AssignedAt,
+		Notes:              sub.Notes,
+		CreatedAt:          sub.CreatedAt,
+		UpdatedAt:          sub.UpdatedAt,
+		User:               UserFromServiceShallow(sub.User),
+		Group:              GroupFromServiceShallow(sub.Group),
+		AssignedByUser:     UserFromServiceShallow(sub.AssignedByUser),
+REDACTED
+REDACTED

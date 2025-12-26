@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
 )
@@ -33,13 +33,13 @@ REDACTED
 // --- Create / GetByID / Update / Delete ---
 
 func (s *UserSubscriptionRepoSuite) TestCreate() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "sub-create@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-create"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "sub-create@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-create"REDACTED)
 
-	sub := &model.UserSubscription{
+	sub := &service.UserSubscription{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED
 
@@ -54,14 +54,14 @@ REDACTED
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestGetByID_WithPreloads() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "preload@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-preload"REDACTED)
-	admin := mustCreateUser(s.T(), s.db, &model.User{Email: "admin@test.com", Role: model.RoleAdminREDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "preload@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-preload"REDACTED)
+	admin := mustCreateUser(s.T(), s.db, &userModel{Email: "admin@test.com", Role: service.RoleAdminREDACTED)
 
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:     user.ID,
 		GroupID:    group.ID,
-		Status:     model.SubscriptionStatusActive,
+		Status:     service.SubscriptionStatusActive,
 		ExpiresAt:  time.Now().Add(24 * time.Hour),
 		AssignedBy: &admin.ID,
 REDACTED)
@@ -82,14 +82,14 @@ func (s *UserSubscriptionRepoSuite) TestGetByID_NotFound() {
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestUpdate() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "update@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-update"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "update@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-update"REDACTED)
+	sub := userSubscriptionModelToService(mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
-REDACTED)
+REDACTED))
 
 	sub.Notes = "updated notes"
 	err := s.repo.Update(s.ctx, sub)
@@ -101,12 +101,12 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestDelete() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "delete@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-delete"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "delete@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-delete"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -120,12 +120,12 @@ REDACTED
 // --- GetByUserIDAndGroupID / GetActiveByUserIDAndGroupID ---
 
 func (s *UserSubscriptionRepoSuite) TestGetByUserIDAndGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "byuser@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-byuser"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "byuser@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-byuser"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -141,14 +141,14 @@ func (s *UserSubscriptionRepoSuite) TestGetByUserIDAndGroupID_NotFound() {
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestGetActiveByUserIDAndGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "active@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-active"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "active@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-active"REDACTED)
 
 	// Create active subscription (future expiry)
-	active := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	active := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(2 * time.Hour),
 REDACTED)
 
@@ -158,14 +158,14 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestGetActiveByUserIDAndGroupID_ExpiredIgnored() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "expired@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-expired"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "expired@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-expired"REDACTED)
 
 	// Create expired subscription (past expiry but active status)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(-2 * time.Hour),
 REDACTED)
 
@@ -176,20 +176,20 @@ REDACTED
 // --- ListByUserID / ListActiveByUserID ---
 
 func (s *UserSubscriptionRepoSuite) TestListByUserID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "listby@test.com"REDACTED)
-	g1 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-list1"REDACTED)
-	g2 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-list2"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "listby@test.com"REDACTED)
+	g1 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-list1"REDACTED)
+	g2 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-list2"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   g1.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   g2.ID,
-		Status:    model.SubscriptionStatusExpired,
+		Status:    service.SubscriptionStatusExpired,
 		ExpiresAt: time.Now().Add(-24 * time.Hour),
 REDACTED)
 
@@ -202,46 +202,46 @@ REDACTED
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestListActiveByUserID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "listactive@test.com"REDACTED)
-	g1 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-act1"REDACTED)
-	g2 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-act2"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "listactive@test.com"REDACTED)
+	g1 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-act1"REDACTED)
+	g2 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-act2"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   g1.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   g2.ID,
-		Status:    model.SubscriptionStatusExpired,
+		Status:    service.SubscriptionStatusExpired,
 		ExpiresAt: time.Now().Add(-24 * time.Hour),
 REDACTED)
 
 	subs, err := s.repo.ListActiveByUserID(s.ctx, user.ID)
 	s.Require().NoError(err, "ListActiveByUserID")
 	s.Require().Len(subs, 1)
-	s.Require().Equal(model.SubscriptionStatusActive, subs[0].Status)
+	s.Require().Equal(service.SubscriptionStatusActive, subs[0].Status)
 REDACTED
 
 // --- ListByGroupID ---
 
 func (s *UserSubscriptionRepoSuite) TestListByGroupID() {
-	user1 := mustCreateUser(s.T(), s.db, &model.User{Email: "u1@test.com"REDACTED)
-	user2 := mustCreateUser(s.T(), s.db, &model.User{Email: "u2@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-listgrp"REDACTED)
+	user1 := mustCreateUser(s.T(), s.db, &userModel{Email: "u1@test.com"REDACTED)
+	user2 := mustCreateUser(s.T(), s.db, &userModel{Email: "u2@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-listgrp"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user1.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user2.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -258,13 +258,13 @@ REDACTED
 // --- List with filters ---
 
 func (s *UserSubscriptionRepoSuite) TestList_NoFilters() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "list@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-list"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "list@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-list"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -275,20 +275,20 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestList_FilterByUserID() {
-	user1 := mustCreateUser(s.T(), s.db, &model.User{Email: "filter1@test.com"REDACTED)
-	user2 := mustCreateUser(s.T(), s.db, &model.User{Email: "filter2@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-filter"REDACTED)
+	user1 := mustCreateUser(s.T(), s.db, &userModel{Email: "filter1@test.com"REDACTED)
+	user2 := mustCreateUser(s.T(), s.db, &userModel{Email: "filter2@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-filter"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user1.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user2.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -299,20 +299,20 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestList_FilterByGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "grpfilter@test.com"REDACTED)
-	g1 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-f1"REDACTED)
-	g2 := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-f2"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "grpfilter@test.com"REDACTED)
+	g1 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-f1"REDACTED)
+	g2 := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-f2"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   g1.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   g2.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -323,37 +323,37 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestList_FilterByStatus() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "statfilter@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-stat"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "statfilter@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-stat"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusExpired,
+		Status:    service.SubscriptionStatusExpired,
 		ExpiresAt: time.Now().Add(-24 * time.Hour),
 REDACTED)
 
-	subs, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, nil, nil, model.SubscriptionStatusExpired)
+	subs, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, nil, nil, service.SubscriptionStatusExpired)
 	s.Require().NoError(err)
 	s.Require().Len(subs, 1)
-	s.Require().Equal(model.SubscriptionStatusExpired, subs[0].Status)
+	s.Require().Equal(service.SubscriptionStatusExpired, subs[0].Status)
 REDACTED
 
 // --- Usage tracking ---
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "usage@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-usage"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "usage@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-usage"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -368,12 +368,12 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Accumulates() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "accum@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-accum"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "accum@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-accum"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -386,12 +386,12 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "activate@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-activate"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "activate@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-activate"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -408,12 +408,12 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestResetDailyUsage() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "resetd@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-resetd"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "resetd@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-resetd"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:         user.ID,
 		GroupID:        group.ID,
-		Status:         model.SubscriptionStatusActive,
+		Status:         service.SubscriptionStatusActive,
 		ExpiresAt:      time.Now().Add(24 * time.Hour),
 		DailyUsageUSD:  10.0,
 		WeeklyUsageUSD: 20.0,
@@ -431,12 +431,12 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestResetWeeklyUsage() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "resetw@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-resetw"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "resetw@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-resetw"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:          user.ID,
 		GroupID:         group.ID,
-		Status:          model.SubscriptionStatusActive,
+		Status:          service.SubscriptionStatusActive,
 		ExpiresAt:       time.Now().Add(24 * time.Hour),
 		WeeklyUsageUSD:  15.0,
 		MonthlyUsageUSD: 30.0,
@@ -454,12 +454,12 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestResetMonthlyUsage() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "resetm@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-resetm"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "resetm@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-resetm"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:          user.ID,
 		GroupID:         group.ID,
-		Status:          model.SubscriptionStatusActive,
+		Status:          service.SubscriptionStatusActive,
 		ExpiresAt:       time.Now().Add(24 * time.Hour),
 		MonthlyUsageUSD: 100.0,
 REDACTED)
@@ -477,30 +477,30 @@ REDACTED
 // --- UpdateStatus / ExtendExpiry / UpdateNotes ---
 
 func (s *UserSubscriptionRepoSuite) TestUpdateStatus() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "status@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-status"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "status@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-status"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
-	err := s.repo.UpdateStatus(s.ctx, sub.ID, model.SubscriptionStatusExpired)
+	err := s.repo.UpdateStatus(s.ctx, sub.ID, service.SubscriptionStatusExpired)
 	s.Require().NoError(err, "UpdateStatus")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
 	s.Require().NoError(err)
-	s.Require().Equal(model.SubscriptionStatusExpired, got.Status)
+	s.Require().Equal(service.SubscriptionStatusExpired, got.Status)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestExtendExpiry() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "extend@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-extend"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "extend@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-extend"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -514,12 +514,12 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestUpdateNotes() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "notes@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-notes"REDACTED)
-	sub := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "notes@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-notes"REDACTED)
+	sub := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -534,19 +534,19 @@ REDACTED
 // --- ListExpired / BatchUpdateExpiredStatus ---
 
 func (s *UserSubscriptionRepoSuite) TestListExpired() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "listexp@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-listexp"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "listexp@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-listexp"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(-24 * time.Hour),
 REDACTED)
 
@@ -556,19 +556,19 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestBatchUpdateExpiredStatus() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "batch@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-batch"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "batch@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-batch"REDACTED)
 
-	active := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	active := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	expiredActive := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	expiredActive := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(-24 * time.Hour),
 REDACTED)
 
@@ -577,22 +577,22 @@ REDACTED)
 	s.Require().Equal(int64(1), affected)
 
 	gotActive, _ := s.repo.GetByID(s.ctx, active.ID)
-	s.Require().Equal(model.SubscriptionStatusActive, gotActive.Status)
+	s.Require().Equal(service.SubscriptionStatusActive, gotActive.Status)
 
 	gotExpired, _ := s.repo.GetByID(s.ctx, expiredActive.ID)
-	s.Require().Equal(model.SubscriptionStatusExpired, gotExpired.Status)
+	s.Require().Equal(service.SubscriptionStatusExpired, gotExpired.Status)
 REDACTED
 
 // --- ExistsByUserIDAndGroupID ---
 
 func (s *UserSubscriptionRepoSuite) TestExistsByUserIDAndGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "exists@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-exists"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "exists@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-exists"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
 
@@ -608,20 +608,20 @@ REDACTED
 // --- CountByGroupID / CountActiveByGroupID ---
 
 func (s *UserSubscriptionRepoSuite) TestCountByGroupID() {
-	user1 := mustCreateUser(s.T(), s.db, &model.User{Email: "cnt1@test.com"REDACTED)
-	user2 := mustCreateUser(s.T(), s.db, &model.User{Email: "cnt2@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-count"REDACTED)
+	user1 := mustCreateUser(s.T(), s.db, &userModel{Email: "cnt1@test.com"REDACTED)
+	user2 := mustCreateUser(s.T(), s.db, &userModel{Email: "cnt2@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-count"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user1.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user2.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusExpired,
+		Status:    service.SubscriptionStatusExpired,
 		ExpiresAt: time.Now().Add(-24 * time.Hour),
 REDACTED)
 
@@ -631,20 +631,20 @@ REDACTED)
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestCountActiveByGroupID() {
-	user1 := mustCreateUser(s.T(), s.db, &model.User{Email: "cntact1@test.com"REDACTED)
-	user2 := mustCreateUser(s.T(), s.db, &model.User{Email: "cntact2@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-cntact"REDACTED)
+	user1 := mustCreateUser(s.T(), s.db, &userModel{Email: "cntact1@test.com"REDACTED)
+	user2 := mustCreateUser(s.T(), s.db, &userModel{Email: "cntact2@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-cntact"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user1.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user2.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(-24 * time.Hour), // expired by time
 REDACTED)
 
@@ -656,19 +656,19 @@ REDACTED
 // --- DeleteByGroupID ---
 
 func (s *UserSubscriptionRepoSuite) TestDeleteByGroupID() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "delgrp@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-delgrp"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "delgrp@test.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-delgrp"REDACTED)
 
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 REDACTED)
-	mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusExpired,
+		Status:    service.SubscriptionStatusExpired,
 		ExpiresAt: time.Now().Add(-24 * time.Hour),
 REDACTED)
 
@@ -683,19 +683,19 @@ REDACTED
 // --- Combined original test ---
 
 func (s *UserSubscriptionRepoSuite) TestActiveExpiredBoundaries_UsageAndReset_BatchUpdateExpiredStatus() {
-	user := mustCreateUser(s.T(), s.db, &model.User{Email: "subr@example.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &model.Group{Name: "g-subr"REDACTED)
+	user := mustCreateUser(s.T(), s.db, &userModel{Email: "subr@example.com"REDACTED)
+	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-subr"REDACTED)
 
-	active := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	active := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(2 * time.Hour),
 REDACTED)
-	expiredActive := mustCreateSubscription(s.T(), s.db, &model.UserSubscription{
+	expiredActive := mustCreateSubscription(s.T(), s.db, &userSubscriptionModel{
 		UserID:    user.ID,
 		GroupID:   group.ID,
-		Status:    model.SubscriptionStatusActive,
+		Status:    service.SubscriptionStatusActive,
 		ExpiresAt: time.Now().Add(-2 * time.Hour),
 REDACTED)
 
@@ -729,5 +729,5 @@ REDACTED)
 	s.Require().Equal(int64(1), affected, "expected 1 affected row")
 	updated, err := s.repo.GetByID(s.ctx, expiredActive.ID)
 	s.Require().NoError(err, "GetByID expired")
-	s.Require().Equal(model.SubscriptionStatusExpired, updated.Status, "expected status expired")
+	s.Require().Equal(service.SubscriptionStatusExpired, updated.Status, "expected status expired")
 REDACTED

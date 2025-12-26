@@ -10,7 +10,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 var (
@@ -19,7 +18,7 @@ var (
 )
 
 type SettingRepository interface {
-	Get(ctx context.Context, key string) (*model.Setting, error)
+	Get(ctx context.Context, key string) (*Setting, error)
 	GetValue(ctx context.Context, key string) (string, error)
 	Set(ctx context.Context, key, value string) error
 	GetMultiple(ctx context.Context, keys []string) (map[string]string, error)
@@ -43,7 +42,7 @@ REDACTED
 REDACTED
 
 // GetAllSettings 获取所有系统设置
-func (s *SettingService) GetAllSettings(ctx context.Context) (*model.SystemSettings, error) {
+func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, error) {
 	settings, err := s.settingRepo.GetAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get all settings: %w", err)
@@ -53,18 +52,18 @@ REDACTED
 REDACTED
 
 // GetPublicSettings 获取公开设置（无需登录）
-func (s *SettingService) GetPublicSettings(ctx context.Context) (*model.PublicSettings, error) {
+func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings, error) {
 	keys := []string{
-		model.SettingKeyRegistrationEnabled,
-		model.SettingKeyEmailVerifyEnabled,
-		model.SettingKeyTurnstileEnabled,
-		model.SettingKeyTurnstileSiteKey,
-		model.SettingKeySiteName,
-		model.SettingKeySiteLogo,
-		model.SettingKeySiteSubtitle,
-		model.SettingKeyApiBaseUrl,
-		model.SettingKeyContactInfo,
-		model.SettingKeyDocUrl,
+		SettingKeyRegistrationEnabled,
+		SettingKeyEmailVerifyEnabled,
+		SettingKeyTurnstileEnabled,
+		SettingKeyTurnstileSiteKey,
+		SettingKeySiteName,
+		SettingKeySiteLogo,
+		SettingKeySiteSubtitle,
+		SettingKeyApiBaseUrl,
+		SettingKeyContactInfo,
+		SettingKeyDocUrl,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -72,64 +71,64 @@ REDACTED
 		return nil, fmt.Errorf("get public settings: %w", err)
 REDACTED
 
-	return &model.PublicSettings{
-		RegistrationEnabled: settings[model.SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:  settings[model.SettingKeyEmailVerifyEnabled] == "true",
-		TurnstileEnabled:    settings[model.SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:    settings[model.SettingKeyTurnstileSiteKey],
-		SiteName:            s.getStringOrDefault(settings, model.SettingKeySiteName, "Sub2API"),
-		SiteLogo:            settings[model.SettingKeySiteLogo],
-		SiteSubtitle:        s.getStringOrDefault(settings, model.SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		ApiBaseUrl:          settings[model.SettingKeyApiBaseUrl],
-		ContactInfo:         settings[model.SettingKeyContactInfo],
-		DocUrl:              settings[model.SettingKeyDocUrl],
+	return &PublicSettings{
+		RegistrationEnabled: settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:  settings[SettingKeyEmailVerifyEnabled] == "true",
+		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
+		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:            settings[SettingKeySiteLogo],
+		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		ApiBaseUrl:          settings[SettingKeyApiBaseUrl],
+		ContactInfo:         settings[SettingKeyContactInfo],
+		DocUrl:              settings[SettingKeyDocUrl],
 REDACTED, nil
 REDACTED
 
 // UpdateSettings 更新系统设置
-func (s *SettingService) UpdateSettings(ctx context.Context, settings *model.SystemSettings) error {
+func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSettings) error {
 	updates := make(map[string]string)
 
 	// 注册设置
-	updates[model.SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
-	updates[model.SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
+	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
+	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
 
 	// 邮件服务设置（只有非空才更新密码）
-	updates[model.SettingKeySmtpHost] = settings.SmtpHost
-	updates[model.SettingKeySmtpPort] = strconv.Itoa(settings.SmtpPort)
-	updates[model.SettingKeySmtpUsername] = settings.SmtpUsername
+	updates[SettingKeySmtpHost] = settings.SmtpHost
+	updates[SettingKeySmtpPort] = strconv.Itoa(settings.SmtpPort)
+	updates[SettingKeySmtpUsername] = settings.SmtpUsername
 	if settings.SmtpPassword != "" {
-		updates[model.SettingKeySmtpPassword] = settings.SmtpPassword
+		updates[SettingKeySmtpPassword] = settings.SmtpPassword
 REDACTED
-	updates[model.SettingKeySmtpFrom] = settings.SmtpFrom
-	updates[model.SettingKeySmtpFromName] = settings.SmtpFromName
-	updates[model.SettingKeySmtpUseTLS] = strconv.FormatBool(settings.SmtpUseTLS)
+	updates[SettingKeySmtpFrom] = settings.SmtpFrom
+	updates[SettingKeySmtpFromName] = settings.SmtpFromName
+	updates[SettingKeySmtpUseTLS] = strconv.FormatBool(settings.SmtpUseTLS)
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
-	updates[model.SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
-	updates[model.SettingKeyTurnstileSiteKey] = settings.TurnstileSiteKey
+	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
+	updates[SettingKeyTurnstileSiteKey] = settings.TurnstileSiteKey
 	if settings.TurnstileSecretKey != "" {
-		updates[model.SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
+		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
 REDACTED
 
 	// OEM设置
-	updates[model.SettingKeySiteName] = settings.SiteName
-	updates[model.SettingKeySiteLogo] = settings.SiteLogo
-	updates[model.SettingKeySiteSubtitle] = settings.SiteSubtitle
-	updates[model.SettingKeyApiBaseUrl] = settings.ApiBaseUrl
-	updates[model.SettingKeyContactInfo] = settings.ContactInfo
-	updates[model.SettingKeyDocUrl] = settings.DocUrl
+	updates[SettingKeySiteName] = settings.SiteName
+	updates[SettingKeySiteLogo] = settings.SiteLogo
+	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
+	updates[SettingKeyApiBaseUrl] = settings.ApiBaseUrl
+	updates[SettingKeyContactInfo] = settings.ContactInfo
+	updates[SettingKeyDocUrl] = settings.DocUrl
 
 	// 默认配置
-	updates[model.SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
-	updates[model.SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
+	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
 
 	return s.settingRepo.SetMultiple(ctx, updates)
 REDACTED
 
 // IsRegistrationEnabled 检查是否开放注册
 func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, model.SettingKeyRegistrationEnabled)
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
 	if err != nil {
 		// 默认开放注册
 		return true
@@ -139,7 +138,7 @@ REDACTED
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
 func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, model.SettingKeyEmailVerifyEnabled)
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyEmailVerifyEnabled)
 	if err != nil {
 		return false
 REDACTED
@@ -148,7 +147,7 @@ REDACTED
 
 // GetSiteName 获取网站名称
 func (s *SettingService) GetSiteName(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, model.SettingKeySiteName)
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
 	if err != nil || value == "" {
 		return "Sub2API"
 REDACTED
@@ -157,7 +156,7 @@ REDACTED
 
 // GetDefaultConcurrency 获取默认并发量
 func (s *SettingService) GetDefaultConcurrency(ctx context.Context) int {
-	value, err := s.settingRepo.GetValue(ctx, model.SettingKeyDefaultConcurrency)
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultConcurrency)
 	if err != nil {
 		return s.cfg.Default.UserConcurrency
 REDACTED
@@ -169,7 +168,7 @@ REDACTED
 
 // GetDefaultBalance 获取默认余额
 func (s *SettingService) GetDefaultBalance(ctx context.Context) float64 {
-	value, err := s.settingRepo.GetValue(ctx, model.SettingKeyDefaultBalance)
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultBalance)
 	if err != nil {
 		return s.cfg.Default.UserBalance
 REDACTED
@@ -182,7 +181,7 @@ REDACTED
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置
-	_, err := s.settingRepo.GetValue(ctx, model.SettingKeyRegistrationEnabled)
+	_, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
 	if err == nil {
 		// 已有设置，不需要初始化
 		return nil
@@ -193,62 +192,62 @@ REDACTED
 
 	// 初始化默认设置
 	defaults := map[string]string{
-		model.SettingKeyRegistrationEnabled: "true",
-		model.SettingKeyEmailVerifyEnabled:  "false",
-		model.SettingKeySiteName:            "Sub2API",
-		model.SettingKeySiteLogo:            "",
-		model.SettingKeyDefaultConcurrency:  strconv.Itoa(s.cfg.Default.UserConcurrency),
-		model.SettingKeyDefaultBalance:      strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
-		model.SettingKeySmtpPort:            "587",
-		model.SettingKeySmtpUseTLS:          "false",
+		SettingKeyRegistrationEnabled: "true",
+		SettingKeyEmailVerifyEnabled:  "false",
+		SettingKeySiteName:            "Sub2API",
+		SettingKeySiteLogo:            "",
+		SettingKeyDefaultConcurrency:  strconv.Itoa(s.cfg.Default.UserConcurrency),
+		SettingKeyDefaultBalance:      strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeySmtpPort:            "587",
+		SettingKeySmtpUseTLS:          "false",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
 REDACTED
 
 // parseSettings 解析设置到结构体
-func (s *SettingService) parseSettings(settings map[string]string) *model.SystemSettings {
-	result := &model.SystemSettings{
-		RegistrationEnabled: settings[model.SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:  settings[model.SettingKeyEmailVerifyEnabled] == "true",
-		SmtpHost:            settings[model.SettingKeySmtpHost],
-		SmtpUsername:        settings[model.SettingKeySmtpUsername],
-		SmtpFrom:            settings[model.SettingKeySmtpFrom],
-		SmtpFromName:        settings[model.SettingKeySmtpFromName],
-		SmtpUseTLS:          settings[model.SettingKeySmtpUseTLS] == "true",
-		TurnstileEnabled:    settings[model.SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:    settings[model.SettingKeyTurnstileSiteKey],
-		SiteName:            s.getStringOrDefault(settings, model.SettingKeySiteName, "Sub2API"),
-		SiteLogo:            settings[model.SettingKeySiteLogo],
-		SiteSubtitle:        s.getStringOrDefault(settings, model.SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		ApiBaseUrl:          settings[model.SettingKeyApiBaseUrl],
-		ContactInfo:         settings[model.SettingKeyContactInfo],
-		DocUrl:              settings[model.SettingKeyDocUrl],
+func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
+	result := &SystemSettings{
+		RegistrationEnabled: settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:  settings[SettingKeyEmailVerifyEnabled] == "true",
+		SmtpHost:            settings[SettingKeySmtpHost],
+		SmtpUsername:        settings[SettingKeySmtpUsername],
+		SmtpFrom:            settings[SettingKeySmtpFrom],
+		SmtpFromName:        settings[SettingKeySmtpFromName],
+		SmtpUseTLS:          settings[SettingKeySmtpUseTLS] == "true",
+		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
+		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:            settings[SettingKeySiteLogo],
+		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		ApiBaseUrl:          settings[SettingKeyApiBaseUrl],
+		ContactInfo:         settings[SettingKeyContactInfo],
+		DocUrl:              settings[SettingKeyDocUrl],
 REDACTED
 
 	// 解析整数类型
-	if port, err := strconv.Atoi(settings[model.SettingKeySmtpPort]); err == nil {
+	if port, err := strconv.Atoi(settings[SettingKeySmtpPort]); err == nil {
 		result.SmtpPort = port
 REDACTED else {
 		result.SmtpPort = 587
 REDACTED
 
-	if concurrency, err := strconv.Atoi(settings[model.SettingKeyDefaultConcurrency]); err == nil {
+	if concurrency, err := strconv.Atoi(settings[SettingKeyDefaultConcurrency]); err == nil {
 		result.DefaultConcurrency = concurrency
 REDACTED else {
 		result.DefaultConcurrency = s.cfg.Default.UserConcurrency
 REDACTED
 
 	// 解析浮点数类型
-	if balance, err := strconv.ParseFloat(settings[model.SettingKeyDefaultBalance], 64); err == nil {
+	if balance, err := strconv.ParseFloat(settings[SettingKeyDefaultBalance], 64); err == nil {
 		result.DefaultBalance = balance
 REDACTED else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
 REDACTED
 
 	// 敏感信息直接返回，方便测试连接时使用
-	result.SmtpPassword = settings[model.SettingKeySmtpPassword]
-	result.TurnstileSecretKey = settings[model.SettingKeyTurnstileSecretKey]
+	result.SmtpPassword = settings[SettingKeySmtpPassword]
+	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
 
 	return result
 REDACTED
@@ -263,7 +262,7 @@ REDACTED
 
 // IsTurnstileEnabled 检查是否启用 Turnstile 验证
 func (s *SettingService) IsTurnstileEnabled(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, model.SettingKeyTurnstileEnabled)
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyTurnstileEnabled)
 	if err != nil {
 		return false
 REDACTED
@@ -272,7 +271,7 @@ REDACTED
 
 // GetTurnstileSecretKey 获取 Turnstile Secret Key
 func (s *SettingService) GetTurnstileSecretKey(ctx context.Context) string {
-	value, err := s.settingRepo.GetValue(ctx, model.SettingKeyTurnstileSecretKey)
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyTurnstileSecretKey)
 	if err != nil {
 		return ""
 REDACTED
@@ -287,10 +286,10 @@ func (s *SettingService) GenerateAdminApiKey(ctx context.Context) (string, error
 		return "", fmt.Errorf("generate random bytes: %w", err)
 REDACTED
 
-	key := model.AdminApiKeyPrefix + hex.EncodeToString(bytes)
+	key := AdminApiKeyPrefix + hex.EncodeToString(bytes)
 
 	// 存储到 settings 表
-	if err := s.settingRepo.Set(ctx, model.SettingKeyAdminApiKey, key); err != nil {
+	if err := s.settingRepo.Set(ctx, SettingKeyAdminApiKey, key); err != nil {
 		return "", fmt.Errorf("save admin api key: %w", err)
 REDACTED
 
@@ -300,7 +299,7 @@ REDACTED
 // GetAdminApiKeyStatus 获取管理员 API Key 状态
 // 返回脱敏的 key、是否存在、错误
 func (s *SettingService) GetAdminApiKeyStatus(ctx context.Context) (maskedKey string, exists bool, err error) {
-	key, err := s.settingRepo.GetValue(ctx, model.SettingKeyAdminApiKey)
+	key, err := s.settingRepo.GetValue(ctx, SettingKeyAdminApiKey)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
 			return "", false, nil
@@ -324,7 +323,7 @@ REDACTED
 // GetAdminApiKey 获取完整的管理员 API Key（仅供内部验证使用）
 // 如果未配置返回空字符串和 nil 错误，只有数据库错误时才返回 error
 func (s *SettingService) GetAdminApiKey(ctx context.Context) (string, error) {
-	key, err := s.settingRepo.GetValue(ctx, model.SettingKeyAdminApiKey)
+	key, err := s.settingRepo.GetValue(ctx, SettingKeyAdminApiKey)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
 			return "", nil // 未配置，返回空字符串
@@ -336,5 +335,5 @@ REDACTED
 
 // DeleteAdminApiKey 删除管理员 API Key
 func (s *SettingService) DeleteAdminApiKey(ctx context.Context) error {
-	return s.settingRepo.Delete(ctx, model.SettingKeyAdminApiKey)
+	return s.settingRepo.Delete(ctx, SettingKeyAdminApiKey)
 REDACTED

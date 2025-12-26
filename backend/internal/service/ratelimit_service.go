@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 // RateLimitService 处理限流和过载状态管理
@@ -27,7 +26,7 @@ REDACTED
 
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
-func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *model.Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
 	// apikey 类型账号：检查自定义错误码配置
 	// 如果启用且错误码不在列表中，则不处理（不停止调度、不标记限流/过载）
 	if !account.ShouldHandleErrorCode(statusCode) {
@@ -60,7 +59,7 @@ REDACTED
 REDACTED
 
 // handleAuthError 处理认证类错误(401/403)，停止账号调度
-func (s *RateLimitService) handleAuthError(ctx context.Context, account *model.Account, errorMsg string) {
+func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account, errorMsg string) {
 	if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
 		log.Printf("SetError failed for account %d: %v", account.ID, err)
 		return
@@ -70,7 +69,7 @@ REDACTED
 
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
-func (s *RateLimitService) handle429(ctx context.Context, account *model.Account, headers http.Header) {
+func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header) {
 	// 解析重置时间戳
 	resetTimestamp := headers.Get("anthropic-ratelimit-unified-reset")
 	if resetTimestamp == "" {
@@ -113,7 +112,7 @@ REDACTED
 
 // handle529 处理529过载错误
 // 根据配置设置过载冷却时间
-func (s *RateLimitService) handle529(ctx context.Context, account *model.Account) {
+func (s *RateLimitService) handle529(ctx context.Context, account *Account) {
 	cooldownMinutes := s.cfg.RateLimit.OverloadCooldownMinutes
 	if cooldownMinutes <= 0 {
 		cooldownMinutes = 10 // 默认10分钟
@@ -129,7 +128,7 @@ REDACTED
 REDACTED
 
 // UpdateSessionWindow 从成功响应更新5h窗口状态
-func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *model.Account, headers http.Header) {
+func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Account, headers http.Header) {
 	status := headers.Get("anthropic-ratelimit-unified-5h-status")
 	if status == "" {
 		return

@@ -3,7 +3,7 @@ package admin
 import (
 	"strconv"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -102,7 +102,7 @@ REDACTED
 
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
-	*model.Account
+	*dto.Account
 	CurrentConcurrency int `json:"current_concurrency"`
 REDACTED
 
@@ -137,7 +137,7 @@ REDACTED
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		result[i] = AccountWithConcurrency{
-			Account:            &accounts[i],
+			Account:            dto.AccountFromService(&accounts[i]),
 			CurrentConcurrency: concurrencyCounts[accounts[i].ID],
 	REDACTED
 REDACTED
@@ -160,7 +160,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, account)
+	response.Success(c, dto.AccountFromService(account))
 REDACTED
 
 // Create handles creating a new account
@@ -188,7 +188,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, account)
+	response.Success(c, dto.AccountFromService(account))
 REDACTED
 
 // Update handles updating an account
@@ -222,7 +222,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, account)
+	response.Success(c, dto.AccountFromService(account))
 REDACTED
 
 // Delete handles deleting an account
@@ -425,7 +425,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, account)
+	response.Success(c, dto.AccountFromService(account))
 REDACTED
 
 // BatchCreate handles batch creating accounts
@@ -801,7 +801,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, account)
+	response.Success(c, dto.AccountFromService(account))
 REDACTED
 
 // GetAvailableModels handles getting available models for an account

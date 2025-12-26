@@ -11,7 +11,6 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 var (
@@ -69,13 +68,13 @@ REDACTED
 // GetSmtpConfig 从数据库获取SMTP配置
 func (s *EmailService) GetSmtpConfig(ctx context.Context) (*SmtpConfig, error) {
 	keys := []string{
-		model.SettingKeySmtpHost,
-		model.SettingKeySmtpPort,
-		model.SettingKeySmtpUsername,
-		model.SettingKeySmtpPassword,
-		model.SettingKeySmtpFrom,
-		model.SettingKeySmtpFromName,
-		model.SettingKeySmtpUseTLS,
+		SettingKeySmtpHost,
+		SettingKeySmtpPort,
+		SettingKeySmtpUsername,
+		SettingKeySmtpPassword,
+		SettingKeySmtpFrom,
+		SettingKeySmtpFromName,
+		SettingKeySmtpUseTLS,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -83,27 +82,27 @@ REDACTED
 		return nil, fmt.Errorf("get smtp settings: %w", err)
 REDACTED
 
-	host := settings[model.SettingKeySmtpHost]
+	host := settings[SettingKeySmtpHost]
 	if host == "" {
 		return nil, ErrEmailNotConfigured
 REDACTED
 
 	port := 587 // 默认端口
-	if portStr := settings[model.SettingKeySmtpPort]; portStr != "" {
+	if portStr := settings[SettingKeySmtpPort]; portStr != "" {
 		if p, err := strconv.Atoi(portStr); err == nil {
 			port = p
 	REDACTED
 REDACTED
 
-	useTLS := settings[model.SettingKeySmtpUseTLS] == "true"
+	useTLS := settings[SettingKeySmtpUseTLS] == "true"
 
 	return &SmtpConfig{
 		Host:     host,
 		Port:     port,
-		Username: settings[model.SettingKeySmtpUsername],
-		Password: settings[model.SettingKeySmtpPassword],
-		From:     settings[model.SettingKeySmtpFrom],
-		FromName: settings[model.SettingKeySmtpFromName],
+		Username: settings[SettingKeySmtpUsername],
+		Password: settings[SettingKeySmtpPassword],
+		From:     settings[SettingKeySmtpFrom],
+		FromName: settings[SettingKeySmtpFromName],
 		UseTLS:   useTLS,
 REDACTED, nil
 REDACTED

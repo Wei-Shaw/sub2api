@@ -6,33 +6,27 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
-
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// SettingRepository 系统设置数据访问层
 type settingRepository struct {
 	db *gorm.DB
 REDACTED
 
-// NewSettingRepository 创建系统设置仓库实例
 func NewSettingRepository(db *gorm.DB) service.SettingRepository {
 	return &settingRepository{db: dbREDACTED
 REDACTED
 
-// Get 根据Key获取设置值
-func (r *settingRepository) Get(ctx context.Context, key string) (*model.Setting, error) {
-	var setting model.Setting
-	err := r.db.WithContext(ctx).Where("key = ?", key).First(&setting).Error
+func (r *settingRepository) Get(ctx context.Context, key string) (*service.Setting, error) {
+	var m settingModel
+	err := r.db.WithContext(ctx).Where("key = ?", key).First(&m).Error
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrSettingNotFound, nil)
 REDACTED
-	return &setting, nil
+	return settingModelToService(&m), nil
 REDACTED
 
-// GetValue 获取设置值字符串
 func (r *settingRepository) GetValue(ctx context.Context, key string) (string, error) {
 	setting, err := r.Get(ctx, key)
 	if err != nil {
@@ -41,9 +35,8 @@ REDACTED
 	return setting.Value, nil
 REDACTED
 
-// Set 设置值（存在则更新，不存在则创建）
 func (r *settingRepository) Set(ctx context.Context, key, value string) error {
-	setting := &model.Setting{
+	m := &settingModel{
 		Key:       key,
 		Value:     value,
 		UpdatedAt: time.Now(),
@@ -52,12 +45,11 @@ REDACTED
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key"REDACTEDREDACTED,
 		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"REDACTED),
-REDACTED).Create(setting).Error
+REDACTED).Create(m).Error
 REDACTED
 
-// GetMultiple 批量获取设置
 func (r *settingRepository) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
-	var settings []model.Setting
+	var settings []settingModel
 	err := r.db.WithContext(ctx).Where("key IN ?", keys).Find(&settings).Error
 	if err != nil {
 		return nil, err
@@ -70,11 +62,10 @@ REDACTED
 	return result, nil
 REDACTED
 
-// SetMultiple 批量设置值
 func (r *settingRepository) SetMultiple(ctx context.Context, settings map[string]string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for key, value := range settings {
-			setting := &model.Setting{
+			m := &settingModel{
 				Key:       key,
 				Value:     value,
 				UpdatedAt: time.Now(),
@@ -82,7 +73,7 @@ func (r *settingRepository) SetMultiple(ctx context.Context, settings map[string
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "key"REDACTEDREDACTED,
 				DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"REDACTED),
-		REDACTED).Create(setting).Error; err != nil {
+		REDACTED).Create(m).Error; err != nil {
 				return err
 		REDACTED
 	REDACTED
@@ -90,9 +81,8 @@ func (r *settingRepository) SetMultiple(ctx context.Context, settings map[string
 REDACTED)
 REDACTED
 
-// GetAll 获取所有设置
 func (r *settingRepository) GetAll(ctx context.Context) (map[string]string, error) {
-	var settings []model.Setting
+	var settings []settingModel
 	err := r.db.WithContext(ctx).Find(&settings).Error
 	if err != nil {
 		return nil, err
@@ -105,7 +95,27 @@ REDACTED
 	return result, nil
 REDACTED
 
-// Delete 删除设置
 func (r *settingRepository) Delete(ctx context.Context, key string) error {
-	return r.db.WithContext(ctx).Where("key = ?", key).Delete(&model.Setting{REDACTED).Error
+	return r.db.WithContext(ctx).Where("key = ?", key).Delete(&settingModel{REDACTED).Error
+REDACTED
+
+type settingModel struct {
+	ID        int64     `gorm:"primaryKey"`
+	Key       string    `gorm:"uniqueIndex;size:100;not null"`
+	Value     string    `gorm:"type:text;not null"`
+	UpdatedAt time.Time `gorm:"not null"`
+REDACTED
+
+func (settingModel) TableName() string { return "settings" REDACTED
+
+func settingModelToService(m *settingModel) *service.Setting {
+	if m == nil {
+		return nil
+REDACTED
+	return &service.Setting{
+		ID:        m.ID,
+		Key:       m.Key,
+		Value:     m.Value,
+		UpdatedAt: m.UpdatedAt,
+REDACTED
 REDACTED

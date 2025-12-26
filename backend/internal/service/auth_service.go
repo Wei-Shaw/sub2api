@@ -9,7 +9,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
-	"github.com/Wei-Shaw/sub2api/internal/model"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -64,12 +63,12 @@ REDACTED
 REDACTED
 
 // Register 用户注册，返回token和用户
-func (s *AuthService) Register(ctx context.Context, email, password string) (string, *model.User, error) {
+func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
 	return s.RegisterWithVerification(ctx, email, password, "")
 REDACTED
 
 // RegisterWithVerification 用户注册（支持邮件验证），返回token和用户
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode string) (string, *model.User, error) {
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode string) (string, *User, error) {
 	// 检查是否开放注册
 	if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -113,13 +112,13 @@ REDACTED
 REDACTED
 
 	// 创建用户
-	user := &model.User{
+	user := &User{
 		Email:        email,
 		PasswordHash: hashedPassword,
-		Role:         model.RoleUser,
+		Role:         RoleUser,
 		Balance:      defaultBalance,
 		Concurrency:  defaultConcurrency,
-		Status:       model.StatusActive,
+		Status:       StatusActive,
 REDACTED
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
@@ -251,7 +250,7 @@ REDACTED
 REDACTED
 
 // Login 用户登录，返回JWT token
-func (s *AuthService) Login(ctx context.Context, email, password string) (string, *model.User, error) {
+func (s *AuthService) Login(ctx context.Context, email, password string) (string, *User, error) {
 	// 查找用户
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
@@ -307,7 +306,7 @@ REDACTED
 REDACTED
 
 // GenerateToken 生成JWT token
-func (s *AuthService) GenerateToken(user *model.User) (string, error) {
+func (s *AuthService) GenerateToken(user *User) (string, error) {
 	now := time.Now()
 	expiresAt := now.Add(time.Duration(s.cfg.JWT.ExpireHour) * time.Hour)
 

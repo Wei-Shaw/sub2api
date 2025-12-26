@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -11,12 +12,14 @@ import (
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
 	authService *service.AuthService
+	userService *service.UserService
 REDACTED
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+func NewAuthHandler(authService *service.AuthService, userService *service.UserService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
+		userService: userService,
 REDACTED
 REDACTED
 
@@ -49,9 +52,9 @@ REDACTED
 
 // AuthResponse 认证响应格式（匹配前端期望）
 type AuthResponse struct {
-	AccessToken string      `json:"access_token"`
-	TokenType   string      `json:"token_type"`
-	User        *model.User `json:"user"`
+	AccessToken string    `json:"access_token"`
+	TokenType   string    `json:"token_type"`
+	User        *dto.User `json:"user"`
 REDACTED
 
 // Register handles user registration
@@ -80,7 +83,7 @@ REDACTED
 	response.Success(c, AuthResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
-		User:        user,
+		User:        dto.UserFromService(user),
 REDACTED)
 REDACTED
 
@@ -135,24 +138,24 @@ REDACTED
 	response.Success(c, AuthResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
-		User:        user,
+		User:        dto.UserFromService(user),
 REDACTED)
 REDACTED
 
 // GetCurrentUser handles getting current authenticated user
 // GET /api/v1/auth/me
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
-	userValue, exists := c.Get("user")
-	if !exists {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
 		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
 
-	user, ok := userValue.(*model.User)
-	if !ok {
-		response.InternalError(c, "Invalid user context")
+	user, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, user)
+	response.Success(c, dto.UserFromService(user))
 REDACTED

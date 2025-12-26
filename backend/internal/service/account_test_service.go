@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
@@ -127,7 +126,7 @@ REDACTED
 REDACTED
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
-func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *model.Account, modelID string) error {
+func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -254,7 +253,7 @@ REDACTED
 REDACTED
 
 // testOpenAIAccountConnection tests an OpenAI account's connection
-func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *model.Account, modelID string) error {
+func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 
 	// Default to openai.DefaultTestModel for OpenAI testing

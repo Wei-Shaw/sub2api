@@ -8,6 +8,8 @@ type ContextKey string
 const (
 	// ContextKeyUser 用户上下文键
 	ContextKeyUser ContextKey = "user"
+	// ContextKeyUserRole 当前用户角色（string）
+	ContextKeyUserRole ContextKey = "user_role"
 	// ContextKeyApiKey API密钥上下文键
 	ContextKeyApiKey ContextKey = "api_key"
 	// ContextKeySubscription 订阅上下文键
