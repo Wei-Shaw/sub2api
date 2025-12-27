@@ -15,7 +15,8 @@
             :key="column.key"
             scope="col"
             :class="[
-              'sticky-header-cell px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              getAdaptivePaddingClass(),
               { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable REDACTED,
               getStickyColumnClass(column, index)
             ]"
@@ -81,7 +82,7 @@
       <tbody class="table-body divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
         <!-- Loading skeleton -->
         <tr v-if="loading" v-for="i in 5" :key="i">
-          <td v-for="column in columns" :key="column.key" class="whitespace-nowrap px-6 py-4">
+          <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap py-4', getAdaptivePaddingClass()]">
             <div class="animate-pulse">
               <div class="h-4 w-3/4 rounded bg-gray-200 dark:bg-dark-700"></div>
             </div>
@@ -92,7 +93,7 @@
         <tr v-else-if="!data || data.length === 0">
           <td
             :colspan="columns.length"
-            class="px-6 py-12 text-center text-gray-500 dark:text-dark-400"
+            :class="['py-12 text-center text-gray-500 dark:text-dark-400', getAdaptivePaddingClass()]"
           >
             <slot name="empty">
               <div class="flex flex-col items-center">
@@ -128,7 +129,8 @@
             v-for="(column, colIndex) in columns"
             :key="column.key"
             :class="[
-              'whitespace-nowrap px-6 py-4 text-sm text-gray-900 dark:text-gray-100',
+              'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+              getAdaptivePaddingClass(),
               getStickyColumnClass(column, colIndex)
             ]"
           >
@@ -165,24 +167,46 @@ REDACTED
 const checkActionsColumnWidth = () => {
   if (!tableWrapperRef.value) return
 
-  // 查找操作列的表头单元格
-  const actionsHeader = tableWrapperRef.value.querySelector('th:has(button[title*="Expand"], button[title*="展开"])')
-  if (!actionsHeader) return
-
   // 查找第一行的操作列单元格
   const firstActionCell = tableWrapperRef.value.querySelector('tbody tr:first-child td:last-child')
   if (!firstActionCell) return
 
-  // 获取操作列内容的实际宽度
-  const actionsContent = firstActionCell.querySelector('div')
-  if (!actionsContent) return
+  // 查找操作列内容的容器div
+  const actionsContainer = firstActionCell.querySelector('div')
+  if (!actionsContainer) return
 
-  // 比较内容宽度和单元格宽度
-  const contentWidth = actionsContent.scrollWidth
-  const cellWidth = (firstActionCell as HTMLElement).clientWidth
+  // 临时展开以测量完整宽度
+  const wasExpanded = actionsExpanded.value
+  actionsExpanded.value = true
 
-  // 如果内容宽度超过单元格宽度，说明需要展开
-  actionsColumnNeedsExpanding.value = contentWidth > cellWidth
+  // 等待DOM更新
+  nextTick(() => {
+    // 测量所有按钮的总宽度
+    const buttons = actionsContainer.querySelectorAll('button')
+    if (buttons.length <= 2) {
+      actionsColumnNeedsExpanding.value = false
+      actionsExpanded.value = wasExpanded
+      return
+    REDACTED
+
+    // 计算所有按钮的总宽度（包括gap）
+    let totalWidth = 0
+    buttons.forEach((btn, index) => {
+      totalWidth += (btn as HTMLElement).offsetWidth
+      if (index < buttons.length - 1) {
+        totalWidth += 4 // gap-1 = 4px
+      REDACTED
+    REDACTED)
+
+    // 获取单元格可用宽度（减去padding）
+    const cellWidth = (firstActionCell as HTMLElement).clientWidth - 32 // 减去左右padding
+
+    // 如果总宽度超过可用宽度，需要展开功能
+    actionsColumnNeedsExpanding.value = totalWidth > cellWidth
+
+    // 恢复原来的展开状态
+    actionsExpanded.value = wasExpanded
+  REDACTED)
 REDACTED
 
 // 监听尺寸变化
@@ -219,6 +243,7 @@ interface Props {
   stickyFirstColumn?: boolean
   stickyActionsColumn?: boolean
   expandableActions?: boolean
+  actionsCount?: number // 操作按钮总数，用于判断是否需要展开功能
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -268,6 +293,12 @@ REDACTED)
 
 // 检查是否有可展开的操作列
 const hasExpandableActions = computed(() => {
+  // 如果明确指定了actionsCount，使用它来判断
+  if (props.actionsCount !== undefined) {
+    return props.expandableActions && props.columns.some((col) => col.key === 'actions') && props.actionsCount > 2
+  REDACTED
+
+  // 否则使用原来的检测逻辑
   return (
     props.expandableActions &&
     props.columns.some((col) => col.key === 'actions') &&
@@ -311,6 +342,22 @@ const getStickyColumnClass = (column: Column, index: number) => {
   REDACTED
 
   return classes.join(' ')
+REDACTED
+
+// 根据列数自适应调整内边距
+const getAdaptivePaddingClass = () => {
+  const columnCount = props.columns.length
+
+  // 列数越多，内边距越小
+  if (columnCount >= 10) {
+    return 'px-2' // 8px
+  REDACTED else if (columnCount >= 7) {
+    return 'px-3' // 12px
+  REDACTED else if (columnCount >= 5) {
+    return 'px-4' // 16px
+  REDACTED else {
+    return 'px-6' // 24px (原始值)
+  REDACTED
 REDACTED
 </script>
 
