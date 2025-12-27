@@ -257,8 +257,7 @@
               <button
                 v-if="row.status === 'active'"
                 @click="handleExtend(row)"
-                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
-                :title="t('admin.subscriptions.extend')"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
               >
                 <svg
                   class="h-4 w-4"
@@ -273,12 +272,12 @@
                     d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
+                <span class="text-xs">{{ t('admin.subscriptions.extend') REDACTEDREDACTED</span>
               </button>
               <button
                 v-if="row.status === 'active'"
                 @click="handleRevoke(row)"
-                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                :title="t('admin.subscriptions.revoke')"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
                 <svg
                   class="h-4 w-4"
@@ -293,6 +292,7 @@
                     d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
                   />
                 </svg>
+                <span class="text-xs">{{ t('admin.subscriptions.revoke') REDACTEDREDACTED</span>
               </button>
             </div>
           </template>

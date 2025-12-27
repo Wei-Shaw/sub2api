@@ -455,7 +455,11 @@
                 ${{ row.actual_cost.toFixed(6) REDACTEDREDACTED
               </span>
               <!-- Cost Detail Tooltip -->
-              <div class="group relative">
+              <div
+                class="group relative"
+                @mouseenter="showTooltip($event, row)"
+                @mouseleave="hideTooltip"
+              >
                 <div
                   class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50"
                 >
@@ -470,60 +474,6 @@
                       clip-rule="evenodd"
                     />
                   </svg>
-                </div>
-                <!-- Tooltip Content (right side) -->
-                <div
-                  class="invisible absolute left-full top-1/2 z-[100] ml-2 -translate-y-1/2 opacity-0 transition-all duration-200 group-hover:visible group-hover:opacity-100"
-                >
-                  <div
-                    class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
-                  >
-                    <div class="space-y-1.5">
-                      <!-- Cost Breakdown -->
-                      <div class="mb-2 border-b border-gray-700 pb-1.5">
-                        <div class="text-xs font-semibold text-gray-300 mb-1">成本明细</div>
-                        <div v-if="row.input_cost > 0" class="flex items-center justify-between gap-4">
-                          <span class="text-gray-400">{{ t('admin.usage.inputCost') REDACTEDREDACTED</span>
-                          <span class="font-medium text-white">${{ row.input_cost.toFixed(6) REDACTEDREDACTED</span>
-                        </div>
-                        <div v-if="row.output_cost > 0" class="flex items-center justify-between gap-4">
-                          <span class="text-gray-400">{{ t('admin.usage.outputCost') REDACTEDREDACTED</span>
-                          <span class="font-medium text-white">${{ row.output_cost.toFixed(6) REDACTEDREDACTED</span>
-                        </div>
-                        <div v-if="row.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
-                          <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') REDACTEDREDACTED</span>
-                          <span class="font-medium text-white">${{ row.cache_creation_cost.toFixed(6) REDACTEDREDACTED</span>
-                        </div>
-                        <div v-if="row.cache_read_cost > 0" class="flex items-center justify-between gap-4">
-                          <span class="text-gray-400">{{ t('admin.usage.cacheReadCost') REDACTEDREDACTED</span>
-                          <span class="font-medium text-white">${{ row.cache_read_cost.toFixed(6) REDACTEDREDACTED</span>
-                        </div>
-                      </div>
-                      <!-- Rate and Summary -->
-                      <div class="flex items-center justify-between gap-6">
-                        <span class="text-gray-400">{{ t('usage.rate') REDACTEDREDACTED</span>
-                        <span class="font-semibold text-blue-400"
-                          >{{ (row.rate_multiplier || 1).toFixed(2) REDACTEDREDACTEDx</span
-                        >
-                      </div>
-                      <div class="flex items-center justify-between gap-6">
-                        <span class="text-gray-400">{{ t('usage.original') REDACTEDREDACTED</span>
-                        <span class="font-medium text-white">${{ row.total_cost.toFixed(6) REDACTEDREDACTED</span>
-                      </div>
-                      <div
-                        class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5"
-                      >
-                        <span class="text-gray-400">{{ t('usage.billed') REDACTEDREDACTED</span>
-                        <span class="font-semibold text-green-400"
-                          >${{ row.actual_cost.toFixed(6) REDACTEDREDACTED</span
-                        >
-                      </div>
-                    </div>
-                    <!-- Tooltip Arrow (left side) -->
-                    <div
-                      class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"
-                    ></div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -587,6 +537,66 @@
       />
     </div>
   </AppLayout>
+
+  <!-- Tooltip Portal -->
+  <Teleport to="body">
+    <div
+      v-if="tooltipVisible"
+      class="fixed z-[9999] pointer-events-none -translate-y-1/2"
+      :style="{
+        left: tooltipPosition.x + 'px',
+        top: tooltipPosition.y + 'px'
+      REDACTED"
+    >
+      <div
+        class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+      >
+        <div class="space-y-1.5">
+          <!-- Cost Breakdown -->
+          <div class="mb-2 border-b border-gray-700 pb-1.5">
+            <div class="text-xs font-semibold text-gray-300 mb-1">成本明细</div>
+            <div v-if="tooltipData && tooltipData.input_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.inputCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.input_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.output_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.outputCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.cache_creation_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.cache_read_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.cacheReadCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.cache_read_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+          </div>
+          <!-- Rate and Summary -->
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.rate') REDACTEDREDACTED</span>
+            <span class="font-semibold text-blue-400"
+              >{{ (tooltipData?.rate_multiplier || 1).toFixed(2) REDACTEDREDACTEDx</span
+            >
+          </div>
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.original') REDACTEDREDACTED</span>
+            <span class="font-medium text-white">${{ tooltipData?.total_cost.toFixed(6) REDACTEDREDACTED</span>
+          </div>
+          <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
+            <span class="text-gray-400">{{ t('usage.billed') REDACTEDREDACTED</span>
+            <span class="font-semibold text-green-400"
+              >${{ tooltipData?.actual_cost.toFixed(6) REDACTEDREDACTED</span
+            >
+          </div>
+        </div>
+        <!-- Tooltip Arrow (left side) -->
+        <div
+          class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"
+        ></div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -614,6 +624,11 @@ REDACTED from '@/api/admin/usage'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+
+// Tooltip state
+const tooltipVisible = ref(false)
+const tooltipPosition = ref({ x: 0, y: 0 REDACTED)
+const tooltipData = ref<UsageLog | null>(null)
 
 // Usage stats from API
 const usageStats = ref<AdminUsageStatsResponse | null>(null)
@@ -1036,6 +1051,22 @@ const handleClickOutside = (event: MouseEvent) => {
   if (!target.closest('.relative')) {
     showUserDropdown.value = false
   REDACTED
+REDACTED
+
+// Tooltip functions
+const showTooltip = (event: MouseEvent, row: UsageLog) => {
+  const target = event.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+
+  tooltipData.value = row
+  tooltipPosition.value.x = rect.right + 8
+  tooltipPosition.value.y = rect.top + rect.height / 2
+  tooltipVisible.value = true
+REDACTED
+
+const hideTooltip = () => {
+  tooltipVisible.value = false
+  tooltipData.value = null
 REDACTED
 
 onMounted(() => {
