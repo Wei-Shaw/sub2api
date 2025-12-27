@@ -85,7 +85,7 @@
 
       <!-- Users Table -->
       <template #table>
-        <DataTable :columns="columns" :data="users" :loading="loading">
+        <DataTable :columns="columns" :data="users" :loading="loading" :actions-count="7">
           <template #cell-email="{ value REDACTED">
             <div class="flex items-center gap-2">
               <div

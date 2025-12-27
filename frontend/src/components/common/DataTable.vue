@@ -257,9 +257,10 @@ const sortKey = ref<string>('')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const actionsExpanded = ref(false)
 
-// 数据/列/展开状态变化时重新检查滚动状态
+// 数据/列变化时重新检查滚动状态
+// 注意：不能监听 actionsExpanded，因为 checkActionsColumnWidth 会临时修改它，会导致无限循环
 watch(
-  [() => props.data.length, () => props.columns, actionsExpanded],
+  [() => props.data.length, () => props.columns],
   async () => {
     await nextTick()
     checkScrollable()
@@ -267,6 +268,12 @@ watch(
   REDACTED,
   { flush: 'post' REDACTED
 )
+
+// 单独监听展开状态变化，只更新滚动状态
+watch(actionsExpanded, async () => {
+  await nextTick()
+  checkScrollable()
+REDACTED)
 
 const handleSort = (key: string) => {
   if (sortKey.value === key) {
