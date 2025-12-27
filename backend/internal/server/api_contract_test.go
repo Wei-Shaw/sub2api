@@ -923,7 +923,48 @@ func (r *stubUsageLogRepo) GetUserUsageTrend(ctx context.Context, startTime, end
 REDACTED
 
 func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
-	return nil, errors.New("not implemented")
+	logs := r.userLogs[userID]
+	if len(logs) == 0 {
+		return &usagestats.UsageStats{REDACTED, nil
+REDACTED
+
+	var totalRequests int64
+	var totalInputTokens int64
+	var totalOutputTokens int64
+	var totalCacheTokens int64
+	var totalCost float64
+	var totalActualCost float64
+	var totalDuration int64
+	var durationCount int64
+
+	for _, log := range logs {
+		totalRequests++
+		totalInputTokens += int64(log.InputTokens)
+		totalOutputTokens += int64(log.OutputTokens)
+		totalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
+		totalCost += log.TotalCost
+		totalActualCost += log.ActualCost
+		if log.DurationMs != nil {
+			totalDuration += int64(*log.DurationMs)
+			durationCount++
+	REDACTED
+REDACTED
+
+	var avgDuration float64
+	if durationCount > 0 {
+		avgDuration = float64(totalDuration) / float64(durationCount)
+REDACTED
+
+	return &usagestats.UsageStats{
+		TotalRequests:     totalRequests,
+		TotalInputTokens:  totalInputTokens,
+		TotalOutputTokens: totalOutputTokens,
+		TotalCacheTokens:  totalCacheTokens,
+		TotalTokens:       totalInputTokens + totalOutputTokens + totalCacheTokens,
+		TotalCost:         totalCost,
+		TotalActualCost:   totalActualCost,
+		AverageDurationMs: avgDuration,
+REDACTED, nil
 REDACTED
 
 func (r *stubUsageLogRepo) GetApiKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
