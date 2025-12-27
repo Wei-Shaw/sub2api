@@ -418,6 +418,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
 import type { RedeemCode, RedeemCodeType, Group } from '@/types'
@@ -431,6 +432,7 @@ import Select from '@/components/common/Select.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const showGenerateDialog = ref(false)
 const showResultDialog = ref(false)
@@ -618,15 +620,12 @@ const handleGenerateCodes = async () => {
 }
 
 const copyToClipboard = async (text: string) => {
-  try {
-    await navigator.clipboard.writeText(text)
+  const success = await clipboardCopy(text, t('admin.redeem.copied'))
+  if (success) {
     copiedCode.value = text
     setTimeout(() => {
       copiedCode.value = null
     }, 2000)
-  } catch (error) {
-    appStore.showError(t('admin.redeem.failedToCopy'))
-    console.error('Error copying to clipboard:', error)
   }
 }
 

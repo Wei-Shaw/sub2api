@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -34,7 +33,6 @@ type requestCapture struct {
 	method      string
 	cookies     []*http.Cookie
 	body        []byte
-	formValues  url.Values
 	bodyJSON    map[string]any
 	contentType string
 }
@@ -282,24 +280,53 @@ func (s *ClaudeOAuthServiceSuite) TestRefreshToken() {
 		validate func(captured requestCapture)
 	}{
 		{
-			name: "sends_form",
+			name: "sends_json_format",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(oauth.TokenResponse{AccessToken: "at2", TokenType: "bearer", ExpiresIn: 3600})
+				_ = json.NewEncoder(w).Encode(oauth.TokenResponse{
+					AccessToken:  "new_access_token",
+					TokenType:    "bearer",
+					ExpiresIn:    28800,
+					RefreshToken: "new_refresh_token",
+					Scope:        "user:profile user:inference",
+				})
 			},
-			wantResp: &oauth.TokenResponse{AccessToken: "at2"},
+			wantResp: &oauth.TokenResponse{
+				AccessToken:  "new_access_token",
+				RefreshToken: "new_refresh_token",
+			},
 			validate: func(captured requestCapture) {
 				require.Equal(s.T(), http.MethodPost, captured.method, "expected POST")
-				require.Equal(s.T(), "refresh_token", captured.formValues.Get("grant_type"))
-				require.Equal(s.T(), "rt", captured.formValues.Get("refresh_token"))
-				require.Equal(s.T(), oauth.ClientID, captured.formValues.Get("client_id"))
+				// 验证使用 JSON 格式（不是 form 格式）
+				require.True(s.T(), strings.HasPrefix(captured.contentType, "application/json"),
+					"expected JSON content-type, got: %s", captured.contentType)
+				// 验证 JSON body 内容
+				require.Equal(s.T(), "refresh_token", captured.bodyJSON["grant_type"])
+				require.Equal(s.T(), "rt", captured.bodyJSON["refresh_token"])
+				require.Equal(s.T(), oauth.ClientID, captured.bodyJSON["client_id"])
+			},
+		},
+		{
+			name: "returns_new_refresh_token",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(oauth.TokenResponse{
+					AccessToken:  "at",
+					TokenType:    "bearer",
+					ExpiresIn:    28800,
+					RefreshToken: "rotated_rt", // Anthropic rotates refresh tokens
+				})
+			},
+			wantResp: &oauth.TokenResponse{
+				AccessToken:  "at",
+				RefreshToken: "rotated_rt",
 			},
 		},
 		{
 			name: "non_200_returns_error",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusUnauthorized)
-				_, _ = w.Write([]byte("unauthorized"))
+				_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
 			},
 			wantErr: true,
 		},
@@ -311,8 +338,9 @@ func (s *ClaudeOAuthServiceSuite) TestRefreshToken() {
 
 			s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				captured.method = r.Method
+				captured.contentType = r.Header.Get("Content-Type")
 				captured.body, _ = io.ReadAll(r.Body)
-				captured.formValues, _ = url.ParseQuery(string(captured.body))
+				_ = json.Unmarshal(captured.body, &captured.bodyJSON)
 				tt.handler(w, r)
 			}))
 			defer s.srv.Close()
@@ -331,6 +359,7 @@ func (s *ClaudeOAuthServiceSuite) TestRefreshToken() {
 
 			require.NoError(s.T(), err)
 			require.Equal(s.T(), tt.wantResp.AccessToken, resp.AccessToken)
+			require.Equal(s.T(), tt.wantResp.RefreshToken, resp.RefreshToken)
 			if tt.validate != nil {
 				tt.validate(captured)
 			}

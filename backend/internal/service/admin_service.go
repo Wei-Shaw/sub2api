@@ -652,11 +652,20 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Status = input.Status
 	}
 
+	// 先验证分组是否存在（在任何写操作之前）
+	if input.GroupIDs != nil {
+		for _, groupID := range *input.GroupIDs {
+			if _, err := s.groupRepo.GetByID(ctx, groupID); err != nil {
+				return nil, fmt.Errorf("get group: %w", err)
+			}
+		}
+	}
+
 	if err := s.accountRepo.Update(ctx, account); err != nil {
 		return nil, err
 	}
 
-	// 更新分组绑定
+	// 绑定分组
 	if input.GroupIDs != nil {
 		if err := s.accountRepo.BindGroups(ctx, account.ID, *input.GroupIDs); err != nil {
 			return nil, err

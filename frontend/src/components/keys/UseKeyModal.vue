@@ -119,7 +119,7 @@
 import { ref, computed, h, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Modal from '@/components/common/Modal.vue'
-import { useAppStore } from '@/stores/app'
+import { useClipboard } from '@/composables/useClipboard'
 import type { GroupPlatform } from '@/types'
 
 interface Props {
@@ -150,7 +150,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const { t } = useI18n()
-const appStore = useAppStore()
+const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
 const activeTab = ref<string>('unix')
@@ -340,14 +340,12 @@ ${key('requires_openai_auth')} ${operator('=')} ${keyword('true')}`
 }
 
 const copyContent = async (content: string, index: number) => {
-  try {
-    await navigator.clipboard.writeText(content)
+  const success = await clipboardCopy(content, t('keys.copied'))
+  if (success) {
     copiedIndex.value = index
     setTimeout(() => {
       copiedIndex.value = null
     }, 2000)
-  } catch (error) {
-    appStore.showError(t('common.copyFailed'))
   }
 }
 </script>

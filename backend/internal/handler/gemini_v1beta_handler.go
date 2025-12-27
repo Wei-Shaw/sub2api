@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -158,44 +159,69 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 3) select account (sticky session based on request body)
 	sessionHash := h.gatewayService.GenerateSessionHash(body)
-	account, err := h.geminiCompatService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, modelName)
-	if err != nil {
-		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
-		return
-	}
+	const maxAccountSwitches = 3
+	switchCount := 0
+	failedAccountIDs := make(map[int64]struct{})
+	lastFailoverStatus := 0
 
-	// 4) account concurrency slot
-	accountReleaseFunc, err := geminiConcurrency.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, stream, &streamStarted)
-	if err != nil {
-		googleError(c, http.StatusTooManyRequests, err.Error())
-		return
-	}
-	if accountReleaseFunc != nil {
-		defer accountReleaseFunc()
-	}
-
-	// 5) forward (writes response to client)
-	result, err := h.geminiCompatService.ForwardNative(c.Request.Context(), c, account, modelName, action, stream, body)
-	if err != nil {
-		// ForwardNative already wrote the response
-		log.Printf("Gemini native forward failed: %v", err)
-		return
-	}
-
-	// 6) record usage async
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-			Result:       result,
-			ApiKey:       apiKey,
-			User:         apiKey.User,
-			Account:      account,
-			Subscription: subscription,
-		}); err != nil {
-			log.Printf("Record usage failed: %v", err)
+	for {
+		account, err := h.geminiCompatService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, sessionHash, modelName, failedAccountIDs)
+		if err != nil {
+			if len(failedAccountIDs) == 0 {
+				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
+				return
+			}
+			handleGeminiFailoverExhausted(c, lastFailoverStatus)
+			return
 		}
-	}()
+
+		// 4) account concurrency slot
+		accountReleaseFunc, err := geminiConcurrency.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, stream, &streamStarted)
+		if err != nil {
+			googleError(c, http.StatusTooManyRequests, err.Error())
+			return
+		}
+
+		// 5) forward (writes response to client)
+		result, err := h.geminiCompatService.ForwardNative(c.Request.Context(), c, account, modelName, action, stream, body)
+		if accountReleaseFunc != nil {
+			accountReleaseFunc()
+		}
+		if err != nil {
+			var failoverErr *service.UpstreamFailoverError
+			if errors.As(err, &failoverErr) {
+				failedAccountIDs[account.ID] = struct{}{}
+				if switchCount >= maxAccountSwitches {
+					lastFailoverStatus = failoverErr.StatusCode
+					handleGeminiFailoverExhausted(c, lastFailoverStatus)
+					return
+				}
+				lastFailoverStatus = failoverErr.StatusCode
+				switchCount++
+				log.Printf("Gemini account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+				continue
+			}
+			// ForwardNative already wrote the response
+			log.Printf("Gemini native forward failed: %v", err)
+			return
+		}
+
+		// 6) record usage async
+		go func(result *service.ForwardResult, usedAccount *service.Account) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+				Result:       result,
+				ApiKey:       apiKey,
+				User:         apiKey.User,
+				Account:      usedAccount,
+				Subscription: subscription,
+			}); err != nil {
+				log.Printf("Record usage failed: %v", err)
+			}
+		}(result, account)
+		return
+	}
 }
 
 func parseGeminiModelAction(rest string) (model string, action string, err error) {
@@ -215,6 +241,28 @@ func parseGeminiModelAction(rest string) (model string, action string, err error
 	}
 
 	return "", "", &pathParseError{"invalid model action path"}
+}
+
+func handleGeminiFailoverExhausted(c *gin.Context, statusCode int) {
+	status, message := mapGeminiUpstreamError(statusCode)
+	googleError(c, status, message)
+}
+
+func mapGeminiUpstreamError(statusCode int) (int, string) {
+	switch statusCode {
+	case 401:
+		return http.StatusBadGateway, "Upstream authentication failed, please contact administrator"
+	case 403:
+		return http.StatusBadGateway, "Upstream access forbidden, please contact administrator"
+	case 429:
+		return http.StatusTooManyRequests, "Upstream rate limit exceeded, please retry later"
+	case 529:
+		return http.StatusServiceUnavailable, "Upstream service overloaded, please retry later"
+	case 500, 502, 503, 504:
+		return http.StatusBadGateway, "Upstream service temporarily unavailable"
+	default:
+		return http.StatusBadGateway, "Upstream request failed"
+	}
 }
 
 type pathParseError struct{ msg string }

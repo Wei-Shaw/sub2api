@@ -208,20 +208,23 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		account.Status = *req.Status
 	}
 
-	if err := s.accountRepo.Update(ctx, account); err != nil {
-		return nil, fmt.Errorf("update account: %w", err)
-	}
-
-	// 更新分组绑定
+	// 先验证分组是否存在（在任何写操作之前）
 	if req.GroupIDs != nil {
-		// 验证分组是否存在
 		for _, groupID := range *req.GroupIDs {
 			_, err := s.groupRepo.GetByID(ctx, groupID)
 			if err != nil {
 				return nil, fmt.Errorf("get group: %w", err)
 			}
 		}
+	}
 
+	// 执行更新
+	if err := s.accountRepo.Update(ctx, account); err != nil {
+		return nil, fmt.Errorf("update account: %w", err)
+	}
+
+	// 绑定分组
+	if req.GroupIDs != nil {
 		if err := s.accountRepo.BindGroups(ctx, account.ID, *req.GroupIDs); err != nil {
 			return nil, fmt.Errorf("bind groups: %w", err)
 		}
