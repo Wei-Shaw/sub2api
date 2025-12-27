@@ -281,6 +281,30 @@ To change after installation:
    sudo systemctl restart sub2api
    ```
 
+#### Gemini OAuth Configuration
+
+If you need to use AI Studio OAuth for Gemini accounts, add the OAuth client credentials to the systemd service file:
+
+1. Edit the service file:
+   ```bash
+   sudo nano /etc/systemd/system/sub2api.service
+   ```
+
+2. Add your OAuth credentials in the `[Service]` section (after the existing `Environment=` lines):
+   ```ini
+   Environment=GEMINI_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   Environment=GEMINI_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
+   ```
+
+3. Reload and restart:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl restart sub2api
+   ```
+
+> **Note:** Code Assist OAuth does not require any configuration - it uses the built-in Gemini CLI client.
+> See the [Gemini OAuth Configuration](#gemini-oauth-configuration) section above for detailed setup instructions.
+
 #### Application Configuration
 
 The main config file is at `/etc/sub2api/config.yaml` (created by Setup Wizard).
