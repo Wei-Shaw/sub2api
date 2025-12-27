@@ -31,7 +31,11 @@
 </template>
 
 <script setup lang="ts">
+import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import Modal from './Modal.vue'
+
+const { t REDACTED = useI18n()
 
 interface Props {
   show: boolean
@@ -47,11 +51,12 @@ interface Emits {
   (e: 'cancel'): void
 REDACTED
 
-withDefaults(defineProps<Props>(), {
-  confirmText: 'Confirm',
-  cancelText: 'Cancel',
+const props = withDefaults(defineProps<Props>(), {
   danger: false
 REDACTED)
+
+const confirmText = computed(() => props.confirmText || t('common.confirm'))
+const cancelText = computed(() => props.cancelText || t('common.cancel'))
 
 const emit = defineEmits<Emits>()
 

@@ -152,6 +152,7 @@ const { t REDACTED = useI18n()
 // 表格容器引用
 const tableWrapperRef = ref<HTMLElement | null>(null)
 const isScrollable = ref(false)
+const actionsColumnNeedsExpanding = ref(false)
 
 // 检查是否可滚动
 const checkScrollable = () => {
@@ -160,17 +161,49 @@ const checkScrollable = () => {
   REDACTED
 REDACTED
 
+// 检查操作列是否需要展开
+const checkActionsColumnWidth = () => {
+  if (!tableWrapperRef.value) return
+
+  // 查找操作列的表头单元格
+  const actionsHeader = tableWrapperRef.value.querySelector('th:has(button[title*="Expand"], button[title*="展开"])')
+  if (!actionsHeader) return
+
+  // 查找第一行的操作列单元格
+  const firstActionCell = tableWrapperRef.value.querySelector('tbody tr:first-child td:last-child')
+  if (!firstActionCell) return
+
+  // 获取操作列内容的实际宽度
+  const actionsContent = firstActionCell.querySelector('div')
+  if (!actionsContent) return
+
+  // 比较内容宽度和单元格宽度
+  const contentWidth = actionsContent.scrollWidth
+  const cellWidth = (firstActionCell as HTMLElement).clientWidth
+
+  // 如果内容宽度超过单元格宽度，说明需要展开
+  actionsColumnNeedsExpanding.value = contentWidth > cellWidth
+REDACTED
+
 // 监听尺寸变化
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
   checkScrollable()
+  checkActionsColumnWidth()
   if (tableWrapperRef.value && typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(checkScrollable)
+    resizeObserver = new ResizeObserver(() => {
+      checkScrollable()
+      checkActionsColumnWidth()
+    REDACTED)
     resizeObserver.observe(tableWrapperRef.value)
   REDACTED else {
     // 降级方案：不支持 ResizeObserver 时使用 window resize
-    window.addEventListener('resize', checkScrollable)
+    const handleResize = () => {
+      checkScrollable()
+      checkActionsColumnWidth()
+    REDACTED
+    window.addEventListener('resize', handleResize)
   REDACTED
 REDACTED)
 
@@ -205,6 +238,7 @@ watch(
   async () => {
     await nextTick()
     checkScrollable()
+    checkActionsColumnWidth()
   REDACTED,
   { flush: 'post' REDACTED
 )
@@ -234,7 +268,11 @@ REDACTED)
 
 // 检查是否有可展开的操作列
 const hasExpandableActions = computed(() => {
-  return props.expandableActions && props.columns.some((col) => col.key === 'actions')
+  return (
+    props.expandableActions &&
+    props.columns.some((col) => col.key === 'actions') &&
+    actionsColumnNeedsExpanding.value
+  )
 REDACTED)
 
 // 切换操作列展开/折叠状态

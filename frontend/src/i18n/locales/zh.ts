@@ -49,6 +49,7 @@ export default {
       password: '密码',
       databaseName: '数据库名称',
       sslMode: 'SSL 模式',
+      passwordPlaceholder: '密码',
       ssl: {
         disable: '禁用',
         require: '要求',
@@ -61,13 +62,17 @@ export default {
       host: '主机',
       port: '端口',
       password: '密码（可选）',
-      database: '数据库'
+      database: '数据库',
+      passwordPlaceholder: '密码'
     REDACTED,
     admin: {
       title: '管理员账户',
       email: '邮箱',
       password: '密码',
-      confirmPassword: '确认密码'
+      confirmPassword: '确认密码',
+      passwordPlaceholder: '至少 6 个字符',
+      confirmPasswordPlaceholder: '确认密码',
+      passwordMismatch: '密码不匹配'
     REDACTED,
     ready: {
       title: '准备安装',
@@ -124,7 +129,14 @@ export default {
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
     saving: '保存中...',
-    refresh: '刷新'
+    refresh: '刷新',
+    time: {
+      never: '从未',
+      justNow: '刚刚',
+      minutesAgo: '{nREDACTED分钟前',
+      hoursAgo: '{nREDACTED小时前',
+      daysAgo: '{nREDACTED天前'
+    REDACTED
   REDACTED,
 
   // Navigation
@@ -260,7 +272,7 @@ export default {
     created: '创建时间',
     copyToClipboard: '复制到剪贴板',
     copied: '已复制！',
-    importToCcSwitch: '导入到 CC Switch',
+    importToCcSwitch: '导入到 CCS',
     enable: '启用',
     disable: '禁用',
     nameLabel: '名称',
@@ -589,9 +601,13 @@ export default {
       noSubscription: '暂无订阅',
       daysRemaining: '{daysREDACTED天',
       expired: '已过期',
+      disable: '禁用',
+      enable: '启用',
       disableUser: '禁用用户',
       enableUser: '启用用户',
       viewApiKeys: '查看 API 密钥',
+      groups: '分组',
+      apiKeys: 'API密钥',
       userApiKeys: '用户 API 密钥',
       noApiKeys: '此用户暂无 API 密钥',
       group: '分组',
@@ -727,10 +743,13 @@ export default {
         priorityHint: '数值越高优先级越高，用于账号调度',
         statusLabel: '状态'
       REDACTED,
-      exclusive: {
+      exclusiveObj: {
         yes: '是',
         no: '否'
       REDACTED,
+      exclusive: '独占',
+      exclusiveHint: '启用后，此分组的用户将独占使用分配的账号',
+      rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
       platforms: {
         all: '全部平台',
         claude: 'Claude',
@@ -876,6 +895,7 @@ export default {
       deleteConfirmMessage: "确定要删除账号 '{nameREDACTED' 吗？",
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
+      searchAccounts: '搜索账号...',
       // Filter options
       allPlatforms: '全部平台',
       allTypes: '全部类型',
@@ -903,6 +923,19 @@ export default {
         lastUsed: '最近使用',
         actions: '操作'
       REDACTED,
+      clearRateLimit: '清除速率限制',
+      testConnection: '测试连接',
+      reAuthorize: '重新授权',
+      refreshToken: '刷新令牌',
+      noAccountsYet: '暂无账号',
+      createFirstAccount: '添加 AI 平台账号以开始使用 API 网关。',
+      tokenRefreshed: 'Token 刷新成功',
+      accountDeleted: '账号删除成功',
+      rateLimitCleared: '速率限制已清除',
+      setupToken: 'Setup Token',
+      apiKey: 'API Key',
+      deleteConfirm: "确定要删除账号 '{nameREDACTED' 吗？此操作无法撤销。",
+      failedToClearRateLimit: '清除速率限制失败',
       platforms: {
         claude: 'Claude',
         openai: 'OpenAI',

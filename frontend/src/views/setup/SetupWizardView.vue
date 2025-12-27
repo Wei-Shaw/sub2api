@@ -128,7 +128,7 @@
                 v-model="formData.database.password"
                 type="password"
                 class="input"
-                placeholder="Password"
+                :placeholder="t('setup.database.passwordPlaceholder')"
               />
             </div>
           </div>
@@ -234,7 +234,7 @@
                 v-model="formData.redis.password"
                 type="password"
                 class="input"
-                placeholder="Password"
+                :placeholder="t('setup.redis.passwordPlaceholder')"
               />
             </div>
             <div>
@@ -320,7 +320,7 @@
               v-model="formData.admin.password"
               type="password"
               class="input"
-              placeholder="Min 6 characters"
+              :placeholder="t('setup.admin.passwordPlaceholder')"
             />
           </div>
 
@@ -330,13 +330,13 @@
               v-model="confirmPassword"
               type="password"
               class="input"
-              placeholder="Confirm password"
+              :placeholder="t('setup.admin.confirmPasswordPlaceholder')"
             />
             <p
               v-if="confirmPassword && formData.admin.password !== confirmPassword"
               class="input-error-text"
             >
-              Passwords do not match
+              {{ t('setup.admin.passwordMismatch') REDACTEDREDACTED
             </p>
           </div>
         </div>

@@ -294,7 +294,11 @@
                 ${{ row.actual_cost.toFixed(6) REDACTEDREDACTED
               </span>
               <!-- Cost Detail Tooltip -->
-              <div class="group relative">
+              <div
+                class="group relative"
+                @mouseenter="showTooltip($event, row)"
+                @mouseleave="hideTooltip"
+              >
                 <div
                   class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50"
                 >
@@ -309,39 +313,6 @@
                       clip-rule="evenodd"
                     />
                   </svg>
-                </div>
-                <!-- Tooltip Content (right side) -->
-                <div
-                  class="invisible absolute left-full top-1/2 z-[100] ml-2 -translate-y-1/2 opacity-0 transition-all duration-200 group-hover:visible group-hover:opacity-100"
-                >
-                  <div
-                    class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
-                  >
-                    <div class="space-y-1.5">
-                      <div class="flex items-center justify-between gap-6">
-                        <span class="text-gray-400">{{ t('usage.rate') REDACTEDREDACTED</span>
-                        <span class="font-semibold text-blue-400"
-                          >{{ (row.rate_multiplier || 1).toFixed(2) REDACTEDREDACTEDx</span
-                        >
-                      </div>
-                      <div class="flex items-center justify-between gap-6">
-                        <span class="text-gray-400">{{ t('usage.original') REDACTEDREDACTED</span>
-                        <span class="font-medium text-white">${{ row.total_cost.toFixed(6) REDACTEDREDACTED</span>
-                      </div>
-                      <div
-                        class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5"
-                      >
-                        <span class="text-gray-400">{{ t('usage.billed') REDACTEDREDACTED</span>
-                        <span class="font-semibold text-green-400"
-                          >${{ row.actual_cost.toFixed(6) REDACTEDREDACTED</span
-                        >
-                      </div>
-                    </div>
-                    <!-- Tooltip Arrow (left side) -->
-                    <div
-                      class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"
-                    ></div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -399,6 +370,45 @@
       </template>
     </TablePageLayout>
   </AppLayout>
+
+  <!-- Tooltip Portal -->
+  <Teleport to="body">
+    <div
+      v-if="tooltipVisible"
+      class="fixed z-[9999] pointer-events-none -translate-y-1/2"
+      :style="{
+        left: tooltipPosition.x + 'px',
+        top: tooltipPosition.y + 'px'
+      REDACTED"
+    >
+      <div
+        class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+      >
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.rate') REDACTEDREDACTED</span>
+            <span class="font-semibold text-blue-400"
+              >{{ (tooltipData?.rate_multiplier || 1).toFixed(2) REDACTEDREDACTEDx</span
+            >
+          </div>
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.original') REDACTEDREDACTED</span>
+            <span class="font-medium text-white">${{ tooltipData?.total_cost.toFixed(6) REDACTEDREDACTED</span>
+          </div>
+          <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
+            <span class="text-gray-400">{{ t('usage.billed') REDACTEDREDACTED</span>
+            <span class="font-semibold text-green-400"
+              >${{ tooltipData?.actual_cost.toFixed(6) REDACTEDREDACTED</span
+            >
+          </div>
+        </div>
+        <!-- Tooltip Arrow (left side) -->
+        <div
+          class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"
+        ></div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -419,6 +429,11 @@ import { formatDateTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+
+// Tooltip state
+const tooltipVisible = ref(false)
+const tooltipPosition = ref({ x: 0, y: 0 REDACTED)
+const tooltipData = ref<UsageLog | null>(null)
 
 // Usage stats from API
 const usageStats = ref<UsageStatsResponse | null>(null)
@@ -627,6 +642,23 @@ const exportToCSV = () => {
   window.URL.revokeObjectURL(url)
 
   appStore.showSuccess(t('usage.exportSuccess'))
+REDACTED
+
+// Tooltip functions
+const showTooltip = (event: MouseEvent, row: UsageLog) => {
+  const target = event.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+
+  tooltipData.value = row
+  // Position to the right of the icon, vertically centered
+  tooltipPosition.value.x = rect.right + 8
+  tooltipPosition.value.y = rect.top + rect.height / 2
+  tooltipVisible.value = true
+REDACTED
+
+const hideTooltip = () => {
+  tooltipVisible.value = false
+  tooltipData.value = null
 REDACTED
 
 onMounted(() => {

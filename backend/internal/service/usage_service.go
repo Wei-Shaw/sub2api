@@ -148,22 +148,40 @@ REDACTED
 
 // GetStatsByUser 获取用户的使用统计
 func (s *UsageService) GetStatsByUser(ctx context.Context, userID int64, startTime, endTime time.Time) (*UsageStats, error) {
-	logs, _, err := s.usageRepo.ListByUserAndTimeRange(ctx, userID, startTime, endTime)
+	stats, err := s.usageRepo.GetUserStatsAggregated(ctx, userID, startTime, endTime)
 	if err != nil {
-		return nil, fmt.Errorf("list usage logs: %w", err)
+		return nil, fmt.Errorf("get user stats: %w", err)
 REDACTED
 
-	return s.calculateStats(logs), nil
+	return &UsageStats{
+		TotalRequests:     stats.TotalRequests,
+		TotalInputTokens:  stats.TotalInputTokens,
+		TotalOutputTokens: stats.TotalOutputTokens,
+		TotalCacheTokens:  stats.TotalCacheTokens,
+		TotalTokens:       stats.TotalTokens,
+		TotalCost:         stats.TotalCost,
+		TotalActualCost:   stats.TotalActualCost,
+		AverageDurationMs: stats.AverageDurationMs,
+REDACTED, nil
 REDACTED
 
 // GetStatsByApiKey 获取API Key的使用统计
 func (s *UsageService) GetStatsByApiKey(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*UsageStats, error) {
-	logs, _, err := s.usageRepo.ListByApiKeyAndTimeRange(ctx, apiKeyID, startTime, endTime)
+	stats, err := s.usageRepo.GetApiKeyStatsAggregated(ctx, apiKeyID, startTime, endTime)
 	if err != nil {
-		return nil, fmt.Errorf("list usage logs: %w", err)
+		return nil, fmt.Errorf("get api key stats: %w", err)
 REDACTED
 
-	return s.calculateStats(logs), nil
+	return &UsageStats{
+		TotalRequests:     stats.TotalRequests,
+		TotalInputTokens:  stats.TotalInputTokens,
+		TotalOutputTokens: stats.TotalOutputTokens,
+		TotalCacheTokens:  stats.TotalCacheTokens,
+		TotalTokens:       stats.TotalTokens,
+		TotalCost:         stats.TotalCost,
+		TotalActualCost:   stats.TotalActualCost,
+		AverageDurationMs: stats.AverageDurationMs,
+REDACTED, nil
 REDACTED
 
 // GetStatsByAccount 获取账号的使用统计

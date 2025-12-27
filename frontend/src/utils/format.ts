@@ -3,30 +3,32 @@
  * 参考 CRS 项目的 format.js 实现
  */
 
+import { i18n REDACTED from '@/i18n'
+
 /**
  * 格式化相对时间
  * @param date 日期字符串或 Date 对象
  * @returns 相对时间字符串，如 "5m ago", "2h ago", "3d ago"
  */
 export function formatRelativeTime(date: string | Date | null | undefined): string {
-  if (!date) return 'Never'
+  if (!date) return i18n.global.t('common.time.never')
 
   const now = new Date()
   const past = new Date(date)
   const diffMs = now.getTime() - past.getTime()
 
   // 处理未来时间或无效日期
-  if (diffMs < 0 || isNaN(diffMs)) return 'Never'
+  if (diffMs < 0 || isNaN(diffMs)) return i18n.global.t('common.time.never')
 
   const diffSecs = Math.floor(diffMs / 1000)
   const diffMins = Math.floor(diffSecs / 60)
   const diffHours = Math.floor(diffMins / 60)
   const diffDays = Math.floor(diffHours / 24)
 
-  if (diffDays > 0) return `${diffDaysREDACTEDd ago`
-  if (diffHours > 0) return `${diffHoursREDACTEDh ago`
-  if (diffMins > 0) return `${diffMinsREDACTEDm ago`
-  return 'Just now'
+  if (diffDays > 0) return i18n.global.t('common.time.daysAgo', { n: diffDays REDACTED)
+  if (diffHours > 0) return i18n.global.t('common.time.hoursAgo', { n: diffHours REDACTED)
+  if (diffMins > 0) return i18n.global.t('common.time.minutesAgo', { n: diffMins REDACTED)
+  return i18n.global.t('common.time.justNow')
 REDACTED
 
 /**

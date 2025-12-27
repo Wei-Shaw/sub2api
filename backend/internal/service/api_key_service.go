@@ -34,6 +34,7 @@ type ApiKeyRepository interface {
 	Delete(ctx context.Context, id int64) error
 
 	ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]ApiKey, *pagination.PaginationResult, error)
+	VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error)
 	CountByUserID(ctx context.Context, userID int64) (int64, error)
 	ExistsByKey(ctx context.Context, key string) (bool, error)
 	ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]ApiKey, *pagination.PaginationResult, error)
@@ -254,6 +255,18 @@ func (s *ApiKeyService) List(ctx context.Context, userID int64, params paginatio
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 REDACTED
 	return keys, pagination, nil
+REDACTED
+
+func (s *ApiKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
+	if len(apiKeyIDs) == 0 {
+		return []int64{REDACTED, nil
+REDACTED
+
+	validIDs, err := s.apiKeyRepo.VerifyOwnership(ctx, userID, apiKeyIDs)
+	if err != nil {
+		return nil, fmt.Errorf("verify api key ownership: %w", err)
+REDACTED
+	return validIDs, nil
 REDACTED
 
 // GetByID 根据ID获取API Key
