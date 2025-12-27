@@ -129,51 +129,67 @@ type DashboardStats = usagestats.DashboardStats
 func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
 	var stats DashboardStats
 	today := timezone.Today()
+	now := time.Now()
 
-	// 总用户数
-	r.db.WithContext(ctx).Model(&userModel{REDACTED).Count(&stats.TotalUsers)
+	// 合并用户统计查询
+	var userStats struct {
+		TotalUsers     int64 `gorm:"column:total_users"`
+		TodayNewUsers  int64 `gorm:"column:today_new_users"`
+		ActiveUsers    int64 `gorm:"column:active_users"`
+REDACTED
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT
+			COUNT(*) as total_users,
+			COUNT(CASE WHEN created_at >= ? THEN 1 END) as today_new_users,
+			(SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE created_at >= ?) as active_users
+		FROM users
+	`, today, today).Scan(&userStats).Error; err != nil {
+		return nil, err
+REDACTED
+	stats.TotalUsers = userStats.TotalUsers
+	stats.TodayNewUsers = userStats.TodayNewUsers
+	stats.ActiveUsers = userStats.ActiveUsers
 
-	// 今日新增用户数
-	r.db.WithContext(ctx).Model(&userModel{REDACTED).
-		Where("created_at >= ?", today).
-		Count(&stats.TodayNewUsers)
+	// 合并API Key统计查询
+	var apiKeyStats struct {
+		TotalApiKeys  int64 `gorm:"column:total_api_keys"`
+		ActiveApiKeys int64 `gorm:"column:active_api_keys"`
+REDACTED
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT
+			COUNT(*) as total_api_keys,
+			COUNT(CASE WHEN status = ? THEN 1 END) as active_api_keys
+		FROM api_keys
+	`, service.StatusActive).Scan(&apiKeyStats).Error; err != nil {
+		return nil, err
+REDACTED
+	stats.TotalApiKeys = apiKeyStats.TotalApiKeys
+	stats.ActiveApiKeys = apiKeyStats.ActiveApiKeys
 
-	// 今日活跃用户数 (今日有请求的用户)
-	r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
-		Distinct("user_id").
-		Where("created_at >= ?", today).
-		Count(&stats.ActiveUsers)
-
-	// 总 API Key 数
-	r.db.WithContext(ctx).Model(&apiKeyModel{REDACTED).Count(&stats.TotalApiKeys)
-
-	// 活跃 API Key 数
-	r.db.WithContext(ctx).Model(&apiKeyModel{REDACTED).
-		Where("status = ?", service.StatusActive).
-		Count(&stats.ActiveApiKeys)
-
-	// 总账户数
-	r.db.WithContext(ctx).Model(&accountModel{REDACTED).Count(&stats.TotalAccounts)
-
-	// 正常账户数 (schedulable=true, status=active)
-	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
-		Where("status = ? AND schedulable = ?", service.StatusActive, true).
-		Count(&stats.NormalAccounts)
-
-	// 异常账户数 (status=error)
-	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
-		Where("status = ?", service.StatusError).
-		Count(&stats.ErrorAccounts)
-
-	// 限流账户数
-	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
-		Where("rate_limited_at IS NOT NULL AND rate_limit_reset_at > ?", time.Now()).
-		Count(&stats.RateLimitAccounts)
-
-	// 过载账户数
-	r.db.WithContext(ctx).Model(&accountModel{REDACTED).
-		Where("overload_until IS NOT NULL AND overload_until > ?", time.Now()).
-		Count(&stats.OverloadAccounts)
+	// 合并账户统计查询
+	var accountStats struct {
+		TotalAccounts      int64 `gorm:"column:total_accounts"`
+		NormalAccounts     int64 `gorm:"column:normal_accounts"`
+		ErrorAccounts      int64 `gorm:"column:error_accounts"`
+		RateLimitAccounts  int64 `gorm:"column:ratelimit_accounts"`
+		OverloadAccounts   int64 `gorm:"column:overload_accounts"`
+REDACTED
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT
+			COUNT(*) as total_accounts,
+			COUNT(CASE WHEN status = ? AND schedulable = true THEN 1 END) as normal_accounts,
+			COUNT(CASE WHEN status = ? THEN 1 END) as error_accounts,
+			COUNT(CASE WHEN rate_limited_at IS NOT NULL AND rate_limit_reset_at > ? THEN 1 END) as ratelimit_accounts,
+			COUNT(CASE WHEN overload_until IS NOT NULL AND overload_until > ? THEN 1 END) as overload_accounts
+		FROM accounts
+	`, service.StatusActive, service.StatusError, now, now).Scan(&accountStats).Error; err != nil {
+		return nil, err
+REDACTED
+	stats.TotalAccounts = accountStats.TotalAccounts
+	stats.NormalAccounts = accountStats.NormalAccounts
+	stats.ErrorAccounts = accountStats.ErrorAccounts
+	stats.RateLimitAccounts = accountStats.RateLimitAccounts
+	stats.OverloadAccounts = accountStats.OverloadAccounts
 
 	// 累计 Token 统计
 	var totalStats struct {
@@ -271,6 +287,88 @@ func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID 
 		Order("id DESC").
 		Find(&logs).Error
 	return usageLogModelsToService(logs), nil, err
+REDACTED
+
+// GetUserStatsAggregated returns aggregated usage statistics for a user using database-level aggregation
+func (r *usageLogRepository) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	var stats struct {
+		TotalRequests     int64   `gorm:"column:total_requests"`
+		TotalInputTokens  int64   `gorm:"column:total_input_tokens"`
+		TotalOutputTokens int64   `gorm:"column:total_output_tokens"`
+		TotalCacheTokens  int64   `gorm:"column:total_cache_tokens"`
+		TotalCost         float64 `gorm:"column:total_cost"`
+		TotalActualCost   float64 `gorm:"column:total_actual_cost"`
+		AverageDurationMs float64 `gorm:"column:avg_duration_ms"`
+REDACTED
+
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
+		Select(`
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
+		`).
+		Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, startTime, endTime).
+		Scan(&stats).Error
+
+	if err != nil {
+		return nil, err
+REDACTED
+
+	return &usagestats.UsageStats{
+		TotalRequests:     stats.TotalRequests,
+		TotalInputTokens:  stats.TotalInputTokens,
+		TotalOutputTokens: stats.TotalOutputTokens,
+		TotalCacheTokens:  stats.TotalCacheTokens,
+		TotalTokens:       stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens,
+		TotalCost:         stats.TotalCost,
+		TotalActualCost:   stats.TotalActualCost,
+		AverageDurationMs: stats.AverageDurationMs,
+REDACTED, nil
+REDACTED
+
+// GetApiKeyStatsAggregated returns aggregated usage statistics for an API key using database-level aggregation
+func (r *usageLogRepository) GetApiKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	var stats struct {
+		TotalRequests     int64   `gorm:"column:total_requests"`
+		TotalInputTokens  int64   `gorm:"column:total_input_tokens"`
+		TotalOutputTokens int64   `gorm:"column:total_output_tokens"`
+		TotalCacheTokens  int64   `gorm:"column:total_cache_tokens"`
+		TotalCost         float64 `gorm:"column:total_cost"`
+		TotalActualCost   float64 `gorm:"column:total_actual_cost"`
+		AverageDurationMs float64 `gorm:"column:avg_duration_ms"`
+REDACTED
+
+	err := r.db.WithContext(ctx).Model(&usageLogModel{REDACTED).
+		Select(`
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
+		`).
+		Where("api_key_id = ? AND created_at >= ? AND created_at < ?", apiKeyID, startTime, endTime).
+		Scan(&stats).Error
+
+	if err != nil {
+		return nil, err
+REDACTED
+
+	return &usagestats.UsageStats{
+		TotalRequests:     stats.TotalRequests,
+		TotalInputTokens:  stats.TotalInputTokens,
+		TotalOutputTokens: stats.TotalOutputTokens,
+		TotalCacheTokens:  stats.TotalCacheTokens,
+		TotalTokens:       stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens,
+		TotalCost:         stats.TotalCost,
+		TotalActualCost:   stats.TotalActualCost,
+		AverageDurationMs: stats.AverageDurationMs,
+REDACTED, nil
 REDACTED
 
 func (r *usageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
