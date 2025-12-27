@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -127,66 +128,134 @@ REDACTED
 		platform = apiKey.Group.Platform
 REDACTED
 
-	// 选择支持该模型的账号
-	var account *service.Account
 	if platform == service.PlatformGemini {
-		account, err = h.geminiCompatService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
-REDACTED else {
-		account, err = h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
-REDACTED
-	if err != nil {
-		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
-		return
-REDACTED
-
-	// 检查预热请求拦截（在账号选择后、转发前检查）
-	if account.IsInterceptWarmupEnabled() && isWarmupRequest(body) {
-		if req.Stream {
-			sendMockWarmupStream(c, req.Model)
-	REDACTED else {
-			sendMockWarmupResponse(c, req.Model)
+		account, err := h.geminiCompatService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model)
+		if err != nil {
+			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+			return
 	REDACTED
-		return
-REDACTED
 
-	// 3. 获取账号并发槽位
-	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, req.Stream, &streamStarted)
-	if err != nil {
-		log.Printf("Account concurrency acquire failed: %v", err)
-		h.handleConcurrencyError(c, err, "account", streamStarted)
-		return
-REDACTED
-	if accountReleaseFunc != nil {
-		defer accountReleaseFunc()
-REDACTED
-
-	// 转发请求
-	var result *service.ForwardResult
-	if platform == service.PlatformGemini {
-		result, err = h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
-REDACTED else {
-		result, err = h.gatewayService.Forward(c.Request.Context(), c, account, body)
-REDACTED
-	if err != nil {
-		// 错误响应已在Forward中处理，这里只记录日志
-		log.Printf("Forward request failed: %v", err)
-		return
-REDACTED
-
-	// 异步记录使用量（subscription已在函数开头获取）
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-			Result:       result,
-			ApiKey:       apiKey,
-			User:         apiKey.User,
-			Account:      account,
-			Subscription: subscription,
-	REDACTED); err != nil {
-			log.Printf("Record usage failed: %v", err)
+		// 检查预热请求拦截（在账号选择后、转发前检查）
+		if account.IsInterceptWarmupEnabled() && isWarmupRequest(body) {
+			if req.Stream {
+				sendMockWarmupStream(c, req.Model)
+		REDACTED else {
+				sendMockWarmupResponse(c, req.Model)
+		REDACTED
+			return
 	REDACTED
-REDACTED()
+
+		// 3. 获取账号并发槽位
+		accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, req.Stream, &streamStarted)
+		if err != nil {
+			log.Printf("Account concurrency acquire failed: %v", err)
+			h.handleConcurrencyError(c, err, "account", streamStarted)
+			return
+	REDACTED
+		if accountReleaseFunc != nil {
+			defer accountReleaseFunc()
+	REDACTED
+
+		// 转发请求
+		result, err := h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
+		if err != nil {
+			// 错误响应已在Forward中处理，这里只记录日志
+			log.Printf("Forward request failed: %v", err)
+			return
+	REDACTED
+
+		// 异步记录使用量（subscription已在函数开头获取）
+		go func(result *service.ForwardResult, usedAccount *service.Account) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+				Result:       result,
+				ApiKey:       apiKey,
+				User:         apiKey.User,
+				Account:      usedAccount,
+				Subscription: subscription,
+		REDACTED); err != nil {
+				log.Printf("Record usage failed: %v", err)
+		REDACTED
+	REDACTED(result, account)
+		return
+REDACTED
+
+	const maxAccountSwitches = 3
+	switchCount := 0
+	failedAccountIDs := make(map[int64]struct{REDACTED)
+	lastFailoverStatus := 0
+
+	for {
+		// 选择支持该模型的账号
+		account, err := h.gatewayService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, sessionHash, req.Model, failedAccountIDs)
+		if err != nil {
+			if len(failedAccountIDs) == 0 {
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+				return
+		REDACTED
+			h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
+			return
+	REDACTED
+
+		// 检查预热请求拦截（在账号选择后、转发前检查）
+		if account.IsInterceptWarmupEnabled() && isWarmupRequest(body) {
+			if req.Stream {
+				sendMockWarmupStream(c, req.Model)
+		REDACTED else {
+				sendMockWarmupResponse(c, req.Model)
+		REDACTED
+			return
+	REDACTED
+
+		// 3. 获取账号并发槽位
+		accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, req.Stream, &streamStarted)
+		if err != nil {
+			log.Printf("Account concurrency acquire failed: %v", err)
+			h.handleConcurrencyError(c, err, "account", streamStarted)
+			return
+	REDACTED
+
+		// 转发请求
+		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, body)
+		if accountReleaseFunc != nil {
+			accountReleaseFunc()
+	REDACTED
+		if err != nil {
+			var failoverErr *service.UpstreamFailoverError
+			if errors.As(err, &failoverErr) {
+				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+				if switchCount >= maxAccountSwitches {
+					lastFailoverStatus = failoverErr.StatusCode
+					h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
+					return
+			REDACTED
+				lastFailoverStatus = failoverErr.StatusCode
+				switchCount++
+				log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+				continue
+		REDACTED
+			// 错误响应已在Forward中处理，这里只记录日志
+			log.Printf("Forward request failed: %v", err)
+			return
+	REDACTED
+
+		// 异步记录使用量（subscription已在函数开头获取）
+		go func(result *service.ForwardResult, usedAccount *service.Account) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+				Result:       result,
+				ApiKey:       apiKey,
+				User:         apiKey.User,
+				Account:      usedAccount,
+				Subscription: subscription,
+		REDACTED); err != nil {
+				log.Printf("Record usage failed: %v", err)
+		REDACTED
+	REDACTED(result, account)
+		return
+REDACTED
 REDACTED
 
 // Models handles listing available models
@@ -312,6 +381,28 @@ REDACTED
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+REDACTED
+
+func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, statusCode int, streamStarted bool) {
+	status, errType, errMsg := h.mapUpstreamError(statusCode)
+	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
+REDACTED
+
+func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) {
+	switch statusCode {
+	case 401:
+		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"
+	case 403:
+		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"
+	case 429:
+		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"
+	case 529:
+		return http.StatusServiceUnavailable, "overloaded_error", "Upstream service overloaded, please retry later"
+	case 500, 502, 503, 504:
+		return http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable"
+	default:
+		return http.StatusBadGateway, "upstream_error", "Upstream request failed"
+REDACTED
 REDACTED
 
 // handleStreamingAwareError handles errors that may occur after streaming has started

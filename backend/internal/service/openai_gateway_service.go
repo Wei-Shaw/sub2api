@@ -129,15 +129,22 @@ REDACTED
 
 // SelectAccountForModel selects an account supporting the requested model
 func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupID *int64, sessionHash string, requestedModel string) (*Account, error) {
+	return s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, nil)
+REDACTED
+
+// SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
+func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
 	// 1. Check sticky session
 	if sessionHash != "" {
 		accountID, err := s.cache.GetSessionAccountID(ctx, "openai:"+sessionHash)
 		if err == nil && accountID > 0 {
-			account, err := s.accountRepo.GetByID(ctx, accountID)
-			if err == nil && account.IsSchedulable() && account.IsOpenAI() && (requestedModel == "" || account.IsModelSupported(requestedModel)) {
-				// Refresh sticky session TTL
-				_ = s.cache.RefreshSessionTTL(ctx, "openai:"+sessionHash, openaiStickySessionTTL)
-				return account, nil
+			if _, excluded := excludedIDs[accountID]; !excluded {
+				account, err := s.accountRepo.GetByID(ctx, accountID)
+				if err == nil && account.IsSchedulable() && account.IsOpenAI() && (requestedModel == "" || account.IsModelSupported(requestedModel)) {
+					// Refresh sticky session TTL
+					_ = s.cache.RefreshSessionTTL(ctx, "openai:"+sessionHash, openaiStickySessionTTL)
+					return account, nil
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
@@ -158,6 +165,9 @@ REDACTED
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
+		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
 		// Check model support
 		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
 			continue
@@ -219,6 +229,20 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 	default:
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
 REDACTED
+REDACTED
+
+func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
+	switch statusCode {
+	case 401, 403, 429, 529:
+		return true
+	default:
+		return statusCode >= 500
+REDACTED
+REDACTED
+
+func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
+	body, _ := io.ReadAll(resp.Body)
+	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 REDACTED
 
 // Forward forwards request to OpenAI API
@@ -288,6 +312,10 @@ REDACTED
 
 	// Handle error response
 	if resp.StatusCode >= 400 {
+		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			s.handleFailoverSideEffects(ctx, resp, account)
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account)
 REDACTED
 
