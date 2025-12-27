@@ -133,9 +133,9 @@ func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardS
 
 	// 合并用户统计查询
 	var userStats struct {
-		TotalUsers     int64 `gorm:"column:total_users"`
-		TodayNewUsers  int64 `gorm:"column:today_new_users"`
-		ActiveUsers    int64 `gorm:"column:active_users"`
+		TotalUsers    int64 `gorm:"column:total_users"`
+		TodayNewUsers int64 `gorm:"column:today_new_users"`
+		ActiveUsers   int64 `gorm:"column:active_users"`
 REDACTED
 	if err := r.db.WithContext(ctx).Raw(`
 		SELECT
@@ -168,11 +168,11 @@ REDACTED
 
 	// 合并账户统计查询
 	var accountStats struct {
-		TotalAccounts      int64 `gorm:"column:total_accounts"`
-		NormalAccounts     int64 `gorm:"column:normal_accounts"`
-		ErrorAccounts      int64 `gorm:"column:error_accounts"`
-		RateLimitAccounts  int64 `gorm:"column:ratelimit_accounts"`
-		OverloadAccounts   int64 `gorm:"column:overload_accounts"`
+		TotalAccounts     int64 `gorm:"column:total_accounts"`
+		NormalAccounts    int64 `gorm:"column:normal_accounts"`
+		ErrorAccounts     int64 `gorm:"column:error_accounts"`
+		RateLimitAccounts int64 `gorm:"column:ratelimit_accounts"`
+		OverloadAccounts  int64 `gorm:"column:overload_accounts"`
 REDACTED
 	if err := r.db.WithContext(ctx).Raw(`
 		SELECT
