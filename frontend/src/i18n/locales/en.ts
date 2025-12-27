@@ -30,10 +30,53 @@ export default {
       title: 'Supported Providers',
       description: 'Unified API interface for AI services',
       supported: 'Supported',
-      soon: 'Soon'
+      soon: 'Soon',
+      claude: 'Claude',
+      gemini: 'Gemini',
+      more: 'More'
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    }
+  },
+
+  // Setup Wizard
+  setup: {
+    title: 'Sub2API Setup',
+    description: 'Configure your Sub2API instance',
+    database: {
+      title: 'Database Configuration',
+      host: 'Host',
+      port: 'Port',
+      username: 'Username',
+      password: 'Password',
+      databaseName: 'Database Name',
+      sslMode: 'SSL Mode',
+      ssl: {
+        disable: 'Disable',
+        require: 'Require',
+        verifyCa: 'Verify CA',
+        verifyFull: 'Verify Full'
+      }
+    },
+    redis: {
+      title: 'Redis Configuration',
+      host: 'Host',
+      port: 'Port',
+      password: 'Password (optional)',
+      database: 'Database'
+    },
+    admin: {
+      title: 'Admin Account',
+      email: 'Email',
+      password: 'Password',
+      confirmPassword: 'Confirm Password'
+    },
+    ready: {
+      title: 'Ready to Install',
+      database: 'Database',
+      redis: 'Redis',
+      adminEmail: 'Admin Email'
     }
   },
 
@@ -142,7 +185,20 @@ export default {
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteName}.',
     turnstileExpired: 'Verification expired, please try again',
     turnstileFailed: 'Verification failed, please try again',
-    completeVerification: 'Please complete the verification'
+    completeVerification: 'Please complete the verification',
+    verifyYourEmail: 'Verify Your Email',
+    sessionExpired: 'Session expired',
+    sessionExpiredDesc: 'Please go back to the registration page and start again.',
+    verificationCode: 'Verification Code',
+    verificationCodeHint: 'Enter the 6-digit code sent to your email',
+    sendingCode: 'Sending...',
+    clickToResend: 'Click to resend code',
+    resendCode: 'Resend verification code',
+    oauth: {
+      code: 'Code',
+      state: 'State',
+      fullUrl: 'Full URL'
+    }
   },
 
   // Dashboard
@@ -377,6 +433,12 @@ export default {
     noData: 'No data found'
   },
 
+  // Table
+  table: {
+    expandActions: 'Expand More Actions',
+    collapseActions: 'Collapse Actions'
+  },
+
   // Pagination
   pagination: {
     showing: 'Showing',
@@ -584,6 +646,7 @@ export default {
         actions: 'Actions',
         billingType: 'Billing Type'
       },
+      rateAndAccounts: '{rate}x rate · {count} accounts',
       accountsCount: '{count} accounts',
       form: {
         name: 'Name',
@@ -741,6 +804,13 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini'
+      },
+      types: {
+        oauth: 'OAuth',
+        chatgptOauth: 'ChatGPT OAuth',
+        responsesApi: 'Responses API',
+        googleOauth: 'Google OAuth',
+        codeAssist: 'Code Assist'
       },
       columns: {
         name: 'Name',
@@ -1022,6 +1092,7 @@ export default {
         todayOverview: 'Today Overview',
         cost: 'Cost',
         requests: 'Requests',
+        tokens: 'Tokens',
         highestCostDay: 'Highest Cost Day',
         highestRequestDay: 'Highest Request Day',
         date: 'Date',
@@ -1037,6 +1108,9 @@ export default {
         todayCost: 'Today Cost',
         usageTrend: '30-Day Cost & Request Trend',
         noData: 'No usage data available for this account'
+      },
+      usageWindow: {
+        statsTitle: '5-Hour Window Usage Statistics'
       }
     },
 
@@ -1070,6 +1144,10 @@ export default {
       enterProxyName: 'Enter proxy name',
       leaveEmptyToKeep: 'Leave empty to keep current',
       optionalAuth: 'Optional authentication',
+      form: {
+        hostPlaceholder: 'proxy.example.com',
+        portPlaceholder: '8080'
+      },
       noProxiesYet: 'No proxies yet',
       createFirstProxy: 'Create your first proxy to route traffic through it.',
       // Batch import
@@ -1174,6 +1252,18 @@ export default {
       searchUserPlaceholder: 'Search user by email...',
       selectedUser: 'Selected',
       user: 'User',
+      account: 'Account',
+      group: 'Group',
+      requestId: 'Request ID',
+      allModels: 'All Models',
+      allAccounts: 'All Accounts',
+      allGroups: 'All Groups',
+      allTypes: 'All Types',
+      allBillingTypes: 'All Billing',
+      inputCost: 'Input Cost',
+      outputCost: 'Output Cost',
+      cacheCreationCost: 'Cache Creation Cost',
+      cacheReadCost: 'Cache Read Cost',
       failedToLoad: 'Failed to load usage records'
     },
 
@@ -1211,16 +1301,20 @@ export default {
         title: 'Site Settings',
         description: 'Customize site branding',
         siteName: 'Site Name',
+        siteNamePlaceholder: 'Sub2API',
         siteNameHint: 'Displayed in emails and page titles',
         siteSubtitle: 'Site Subtitle',
+        siteSubtitlePlaceholder: 'Subscription to API Conversion Platform',
         siteSubtitleHint: 'Displayed on login and register pages',
         apiBaseUrl: 'API Base URL',
+        apiBaseUrlPlaceholder: 'https://api.example.com',
         apiBaseUrlHint:
           'Used for "Use Key" and "Import to CC Switch" features. Leave empty to use current site URL.',
         contactInfo: 'Contact Info',
         contactInfoPlaceholder: 'e.g., QQ: 123456789',
         contactInfoHint: 'Customer support contact info, displayed on redeem page, profile, etc.',
         docUrl: 'Documentation URL',
+        docUrlPlaceholder: 'https://docs.example.com',
         docUrlHint: 'Link to your documentation site. Leave empty to hide the documentation link.',
         siteLogo: 'Site Logo',
         uploadImage: 'Upload Image',
@@ -1236,12 +1330,18 @@ export default {
         testConnection: 'Test Connection',
         testing: 'Testing...',
         host: 'SMTP Host',
+        hostPlaceholder: 'smtp.gmail.com',
         port: 'SMTP Port',
+        portPlaceholder: '587',
         username: 'SMTP Username',
+        usernamePlaceholder: 'your-email@gmail.com',
         password: 'SMTP Password',
+        passwordPlaceholder: '********',
         passwordHint: 'Leave empty to keep existing password',
         fromEmail: 'From Email',
+        fromEmailPlaceholder: 'noreply@example.com',
         fromName: 'From Name',
+        fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
         useTlsHint: 'Enable TLS encryption for SMTP connection'
       },
@@ -1249,6 +1349,7 @@ export default {
         title: 'Send Test Email',
         description: 'Send a test email to verify your SMTP configuration',
         recipientEmail: 'Recipient Email',
+        recipientEmailPlaceholder: 'test@example.com',
         sendTestEmail: 'Send Test Email',
         sending: 'Sending...',
         enterRecipientHint: 'Please enter a recipient email address'

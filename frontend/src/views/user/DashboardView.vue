@@ -458,10 +458,10 @@
                     </div>
                     <div class="text-right">
                       <p class="text-sm font-semibold">
-                        <span class="text-green-600 dark:text-green-400" title="实际扣除"
+                        <span class="text-green-600 dark:text-green-400" :title="t('dashboard.actual')"
                           >${{ formatCost(log.actual_cost) }}</span
                         >
-                        <span class="font-normal text-gray-400 dark:text-gray-500" title="标准计费">
+                        <span class="font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')">
                           / ${{ formatCost(log.total_cost) }}</span
                         >
                       </p>

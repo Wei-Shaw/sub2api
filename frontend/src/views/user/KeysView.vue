@@ -1,8 +1,8 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Page Header Actions -->
-      <div class="flex justify-end gap-3">
+    <TablePageLayout>
+      <template #actions>
+        <div class="flex justify-end gap-3">
         <button
           @click="loadApiKeys"
           :disabled="loading"
@@ -36,9 +36,9 @@
           {{ t('keys.createKey') }}
         </button>
       </div>
+      </template>
 
-      <!-- API Keys Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="apiKeys" :loading="loading">
           <template #cell-key="{ value, row }">
             <div class="flex items-center gap-2">
@@ -235,7 +235,7 @@
               <button
                 @click="editKey(row)"
                 class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-                title="Edit"
+                :title="t('common.edit')"
               >
                 <svg
                   class="h-4 w-4"
@@ -255,7 +255,7 @@
               <button
                 @click="confirmDelete(row)"
                 class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                title="Delete"
+                :title="t('common.delete')"
               >
                 <svg
                   class="h-4 w-4"
@@ -283,17 +283,18 @@
             />
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
-    </div>
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
+      </template>
+    </TablePageLayout>
 
     <!-- Create/Edit Modal -->
     <Modal
@@ -496,6 +497,7 @@ import { useAppStore } from '@/stores/app'
 const { t } = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'

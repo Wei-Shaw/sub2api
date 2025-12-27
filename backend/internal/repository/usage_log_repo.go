@@ -631,6 +631,21 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 	if filters.ApiKeyID > 0 {
 		db = db.Where("api_key_id = ?", filters.ApiKeyID)
 	}
+	if filters.AccountID > 0 {
+		db = db.Where("account_id = ?", filters.AccountID)
+	}
+	if filters.GroupID > 0 {
+		db = db.Where("group_id = ?", filters.GroupID)
+	}
+	if filters.Model != "" {
+		db = db.Where("model = ?", filters.Model)
+	}
+	if filters.Stream != nil {
+		db = db.Where("stream = ?", *filters.Stream)
+	}
+	if filters.BillingType != nil {
+		db = db.Where("billing_type = ?", *filters.BillingType)
+	}
 	if filters.StartTime != nil {
 		db = db.Where("created_at >= ?", *filters.StartTime)
 	}
@@ -642,8 +657,8 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		return nil, nil, err
 	}
 
-	// Preload user and api_key for display
-	if err := db.Preload("User").Preload("ApiKey").
+	// Preload user, api_key, account, and group for display
+	if err := db.Preload("User").Preload("ApiKey").Preload("Account").Preload("Group").
 		Offset(params.Offset()).Limit(params.Limit()).
 		Order("id DESC").Find(&logs).Error; err != nil {
 		return nil, nil, err

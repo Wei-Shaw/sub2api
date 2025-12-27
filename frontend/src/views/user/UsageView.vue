@@ -1,10 +1,10 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Summary Stats Cards -->
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <!-- Total Requests -->
-        <div class="card p-4">
+    <TablePageLayout>
+      <template #actions>
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <!-- Total Requests -->
+          <div class="card p-4">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
               <svg
@@ -131,11 +131,12 @@
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </template>
 
-      <!-- Filters -->
-      <div class="card">
-        <div class="px-6 py-4">
+      <template #filters>
+        <div class="card">
+          <div class="px-6 py-4">
           <div class="flex flex-wrap items-end gap-4">
             <!-- API Key Filter -->
             <div class="min-w-[180px]">
@@ -169,11 +170,17 @@
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </template>
 
-      <!-- Usage Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="usageLogs" :loading="loading">
+          <template #cell-api_key="{ row }">
+            <span class="text-sm text-gray-900 dark:text-white">{{
+              row.api_key?.name || '-'
+            }}</span>
+          </template>
+
           <template #cell-model="{ value }">
             <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
           </template>
@@ -379,17 +386,18 @@
             <EmptyState :message="t('usage.noRecords')" />
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
-    </div>
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
+      </template>
+    </TablePageLayout>
   </AppLayout>
 </template>
 
@@ -399,6 +407,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { usageAPI, keysAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -414,6 +423,7 @@ const appStore = useAppStore()
 const usageStats = ref<UsageStatsResponse | null>(null)
 
 const columns = computed<Column[]>(() => [
+  { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
   { key: 'model', label: t('usage.model'), sortable: true },
   { key: 'stream', label: t('usage.type'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },

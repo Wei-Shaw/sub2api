@@ -135,7 +135,22 @@ const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
 const activePreset = ref<string | null>('7days')
 
-const today = computed(() => new Date().toISOString().split('T')[0])
+const today = computed(() => {
+  // Use local timezone to avoid UTC timezone issues
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+})
+
+// Helper function to format date to YYYY-MM-DD using local timezone
+const formatDateToString = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 const presets: DatePreset[] = [
   {
@@ -152,7 +167,7 @@ const presets: DatePreset[] = [
     getRange: () => {
       const d = new Date()
       d.setDate(d.getDate() - 1)
-      const yesterday = d.toISOString().split('T')[0]
+      const yesterday = formatDateToString(d)
       return { start: yesterday, end: yesterday }
     }
   },
@@ -163,7 +178,7 @@ const presets: DatePreset[] = [
       const end = today.value
       const d = new Date()
       d.setDate(d.getDate() - 6)
-      const start = d.toISOString().split('T')[0]
+      const start = formatDateToString(d)
       return { start, end }
     }
   },
@@ -174,7 +189,7 @@ const presets: DatePreset[] = [
       const end = today.value
       const d = new Date()
       d.setDate(d.getDate() - 13)
-      const start = d.toISOString().split('T')[0]
+      const start = formatDateToString(d)
       return { start, end }
     }
   },
@@ -185,7 +200,7 @@ const presets: DatePreset[] = [
       const end = today.value
       const d = new Date()
       d.setDate(d.getDate() - 29)
-      const start = d.toISOString().split('T')[0]
+      const start = formatDateToString(d)
       return { start, end }
     }
   },
@@ -194,7 +209,7 @@ const presets: DatePreset[] = [
     value: 'thisMonth',
     getRange: () => {
       const now = new Date()
-      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+      const start = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 1))
       return { start, end: today.value }
     }
   },
@@ -203,8 +218,8 @@ const presets: DatePreset[] = [
     value: 'lastMonth',
     getRange: () => {
       const now = new Date()
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]
-      const end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]
+      const start = formatDateToString(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+      const end = formatDateToString(new Date(now.getFullYear(), now.getMonth(), 0))
       return { start, end }
     }
   }

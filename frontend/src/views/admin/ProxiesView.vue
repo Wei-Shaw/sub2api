@@ -1,9 +1,9 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Page Header Actions -->
-      <div class="flex justify-end gap-3">
-        <button
+    <TablePageLayout>
+      <template #actions>
+        <div class="flex justify-end gap-3">
+          <button
           @click="loadProxies"
           :disabled="loading"
           class="btn btn-secondary"
@@ -35,11 +35,12 @@
           </svg>
           {{ t('admin.proxies.createProxy') }}
         </button>
-      </div>
+        </div>
+      </template>
 
-      <!-- Search and Filters -->
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div class="relative max-w-md flex-1">
+      <template #filters>
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="relative max-w-md flex-1">
           <svg
             class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
             fill="none"
@@ -60,8 +61,8 @@
             class="input pl-10"
             @input="handleSearch"
           />
-        </div>
-        <div class="flex flex-wrap gap-3">
+          </div>
+          <div class="flex flex-wrap gap-3">
           <Select
             v-model="filters.protocol"
             :options="protocolOptions"
@@ -76,11 +77,11 @@
             class="w-36"
             @change="loadProxies"
           />
+          </div>
         </div>
-      </div>
+      </template>
 
-      <!-- Proxies Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="proxies" :loading="loading">
           <template #cell-name="{ value }">
             <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
@@ -199,17 +200,18 @@
             />
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
-    </div>
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
+      </template>
+    </TablePageLayout>
 
     <!-- Create Proxy Modal -->
     <Modal
@@ -291,7 +293,7 @@
               v-model="createForm.host"
               type="text"
               required
-              placeholder="proxy.example.com"
+              :placeholder="t('admin.proxies.form.hostPlaceholder')"
               class="input"
             />
           </div>
@@ -303,7 +305,7 @@
               required
               min="1"
               max="65535"
-              placeholder="8080"
+              :placeholder="t('admin.proxies.form.portPlaceholder')"
               class="input"
             />
           </div>
@@ -577,6 +579,7 @@ import { adminAPI } from '@/api/admin'
 import type { Proxy, ProxyProtocol } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'

@@ -105,6 +105,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo } from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
@@ -112,6 +113,8 @@ import UsageProgressBar from './UsageProgressBar.vue'
 const props = defineProps<{
   account: Account
 }>()
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -282,7 +285,7 @@ const loadUsage = async () => {
   try {
     usageInfo.value = await adminAPI.accounts.getUsage(props.account.id)
   } catch (e: any) {
-    error.value = 'Failed'
+    error.value = t('common.error')
     console.error('Failed to load usage:', e)
   } finally {
     loading.value = false

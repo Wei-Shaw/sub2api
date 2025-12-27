@@ -16,21 +16,27 @@
     <div v-else-if="stats" class="space-y-0.5 text-xs">
       <!-- Requests -->
       <div class="flex items-center gap-1">
-        <span class="text-gray-500 dark:text-gray-400">Req:</span>
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.requests') }}:</span
+        >
         <span class="font-medium text-gray-700 dark:text-gray-300">{{
           formatNumber(stats.requests)
         }}</span>
       </div>
       <!-- Tokens -->
       <div class="flex items-center gap-1">
-        <span class="text-gray-500 dark:text-gray-400">Tok:</span>
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.tokens') }}:</span
+        >
         <span class="font-medium text-gray-700 dark:text-gray-300">{{
           formatTokens(stats.tokens)
         }}</span>
       </div>
       <!-- Cost -->
       <div class="flex items-center gap-1">
-        <span class="text-gray-500 dark:text-gray-400">Cost:</span>
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.cost') }}:</span
+        >
         <span class="font-medium text-emerald-600 dark:text-emerald-400">{{
           formatCurrency(stats.cost)
         }}</span>
@@ -44,6 +50,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, WindowStats } from '@/types'
 import { formatNumber, formatCurrency } from '@/utils/format'
@@ -51,6 +58,8 @@ import { formatNumber, formatCurrency } from '@/utils/format'
 const props = defineProps<{
   account: Account
 }>()
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const error = ref<string | null>(null)

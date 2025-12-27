@@ -63,7 +63,9 @@
               value="oauth"
               class="mr-2 text-primary-600 focus:ring-primary-500"
             />
-            <span class="text-sm text-gray-700 dark:text-gray-300">Oauth</span>
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{
+              t('admin.accounts.types.oauth')
+            }}</span>
           </label>
           <label class="flex cursor-pointer items-center">
             <input
@@ -116,7 +118,9 @@
               </svg>
             </div>
             <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">Code Assist</span>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
+                t('admin.accounts.types.codeAssist')
+              }}</span>
               <span class="block text-xs font-medium text-blue-600 dark:text-blue-400">{{
                 t('admin.accounts.oauth.gemini.needsProjectId')
               }}</span>

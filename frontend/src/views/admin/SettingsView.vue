@@ -326,7 +326,12 @@
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('admin.settings.site.siteName') }}
                 </label>
-                <input v-model="form.site_name" type="text" class="input" placeholder="Sub2API" />
+                <input
+                  v-model="form.site_name"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.settings.site.siteNamePlaceholder')"
+                />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.settings.site.siteNameHint') }}
                 </p>
@@ -339,7 +344,7 @@
                   v-model="form.site_subtitle"
                   type="text"
                   class="input"
-                  placeholder="Subscription to API Conversion Platform"
+                  :placeholder="t('admin.settings.site.siteSubtitlePlaceholder')"
                 />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.settings.site.siteSubtitleHint') }}
@@ -356,7 +361,7 @@
                 v-model="form.api_base_url"
                 type="text"
                 class="input font-mono text-sm"
-                placeholder="https://api.example.com"
+                :placeholder="t('admin.settings.site.apiBaseUrlPlaceholder')"
               />
               <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.settings.site.apiBaseUrlHint') }}
@@ -388,7 +393,7 @@
                 v-model="form.doc_url"
                 type="url"
                 class="input font-mono text-sm"
-                placeholder="https://docs.example.com"
+                :placeholder="t('admin.settings.site.docUrlPlaceholder')"
               />
               <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.settings.site.docUrlHint') }}
@@ -537,7 +542,7 @@
                   v-model="form.smtp_host"
                   type="text"
                   class="input"
-                  placeholder="smtp.gmail.com"
+                  :placeholder="t('admin.settings.smtp.hostPlaceholder')"
                 />
               </div>
               <div>
@@ -550,7 +555,7 @@
                   min="1"
                   max="65535"
                   class="input"
-                  placeholder="587"
+                  :placeholder="t('admin.settings.smtp.portPlaceholder')"
                 />
               </div>
               <div>
@@ -561,7 +566,7 @@
                   v-model="form.smtp_username"
                   type="text"
                   class="input"
-                  placeholder="your-email@gmail.com"
+                  :placeholder="t('admin.settings.smtp.usernamePlaceholder')"
                 />
               </div>
               <div>
@@ -572,7 +577,7 @@
                   v-model="form.smtp_password"
                   type="password"
                   class="input"
-                  placeholder="********"
+                  :placeholder="t('admin.settings.smtp.passwordPlaceholder')"
                 />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.settings.smtp.passwordHint') }}
@@ -586,7 +591,7 @@
                   v-model="form.smtp_from_email"
                   type="email"
                   class="input"
-                  placeholder="noreply@example.com"
+                  :placeholder="t('admin.settings.smtp.fromEmailPlaceholder')"
                 />
               </div>
               <div>
@@ -597,7 +602,7 @@
                   v-model="form.smtp_from_name"
                   type="text"
                   class="input"
-                  placeholder="Sub2API"
+                  :placeholder="t('admin.settings.smtp.fromNamePlaceholder')"
                 />
               </div>
             </div>
@@ -639,7 +644,7 @@
                   v-model="testEmailAddress"
                   type="email"
                   class="input"
-                  placeholder="test@example.com"
+                  :placeholder="t('admin.settings.testEmail.recipientEmailPlaceholder')"
                 />
               </div>
               <button

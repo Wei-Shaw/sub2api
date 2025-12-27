@@ -27,10 +27,53 @@ export default {
       title: '支持的服务商',
       description: 'AI 服务的统一 API 接口',
       supported: '已支持',
-      soon: '即将推出'
+      soon: '即将推出',
+      claude: 'Claude',
+      gemini: 'Gemini',
+      more: '更多'
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    }
+  },
+
+  // Setup Wizard
+  setup: {
+    title: 'Sub2API 安装向导',
+    description: '配置您的 Sub2API 实例',
+    database: {
+      title: '数据库配置',
+      host: '主机',
+      port: '端口',
+      username: '用户名',
+      password: '密码',
+      databaseName: '数据库名称',
+      sslMode: 'SSL 模式',
+      ssl: {
+        disable: '禁用',
+        require: '要求',
+        verifyCa: '验证 CA',
+        verifyFull: '完全验证'
+      }
+    },
+    redis: {
+      title: 'Redis 配置',
+      host: '主机',
+      port: '端口',
+      password: '密码（可选）',
+      database: '数据库'
+    },
+    admin: {
+      title: '管理员账户',
+      email: '邮箱',
+      password: '密码',
+      confirmPassword: '确认密码'
+    },
+    ready: {
+      title: '准备安装',
+      database: '数据库',
+      redis: 'Redis',
+      adminEmail: '管理员邮箱'
     }
   },
 
@@ -139,7 +182,20 @@ export default {
     accountCreatedSuccess: '账户创建成功！欢迎使用 {siteName}。',
     turnstileExpired: '验证已过期，请重试',
     turnstileFailed: '验证失败，请重试',
-    completeVerification: '请完成验证'
+    completeVerification: '请完成验证',
+    verifyYourEmail: '验证您的邮箱',
+    sessionExpired: '会话已过期',
+    sessionExpiredDesc: '请返回注册页面重新开始。',
+    verificationCode: '验证码',
+    verificationCodeHint: '请输入发送到您邮箱的6位验证码',
+    sendingCode: '发送中...',
+    clickToResend: '点击重新发送验证码',
+    resendCode: '重新发送验证码',
+    oauth: {
+      code: '授权码',
+      state: '状态',
+      fullUrl: '完整URL'
+    }
   },
 
   // Dashboard
@@ -371,6 +427,12 @@ export default {
   // Empty States
   empty: {
     noData: '暂无数据'
+  },
+
+  // Table
+  table: {
+    expandActions: '展开更多操作',
+    collapseActions: '收起操作'
   },
 
   // Pagination
@@ -689,6 +751,7 @@ export default {
       exclusiveFilter: '独占',
       nonExclusive: '非独占',
       public: '公开',
+      rateAndAccounts: '{rate}x 费率 · {count} 个账号',
       accountsCount: '{count} 个账号',
       enterGroupName: '请输入分组名称',
       optionalDescription: '可选描述',
@@ -848,6 +911,10 @@ export default {
       },
       types: {
         oauth: 'OAuth',
+        chatgptOauth: 'ChatGPT OAuth',
+        responsesApi: 'Responses API',
+        googleOauth: 'Google OAuth',
+        codeAssist: 'Code Assist',
         api_key: 'API Key',
         cookie: 'Cookie'
       },
@@ -856,6 +923,9 @@ export default {
         inactive: '停用',
         error: '错误',
         cooldown: '冷却中'
+      },
+      usageWindow: {
+        statsTitle: '5小时窗口用量统计'
       },
       form: {
         nameLabel: '账号名称',
@@ -1125,6 +1195,7 @@ export default {
         todayOverview: '今日概览',
         cost: '费用',
         requests: '请求',
+        tokens: 'Token',
         highestCostDay: '最高费用日',
         highestRequestDay: '最高请求日',
         date: '日期',
@@ -1364,6 +1435,18 @@ export default {
       searchUserPlaceholder: '按邮箱搜索用户...',
       selectedUser: '已选择',
       user: '用户',
+      account: '账户',
+      group: '分组',
+      requestId: '请求ID',
+      allModels: '全部模型',
+      allAccounts: '全部账户',
+      allGroups: '全部分组',
+      allTypes: '全部类型',
+      allBillingTypes: '全部计费',
+      inputCost: '输入成本',
+      outputCost: '输出成本',
+      cacheCreationCost: '缓存创建成本',
+      cacheReadCost: '缓存读取成本',
       failedToLoad: '加载使用记录失败'
     },
 
@@ -1402,15 +1485,19 @@ export default {
         description: '自定义站点品牌',
         siteName: '站点名称',
         siteNameHint: '显示在邮件和页面标题中',
+        siteNamePlaceholder: 'Sub2API',
         siteSubtitle: '站点副标题',
         siteSubtitleHint: '显示在登录和注册页面',
+        siteSubtitlePlaceholder: '订阅转 API 转换平台',
         apiBaseUrl: 'API 端点地址',
         apiBaseUrlHint: '用于"使用密钥"和"导入到 CC Switch"功能，留空则使用当前站点地址',
+        apiBaseUrlPlaceholder: 'https://api.example.com',
         contactInfo: '客服联系方式',
         contactInfoPlaceholder: '例如：QQ: 123456789',
         contactInfoHint: '填写客服联系方式，将展示在兑换页面、个人资料等位置',
         docUrl: '文档链接',
         docUrlHint: '文档网站的链接。留空则隐藏文档链接。',
+        docUrlPlaceholder: 'https://docs.example.com',
         siteLogo: '站点Logo',
         uploadImage: '上传图片',
         remove: '移除',
@@ -1425,12 +1512,18 @@ export default {
         testConnection: '测试连接',
         testing: '测试中...',
         host: 'SMTP 主机',
+        hostPlaceholder: 'smtp.gmail.com',
         port: 'SMTP 端口',
+        portPlaceholder: '587',
         username: 'SMTP 用户名',
+        usernamePlaceholder: 'your-email@gmail.com',
         password: 'SMTP 密码',
+        passwordPlaceholder: '********',
         passwordHint: '留空以保留现有密码',
         fromEmail: '发件人邮箱',
+        fromEmailPlaceholder: 'noreply@example.com',
         fromName: '发件人名称',
+        fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
         useTlsHint: '为 SMTP 连接启用 TLS 加密'
       },
@@ -1438,6 +1531,7 @@ export default {
         title: '发送测试邮件',
         description: '发送测试邮件以验证 SMTP 配置',
         recipientEmail: '收件人邮箱',
+        recipientEmailPlaceholder: 'test@example.com',
         sendTestEmail: '发送测试邮件',
         sending: '发送中...',
         enterRecipientHint: '请输入收件人邮箱地址'

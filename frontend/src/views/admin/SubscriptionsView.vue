@@ -1,7 +1,8 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
+    <TablePageLayout>
       <!-- Page Header Actions -->
+      <template #actions>
       <div class="flex justify-end gap-3">
         <button
           @click="loadSubscriptions"
@@ -36,8 +37,10 @@
           {{ t('admin.subscriptions.assignSubscription') }}
         </button>
       </div>
+      </template>
 
       <!-- Filters -->
+      <template #filters>
       <div class="flex flex-wrap gap-3">
         <Select
           v-model="filters.status"
@@ -54,9 +57,10 @@
           @change="loadSubscriptions"
         />
       </div>
+      </template>
 
       <!-- Subscriptions Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="subscriptions" :loading="loading">
           <template #cell-user="{ row }">
             <div class="flex items-center gap-2">
@@ -302,9 +306,10 @@
             />
           </template>
         </DataTable>
-      </div>
+      </template>
 
       <!-- Pagination -->
+      <template #pagination>
       <Pagination
         v-if="pagination.total > 0"
         :page="pagination.page"
@@ -312,7 +317,8 @@
         :page-size="pagination.page_size"
         @update:page="handlePageChange"
       />
-    </div>
+      </template>
+    </TablePageLayout>
 
     <!-- Assign Subscription Modal -->
     <Modal
@@ -445,6 +451,7 @@ import { adminAPI } from '@/api/admin'
 import type { UserSubscription, Group, User } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'

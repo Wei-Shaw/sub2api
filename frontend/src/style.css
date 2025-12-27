@@ -488,6 +488,17 @@
     @apply bg-gray-900 text-gray-100;
     @apply overflow-x-auto rounded-xl p-4;
   }
+
+  /* ============ 表格页面布局优化 ============ */
+  /* 表格容器 - 默认仅支持水平滚动 */
+  .table-wrapper {
+    overflow-x: auto;
+  }
+
+  /* 表头固定时添加底部阴影，增强视觉层次 */
+  .table-wrapper thead.sticky {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  }
 }
 
 @layer utilities {

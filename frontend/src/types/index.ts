@@ -442,22 +442,38 @@ export interface UsageLog {
   user_id: number
   api_key_id: number
   account_id: number | null
+  request_id: string
   model: string
+
+  group_id: number | null
+  subscription_id: number | null
+
   input_tokens: number
   output_tokens: number
   cache_creation_tokens: number
   cache_read_tokens: number
+  cache_creation_5m_tokens: number
+  cache_creation_1h_tokens: number
+
+  input_cost: number
+  output_cost: number
+  cache_creation_cost: number
+  cache_read_cost: number
   total_cost: number
   actual_cost: number
   rate_multiplier: number
+
   billing_type: BillingType
   stream: boolean
   duration_ms: number
   first_token_ms: number | null
   created_at: string
+
   user?: User
   api_key?: ApiKey
   account?: Account
+  group?: Group
+  subscription?: UserSubscription
 }
 
 export interface RedeemCode {
@@ -677,6 +693,11 @@ export interface UsageQueryParams {
   page_size?: number
   api_key_id?: number
   user_id?: number
+  account_id?: number
+  group_id?: number
+  model?: string
+  stream?: boolean
+  billing_type?: number
   start_date?: string
   end_date?: string
 }

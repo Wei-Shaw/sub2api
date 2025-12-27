@@ -202,8 +202,8 @@ const goToPage = (newPage: number) => {
   }
 }
 
-const handlePageSizeChange = (value: string | number | null) => {
-  if (value === null) return
+const handlePageSizeChange = (value: string | number | boolean | null) => {
+  if (value === null || typeof value === 'boolean') return
   const newPageSize = typeof value === 'string' ? parseInt(value) : value
   emit('update:pageSize', newPageSize)
   // Reset to first page when page size changes

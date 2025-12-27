@@ -1,9 +1,9 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Page Header Actions -->
-      <div class="flex justify-end gap-3">
-        <button
+    <TablePageLayout>
+      <template #actions>
+        <div class="flex justify-end gap-3">
+          <button
           @click="loadAccounts"
           :disabled="loading"
           class="btn btn-secondary"
@@ -23,7 +23,7 @@
             />
           </svg>
         </button>
-        <button @click="showCrsSyncModal = true" class="btn btn-secondary" title="从 CRS 同步">
+        <button @click="showCrsSyncModal = true" class="btn btn-secondary" :title="t('admin.accounts.syncFromCrs')">
           <svg
             class="h-5 w-5"
             fill="none"
@@ -50,11 +50,12 @@
           </svg>
           {{ t('admin.accounts.createAccount') }}
         </button>
-      </div>
+        </div>
+      </template>
 
-      <!-- Search and Filters -->
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div class="relative max-w-md flex-1">
+      <template #filters>
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="relative max-w-md flex-1">
           <svg
             class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
             fill="none"
@@ -75,8 +76,8 @@
             class="input pl-10"
             @input="handleSearch"
           />
-        </div>
-        <div class="flex flex-wrap gap-3">
+          </div>
+          <div class="flex flex-wrap gap-3">
           <Select
             v-model="filters.platform"
             :options="platformOptions"
@@ -98,10 +99,12 @@
             class="w-36"
             @change="loadAccounts"
           />
+          </div>
         </div>
-      </div>
+      </template>
 
-      <!-- Bulk Actions Bar -->
+      <template #table>
+        <!-- Bulk Actions Bar -->
       <div
         v-if="selectedAccountIds.length > 0"
         class="card border-primary-200 bg-primary-50 px-4 py-3 dark:border-primary-800 dark:bg-primary-900/20"
@@ -162,9 +165,7 @@
         </div>
       </div>
 
-      <!-- Accounts Table -->
-      <div class="card overflow-hidden">
-        <DataTable :columns="columns" :data="accounts" :loading="loading">
+      <DataTable :columns="columns" :data="accounts" :loading="loading">
           <template #cell-select="{ row }">
             <input
               type="checkbox"
@@ -274,130 +275,9 @@
             </span>
           </template>
 
-          <template #cell-actions="{ row }">
+          <template #cell-actions="{ row, expanded }">
             <div class="flex items-center gap-1">
-              <!-- Reset Status button for error accounts -->
-              <button
-                v-if="row.status === 'error'"
-                @click="handleResetStatus(row)"
-                class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                :title="t('admin.accounts.resetStatus')"
-              >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
-                  />
-                </svg>
-              </button>
-              <!-- Clear Rate Limit button -->
-              <button
-                v-if="isRateLimited(row) || isOverloaded(row)"
-                @click="handleClearRateLimit(row)"
-                class="rounded-lg p-2 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
-                :title="t('admin.accounts.clearRateLimit')"
-              >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </button>
-              <!-- Test Connection button -->
-              <button
-                @click="handleTest(row)"
-                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
-                :title="t('admin.accounts.testConnection')"
-              >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
-                  />
-                </svg>
-              </button>
-              <!-- View Stats button -->
-              <button
-                @click="handleViewStats(row)"
-                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-                :title="t('admin.accounts.viewStats')"
-              >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
-                  />
-                </svg>
-              </button>
-              <button
-                v-if="row.type === 'oauth' || row.type === 'setup-token'"
-                @click="handleReAuth(row)"
-                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
-                :title="t('admin.accounts.reAuthorize')"
-              >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
-                  />
-                </svg>
-              </button>
-              <button
-                v-if="row.type === 'oauth' || row.type === 'setup-token'"
-                @click="handleRefreshToken(row)"
-                class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
-                :title="t('admin.accounts.refreshToken')"
-              >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                  />
-                </svg>
-              </button>
+              <!-- 主要操作：编辑和删除（始终显示） -->
               <button
                 @click="handleEdit(row)"
                 class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
@@ -436,6 +316,132 @@
                   />
                 </svg>
               </button>
+
+              <!-- 次要操作：展开时显示 -->
+              <template v-if="expanded">
+                <!-- Reset Status button for error accounts -->
+                <button
+                  v-if="row.status === 'error'"
+                  @click="handleResetStatus(row)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                  :title="t('admin.accounts.resetStatus')"
+                >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
+                  />
+                </svg>
+                </button>
+                <!-- Clear Rate Limit button -->
+                <button
+                  v-if="isRateLimited(row) || isOverloaded(row)"
+                  @click="handleClearRateLimit(row)"
+                  class="rounded-lg p-2 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
+                  :title="t('admin.accounts.clearRateLimit')"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </button>
+                <!-- Test Connection button -->
+                <button
+                  @click="handleTest(row)"
+                  class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                  :title="t('admin.accounts.testConnection')"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
+                    />
+                  </svg>
+                </button>
+                <!-- View Stats button -->
+                <button
+                  @click="handleViewStats(row)"
+                  class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
+                  :title="t('admin.accounts.viewStats')"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  v-if="row.type === 'oauth' || row.type === 'setup-token'"
+                  @click="handleReAuth(row)"
+                  class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                  :title="t('admin.accounts.reAuthorize')"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
+                    />
+                  </svg>
+                </button>
+                <button
+                  v-if="row.type === 'oauth' || row.type === 'setup-token'"
+                  @click="handleRefreshToken(row)"
+                  class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
+                  :title="t('admin.accounts.refreshToken')"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                    />
+                  </svg>
+                </button>
+              </template>
             </div>
           </template>
 
@@ -448,17 +454,18 @@
             />
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
-    </div>
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
+      </template>
+    </TablePageLayout>
 
     <!-- Create Account Modal -->
     <CreateAccountModal
@@ -541,6 +548,7 @@ import { adminAPI } from '@/api/admin'
 import type { Account, Proxy, Group } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'

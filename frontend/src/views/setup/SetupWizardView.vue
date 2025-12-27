@@ -27,8 +27,8 @@
             />
           </svg>
         </div>
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Sub2API Setup</h1>
-        <p class="mt-2 text-gray-500 dark:text-dark-400">Configure your Sub2API instance</p>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ t('setup.title') }}</h1>
+        <p class="mt-2 text-gray-500 dark:text-dark-400">{{ t('setup.description') }}</p>
       </div>
 
       <!-- Progress Steps -->
@@ -84,7 +84,7 @@
         <div v-if="currentStep === 0" class="space-y-6">
           <div class="mb-6 text-center">
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
-              Database Configuration
+              {{ t('setup.database.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
               Connect to your PostgreSQL database
@@ -93,7 +93,7 @@
 
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="input-label">Host</label>
+              <label class="input-label">{{ t('setup.database.host') }}</label>
               <input
                 v-model="formData.database.host"
                 type="text"
@@ -102,7 +102,7 @@
               />
             </div>
             <div>
-              <label class="input-label">Port</label>
+              <label class="input-label">{{ t('setup.database.port') }}</label>
               <input
                 v-model.number="formData.database.port"
                 type="number"
@@ -114,7 +114,7 @@
 
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="input-label">Username</label>
+              <label class="input-label">{{ t('setup.database.username') }}</label>
               <input
                 v-model="formData.database.user"
                 type="text"
@@ -123,7 +123,7 @@
               />
             </div>
             <div>
-              <label class="input-label">Password</label>
+              <label class="input-label">{{ t('setup.database.password') }}</label>
               <input
                 v-model="formData.database.password"
                 type="password"
@@ -135,7 +135,7 @@
 
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="input-label">Database Name</label>
+              <label class="input-label">{{ t('setup.database.databaseName') }}</label>
               <input
                 v-model="formData.database.dbname"
                 type="text"
@@ -144,12 +144,12 @@
               />
             </div>
             <div>
-              <label class="input-label">SSL Mode</label>
+              <label class="input-label">{{ t('setup.database.sslMode') }}</label>
               <select v-model="formData.database.sslmode" class="input">
-                <option value="disable">Disable</option>
-                <option value="require">Require</option>
-                <option value="verify-ca">Verify CA</option>
-                <option value="verify-full">Verify Full</option>
+                <option value="disable">{{ t('setup.database.ssl.disable') }}</option>
+                <option value="require">{{ t('setup.database.ssl.require') }}</option>
+                <option value="verify-ca">{{ t('setup.database.ssl.verifyCa') }}</option>
+                <option value="verify-full">{{ t('setup.database.ssl.verifyFull') }}</option>
               </select>
             </div>
           </div>
@@ -198,7 +198,9 @@
         <!-- Step 2: Redis -->
         <div v-if="currentStep === 1" class="space-y-6">
           <div class="mb-6 text-center">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Redis Configuration</h2>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+              {{ t('setup.redis.title') }}
+            </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
               Connect to your Redis server
             </p>
@@ -206,7 +208,7 @@
 
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="input-label">Host</label>
+              <label class="input-label">{{ t('setup.redis.host') }}</label>
               <input
                 v-model="formData.redis.host"
                 type="text"
@@ -215,7 +217,7 @@
               />
             </div>
             <div>
-              <label class="input-label">Port</label>
+              <label class="input-label">{{ t('setup.redis.port') }}</label>
               <input
                 v-model.number="formData.redis.port"
                 type="number"
@@ -227,7 +229,7 @@
 
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="input-label">Password (optional)</label>
+              <label class="input-label">{{ t('setup.redis.password') }}</label>
               <input
                 v-model="formData.redis.password"
                 type="password"
@@ -236,7 +238,7 @@
               />
             </div>
             <div>
-              <label class="input-label">Database</label>
+              <label class="input-label">{{ t('setup.redis.database') }}</label>
               <input
                 v-model.number="formData.redis.db"
                 type="number"
@@ -294,14 +296,16 @@
         <!-- Step 3: Admin -->
         <div v-if="currentStep === 2" class="space-y-6">
           <div class="mb-6 text-center">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Admin Account</h2>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+              {{ t('setup.admin.title') }}
+            </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
               Create your administrator account
             </p>
           </div>
 
           <div>
-            <label class="input-label">Email</label>
+            <label class="input-label">{{ t('setup.admin.email') }}</label>
             <input
               v-model="formData.admin.email"
               type="email"
@@ -311,7 +315,7 @@
           </div>
 
           <div>
-            <label class="input-label">Password</label>
+            <label class="input-label">{{ t('setup.admin.password') }}</label>
             <input
               v-model="formData.admin.password"
               type="password"
@@ -321,7 +325,7 @@
           </div>
 
           <div>
-            <label class="input-label">Confirm Password</label>
+            <label class="input-label">{{ t('setup.admin.confirmPassword') }}</label>
             <input
               v-model="confirmPassword"
               type="password"
@@ -340,7 +344,9 @@
         <!-- Step 4: Complete -->
         <div v-if="currentStep === 3" class="space-y-6">
           <div class="mb-6 text-center">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Ready to Install</h2>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+              {{ t('setup.ready.title') }}
+            </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
               Review your configuration and complete setup
             </p>
@@ -348,7 +354,9 @@
 
           <div class="space-y-4">
             <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
-              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">Database</h3>
+              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">
+                {{ t('setup.ready.database') }}
+              </h3>
               <p class="text-gray-900 dark:text-white">
                 {{ formData.database.user }}@{{ formData.database.host }}:{{
                   formData.database.port
@@ -357,14 +365,18 @@
             </div>
 
             <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
-              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">Redis</h3>
+              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">
+                {{ t('setup.ready.redis') }}
+              </h3>
               <p class="text-gray-900 dark:text-white">
                 {{ formData.redis.host }}:{{ formData.redis.port }}
               </p>
             </div>
 
             <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
-              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">Admin Email</h3>
+              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">
+                {{ t('setup.ready.adminEmail') }}
+              </h3>
               <p class="text-gray-900 dark:text-white">{{ formData.admin.email }}</p>
             </div>
           </div>
@@ -526,7 +538,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { testDatabase, testRedis, install, type InstallRequest } from '@/api/setup'
+
+const { t } = useI18n()
 
 const steps = [
   { id: 'database', title: 'Database' },

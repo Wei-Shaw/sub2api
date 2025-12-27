@@ -127,10 +127,15 @@ type UserDashboardStats struct {
 
 // UsageLogFilters represents filters for usage log queries
 type UsageLogFilters struct {
-	UserID    int64
-	ApiKeyID  int64
-	StartTime *time.Time
-	EndTime   *time.Time
+	UserID      int64
+	ApiKeyID    int64
+	AccountID   int64
+	GroupID     int64
+	Model       string
+	Stream      *bool
+	BillingType *int8
+	StartTime   *time.Time
+	EndTime     *time.Time
 }
 
 // UsageStats represents usage statistics

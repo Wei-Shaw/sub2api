@@ -1,69 +1,70 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Page Header Actions -->
-      <div class="flex justify-end gap-3">
-        <button
-          @click="loadGroups"
-          :disabled="loading"
-          class="btn btn-secondary"
-          :title="t('common.refresh')"
-        >
-          <svg
-            :class="['h-5 w-5', loading ? 'animate-spin' : '']"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
+    <TablePageLayout>
+      <template #actions>
+        <div class="flex justify-end gap-3">
+          <button
+            @click="loadGroups"
+            :disabled="loading"
+            class="btn btn-secondary"
+            :title="t('common.refresh')"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-            />
-          </svg>
-        </button>
-        <button @click="showCreateModal = true" class="btn btn-primary">
-          <svg
-            class="mr-2 h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          {{ t('admin.groups.createGroup') }}
-        </button>
-      </div>
+            <svg
+              :class="['h-5 w-5', loading ? 'animate-spin' : '']"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+              />
+            </svg>
+          </button>
+          <button @click="showCreateModal = true" class="btn btn-primary">
+            <svg
+              class="mr-2 h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            {{ t('admin.groups.createGroup') }}
+          </button>
+        </div>
+      </template>
 
-      <!-- Filters -->
-      <div class="flex flex-wrap gap-3">
-        <Select
-          v-model="filters.platform"
-          :options="platformFilterOptions"
-          placeholder="All Platforms"
-          class="w-44"
-          @change="loadGroups"
-        />
-        <Select
-          v-model="filters.status"
-          :options="statusOptions"
-          placeholder="All Status"
-          class="w-40"
-          @change="loadGroups"
-        />
-        <Select
-          v-model="filters.is_exclusive"
-          :options="exclusiveOptions"
-          placeholder="All Groups"
-          class="w-44"
-          @change="loadGroups"
-        />
-      </div>
+      <template #filters>
+        <div class="flex flex-wrap gap-3">
+          <Select
+            v-model="filters.platform"
+            :options="platformFilterOptions"
+            :placeholder="t('admin.groups.allPlatforms')"
+            class="w-44"
+            @change="loadGroups"
+          />
+          <Select
+            v-model="filters.status"
+            :options="statusOptions"
+            :placeholder="t('admin.groups.allStatus')"
+            class="w-40"
+            @change="loadGroups"
+          />
+          <Select
+            v-model="filters.is_exclusive"
+            :options="exclusiveOptions"
+            :placeholder="t('admin.groups.allGroups')"
+            class="w-44"
+            @change="loadGroups"
+          />
+        </div>
+      </template>
 
-      <!-- Groups Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="groups" :loading="loading">
           <template #cell-name="{ value }">
             <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
@@ -213,17 +214,18 @@
             />
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
-    </div>
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
+      </template>
+    </TablePageLayout>
 
     <!-- Create Group Modal -->
     <Modal
@@ -541,6 +543,7 @@ import { adminAPI } from '@/api/admin'
 import type { Group, GroupPlatform, SubscriptionType } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'
