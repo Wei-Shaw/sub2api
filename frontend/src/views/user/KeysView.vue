@@ -146,7 +146,7 @@
           </template>
 
           <template #cell-created_at="{ value }">
-            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDate(value) }}</span>
+            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
           </template>
 
           <template #cell-actions="{ row }">
@@ -509,6 +509,7 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
+import { formatDateTime } from '@/utils/format'
 
 interface GroupOption {
   value: number
@@ -624,15 +625,6 @@ const copyToClipboard = async (text: string, keyId: number) => {
   } catch (error) {
     appStore.showError(t('common.copyFailed'))
   }
-}
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
 }
 
 const loadApiKeys = async () => {

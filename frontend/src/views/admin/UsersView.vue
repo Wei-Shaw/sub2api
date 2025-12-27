@@ -195,7 +195,7 @@
           </template>
 
           <template #cell-created_at="{ value }">
-            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDate(value) }}</span>
+            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
           </template>
 
           <template #cell-actions="{ row, expanded }">
@@ -817,7 +817,7 @@
                   />
                 </svg>
                 <span
-                  >{{ t('admin.users.columns.created') }}: {{ formatDate(key.created_at) }}</span
+                  >{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span
                 >
               </div>
             </div>
@@ -1173,6 +1173,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
@@ -1283,15 +1284,6 @@ const editForm = reactive({
   concurrency: 1
 })
 const editPasswordCopied = ref(false)
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
 
 // 计算剩余天数
 const getDaysRemaining = (expiresAt: string): number => {

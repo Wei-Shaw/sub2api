@@ -377,7 +377,7 @@
                     {{ getHistoryItemTitle(item) }}
                   </p>
                   <p class="text-xs text-gray-500 dark:text-dark-400">
-                    {{ formatDate(item.used_at) }}
+                    {{ formatDateTime(item.used_at) }}
                   </p>
                 </div>
               </div>
@@ -447,6 +447,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -471,18 +472,6 @@ const errorMessage = ref('')
 const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
-
-const formatDate = (dateString: string) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {

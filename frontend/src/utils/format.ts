@@ -114,3 +114,21 @@ export function formatDate(
     .replace('mm', minutes)
     .replace('ss', seconds)
 }
+
+/**
+ * 格式化日期（只显示日期部分）
+ * @param date 日期字符串或 Date 对象
+ * @returns 格式化后的日期字符串，格式为 YYYY-MM-DD
+ */
+export function formatDateOnly(date: string | Date | null | undefined): string {
+  return formatDate(date, 'YYYY-MM-DD')
+}
+
+/**
+ * 格式化日期时间（完整格式）
+ * @param date 日期字符串或 Date 对象
+ * @returns 格式化后的日期时间字符串，格式为 YYYY-MM-DD HH:mm:ss
+ */
+export function formatDateTime(date: string | Date | null | undefined): string {
+  return formatDate(date, 'YYYY-MM-DD HH:mm:ss')
+}

@@ -598,6 +598,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import { formatDateTime } from '@/utils/format'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
@@ -845,17 +846,6 @@ const formatCacheTokens = (value: number): string => {
     return `${(value / 1_000).toFixed(1)}K`
   }
   return value.toLocaleString()
-}
-
-const formatDateTime = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 const loadUsageLogs = async () => {

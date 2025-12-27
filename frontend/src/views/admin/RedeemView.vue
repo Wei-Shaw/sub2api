@@ -152,7 +152,7 @@
 
           <template #cell-used_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{
-              value ? formatDate(value) : '-'
+              value ? formatDateTime(value) : '-'
             }}</span>
           </template>
 
@@ -419,6 +419,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { formatDateTime } from '@/utils/format'
 import type { RedeemCode, RedeemCodeType, Group } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -551,10 +552,6 @@ const generateForm = reactive({
   group_id: null as number | null,
   validity_days: 30
 })
-
-const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString()
-}
 
 const loadCodes = async () => {
   loading.value = true
