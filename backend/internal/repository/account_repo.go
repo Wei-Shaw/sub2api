@@ -171,6 +171,27 @@ func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error 
 	return r.db.WithContext(ctx).Model(&accountModel{}).Where("id = ?", id).Update("last_used_at", now).Error
 }
 
+func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	var caseSql = "UPDATE accounts SET last_used_at = CASE id"
+	var args []interface{}
+	var ids []int64
+
+	for id, ts := range updates {
+		caseSql += " WHEN ? THEN CAST(? AS TIMESTAMP)"
+		args = append(args, id, ts)
+		ids = append(ids, id)
+	}
+
+	caseSql += " END WHERE id IN ?"
+	args = append(args, ids)
+
+	return r.db.WithContext(ctx).Exec(caseSql, args...).Error
+}
+
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
 	return r.db.WithContext(ctx).Model(&accountModel{}).Where("id = ?", id).
 		Updates(map[string]any{

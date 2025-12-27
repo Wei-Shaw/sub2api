@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/google/wire"
 )
@@ -44,6 +46,20 @@ func ProvideTokenRefreshService(
 	return svc
 }
 
+// ProvideTimingWheelService creates and starts TimingWheelService
+func ProvideTimingWheelService() *TimingWheelService {
+	svc := NewTimingWheelService()
+	svc.Start()
+	return svc
+}
+
+// ProvideDeferredService creates and starts DeferredService
+func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService) *DeferredService {
+	svc := NewDeferredService(accountRepo, timingWheel, 10*time.Second)
+	svc.Start()
+	return svc
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -80,4 +96,6 @@ var ProviderSet = wire.NewSet(
 	NewCRSSyncService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
+	ProvideTimingWheelService,
+	ProvideDeferredService,
 )

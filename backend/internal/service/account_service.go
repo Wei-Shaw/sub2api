@@ -29,6 +29,7 @@ type AccountRepository interface {
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
 
 	UpdateLastUsed(ctx context.Context, id int64) error
+	BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error
 	SetError(ctx context.Context, id int64, errorMsg string) error
 	SetSchedulable(ctx context.Context, id int64, schedulable bool) error
 	BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error
