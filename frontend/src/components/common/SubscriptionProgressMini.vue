@@ -246,7 +246,7 @@ function formatDaysRemaining(expiresAt: string): string {
   const diff = expires.getTime() - now.getTime()
   if (diff < 0) return t('subscriptionProgress.expired')
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-  if (days === 0) return t('subscriptionProgress.expirestoday')
+  if (days === 0) return t('subscriptionProgress.expiresToday')
   if (days === 1) return t('subscriptionProgress.expiresTomorrow')
   return t('subscriptionProgress.daysRemaining', { days REDACTED)
 REDACTED

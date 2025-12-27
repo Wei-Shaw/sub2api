@@ -146,12 +146,17 @@ jobs:
 
       # Send Telegram notification
       - name: Send Telegram Notification
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' REDACTEDREDACTED
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN REDACTEDREDACTED
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID REDACTEDREDACTED
         continue-on-error: true
         run: |
+          # 检查必要的环境变量
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram credentials not configured, skipping notification"
+            exit 0
+          fi
+
           TAG_NAME=${GITHUB_REF#refs/tags/REDACTED
           VERSION=${TAG_NAME#vREDACTED
           REPO="${{ github.repository REDACTEDREDACTED"

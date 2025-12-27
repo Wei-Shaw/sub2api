@@ -25,7 +25,7 @@
 
     <!-- Title -->
     <h3 class="empty-state-title">
-      {{ title REDACTEDREDACTED
+      {{ displayTitle REDACTEDREDACTED
     </h3>
 
     <!-- Description -->
@@ -61,7 +61,11 @@
 </template>
 
 <script setup lang="ts">
+import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import type { Component REDACTED from 'vue'
+
+const { t REDACTED = useI18n()
 
 interface Props {
   icon?: Component | string
@@ -73,11 +77,12 @@ interface Props {
   message?: string
 REDACTED
 
-withDefaults(defineProps<Props>(), {
-  title: 'No data found',
+const props = withDefaults(defineProps<Props>(), {
   description: '',
   actionIcon: true
 REDACTED)
+
+const displayTitle = computed(() => props.title || t('common.noData'))
 
 defineEmits(['action'])
 </script>

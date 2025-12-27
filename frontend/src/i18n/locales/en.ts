@@ -52,6 +52,7 @@ export default {
       password: 'Password',
       databaseName: 'Database Name',
       sslMode: 'SSL Mode',
+      passwordPlaceholder: 'Password',
       ssl: {
         disable: 'Disable',
         require: 'Require',
@@ -64,13 +65,17 @@ export default {
       host: 'Host',
       port: 'Port',
       password: 'Password (optional)',
-      database: 'Database'
+      database: 'Database',
+      passwordPlaceholder: 'Password'
     REDACTED,
     admin: {
       title: 'Admin Account',
       email: 'Email',
       password: 'Password',
-      confirmPassword: 'Confirm Password'
+      confirmPassword: 'Confirm Password',
+      passwordPlaceholder: 'Min 6 characters',
+      confirmPasswordPlaceholder: 'Confirm password',
+      passwordMismatch: 'Passwords do not match'
     REDACTED,
     ready: {
       title: 'Ready to Install',
@@ -127,7 +132,14 @@ export default {
     searchPlaceholder: 'Search...',
     noOptionsFound: 'No options found',
     saving: 'Saving...',
-    refresh: 'Refresh'
+    refresh: 'Refresh',
+    time: {
+      never: 'Never',
+      justNow: 'Just now',
+      minutesAgo: '{nREDACTEDm ago',
+      hoursAgo: '{nREDACTEDh ago',
+      daysAgo: '{nREDACTEDd ago'
+    REDACTED
   REDACTED,
 
   // Navigation
@@ -263,7 +275,7 @@ export default {
     created: 'Created',
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied!',
-    importToCcSwitch: 'Import to CC Switch',
+    importToCcSwitch: 'Import to CCS',
     enable: 'Enable',
     disable: 'Disable',
     nameLabel: 'Name',
@@ -517,6 +529,7 @@ export default {
       actual: 'Actual',
       standard: 'Standard',
       noDataAvailable: 'No data available',
+      recentUsage: 'Recent Usage',
       failedToLoad: 'Failed to load dashboard statistics'
     REDACTED,
 
@@ -569,9 +582,13 @@ export default {
       noSubscription: 'No subscription',
       daysRemaining: '{daysREDACTEDd',
       expired: 'Expired',
+      disable: 'Disable',
+      enable: 'Enable',
       disableUser: 'Disable User',
       enableUser: 'Enable User',
       viewApiKeys: 'View API Keys',
+      groups: 'Groups',
+      apiKeys: 'API Keys',
       userApiKeys: 'User API Keys',
       noApiKeys: 'This user has no API keys',
       group: 'Group',
