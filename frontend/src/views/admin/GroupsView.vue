@@ -223,18 +223,19 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
         />
       </template>
     </TablePageLayout>
 
     <!-- Create Group Modal -->
-    <Modal
+    <BaseDialog
       :show="showCreateModal"
       :title="t('admin.groups.createGroup')"
-      size="lg"
+      width="normal"
       @close="closeCreateModal"
     >
-      <form @submit.prevent="handleCreateGroup" class="space-y-5">
+      <form id="create-group-form" @submit.prevent="handleCreateGroup" class="space-y-5">
         <div>
           <label class="input-label">{{ t('admin.groups.form.name') REDACTEDREDACTED</label>
           <input
@@ -345,11 +346,19 @@
           </div>
         </div>
 
+      </form>
+
+      <template #footer>
         <div class="flex justify-end gap-3 pt-4">
           <button @click="closeCreateModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button type="submit" :disabled="submitting" class="btn btn-primary">
+          <button
+            type="submit"
+            form="create-group-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
             <svg
               v-if="submitting"
               class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -373,17 +382,22 @@
             {{ submitting ? t('admin.groups.creating') : t('common.create') REDACTEDREDACTED
           </button>
         </div>
-      </form>
-    </Modal>
+      </template>
+    </BaseDialog>
 
     <!-- Edit Group Modal -->
-    <Modal
+    <BaseDialog
       :show="showEditModal"
       :title="t('admin.groups.editGroup')"
-      size="lg"
+      width="normal"
       @close="closeEditModal"
     >
-      <form v-if="editingGroup" @submit.prevent="handleUpdateGroup" class="space-y-5">
+      <form
+        v-if="editingGroup"
+        id="edit-group-form"
+        @submit.prevent="handleUpdateGroup"
+        class="space-y-5"
+      >
         <div>
           <label class="input-label">{{ t('admin.groups.form.name') REDACTEDREDACTED</label>
           <input v-model="editForm.name" type="text" required class="input" />
@@ -490,11 +504,19 @@
           </div>
         </div>
 
+      </form>
+
+      <template #footer>
         <div class="flex justify-end gap-3 pt-4">
           <button @click="closeEditModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button type="submit" :disabled="submitting" class="btn btn-primary">
+          <button
+            type="submit"
+            form="edit-group-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
             <svg
               v-if="submitting"
               class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -518,8 +540,8 @@
             {{ submitting ? t('admin.groups.updating') : t('common.update') REDACTEDREDACTED
           </button>
         </div>
-      </form>
-    </Modal>
+      </template>
+    </BaseDialog>
 
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
@@ -546,7 +568,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
@@ -616,6 +638,8 @@ const pagination = reactive({
   pages: 0
 REDACTED)
 
+let abortController: AbortController | null = null
+
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
@@ -660,26 +684,44 @@ const deleteConfirmMessage = computed(() => {
 REDACTED)
 
 const loadGroups = async () => {
+  if (abortController) {
+    abortController.abort()
+  REDACTED
+  const currentController = new AbortController()
+  abortController = currentController
+  const { signal REDACTED = currentController
   loading.value = true
   try {
     const response = await adminAPI.groups.list(pagination.page, pagination.page_size, {
       platform: (filters.platform as GroupPlatform) || undefined,
       status: filters.status as any,
       is_exclusive: filters.is_exclusive ? filters.is_exclusive === 'true' : undefined
-    REDACTED)
+    REDACTED, { signal REDACTED)
+    if (signal.aborted) return
     groups.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
-  REDACTED catch (error) {
+  REDACTED catch (error: any) {
+    if (signal.aborted || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+      return
+    REDACTED
     appStore.showError(t('admin.groups.failedToLoad'))
     console.error('Error loading groups:', error)
   REDACTED finally {
-    loading.value = false
+    if (abortController === currentController && !signal.aborted) {
+      loading.value = false
+    REDACTED
   REDACTED
 REDACTED
 
 const handlePageChange = (page: number) => {
   pagination.page = page
+  loadGroups()
+REDACTED
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.page_size = pageSize
+  pagination.page = 1
   loadGroups()
 REDACTED
 

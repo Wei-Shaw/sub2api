@@ -316,18 +316,23 @@
         :total="pagination.total"
         :page-size="pagination.page_size"
         @update:page="handlePageChange"
+        @update:pageSize="handlePageSizeChange"
       />
       </template>
     </TablePageLayout>
 
     <!-- Assign Subscription Modal -->
-    <Modal
+    <BaseDialog
       :show="showAssignModal"
       :title="t('admin.subscriptions.assignSubscription')"
-      size="lg"
+      width="normal"
       @close="closeAssignModal"
     >
-      <form @submit.prevent="handleAssignSubscription" class="space-y-5">
+      <form
+        id="assign-subscription-form"
+        @submit.prevent="handleAssignSubscription"
+        class="space-y-5"
+      >
         <div>
           <label class="input-label">{{ t('admin.subscriptions.form.user') REDACTEDREDACTED</label>
           <Select
@@ -351,12 +356,18 @@
           <input v-model.number="assignForm.validity_days" type="number" min="1" class="input" />
           <p class="input-hint">{{ t('admin.subscriptions.validityHint') REDACTEDREDACTED</p>
         </div>
-
-        <div class="flex justify-end gap-3 pt-4">
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
           <button @click="closeAssignModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button type="submit" :disabled="submitting" class="btn btn-primary">
+          <button
+            type="submit"
+            form="assign-subscription-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
             <svg
               v-if="submitting"
               class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -380,18 +391,19 @@
             {{ submitting ? t('admin.subscriptions.assigning') : t('admin.subscriptions.assign') REDACTEDREDACTED
           </button>
         </div>
-      </form>
-    </Modal>
+      </template>
+    </BaseDialog>
 
     <!-- Extend Subscription Modal -->
-    <Modal
+    <BaseDialog
       :show="showExtendModal"
       :title="t('admin.subscriptions.extendSubscription')"
-      size="md"
+      width="narrow"
       @close="closeExtendModal"
     >
       <form
         v-if="extendingSubscription"
+        id="extend-subscription-form"
         @submit.prevent="handleExtendSubscription"
         class="space-y-5"
       >
@@ -417,17 +429,23 @@
           <label class="input-label">{{ t('admin.subscriptions.form.extendDays') REDACTEDREDACTED</label>
           <input v-model.number="extendForm.days" type="number" min="1" required class="input" />
         </div>
-
-        <div class="flex justify-end gap-3 pt-4">
+      </form>
+      <template #footer>
+        <div v-if="extendingSubscription" class="flex justify-end gap-3">
           <button @click="closeExtendModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button type="submit" :disabled="submitting" class="btn btn-primary">
+          <button
+            type="submit"
+            form="extend-subscription-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
             {{ submitting ? t('admin.subscriptions.extending') : t('admin.subscriptions.extend') REDACTEDREDACTED
           </button>
         </div>
-      </form>
-    </Modal>
+      </template>
+    </BaseDialog>
 
     <!-- Revoke Confirmation Dialog -->
     <ConfirmDialog
@@ -455,7 +473,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
@@ -485,6 +503,7 @@ const subscriptions = ref<UserSubscription[]>([])
 const groups = ref<Group[]>([])
 const users = ref<User[]>([])
 const loading = ref(false)
+let abortController: AbortController | null = null
 const filters = reactive({
   status: '',
   group_id: ''
@@ -530,20 +549,36 @@ const subscriptionGroupOptions = computed(() =>
 const userOptions = computed(() => users.value.map((u) => ({ value: u.id, label: u.email REDACTED)))
 
 const loadSubscriptions = async () => {
+  if (abortController) {
+    abortController.abort()
+  REDACTED
+  const requestController = new AbortController()
+  abortController = requestController
+  const { signal REDACTED = requestController
+
   loading.value = true
   try {
     const response = await adminAPI.subscriptions.list(pagination.page, pagination.page_size, {
       status: (filters.status as any) || undefined,
       group_id: filters.group_id ? parseInt(filters.group_id) : undefined
+    REDACTED, {
+      signal
     REDACTED)
+    if (signal.aborted || abortController !== requestController) return
     subscriptions.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
-  REDACTED catch (error) {
+  REDACTED catch (error: any) {
+    if (signal.aborted || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') {
+      return
+    REDACTED
     appStore.showError(t('admin.subscriptions.failedToLoad'))
     console.error('Error loading subscriptions:', error)
   REDACTED finally {
-    loading.value = false
+    if (abortController === requestController) {
+      loading.value = false
+      abortController = null
+    REDACTED
   REDACTED
 REDACTED
 
@@ -566,6 +601,12 @@ REDACTED
 
 const handlePageChange = (page: number) => {
   pagination.page = page
+  loadSubscriptions()
+REDACTED
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.page_size = pageSize
+  pagination.page = 1
   loadSubscriptions()
 REDACTED
 

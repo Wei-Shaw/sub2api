@@ -244,6 +244,12 @@
                 autocomplete="new-password"
                 class="input"
               />
+              <p
+                v-if="passwordForm.new_password && passwordForm.confirm_password && passwordForm.new_password !== passwordForm.confirm_password"
+                class="input-error-text"
+              >
+                {{ t('profile.passwordsNotMatch') REDACTEDREDACTED
+              </p>
             </div>
 
             <div class="flex justify-end pt-4">
@@ -392,6 +398,12 @@ const handleChangePassword = async () => {
 REDACTED
 
 const handleUpdateProfile = async () => {
+  // Basic validation
+  if (!profileForm.value.username.trim()) {
+    appStore.showError(t('profile.usernameRequired'))
+    return
+  REDACTED
+
   updatingProfile.value = true
   try {
     const updatedUser = await userAPI.updateProfile({

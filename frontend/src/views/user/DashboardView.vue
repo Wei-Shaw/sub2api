@@ -322,7 +322,13 @@
           <!-- Charts Grid -->
           <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <!-- Model Distribution Chart -->
-            <div class="card p-4">
+            <div class="card relative overflow-hidden p-4">
+              <div
+                v-if="loadingCharts"
+                class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm dark:bg-dark-800/50"
+              >
+                <LoadingSpinner size="md" />
+              </div>
               <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('dashboard.modelDistribution') REDACTEDREDACTED
               </h3>
@@ -383,7 +389,13 @@
             </div>
 
             <!-- Token Usage Trend Chart -->
-            <div class="card p-4">
+            <div class="card relative overflow-hidden p-4">
+              <div
+                v-if="loadingCharts"
+                class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm dark:bg-dark-800/50"
+              >
+                <LoadingSpinner size="md" />
+              </div>
               <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('dashboard.tokenUsageTrend') REDACTEDREDACTED
               </h3>
@@ -694,6 +706,7 @@ const user = computed(() => authStore.user)
 const stats = ref<UserDashboardStats | null>(null)
 const loading = ref(false)
 const loadingUsage = ref(false)
+const loadingCharts = ref(false)
 
 // Chart data
 const trendData = ref<TrendDataPoint[]>([])
@@ -964,6 +977,7 @@ const loadDashboardStats = async () => {
 REDACTED
 
 const loadChartData = async () => {
+  loadingCharts.value = true
   try {
     const params = {
       start_date: startDate.value,
@@ -981,14 +995,16 @@ const loadChartData = async () => {
     modelStats.value = modelResponse.models || []
   REDACTED catch (error) {
     console.error('Error loading chart data:', error)
+  REDACTED finally {
+    loadingCharts.value = false
   REDACTED
 REDACTED
 
 const loadRecentUsage = async () => {
   loadingUsage.value = true
   try {
-    const endDate = new Date().toISOString()
-    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const endDate = new Date().toISOString().split('T')[0]
+    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     const usageResponse = await usageAPI.getByDateRange(startDate, endDate)
     recentUsage.value = usageResponse.items.slice(0, 5)
   REDACTED catch (error) {
@@ -998,11 +1014,17 @@ const loadRecentUsage = async () => {
   REDACTED
 REDACTED
 
-onMounted(() => {
-  loadDashboardStats()
+onMounted(async () => {
+  // Load critical data first
+  await loadDashboardStats()
+
+  // Initialize date range (synchronous)
   initializeDateRange()
-  loadChartData()
-  loadRecentUsage()
+
+  // Load chart data and recent usage in parallel (non-critical)
+  Promise.all([loadChartData(), loadRecentUsage()]).catch((error) => {
+    console.error('Error loading secondary data:', error)
+  REDACTED)
 REDACTED)
 
 // Watch for dark mode changes

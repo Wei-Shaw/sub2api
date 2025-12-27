@@ -182,8 +182,8 @@ const checkActionsColumnWidth = () => {
   // 等待DOM更新
   nextTick(() => {
     // 测量所有按钮的总宽度
-    const buttons = actionsContainer.querySelectorAll('button')
-    if (buttons.length <= 2) {
+    const actionItems = actionsContainer.querySelectorAll('button, a, [role="button"]')
+    if (actionItems.length <= 2) {
       actionsColumnNeedsExpanding.value = false
       actionsExpanded.value = wasExpanded
       return
@@ -191,9 +191,9 @@ const checkActionsColumnWidth = () => {
 
     // 计算所有按钮的总宽度（包括gap）
     let totalWidth = 0
-    buttons.forEach((btn, index) => {
-      totalWidth += (btn as HTMLElement).offsetWidth
-      if (index < buttons.length - 1) {
+    actionItems.forEach((item, index) => {
+      totalWidth += (item as HTMLElement).offsetWidth
+      if (index < actionItems.length - 1) {
         totalWidth += 4 // gap-1 = 4px
       REDACTED
     REDACTED)
