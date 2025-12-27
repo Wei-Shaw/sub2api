@@ -10,7 +10,7 @@
 
         <div class="mt-6 space-y-4">
           <div>
-            <label class="input-label">Code</label>
+            <label class="input-label">{{ t('auth.oauth.code') REDACTEDREDACTED</label>
             <div class="flex gap-2">
               <input class="input flex-1 font-mono text-sm" :value="code" readonly />
               <button class="btn btn-secondary" type="button" :disabled="!code" @click="copy(code)">
@@ -20,7 +20,7 @@
           </div>
 
           <div>
-            <label class="input-label">State</label>
+            <label class="input-label">{{ t('auth.oauth.state') REDACTEDREDACTED</label>
             <div class="flex gap-2">
               <input class="input flex-1 font-mono text-sm" :value="state" readonly />
               <button
@@ -35,7 +35,7 @@
           </div>
 
           <div>
-            <label class="input-label">Full URL</label>
+            <label class="input-label">{{ t('auth.oauth.fullUrl') REDACTEDREDACTED</label>
             <div class="flex gap-2">
               <input class="input flex-1 font-mono text-xs" :value="fullUrl" readonly />
               <button
@@ -63,10 +63,12 @@
 
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import { useRoute REDACTED from 'vue-router'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 
 const route = useRoute()
+const { t REDACTED = useI18n()
 const { copyToClipboard REDACTED = useClipboard()
 
 const code = computed(() => (route.query.code as string) || '')

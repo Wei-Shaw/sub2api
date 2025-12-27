@@ -81,7 +81,11 @@ func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subs
 	REDACTED
 
 		c.Set(string(ContextKeyApiKey), apiKey)
-		c.Set(string(ContextKeyUser), apiKey.User)
+		c.Set(string(ContextKeyUser), AuthSubject{
+			UserID:      apiKey.User.ID,
+			Concurrency: apiKey.User.Concurrency,
+	REDACTED)
+		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 		c.Next()
 REDACTED
 REDACTED

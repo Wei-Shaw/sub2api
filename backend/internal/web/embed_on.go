@@ -29,7 +29,8 @@ REDACTED
 			strings.HasPrefix(path, "/v1/") ||
 			strings.HasPrefix(path, "/v1beta/") ||
 			strings.HasPrefix(path, "/setup/") ||
-			path == "/health" {
+			path == "/health" ||
+			path == "/responses" {
 			c.Next()
 			return
 	REDACTED

@@ -1,10 +1,10 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Summary Stats Cards -->
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <!-- Total Requests -->
-        <div class="card p-4">
+    <TablePageLayout>
+      <template #actions>
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <!-- Total Requests -->
+          <div class="card p-4">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
               <svg
@@ -131,11 +131,12 @@
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </template>
 
-      <!-- Filters -->
-      <div class="card">
-        <div class="px-6 py-4">
+      <template #filters>
+        <div class="card">
+          <div class="px-6 py-4">
           <div class="flex flex-wrap items-end gap-4">
             <!-- API Key Filter -->
             <div class="min-w-[180px]">
@@ -169,11 +170,17 @@
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </template>
 
-      <!-- Usage Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="usageLogs" :loading="loading">
+          <template #cell-api_key="{ row REDACTED">
+            <span class="text-sm text-gray-900 dark:text-white">{{
+              row.api_key?.name || '-'
+            REDACTEDREDACTED</span>
+          </template>
+
           <template #cell-model="{ value REDACTED">
             <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
           </template>
@@ -379,17 +386,18 @@
             <EmptyState :message="t('usage.noRecords')" />
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
-    </div>
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
+      </template>
+    </TablePageLayout>
   </AppLayout>
 </template>
 
@@ -399,6 +407,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { usageAPI, keysAPI REDACTED from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -406,6 +415,7 @@ import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
+import { formatDateTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -414,6 +424,7 @@ const appStore = useAppStore()
 const usageStats = ref<UsageStatsResponse | null>(null)
 
 const columns = computed<Column[]>(() => [
+  { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false REDACTED,
   { key: 'model', label: t('usage.model'), sortable: true REDACTED,
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
@@ -503,17 +514,6 @@ const formatCacheTokens = (value: number): string => {
     return `${(value / 1_000).toFixed(1)REDACTEDK`
   REDACTED
   return value.toLocaleString()
-REDACTED
-
-const formatDateTime = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  REDACTED)
 REDACTED
 
 const loadUsageLogs = async () => {

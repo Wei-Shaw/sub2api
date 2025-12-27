@@ -60,7 +60,7 @@
         <div class="select-options">
           <div
             v-for="option in filteredOptions"
-            :key="getOptionValue(option) ?? undefined"
+            :key="`${typeof getOptionValue(option)REDACTED:${String(getOptionValue(option) ?? '')REDACTED`"
             @click="selectOption(option)"
             :class="['select-option', isSelected(option) && 'select-option-selected']"
           >
@@ -96,14 +96,14 @@ import { useI18n REDACTED from 'vue-i18n'
 const { t REDACTED = useI18n()
 
 export interface SelectOption {
-  value: string | number | null
+  value: string | number | boolean | null
   label: string
   disabled?: boolean
   [key: string]: unknown
 REDACTED
 
 interface Props {
-  modelValue: string | number | null | undefined
+  modelValue: string | number | boolean | null | undefined
   options: SelectOption[] | Array<Record<string, unknown>>
   placeholder?: string
   disabled?: boolean
@@ -116,8 +116,8 @@ interface Props {
 REDACTED
 
 interface Emits {
-  (e: 'update:modelValue', value: string | number | null): void
-  (e: 'change', value: string | number | null, option: SelectOption | null): void
+  (e: 'update:modelValue', value: string | number | boolean | null): void
+  (e: 'change', value: string | number | boolean | null, option: SelectOption | null): void
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -144,11 +144,11 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const getOptionValue = (
   option: SelectOption | Record<string, unknown>
-): string | number | null | undefined => {
+): string | number | boolean | null | undefined => {
   if (typeof option === 'object' && option !== null) {
-    return option[props.valueKey] as string | number | null | undefined
+    return option[props.valueKey] as string | number | boolean | null | undefined
   REDACTED
-  return option as string | number | null
+  return option as string | number | boolean | null
 REDACTED
 
 const getOptionLabel = (option: SelectOption | Record<string, unknown>): string => {

@@ -452,16 +452,16 @@
                           {{ log.model REDACTEDREDACTED
                         </p>
                         <p class="text-xs text-gray-500 dark:text-dark-400">
-                          {{ formatDate(log.created_at) REDACTEDREDACTED
+                          {{ formatDateTime(log.created_at) REDACTEDREDACTED
                         </p>
                       </div>
                     </div>
                     <div class="text-right">
                       <p class="text-sm font-semibold">
-                        <span class="text-green-600 dark:text-green-400" title="实际扣除"
+                        <span class="text-green-600 dark:text-green-400" :title="t('dashboard.actual')"
                           >${{ formatCost(log.actual_cost) REDACTEDREDACTED</span
                         >
-                        <span class="font-normal text-gray-400 dark:text-gray-500" title="标准计费">
+                        <span class="font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')">
                           / ${{ formatCost(log.total_cost) REDACTEDREDACTED</span
                         >
                       </p>
@@ -649,6 +649,7 @@ import { ref, computed, onMounted, watch REDACTED from 'vue'
 import { useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAuthStore REDACTED from '@/stores/auth'
+import { formatDateTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 import { usageAPI, type UserDashboardStats REDACTED from '@/api/usage'
@@ -912,16 +913,6 @@ const formatDuration = (ms: number): string => {
     return `${(ms / 1000).toFixed(2)REDACTEDs`
   REDACTED
   return `${Math.round(ms)REDACTEDms`
-REDACTED
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  REDACTED)
 REDACTED
 
 const navigateTo = (path: string) => {

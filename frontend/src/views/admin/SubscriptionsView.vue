@@ -1,7 +1,8 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
+    <TablePageLayout>
       <!-- Page Header Actions -->
+      <template #actions>
       <div class="flex justify-end gap-3">
         <button
           @click="loadSubscriptions"
@@ -36,8 +37,10 @@
           {{ t('admin.subscriptions.assignSubscription') REDACTEDREDACTED
         </button>
       </div>
+      </template>
 
       <!-- Filters -->
+      <template #filters>
       <div class="flex flex-wrap gap-3">
         <Select
           v-model="filters.status"
@@ -54,9 +57,10 @@
           @change="loadSubscriptions"
         />
       </div>
+      </template>
 
       <!-- Subscriptions Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="subscriptions" :loading="loading">
           <template #cell-user="{ row REDACTED">
             <div class="flex items-center gap-2">
@@ -222,7 +226,7 @@
                     : 'text-gray-700 dark:text-gray-300'
                 "
               >
-                {{ formatDate(value) REDACTEDREDACTED
+                {{ formatDateOnly(value) REDACTEDREDACTED
               </span>
               <div v-if="getDaysRemaining(value) !== null" class="text-xs text-gray-500">
                 {{ getDaysRemaining(value) REDACTEDREDACTED {{ t('admin.subscriptions.daysRemaining') REDACTEDREDACTED
@@ -302,9 +306,10 @@
             />
           </template>
         </DataTable>
-      </div>
+      </template>
 
       <!-- Pagination -->
+      <template #pagination>
       <Pagination
         v-if="pagination.total > 0"
         :page="pagination.page"
@@ -312,7 +317,8 @@
         :page-size="pagination.page_size"
         @update:page="handlePageChange"
       />
-    </div>
+      </template>
+    </TablePageLayout>
 
     <!-- Assign Subscription Modal -->
     <Modal
@@ -401,7 +407,7 @@
             <span class="font-medium text-gray-900 dark:text-white">
               {{
                 extendingSubscription.expires_at
-                  ? formatDate(extendingSubscription.expires_at)
+                  ? formatDateOnly(extendingSubscription.expires_at)
                   : t('admin.subscriptions.noExpiration')
               REDACTEDREDACTED
             </span>
@@ -444,7 +450,9 @@ import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
 import type { UserSubscription, Group, User REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
+import { formatDateOnly REDACTED from '@/utils/format'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'
@@ -640,14 +648,6 @@ const confirmRevoke = async () => {
 REDACTED
 
 // Helper functions
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  REDACTED)
-REDACTED
-
 const getDaysRemaining = (expiresAt: string): number | null => {
   const now = new Date()
   const expires = new Date(expiresAt)

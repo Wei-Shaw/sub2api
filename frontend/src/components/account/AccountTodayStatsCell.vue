@@ -16,21 +16,27 @@
     <div v-else-if="stats" class="space-y-0.5 text-xs">
       <!-- Requests -->
       <div class="flex items-center gap-1">
-        <span class="text-gray-500 dark:text-gray-400">Req:</span>
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.requests') REDACTEDREDACTED:</span
+        >
         <span class="font-medium text-gray-700 dark:text-gray-300">{{
           formatNumber(stats.requests)
         REDACTEDREDACTED</span>
       </div>
       <!-- Tokens -->
       <div class="flex items-center gap-1">
-        <span class="text-gray-500 dark:text-gray-400">Tok:</span>
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.tokens') REDACTEDREDACTED:</span
+        >
         <span class="font-medium text-gray-700 dark:text-gray-300">{{
           formatTokens(stats.tokens)
         REDACTEDREDACTED</span>
       </div>
       <!-- Cost -->
       <div class="flex items-center gap-1">
-        <span class="text-gray-500 dark:text-gray-400">Cost:</span>
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.cost') REDACTEDREDACTED:</span
+        >
         <span class="font-medium text-emerald-600 dark:text-emerald-400">{{
           formatCurrency(stats.cost)
         REDACTEDREDACTED</span>
@@ -44,6 +50,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, WindowStats REDACTED from '@/types'
 import { formatNumber, formatCurrency REDACTED from '@/utils/format'
@@ -51,6 +58,8 @@ import { formatNumber, formatCurrency REDACTED from '@/utils/format'
 const props = defineProps<{
   account: Account
 REDACTED>()
+
+const { t REDACTED = useI18n()
 
 const loading = ref(false)
 const error = ref<string | null>(null)
