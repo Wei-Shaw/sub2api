@@ -1,5 +1,5 @@
 <template>
-  <Modal :show="show" :title="t('admin.accounts.createAccount')" size="lg" @close="handleClose">
+  <Modal :show="show" :title="t('admin.accounts.createAccount')" size="xl" @close="handleClose">
     <!-- Step Indicator for OAuth accounts -->
     <div v-if="isOAuthFlow" class="mb-6 flex items-center justify-center">
       <div class="flex items-center space-x-4">
@@ -468,7 +468,7 @@
 
               <div
                 v-if="!geminiAIStudioOAuthEnabled"
-                class="pointer-events-none absolute left-0 top-full z-10 mt-2 w-[28rem] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-80 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
               >
                 {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
               </div>
