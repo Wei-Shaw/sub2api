@@ -139,7 +139,7 @@
                 :subscription-type="sub.group?.subscription_type"
                 :rate-multiplier="sub.group?.rate_multiplier"
                 :days-remaining="sub.expires_at ? getDaysRemaining(sub.expires_at) : null"
-                :title="sub.expires_at ? formatExpiresAt(sub.expires_at) : ''"
+                :title="sub.expires_at ? formatDateTime(sub.expires_at) : ''"
               />
             </div>
             <span
@@ -1291,12 +1291,6 @@ const getDaysRemaining = (expiresAt: string): number => {
   const expires = new Date(expiresAt)
   const diffMs = expires.getTime() - now.getTime()
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-}
-
-// 格式化过期时间（用于 tooltip）
-const formatExpiresAt = (expiresAt: string): string => {
-  const date = new Date(expiresAt)
-  return date.toLocaleString()
 }
 
 const generateRandomPasswordStr = () => {

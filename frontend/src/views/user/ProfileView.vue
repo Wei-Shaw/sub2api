@@ -17,7 +17,7 @@
         />
         <StatCard
           :title="t('profile.memberSince')"
-          :value="formatMemberSince(user?.created_at || '')"
+          :value="formatDate(user?.created_at || '', 'YYYY-MM')"
           :icon="CalendarIcon"
           icon-variant="primary"
         />
@@ -267,6 +267,7 @@ import { ref, computed, h, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import { formatDate } from '@/utils/format'
 
 const { t } = useI18n()
 import { userAPI, authAPI } from '@/api'
@@ -356,15 +357,6 @@ onMounted(async () => {
 
 const formatCurrency = (value: number): string => {
   return `$${value.toFixed(2)}`
-}
-
-const formatMemberSince = (dateString: string): string => {
-  if (!dateString) return 'N/A'
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short'
-  })
 }
 
 const handleChangePassword = async () => {

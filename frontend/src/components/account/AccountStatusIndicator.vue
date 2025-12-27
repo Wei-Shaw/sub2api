@@ -89,6 +89,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Account } from '@/types'
+import { formatTime } from '@/utils/format'
 
 const props = defineProps<{
   account: Account
@@ -139,13 +140,4 @@ const statusText = computed(() => {
   return props.account.status
 })
 
-// Format time helper
-const formatTime = (dateStr: string | null | undefined) => {
-  if (!dateStr) return 'N/A'
-  const date = new Date(dateStr)
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
 </script>

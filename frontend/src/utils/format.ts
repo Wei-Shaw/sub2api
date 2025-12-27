@@ -132,3 +132,12 @@ export function formatDateOnly(date: string | Date | null | undefined): string {
 export function formatDateTime(date: string | Date | null | undefined): string {
   return formatDate(date, 'YYYY-MM-DD HH:mm:ss')
 }
+
+/**
+ * 格式化时间（只显示时分）
+ * @param date 日期字符串或 Date 对象
+ * @returns 格式化后的时间字符串，格式为 HH:mm
+ */
+export function formatTime(date: string | Date | null | undefined): string {
+  return formatDate(date, 'HH:mm')
+}
