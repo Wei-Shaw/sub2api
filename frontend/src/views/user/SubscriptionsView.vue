@@ -257,6 +257,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription REDACTED from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { formatDateOnly REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -300,11 +301,7 @@ function formatExpirationDate(expiresAt: string): string {
     return t('userSubscriptions.status.expired')
   REDACTED
 
-  const dateStr = expires.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  REDACTED)
+  const dateStr = formatDateOnly(expires)
 
   if (days === 0) {
     return `${dateStrREDACTED (Today)`

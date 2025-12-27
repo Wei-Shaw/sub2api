@@ -11,7 +11,7 @@
         v-for="group in filteredGroups"
         :key="group.id"
         class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 transition-colors hover:bg-white dark:hover:bg-dark-700"
-        :title="`${group.rate_multiplierREDACTEDx rate · ${group.account_count || 0REDACTED accounts`"
+        :title="t('admin.groups.rateAndAccounts', { rate: group.rate_multiplier, count: group.account_count || 0 REDACTED)"
       >
         <input
           type="checkbox"
@@ -40,8 +40,11 @@
 
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import type { Group, GroupPlatform REDACTED from '@/types'
+
+const { t REDACTED = useI18n()
 
 interface Props {
   modelValue: number[]

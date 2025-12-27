@@ -1,9 +1,9 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Page Header Actions -->
-      <div class="flex justify-end gap-3">
-        <button
+    <TablePageLayout>
+      <template #actions>
+        <div class="flex justify-end gap-3">
+          <button
           @click="loadCodes"
           :disabled="loading"
           class="btn btn-secondary"
@@ -26,11 +26,12 @@
         <button @click="showGenerateDialog = true" class="btn btn-primary">
           {{ t('admin.redeem.generateCodes') REDACTEDREDACTED
         </button>
-      </div>
+        </div>
+      </template>
 
-      <!-- Filters and Actions -->
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div class="max-w-md flex-1">
+      <template #filters>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="max-w-md flex-1">
           <input
             v-model="searchQuery"
             type="text"
@@ -38,8 +39,8 @@
             class="input"
             @input="handleSearch"
           />
-        </div>
-        <div class="flex gap-2">
+          </div>
+          <div class="flex gap-2">
           <Select
             v-model="filters.type"
             :options="filterTypeOptions"
@@ -55,11 +56,11 @@
           <button @click="handleExportCodes" class="btn btn-secondary">
             {{ t('admin.redeem.exportCsv') REDACTEDREDACTED
           </button>
+          </div>
         </div>
-      </div>
+      </template>
 
-      <!-- Redeem Codes Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="codes" :loading="loading">
           <template #cell-code="{ value REDACTED">
             <div class="flex items-center space-x-2">
@@ -151,7 +152,7 @@
 
           <template #cell-used_at="{ value REDACTED">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{
-              value ? formatDate(value) : '-'
+              value ? formatDateTime(value) : '-'
             REDACTEDREDACTED</span>
           </template>
 
@@ -176,24 +177,25 @@
             </div>
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
 
-      <!-- Batch Actions -->
-      <div v-if="filters.status === 'unused'" class="flex justify-end">
-        <button @click="showDeleteUnusedDialog = true" class="btn btn-danger">
-          {{ t('admin.redeem.deleteAllUnused') REDACTEDREDACTED
-        </button>
-      </div>
-    </div>
+        <!-- Batch Actions -->
+        <div v-if="filters.status === 'unused'" class="flex justify-end">
+          <button @click="showDeleteUnusedDialog = true" class="btn btn-danger">
+            {{ t('admin.redeem.deleteAllUnused') REDACTEDREDACTED
+          </button>
+        </div>
+      </template>
+    </TablePageLayout>
 
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
@@ -417,9 +419,11 @@ import { ref, reactive, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
+import { formatDateTime REDACTED from '@/utils/format'
 import type { RedeemCode, RedeemCodeType, Group REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -548,10 +552,6 @@ const generateForm = reactive({
   group_id: null as number | null,
   validity_days: 30
 REDACTED)
-
-const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString()
-REDACTED
 
 const loadCodes = async () => {
   loading.value = true

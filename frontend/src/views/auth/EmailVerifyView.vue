@@ -3,7 +3,9 @@
     <div class="space-y-6">
       <!-- Title -->
       <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Verify Your Email</h2>
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+          {{ t('auth.verifyYourEmail') REDACTEDREDACTED
+        </h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
           We'll send a verification code to
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ email REDACTEDREDACTED</span>
@@ -32,8 +34,8 @@
             </svg>
           </div>
           <div class="text-sm text-amber-700 dark:text-amber-400">
-            <p class="font-medium">Session expired</p>
-            <p class="mt-1">Please go back to the registration page and start again.</p>
+            <p class="font-medium">{{ t('auth.sessionExpired') REDACTEDREDACTED</p>
+            <p class="mt-1">{{ t('auth.sessionExpiredDesc') REDACTEDREDACTED</p>
           </div>
         </div>
       </div>
@@ -42,7 +44,9 @@
       <form v-else @submit.prevent="handleVerify" class="space-y-5">
         <!-- Verification Code Input -->
         <div>
-          <label for="code" class="input-label text-center"> Verification Code </label>
+          <label for="code" class="input-label text-center">
+            {{ t('auth.verificationCode') REDACTEDREDACTED
+          </label>
           <input
             id="code"
             v-model="verifyCode"
@@ -59,7 +63,7 @@
           <p v-if="errors.code" class="input-error-text text-center">
             {{ errors.code REDACTEDREDACTED
           </p>
-          <p v-else class="input-hint text-center">Enter the 6-digit code sent to your email</p>
+          <p v-else class="input-hint text-center">{{ t('auth.verificationCodeHint') REDACTEDREDACTED</p>
         </div>
 
         <!-- Code Status -->
@@ -190,9 +194,11 @@
             "
             class="text-sm text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
           >
-            <span v-if="isSendingCode">Sending...</span>
-            <span v-else-if="turnstileEnabled && !showResendTurnstile">Click to resend code</span>
-            <span v-else>Resend verification code</span>
+            <span v-if="isSendingCode">{{ t('auth.sendingCode') REDACTEDREDACTED</span>
+            <span v-else-if="turnstileEnabled && !showResendTurnstile">
+              {{ t('auth.clickToResend') REDACTEDREDACTED
+            </span>
+            <span v-else>{{ t('auth.resendCode') REDACTEDREDACTED</span>
           </button>
         </div>
       </form>
@@ -226,10 +232,13 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted REDACTED from 'vue'
 import { useRouter REDACTED from 'vue-router'
+import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import { getPublicSettings, sendVerifyCode REDACTED from '@/api/auth'
+
+const { t REDACTED = useI18n()
 
 // ==================== Router & Stores ====================
 

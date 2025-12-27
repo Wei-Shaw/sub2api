@@ -1,8 +1,8 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Page Header Actions -->
-      <div class="flex justify-end gap-3">
+    <TablePageLayout>
+      <template #actions>
+        <div class="flex justify-end gap-3">
         <button
           @click="loadApiKeys"
           :disabled="loading"
@@ -36,9 +36,9 @@
           {{ t('keys.createKey') REDACTEDREDACTED
         </button>
       </div>
+      </template>
 
-      <!-- API Keys Table -->
-      <div class="card overflow-hidden">
+      <template #table>
         <DataTable :columns="columns" :data="apiKeys" :loading="loading">
           <template #cell-key="{ value, row REDACTED">
             <div class="flex items-center gap-2">
@@ -146,7 +146,7 @@
           </template>
 
           <template #cell-created_at="{ value REDACTED">
-            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDate(value) REDACTEDREDACTED</span>
+            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) REDACTEDREDACTED</span>
           </template>
 
           <template #cell-actions="{ row REDACTED">
@@ -235,7 +235,7 @@
               <button
                 @click="editKey(row)"
                 class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-                title="Edit"
+                :title="t('common.edit')"
               >
                 <svg
                   class="h-4 w-4"
@@ -255,7 +255,7 @@
               <button
                 @click="confirmDelete(row)"
                 class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                title="Delete"
+                :title="t('common.delete')"
               >
                 <svg
                   class="h-4 w-4"
@@ -283,17 +283,18 @@
             />
           </template>
         </DataTable>
-      </div>
+      </template>
 
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-      />
-    </div>
+      <template #pagination>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+        />
+      </template>
+    </TablePageLayout>
 
     <!-- Create/Edit Modal -->
     <Modal
@@ -496,6 +497,7 @@ import { useAppStore REDACTED from '@/stores/app'
 const { t REDACTED = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI REDACTED from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Modal from '@/components/common/Modal.vue'
@@ -507,6 +509,7 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import type { BatchApiKeyUsageStats REDACTED from '@/api/usage'
+import { formatDateTime REDACTED from '@/utils/format'
 
 interface GroupOption {
   value: number
@@ -622,15 +625,6 @@ const copyToClipboard = async (text: string, keyId: number) => {
   REDACTED catch (error) {
     appStore.showError(t('common.copyFailed'))
   REDACTED
-REDACTED
-
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  REDACTED)
 REDACTED
 
 const loadApiKeys = async () => {

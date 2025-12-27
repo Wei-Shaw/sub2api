@@ -1,10 +1,10 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <!-- Summary Stats Cards -->
+      <!-- Stats Cards -->
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <!-- Total Requests -->
-        <div class="card p-4">
+          <!-- Total Requests -->
+          <div class="card p-4">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
               <svg
@@ -130,10 +130,10 @@
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
-      <!-- Charts Section -->
-      <div class="space-y-4">
+        <!-- Charts Section -->
+        <div class="space-y-4">
         <!-- Chart Controls -->
         <div class="card p-4">
           <div class="flex items-center gap-4">
@@ -157,9 +157,9 @@
         </div>
       </div>
 
-      <!-- Filters -->
+      <!-- Filters Section -->
       <div class="card">
-        <div class="px-6 py-4">
+          <div class="px-6 py-4">
           <div class="flex flex-wrap items-end gap-4">
             <!-- User Search -->
             <div class="min-w-[200px]">
@@ -229,6 +229,61 @@
               />
             </div>
 
+            <!-- Model Filter -->
+            <div class="min-w-[180px]">
+              <label class="input-label">{{ t('usage.model') REDACTEDREDACTED</label>
+              <Select
+                v-model="filters.model"
+                :options="modelOptions"
+                :placeholder="t('admin.usage.allModels')"
+                @change="applyFilters"
+              />
+            </div>
+
+            <!-- Account Filter -->
+            <div class="min-w-[180px]">
+              <label class="input-label">{{ t('admin.usage.account') REDACTEDREDACTED</label>
+              <Select
+                v-model="filters.account_id"
+                :options="accountOptions"
+                :placeholder="t('admin.usage.allAccounts')"
+                @change="applyFilters"
+              />
+            </div>
+
+            <!-- Stream Type Filter -->
+            <div class="min-w-[150px]">
+              <label class="input-label">{{ t('usage.type') REDACTEDREDACTED</label>
+              <Select
+                v-model="filters.stream"
+                :options="streamOptions"
+                :placeholder="t('admin.usage.allTypes')"
+                @change="applyFilters"
+              />
+            </div>
+
+            <!-- Billing Type Filter -->
+            <div class="min-w-[150px]">
+              <label class="input-label">{{ t('usage.billingType') REDACTEDREDACTED</label>
+              <Select
+                v-model="filters.billing_type"
+                :options="billingTypeOptions"
+                :placeholder="t('admin.usage.allBillingTypes')"
+                @change="applyFilters"
+              />
+            </div>
+
+            <!-- Group Filter -->
+            <div class="min-w-[150px]">
+              <label class="input-label">{{ t('admin.usage.group') REDACTEDREDACTED</label>
+              <Select
+                v-model="filters.group_id"
+                :options="groupOptions"
+                :placeholder="t('admin.usage.allGroups')"
+                @change="applyFilters"
+              />
+            </div>
+
             <!-- Date Range Filter -->
             <div>
               <label class="input-label">{{ t('usage.timeRange') REDACTEDREDACTED</label>
@@ -252,9 +307,10 @@
         </div>
       </div>
 
-      <!-- Usage Table -->
+      <!-- Table Section -->
       <div class="card overflow-hidden">
-        <DataTable :columns="columns" :data="usageLogs" :loading="loading">
+        <div class="overflow-auto">
+          <DataTable :columns="columns" :data="usageLogs" :loading="loading">
           <template #cell-user="{ row REDACTED">
             <div class="text-sm">
               <span class="font-medium text-gray-900 dark:text-white">{{
@@ -270,8 +326,24 @@
             REDACTEDREDACTED</span>
           </template>
 
+          <template #cell-account="{ row REDACTED">
+            <span class="text-sm text-gray-900 dark:text-white">{{
+              row.account?.name || '-'
+            REDACTEDREDACTED</span>
+          </template>
+
           <template #cell-model="{ value REDACTED">
             <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+          </template>
+
+          <template #cell-group="{ row REDACTED">
+            <span
+              v-if="row.group"
+              class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200"
+            >
+              {{ row.group.name REDACTEDREDACTED
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
           </template>
 
           <template #cell-stream="{ row REDACTED">
@@ -407,6 +479,27 @@
                     class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
                   >
                     <div class="space-y-1.5">
+                      <!-- Cost Breakdown -->
+                      <div class="mb-2 border-b border-gray-700 pb-1.5">
+                        <div class="text-xs font-semibold text-gray-300 mb-1">成本明细</div>
+                        <div v-if="row.input_cost > 0" class="flex items-center justify-between gap-4">
+                          <span class="text-gray-400">{{ t('admin.usage.inputCost') REDACTEDREDACTED</span>
+                          <span class="font-medium text-white">${{ row.input_cost.toFixed(6) REDACTEDREDACTED</span>
+                        </div>
+                        <div v-if="row.output_cost > 0" class="flex items-center justify-between gap-4">
+                          <span class="text-gray-400">{{ t('admin.usage.outputCost') REDACTEDREDACTED</span>
+                          <span class="font-medium text-white">${{ row.output_cost.toFixed(6) REDACTEDREDACTED</span>
+                        </div>
+                        <div v-if="row.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
+                          <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') REDACTEDREDACTED</span>
+                          <span class="font-medium text-white">${{ row.cache_creation_cost.toFixed(6) REDACTEDREDACTED</span>
+                        </div>
+                        <div v-if="row.cache_read_cost > 0" class="flex items-center justify-between gap-4">
+                          <span class="text-gray-400">{{ t('admin.usage.cacheReadCost') REDACTEDREDACTED</span>
+                          <span class="font-medium text-white">${{ row.cache_read_cost.toFixed(6) REDACTEDREDACTED</span>
+                        </div>
+                      </div>
+                      <!-- Rate and Summary -->
                       <div class="flex items-center justify-between gap-6">
                         <span class="text-gray-400">{{ t('usage.rate') REDACTEDREDACTED</span>
                         <span class="font-semibold text-blue-400"
@@ -471,10 +564,17 @@
             REDACTEDREDACTED</span>
           </template>
 
+          <template #cell-request_id="{ row REDACTED">
+            <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{
+              row.request_id || '-'
+            REDACTEDREDACTED</span>
+          </template>
+
           <template #empty>
             <EmptyState :message="t('usage.noRecords')" />
           </template>
         </DataTable>
+        </div>
       </div>
 
       <!-- Pagination -->
@@ -498,6 +598,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import { formatDateTime REDACTED from '@/utils/format'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
@@ -532,17 +633,23 @@ const granularityOptions = computed(() => [
 const columns = computed<Column[]>(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false REDACTED,
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false REDACTED,
+  { key: 'account', label: t('admin.usage.account'), sortable: false REDACTED,
   { key: 'model', label: t('usage.model'), sortable: true REDACTED,
+  { key: 'group', label: t('admin.usage.group'), sortable: false REDACTED,
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
   { key: 'billing_type', label: t('usage.billingType'), sortable: false REDACTED,
   { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
-  { key: 'created_at', label: t('usage.time'), sortable: true REDACTED
+  { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
+  { key: 'request_id', label: t('admin.usage.requestId'), sortable: false REDACTED
 ])
 
 const usageLogs = ref<UsageLog[]>([])
 const apiKeys = ref<SimpleApiKey[]>([])
+const models = ref<string[]>([])
+const accounts = ref<any[]>([])
+const groups = ref<any[]>([])
 const loading = ref(false)
 
 // User search state
@@ -564,6 +671,53 @@ const apiKeyOptions = computed(() => {
   ]
 REDACTED)
 
+// Model options
+const modelOptions = computed(() => {
+  return [
+    { value: null, label: t('admin.usage.allModels') REDACTED,
+    ...models.value.map((model) => ({
+      value: model,
+      label: model
+    REDACTED))
+  ]
+REDACTED)
+
+// Account options
+const accountOptions = computed(() => {
+  return [
+    { value: null, label: t('admin.usage.allAccounts') REDACTED,
+    ...accounts.value.map((account) => ({
+      value: account.id,
+      label: account.name
+    REDACTED))
+  ]
+REDACTED)
+
+// Stream type options
+const streamOptions = computed(() => [
+  { value: null, label: t('admin.usage.allTypes') REDACTED,
+  { value: true, label: t('usage.stream') REDACTED,
+  { value: false, label: t('usage.sync') REDACTED
+])
+
+// Billing type options
+const billingTypeOptions = computed(() => [
+  { value: null, label: t('admin.usage.allBillingTypes') REDACTED,
+  { value: 0, label: t('usage.balance') REDACTED,
+  { value: 1, label: t('usage.subscription') REDACTED
+])
+
+// Group options
+const groupOptions = computed(() => {
+  return [
+    { value: null, label: t('admin.usage.allGroups') REDACTED,
+    ...groups.value.map((group) => ({
+      value: group.id,
+      label: group.name
+    REDACTED))
+  ]
+REDACTED)
+
 // Date range state
 const startDate = ref('')
 const endDate = ref('')
@@ -571,6 +725,11 @@ const endDate = ref('')
 const filters = ref<AdminUsageQueryParams>({
   user_id: undefined,
   api_key_id: undefined,
+  account_id: undefined,
+  group_id: undefined,
+  model: undefined,
+  stream: undefined,
+  billing_type: undefined,
   start_date: undefined,
   end_date: undefined
 REDACTED)
@@ -689,17 +848,6 @@ const formatCacheTokens = (value: number): string => {
   return value.toLocaleString()
 REDACTED
 
-const formatDateTime = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  REDACTED)
-REDACTED
-
 const loadUsageLogs = async () => {
   loading.value = true
   try {
@@ -713,6 +861,9 @@ const loadUsageLogs = async () => {
     usageLogs.value = response.items
     pagination.value.total = response.total
     pagination.value.pages = response.pages
+
+    // Extract models from loaded logs for filter options
+    extractModelsFromLogs()
   REDACTED catch (error) {
     appStore.showError(t('usage.failedToLoad'))
   REDACTED finally {
@@ -775,6 +926,32 @@ const applyFilters = () => {
   loadChartData()
 REDACTED
 
+// Load filter options
+const loadFilterOptions = async () => {
+  try {
+    // Load accounts
+    const accountsResponse = await adminAPI.accounts.list(1, 1000)
+    accounts.value = accountsResponse.items || []
+
+    // Load groups
+    const groupsResponse = await adminAPI.groups.list(1, 1000)
+    groups.value = groupsResponse.items || []
+  REDACTED catch (error) {
+    console.error('Failed to load filter options:', error)
+  REDACTED
+REDACTED
+
+// Extract unique models from usage logs
+const extractModelsFromLogs = () => {
+  const uniqueModels = new Set<string>()
+  usageLogs.value.forEach(log => {
+    if (log.model) {
+      uniqueModels.add(log.model)
+    REDACTED
+  REDACTED)
+  models.value = Array.from(uniqueModels).sort()
+REDACTED
+
 const resetFilters = () => {
   selectedUser.value = null
   userSearchKeyword.value = ''
@@ -783,6 +960,11 @@ const resetFilters = () => {
   filters.value = {
     user_id: undefined,
     api_key_id: undefined,
+    account_id: undefined,
+    group_id: undefined,
+    model: undefined,
+    stream: undefined,
+    billing_type: undefined,
     start_date: undefined,
     end_date: undefined
   REDACTED
@@ -858,6 +1040,7 @@ REDACTED
 
 onMounted(() => {
   initializeDateRange()
+  loadFilterOptions()
   loadUsageLogs()
   loadUsageStats()
   loadChartData()
