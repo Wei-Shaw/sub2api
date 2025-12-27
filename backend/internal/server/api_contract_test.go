@@ -924,7 +924,10 @@ func (r *stubUsageLogRepo) GetUserModelStats(ctx context.Context, userID int64, 
 }
 
 func (r *stubUsageLogRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	return nil, nil, errors.New("not implemented")
+	logs := r.userLogs[filters.UserID]
+	total := int64(len(logs))
+	out := paginateLogs(logs, params)
+	return out, paginationResult(total, params), nil
 }
 
 func (r *stubUsageLogRepo) GetGlobalStats(ctx context.Context, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
