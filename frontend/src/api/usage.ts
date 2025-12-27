@@ -148,8 +148,8 @@ export async function getStatsByDateRange(
 
 /**
  * Get usage by date range
- * @param startDate - Start date (ISO format)
- * @param endDate - End date (ISO format)
+ * @param startDate - Start date (YYYY-MM-DD format)
+ * @param endDate - End date (YYYY-MM-DD format)
  * @param apiKeyId - Optional API key ID filter
  * @returns Usage logs within date range
  */

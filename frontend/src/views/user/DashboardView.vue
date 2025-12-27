@@ -987,8 +987,13 @@ const loadChartData = async () => {
 const loadRecentUsage = async () => {
   loadingUsage.value = true
   try {
-    const endDate = new Date().toISOString()
-    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    // 后端 /usage 查询参数 start_date/end_date 仅接受 YYYY-MM-DD（见 backend usage handler 的校验逻辑）。
+    // 同时后端会将 end_date 自动扩展到当天 23:59:59.999...，因此前端只需要传「日期」即可。
+    // 注意：toISOString() 生成的是 UTC 日期字符串；如果需要按本地/服务端时区对齐统计口径，
+    // 请改用时区感知的日期格式化方法（例如 Intl.DateTimeFormat 指定 timeZone）。
+    const now = new Date()
+    const endDate = now.toISOString().split('T')[0]
+    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     const usageResponse = await usageAPI.getByDateRange(startDate, endDate)
     recentUsage.value = usageResponse.items.slice(0, 5)
   } catch (error) {
