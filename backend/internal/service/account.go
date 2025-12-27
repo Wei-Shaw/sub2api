@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 type Account struct {
 	ID           int64
@@ -82,12 +85,25 @@ func (a *Account) GetCredential(key string) string {
 	if a.Credentials == nil {
 		return ""
 REDACTED
-	if v, ok := a.Credentials[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
-	REDACTED
+	v, ok := a.Credentials[key]
+	if !ok || v == nil {
+		return ""
 REDACTED
-	return ""
+
+	// 支持多种类型（兼容历史数据中 expires_at 等字段可能是数字或字符串）
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		// JSON 解析后数字默认为 float64
+		return strconv.FormatInt(int64(val), 10)
+	case int64:
+		return strconv.FormatInt(val, 10)
+	case int:
+		return strconv.Itoa(val)
+	default:
+		return ""
+REDACTED
 REDACTED
 
 func (a *Account) GetModelMapping() map[string]string {

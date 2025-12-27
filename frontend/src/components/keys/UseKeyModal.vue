@@ -119,7 +119,7 @@
 import { ref, computed, h, watch, type Component REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Modal from '@/components/common/Modal.vue'
-import { useAppStore REDACTED from '@/stores/app'
+import { useClipboard REDACTED from '@/composables/useClipboard'
 import type { GroupPlatform REDACTED from '@/types'
 
 interface Props {
@@ -150,7 +150,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const { t REDACTED = useI18n()
-const appStore = useAppStore()
+const { copyToClipboard: clipboardCopy REDACTED = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
 const activeTab = ref<string>('unix')
@@ -340,14 +340,12 @@ REDACTED`
 REDACTED
 
 const copyContent = async (content: string, index: number) => {
-  try {
-    await navigator.clipboard.writeText(content)
+  const success = await clipboardCopy(content, t('keys.copied'))
+  if (success) {
     copiedIndex.value = index
     setTimeout(() => {
       copiedIndex.value = null
     REDACTED, 2000)
-  REDACTED catch (error) {
-    appStore.showError(t('common.copyFailed'))
   REDACTED
 REDACTED
 </script>

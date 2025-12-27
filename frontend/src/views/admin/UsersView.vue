@@ -1173,6 +1173,7 @@
 import { ref, reactive, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { useClipboard REDACTED from '@/composables/useClipboard'
 import { formatDateTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
@@ -1191,6 +1192,7 @@ import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 
 const appStore = useAppStore()
+const { copyToClipboard: clipboardCopy REDACTED = useClipboard()
 
 const columns = computed<Column[]>(() => [
   { key: 'email', label: t('admin.users.columns.user'), sortable: true REDACTED,
@@ -1312,27 +1314,23 @@ REDACTED
 
 const copyPassword = async () => {
   if (!createForm.password) return
-  try {
-    await navigator.clipboard.writeText(createForm.password)
+  const success = await clipboardCopy(createForm.password, t('admin.users.passwordCopied'))
+  if (success) {
     passwordCopied.value = true
     setTimeout(() => {
       passwordCopied.value = false
     REDACTED, 2000)
-  REDACTED catch (error) {
-    appStore.showError(t('common.copyFailed'))
   REDACTED
 REDACTED
 
 const copyEditPassword = async () => {
   if (!editForm.password) return
-  try {
-    await navigator.clipboard.writeText(editForm.password)
+  const success = await clipboardCopy(editForm.password, t('admin.users.passwordCopied'))
+  if (success) {
     editPasswordCopied.value = true
     setTimeout(() => {
       editPasswordCopied.value = false
     REDACTED, 2000)
-  REDACTED catch (error) {
-    appStore.showError(t('common.copyFailed'))
   REDACTED
 REDACTED
 
