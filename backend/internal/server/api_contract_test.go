@@ -788,6 +788,25 @@ REDACTED
 REDACTED, nil
 REDACTED
 
+func (r *stubApiKeyRepo) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
+	if len(apiKeyIDs) == 0 {
+		return []int64{REDACTED, nil
+REDACTED
+	seen := make(map[int64]struct{REDACTED, len(apiKeyIDs))
+	out := make([]int64, 0, len(apiKeyIDs))
+	for _, id := range apiKeyIDs {
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		key, ok := r.byID[id]
+		if ok && key.UserID == userID {
+			out = append(out, id)
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
 func (r *stubApiKeyRepo) CountByUserID(ctx context.Context, userID int64) (int64, error) {
 	var count int64
 	for _, key := range r.byID {
