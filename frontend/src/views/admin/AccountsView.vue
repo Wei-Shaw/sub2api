@@ -165,7 +165,7 @@
         </div>
       </div>
 
-      <DataTable :columns="columns" :data="accounts" :loading="loading">
+      <DataTable :columns="columns" :data="accounts" :loading="loading" :actions-count="6">
           <template #cell-select="{ row REDACTED">
             <input
               type="checkbox"
