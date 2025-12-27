@@ -20,7 +20,7 @@ REDACTED
 type ClaudeOAuthClient interface {
 	GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error)
 	GetAuthorizationCode(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error)
-	ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string) (*oauth.TokenResponse, error)
+	ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error)
 	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error)
 REDACTED
 
@@ -142,8 +142,11 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// Determine if this is a setup token (scope is inference only)
+	isSetupToken := session.Scope == oauth.ScopeInference
+
 	// Exchange code for token
-	tokenInfo, err := s.exchangeCodeForToken(ctx, input.Code, session.CodeVerifier, session.State, proxyURL)
+	tokenInfo, err := s.exchangeCodeForToken(ctx, input.Code, session.CodeVerifier, session.State, proxyURL, isSetupToken)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -172,10 +175,12 @@ func (s *OAuthService) CookieAuth(ctx context.Context, input *CookieAuthInput) (
 	REDACTED
 REDACTED
 
-	// Determine scope
+	// Determine scope and if this is a setup token
 	scope := fmt.Sprintf("%s %s", oauth.ScopeProfile, oauth.ScopeInference)
+	isSetupToken := false
 	if input.Scope == "inference" {
 		scope = oauth.ScopeInference
+		isSetupToken = true
 REDACTED
 
 	// Step 1: Get organization info using sessionKey
@@ -203,7 +208,7 @@ REDACTED
 REDACTED
 
 	// Step 4: Exchange code for token
-	tokenInfo, err := s.exchangeCodeForToken(ctx, authCode, codeVerifier, state, proxyURL)
+	tokenInfo, err := s.exchangeCodeForToken(ctx, authCode, codeVerifier, state, proxyURL, isSetupToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 REDACTED
@@ -228,8 +233,8 @@ func (s *OAuthService) getAuthorizationCode(ctx context.Context, sessionKey, org
 REDACTED
 
 // exchangeCodeForToken exchanges authorization code for tokens
-func (s *OAuthService) exchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string) (*TokenInfo, error) {
-	tokenResp, err := s.oauthClient.ExchangeCodeForToken(ctx, code, codeVerifier, state, proxyURL)
+func (s *OAuthService) exchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*TokenInfo, error) {
+	tokenResp, err := s.oauthClient.ExchangeCodeForToken(ctx, code, codeVerifier, state, proxyURL, isSetupToken)
 	if err != nil {
 		return nil, err
 REDACTED

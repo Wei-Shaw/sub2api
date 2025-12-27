@@ -1,5 +1,5 @@
 <template>
-  <Modal :show="show" :title="t('admin.accounts.editAccount')" size="lg" @close="handleClose">
+  <Modal :show="show" :title="t('admin.accounts.editAccount')" size="xl" @close="handleClose">
     <form v-if="account" @submit.prevent="handleSubmit" class="space-y-5">
       <div>
         <label class="input-label">{{ t('common.name') REDACTEDREDACTED</label>

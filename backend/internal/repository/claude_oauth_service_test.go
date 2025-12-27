@@ -191,12 +191,13 @@ REDACTED
 
 func (s *ClaudeOAuthServiceSuite) TestExchangeCodeForToken() {
 	tests := []struct {
-		name     string
-		handler  http.HandlerFunc
-		code     string
-		wantErr  bool
-		wantResp *oauth.TokenResponse
-		validate func(captured requestCapture)
+		name         string
+		handler      http.HandlerFunc
+		code         string
+		isSetupToken bool
+		wantErr      bool
+		wantResp     *oauth.TokenResponse
+		validate     func(captured requestCapture)
 REDACTED{
 		{
 			name: "sends_state_when_embedded",
@@ -210,7 +211,8 @@ REDACTED{
 					Scope:        "s",
 			REDACTED)
 		REDACTED,
-			code: "AUTH#STATE2",
+			code:         "AUTH#STATE2",
+			isSetupToken: false,
 			wantResp: &oauth.TokenResponse{
 				AccessToken:  "at",
 				RefreshToken: "rt",
@@ -223,6 +225,29 @@ REDACTED{
 				require.Equal(s.T(), oauth.ClientID, captured.bodyJSON["client_id"])
 				require.Equal(s.T(), oauth.RedirectURI, captured.bodyJSON["redirect_uri"])
 				require.Equal(s.T(), "ver", captured.bodyJSON["code_verifier"])
+				// Regular OAuth should not include expires_in
+				require.Nil(s.T(), captured.bodyJSON["expires_in"], "regular OAuth should not include expires_in")
+		REDACTED,
+	REDACTED,
+		{
+			name: "setup_token_includes_expires_in",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(oauth.TokenResponse{
+					AccessToken: "at",
+					TokenType:   "bearer",
+					ExpiresIn:   31536000,
+			REDACTED)
+		REDACTED,
+			code:         "AUTH",
+			isSetupToken: true,
+			wantResp: &oauth.TokenResponse{
+				AccessToken: "at",
+		REDACTED,
+			validate: func(captured requestCapture) {
+				// Setup token should include expires_in with 1 year value
+				require.Equal(s.T(), float64(31536000), captured.bodyJSON["expires_in"],
+					"setup token should include expires_in: 31536000")
 		REDACTED,
 	REDACTED,
 		{
@@ -231,8 +256,9 @@ REDACTED{
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte("bad request"))
 		REDACTED,
-			code:    "AUTH",
-			wantErr: true,
+			code:         "AUTH",
+			isSetupToken: false,
+			wantErr:      true,
 	REDACTED,
 REDACTED
 
@@ -254,7 +280,7 @@ REDACTED
 			s.client = client
 			s.client.tokenURL = s.srv.URL
 
-			resp, err := s.client.ExchangeCodeForToken(context.Background(), tt.code, "ver", "", "")
+			resp, err := s.client.ExchangeCodeForToken(context.Background(), tt.code, "ver", "", "", tt.isSetupToken)
 
 			if tt.wantErr {
 				require.Error(s.T(), err)
