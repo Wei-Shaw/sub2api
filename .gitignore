@@ -32,6 +32,7 @@ frontend/node_modules/
 frontend/dist/
 *.local
 *.tsbuildinfo
+vite.config.d.ts
 
 # 日志
 npm-debug.log*

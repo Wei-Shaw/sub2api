@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"strconv"
 	"time"
 )
@@ -94,6 +95,9 @@ REDACTED
 	switch val := v.(type) {
 	case string:
 		return val
+	case json.Number:
+		// GORM datatypes.JSONMap 使用 UseNumber() 解析，数字类型为 json.Number
+		return val.String()
 	case float64:
 		// JSON 解析后数字默认为 float64
 		return strconv.FormatInt(int64(val), 10)
