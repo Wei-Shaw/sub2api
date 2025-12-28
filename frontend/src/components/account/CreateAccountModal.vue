@@ -530,7 +530,7 @@
                   : 'https://api.anthropic.com'
             "
           />
-          <p class="input-hint">{{ t('admin.accounts.baseUrlHint') REDACTEDREDACTED</p>
+          <p class="input-hint">{{ baseUrlHint REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') REDACTEDREDACTED</label>
@@ -547,13 +547,7 @@
                   : 'sk-ant-...'
             "
           />
-          <p class="input-hint">
-            {{
-              form.platform === 'gemini'
-                ? t('admin.accounts.gemini.apiKeyHint')
-                : t('admin.accounts.apiKeyHint')
-            REDACTEDREDACTED
-          </p>
+          <p class="input-hint">{{ apiKeyHint REDACTEDREDACTED</p>
         </div>
 
         <!-- Model Restriction Section (不适用于 Gemini) -->
@@ -1113,6 +1107,19 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   return t('admin.accounts.oauth.title')
+REDACTED)
+
+// Platform-specific hints for API Key type
+const baseUrlHint = computed(() => {
+  if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  return t('admin.accounts.baseUrlHint')
+REDACTED)
+
+const apiKeyHint = computed(() => {
+  if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
+  if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
+  return t('admin.accounts.apiKeyHint')
 REDACTED)
 
 interface Props {

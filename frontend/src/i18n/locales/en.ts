@@ -915,6 +915,11 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      // OpenAI specific hints
+      openai: {
+        baseUrlHint: 'Leave default for official OpenAI API',
+        apiKeyHint: 'Your OpenAI API Key'
+      REDACTED,
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
@@ -1076,6 +1081,7 @@ export default {
         modelPassthrough: 'Gemini Model Passthrough',
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
+        baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)'
       REDACTED,
       // Re-Auth Modal

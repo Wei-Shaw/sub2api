@@ -1054,6 +1054,11 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      // OpenAI specific hints
+      openai: {
+        baseUrlHint: '留空使用官方 OpenAI API',
+        apiKeyHint: '您的 OpenAI API Key'
+      REDACTED,
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
       modelMapping: '模型映射',
@@ -1197,7 +1202,8 @@ export default {
       gemini: {
         modelPassthrough: 'Gemini 直接转发模型',
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
-        apiKeyHint: 'Your Gemini API Key（以 AIza 开头）'
+        baseUrlHint: '留空使用官方 Gemini API',
+        apiKeyHint: '您的 Gemini API Key（以 AIza 开头）'
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
