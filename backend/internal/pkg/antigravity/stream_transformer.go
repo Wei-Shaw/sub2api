@@ -1,0 +1,455 @@
+package antigravity
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// BlockType 内容块类型
+type BlockType int
+
+const (
+	BlockTypeNone BlockType = iota
+	BlockTypeText
+	BlockTypeThinking
+	BlockTypeFunction
+)
+
+// StreamingProcessor 流式响应处理器
+type StreamingProcessor struct {
+	blockType         BlockType
+	blockIndex        int
+	messageStartSent  bool
+	messageStopSent   bool
+	usedTool          bool
+	pendingSignature  string
+	trailingSignature string
+	originalModel     string
+
+	// 累计 usage
+	inputTokens  int
+	outputTokens int
+REDACTED
+
+// NewStreamingProcessor 创建流式响应处理器
+func NewStreamingProcessor(originalModel string) *StreamingProcessor {
+	return &StreamingProcessor{
+		blockType:     BlockTypeNone,
+		originalModel: originalModel,
+REDACTED
+REDACTED
+
+// ProcessLine 处理 SSE 行，返回 Claude SSE 事件
+func (p *StreamingProcessor) ProcessLine(line string) []byte {
+	line = strings.TrimSpace(line)
+	if line == "" || !strings.HasPrefix(line, "data:") {
+		return nil
+REDACTED
+
+	data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	if data == "" || data == "[DONE]" {
+		return nil
+REDACTED
+
+	// 解包 v1internal 响应
+	var v1Resp V1InternalResponse
+	if err := json.Unmarshal([]byte(data), &v1Resp); err != nil {
+		// 尝试直接解析为 GeminiResponse
+		var directResp GeminiResponse
+		if err2 := json.Unmarshal([]byte(data), &directResp); err2 != nil {
+			return nil
+	REDACTED
+		v1Resp.Response = directResp
+		v1Resp.ResponseID = directResp.ResponseID
+		v1Resp.ModelVersion = directResp.ModelVersion
+REDACTED
+
+	geminiResp := &v1Resp.Response
+
+	var result bytes.Buffer
+
+	// 发送 message_start
+	if !p.messageStartSent {
+		result.Write(p.emitMessageStart(&v1Resp))
+REDACTED
+
+	// 更新 usage
+	if geminiResp.UsageMetadata != nil {
+		p.inputTokens = geminiResp.UsageMetadata.PromptTokenCount
+		p.outputTokens = geminiResp.UsageMetadata.CandidatesTokenCount
+REDACTED
+
+	// 处理 parts
+	if len(geminiResp.Candidates) > 0 && geminiResp.Candidates[0].Content != nil {
+		for _, part := range geminiResp.Candidates[0].Content.Parts {
+			result.Write(p.processPart(&part))
+	REDACTED
+REDACTED
+
+	// 检查是否结束
+	if len(geminiResp.Candidates) > 0 {
+		finishReason := geminiResp.Candidates[0].FinishReason
+		if finishReason != "" {
+			result.Write(p.emitFinish(finishReason))
+	REDACTED
+REDACTED
+
+	return result.Bytes()
+REDACTED
+
+// Finish 结束处理，返回最终事件和用量
+func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
+	var result bytes.Buffer
+
+	if !p.messageStopSent {
+		result.Write(p.emitFinish(""))
+REDACTED
+
+	usage := &ClaudeUsage{
+		InputTokens:  p.inputTokens,
+		OutputTokens: p.outputTokens,
+REDACTED
+
+	return result.Bytes(), usage
+REDACTED
+
+// emitMessageStart 发送 message_start 事件
+func (p *StreamingProcessor) emitMessageStart(v1Resp *V1InternalResponse) []byte {
+	if p.messageStartSent {
+		return nil
+REDACTED
+
+	usage := ClaudeUsage{REDACTED
+	if v1Resp.Response.UsageMetadata != nil {
+		usage.InputTokens = v1Resp.Response.UsageMetadata.PromptTokenCount
+		usage.OutputTokens = v1Resp.Response.UsageMetadata.CandidatesTokenCount
+REDACTED
+
+	responseID := v1Resp.ResponseID
+	if responseID == "" {
+		responseID = v1Resp.Response.ResponseID
+REDACTED
+	if responseID == "" {
+		responseID = "msg_" + generateRandomID()
+REDACTED
+
+	message := map[string]interface{REDACTED{
+		"id":            responseID,
+		"type":          "message",
+		"role":          "assistant",
+		"content":       []interface{REDACTED{REDACTED,
+		"model":         p.originalModel,
+		"stop_reason":   nil,
+		"stop_sequence": nil,
+		"usage":         usage,
+REDACTED
+
+	event := map[string]interface{REDACTED{
+		"type":    "message_start",
+		"message": message,
+REDACTED
+
+	p.messageStartSent = true
+	return p.formatSSE("message_start", event)
+REDACTED
+
+// processPart 处理单个 part
+func (p *StreamingProcessor) processPart(part *GeminiPart) []byte {
+	var result bytes.Buffer
+	signature := part.ThoughtSignature
+
+	// 1. FunctionCall 处理
+	if part.FunctionCall != nil {
+		// 先处理 trailingSignature
+		if p.trailingSignature != "" {
+			result.Write(p.endBlock())
+			result.Write(p.emitEmptyThinkingWithSignature(p.trailingSignature))
+			p.trailingSignature = ""
+	REDACTED
+
+		result.Write(p.processFunctionCall(part.FunctionCall, signature))
+		return result.Bytes()
+REDACTED
+
+	// 2. Text 处理
+	if part.Text != "" || part.Thought {
+		if part.Thought {
+			result.Write(p.processThinking(part.Text, signature))
+	REDACTED else {
+			result.Write(p.processText(part.Text, signature))
+	REDACTED
+REDACTED
+
+	// 3. InlineData (Image) 处理
+	if part.InlineData != nil && part.InlineData.Data != "" {
+		markdownImg := fmt.Sprintf("![image](data:%s;base64,%s)",
+			part.InlineData.MimeType, part.InlineData.Data)
+		result.Write(p.processText(markdownImg, ""))
+REDACTED
+
+	return result.Bytes()
+REDACTED
+
+// processThinking 处理 thinking
+func (p *StreamingProcessor) processThinking(text, signature string) []byte {
+	var result bytes.Buffer
+
+	// 处理之前的 trailingSignature
+	if p.trailingSignature != "" {
+		result.Write(p.endBlock())
+		result.Write(p.emitEmptyThinkingWithSignature(p.trailingSignature))
+		p.trailingSignature = ""
+REDACTED
+
+	// 开始或继续 thinking 块
+	if p.blockType != BlockTypeThinking {
+		result.Write(p.startBlock(BlockTypeThinking, map[string]interface{REDACTED{
+			"type":     "thinking",
+			"thinking": "",
+	REDACTED))
+REDACTED
+
+	if text != "" {
+		result.Write(p.emitDelta("thinking_delta", map[string]interface{REDACTED{
+			"thinking": text,
+	REDACTED))
+REDACTED
+
+	// 暂存签名
+	if signature != "" {
+		p.pendingSignature = signature
+REDACTED
+
+	return result.Bytes()
+REDACTED
+
+// processText 处理普通 text
+func (p *StreamingProcessor) processText(text, signature string) []byte {
+	var result bytes.Buffer
+
+	// 空 text 带签名 - 暂存
+	if text == "" {
+		if signature != "" {
+			p.trailingSignature = signature
+	REDACTED
+		return nil
+REDACTED
+
+	// 处理之前的 trailingSignature
+	if p.trailingSignature != "" {
+		result.Write(p.endBlock())
+		result.Write(p.emitEmptyThinkingWithSignature(p.trailingSignature))
+		p.trailingSignature = ""
+REDACTED
+
+	// 非空 text 带签名 - 特殊处理
+	if signature != "" {
+		result.Write(p.startBlock(BlockTypeText, map[string]interface{REDACTED{
+			"type": "text",
+			"text": "",
+	REDACTED))
+		result.Write(p.emitDelta("text_delta", map[string]interface{REDACTED{
+			"text": text,
+	REDACTED))
+		result.Write(p.endBlock())
+		result.Write(p.emitEmptyThinkingWithSignature(signature))
+		return result.Bytes()
+REDACTED
+
+	// 普通 text (无签名)
+	if p.blockType != BlockTypeText {
+		result.Write(p.startBlock(BlockTypeText, map[string]interface{REDACTED{
+			"type": "text",
+			"text": "",
+	REDACTED))
+REDACTED
+
+	result.Write(p.emitDelta("text_delta", map[string]interface{REDACTED{
+		"text": text,
+REDACTED))
+
+	return result.Bytes()
+REDACTED
+
+// processFunctionCall 处理 function call
+func (p *StreamingProcessor) processFunctionCall(fc *GeminiFunctionCall, signature string) []byte {
+	var result bytes.Buffer
+
+	p.usedTool = true
+
+	toolID := fc.ID
+	if toolID == "" {
+		toolID = fmt.Sprintf("%s-%s", fc.Name, generateRandomID())
+REDACTED
+
+	toolUse := map[string]interface{REDACTED{
+		"type":  "tool_use",
+		"id":    toolID,
+		"name":  fc.Name,
+		"input": map[string]interface{REDACTED{REDACTED, // 必须为空，参数通过 delta 发送
+REDACTED
+
+	if signature != "" {
+		toolUse["signature"] = signature
+REDACTED
+
+	result.Write(p.startBlock(BlockTypeFunction, toolUse))
+
+	// 发送 input_json_delta
+	if fc.Args != nil {
+		argsJSON, _ := json.Marshal(fc.Args)
+		result.Write(p.emitDelta("input_json_delta", map[string]interface{REDACTED{
+			"partial_json": string(argsJSON),
+	REDACTED))
+REDACTED
+
+	result.Write(p.endBlock())
+
+	return result.Bytes()
+REDACTED
+
+// startBlock 开始新的内容块
+func (p *StreamingProcessor) startBlock(blockType BlockType, contentBlock map[string]interface{REDACTED) []byte {
+	var result bytes.Buffer
+
+	if p.blockType != BlockTypeNone {
+		result.Write(p.endBlock())
+REDACTED
+
+	event := map[string]interface{REDACTED{
+		"type":          "content_block_start",
+		"index":         p.blockIndex,
+		"content_block": contentBlock,
+REDACTED
+
+	result.Write(p.formatSSE("content_block_start", event))
+	p.blockType = blockType
+
+	return result.Bytes()
+REDACTED
+
+// endBlock 结束当前内容块
+func (p *StreamingProcessor) endBlock() []byte {
+	if p.blockType == BlockTypeNone {
+		return nil
+REDACTED
+
+	var result bytes.Buffer
+
+	// Thinking 块结束时发送暂存的签名
+	if p.blockType == BlockTypeThinking && p.pendingSignature != "" {
+		result.Write(p.emitDelta("signature_delta", map[string]interface{REDACTED{
+			"signature": p.pendingSignature,
+	REDACTED))
+		p.pendingSignature = ""
+REDACTED
+
+	event := map[string]interface{REDACTED{
+		"type":  "content_block_stop",
+		"index": p.blockIndex,
+REDACTED
+
+	result.Write(p.formatSSE("content_block_stop", event))
+
+	p.blockIndex++
+	p.blockType = BlockTypeNone
+
+	return result.Bytes()
+REDACTED
+
+// emitDelta 发送 delta 事件
+func (p *StreamingProcessor) emitDelta(deltaType string, deltaContent map[string]interface{REDACTED) []byte {
+	delta := map[string]interface{REDACTED{
+		"type": deltaType,
+REDACTED
+	for k, v := range deltaContent {
+		delta[k] = v
+REDACTED
+
+	event := map[string]interface{REDACTED{
+		"type":  "content_block_delta",
+		"index": p.blockIndex,
+		"delta": delta,
+REDACTED
+
+	return p.formatSSE("content_block_delta", event)
+REDACTED
+
+// emitEmptyThinkingWithSignature 发送空 thinking 块承载签名
+func (p *StreamingProcessor) emitEmptyThinkingWithSignature(signature string) []byte {
+	var result bytes.Buffer
+
+	result.Write(p.startBlock(BlockTypeThinking, map[string]interface{REDACTED{
+		"type":     "thinking",
+		"thinking": "",
+REDACTED))
+	result.Write(p.emitDelta("thinking_delta", map[string]interface{REDACTED{
+		"thinking": "",
+REDACTED))
+	result.Write(p.emitDelta("signature_delta", map[string]interface{REDACTED{
+		"signature": signature,
+REDACTED))
+	result.Write(p.endBlock())
+
+	return result.Bytes()
+REDACTED
+
+// emitFinish 发送结束事件
+func (p *StreamingProcessor) emitFinish(finishReason string) []byte {
+	var result bytes.Buffer
+
+	// 关闭最后一个块
+	result.Write(p.endBlock())
+
+	// 处理 trailingSignature
+	if p.trailingSignature != "" {
+		result.Write(p.emitEmptyThinkingWithSignature(p.trailingSignature))
+		p.trailingSignature = ""
+REDACTED
+
+	// 确定 stop_reason
+	stopReason := "end_turn"
+	if p.usedTool {
+		stopReason = "tool_use"
+REDACTED else if finishReason == "MAX_TOKENS" {
+		stopReason = "max_tokens"
+REDACTED
+
+	usage := ClaudeUsage{
+		InputTokens:  p.inputTokens,
+		OutputTokens: p.outputTokens,
+REDACTED
+
+	deltaEvent := map[string]interface{REDACTED{
+		"type": "message_delta",
+		"delta": map[string]interface{REDACTED{
+			"stop_reason":   stopReason,
+			"stop_sequence": nil,
+	REDACTED,
+		"usage": usage,
+REDACTED
+
+	result.Write(p.formatSSE("message_delta", deltaEvent))
+
+	if !p.messageStopSent {
+		stopEvent := map[string]interface{REDACTED{
+			"type": "message_stop",
+	REDACTED
+		result.Write(p.formatSSE("message_stop", stopEvent))
+		p.messageStopSent = true
+REDACTED
+
+	return result.Bytes()
+REDACTED
+
+// formatSSE 格式化 SSE 事件
+func (p *StreamingProcessor) formatSSE(eventType string, data interface{REDACTED) []byte {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil
+REDACTED
+
+	return []byte(fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, string(jsonData)))
+REDACTED

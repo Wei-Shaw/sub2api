@@ -104,16 +104,28 @@ REDACTED{
 			expected:       "claude-opus-4-5-thinking",
 	REDACTED,
 		{
-			name:           "系统映射 - claude-haiku-4",
+			name:           "系统映射 - claude-haiku-4 → gemini-3-flash",
 			requestedModel: "claude-haiku-4",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5",
+			expected:       "gemini-3-flash",
 	REDACTED,
 		{
-			name:           "系统映射 - claude-3-haiku-20240307",
+			name:           "系统映射 - claude-haiku-4-5 → gemini-3-flash",
+			requestedModel: "claude-haiku-4-5",
+			accountMapping: nil,
+			expected:       "gemini-3-flash",
+	REDACTED,
+		{
+			name:           "系统映射 - claude-3-haiku-20240307 → gemini-3-flash",
 			requestedModel: "claude-3-haiku-20240307",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5",
+			expected:       "gemini-3-flash",
+	REDACTED,
+		{
+			name:           "系统映射 - REDACTED → gemini-3-flash",
+			requestedModel: "REDACTED",
+			accountMapping: nil,
+			expected:       "gemini-3-flash",
 	REDACTED,
 		{
 			name:           "系统映射 - claude-sonnet-4-5-20250929",
