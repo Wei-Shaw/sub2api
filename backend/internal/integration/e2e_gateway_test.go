@@ -631,26 +631,26 @@ REDACTED
 	t.Logf("✅ thinking 模式工具调用测试通过, id=%v", result["id"])
 REDACTED
 
-// TestClaudeMessagesWithInvalidThinkingSignature 测试历史 thinking block 带有无效 signature 的场景
-// 验证：系统应使用 dummy signature 替换历史的无效 signature
-func TestClaudeMessagesWithInvalidThinkingSignature(t *testing.T) {
+// TestClaudeMessagesWithNoSignature 测试历史 thinking block 不带 signature 的场景
+// 验证：Gemini 模型接受没有 signature 的 thinking block
+func TestClaudeMessagesWithNoSignature(t *testing.T) {
 	models := []string{
-		"REDACTED", // gemini-3-flash
+		"REDACTED", // gemini-3-flash - 支持无 signature
 REDACTED
 	for i, model := range models {
 		if i > 0 {
 			time.Sleep(testInterval)
 	REDACTED
-		t.Run(model+"_无效thinking签名", func(t *testing.T) {
-			testClaudeWithInvalidThinkingSignature(t, model)
+		t.Run(model+"_无signature", func(t *testing.T) {
+			testClaudeWithNoSignature(t, model)
 	REDACTED)
 REDACTED
 REDACTED
 
-func testClaudeWithInvalidThinkingSignature(t *testing.T, model string) {
+func testClaudeWithNoSignature(t *testing.T, model string) {
 	url := baseURL + "/v1/messages"
 
-	// 模拟历史对话包含 thinking block 带有无效/过期的 signature
+	// 模拟历史对话包含 thinking block 但没有 signature
 	payload := map[string]any{
 		"model":      model,
 		"max_tokens": 200,
@@ -665,14 +665,14 @@ func testClaudeWithInvalidThinkingSignature(t *testing.T, model string) {
 				"role":    "user",
 				"content": "What is 2+2?",
 		REDACTED,
-			// assistant 消息包含 thinking block 和无效 signature
+			// assistant 消息包含 thinking block 但没有 signature
 			map[string]any{
 				"role": "assistant",
 				"content": []map[string]any{
 					{
-						"type":      "thinking",
-						"thinking":  "Let me calculate 2+2...",
-						"signature": "invalid_expired_signature_abc123", // 模拟过期的 signature
+						"type":     "thinking",
+						"thinking": "Let me calculate 2+2...",
+						// 故意不包含 signature
 				REDACTED,
 					{
 						"type": "text",
@@ -702,9 +702,8 @@ REDACTED
 
 	respBody, _ := io.ReadAll(resp.Body)
 
-	// 400 错误说明 signature 处理失败
 	if resp.StatusCode == 400 {
-		t.Fatalf("无效 thinking signature 处理失败，收到 400 错误: %s", string(respBody))
+		t.Fatalf("无 signature thinking 处理失败，收到 400 错误: %s", string(respBody))
 REDACTED
 
 	if resp.StatusCode == 503 {
@@ -727,5 +726,5 @@ REDACTED
 	if result["type"] != "message" {
 		t.Errorf("期望 type=message, 得到 %v", result["type"])
 REDACTED
-	t.Logf("✅ 无效 thinking signature 处理测试通过, id=%v", result["id"])
+	t.Logf("✅ 无 signature thinking 处理测试通过, id=%v", result["id"])
 REDACTED
