@@ -24,37 +24,6 @@
           >
             <div class="flex items-center space-x-1">
               <span>{{ column.label REDACTEDREDACTED</span>
-              <!-- 操作列展开/折叠按钮 -->
-              <button
-                v-if="column.key === 'actions' && hasExpandableActions"
-                type="button"
-                @click.stop="toggleActionsExpanded"
-                class="ml-2 flex items-center justify-center rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-gray-300"
-                :title="actionsExpanded ? t('table.collapseActions') : t('table.expandActions')"
-              >
-                <!-- 展开状态：收起图标 -->
-                <svg
-                  v-if="actionsExpanded"
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
-                </svg>
-                <!-- 折叠状态：展开图标 -->
-                <svg
-                  v-else
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
-                </svg>
-              </button>
               <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
                 <svg
                   v-if="sortKey === column.key"
