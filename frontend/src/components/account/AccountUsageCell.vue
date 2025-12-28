@@ -95,6 +95,18 @@
 
     <!-- Antigravity OAuth accounts: show quota from extra field -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
+      <!-- 账户类型徽章 -->
+      <div v-if="antigravityTierLabel" class="mb-1">
+        <span
+          :class="[
+            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            antigravityTierClass
+          ]"
+        >
+          {{ antigravityTierLabel REDACTEDREDACTED
+        </span>
+      </div>
+
       <div v-if="hasAntigravityQuota" class="space-y-1">
         <!-- Gemini 3 Pro -->
         <UsageProgressBar
@@ -390,6 +402,41 @@ const antigravity3ImageUsage = computed(() => getAntigravityUsage(['gemini-3-pro
 const antigravityClaude45Usage = computed(() =>
   getAntigravityUsage(['claude-sonnet-4-5', 'claude-opus-4-5-thinking'])
 )
+
+// Antigravity 账户类型
+const antigravityTier = computed(() => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (!extra || typeof extra.tier !== 'string') return null
+  return extra.tier as string
+REDACTED)
+
+// 账户类型显示标签
+const antigravityTierLabel = computed(() => {
+  switch (antigravityTier.value) {
+    case 'free-tier':
+      return t('admin.accounts.tier.free')
+    case 'g1-pro-tier':
+      return t('admin.accounts.tier.pro')
+    case 'g1-ultra-tier':
+      return t('admin.accounts.tier.ultra')
+    default:
+      return null
+  REDACTED
+REDACTED)
+
+// 账户类型徽章样式
+const antigravityTierClass = computed(() => {
+  switch (antigravityTier.value) {
+    case 'free-tier':
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+    case 'g1-pro-tier':
+      return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
+    case 'g1-ultra-tier':
+      return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
+    default:
+      return ''
+  REDACTED
+REDACTED)
 
 const loadUsage = async () => {
   // Fetch usage for Anthropic OAuth and Setup Token accounts

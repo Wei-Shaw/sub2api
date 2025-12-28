@@ -36,9 +36,30 @@ type LoadCodeAssistRequest struct {
 REDACTED `json:"metadata"`
 REDACTED
 
+// TierInfo 账户类型信息
+type TierInfo struct {
+	ID          string `json:"id"`          // standard-tier, free-tier, g1-pro-tier, g1-ultra-tier
+	Name        string `json:"name"`        // 显示名称
+	Description string `json:"description"` // 描述
+REDACTED
+
 // LoadCodeAssistResponse loadCodeAssist 响应
 type LoadCodeAssistResponse struct {
-	CloudAICompanionProject string `json:"cloudaicompanionProject"`
+	CloudAICompanionProject string    `json:"cloudaicompanionProject"`
+	CurrentTier             *TierInfo `json:"currentTier,omitempty"`
+	PaidTier                *TierInfo `json:"paidTier,omitempty"`
+REDACTED
+
+// GetTier 获取账户类型
+// 优先返回 paidTier（付费订阅级别），否则返回 currentTier
+func (r *LoadCodeAssistResponse) GetTier() string {
+	if r.PaidTier != nil && r.PaidTier.ID != "" {
+		return r.PaidTier.ID
+REDACTED
+	if r.CurrentTier != nil {
+		return r.CurrentTier.ID
+REDACTED
+	return ""
 REDACTED
 
 // Client Antigravity API 客户端

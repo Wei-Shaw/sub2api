@@ -972,6 +972,11 @@ export default {
         gemini3Image: 'G3I',
         claude45: 'C4.5'
       REDACTED,
+      tier: {
+        free: 'Free',
+        pro: 'Pro',
+        ultra: 'Ultra'
+      REDACTED,
       form: {
         nameLabel: '账号名称',
         namePlaceholder: '请输入账号名称',
