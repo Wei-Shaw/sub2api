@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/routes"
@@ -19,6 +20,7 @@ func SetupRouter(
 	apiKeyAuth middleware2.ApiKeyAuthMiddleware,
 	apiKeyService *service.ApiKeyService,
 	subscriptionService *service.SubscriptionService,
+	cfg *config.Config,
 ) *gin.Engine {
 	// 应用中间件
 	r.Use(middleware2.Logger())
@@ -30,7 +32,7 @@ func SetupRouter(
 REDACTED
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService)
+	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, cfg)
 
 	return r
 REDACTED
@@ -44,6 +46,7 @@ func registerRoutes(
 	apiKeyAuth middleware2.ApiKeyAuthMiddleware,
 	apiKeyService *service.ApiKeyService,
 	subscriptionService *service.SubscriptionService,
+	cfg *config.Config,
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
@@ -55,5 +58,5 @@ func registerRoutes(
 	routes.RegisterAuthRoutes(v1, h, jwtAuth)
 	routes.RegisterUserRoutes(v1, h, jwtAuth)
 	routes.RegisterAdminRoutes(v1, h, adminAuth)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, cfg)
 REDACTED

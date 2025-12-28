@@ -107,6 +107,14 @@ REDACTED
 REDACTED
 
 func runMainServer() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+REDACTED
+	if cfg.RunMode == config.RunModeSimple {
+		log.Println("⚠️  WARNING: Running in SIMPLE mode - billing and quota checks are DISABLED")
+REDACTED
+
 	buildInfo := handler.BuildInfo{
 		Version:   Version,
 		BuildType: BuildType,

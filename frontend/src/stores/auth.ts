@@ -4,7 +4,7 @@
  */
 
 import { defineStore REDACTED from 'pinia'
-import { ref, computed REDACTED from 'vue'
+import { ref, computed, readonly REDACTED from 'vue'
 import { authAPI REDACTED from '@/api'
 import type { User, LoginRequest, RegisterRequest REDACTED from '@/types'
 
@@ -17,6 +17,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const user = ref<User | null>(null)
   const token = ref<string | null>(null)
+  const runMode = ref<'standard' | 'simple'>('standard')
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
 
   // ==================== Computed ====================
@@ -28,6 +29,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => {
     return user.value?.role === 'admin'
   REDACTED)
+
+  const isSimpleMode = computed(() => runMode.value === 'simple')
 
   // ==================== Actions ====================
 
@@ -168,13 +171,17 @@ export const useAuthStore = defineStore('auth', () => {
     REDACTED
 
     try {
-      const updatedUser = await authAPI.getCurrentUser()
-      user.value = updatedUser
+      const response = await authAPI.getCurrentUser()
+      if (response.data.run_mode) {
+        runMode.value = response.data.run_mode
+      REDACTED
+      const { run_mode, ...userData REDACTED = response.data
+      user.value = userData
 
       // Update localStorage
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser))
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData))
 
-      return updatedUser
+      return userData
     REDACTED catch (error) {
       // If refresh fails with 401, clear auth state
       if ((error as { status?: number REDACTED).status === 401) {
@@ -204,10 +211,12 @@ export const useAuthStore = defineStore('auth', () => {
     // State
     user,
     token,
+    runMode: readonly(runMode),
 
     // Computed
     isAuthenticated,
     isAdmin,
+    isSimpleMode,
 
     // Actions
     login,

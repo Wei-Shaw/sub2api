@@ -466,8 +466,13 @@
         <Select v-model="form.status" :options="statusOptions" />
       </div>
 
-      <!-- Group Selection -->
-      <GroupSelector v-model="form.group_ids" :groups="groups" :platform="account?.platform" />
+      <!-- Group Selection - 仅标准模式显示 -->
+      <GroupSelector
+        v-if="!authStore.isSimpleMode"
+        v-model="form.group_ids"
+        :groups="groups"
+        :platform="account?.platform"
+      />
 
     </form>
 
@@ -513,6 +518,7 @@
 import { ref, reactive, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, Proxy, Group REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -535,6 +541,7 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {

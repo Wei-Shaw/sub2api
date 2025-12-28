@@ -5,18 +5,19 @@ import (
 	"log"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 // NewApiKeyAuthMiddleware 创建 API Key 认证中间件
-func NewApiKeyAuthMiddleware(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService) ApiKeyAuthMiddleware {
-	return ApiKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService))
+func NewApiKeyAuthMiddleware(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) ApiKeyAuthMiddleware {
+	return ApiKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
 REDACTED
 
 // apiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）
-func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 尝试从Authorization header中提取API key (Bearer scheme)
 		authHeader := c.GetHeader("Authorization")
@@ -82,6 +83,18 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 		// 检查用户状态
 		if !apiKey.User.IsActive() {
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+			return
+	REDACTED
+
+		if cfg.RunMode == config.RunModeSimple {
+			// 简易模式：跳过余额和订阅检查，但仍需设置必要的上下文
+			c.Set(string(ContextKeyApiKey), apiKey)
+			c.Set(string(ContextKeyUser), AuthSubject{
+				UserID:      apiKey.User.ID,
+				Concurrency: apiKey.User.Concurrency,
+		REDACTED)
+			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+			c.Next()
 			return
 	REDACTED
 

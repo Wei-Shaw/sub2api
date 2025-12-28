@@ -59,7 +59,8 @@ REDACTED{
 					"status": "active",
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
-					"updated_at": "2025-01-02T03:04:05Z"
+					"updated_at": "2025-01-02T03:04:05Z",
+					"run_mode": "standard"
 			REDACTED
 		REDACTED`,
 	REDACTED,
@@ -371,6 +372,7 @@ REDACTED
 		Default: config.DefaultConfig{
 			ApiKeyPrefix: "sk-",
 	REDACTED,
+		RunMode: config.RunModeStandard,
 REDACTED
 
 	userService := service.NewUserService(userRepo)
@@ -382,7 +384,7 @@ REDACTED
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	authHandler := handler.NewAuthHandler(nil, userService)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil)

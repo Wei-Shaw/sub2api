@@ -30,6 +30,11 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 REDACTED
 
+	// 创建默认分组(简易模式支持)
+	if err := ensureDefaultGroups(db); err != nil {
+		return err
+REDACTED
+
 	// 修复无效的过期时间（年份超过 2099 会导致 JSON 序列化失败）
 	return fixInvalidExpiresAt(db)
 REDACTED
@@ -45,5 +50,57 @@ REDACTED
 	if result.RowsAffected > 0 {
 		log.Printf("[AutoMigrate] Fixed %d subscriptions with invalid expires_at (year > 2099)", result.RowsAffected)
 REDACTED
+	return nil
+REDACTED
+
+// ensureDefaultGroups 确保默认分组存在(简易模式支持)
+// 为每个平台创建一个默认分组,配置最大权限以确保简易模式下不受限制
+func ensureDefaultGroups(db *gorm.DB) error {
+	defaultGroups := []struct {
+		name        string
+		platform    string
+		description string
+REDACTED{
+		{
+			name:        "anthropic-default",
+			platform:    "anthropic",
+			description: "Default group for Anthropic accounts (Simple Mode)",
+	REDACTED,
+		{
+			name:        "openai-default",
+			platform:    "openai",
+			description: "Default group for OpenAI accounts (Simple Mode)",
+	REDACTED,
+		{
+			name:        "gemini-default",
+			platform:    "gemini",
+			description: "Default group for Gemini accounts (Simple Mode)",
+	REDACTED,
+REDACTED
+
+	for _, dg := range defaultGroups {
+		var count int64
+		if err := db.Model(&groupModel{REDACTED).Where("name = ?", dg.name).Count(&count).Error; err != nil {
+			return err
+	REDACTED
+
+		if count == 0 {
+			group := &groupModel{
+				Name:             dg.name,
+				Description:      dg.description,
+				Platform:         dg.platform,
+				RateMultiplier:   1.0,
+				IsExclusive:      false,
+				Status:           "active",
+				SubscriptionType: "standard",
+		REDACTED
+			if err := db.Create(group).Error; err != nil {
+				log.Printf("[AutoMigrate] Failed to create default group %s: %v", dg.name, err)
+				return err
+		REDACTED
+			log.Printf("[AutoMigrate] Created default group: %s (platform: %s)", dg.name, dg.platform)
+	REDACTED
+REDACTED
+
 	return nil
 REDACTED

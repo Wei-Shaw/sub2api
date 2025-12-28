@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -15,6 +16,7 @@ func RegisterGatewayRoutes(
 	apiKeyAuth middleware.ApiKeyAuthMiddleware,
 	apiKeyService *service.ApiKeyService,
 	subscriptionService *service.SubscriptionService,
+	cfg *config.Config,
 ) {
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
@@ -30,7 +32,7 @@ REDACTED
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
 	gemini := r.Group("/v1beta")
-	gemini.Use(middleware.ApiKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService))
+	gemini.Use(middleware.ApiKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	{
 		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
 		gemini.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)

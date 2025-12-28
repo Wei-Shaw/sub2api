@@ -432,8 +432,8 @@ const adminNavItems = computed(() => {
   const baseItems = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true REDACTED,
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon REDACTED,
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon REDACTED,
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true REDACTED,
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon REDACTED,
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon REDACTED,
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true REDACTED,

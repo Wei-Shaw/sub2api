@@ -964,8 +964,13 @@
         </div>
       </div>
 
-      <!-- Group Selection -->
-      <GroupSelector v-model="form.group_ids" :groups="groups" :platform="form.platform" />
+      <!-- Group Selection - 仅标准模式显示 -->
+      <GroupSelector
+        v-if="!authStore.isSimpleMode"
+        v-model="form.group_ids"
+        :groups="groups"
+        :platform="form.platform"
+      />
 
     </form>
 
@@ -1076,6 +1081,7 @@
 import { ref, reactive, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import {
   useAccountOAuth,
@@ -1102,6 +1108,7 @@ interface OAuthFlowExposed {
 REDACTED
 
 const { t REDACTED = useI18n()
+const authStore = useAuthStore()
 
 const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
