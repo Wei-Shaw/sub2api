@@ -83,6 +83,7 @@ type OpenAIGatewayService struct {
 	rateLimitService    *RateLimitService
 	billingCacheService *BillingCacheService
 	httpUpstream        HTTPUpstream
+	deferredService     *DeferredService
 REDACTED
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -97,6 +98,7 @@ func NewOpenAIGatewayService(
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
 	httpUpstream HTTPUpstream,
+	deferredService *DeferredService,
 ) *OpenAIGatewayService {
 	return &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -109,6 +111,7 @@ func NewOpenAIGatewayService(
 		rateLimitService:    rateLimitService,
 		billingCacheService: billingCacheService,
 		httpUpstream:        httpUpstream,
+		deferredService:     deferredService,
 REDACTED
 REDACTED
 
@@ -772,8 +775,8 @@ REDACTED else {
 	REDACTED
 REDACTED
 
-	// Update account last used
-	_ = s.accountRepo.UpdateLastUsed(ctx, account.ID)
+	// Schedule batch update for account last_used_at
+	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 
 	return nil
 REDACTED

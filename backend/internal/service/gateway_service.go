@@ -103,6 +103,7 @@ type GatewayService struct {
 	billingCacheService *BillingCacheService
 	identityService     *IdentityService
 	httpUpstream        HTTPUpstream
+	deferredService     *DeferredService
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -118,6 +119,7 @@ func NewGatewayService(
 	billingCacheService *BillingCacheService,
 	identityService *IdentityService,
 	httpUpstream HTTPUpstream,
+	deferredService *DeferredService,
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
@@ -131,6 +133,7 @@ func NewGatewayService(
 		billingCacheService: billingCacheService,
 		identityService:     identityService,
 		httpUpstream:        httpUpstream,
+		deferredService:     deferredService,
 REDACTED
 REDACTED
 
@@ -1095,10 +1098,8 @@ REDACTED else {
 	REDACTED
 REDACTED
 
-	// 更新账号最后使用时间
-	if err := s.accountRepo.UpdateLastUsed(ctx, account.ID); err != nil {
-		log.Printf("Update last used failed: %v", err)
-REDACTED
+	// Schedule batch update for account last_used_at
+	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 
 	return nil
 REDACTED
