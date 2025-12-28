@@ -404,7 +404,9 @@ REDACTED
 
 # Check if running as root
 check_root() {
-    if [ "$EUID" -ne 0 ]; then
+    # Use 'id -u' instead of $EUID for better compatibility
+    # $EUID may not work reliably when script is piped to bash
+    if [ "$(id -u)" -ne 0 ]; then
         print_error "$(msg 'run_as_root')"
         exit 1
     fi
