@@ -1145,6 +1145,13 @@ REDACTED
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
 // 特点：不记录使用量、仅支持非流式响应
 func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
+	// Antigravity 账户不支持 count_tokens 转发，返回估算值
+	// 参考 Antigravity-Manager 和 proxycast 实现
+	if account.Platform == PlatformAntigravity {
+		c.JSON(http.StatusOK, gin.H{"input_tokens": 100REDACTED)
+		return nil
+REDACTED
+
 	// 应用模型映射（仅对 apikey 类型账号）
 	if account.Type == AccountTypeApiKey {
 		var req struct {
