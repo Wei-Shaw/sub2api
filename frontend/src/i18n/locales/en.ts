@@ -410,7 +410,8 @@ export default {
     subscriptionDays: '{daysREDACTED days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
-    failedToRedeem: 'Failed to redeem code. Please check the code and try again.'
+    failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
+    subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.'
   REDACTED,
 
   // Profile

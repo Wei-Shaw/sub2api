@@ -48,7 +48,7 @@ export const useSubscriptionStore = defineStore('subscriptions', () => {
     REDACTED
 
     // Return in-flight request if exists (deduplication)
-    if (activePromise) {
+    if (activePromise && !force) {
       return activePromise
     REDACTED
 
@@ -56,7 +56,7 @@ export const useSubscriptionStore = defineStore('subscriptions', () => {
 
     // Start new request
     loading.value = true
-    activePromise = subscriptionsAPI
+    const requestPromise = subscriptionsAPI
       .getActiveSubscriptions()
       .then((data) => {
         if (currentGeneration === requestGeneration) {
@@ -71,9 +71,13 @@ export const useSubscriptionStore = defineStore('subscriptions', () => {
         throw error
       REDACTED)
       .finally(() => {
-        loading.value = false
-        activePromise = null
+        if (activePromise === requestPromise) {
+          loading.value = false
+          activePromise = null
+        REDACTED
       REDACTED)
+
+    activePromise = requestPromise
 
     return activePromise
   REDACTED
@@ -106,6 +110,7 @@ export const useSubscriptionStore = defineStore('subscriptions', () => {
    */
   function clear() {
     requestGeneration++
+    activePromise = null
     activeSubscriptions.value = []
     loaded.value = false
     lastFetchedAt.value = null

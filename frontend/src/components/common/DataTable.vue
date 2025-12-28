@@ -211,6 +211,7 @@ REDACTED
 
 // 监听尺寸变化
 let resizeObserver: ResizeObserver | null = null
+let resizeHandler: (() => void) | null = null
 
 onMounted(() => {
   checkScrollable()
@@ -223,17 +224,20 @@ onMounted(() => {
     resizeObserver.observe(tableWrapperRef.value)
   REDACTED else {
     // 降级方案：不支持 ResizeObserver 时使用 window resize
-    const handleResize = () => {
+    resizeHandler = () => {
       checkScrollable()
       checkActionsColumnWidth()
     REDACTED
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', resizeHandler)
   REDACTED
 REDACTED)
 
 onUnmounted(() => {
   resizeObserver?.disconnect()
-  window.removeEventListener('resize', checkScrollable)
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+    resizeHandler = null
+  REDACTED
 REDACTED)
 
 interface Props {

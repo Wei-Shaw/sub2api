@@ -406,7 +406,8 @@ export default {
     subscriptionDays: '{daysREDACTED 天',
     days: '天',
     codeRedeemSuccess: '兑换成功！',
-    failedToRedeem: '兑换失败，请检查兑换码后重试。'
+    failedToRedeem: '兑换失败，请检查兑换码后重试。',
+    subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。'
   REDACTED,
 
   // Profile
