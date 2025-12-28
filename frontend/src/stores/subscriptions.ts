@@ -79,7 +79,7 @@ export const useSubscriptionStore = defineStore('subscriptions', () => {
   REDACTED
 
   /**
-   * Start auto-refresh polling (every 5 minutes)
+   * Start auto-refresh polling 
    */
   function startPolling() {
     if (pollerInterval) return
@@ -88,7 +88,7 @@ export const useSubscriptionStore = defineStore('subscriptions', () => {
       fetchActiveSubscriptions(true).catch((error) => {
         console.error('Subscription polling failed:', error)
       REDACTED)
-    REDACTED, 5 * 60 * 1000) // 5 minutes
+    REDACTED, 5 * 60 * 1000)
   REDACTED
 
   /**

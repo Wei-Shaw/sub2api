@@ -661,6 +661,7 @@ import { ref, computed, onMounted, watch REDACTED from 'vue'
 import { useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAuthStore REDACTED from '@/stores/auth'
+import { useSubscriptionStore REDACTED from '@/stores/subscriptions'
 import { formatDateTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
@@ -701,6 +702,7 @@ ChartJS.register(
 
 const router = useRouter()
 const authStore = useAuthStore()
+const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
 const stats = ref<UserDashboardStats | null>(null)
@@ -1017,6 +1019,11 @@ REDACTED
 onMounted(async () => {
   // Load critical data first
   await loadDashboardStats()
+
+  // Force refresh subscription status when entering dashboard (bypass cache)
+  subscriptionStore.fetchActiveSubscriptions(true).catch((error) => {
+    console.error('Failed to refresh subscription status:', error)
+  REDACTED)
 
   // Initialize date range (synchronous)
   initializeDateRange()
