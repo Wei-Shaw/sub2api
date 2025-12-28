@@ -150,7 +150,7 @@ REDACTED
 REDACTED
 
 	// 如果切换到简单模式，自动将管理员并发数设为 99999
-	if req.SimpleMode {
+	if req.SimpleMode && h.userService != nil {
 		admin, err := h.userService.GetFirstAdmin(c.Request.Context())
 		if err == nil && admin != nil {
 			_ = h.userService.UpdateConcurrency(c.Request.Context(), admin.ID, 99999)
