@@ -271,26 +271,6 @@ const sortedData = computed(() => {
   REDACTED)
 REDACTED)
 
-// 检查是否有可展开的操作列
-const hasExpandableActions = computed(() => {
-  // 如果明确指定了actionsCount，使用它来判断
-  if (props.actionsCount !== undefined) {
-    return props.expandableActions && props.columns.some((col) => col.key === 'actions') && props.actionsCount > 2
-  REDACTED
-
-  // 否则使用原来的检测逻辑
-  return (
-    props.expandableActions &&
-    props.columns.some((col) => col.key === 'actions') &&
-    actionsColumnNeedsExpanding.value
-  )
-REDACTED)
-
-// 切换操作列展开/折叠状态
-const toggleActionsExpanded = () => {
-  actionsExpanded.value = !actionsExpanded.value
-REDACTED
-
 // 检查第一列是否为勾选列
 const hasSelectColumn = computed(() => {
   return props.columns.length > 0 && props.columns[0].key === 'select'
