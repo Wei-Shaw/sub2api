@@ -62,6 +62,10 @@ const filteredGroups = computed(() => {
   if (!props.platform) {
     return props.groups
   REDACTED
+  // antigravity 账户可选择 anthropic 和 gemini 平台的分组
+  if (props.platform === 'antigravity') {
+    return props.groups.filter((g) => g.platform === 'anthropic' || g.platform === 'gemini')
+  REDACTED
   return props.groups.filter((g) => g.platform === props.platform)
 REDACTED)
 

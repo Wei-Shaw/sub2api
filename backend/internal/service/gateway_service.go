@@ -291,6 +291,13 @@ REDACTED
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
+	// 使用多平台账户选择，包含 anthropic 和 antigravity 平台
+	platforms := []string{PlatformAnthropic, PlatformAntigravityREDACTED
+	return s.selectAccountForModelWithPlatforms(ctx, groupID, sessionHash, requestedModel, excludedIDs, platforms)
+REDACTED
+
+// selectAccountForModelWithPlatforms 选择多平台账户
+func (s *GatewayService) selectAccountForModelWithPlatforms(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platforms []string) (*Account, error) {
 	// 1. 查询粘性会话
 	if sessionHash != "" {
 		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
@@ -298,8 +305,8 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 使用IsSchedulable代替IsActive，确保限流/过载账号不会被选中
-				// 同时检查模型支持
-				if err == nil && account.IsSchedulable() && (requestedModel == "" || account.IsModelSupported(requestedModel)) {
+				// 同时检查模型支持（根据平台类型分别处理）
+				if err == nil && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					// 续期粘性会话
 					if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
@@ -310,13 +317,13 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 	REDACTED
 REDACTED
 
-	// 2. 获取可调度账号列表（排除限流和过载的账号，仅限 Anthropic 平台）
+	// 2. 获取可调度账号列表（排除限流和过载的账号，支持多平台）
 	var accounts []Account
 	var err error
 	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformAnthropic)
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
 REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformAnthropic)
+		accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
 REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -329,8 +336,8 @@ REDACTED
 		if _, excluded := excludedIDs[acc.ID]; excluded {
 			continue
 	REDACTED
-		// 检查模型支持
-		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+		// 检查模型支持（根据平台类型分别处理）
+		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
 			continue
 	REDACTED
 		if selected == nil {
@@ -372,6 +379,37 @@ REDACTED
 REDACTED
 
 	return selected, nil
+REDACTED
+
+// isModelSupportedByAccount 根据账户平台检查模型支持
+func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
+	if account.Platform == PlatformAntigravity {
+		// Antigravity 平台使用专门的模型支持检查
+		return IsAntigravityModelSupported(requestedModel)
+REDACTED
+	// 其他平台使用账户的模型支持检查
+	return account.IsModelSupported(requestedModel)
+REDACTED
+
+// IsAntigravityModelSupported 检查 Antigravity 平台是否支持指定模型
+func IsAntigravityModelSupported(requestedModel string) bool {
+	// 直接支持的模型
+	if antigravitySupportedModels[requestedModel] {
+		return true
+REDACTED
+	// 可映射的模型
+	if _, ok := antigravityModelMapping[requestedModel]; ok {
+		return true
+REDACTED
+	// Gemini 前缀透传
+	if strings.HasPrefix(requestedModel, "gemini-") {
+		return true
+REDACTED
+	// Claude 模型支持（通过默认映射到 claude-sonnet-4-5）
+	if strings.HasPrefix(requestedModel, "claude-") {
+		return true
+REDACTED
+	return false
 REDACTED
 
 // GetAccessToken 获取账号凭证

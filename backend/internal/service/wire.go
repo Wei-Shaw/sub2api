@@ -39,9 +39,10 @@ func ProvideTokenRefreshService(
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
+	antigravityOAuthService *AntigravityOAuthService,
 	cfg *config.Config,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, cfg)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cfg)
 	svc.Start()
 	return svc
 REDACTED
@@ -84,6 +85,8 @@ var ProviderSet = wire.NewSet(
 	NewAntigravityOAuthService,
 	NewGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
+	NewAntigravityTokenProvider,
+	NewAntigravityGatewayService,
 	NewRateLimitService,
 	NewAccountUsageService,
 	NewAccountTestService,

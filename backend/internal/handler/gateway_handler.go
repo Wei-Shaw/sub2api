@@ -21,27 +21,30 @@ import (
 
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
-	gatewayService      *service.GatewayService
-	geminiCompatService *service.GeminiMessagesCompatService
-	userService         *service.UserService
-	billingCacheService *service.BillingCacheService
-	concurrencyHelper   *ConcurrencyHelper
+	gatewayService            *service.GatewayService
+	geminiCompatService       *service.GeminiMessagesCompatService
+	antigravityGatewayService *service.AntigravityGatewayService
+	userService               *service.UserService
+	billingCacheService       *service.BillingCacheService
+	concurrencyHelper         *ConcurrencyHelper
 REDACTED
 
 // NewGatewayHandler creates a new GatewayHandler
 func NewGatewayHandler(
 	gatewayService *service.GatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
+	antigravityGatewayService *service.AntigravityGatewayService,
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 ) *GatewayHandler {
 	return &GatewayHandler{
-		gatewayService:      gatewayService,
-		geminiCompatService: geminiCompatService,
-		userService:         userService,
-		billingCacheService: billingCacheService,
-		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude),
+		gatewayService:            gatewayService,
+		geminiCompatService:       geminiCompatService,
+		antigravityGatewayService: antigravityGatewayService,
+		userService:               userService,
+		billingCacheService:       billingCacheService,
+		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude),
 REDACTED
 REDACTED
 
@@ -163,8 +166,13 @@ REDACTED
 				return
 		REDACTED
 
-			// 转发请求
-			result, err := h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
+			// 转发请求 - 根据账号平台分流
+			var result *service.ForwardResult
+			if account.Platform == service.PlatformAntigravity {
+				result, err = h.antigravityGatewayService.ForwardGemini(c.Request.Context(), c, account, req.Model, "generateContent", req.Stream, body)
+		REDACTED else {
+				result, err = h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
+		REDACTED
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 		REDACTED
@@ -240,8 +248,13 @@ REDACTED
 			return
 	REDACTED
 
-		// 转发请求
-		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, body)
+		// 转发请求 - 根据账号平台分流
+		var result *service.ForwardResult
+		if account.Platform == service.PlatformAntigravity {
+			result, err = h.antigravityGatewayService.Forward(c.Request.Context(), c, account, body)
+	REDACTED else {
+			result, err = h.gatewayService.Forward(c.Request.Context(), c, account, body)
+	REDACTED
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 	REDACTED
