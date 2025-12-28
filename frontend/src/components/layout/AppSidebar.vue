@@ -45,8 +45,8 @@
           </router-link>
         </div>
 
-        <!-- Personal Section for Admin -->
-        <div class="sidebar-section">
+        <!-- Personal Section for Admin (hidden in simple mode) -->
+        <div v-if="!simpleMode" class="sidebar-section">
           <div v-if="!sidebarCollapsed" class="sidebar-section-title">
             {{ t('nav.myAccount') REDACTEDREDACTED
           </div>
@@ -154,6 +154,7 @@ const isDark = ref(document.documentElement.classList.contains('dark'))
 const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo)
 const siteVersion = computed(() => appStore.siteVersion)
+const simpleMode = computed(() => appStore.simpleMode)
 
 // SVG Icon Components
 const DashboardIcon = {
@@ -402,36 +403,54 @@ const ChevronDoubleRightIcon = {
 REDACTED
 
 // User navigation items (for regular users)
-const userNavItems = computed(() => [
-  { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
-  { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
-  { path: '/usage', label: t('nav.usage'), icon: ChartIcon REDACTED,
-  { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon REDACTED,
-  { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon REDACTED,
-  { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
-])
+const userNavItems = computed(() => {
+  const items = [
+    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
+    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
+  ]
+  return simpleMode.value ? items.filter(item => !item.hideInSimpleMode) : items
+REDACTED)
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard)
-const personalNavItems = computed(() => [
-  { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
-  { path: '/usage', label: t('nav.usage'), icon: ChartIcon REDACTED,
-  { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon REDACTED,
-  { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon REDACTED,
-  { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
-])
+const personalNavItems = computed(() => {
+  const items = [
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
+    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
+  ]
+  return simpleMode.value ? items.filter(item => !item.hideInSimpleMode) : items
+REDACTED)
 
 // Admin navigation items
-const adminNavItems = computed(() => [
-  { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
-  { path: '/admin/users', label: t('nav.users'), icon: UsersIcon REDACTED,
-  { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon REDACTED,
-  { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon REDACTED,
-  { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon REDACTED,
-  { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon REDACTED,
-  { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon REDACTED,
-  { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon REDACTED,
-  { path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED
-])
+const adminNavItems = computed(() => {
+  const baseItems = [
+    { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
+    { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true REDACTED,
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon REDACTED,
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon REDACTED,
+    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon REDACTED,
+    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon REDACTED,
+    { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true REDACTED,
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon REDACTED,
+  ]
+
+  // 简单模式下，在系统设置前插入 API密钥
+  if (simpleMode.value) {
+    const filtered = baseItems.filter(item => !item.hideInSimpleMode)
+    filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED)
+    filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
+    return filtered
+  REDACTED
+
+  baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
+  return baseItems
+REDACTED)
 
 function toggleSidebar() {
   appStore.toggleSidebar()

@@ -153,6 +153,58 @@
           </div>
         </div>
 
+        <!-- Usage Mode Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.usageMode.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.usageMode.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <!-- Simple Mode Toggle -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.usageMode.simpleMode') REDACTEDREDACTED
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.usageMode.simpleModeHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle
+                :model-value="form.simple_mode"
+                @update:model-value="onSimpleModeToggle"
+              />
+            </div>
+
+            <!-- Warning when simple mode is enabled -->
+            <div
+              v-if="form.simple_mode"
+              class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
+            >
+              <div class="flex items-start">
+                <svg
+                  class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                <p class="ml-3 text-sm text-amber-700 dark:text-amber-300">
+                  {{ t('admin.settings.usageMode.simpleModeWarning') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Registration Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -706,6 +758,19 @@
         </div>
       </form>
     </div>
+
+    <!-- Simple Mode Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showSimpleModeConfirm"
+      :title="t('admin.settings.usageMode.confirmTitle')"
+      :message="pendingSimpleModeValue
+        ? t('admin.settings.usageMode.confirmEnableMessage')
+        : t('admin.settings.usageMode.confirmDisableMessage')"
+      :confirm-text="t('common.confirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmSimpleModeChange"
+      @cancel="cancelSimpleModeChange"
+    />
   </AppLayout>
 </template>
 
@@ -716,6 +781,7 @@ import { adminAPI REDACTED from '@/api'
 import type { SystemSettings REDACTED from '@/api/admin/settings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore REDACTED from '@/stores'
 
 const { t REDACTED = useI18n()
@@ -727,6 +793,10 @@ const testingSmtp = ref(false)
 const sendingTestEmail = ref(false)
 const testEmailAddress = ref('')
 const logoError = ref('')
+
+// Simple mode confirmation dialog
+const showSimpleModeConfirm = ref(false)
+const pendingSimpleModeValue = ref(false)
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
@@ -756,7 +826,9 @@ const form = reactive<SystemSettings>({
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: '',
-  turnstile_secret_key: ''
+  turnstile_secret_key: '',
+  // Usage mode
+  simple_mode: false
 REDACTED)
 
 function handleLogoUpload(event: Event) {
@@ -825,6 +897,40 @@ async function saveSettings() {
   REDACTED finally {
     saving.value = false
   REDACTED
+REDACTED
+
+// Simple mode toggle handlers
+function onSimpleModeToggle(value: boolean) {
+  pendingSimpleModeValue.value = value
+  showSimpleModeConfirm.value = true
+REDACTED
+
+async function confirmSimpleModeChange() {
+  showSimpleModeConfirm.value = false
+  form.simple_mode = pendingSimpleModeValue.value
+
+  saving.value = true
+  try {
+    await adminAPI.settings.updateSettings(form)
+    await appStore.fetchPublicSettings(true)
+    appStore.showSuccess(t('admin.settings.settingsSaved'))
+    // Reload page to apply menu changes
+    setTimeout(() => {
+      window.location.reload()
+    REDACTED, 500)
+  REDACTED catch (error: any) {
+    // Revert on error
+    form.simple_mode = !pendingSimpleModeValue.value
+    appStore.showError(
+      t('admin.settings.failedToSave') + ': ' + (error.message || t('common.unknownError'))
+    )
+  REDACTED finally {
+    saving.value = false
+  REDACTED
+REDACTED
+
+function cancelSimpleModeChange() {
+  showSimpleModeConfirm.value = false
 REDACTED
 
 async function testSmtpConnection() {

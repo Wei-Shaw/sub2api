@@ -64,6 +64,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyApiBaseUrl,
 		SettingKeyContactInfo,
 		SettingKeyDocUrl,
+		SettingKeySimpleMode,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -82,6 +83,7 @@ REDACTED
 		ApiBaseUrl:          settings[SettingKeyApiBaseUrl],
 		ContactInfo:         settings[SettingKeyContactInfo],
 		DocUrl:              settings[SettingKeyDocUrl],
+		SimpleMode:          settings[SettingKeySimpleMode] == "true",
 REDACTED, nil
 REDACTED
 
@@ -122,6 +124,9 @@ REDACTED
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+
+	// 使用模式
+	updates[SettingKeySimpleMode] = strconv.FormatBool(settings.SimpleMode)
 
 	return s.settingRepo.SetMultiple(ctx, updates)
 REDACTED
@@ -223,6 +228,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		ApiBaseUrl:          settings[SettingKeyApiBaseUrl],
 		ContactInfo:         settings[SettingKeyContactInfo],
 		DocUrl:              settings[SettingKeyDocUrl],
+		SimpleMode:          settings[SettingKeySimpleMode] == "true",
 REDACTED
 
 	// 解析整数类型

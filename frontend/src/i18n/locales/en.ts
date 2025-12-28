@@ -676,14 +676,21 @@ export default {
         description: 'Description',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
-        status: 'Status'
+        status: 'Status',
+        exclusive: 'Exclusive Group'
       REDACTED,
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
-      exclusiveHint: 'Exclusive (requires explicit user access)',
+      exclusiveHint: 'Exclusive group, manually assign to specific users',
+      exclusiveTooltip: {
+        title: 'What is an exclusive group?',
+        description: 'When enabled, users cannot see this group when creating API Keys. Only after an admin manually assigns a user to this group can they use it.',
+        example: 'Use case:',
+        exampleContent: 'Public group rate is 0.8. Create an exclusive group with 0.7 rate, manually assign VIP users to give them better pricing.'
+      REDACTED,
       noGroupsYet: 'No groups yet',
       createFirstGroup: 'Create your first group to organize API keys.',
       creating: 'Creating...',
@@ -1399,6 +1406,16 @@ export default {
         keyWarning: 'This key will only be shown once. Please copy it now.',
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
         usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
+      REDACTED,
+      usageMode: {
+        title: 'Usage Mode',
+        description: 'Toggle simple mode for a simplified interface',
+        simpleMode: 'Simple Mode',
+        simpleModeHint: 'Hide multi-user management features, suitable for personal use',
+        simpleModeWarning: 'When enabled, user management and redeem code menus will be hidden, registration will be disabled, and admin concurrency will be set to unlimited',
+        confirmTitle: 'Confirm Mode Change',
+        confirmEnableMessage: 'Are you sure you want to enable Simple Mode? This will hide multi-user management menus, disable registration, and set admin concurrency to 99999 (unlimited).',
+        confirmDisableMessage: 'Are you sure you want to disable Simple Mode? This will restore all management menus.'
       REDACTED,
       saveSettings: 'Save Settings',
       saving: 'Saving...',

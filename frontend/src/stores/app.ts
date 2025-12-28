@@ -30,6 +30,7 @@ export const useAppStore = defineStore('app', () => {
   const contactInfo = ref<string>('')
   const apiBaseUrl = ref<string>('')
   const docUrl = ref<string>('')
+  const simpleMode = ref<boolean>(false)
 
   // Version cache state
   const versionLoaded = ref<boolean>(false)
@@ -296,7 +297,8 @@ export const useAppStore = defineStore('app', () => {
         api_base_url: apiBaseUrl.value,
         contact_info: contactInfo.value,
         doc_url: docUrl.value,
-        version: siteVersion.value
+        version: siteVersion.value,
+        simple_mode: simpleMode.value
       REDACTED
     REDACTED
 
@@ -314,6 +316,7 @@ export const useAppStore = defineStore('app', () => {
       contactInfo.value = data.contact_info || ''
       apiBaseUrl.value = data.api_base_url || ''
       docUrl.value = data.doc_url || ''
+      simpleMode.value = data.simple_mode || false
       publicSettingsLoaded.value = true
       return data
     REDACTED catch (error) {
@@ -348,6 +351,7 @@ export const useAppStore = defineStore('app', () => {
     contactInfo,
     apiBaseUrl,
     docUrl,
+    simpleMode,
 
     // Version state
     versionLoaded,

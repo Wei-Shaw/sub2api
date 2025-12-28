@@ -272,34 +272,66 @@
           />
           <p class="input-hint">{{ t('admin.groups.rateMultiplierHint') REDACTEDREDACTED</p>
         </div>
-        <div v-if="createForm.subscription_type !== 'subscription'" class="flex items-center gap-3">
-          <button
-            type="button"
-            @click="createForm.is_exclusive = !createForm.is_exclusive"
-            :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              createForm.is_exclusive ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-            ]"
-          >
-            <span
+        <div v-if="createForm.subscription_type !== 'subscription'">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.groups.form.exclusive') REDACTEDREDACTED
+            </label>
+            <!-- Help Tooltip -->
+            <div class="group relative inline-flex">
+              <svg
+                class="h-3.5 w-3.5 cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <!-- Tooltip Popover -->
+              <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+                <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
+                  <p class="mb-2 text-xs font-medium">{{ t('admin.groups.exclusiveTooltip.title') REDACTEDREDACTED</p>
+                  <p class="mb-2 text-xs leading-relaxed text-gray-300">
+                    {{ t('admin.groups.exclusiveTooltip.description') REDACTEDREDACTED
+                  </p>
+                  <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
+                    <p class="text-xs leading-relaxed text-gray-300">
+                      <span class="text-primary-400">💡 {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
+                      {{ t('admin.groups.exclusiveTooltip.exampleContent') REDACTEDREDACTED
+                    </p>
+                  </div>
+                  <!-- Arrow -->
+                  <div class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="createForm.is_exclusive = !createForm.is_exclusive"
               :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                createForm.is_exclusive ? 'translate-x-6' : 'translate-x-1'
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.is_exclusive ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
               ]"
-            />
-          </button>
-          <label class="text-sm text-gray-700 dark:text-gray-300">
-            {{ t('admin.groups.exclusiveHint') REDACTEDREDACTED
-          </label>
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.is_exclusive ? 'translate-x-6' : 'translate-x-1'
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{ createForm.is_exclusive ? t('admin.groups.exclusive') : t('admin.groups.public') REDACTEDREDACTED
+            </span>
+          </div>
         </div>
 
         <!-- Subscription Configuration -->
         <div class="mt-4 border-t pt-4">
-          <h4 class="mb-4 text-sm font-medium text-gray-900 dark:text-white">
-            {{ t('admin.groups.subscription.title') REDACTEDREDACTED
-          </h4>
-
-          <div class="mb-4">
+          <div>
             <label class="input-label">{{ t('admin.groups.subscription.type') REDACTEDREDACTED</label>
             <Select v-model="createForm.subscription_type" :options="subscriptionTypeOptions" />
             <p class="input-hint">{{ t('admin.groups.subscription.typeHint') REDACTEDREDACTED</p>
@@ -422,25 +454,61 @@
             class="input"
           />
         </div>
-        <div v-if="editForm.subscription_type !== 'subscription'" class="flex items-center gap-3">
-          <button
-            type="button"
-            @click="editForm.is_exclusive = !editForm.is_exclusive"
-            :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              editForm.is_exclusive ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-            ]"
-          >
-            <span
+        <div v-if="editForm.subscription_type !== 'subscription'">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.groups.form.exclusive') REDACTEDREDACTED
+            </label>
+            <!-- Help Tooltip -->
+            <div class="group relative inline-flex">
+              <svg
+                class="h-3.5 w-3.5 cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <!-- Tooltip Popover -->
+              <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+                <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
+                  <p class="mb-2 text-xs font-medium">{{ t('admin.groups.exclusiveTooltip.title') REDACTEDREDACTED</p>
+                  <p class="mb-2 text-xs leading-relaxed text-gray-300">
+                    {{ t('admin.groups.exclusiveTooltip.description') REDACTEDREDACTED
+                  </p>
+                  <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
+                    <p class="text-xs leading-relaxed text-gray-300">
+                      <span class="text-primary-400">💡 {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
+                      {{ t('admin.groups.exclusiveTooltip.exampleContent') REDACTEDREDACTED
+                    </p>
+                  </div>
+                  <!-- Arrow -->
+                  <div class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="editForm.is_exclusive = !editForm.is_exclusive"
               :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                editForm.is_exclusive ? 'translate-x-6' : 'translate-x-1'
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.is_exclusive ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
               ]"
-            />
-          </button>
-          <label class="text-sm text-gray-700 dark:text-gray-300">
-            {{ t('admin.groups.exclusiveHint') REDACTEDREDACTED
-          </label>
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.is_exclusive ? 'translate-x-6' : 'translate-x-1'
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{ editForm.is_exclusive ? t('admin.groups.exclusive') : t('admin.groups.public') REDACTEDREDACTED
+            </span>
+          </div>
         </div>
         <div>
           <label class="input-label">{{ t('admin.groups.form.status') REDACTEDREDACTED</label>
@@ -449,11 +517,7 @@
 
         <!-- Subscription Configuration -->
         <div class="mt-4 border-t pt-4">
-          <h4 class="mb-4 text-sm font-medium text-gray-900 dark:text-white">
-            {{ t('admin.groups.subscription.title') REDACTEDREDACTED
-          </h4>
-
-          <div class="mb-4">
+          <div>
             <label class="input-label">{{ t('admin.groups.subscription.type') REDACTEDREDACTED</label>
             <Select
               v-model="editForm.subscription_type"
@@ -619,10 +683,18 @@ const editStatusOptions = computed(() => [
   { value: 'inactive', label: t('common.inactive') REDACTED
 ])
 
-const subscriptionTypeOptions = computed(() => [
-  { value: 'standard', label: t('admin.groups.subscription.standard') REDACTED,
-  { value: 'subscription', label: t('admin.groups.subscription.subscription') REDACTED
-])
+const subscriptionTypeOptions = computed(() => {
+  // 简单模式下只显示订阅模式（配额模式）
+  if (appStore.simpleMode) {
+    return [
+      { value: 'subscription', label: t('admin.groups.subscription.subscription') REDACTED
+    ]
+  REDACTED
+  return [
+    { value: 'standard', label: t('admin.groups.subscription.standard') REDACTED,
+    { value: 'subscription', label: t('admin.groups.subscription.subscription') REDACTED
+  ]
+REDACTED)
 
 const groups = ref<Group[]>([])
 const loading = ref(false)
@@ -732,7 +804,7 @@ const closeCreateModal = () => {
   createForm.platform = 'anthropic'
   createForm.rate_multiplier = 1.0
   createForm.is_exclusive = false
-  createForm.subscription_type = 'standard'
+  createForm.subscription_type = appStore.simpleMode ? 'subscription' : 'standard'
   createForm.daily_limit_usd = null
   createForm.weekly_limit_usd = null
   createForm.monthly_limit_usd = null
@@ -823,5 +895,9 @@ watch(
 
 onMounted(() => {
   loadGroups()
+  // 简单模式下默认使用订阅模式
+  if (appStore.simpleMode) {
+    createForm.subscription_type = 'subscription'
+  REDACTED
 REDACTED)
 </script>
