@@ -10,7 +10,7 @@
         <!-- Row 1: Core Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Balance -->
-          <div class="card p-4">
+          <div v-if="!authStore.isSimpleMode" class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
                 <svg
@@ -727,10 +727,20 @@ const trendChartRef = ref<ChartComponentRef | null>(null)
 // Recent usage
 const recentUsage = ref<UsageLog[]>([])
 
+// Helper function to format date in local timezone
+const formatLocalDate = (date: Date): string => {
+  return `${date.getFullYear()REDACTED-${String(date.getMonth() + 1).padStart(2, '0')REDACTED-${String(date.getDate()).padStart(2, '0')REDACTED`
+REDACTED
+
+// Initialize date range immediately (not in onMounted)
+const now = new Date()
+const weekAgo = new Date(now)
+weekAgo.setDate(weekAgo.getDate() - 6)
+
 // Date range
 const granularity = ref<'day' | 'hour'>('day')
-const startDate = ref('')
-const endDate = ref('')
+const startDate = ref(formatLocalDate(weekAgo))
+const endDate = ref(formatLocalDate(now))
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
@@ -963,18 +973,6 @@ REDACTED) => {
   loadChartData()
 REDACTED
 
-// Initialize default date range
-const initializeDateRange = () => {
-  const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const weekAgo = new Date(now)
-  weekAgo.setDate(weekAgo.getDate() - 6)
-
-  startDate.value = weekAgo.toISOString().split('T')[0]
-  endDate.value = today
-  granularity.value = 'day'
-REDACTED
-
 // Load data
 const loadDashboardStats = async () => {
   loading.value = true
@@ -1015,8 +1013,11 @@ REDACTED
 const loadRecentUsage = async () => {
   loadingUsage.value = true
   try {
-    const endDate = new Date().toISOString().split('T')[0]
-    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    // Use local timezone instead of UTC
+    const now = new Date()
+    const endDate = `${now.getFullYear()REDACTED-${String(now.getMonth() + 1).padStart(2, '0')REDACTED-${String(now.getDate()).padStart(2, '0')REDACTED`
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const startDate = `${weekAgo.getFullYear()REDACTED-${String(weekAgo.getMonth() + 1).padStart(2, '0')REDACTED-${String(weekAgo.getDate()).padStart(2, '0')REDACTED`
     const usageResponse = await usageAPI.getByDateRange(startDate, endDate)
     recentUsage.value = usageResponse.items.slice(0, 5)
   REDACTED catch (error) {
@@ -1034,9 +1035,6 @@ onMounted(async () => {
   subscriptionStore.fetchActiveSubscriptions(true).catch((error) => {
     console.error('Failed to refresh subscription status:', error)
   REDACTED)
-
-  // Initialize date range (synchronous)
-  initializeDateRange()
 
   // Load chart data and recent usage in parallel (non-critical)
   Promise.all([loadChartData(), loadRecentUsage()]).catch((error) => {

@@ -407,10 +407,20 @@ const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
 const userTrend = ref<UserUsageTrendPoint[]>([])
 
+// Helper function to format date in local timezone
+const formatLocalDate = (date: Date): string => {
+  return `${date.getFullYear()REDACTED-${String(date.getMonth() + 1).padStart(2, '0')REDACTED-${String(date.getDate()).padStart(2, '0')REDACTED`
+REDACTED
+
+// Initialize date range immediately
+const now = new Date()
+const weekAgo = new Date(now)
+weekAgo.setDate(weekAgo.getDate() - 6)
+
 // Date range
 const granularity = ref<'day' | 'hour'>('day')
-const startDate = ref('')
-const endDate = ref('')
+const startDate = ref(formatLocalDate(weekAgo))
+const endDate = ref(formatLocalDate(now))
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
@@ -597,18 +607,6 @@ REDACTED) => {
   loadChartData()
 REDACTED
 
-// Initialize default date range
-const initializeDateRange = () => {
-  const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const weekAgo = new Date(now)
-  weekAgo.setDate(weekAgo.getDate() - 6)
-
-  startDate.value = weekAgo.toISOString().split('T')[0]
-  endDate.value = today
-  granularity.value = 'day'
-REDACTED
-
 // Load data
 const loadDashboardStats = async () => {
   loading.value = true
@@ -649,7 +647,6 @@ REDACTED
 
 onMounted(() => {
   loadDashboardStats()
-  initializeDateRange()
   loadChartData()
 REDACTED)
 </script>
