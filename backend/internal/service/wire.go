@@ -54,6 +54,18 @@ func ProvideTimingWheelService() *TimingWheelService {
 	return svc
 REDACTED
 
+// ProvideAntigravityQuotaRefresher creates and starts AntigravityQuotaRefresher
+func ProvideAntigravityQuotaRefresher(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	oauthSvc *AntigravityOAuthService,
+	cfg *config.Config,
+) *AntigravityQuotaRefresher {
+	svc := NewAntigravityQuotaRefresher(accountRepo, proxyRepo, oauthSvc, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideDeferredService creates and starts DeferredService
 func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService) *DeferredService {
 	svc := NewDeferredService(accountRepo, timingWheel, 10*time.Second)
@@ -102,4 +114,5 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenRefreshService,
 	ProvideTimingWheelService,
 	ProvideDeferredService,
+	ProvideAntigravityQuotaRefresher,
 )

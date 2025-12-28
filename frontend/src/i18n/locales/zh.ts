@@ -966,7 +966,11 @@ export default {
         cooldown: '冷却中'
       REDACTED,
       usageWindow: {
-        statsTitle: '5小时窗口用量统计'
+        statsTitle: '5小时窗口用量统计',
+        gemini3Pro: 'G3P',
+        gemini3Flash: 'G3F',
+        gemini3Image: 'G3I',
+        claude45: 'C4.5'
       REDACTED,
       form: {
         nameLabel: '账号名称',

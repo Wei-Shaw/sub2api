@@ -1157,7 +1157,11 @@ export default {
         noData: 'No usage data available for this account'
       REDACTED,
       usageWindow: {
-        statsTitle: '5-Hour Window Usage Statistics'
+        statsTitle: '5-Hour Window Usage Statistics',
+        gemini3Pro: 'G3P',
+        gemini3Flash: 'G3F',
+        gemini3Image: 'G3I',
+        claude45: 'C4.5'
       REDACTED
     REDACTED,
 
