@@ -41,7 +41,7 @@ REDACTED
 type AssignSubscriptionRequest struct {
 	UserID       int64  `json:"user_id" binding:"required"`
 	GroupID      int64  `json:"group_id" binding:"required"`
-	ValidityDays int    `json:"validity_days"`
+	ValidityDays int    `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
 	Notes        string `json:"notes"`
 REDACTED
 
@@ -49,13 +49,13 @@ REDACTED
 type BulkAssignSubscriptionRequest struct {
 	UserIDs      []int64 `json:"user_ids" binding:"required,min=1"`
 	GroupID      int64   `json:"group_id" binding:"required"`
-	ValidityDays int     `json:"validity_days"`
+	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
 	Notes        string  `json:"notes"`
 REDACTED
 
 // ExtendSubscriptionRequest represents extend subscription request
 type ExtendSubscriptionRequest struct {
-	Days int `json:"days" binding:"required,min=1"`
+	Days int `json:"days" binding:"required,min=1,max=36500"` // max 100 years
 REDACTED
 
 // List handles listing all subscriptions with pagination and filters
