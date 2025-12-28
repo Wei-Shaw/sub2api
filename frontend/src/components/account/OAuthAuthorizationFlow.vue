@@ -527,7 +527,7 @@ interface Props {
   allowMultiple?: boolean
   methodLabel?: string
   showCookieOption?: boolean // Whether to show cookie auto-auth option
-  platform?: 'anthropic' | 'openai' | 'gemini' // Platform type for different UI/text
+  platform?: 'anthropic' | 'openai' | 'gemini' | 'antigravity' // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
 REDACTED
 
@@ -560,6 +560,7 @@ const isOpenAI = computed(() => props.platform === 'openai')
 const getOAuthKey = (key: string) => {
   if (props.platform === 'openai') return `admin.accounts.oauth.openai.${keyREDACTED`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${keyREDACTED`
+  if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${keyREDACTED`
   return `admin.accounts.oauth.${keyREDACTED`
 REDACTED
 
@@ -575,9 +576,11 @@ const oauthAuthCodeDesc = computed(() => t(getOAuthKey('authCodeDesc')))
 const oauthAuthCode = computed(() => t(getOAuthKey('authCode')))
 const oauthAuthCodePlaceholder = computed(() => t(getOAuthKey('authCodePlaceholder')))
 const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
-const oauthImportantNotice = computed(() =>
-  props.platform === 'openai' ? t('admin.accounts.oauth.openai.importantNotice') : ''
-)
+const oauthImportantNotice = computed(() => {
+  if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
+  if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
+  return ''
+REDACTED)
 
 // Local state
 const inputMethod = ref<AuthInputMethod>(props.showCookieOption ? 'manual' : 'manual')
@@ -603,10 +606,10 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 REDACTED)
 
-// Auto-extract code from OpenAI callback URL
-// e.g., http://localhost:1455/auth/callback?code=ac_xxx...&scope=...&state=...
+// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity)
+// e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
@@ -616,7 +619,7 @@ watch(authCodeInput, (newVal) => {
       const url = new URL(trimmed)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if (props.platform === 'gemini' && stateParam) {
+      if ((props.platform === 'gemini' || props.platform === 'antigravity') && stateParam) {
         oauthState.value = stateParam
       REDACTED
       if (code && code !== trimmed) {
@@ -627,7 +630,7 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if (props.platform === 'gemini' && stateMatch && stateMatch[1]) {
+      if ((props.platform === 'gemini' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       REDACTED
       if (match && match[1] && match[1] !== trimmed) {

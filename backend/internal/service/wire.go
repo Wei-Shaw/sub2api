@@ -17,7 +17,7 @@ REDACTED
 func ProvidePricingService(cfg *config.Config, remoteClient PricingRemoteClient) (*PricingService, error) {
 	svc := NewPricingService(cfg, remoteClient)
 	if err := svc.Initialize(); err != nil {
-		// 价格服务初始化失败不应阻止启动,使用回退价格
+		// Pricing service initialization failure should not block startup, use fallback prices
 		println("[Service] Warning: Pricing service initialization failed:", err.Error())
 REDACTED
 	return svc, nil
@@ -81,6 +81,7 @@ var ProviderSet = wire.NewSet(
 	NewOAuthService,
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
+	NewAntigravityOAuthService,
 	NewGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	NewRateLimitService,

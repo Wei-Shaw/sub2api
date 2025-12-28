@@ -940,7 +940,8 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         anthropic: 'Anthropic',
-        gemini: 'Gemini'
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
       REDACTED,
       types: {
         oauth: 'OAuth',
@@ -948,6 +949,7 @@ export default {
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
+        antigravityOauth: 'Antigravity OAuth',
         api_key: 'API Key',
         cookie: 'Cookie'
       REDACTED,
@@ -1178,7 +1180,28 @@ export default {
 	          aiStudioNotConfiguredShort: '未配置',
 	          aiStudioNotConfiguredTip: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback（Consent Screen scopes 需包含 https://www.googleapis.com/auth/generative-language.retriever）',
 	          aiStudioNotConfigured: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback'
-	        REDACTED
+	        REDACTED,
+        // Antigravity specific
+        antigravity: {
+          title: 'Antigravity 账户授权',
+          followSteps: '请按照以下步骤完成 Antigravity 账户的授权：',
+          step1GenerateUrl: '生成授权链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
+          importantNotice:
+            '<strong>重要提示：</strong>授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 <code>http://localhost...</code> 开头时，表示授权已完成。',
+          step3EnterCode: '输入授权链接或 Code',
+          authCodeDesc:
+            '授权完成后，当页面地址变为 <code>http://localhost:xxx/auth/callback?code=...</code> 时：',
+          authCode: '授权链接或 Code',
+          authCodePlaceholder:
+            '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
+          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+          failedToGenerateUrl: '生成 Antigravity 授权链接失败',
+          missingExchangeParams: '缺少 code / session_id / state',
+          failedToExchangeCode: 'Antigravity 授权码兑换失败'
+        REDACTED
 	      REDACTED,
       // Gemini specific (platform-wide)
       gemini: {
@@ -1191,6 +1214,7 @@ export default {
       claudeCodeAccount: 'Claude Code 账号',
       openaiAccount: 'OpenAI 账号',
       geminiAccount: 'Gemini 账号',
+      antigravityAccount: 'Antigravity 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
