@@ -1,0 +1,632 @@
+package integration
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+var (
+	baseURL        = getEnv("BASE_URL", "http://localhost:8080")
+	claudeAPIKey   = "sk-8e572bc3b3de92ace4f41f4256c28600ca11805732a7b693b5c44741346bbbb3"
+	geminiAPIKey   = "sk-5950197a2085b38bbe5a1b229cc02b8ece914963fc44cacc06d497ae8b87410f"
+	testInterval   = 3 * time.Second // 测试间隔，防止限流
+)
+
+func getEnv(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+REDACTED
+	return defaultVal
+REDACTED
+
+// Claude 模型列表
+var claudeModels = []string{
+	// Opus 系列
+	"claude-opus-4-5-thinking",  // 直接支持
+	"claude-opus-4",             // 映射到 claude-opus-4-5-thinking
+	"claude-opus-4-5-20251101",  // 映射到 claude-opus-4-5-thinking
+	// Sonnet 系列
+	"claude-sonnet-4-5",          // 直接支持
+	"claude-sonnet-4-5-thinking", // 直接支持
+	"claude-sonnet-4-5-20250929", // 映射到 claude-sonnet-4-5-thinking
+	"claude-3-5-sonnet-20241022", // 映射到 claude-sonnet-4-5
+	// Haiku 系列（映射到 gemini-3-flash）
+	"claude-haiku-4",
+	"claude-haiku-4-5",
+	"REDACTED",
+	"claude-3-haiku-20240307",
+REDACTED
+
+// Gemini 模型列表
+var geminiModels = []string{
+	"gemini-2.5-flash",
+	"gemini-2.5-flash-lite",
+	"gemini-3-flash",
+	"gemini-3-pro-low",
+REDACTED
+
+func TestMain(m *testing.M) {
+	fmt.Printf("\n🚀 E2E Gateway Tests - %s\n\n", baseURL)
+	os.Exit(m.Run())
+REDACTED
+
+// TestClaudeModelsList 测试 GET /v1/models
+func TestClaudeModelsList(t *testing.T) {
+	url := baseURL + "/v1/models"
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+
+	client := &http.Client{Timeout: 30 * time.SecondREDACTED
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("HTTP %d: %s", resp.StatusCode, string(body))
+REDACTED
+
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+REDACTED
+
+	if result["object"] != "list" {
+		t.Errorf("期望 object=list, 得到 %v", result["object"])
+REDACTED
+
+	data, ok := result["data"].([]any)
+	if !ok {
+		t.Fatal("响应缺少 data 数组")
+REDACTED
+	t.Logf("✅ 返回 %d 个模型", len(data))
+REDACTED
+
+// TestGeminiModelsList 测试 GET /v1beta/models
+func TestGeminiModelsList(t *testing.T) {
+	url := baseURL + "/v1beta/models"
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+geminiAPIKey)
+
+	client := &http.Client{Timeout: 30 * time.SecondREDACTED
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("HTTP %d: %s", resp.StatusCode, string(body))
+REDACTED
+
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+REDACTED
+
+	models, ok := result["models"].([]any)
+	if !ok {
+		t.Fatal("响应缺少 models 数组")
+REDACTED
+	t.Logf("✅ 返回 %d 个模型", len(models))
+REDACTED
+
+// TestClaudeMessages 测试 Claude /v1/messages 接口
+func TestClaudeMessages(t *testing.T) {
+	for i, model := range claudeModels {
+		if i > 0 {
+			time.Sleep(testInterval)
+	REDACTED
+		t.Run(model+"_非流式", func(t *testing.T) {
+			testClaudeMessage(t, model, false)
+	REDACTED)
+		time.Sleep(testInterval)
+		t.Run(model+"_流式", func(t *testing.T) {
+			testClaudeMessage(t, model, true)
+	REDACTED)
+REDACTED
+REDACTED
+
+func testClaudeMessage(t *testing.T, model string, stream bool) {
+	url := baseURL + "/v1/messages"
+
+	payload := map[string]any{
+		"model":      model,
+		"max_tokens": 50,
+		"stream":     stream,
+		"messages": []map[string]string{
+			{"role": "user", "content": "Say 'hello' in one word."REDACTED,
+	REDACTED,
+REDACTED
+	body, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{Timeout: 60 * time.SecondREDACTED
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("HTTP %d: %s", resp.StatusCode, string(respBody))
+REDACTED
+
+	if stream {
+		// 流式：读取 SSE 事件
+		scanner := bufio.NewScanner(resp.Body)
+		eventCount := 0
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data:") {
+				eventCount++
+				if eventCount >= 3 {
+					break
+			REDACTED
+		REDACTED
+	REDACTED
+		if eventCount == 0 {
+			t.Fatal("未收到任何 SSE 事件")
+	REDACTED
+		t.Logf("✅ 收到 %d+ 个 SSE 事件", eventCount)
+REDACTED else {
+		// 非流式：解析 JSON 响应
+		var result map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatalf("解析响应失败: %v", err)
+	REDACTED
+		if result["type"] != "message" {
+			t.Errorf("期望 type=message, 得到 %v", result["type"])
+	REDACTED
+		t.Logf("✅ 收到消息响应 id=%v", result["id"])
+REDACTED
+REDACTED
+
+// TestGeminiGenerateContent 测试 Gemini /v1beta/models/:model 接口
+func TestGeminiGenerateContent(t *testing.T) {
+	for i, model := range geminiModels {
+		if i > 0 {
+			time.Sleep(testInterval)
+	REDACTED
+		t.Run(model+"_非流式", func(t *testing.T) {
+			testGeminiGenerate(t, model, false)
+	REDACTED)
+		time.Sleep(testInterval)
+		t.Run(model+"_流式", func(t *testing.T) {
+			testGeminiGenerate(t, model, true)
+	REDACTED)
+REDACTED
+REDACTED
+
+func testGeminiGenerate(t *testing.T, model string, stream bool) {
+	action := "generateContent"
+	if stream {
+		action = "streamGenerateContent"
+REDACTED
+	url := fmt.Sprintf("%s/v1beta/models/%s:%s", baseURL, model, action)
+	if stream {
+		url += "?alt=sse"
+REDACTED
+
+	payload := map[string]any{
+		"contents": []map[string]any{
+			{
+				"role": "user",
+				"parts": []map[string]string{
+					{"text": "Say 'hello' in one word."REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		"generationConfig": map[string]int{
+			"maxOutputTokens": 50,
+	REDACTED,
+REDACTED
+	body, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+geminiAPIKey)
+
+	client := &http.Client{Timeout: 60 * time.SecondREDACTED
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("HTTP %d: %s", resp.StatusCode, string(respBody))
+REDACTED
+
+	if stream {
+		// 流式：读取 SSE 事件
+		scanner := bufio.NewScanner(resp.Body)
+		eventCount := 0
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data:") {
+				eventCount++
+				if eventCount >= 3 {
+					break
+			REDACTED
+		REDACTED
+	REDACTED
+		if eventCount == 0 {
+			t.Fatal("未收到任何 SSE 事件")
+	REDACTED
+		t.Logf("✅ 收到 %d+ 个 SSE 事件", eventCount)
+REDACTED else {
+		// 非流式：解析 JSON 响应
+		var result map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatalf("解析响应失败: %v", err)
+	REDACTED
+		if _, ok := result["candidates"]; !ok {
+			t.Error("响应缺少 candidates 字段")
+	REDACTED
+		t.Log("✅ 收到 candidates 响应")
+REDACTED
+REDACTED
+
+// TestClaudeMessagesWithComplexTools 测试带复杂工具 schema 的请求
+// 模拟 Claude Code 发送的请求，包含需要清理的 JSON Schema 字段
+func TestClaudeMessagesWithComplexTools(t *testing.T) {
+	// 测试模型列表（只测试几个代表性模型）
+	models := []string{
+		"claude-opus-4-5-20251101",   // Claude 模型
+		"REDACTED",  // 映射到 Gemini
+REDACTED
+
+	for i, model := range models {
+		if i > 0 {
+			time.Sleep(testInterval)
+	REDACTED
+		t.Run(model+"_复杂工具", func(t *testing.T) {
+			testClaudeMessageWithTools(t, model)
+	REDACTED)
+REDACTED
+REDACTED
+
+func testClaudeMessageWithTools(t *testing.T, model string) {
+	url := baseURL + "/v1/messages"
+
+	// 构造包含复杂 schema 的工具定义（模拟 Claude Code 的工具）
+	// 这些字段需要被 cleanJSONSchema 清理
+	tools := []map[string]any{
+		{
+			"name":        "read_file",
+			"description": "Read file contents",
+			"input_schema": map[string]any{
+				"$schema": "http://json-schema.org/draft-07/schema#",
+				"type":    "object",
+				"properties": map[string]any{
+					"path": map[string]any{
+						"type":        "string",
+						"description": "File path",
+						"minLength":   1,
+						"maxLength":   4096,
+						"pattern":     "^[^\\x00]+$",
+				REDACTED,
+					"encoding": map[string]any{
+						"type":    []string{"string", "null"REDACTED,
+						"default": "utf-8",
+						"enum":    []string{"utf-8", "ascii", "latin-1"REDACTED,
+				REDACTED,
+			REDACTED,
+				"required":             []string{"path"REDACTED,
+				"additionalProperties": false,
+		REDACTED,
+	REDACTED,
+		{
+			"name":        "write_file",
+			"description": "Write content to file",
+			"input_schema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"path": map[string]any{
+						"type":      "string",
+						"minLength": 1,
+				REDACTED,
+					"content": map[string]any{
+						"type":      "string",
+						"maxLength": 1048576,
+				REDACTED,
+			REDACTED,
+				"required":             []string{"path", "content"REDACTED,
+				"additionalProperties": false,
+				"strict":               true,
+		REDACTED,
+	REDACTED,
+		{
+			"name":        "list_files",
+			"description": "List files in directory",
+			"input_schema": map[string]any{
+				"$id":  "https://example.com/list-files.schema.json",
+				"type": "object",
+				"properties": map[string]any{
+					"directory": map[string]any{
+						"type": "string",
+				REDACTED,
+					"patterns": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type":      "string",
+							"minLength": 1,
+					REDACTED,
+						"minItems":    1,
+						"maxItems":    100,
+						"uniqueItems": true,
+				REDACTED,
+					"recursive": map[string]any{
+						"type":    "boolean",
+						"default": false,
+				REDACTED,
+			REDACTED,
+				"required":             []string{"directory"REDACTED,
+				"additionalProperties": false,
+		REDACTED,
+	REDACTED,
+		{
+			"name":        "search_code",
+			"description": "Search code in files",
+			"input_schema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{
+						"type":      "string",
+						"minLength": 1,
+						"format":    "regex",
+				REDACTED,
+					"max_results": map[string]any{
+						"type":             "integer",
+						"minimum":          1,
+						"maximum":          1000,
+						"exclusiveMinimum": 0,
+						"default":          100,
+				REDACTED,
+			REDACTED,
+				"required":             []string{"query"REDACTED,
+				"additionalProperties": false,
+				"examples": []map[string]any{
+					{"query": "function.*test", "max_results": 50REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		// 测试 required 引用不存在的属性（应被自动过滤）
+		{
+			"name":        "invalid_required_tool",
+			"description": "Tool with invalid required field",
+			"input_schema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{
+						"type": "string",
+				REDACTED,
+			REDACTED,
+				// "nonexistent_field" 不存在于 properties 中，应被过滤掉
+				"required": []string{"name", "nonexistent_field"REDACTED,
+		REDACTED,
+	REDACTED,
+		// 测试没有 properties 的 schema（应自动添加空 properties）
+		{
+			"name":        "no_properties_tool",
+			"description": "Tool without properties",
+			"input_schema": map[string]any{
+				"type":     "object",
+				"required": []string{"should_be_removed"REDACTED,
+		REDACTED,
+	REDACTED,
+		// 测试没有 type 的 schema（应自动添加 type: OBJECT）
+		{
+			"name":        "no_type_tool",
+			"description": "Tool without type",
+			"input_schema": map[string]any{
+				"properties": map[string]any{
+					"value": map[string]any{
+						"type": "string",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	payload := map[string]any{
+		"model":      model,
+		"max_tokens": 100,
+		"stream":     false,
+		"messages": []map[string]string{
+			{"role": "user", "content": "List files in the current directory"REDACTED,
+	REDACTED,
+		"tools": tools,
+REDACTED
+	body, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{Timeout: 60 * time.SecondREDACTED
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	// 400 错误说明 schema 清理不完整
+	if resp.StatusCode == 400 {
+		t.Fatalf("Schema 清理失败，收到 400 错误: %s", string(respBody))
+REDACTED
+
+	// 503 可能是账号限流，不算测试失败
+	if resp.StatusCode == 503 {
+		t.Skipf("账号暂时不可用 (503): %s", string(respBody))
+REDACTED
+
+	// 429 是限流
+	if resp.StatusCode == 429 {
+		t.Skipf("请求被限流 (429): %s", string(respBody))
+REDACTED
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("HTTP %d: %s", resp.StatusCode, string(respBody))
+REDACTED
+
+	var result map[string]any
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+REDACTED
+
+	if result["type"] != "message" {
+		t.Errorf("期望 type=message, 得到 %v", result["type"])
+REDACTED
+	t.Logf("✅ 复杂工具 schema 测试通过, id=%v", result["id"])
+REDACTED
+
+// TestClaudeMessagesWithThinkingAndTools 测试 thinking 模式下带工具调用的场景
+// 验证：当历史 assistant 消息包含 tool_use 但没有 signature 时，
+// 系统应自动添加 dummy thought_signature 避免 Gemini 400 错误
+func TestClaudeMessagesWithThinkingAndTools(t *testing.T) {
+	models := []string{
+		"REDACTED", // gemini-3-flash
+REDACTED
+	for i, model := range models {
+		if i > 0 {
+			time.Sleep(testInterval)
+	REDACTED
+		t.Run(model+"_thinking模式工具调用", func(t *testing.T) {
+			testClaudeThinkingWithToolHistory(t, model)
+	REDACTED)
+REDACTED
+REDACTED
+
+func testClaudeThinkingWithToolHistory(t *testing.T, model string) {
+	url := baseURL + "/v1/messages"
+
+	// 模拟历史对话：用户请求 → assistant 调用工具 → 工具返回 → 继续对话
+	// 注意：tool_use 块故意不包含 signature，测试系统是否能正确添加 dummy signature
+	payload := map[string]any{
+		"model":      model,
+		"max_tokens": 200,
+		"stream":     false,
+		// 开启 thinking 模式
+		"thinking": map[string]any{
+			"type":          "enabled",
+			"budget_tokens": 1024,
+	REDACTED,
+		"messages": []any{
+			map[string]any{
+				"role":    "user",
+				"content": "List files in the current directory",
+		REDACTED,
+			// assistant 消息包含 tool_use 但没有 signature
+			map[string]any{
+				"role": "assistant",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": "I'll list the files for you.",
+				REDACTED,
+					{
+						"type":  "tool_use",
+						"id":    "toolu_01XGmNv",
+						"name":  "Bash",
+						"input": map[string]any{"command": "ls -la"REDACTED,
+						// 故意不包含 signature
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			// 工具结果
+			map[string]any{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type":        "tool_result",
+						"tool_use_id": "toolu_01XGmNv",
+						"content":     "file1.txt\nfile2.txt\ndir1/",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		"tools": []map[string]any{
+			{
+				"name":        "Bash",
+				"description": "Execute bash commands",
+				"input_schema": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"command": map[string]any{
+							"type": "string",
+					REDACTED,
+				REDACTED,
+					"required": []string{"command"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	body, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{Timeout: 60 * time.SecondREDACTED
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	// 400 错误说明 thought_signature 处理失败
+	if resp.StatusCode == 400 {
+		t.Fatalf("thought_signature 处理失败，收到 400 错误: %s", string(respBody))
+REDACTED
+
+	// 503 可能是账号限流，不算测试失败
+	if resp.StatusCode == 503 {
+		t.Skipf("账号暂时不可用 (503): %s", string(respBody))
+REDACTED
+
+	// 429 是限流
+	if resp.StatusCode == 429 {
+		t.Skipf("请求被限流 (429): %s", string(respBody))
+REDACTED
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("HTTP %d: %s", resp.StatusCode, string(respBody))
+REDACTED
+
+	var result map[string]any
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+REDACTED
+
+	if result["type"] != "message" {
+		t.Errorf("期望 type=message, 得到 %v", result["type"])
+REDACTED
+	t.Logf("✅ thinking 模式工具调用测试通过, id=%v", result["id"])
+REDACTED

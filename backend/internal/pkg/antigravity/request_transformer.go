@@ -124,7 +124,7 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 			role = "model"
 	REDACTED
 
-		parts, err := buildParts(msg.Content, toolIDToName)
+		parts, err := buildParts(msg.Content, toolIDToName, isThinkingEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("build parts for message %d: %w", i, err)
 	REDACTED
@@ -157,8 +157,12 @@ REDACTED
 	return contents, nil
 REDACTED
 
+// dummyThoughtSignature 用于跳过 Gemini 3 thought_signature 验证
+// 参考: https://ai.google.dev/gemini-api/docs/thought-signatures
+const dummyThoughtSignature = "skip_thought_signature_validator"
+
 // buildParts 构建消息的 parts
-func buildParts(content json.RawMessage, toolIDToName map[string]string) ([]GeminiPart, error) {
+func buildParts(content json.RawMessage, toolIDToName map[string]string, isThinkingEnabled bool) ([]GeminiPart, error) {
 	var parts []GeminiPart
 
 	// 尝试解析为字符串
@@ -216,8 +220,11 @@ REDACTED
 					ID:   block.ID,
 			REDACTED,
 		REDACTED
+			// Gemini 3 要求 thinking 模式下 functionCall 必须有 thought_signature
 			if block.Signature != "" {
 				part.ThoughtSignature = block.Signature
+		REDACTED else if isThinkingEnabled {
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
 
@@ -380,57 +387,128 @@ REDACTED
 REDACTEDREDACTED
 REDACTED
 
-// cleanJSONSchema 清理 JSON Schema，移除 Gemini 不支持的字段
+// cleanJSONSchema 清理 JSON Schema，移除 Antigravity/Gemini 不支持的字段
+// 参考 proxycast 的实现，确保 schema 符合 JSON Schema draft 2020-12
 func cleanJSONSchema(schema map[string]interface{REDACTED) map[string]interface{REDACTED {
 	if schema == nil {
 		return nil
 REDACTED
-
-	result := make(map[string]interface{REDACTED)
-	for k, v := range schema {
-		// 移除不支持的字段
-		switch k {
-		case "$schema", "additionalProperties", "minLength", "maxLength",
-			"minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
-			"pattern", "format", "default":
-			continue
-	REDACTED
-
-		// 递归处理嵌套对象
-		if nested, ok := v.(map[string]interface{REDACTED); ok {
-			result[k] = cleanJSONSchema(nested)
-	REDACTED else if k == "type" {
-			// 处理类型字段，转换为大写
-			if typeStr, ok := v.(string); ok {
-				result[k] = strings.ToUpper(typeStr)
-		REDACTED else if typeArr, ok := v.([]interface{REDACTED); ok {
-				// 处理联合类型 ["string", "null"] -> "STRING"
-				for _, t := range typeArr {
-					if ts, ok := t.(string); ok && ts != "null" {
-						result[k] = strings.ToUpper(ts)
-						break
-				REDACTED
-			REDACTED
-		REDACTED else {
-				result[k] = v
-		REDACTED
-	REDACTED else {
-			result[k] = v
-	REDACTED
+	cleaned := cleanSchemaValue(schema)
+	result, ok := cleaned.(map[string]interface{REDACTED)
+	if !ok {
+		return nil
 REDACTED
 
-	// 递归处理 properties
-	if props, ok := result["properties"].(map[string]interface{REDACTED); ok {
-		cleanedProps := make(map[string]interface{REDACTED)
-		for name, prop := range props {
-			if propMap, ok := prop.(map[string]interface{REDACTED); ok {
-				cleanedProps[name] = cleanJSONSchema(propMap)
+	// 确保有 type 字段（默认 OBJECT）
+	if _, hasType := result["type"]; !hasType {
+		result["type"] = "OBJECT"
+REDACTED
+
+	// 确保有 properties 字段（默认空对象）
+	if _, hasProps := result["properties"]; !hasProps {
+		result["properties"] = make(map[string]interface{REDACTED)
+REDACTED
+
+	// 验证 required 中的字段都存在于 properties 中
+	if required, ok := result["required"].([]interface{REDACTED); ok {
+		if props, ok := result["properties"].(map[string]interface{REDACTED); ok {
+			validRequired := make([]interface{REDACTED, 0, len(required))
+			for _, r := range required {
+				if reqName, ok := r.(string); ok {
+					if _, exists := props[reqName]; exists {
+						validRequired = append(validRequired, r)
+				REDACTED
+			REDACTED
+		REDACTED
+			if len(validRequired) > 0 {
+				result["required"] = validRequired
 		REDACTED else {
-				cleanedProps[name] = prop
+				delete(result, "required")
 		REDACTED
 	REDACTED
-		result["properties"] = cleanedProps
 REDACTED
 
 	return result
+REDACTED
+
+// excludedSchemaKeys 不支持的 schema 字段
+var excludedSchemaKeys = map[string]bool{
+	"$schema":              true,
+	"$id":                  true,
+	"$ref":                 true,
+	"additionalProperties": true,
+	"minLength":            true,
+	"maxLength":            true,
+	"minItems":             true,
+	"maxItems":             true,
+	"uniqueItems":          true,
+	"minimum":              true,
+	"maximum":              true,
+	"exclusiveMinimum":     true,
+	"exclusiveMaximum":     true,
+	"pattern":              true,
+	"format":               true,
+	"default":              true,
+	"strict":               true,
+	"const":                true,
+	"examples":             true,
+	"deprecated":           true,
+	"readOnly":             true,
+	"writeOnly":            true,
+	"contentMediaType":     true,
+	"contentEncoding":      true,
+REDACTED
+
+// cleanSchemaValue 递归清理 schema 值
+func cleanSchemaValue(value interface{REDACTED) interface{REDACTED {
+	switch v := value.(type) {
+	case map[string]interface{REDACTED:
+		result := make(map[string]interface{REDACTED)
+		for k, val := range v {
+			// 跳过不支持的字段
+			if excludedSchemaKeys[k] {
+				continue
+		REDACTED
+
+			// 特殊处理 type 字段
+			if k == "type" {
+				result[k] = cleanTypeValue(val)
+				continue
+		REDACTED
+
+			// 递归清理所有值
+			result[k] = cleanSchemaValue(val)
+	REDACTED
+		return result
+
+	case []interface{REDACTED:
+		// 递归处理数组中的每个元素
+		cleaned := make([]interface{REDACTED, 0, len(v))
+		for _, item := range v {
+			cleaned = append(cleaned, cleanSchemaValue(item))
+	REDACTED
+		return cleaned
+
+	default:
+		return value
+REDACTED
+REDACTED
+
+// cleanTypeValue 处理 type 字段，转换为大写
+func cleanTypeValue(value interface{REDACTED) interface{REDACTED {
+	switch v := value.(type) {
+	case string:
+		return strings.ToUpper(v)
+	case []interface{REDACTED:
+		// 联合类型 ["string", "null"] -> 取第一个非 null 类型
+		for _, t := range v {
+			if ts, ok := t.(string); ok && ts != "null" {
+				return strings.ToUpper(ts)
+		REDACTED
+	REDACTED
+		// 如果只有 null，返回 STRING
+		return "STRING"
+	default:
+		return value
+REDACTED
 REDACTED
