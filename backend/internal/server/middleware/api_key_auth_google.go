@@ -8,7 +8,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 // ApiKeyAuthGoogle is a Google-style error wrapper for API key auth.
@@ -30,7 +29,7 @@ func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subs
 
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, service.ErrApiKeyNotFound) {
 				abortWithGoogleError(c, 401, "Invalid API key")
 				return
 		REDACTED

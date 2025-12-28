@@ -2,6 +2,7 @@
 export { default as DataTable REDACTED from './DataTable.vue'
 export { default as Pagination REDACTED from './Pagination.vue'
 export { default as Modal REDACTED from './Modal.vue'
+export { default as BaseDialog REDACTED from './BaseDialog.vue'
 export { default as ConfirmDialog REDACTED from './ConfirmDialog.vue'
 export { default as StatCard REDACTED from './StatCard.vue'
 export { default as Toast REDACTED from './Toast.vue'

@@ -206,10 +206,6 @@ const handlePageSizeChange = (value: string | number | boolean | null) => {
   if (value === null || typeof value === 'boolean') return
   const newPageSize = typeof value === 'string' ? parseInt(value) : value
   emit('update:pageSize', newPageSize)
-  // Reset to first page when page size changes
-  if (props.page !== 1) {
-    emit('update:page', 1)
-  REDACTED
 REDACTED
 </script>
 

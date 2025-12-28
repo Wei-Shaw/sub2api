@@ -119,6 +119,7 @@ export default {
     info: 'Info',
     active: 'Active',
     inactive: 'Inactive',
+    more: 'More',
     close: 'Close',
     enabled: 'Enabled',
     disabled: 'Disabled',
@@ -344,6 +345,8 @@ export default {
     allApiKeys: 'All API Keys',
     timeRange: 'Time Range',
     exportCsv: 'Export CSV',
+    exporting: 'Exporting...',
+    preparingExport: 'Preparing export...',
     model: 'Model',
     type: 'Type',
     tokens: 'Tokens',
@@ -364,6 +367,7 @@ export default {
     failedToLoad: 'Failed to load usage logs',
     noDataToExport: 'No data to export',
     exportSuccess: 'Usage data exported successfully',
+    exportFailed: 'Failed to export usage data',
     billingType: 'Billing',
     balance: 'Balance',
     subscription: 'Subscription'
@@ -406,7 +410,8 @@ export default {
     subscriptionDays: '{daysREDACTED days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
-    failedToRedeem: 'Failed to redeem code. Please check the code and try again.'
+    failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
+    subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.'
   REDACTED,
 
   // Profile
@@ -427,6 +432,7 @@ export default {
     updating: 'Updating...',
     updateSuccess: 'Profile updated successfully',
     updateFailed: 'Failed to update profile',
+    usernameRequired: 'Username is required',
     changePassword: 'Change Password',
     currentPassword: 'Current Password',
     newPassword: 'New Password',

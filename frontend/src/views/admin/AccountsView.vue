@@ -165,7 +165,7 @@
         </div>
       </div>
 
-      <DataTable :columns="columns" :data="accounts" :loading="loading" :actions-count="6">
+      <DataTable :columns="columns" :data="accounts" :loading="loading">
           <template #cell-select="{ row REDACTED">
             <input
               type="checkbox"
@@ -275,9 +275,9 @@
             </span>
           </template>
 
-          <template #cell-actions="{ row, expanded REDACTED">
+          <template #cell-actions="{ row REDACTED">
             <div class="flex items-center gap-1">
-              <!-- 主要操作：编辑和删除（始终显示） -->
+              <!-- Edit Button -->
               <button
                 @click="handleEdit(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
@@ -297,6 +297,8 @@
                 </svg>
                 <span class="text-xs">{{ t('common.edit') REDACTEDREDACTED</span>
               </button>
+
+              <!-- Delete Button -->
               <button
                 @click="handleDelete(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
@@ -317,131 +319,28 @@
                 <span class="text-xs">{{ t('common.delete') REDACTEDREDACTED</span>
               </button>
 
-              <!-- 次要操作：展开时显示 -->
-              <template v-if="expanded">
-                <!-- Reset Status button for error accounts -->
-                <button
-                  v-if="row.status === 'error'"
-                  @click="handleResetStatus(row)"
-                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                >
+              <!-- More Actions Menu Trigger -->
+              <button
+                :ref="(el) => setActionButtonRef(row.id, el)"
+                @click="openActionMenu(row)"
+                class="action-menu-trigger flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
+                :class="{ 'bg-gray-100 text-gray-900 dark:bg-dark-700 dark:text-white': activeMenuId === row.id REDACTED"
+              >
                 <svg
                   class="h-4 w-4"
                   fill="none"
-                  stroke="currentColor"
                   viewBox="0 0 24 24"
+                  stroke="currentColor"
                   stroke-width="1.5"
                 >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
+                    d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"
                   />
                 </svg>
-                <span class="text-xs">{{ t('admin.accounts.resetStatus') REDACTEDREDACTED</span>
-                </button>
-                <!-- Clear Rate Limit button -->
-                <button
-                  v-if="isRateLimited(row) || isOverloaded(row)"
-                  @click="handleClearRateLimit(row)"
-                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
-                >
-                  <svg
-                    class="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span class="text-xs">{{ t('admin.accounts.clearRateLimit') REDACTEDREDACTED</span>
-                </button>
-                <!-- Test Connection button -->
-                <button
-                  @click="handleTest(row)"
-                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
-                >
-                  <svg
-                    class="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
-                    />
-                  </svg>
-                  <span class="text-xs">{{ t('admin.accounts.testConnection') REDACTEDREDACTED</span>
-                </button>
-                <!-- View Stats button -->
-                <button
-                  @click="handleViewStats(row)"
-                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-                >
-                  <svg
-                    class="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
-                    />
-                  </svg>
-                  <span class="text-xs">{{ t('admin.accounts.viewStats') REDACTEDREDACTED</span>
-                </button>
-                <button
-                  v-if="row.type === 'oauth' || row.type === 'setup-token'"
-                  @click="handleReAuth(row)"
-                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
-                >
-                  <svg
-                    class="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
-                    />
-                  </svg>
-                  <span class="text-xs">{{ t('admin.accounts.reAuthorize') REDACTEDREDACTED</span>
-                </button>
-                <button
-                  v-if="row.type === 'oauth' || row.type === 'setup-token'"
-                  @click="handleRefreshToken(row)"
-                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
-                >
-                  <svg
-                    class="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                    />
-                  </svg>
-                  <span class="text-xs">{{ t('admin.accounts.refreshToken') REDACTEDREDACTED</span>
-                </button>
-              </template>
+                <span class="text-xs">{{ t('common.more') REDACTEDREDACTED</span>
+              </button>
             </div>
           </template>
 
@@ -463,6 +362,7 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
         />
       </template>
     </TablePageLayout>
@@ -537,11 +437,61 @@
       @close="showBulkEditModal = false"
       @updated="handleBulkUpdated"
     />
+    <!-- Action Menu (Teleported) -->
+    <Teleport to="body">
+      <div
+        v-if="activeMenuId !== null && menuPosition"
+        class="action-menu-content fixed z-[9999] w-52 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px' REDACTED"
+      >
+        <div class="py-1">
+          <template v-for="account in accounts" :key="account.id">
+            <template v-if="account.id === activeMenuId">
+              <button
+                @click="handleTest(account); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <svg class="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                {{ t('admin.accounts.testConnection') REDACTEDREDACTED
+              </button>
+              <button
+                @click="handleViewStats(account); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <svg class="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                {{ t('admin.accounts.viewStats') REDACTEDREDACTED
+              </button>
+              <template v-if="account.type === 'oauth' || account.type === 'setup-token'">
+                <button @click="handleReAuth(account); closeActionMenu()" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700">
+                  <svg class="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                  {{ t('admin.accounts.reAuthorize') REDACTEDREDACTED
+                </button>
+                <button @click="handleRefreshToken(account); closeActionMenu()" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700">
+                  <svg class="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l16 16" /></svg>
+                  {{ t('admin.accounts.refreshToken') REDACTEDREDACTED
+                </button>
+              </template>
+
+              <div v-if="account.status === 'error' || isRateLimited(account) || isOverloaded(account)" class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
+
+              <button v-if="account.status === 'error'" @click="handleResetStatus(account); closeActionMenu()" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100 dark:text-yellow-400 dark:hover:bg-dark-700">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                {{ t('admin.accounts.resetStatus') REDACTEDREDACTED
+              </button>
+              <button v-if="isRateLimited(account) || isOverloaded(account)" @click="handleClearRateLimit(account); closeActionMenu()" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-amber-600 hover:bg-gray-100 dark:text-amber-400 dark:hover:bg-dark-700">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                {{ t('admin.accounts.clearRateLimit') REDACTEDREDACTED
+              </button>
+            </template>
+          </template>
+        </div>
+      </div>
+    </Teleport>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
@@ -629,6 +579,7 @@ const pagination = reactive({
   total: 0,
   pages: 0
 REDACTED)
+let abortController: AbortController | null = null
 
 // Modal states
 const showCreateModal = ref(false)
@@ -647,6 +598,49 @@ const testingAccount = ref<Account | null>(null)
 const statsAccount = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const bulkDeleting = ref(false)
+
+// Action Menu State
+const activeMenuId = ref<number | null>(null)
+const menuPosition = ref<{ top: number; left: number REDACTED | null>(null)
+const actionButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+
+const setActionButtonRef = (accountId: number, el: Element | ComponentPublicInstance | null) => {
+  if (el instanceof HTMLElement) {
+    actionButtonRefs.value.set(accountId, el)
+  REDACTED else {
+    actionButtonRefs.value.delete(accountId)
+  REDACTED
+REDACTED
+
+const openActionMenu = (account: Account) => {
+  if (activeMenuId.value === account.id) {
+    closeActionMenu()
+  REDACTED else {
+    const buttonEl = actionButtonRefs.value.get(account.id)
+    if (buttonEl) {
+      const rect = buttonEl.getBoundingClientRect()
+      // Position menu to the left of the button, slightly below
+      menuPosition.value = {
+        top: rect.bottom + 4,
+        left: rect.right - 208 // w-52 is 208px
+      REDACTED
+    REDACTED
+    activeMenuId.value = account.id
+  REDACTED
+REDACTED
+
+const closeActionMenu = () => {
+  activeMenuId.value = null
+  menuPosition.value = null
+REDACTED
+
+// Close menu when clicking outside
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.action-menu-trigger') && !target.closest('.action-menu-content')) {
+    closeActionMenu()
+  REDACTED
+REDACTED
 
 // Bulk selection
 const selectedAccountIds = ref<number[]>([])
@@ -669,6 +663,9 @@ REDACTED
 
 // Data loading
 const loadAccounts = async () => {
+  abortController?.abort()
+  const currentAbortController = new AbortController()
+  abortController = currentAbortController
   loading.value = true
   try {
     const response = await adminAPI.accounts.list(pagination.page, pagination.page_size, {
@@ -676,15 +673,24 @@ const loadAccounts = async () => {
       type: filters.type || undefined,
       status: filters.status || undefined,
       search: searchQuery.value || undefined
+    REDACTED, {
+      signal: currentAbortController.signal
     REDACTED)
+    if (currentAbortController.signal.aborted) return
     accounts.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
   REDACTED catch (error) {
+    const errorInfo = error as { name?: string; code?: string REDACTED
+    if (errorInfo?.name === 'AbortError' || errorInfo?.name === 'CanceledError' || errorInfo?.code === 'ERR_CANCELED') {
+      return
+    REDACTED
     appStore.showError(t('admin.accounts.failedToLoad'))
     console.error('Error loading accounts:', error)
   REDACTED finally {
-    loading.value = false
+    if (abortController === currentAbortController) {
+      loading.value = false
+    REDACTED
   REDACTED
 REDACTED
 
@@ -718,6 +724,12 @@ REDACTED
 // Pagination
 const handlePageChange = (page: number) => {
   pagination.page = page
+  loadAccounts()
+REDACTED
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.page_size = pageSize
+  pagination.page = 1
   loadAccounts()
 REDACTED
 
@@ -910,5 +922,12 @@ onMounted(() => {
   loadAccounts()
   loadProxies()
   loadGroups()
+  document.addEventListener('click', handleClickOutside)
+REDACTED)
+
+onUnmounted(() => {
+  abortController?.abort()
+  abortController = null
+  document.removeEventListener('click', handleClickOutside)
 REDACTED)
 </script>
