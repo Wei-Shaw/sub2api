@@ -209,15 +209,16 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
         />
       </template>
     </TablePageLayout>
 
     <!-- Create Proxy Modal -->
-    <Modal
+    <BaseDialog
       :show="showCreateModal"
       :title="t('admin.proxies.createProxy')"
-      size="lg"
+      width="normal"
       @close="closeCreateModal"
     >
       <!-- Tab Switch -->
@@ -271,7 +272,12 @@
       </div>
 
       <!-- Standard Add Form -->
-      <form v-if="createMode === 'standard'" @submit.prevent="handleCreateProxy" class="space-y-5">
+      <form
+        v-if="createMode === 'standard'"
+        id="create-proxy-form"
+        @submit.prevent="handleCreateProxy"
+        class="space-y-5"
+      >
         <div>
           <label class="input-label">{{ t('admin.proxies.name') REDACTEDREDACTED</label>
           <input
@@ -329,34 +335,6 @@
           />
         </div>
 
-        <div class="flex justify-end gap-3 pt-4">
-          <button @click="closeCreateModal" type="button" class="btn btn-secondary">
-            {{ t('common.cancel') REDACTEDREDACTED
-          </button>
-          <button type="submit" :disabled="submitting" class="btn btn-primary">
-            <svg
-              v-if="submitting"
-              class="-ml-1 mr-2 h-4 w-4 animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            {{ submitting ? t('admin.proxies.creating') : t('common.create') REDACTEDREDACTED
-          </button>
-        </div>
       </form>
 
       <!-- Batch Add Form -->
@@ -435,11 +413,44 @@
           </div>
         </div>
 
-        <div class="flex justify-end gap-3 pt-4">
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
           <button @click="closeCreateModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
           <button
+            v-if="createMode === 'standard'"
+            type="submit"
+            form="create-proxy-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
+            <svg
+              v-if="submitting"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            {{ submitting ? t('admin.proxies.creating') : t('common.create') REDACTEDREDACTED
+          </button>
+          <button
+            v-else
             @click="handleBatchCreate"
             type="button"
             :disabled="submitting || batchParseResult.valid === 0"
@@ -472,17 +483,22 @@
             REDACTEDREDACTED
           </button>
         </div>
-      </div>
-    </Modal>
+      </template>
+    </BaseDialog>
 
     <!-- Edit Proxy Modal -->
-    <Modal
+    <BaseDialog
       :show="showEditModal"
       :title="t('admin.proxies.editProxy')"
-      size="lg"
+      width="normal"
       @close="closeEditModal"
     >
-      <form v-if="editingProxy" @submit.prevent="handleUpdateProxy" class="space-y-5">
+      <form
+        v-if="editingProxy"
+        id="edit-proxy-form"
+        @submit.prevent="handleUpdateProxy"
+        class="space-y-5"
+      >
         <div>
           <label class="input-label">{{ t('admin.proxies.name') REDACTEDREDACTED</label>
           <input v-model="editForm.name" type="text" required class="input" />
@@ -526,11 +542,20 @@
           <Select v-model="editForm.status" :options="editStatusOptions" />
         </div>
 
-        <div class="flex justify-end gap-3 pt-4">
+      </form>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
           <button @click="closeEditModal" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button type="submit" :disabled="submitting" class="btn btn-primary">
+          <button
+            v-if="editingProxy"
+            type="submit"
+            form="edit-proxy-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
             <svg
               v-if="submitting"
               class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -554,8 +579,8 @@
             {{ submitting ? t('admin.proxies.updating') : t('common.update') REDACTEDREDACTED
           </button>
         </div>
-      </form>
-    </Modal>
+      </template>
+    </BaseDialog>
 
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
@@ -582,7 +607,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
@@ -682,22 +707,44 @@ const editForm = reactive({
   status: 'active' as 'active' | 'inactive'
 REDACTED)
 
+let abortController: AbortController | null = null
+
+const isAbortError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false
+  const maybeError = error as { name?: string; code?: string REDACTED
+  return maybeError.name === 'AbortError' || maybeError.code === 'ERR_CANCELED'
+REDACTED
+
 const loadProxies = async () => {
+  if (abortController) {
+    abortController.abort()
+  REDACTED
+  const currentAbortController = new AbortController()
+  abortController = currentAbortController
   loading.value = true
   try {
     const response = await adminAPI.proxies.list(pagination.page, pagination.page_size, {
       protocol: filters.protocol || undefined,
       status: filters.status as any,
       search: searchQuery.value || undefined
-    REDACTED)
+    REDACTED, { signal: currentAbortController.signal REDACTED)
+    if (currentAbortController.signal.aborted || abortController !== currentAbortController) {
+      return
+    REDACTED
     proxies.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
   REDACTED catch (error) {
+    if (isAbortError(error)) {
+      return
+    REDACTED
     appStore.showError(t('admin.proxies.failedToLoad'))
     console.error('Error loading proxies:', error)
   REDACTED finally {
-    loading.value = false
+    if (abortController === currentAbortController) {
+      loading.value = false
+      abortController = null
+    REDACTED
   REDACTED
 REDACTED
 
@@ -712,6 +759,12 @@ REDACTED
 
 const handlePageChange = (page: number) => {
   pagination.page = page
+  loadProxies()
+REDACTED
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.page_size = pageSize
+  pagination.page = 1
   loadProxies()
 REDACTED
 

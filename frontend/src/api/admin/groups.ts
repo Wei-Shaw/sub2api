@@ -26,6 +26,9 @@ export async function list(
     platform?: GroupPlatform
     status?: 'active' | 'inactive'
     is_exclusive?: boolean
+  REDACTED,
+  options?: {
+    signal?: AbortSignal
   REDACTED
 ): Promise<PaginatedResponse<Group>> {
   const { data REDACTED = await apiClient.get<PaginatedResponse<Group>>('/admin/groups', {
@@ -33,7 +36,8 @@ export async function list(
       page,
       page_size: pageSize,
       ...filters
-    REDACTED
+    REDACTED,
+    signal: options?.signal
   REDACTED)
   return data
 REDACTED

@@ -563,13 +563,13 @@ const installing = ref(false)
 const confirmPassword = ref('')
 const serviceReady = ref(false)
 
-// Get current server port from browser location (set by install.sh)
+// Default server port
 const getCurrentPort = (): number => {
   const port = window.location.port
   if (port) {
     return parseInt(port, 10)
   REDACTED
-  // Default port based on protocol
+
   return window.location.protocol === 'https:' ? 443 : 80
 REDACTED
 
@@ -674,42 +674,35 @@ REDACTED
 
 // Wait for service to restart and become available
 async function waitForServiceRestart() {
-  const maxAttempts = 30 // 30 attempts, ~30 seconds max
+  const maxAttempts = 60 // Increase to 60 attempts, ~60 seconds max
   const interval = 1000 // 1 second between attempts
 
   // Wait a moment for the service to start restarting
-  await new Promise((resolve) => setTimeout(resolve, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 3000))
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      // Try to access the health endpoint
-      const response = await fetch('/health', {
+      // Use setup status endpoint as it tells us the real mode
+      // Service might return 404 or connection refused while restarting
+      const response = await fetch('/setup/status', {
         method: 'GET',
         cache: 'no-store'
       REDACTED)
 
       if (response.ok) {
-        // Service is up, check if setup is no longer needed
-        const statusResponse = await fetch('/setup/status', {
-          method: 'GET',
-          cache: 'no-store'
-        REDACTED)
-
-        if (statusResponse.ok) {
-          const data = await statusResponse.json()
-          // If needs_setup is false, service has restarted in normal mode
-          if (data.data && !data.data.needs_setup) {
-            serviceReady.value = true
-            // Redirect to login page after a short delay
-            setTimeout(() => {
-              window.location.href = '/login'
-            REDACTED, 1500)
-            return
-          REDACTED
+        const data = await response.json()
+        // If needs_setup is false, service has restarted in normal mode
+        if (data.data && !data.data.needs_setup) {
+          serviceReady.value = true
+          // Redirect to login page after a short delay
+          setTimeout(() => {
+            window.location.href = '/login'
+          REDACTED, 1500)
+          return
         REDACTED
       REDACTED
     REDACTED catch {
-      // Service not ready yet, continue polling
+      // Service not ready or network error during restart, continue polling
     REDACTED
 
     await new Promise((resolve) => setTimeout(resolve, interval))

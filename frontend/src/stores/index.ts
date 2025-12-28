@@ -5,6 +5,7 @@
 
 export { useAuthStore REDACTED from './auth'
 export { useAppStore REDACTED from './app'
+export { useSubscriptionStore REDACTED from './subscriptions'
 
 // Re-export types for convenience
 export type { User, LoginRequest, RegisterRequest, AuthResponse REDACTED from '@/types'

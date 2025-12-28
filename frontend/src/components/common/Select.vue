@@ -30,7 +30,11 @@
     </button>
 
     <Transition name="select-dropdown">
-      <div v-if="isOpen" class="select-dropdown">
+      <div
+        v-if="isOpen"
+        ref="dropdownRef"
+        :class="['select-dropdown', dropdownPosition === 'top' && 'select-dropdown-top']"
+      >
         <!-- Search input -->
         <div v-if="searchable" class="select-search">
           <svg
@@ -141,6 +145,8 @@ const isOpen = ref(false)
 const searchQuery = ref('')
 const containerRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
+const dropdownRef = ref<HTMLElement | null>(null)
+const dropdownPosition = ref<'bottom' | 'top'>('bottom')
 
 const getOptionValue = (
   option: SelectOption | Record<string, unknown>
@@ -184,13 +190,37 @@ const isSelected = (option: SelectOption | Record<string, unknown>): boolean => 
   return getOptionValue(option) === props.modelValue
 REDACTED
 
+const calculateDropdownPosition = () => {
+  if (!containerRef.value) return
+
+  nextTick(() => {
+    if (!containerRef.value || !dropdownRef.value) return
+
+    const triggerRect = containerRef.value.getBoundingClientRect()
+    const dropdownHeight = dropdownRef.value.offsetHeight || 240 // Max height fallback
+    const viewportHeight = window.innerHeight
+    const spaceBelow = viewportHeight - triggerRect.bottom
+    const spaceAbove = triggerRect.top
+
+    // If not enough space below but enough space above, show dropdown on top
+    if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+      dropdownPosition.value = 'top'
+    REDACTED else {
+      dropdownPosition.value = 'bottom'
+    REDACTED
+  REDACTED)
+REDACTED
+
 const toggle = () => {
   if (props.disabled) return
   isOpen.value = !isOpen.value
-  if (isOpen.value && props.searchable) {
-    nextTick(() => {
-      searchInputRef.value?.focus()
-    REDACTED)
+  if (isOpen.value) {
+    calculateDropdownPosition()
+    if (props.searchable) {
+      nextTick(() => {
+        searchInputRef.value?.focus()
+      REDACTED)
+    REDACTED
   REDACTED
 REDACTED
 
@@ -275,6 +305,10 @@ REDACTED
   @apply overflow-hidden;
 REDACTED
 
+.select-dropdown-top {
+  @apply bottom-full mb-2 mt-0;
+REDACTED
+
 .select-search {
   @apply flex items-center gap-2 px-3 py-2;
   @apply border-b border-gray-100 dark:border-dark-700;
@@ -322,6 +356,17 @@ REDACTED
 .select-dropdown-enter-from,
 .select-dropdown-leave-to {
   opacity: 0;
+REDACTED
+
+/* Animation for dropdown opening downward (default) */
+.select-dropdown:not(.select-dropdown-top).select-dropdown-enter-from,
+.select-dropdown:not(.select-dropdown-top).select-dropdown-leave-to {
   transform: translateY(-8px);
+REDACTED
+
+/* Animation for dropdown opening upward */
+.select-dropdown-top.select-dropdown-enter-from,
+.select-dropdown-top.select-dropdown-leave-to {
+  transform: translateY(8px);
 REDACTED
 </style>

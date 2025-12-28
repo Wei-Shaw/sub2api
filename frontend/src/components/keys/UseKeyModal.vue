@@ -1,8 +1,8 @@
 <template>
-  <Modal
+  <BaseDialog
     :show="show"
     :title="t('keys.useKeyModal.title')"
-    size="lg"
+    width="wide"
     @close="emit('close')"
   >
     <div class="space-y-4">
@@ -112,13 +112,13 @@
         </button>
       </div>
     </template>
-  </Modal>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, h, watch, type Component REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import type { GroupPlatform REDACTED from '@/types'
 

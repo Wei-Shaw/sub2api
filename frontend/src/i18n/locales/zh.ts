@@ -116,6 +116,7 @@ export default {
     info: '提示',
     active: '启用',
     inactive: '禁用',
+    more: '更多',
     close: '关闭',
     enabled: '已启用',
     disabled: '已禁用',
@@ -340,6 +341,8 @@ export default {
     allApiKeys: '全部密钥',
     timeRange: '时间范围',
     exportCsv: '导出 CSV',
+    exporting: '导出中...',
+    preparingExport: '正在准备导出...',
     model: '模型',
     type: '类型',
     tokens: 'Token',
@@ -360,6 +363,7 @@ export default {
     failedToLoad: '加载使用记录失败',
     noDataToExport: '没有可导出的数据',
     exportSuccess: '使用数据导出成功',
+    exportFailed: '使用数据导出失败',
     billingType: '消费类型',
     balance: '余额',
     subscription: '订阅'
@@ -402,7 +406,8 @@ export default {
     subscriptionDays: '{daysREDACTED 天',
     days: '天',
     codeRedeemSuccess: '兑换成功！',
-    failedToRedeem: '兑换失败，请检查兑换码后重试。'
+    failedToRedeem: '兑换失败，请检查兑换码后重试。',
+    subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。'
   REDACTED,
 
   // Profile
@@ -423,6 +428,7 @@ export default {
     updating: '更新中...',
     updateSuccess: '资料更新成功',
     updateFailed: '资料更新失败',
+    usernameRequired: '用户名不能为空',
     changePassword: '修改密码',
     currentPassword: '当前密码',
     newPassword: '新密码',

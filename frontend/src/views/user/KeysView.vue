@@ -292,17 +292,19 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
         />
       </template>
     </TablePageLayout>
 
     <!-- Create/Edit Modal -->
-    <Modal
+    <BaseDialog
       :show="showCreateModal || showEditModal"
       :title="showEditModal ? t('keys.editKey') : t('keys.createKey')"
+      width="narrow"
       @close="closeModals"
     >
-      <form @submit.prevent="handleSubmit" class="space-y-5">
+      <form id="key-form" @submit.prevent="handleSubmit" class="space-y-5">
         <div>
           <label class="input-label">{{ t('keys.nameLabel') REDACTEDREDACTED</label>
           <input
@@ -383,12 +385,13 @@
             :placeholder="t('keys.selectStatus')"
           />
         </div>
-
-        <div class="flex justify-end gap-3 pt-4">
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
           <button @click="closeModals" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button type="submit" :disabled="submitting" class="btn btn-primary">
+          <button form="key-form" type="submit" :disabled="submitting" class="btn btn-primary">
             <svg
               v-if="submitting"
               class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -418,8 +421,8 @@
             REDACTEDREDACTED
           </button>
         </div>
-      </form>
-    </Modal>
+      </template>
+    </BaseDialog>
 
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
@@ -501,7 +504,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
@@ -557,6 +560,7 @@ const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top: number; left: number REDACTED | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+let abortController: AbortController | null = null
 
 // Get the currently selected key for group change
 const selectedKeyForGroup = computed(() => {
@@ -623,14 +627,27 @@ const copyToClipboard = async (text: string, keyId: number) => {
     copiedKeyId.value = keyId
     setTimeout(() => {
       copiedKeyId.value = null
-    REDACTED, 2000)
+    REDACTED, 800)
   REDACTED
 REDACTED
 
+const isAbortError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false
+  const { name, code REDACTED = error as { name?: string; code?: string REDACTED
+  return name === 'AbortError' || code === 'ERR_CANCELED'
+REDACTED
+
 const loadApiKeys = async () => {
+  abortController?.abort()
+  const controller = new AbortController()
+  abortController = controller
+  const { signal REDACTED = controller
   loading.value = true
   try {
-    const response = await keysAPI.list(pagination.value.page, pagination.value.page_size)
+    const response = await keysAPI.list(pagination.value.page, pagination.value.page_size, {
+      signal
+    REDACTED)
+    if (signal.aborted) return
     apiKeys.value = response.items
     pagination.value.total = response.total
     pagination.value.pages = response.pages
@@ -639,16 +656,24 @@ const loadApiKeys = async () => {
     if (response.items.length > 0) {
       const keyIds = response.items.map((k) => k.id)
       try {
-        const usageResponse = await usageAPI.getDashboardApiKeysUsage(keyIds)
+        const usageResponse = await usageAPI.getDashboardApiKeysUsage(keyIds, { signal REDACTED)
+        if (signal.aborted) return
         usageStats.value = usageResponse.stats
       REDACTED catch (e) {
-        console.error('Failed to load usage stats:', e)
+        if (!isAbortError(e)) {
+          console.error('Failed to load usage stats:', e)
+        REDACTED
       REDACTED
     REDACTED
   REDACTED catch (error) {
+    if (isAbortError(error)) {
+      return
+    REDACTED
     appStore.showError(t('keys.failedToLoad'))
   REDACTED finally {
-    loading.value = false
+    if (abortController === controller) {
+      loading.value = false
+    REDACTED
   REDACTED
 REDACTED
 
@@ -680,6 +705,12 @@ REDACTED
 
 const handlePageChange = (page: number) => {
   pagination.value.page = page
+  loadApiKeys()
+REDACTED
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.value.page_size = pageSize
+  pagination.value.page = 1
   loadApiKeys()
 REDACTED
 

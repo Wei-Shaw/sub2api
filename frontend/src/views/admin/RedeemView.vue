@@ -186,6 +186,7 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
         />
 
         <!-- Batch Actions -->
@@ -542,6 +543,8 @@ const pagination = reactive({
   pages: 0
 REDACTED)
 
+let abortController: AbortController | null = null
+
 const showDeleteDialog = ref(false)
 const showDeleteUnusedDialog = ref(false)
 const deletingCode = ref<RedeemCode | null>(null)
@@ -556,21 +559,46 @@ const generateForm = reactive({
 REDACTED)
 
 const loadCodes = async () => {
+  if (abortController) {
+    abortController.abort()
+  REDACTED
+  const currentController = new AbortController()
+  abortController = currentController
   loading.value = true
   try {
-    const response = await adminAPI.redeem.list(pagination.page, pagination.page_size, {
-      type: filters.type as RedeemCodeType,
-      status: filters.status as any,
-      search: searchQuery.value || undefined
-    REDACTED)
+    const response = await adminAPI.redeem.list(
+      pagination.page,
+      pagination.page_size,
+      {
+        type: filters.type as RedeemCodeType,
+        status: filters.status as any,
+        search: searchQuery.value || undefined
+      REDACTED,
+      {
+        signal: currentController.signal
+      REDACTED
+    )
+    if (currentController.signal.aborted) {
+      return
+    REDACTED
     codes.value = response.items
     pagination.total = response.total
     pagination.pages = response.pages
-  REDACTED catch (error) {
+  REDACTED catch (error: any) {
+    if (
+      currentController.signal.aborted ||
+      error?.name === 'AbortError' ||
+      error?.code === 'ERR_CANCELED'
+    ) {
+      return
+    REDACTED
     appStore.showError(t('admin.redeem.failedToLoad'))
     console.error('Error loading redeem codes:', error)
   REDACTED finally {
-    loading.value = false
+    if (abortController === currentController && !currentController.signal.aborted) {
+      loading.value = false
+      abortController = null
+    REDACTED
   REDACTED
 REDACTED
 
@@ -585,6 +613,12 @@ REDACTED
 
 const handlePageChange = (page: number) => {
   pagination.page = page
+  loadCodes()
+REDACTED
+
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.page_size = pageSize
+  pagination.page = 1
   loadCodes()
 REDACTED
 
