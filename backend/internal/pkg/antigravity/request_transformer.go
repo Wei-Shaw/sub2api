@@ -16,8 +16,12 @@ func TransformClaudeToGemini(claudeReq *ClaudeRequest, projectID, mappedModel st
 	// 检测是否启用 thinking
 	isThinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
 
+	// 只有 Gemini 模型支持 dummy thought workaround
+	// Claude 模型通过 Vertex/Google API 需要有效的 thought signatures
+	allowDummyThought := strings.HasPrefix(mappedModel, "gemini-")
+
 	// 1. 构建 contents
-	contents, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled)
+	contents, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
 	if err != nil {
 		return nil, fmt.Errorf("build contents: %w", err)
 REDACTED
@@ -115,7 +119,7 @@ REDACTED
 REDACTED
 
 // buildContents 构建 contents
-func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled bool) ([]GeminiContent, error) {
+func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled, allowDummyThought bool) ([]GeminiContent, error) {
 	var contents []GeminiContent
 
 	for i, msg := range messages {
@@ -124,13 +128,15 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 			role = "model"
 	REDACTED
 
-		parts, err := buildParts(msg.Content, toolIDToName, isThinkingEnabled)
+		parts, err := buildParts(msg.Content, toolIDToName, allowDummyThought)
 		if err != nil {
 			return nil, fmt.Errorf("build parts for message %d: %w", i, err)
 	REDACTED
 
-		// 如果 thinking 开启且是最后一条 assistant 消息，需要检查是否需要添加 dummy thinking
-		if role == "model" && isThinkingEnabled && i == len(messages)-1 {
+		// 只有 Gemini 模型支持 dummy thinking block workaround
+		// 只对最后一条 assistant 消息添加（Pre-fill 场景）
+		// 历史 assistant 消息不能添加没有 signature 的 dummy thinking block
+		if allowDummyThought && role == "model" && isThinkingEnabled && i == len(messages)-1 {
 			hasThoughtPart := false
 			for _, p := range parts {
 				if p.Thought {
@@ -139,11 +145,10 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 			REDACTED
 		REDACTED
 			if !hasThoughtPart && len(parts) > 0 {
-				// 在开头添加 dummy thinking block（需要 signature）
+				// 在开头添加 dummy thinking block
 				parts = append([]GeminiPart{{
-					Text:             "Thinking...",
-					Thought:          true,
-					ThoughtSignature: dummyThoughtSignature,
+					Text:    "Thinking...",
+					Thought: true,
 		REDACTED parts...)
 		REDACTED
 	REDACTED
@@ -166,7 +171,8 @@ REDACTED
 const dummyThoughtSignature = "skip_thought_signature_validator"
 
 // buildParts 构建消息的 parts
-func buildParts(content json.RawMessage, toolIDToName map[string]string, isThinkingEnabled bool) ([]GeminiPart, error) {
+// allowDummyThought: 只有 Gemini 模型支持 dummy thought signature
+func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDummyThought bool) ([]GeminiPart, error) {
 	var parts []GeminiPart
 
 	// 尝试解析为字符串
@@ -196,10 +202,9 @@ REDACTED
 				Text:    block.Thinking,
 				Thought: true,
 		REDACTED
-			// 历史 thinking block 的 signature 可能已过期，统一使用 dummy signature
-			// 参考: https://ai.google.dev/gemini-api/docs/thought-signatures
-			if isThinkingEnabled {
-				part.ThoughtSignature = dummyThoughtSignature
+			// 保留原有 signature（Claude 模型需要有效的 signature）
+			if block.Signature != "" {
+				part.ThoughtSignature = block.Signature
 		REDACTED
 			parts = append(parts, part)
 
@@ -219,14 +224,18 @@ REDACTED
 				toolIDToName[block.ID] = block.Name
 		REDACTED
 
-			// 与 proxycast 保持一致：function_call 无条件添加 thought_signature
 			part := GeminiPart{
 				FunctionCall: &GeminiFunctionCall{
 					Name: block.Name,
 					Args: block.Input,
 					ID:   block.ID,
 			REDACTED,
-				ThoughtSignature: dummyThoughtSignature,
+		REDACTED
+			// 保留原有 signature，或对 Gemini 模型使用 dummy signature
+			if block.Signature != "" {
+				part.ThoughtSignature = block.Signature
+		REDACTED else if allowDummyThought {
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
 
