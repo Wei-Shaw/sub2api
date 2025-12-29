@@ -1,5 +1,10 @@
 <template>
-  <Modal :show="show" :title="t('admin.accounts.usageStatistics')" size="2xl" @close="handleClose">
+  <BaseDialog
+    :show="show"
+    :title="t('admin.accounts.usageStatistics')"
+    width="extra-wide"
+    @close="handleClose"
+  >
     <div class="space-y-6">
       <!-- Account Info Header -->
       <div
@@ -521,7 +526,7 @@
         </button>
       </div>
     </template>
-  </Modal>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
@@ -539,7 +544,7 @@ import {
   Filler
 REDACTED from 'chart.js'
 import { Line REDACTED from 'vue-chartjs'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import { adminAPI REDACTED from '@/api/admin'

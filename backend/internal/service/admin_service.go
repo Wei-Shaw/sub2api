@@ -609,12 +609,30 @@ REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 REDACTED
+
 	// 绑定分组
-	if len(input.GroupIDs) > 0 {
-		if err := s.accountRepo.BindGroups(ctx, account.ID, input.GroupIDs); err != nil {
+	groupIDs := input.GroupIDs
+	// 如果没有指定分组,自动绑定对应平台的默认分组
+	if len(groupIDs) == 0 {
+		defaultGroupName := input.Platform + "-default"
+		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
+		if err == nil {
+			for _, g := range groups {
+				if g.Name == defaultGroupName {
+					groupIDs = []int64{g.IDREDACTED
+					log.Printf("[CreateAccount] Auto-binding account %d to default group %s (ID: %d)", account.ID, defaultGroupName, g.ID)
+					break
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if len(groupIDs) > 0 {
+		if err := s.accountRepo.BindGroups(ctx, account.ID, groupIDs); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
+
 	return account, nil
 REDACTED
 

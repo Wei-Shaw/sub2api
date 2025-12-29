@@ -445,6 +445,7 @@ import { ref, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { useAppStore REDACTED from '@/stores/app'
+import { useSubscriptionStore REDACTED from '@/stores/subscriptions'
 import { redeemAPI, authAPI, type RedeemHistoryItem REDACTED from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { formatDateTime REDACTED from '@/utils/format'
@@ -452,6 +453,7 @@ import { formatDateTime REDACTED from '@/utils/format'
 const { t REDACTED = useI18n()
 const authStore = useAuthStore()
 const appStore = useAppStore()
+const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
 
@@ -543,6 +545,16 @@ const handleRedeem = async () => {
 
     // Refresh user data to get updated balance/concurrency
     await authStore.refreshUser()
+
+    // If subscription type, immediately refresh subscription status
+    if (result.type === 'subscription') {
+      try {
+        await subscriptionStore.fetchActiveSubscriptions(true) // force refresh
+      REDACTED catch (error) {
+        console.error('Failed to refresh subscriptions after redeem:', error)
+        appStore.showWarning(t('redeem.subscriptionRefreshFailed'))
+      REDACTED
+    REDACTED
 
     // Clear the input
     redeemCode.value = ''

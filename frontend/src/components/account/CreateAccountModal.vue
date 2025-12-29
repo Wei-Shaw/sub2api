@@ -1,5 +1,10 @@
 <template>
-  <Modal :show="show" :title="t('admin.accounts.createAccount')" size="xl" @close="handleClose">
+  <BaseDialog
+    :show="show"
+    :title="t('admin.accounts.createAccount')"
+    width="wide"
+    @close="handleClose"
+  >
     <!-- Step Indicator for OAuth accounts -->
     <div v-if="isOAuthFlow" class="mb-6 flex items-center justify-center">
       <div class="flex items-center space-x-4">
@@ -34,7 +39,12 @@
     </div>
 
     <!-- Step 1: Basic Info -->
-    <form v-if="step === 1" @submit.prevent="handleSubmit" class="space-y-5">
+    <form
+      v-if="step === 1"
+      id="create-account-form"
+      @submit.prevent="handleSubmit"
+      class="space-y-5"
+    >
       <div>
         <label class="input-label">{{ t('admin.accounts.accountName') REDACTEDREDACTED</label>
         <input
@@ -520,7 +530,7 @@
                   : 'https://api.anthropic.com'
             "
           />
-          <p class="input-hint">{{ t('admin.accounts.baseUrlHint') REDACTEDREDACTED</p>
+          <p class="input-hint">{{ baseUrlHint REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') REDACTEDREDACTED</label>
@@ -537,13 +547,7 @@
                   : 'sk-ant-...'
             "
           />
-          <p class="input-hint">
-            {{
-              form.platform === 'gemini'
-                ? t('admin.accounts.gemini.apiKeyHint')
-                : t('admin.accounts.apiKeyHint')
-            REDACTEDREDACTED
-          </p>
+          <p class="input-hint">{{ apiKeyHint REDACTEDREDACTED</p>
         </div>
 
         <!-- Model Restriction Section (不适用于 Gemini) -->
@@ -960,14 +964,48 @@
         </div>
       </div>
 
-      <!-- Group Selection -->
-      <GroupSelector v-model="form.group_ids" :groups="groups" :platform="form.platform" />
+      <!-- Group Selection - 仅标准模式显示 -->
+      <GroupSelector
+        v-if="!authStore.isSimpleMode"
+        v-model="form.group_ids"
+        :groups="groups"
+        :platform="form.platform"
+      />
 
-      <div class="flex justify-end gap-3 pt-4">
+    </form>
+
+    <!-- Step 2: OAuth Authorization -->
+    <div v-else class="space-y-5">
+      <OAuthAuthorizationFlow
+        ref="oauthFlowRef"
+        :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
+        :auth-url="currentAuthUrl"
+        :session-id="currentSessionId"
+        :loading="currentOAuthLoading"
+        :error="currentOAuthError"
+        :show-help="form.platform === 'anthropic'"
+        :show-proxy-warning="form.platform !== 'openai' && !!form.proxy_id"
+        :allow-multiple="form.platform === 'anthropic'"
+        :show-cookie-option="form.platform === 'anthropic'"
+        :platform="form.platform"
+        :show-project-id="geminiOAuthType === 'code_assist'"
+        @generate-url="handleGenerateUrl"
+        @cookie-auth="handleCookieAuth"
+      />
+
+    </div>
+
+    <template #footer>
+      <div v-if="step === 1" class="flex justify-end gap-3">
         <button @click="handleClose" type="button" class="btn btn-secondary">
           {{ t('common.cancel') REDACTEDREDACTED
         </button>
-        <button type="submit" :disabled="submitting" class="btn btn-primary">
+        <button
+          type="submit"
+          form="create-account-form"
+          :disabled="submitting"
+          class="btn btn-primary"
+        >
           <svg
             v-if="submitting"
             class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -997,28 +1035,7 @@
           REDACTEDREDACTED
         </button>
       </div>
-    </form>
-
-    <!-- Step 2: OAuth Authorization -->
-    <div v-else class="space-y-5">
-      <OAuthAuthorizationFlow
-        ref="oauthFlowRef"
-        :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
-        :auth-url="currentAuthUrl"
-        :session-id="currentSessionId"
-        :loading="currentOAuthLoading"
-        :error="currentOAuthError"
-        :show-help="form.platform === 'anthropic'"
-        :show-proxy-warning="form.platform !== 'openai' && !!form.proxy_id"
-        :allow-multiple="form.platform === 'anthropic'"
-        :show-cookie-option="form.platform === 'anthropic'"
-        :platform="form.platform"
-        :show-project-id="geminiOAuthType === 'code_assist'"
-        @generate-url="handleGenerateUrl"
-        @cookie-auth="handleCookieAuth"
-      />
-
-      <div class="flex justify-between gap-3 pt-4">
+      <div v-else class="flex justify-between gap-3">
         <button type="button" class="btn btn-secondary" @click="goBackToBasicInfo">
           {{ t('common.back') REDACTEDREDACTED
         </button>
@@ -1056,14 +1073,15 @@
           REDACTEDREDACTED
         </button>
       </div>
-    </div>
-  </Modal>
+    </template>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import {
   useAccountOAuth,
@@ -1073,7 +1091,7 @@ REDACTED from '@/composables/useAccountOAuth'
 import { useOpenAIOAuth REDACTED from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth REDACTED from '@/composables/useGeminiOAuth'
 import type { Proxy, Group, AccountPlatform, AccountType REDACTED from '@/types'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
@@ -1090,11 +1108,25 @@ interface OAuthFlowExposed {
 REDACTED
 
 const { t REDACTED = useI18n()
+const authStore = useAuthStore()
 
 const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   return t('admin.accounts.oauth.title')
+REDACTED)
+
+// Platform-specific hints for API Key type
+const baseUrlHint = computed(() => {
+  if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  return t('admin.accounts.baseUrlHint')
+REDACTED)
+
+const apiKeyHint = computed(() => {
+  if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
+  if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
+  return t('admin.accounts.apiKeyHint')
 REDACTED)
 
 interface Props {

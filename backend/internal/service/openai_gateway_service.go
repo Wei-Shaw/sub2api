@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -155,7 +156,10 @@ REDACTED
 	// 2. Get schedulable OpenAI accounts
 	var accounts []Account
 	var err error
-	if groupID != nil {
+	// 简易模式：忽略分组限制，查询所有可用账号
+	if s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
+REDACTED else if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
 REDACTED else {
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
@@ -753,6 +757,12 @@ REDACTED
 REDACTED
 
 	_ = s.usageLogRepo.Create(ctx, usageLog)
+
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		log.Printf("[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		return nil
+REDACTED
 
 	// Deduct based on billing type
 	if isSubscriptionBilling {

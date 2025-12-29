@@ -66,6 +66,7 @@
               v-model="formData.email"
               type="email"
               required
+              autofocus
               autocomplete="email"
               :disabled="isLoading"
               class="input pl-11"

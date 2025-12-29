@@ -164,8 +164,28 @@
               <button @click="resetFilters" class="btn btn-secondary">
                 {{ t('common.reset') REDACTEDREDACTED
               </button>
-              <button @click="exportToCSV" class="btn btn-primary">
-                {{ t('usage.exportCsv') REDACTEDREDACTED
+              <button @click="exportToCSV" :disabled="exporting" class="btn btn-primary">
+                <svg
+                  v-if="exporting"
+                  class="-ml-1 mr-2 h-4 w-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  ></circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                {{ exporting ? t('usage.exporting') : t('usage.exportCsv') REDACTEDREDACTED
               </button>
             </div>
           </div>
@@ -366,6 +386,7 @@
           :total="pagination.total"
           :page-size="pagination.page_size"
           @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
         />
       </template>
     </TablePageLayout>
@@ -412,7 +433,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted REDACTED from 'vue'
+import { ref, computed, reactive, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { usageAPI, keysAPI REDACTED from '@/api'
@@ -429,6 +450,8 @@ import { formatDateTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+
+let abortController: AbortController | null = null
 
 // Tooltip state
 const tooltipVisible = ref(false)
@@ -453,6 +476,7 @@ const columns = computed<Column[]>(() => [
 const usageLogs = ref<UsageLog[]>([])
 const apiKeys = ref<ApiKey[]>([])
 const loading = ref(false)
+const exporting = ref(false)
 
 const apiKeyOptions = computed(() => {
   return [
@@ -464,9 +488,19 @@ const apiKeyOptions = computed(() => {
   ]
 REDACTED)
 
+// Helper function to format date in local timezone
+const formatLocalDate = (date: Date): string => {
+  return `${date.getFullYear()REDACTED-${String(date.getMonth() + 1).padStart(2, '0')REDACTED-${String(date.getDate()).padStart(2, '0')REDACTED`
+REDACTED
+
+// Initialize date range immediately
+const now = new Date()
+const weekAgo = new Date(now)
+weekAgo.setDate(weekAgo.getDate() - 6)
+
 // Date range state
-const startDate = ref('')
-const endDate = ref('')
+const startDate = ref(formatLocalDate(weekAgo))
+const endDate = ref(formatLocalDate(now))
 
 const filters = ref<UsageQueryParams>({
   api_key_id: undefined,
@@ -474,18 +508,9 @@ const filters = ref<UsageQueryParams>({
   end_date: undefined
 REDACTED)
 
-// Initialize default date range (last 7 days)
-const initializeDateRange = () => {
-  const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const weekAgo = new Date(now)
-  weekAgo.setDate(weekAgo.getDate() - 6)
-
-  startDate.value = weekAgo.toISOString().split('T')[0]
-  endDate.value = today
-  filters.value.start_date = startDate.value
-  filters.value.end_date = endDate.value
-REDACTED
+// Initialize filters with date range
+filters.value.start_date = startDate.value
+filters.value.end_date = endDate.value
 
 // Handle date range change from DateRangePicker
 const onDateRangeChange = (range: {
@@ -498,7 +523,7 @@ REDACTED) => {
   applyFilters()
 REDACTED
 
-const pagination = ref({
+const pagination = reactive({
   page: 1,
   page_size: 20,
   total: 0,
@@ -532,22 +557,40 @@ const formatCacheTokens = (value: number): string => {
 REDACTED
 
 const loadUsageLogs = async () => {
+  if (abortController) {
+    abortController.abort()
+  REDACTED
+  const currentAbortController = new AbortController()
+  abortController = currentAbortController
+  const { signal REDACTED = currentAbortController
   loading.value = true
   try {
     const params: UsageQueryParams = {
-      page: pagination.value.page,
-      page_size: pagination.value.page_size,
+      page: pagination.page,
+      page_size: pagination.page_size,
       ...filters.value
     REDACTED
 
-    const response = await usageAPI.query(params)
+    const response = await usageAPI.query(params, { signal REDACTED)
+    if (signal.aborted) {
+      return
+    REDACTED
     usageLogs.value = response.items
-    pagination.value.total = response.total
-    pagination.value.pages = response.pages
+    pagination.total = response.total
+    pagination.pages = response.pages
   REDACTED catch (error) {
+    if (signal.aborted) {
+      return
+    REDACTED
+    const abortError = error as { name?: string; code?: string REDACTED
+    if (abortError?.name === 'AbortError' || abortError?.code === 'ERR_CANCELED') {
+      return
+    REDACTED
     appStore.showError(t('usage.failedToLoad'))
   REDACTED finally {
-    loading.value = false
+    if (abortController === currentAbortController) {
+      loading.value = false
+    REDACTED
   REDACTED
 REDACTED
 
@@ -575,7 +618,7 @@ const loadUsageStats = async () => {
 REDACTED
 
 const applyFilters = () => {
-  pagination.value.page = 1
+  pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
 REDACTED
@@ -587,61 +630,135 @@ const resetFilters = () => {
     end_date: undefined
   REDACTED
   // Reset date range to default (last 7 days)
-  initializeDateRange()
-  pagination.value.page = 1
+  const now = new Date()
+  const weekAgo = new Date(now)
+  weekAgo.setDate(weekAgo.getDate() - 6)
+  startDate.value = formatLocalDate(weekAgo)
+  endDate.value = formatLocalDate(now)
+  filters.value.start_date = startDate.value
+  filters.value.end_date = endDate.value
+  pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
 REDACTED
 
 const handlePageChange = (page: number) => {
-  pagination.value.page = page
+  pagination.page = page
   loadUsageLogs()
 REDACTED
 
-const exportToCSV = () => {
-  if (usageLogs.value.length === 0) {
+const handlePageSizeChange = (pageSize: number) => {
+  pagination.page_size = pageSize
+  pagination.page = 1
+  loadUsageLogs()
+REDACTED
+
+/**
+ * Escape CSV value to prevent injection and handle special characters
+ */
+const escapeCSVValue = (value: unknown): string => {
+  if (value == null) return ''
+
+  const str = String(value)
+  const escaped = str.replace(/"/g, '""')
+
+  // Prevent formula injection by prefixing dangerous characters with single quote
+  if (/^[=+\-@\t\r]/.test(str)) {
+    return `"\'${escapedREDACTED"`
+  REDACTED
+
+  // Escape values containing comma, quote, or newline
+  if (/[,"\n\r]/.test(str)) {
+    return `"${escapedREDACTED"`
+  REDACTED
+
+  return str
+REDACTED
+
+const exportToCSV = async () => {
+  if (pagination.total === 0) {
     appStore.showWarning(t('usage.noDataToExport'))
     return
   REDACTED
 
-  const headers = [
-    'Model',
-    'Type',
-    'Input Tokens',
-    'Output Tokens',
-    'Cache Read Tokens',
-    'Cache Write Tokens',
-    'Total Cost',
-    'Billing Type',
-    'First Token (ms)',
-    'Duration (ms)',
-    'Time'
-  ]
-  const rows = usageLogs.value.map((log) => [
-    log.model,
-    log.stream ? 'Stream' : 'Sync',
-    log.input_tokens,
-    log.output_tokens,
-    log.cache_read_tokens,
-    log.cache_creation_tokens,
-    log.total_cost.toFixed(6),
-    log.billing_type === 1 ? 'Subscription' : 'Balance',
-    log.first_token_ms ?? '',
-    log.duration_ms,
-    log.created_at
-  ])
+  exporting.value = true
+  appStore.showInfo(t('usage.preparingExport'))
 
-  const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n')
+  try {
+    const allLogs: UsageLog[] = []
+    const pageSize = 100 // Use a larger page size for export to reduce requests
+    const totalRequests = Math.ceil(pagination.total / pageSize)
 
-  const blob = new Blob([csvContent], { type: 'text/csv' REDACTED)
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `usage_${new Date().toISOString().split('T')[0]REDACTED.csv`
-  link.click()
-  window.URL.revokeObjectURL(url)
+    for (let page = 1; page <= totalRequests; page++) {
+      const params: UsageQueryParams = {
+        page: page,
+        page_size: pageSize,
+        ...filters.value
+      REDACTED
+      const response = await usageAPI.query(params)
+      allLogs.push(...response.items)
+    REDACTED
 
-  appStore.showSuccess(t('usage.exportSuccess'))
+    if (allLogs.length === 0) {
+      appStore.showWarning(t('usage.noDataToExport'))
+      return
+    REDACTED
+
+    const headers = [
+      'Time',
+      'API Key Name',
+      'Model',
+      'Type',
+      'Input Tokens',
+      'Output Tokens',
+      'Cache Read Tokens',
+      'Cache Creation Tokens',
+      'Rate Multiplier',
+      'Billed Cost',
+      'Original Cost',
+      'Billing Type',
+      'First Token (ms)',
+      'Duration (ms)'
+    ]
+    const rows = allLogs.map((log) =>
+      [
+        log.created_at,
+        log.api_key?.name || '',
+        log.model,
+        log.stream ? 'Stream' : 'Sync',
+        log.input_tokens,
+        log.output_tokens,
+        log.cache_read_tokens,
+        log.cache_creation_tokens,
+        log.rate_multiplier,
+        log.actual_cost.toFixed(8),
+        log.total_cost.toFixed(8),
+        log.billing_type === 1 ? 'Subscription' : 'Balance',
+        log.first_token_ms ?? '',
+        log.duration_ms
+      ].map(escapeCSVValue)
+    )
+
+    const csvContent = [
+      headers.map(escapeCSVValue).join(','),
+      ...rows.map((row) => row.join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' REDACTED)
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `usage_${filters.value.start_dateREDACTED_to_${filters.value.end_dateREDACTED.csv`
+    link.click()
+    window.URL.revokeObjectURL(url)
+
+    appStore.showSuccess(t('usage.exportSuccess'))
+  REDACTED catch (error) {
+    appStore.showError(t('usage.exportFailed'))
+    console.error('CSV Export failed:', error)
+  REDACTED finally {
+    exporting.value = false
+  REDACTED
 REDACTED
 
 // Tooltip functions
@@ -662,7 +779,6 @@ const hideTooltip = () => {
 REDACTED
 
 onMounted(() => {
-  initializeDateRange()
   loadApiKeys()
   loadUsageLogs()
   loadUsageStats()

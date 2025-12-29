@@ -24,37 +24,6 @@
           >
             <div class="flex items-center space-x-1">
               <span>{{ column.label REDACTEDREDACTED</span>
-              <!-- 操作列展开/折叠按钮 -->
-              <button
-                v-if="column.key === 'actions' && hasExpandableActions"
-                type="button"
-                @click.stop="toggleActionsExpanded"
-                class="ml-2 flex items-center justify-center rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-gray-300"
-                :title="actionsExpanded ? t('table.collapseActions') : t('table.expandActions')"
-              >
-                <!-- 展开状态：收起图标 -->
-                <svg
-                  v-if="actionsExpanded"
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
-                </svg>
-                <!-- 折叠状态：展开图标 -->
-                <svg
-                  v-else
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
-                </svg>
-              </button>
               <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
                 <svg
                   v-if="sortKey === column.key"
@@ -182,8 +151,8 @@ const checkActionsColumnWidth = () => {
   // 等待DOM更新
   nextTick(() => {
     // 测量所有按钮的总宽度
-    const buttons = actionsContainer.querySelectorAll('button')
-    if (buttons.length <= 2) {
+    const actionItems = actionsContainer.querySelectorAll('button, a, [role="button"]')
+    if (actionItems.length <= 2) {
       actionsColumnNeedsExpanding.value = false
       actionsExpanded.value = wasExpanded
       return
@@ -191,9 +160,9 @@ const checkActionsColumnWidth = () => {
 
     // 计算所有按钮的总宽度（包括gap）
     let totalWidth = 0
-    buttons.forEach((btn, index) => {
-      totalWidth += (btn as HTMLElement).offsetWidth
-      if (index < buttons.length - 1) {
+    actionItems.forEach((item, index) => {
+      totalWidth += (item as HTMLElement).offsetWidth
+      if (index < actionItems.length - 1) {
         totalWidth += 4 // gap-1 = 4px
       REDACTED
     REDACTED)
@@ -211,6 +180,7 @@ REDACTED
 
 // 监听尺寸变化
 let resizeObserver: ResizeObserver | null = null
+let resizeHandler: (() => void) | null = null
 
 onMounted(() => {
   checkScrollable()
@@ -223,17 +193,20 @@ onMounted(() => {
     resizeObserver.observe(tableWrapperRef.value)
   REDACTED else {
     // 降级方案：不支持 ResizeObserver 时使用 window resize
-    const handleResize = () => {
+    resizeHandler = () => {
       checkScrollable()
       checkActionsColumnWidth()
     REDACTED
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', resizeHandler)
   REDACTED
 REDACTED)
 
 onUnmounted(() => {
   resizeObserver?.disconnect()
-  window.removeEventListener('resize', checkScrollable)
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+    resizeHandler = null
+  REDACTED
 REDACTED)
 
 interface Props {
@@ -297,26 +270,6 @@ const sortedData = computed(() => {
     return sortOrder.value === 'asc' ? comparison : -comparison
   REDACTED)
 REDACTED)
-
-// 检查是否有可展开的操作列
-const hasExpandableActions = computed(() => {
-  // 如果明确指定了actionsCount，使用它来判断
-  if (props.actionsCount !== undefined) {
-    return props.expandableActions && props.columns.some((col) => col.key === 'actions') && props.actionsCount > 2
-  REDACTED
-
-  // 否则使用原来的检测逻辑
-  return (
-    props.expandableActions &&
-    props.columns.some((col) => col.key === 'actions') &&
-    actionsColumnNeedsExpanding.value
-  )
-REDACTED)
-
-// 切换操作列展开/折叠状态
-const toggleActionsExpanded = () => {
-  actionsExpanded.value = !actionsExpanded.value
-REDACTED
 
 // 检查第一列是否为勾选列
 const hasSelectColumn = computed(() => {

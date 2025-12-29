@@ -1,11 +1,11 @@
 <template>
-  <Modal
+  <BaseDialog
     :show="show"
     :title="t('admin.accounts.reAuthorizeAccount')"
-    size="lg"
+    width="wide"
     @close="handleClose"
   >
-    <div v-if="account" class="space-y-5">
+    <div v-if="account" class="space-y-4">
       <!-- Account Info -->
       <div
         class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700"
@@ -53,8 +53,8 @@
       </div>
 
       <!-- Add Method Selection (Claude only) -->
-      <div v-if="isAnthropic">
-        <label class="input-label">{{ t('admin.accounts.oauth.authMethod') REDACTEDREDACTED</label>
+      <fieldset v-if="isAnthropic" class="border-0 p-0">
+        <legend class="input-label">{{ t('admin.accounts.oauth.authMethod') REDACTEDREDACTED</legend>
         <div class="mt-2 flex gap-4">
           <label class="flex cursor-pointer items-center">
             <input
@@ -79,11 +79,11 @@
             REDACTEDREDACTED</span>
           </label>
         </div>
-      </div>
+      </fieldset>
 
       <!-- Gemini OAuth Type Selection -->
-      <div v-if="isGemini">
-        <label class="input-label">{{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED</label>
+      <fieldset v-if="isGemini" class="border-0 p-0">
+        <legend class="input-label">{{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED</legend>
         <div class="mt-2 grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -187,7 +187,7 @@
             </div>
           </button>
         </div>
-      </div>
+      </fieldset>
 
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
@@ -207,7 +207,10 @@
         @cookie-auth="handleCookieAuth"
       />
 
-      <div class="flex justify-between gap-3 pt-4">
+    </div>
+
+    <template #footer>
+      <div v-if="account" class="flex justify-between gap-3">
         <button type="button" class="btn btn-secondary" @click="handleClose">
           {{ t('common.cancel') REDACTEDREDACTED
         </button>
@@ -245,8 +248,8 @@
           REDACTEDREDACTED
         </button>
       </div>
-    </div>
-  </Modal>
+    </template>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
@@ -262,7 +265,7 @@ REDACTED from '@/composables/useAccountOAuth'
 import { useOpenAIOAuth REDACTED from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth REDACTED from '@/composables/useGeminiOAuth'
 import type { Account REDACTED from '@/types'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component

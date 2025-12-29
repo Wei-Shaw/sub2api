@@ -119,6 +119,7 @@ export default {
     info: 'Info',
     active: 'Active',
     inactive: 'Inactive',
+    more: 'More',
     close: 'Close',
     enabled: 'Enabled',
     disabled: 'Disabled',
@@ -344,6 +345,8 @@ export default {
     allApiKeys: 'All API Keys',
     timeRange: 'Time Range',
     exportCsv: 'Export CSV',
+    exporting: 'Exporting...',
+    preparingExport: 'Preparing export...',
     model: 'Model',
     type: 'Type',
     tokens: 'Tokens',
@@ -364,6 +367,7 @@ export default {
     failedToLoad: 'Failed to load usage logs',
     noDataToExport: 'No data to export',
     exportSuccess: 'Usage data exported successfully',
+    exportFailed: 'Failed to export usage data',
     billingType: 'Billing',
     balance: 'Balance',
     subscription: 'Subscription'
@@ -406,7 +410,8 @@ export default {
     subscriptionDays: '{daysREDACTED days',
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
-    failedToRedeem: 'Failed to redeem code. Please check the code and try again.'
+    failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
+    subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.'
   REDACTED,
 
   // Profile
@@ -427,6 +432,7 @@ export default {
     updating: 'Updating...',
     updateSuccess: 'Profile updated successfully',
     updateFailed: 'Failed to update profile',
+    usernameRequired: 'Username is required',
     changePassword: 'Change Password',
     currentPassword: 'Current Password',
     newPassword: 'New Password',
@@ -670,14 +676,21 @@ export default {
         description: 'Description',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
-        status: 'Status'
+        status: 'Status',
+        exclusive: 'Exclusive Group'
       REDACTED,
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
-      exclusiveHint: 'Exclusive (requires explicit user access)',
+      exclusiveHint: 'Exclusive group, manually assign to specific users',
+      exclusiveTooltip: {
+        title: 'What is an exclusive group?',
+        description: 'When enabled, users cannot see this group when creating API Keys. Only after an admin manually assigns a user to this group can they use it.',
+        example: 'Use case:',
+        exampleContent: 'Public group rate is 0.8. Create an exclusive group with 0.7 rate, manually assign VIP users to give them better pricing.'
+      REDACTED,
       noGroupsYet: 'No groups yet',
       createFirstGroup: 'Create your first group to organize API keys.',
       creating: 'Creating...',
@@ -902,6 +915,11 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      // OpenAI specific hints
+      openai: {
+        baseUrlHint: 'Leave default for official OpenAI API',
+        apiKeyHint: 'Your OpenAI API Key'
+      REDACTED,
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
@@ -1063,6 +1081,7 @@ export default {
         modelPassthrough: 'Gemini Model Passthrough',
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
+        baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)'
       REDACTED,
       // Re-Auth Modal
@@ -1172,9 +1191,9 @@ export default {
       batchAdd: 'Quick Add',
       batchInput: 'Proxy List',
       batchInputPlaceholder:
-        "Enter one proxy per line in the following formats:\nsocks5://user:pass@192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass@proxy.example.com:443",
+        "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'REDACTED192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'REDACTEDproxy.example.com:443",
       batchInputHint:
-        "Supports http, https, socks5 protocols. Format: protocol://[user:pass@]host:port",
+        "Supports http, https, socks5 protocols. Format: protocol://[user:pass{'@'REDACTED]host:port",
       parsedCount: '{countREDACTED valid',
       invalidCount: '{countREDACTED invalid',
       duplicateCount: '{countREDACTED duplicate',

@@ -307,6 +307,35 @@ REDACTED
     @apply flex items-center justify-end gap-3;
   REDACTED
 
+  /* ============ Dialog ============ */
+  .dialog-overlay {
+    @apply fixed inset-0 z-50;
+    @apply bg-black/40 dark:bg-black/60;
+    @apply flex items-center justify-center p-4;
+  REDACTED
+
+  .dialog-container {
+    @apply flex w-full flex-col;
+    @apply max-h-[90vh];
+    @apply rounded-2xl bg-white dark:bg-dark-800;
+    @apply shadow-xl;
+  REDACTED
+
+  .dialog-header {
+    @apply border-b border-gray-100 px-6 py-4 dark:border-dark-700;
+    @apply flex items-center justify-between;
+  REDACTED
+
+  .dialog-body {
+    @apply overflow-y-auto px-6 py-4;
+  REDACTED
+
+  .dialog-footer {
+    @apply border-t border-gray-100 px-6 py-4 dark:border-dark-700;
+    @apply bg-gray-50/60 dark:bg-dark-900/40;
+    @apply flex items-center justify-end gap-3;
+  REDACTED
+
   /* ============ Toast 通知 ============ */
   .toast {
     @apply fixed right-4 top-4 z-[100];

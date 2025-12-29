@@ -1,6 +1,16 @@
 <template>
-  <Modal :show="show" :title="t('admin.accounts.editAccount')" size="xl" @close="handleClose">
-    <form v-if="account" @submit.prevent="handleSubmit" class="space-y-5">
+  <BaseDialog
+    :show="show"
+    :title="t('admin.accounts.editAccount')"
+    width="wide"
+    @close="handleClose"
+  >
+    <form
+      v-if="account"
+      id="edit-account-form"
+      @submit.prevent="handleSubmit"
+      class="space-y-5"
+    >
       <div>
         <label class="input-label">{{ t('common.name') REDACTEDREDACTED</label>
         <input v-model="form.name" type="text" required class="input" />
@@ -22,7 +32,7 @@
                   : 'https://api.anthropic.com'
             "
           />
-          <p class="input-hint">{{ t('admin.accounts.baseUrlHint') REDACTEDREDACTED</p>
+          <p class="input-hint">{{ baseUrlHint REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') REDACTEDREDACTED</label>
@@ -456,14 +466,27 @@
         <Select v-model="form.status" :options="statusOptions" />
       </div>
 
-      <!-- Group Selection -->
-      <GroupSelector v-model="form.group_ids" :groups="groups" :platform="account?.platform" />
+      <!-- Group Selection - 仅标准模式显示 -->
+      <GroupSelector
+        v-if="!authStore.isSimpleMode"
+        v-model="form.group_ids"
+        :groups="groups"
+        :platform="account?.platform"
+      />
 
-      <div class="flex justify-end gap-3 pt-4">
+    </form>
+
+    <template #footer>
+      <div v-if="account" class="flex justify-end gap-3">
         <button @click="handleClose" type="button" class="btn btn-secondary">
           {{ t('common.cancel') REDACTEDREDACTED
         </button>
-        <button type="submit" :disabled="submitting" class="btn btn-primary">
+        <button
+          type="submit"
+          form="edit-account-form"
+          :disabled="submitting"
+          class="btn btn-primary"
+        >
           <svg
             v-if="submitting"
             class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -487,17 +510,18 @@
           {{ submitting ? t('admin.accounts.updating') : t('common.update') REDACTEDREDACTED
         </button>
       </div>
-    </form>
-  </Modal>
+    </template>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, Proxy, Group REDACTED from '@/types'
-import Modal from '@/components/common/Modal.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
@@ -517,6 +541,15 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
+
+// Platform-specific hint for Base URL
+const baseUrlHint = computed(() => {
+  if (!props.account) return t('admin.accounts.baseUrlHint')
+  if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  return t('admin.accounts.baseUrlHint')
+REDACTED)
 
 // Model mapping type
 interface ModelMapping {

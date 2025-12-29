@@ -8,7 +8,7 @@ import type {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
-  User,
+  CurrentUserResponse,
   SendVerifyCodeRequest,
   SendVerifyCodeResponse,
   PublicSettings
@@ -70,9 +70,8 @@ REDACTED
  * Get current authenticated user
  * @returns User profile data
  */
-export async function getCurrentUser(): Promise<User> {
-  const { data REDACTED = await apiClient.get<User>('/auth/me')
-  return data
+export async function getCurrentUser() {
+  return apiClient.get<CurrentUserResponse>('/auth/me')
 REDACTED
 
 /**

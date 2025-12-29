@@ -7,6 +7,11 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	RunModeStandard = "standard"
+	RunModeSimple   = "simple"
+)
+
 type Config struct {
 	Server       ServerConfig       `mapstructure:"server"`
 	Database     DatabaseConfig     `mapstructure:"database"`
@@ -17,6 +22,7 @@ type Config struct {
 	Pricing      PricingConfig      `mapstructure:"pricing"`
 	Gateway      GatewayConfig      `mapstructure:"gateway"`
 	TokenRefresh TokenRefreshConfig `mapstructure:"token_refresh"`
+	RunMode      string             `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini       GeminiConfig       `mapstructure:"gemini"`
 REDACTED
@@ -135,6 +141,16 @@ type RateLimitConfig struct {
 	OverloadCooldownMinutes int `mapstructure:"overload_cooldown_minutes"` // 529过载冷却时间(分钟)
 REDACTED
 
+func NormalizeRunMode(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case RunModeStandard, RunModeSimple:
+		return normalized
+	default:
+		return RunModeStandard
+REDACTED
+REDACTED
+
 func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -161,6 +177,8 @@ REDACTED
 		return nil, fmt.Errorf("unmarshal config error: %w", err)
 REDACTED
 
+	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config error: %w", err)
 REDACTED
@@ -169,6 +187,8 @@ REDACTED
 REDACTED
 
 func setDefaults() {
+	viper.SetDefault("run_mode", RunModeStandard)
+
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", 8080)
