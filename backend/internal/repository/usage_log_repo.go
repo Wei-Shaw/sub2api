@@ -70,9 +70,6 @@ REDACTED
 REDACTED
 
 	rateMultiplier := log.RateMultiplier
-	if rateMultiplier == 0 {
-		rateMultiplier = 1
-REDACTED
 
 	query := `
 		INSERT INTO usage_logs (

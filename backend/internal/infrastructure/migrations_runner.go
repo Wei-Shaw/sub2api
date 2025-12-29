@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/migrations"
 )
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 // 在多实例部署场景下，该锁确保同一时间只有一个实例执行迁移。
 // 任何稳定的 int64 值都可以，只要不与同一数据库中的其他锁冲突即可。
 const migrationsAdvisoryLockID int64 = 694208311321144027
+const migrationsLockRetryInterval = 500 * time.Millisecond
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
 //
@@ -166,11 +168,23 @@ REDACTED
 // Advisory Lock 是一种轻量级的锁机制，不与任何特定的数据库对象关联。
 // 它非常适合用于应用层面的分布式锁场景，如迁移序列化。
 func pgAdvisoryLock(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrationsAdvisoryLockID)
-	if err != nil {
-		return fmt.Errorf("acquire migrations lock: %w", err)
+	ticker := time.NewTicker(migrationsLockRetryInterval)
+	defer ticker.Stop()
+
+	for {
+		var locked bool
+		if err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationsAdvisoryLockID).Scan(&locked); err != nil {
+			return fmt.Errorf("acquire migrations lock: %w", err)
+	REDACTED
+		if locked {
+			return nil
+	REDACTED
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("acquire migrations lock: %w", ctx.Err())
+		case <-ticker.C:
+	REDACTED
 REDACTED
-	return nil
 REDACTED
 
 // pgAdvisoryUnlock 释放 PostgreSQL Advisory Lock。

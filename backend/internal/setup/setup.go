@@ -260,7 +260,9 @@ REDACTED
 	REDACTED
 REDACTED()
 
-	return infrastructure.ApplyMigrations(context.Background(), db)
+	migrationCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return infrastructure.ApplyMigrations(migrationCtx, db)
 REDACTED
 
 func createAdminUser(cfg *SetupConfig) error {
