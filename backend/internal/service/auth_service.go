@@ -20,6 +20,7 @@ var (
 	ErrEmailExists         = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
 	ErrInvalidToken        = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
 	ErrTokenExpired        = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrTokenRevoked        = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
 	ErrEmailVerifyRequired = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
 	ErrRegDisabled         = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable  = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
@@ -27,9 +28,10 @@ var (
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
-	UserID int64  `json:"user_id"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
+	UserID       int64  `json:"user_id"`
+	Email        string `json:"email"`
+	Role         string `json:"role"`
+	TokenVersion int64  `json:"token_version"` // Used to invalidate tokens on password change
 	jwt.RegisteredClaims
 REDACTED
 
@@ -311,9 +313,10 @@ func (s *AuthService) GenerateToken(user *User) (string, error) {
 	expiresAt := now.Add(time.Duration(s.cfg.JWT.ExpireHour) * time.Hour)
 
 	claims := &JWTClaims{
-		UserID: user.ID,
-		Email:  user.Email,
-		Role:   user.Role,
+		UserID:       user.ID,
+		Email:        user.Email,
+		Role:         user.Role,
+		TokenVersion: user.TokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -366,6 +369,12 @@ REDACTED
 	// 检查用户状态
 	if !user.IsActive() {
 		return "", ErrUserNotActive
+REDACTED
+
+	// Security: Check TokenVersion to prevent refreshing revoked tokens
+	// This ensures tokens issued before a password change cannot be refreshed
+	if claims.TokenVersion != user.TokenVersion {
+		return "", ErrTokenRevoked
 REDACTED
 
 	// 生成新token
