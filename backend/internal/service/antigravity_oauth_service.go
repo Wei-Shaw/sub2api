@@ -116,7 +116,7 @@ REDACTED
 	// 交换 token
 	tokenResp, err := client.ExchangeCode(ctx, input.Code, session.CodeVerifier)
 	if err != nil {
-		return nil, fmt.Errorf("Token 交换失败: %w", err)
+		return nil, fmt.Errorf("token 交换失败: %w", err)
 REDACTED
 
 	// 删除 session
@@ -184,7 +184,7 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 		lastErr = err
 REDACTED
 
-	return nil, fmt.Errorf("Token 刷新失败 (重试后): %w", lastErr)
+	return nil, fmt.Errorf("token 刷新失败 (重试后): %w", lastErr)
 REDACTED
 
 func isNonRetryableAntigravityOAuthError(err error) bool {

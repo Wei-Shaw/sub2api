@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,16 +23,12 @@ const (
 	ContextKeyForcePlatform ContextKey = "force_platform"
 )
 
-// ctxKeyForcePlatformStr 用于 request.Context 的字符串 key（供 Service 读取）
-// 注意：service 包中也需要使用相同的字符串 "ctx_force_platform"
-const ctxKeyForcePlatformStr = "ctx_force_platform"
-
 // ForcePlatform 返回设置强制平台的中间件
 // 同时设置 request.Context（供 Service 使用）和 gin.Context（供 Handler 快速检查）
 func ForcePlatform(platform string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 设置到 request.Context，使用字符串 key 供 Service 层读取
-		ctx := context.WithValue(c.Request.Context(), ctxKeyForcePlatformStr, platform)
+		// 设置到 request.Context，使用 ctxkey.ForcePlatform 供 Service 层读取
+		ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, platform)
 		c.Request = c.Request.WithContext(ctx)
 		// 同时设置到 gin.Context，供 Handler 快速检查
 		c.Set(string(ContextKeyForcePlatform), platform)

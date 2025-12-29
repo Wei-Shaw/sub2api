@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
@@ -30,9 +31,6 @@ const (
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 )
 
-// ctxKeyForcePlatform 用于从 context 读取强制平台（由 middleware.ForcePlatform 设置）
-// 必须与 middleware.ctxKeyForcePlatformStr 使用相同的字符串值
-const ctxKeyForcePlatform = "ctx_force_platform"
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
@@ -300,7 +298,7 @@ REDACTED
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
-	forcePlatform, hasForcePlatform := ctx.Value(ctxKeyForcePlatform).(string)
+	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		platform = forcePlatform
 REDACTED else if groupID != nil {

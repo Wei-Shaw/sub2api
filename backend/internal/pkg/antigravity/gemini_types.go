@@ -14,13 +14,13 @@ REDACTED
 
 // GeminiRequest Gemini 请求内容
 type GeminiRequest struct {
-	Contents          []GeminiContent          `json:"contents"`
-	SystemInstruction *GeminiContent           `json:"systemInstruction,omitempty"`
-	GenerationConfig  *GeminiGenerationConfig  `json:"generationConfig,omitempty"`
-	Tools             []GeminiToolDeclaration  `json:"tools,omitempty"`
-	ToolConfig        *GeminiToolConfig        `json:"toolConfig,omitempty"`
-	SafetySettings    []GeminiSafetySetting    `json:"safetySettings,omitempty"`
-	SessionID         string                   `json:"sessionId,omitempty"`
+	Contents          []GeminiContent         `json:"contents"`
+	SystemInstruction *GeminiContent          `json:"systemInstruction,omitempty"`
+	GenerationConfig  *GeminiGenerationConfig `json:"generationConfig,omitempty"`
+	Tools             []GeminiToolDeclaration `json:"tools,omitempty"`
+	ToolConfig        *GeminiToolConfig       `json:"toolConfig,omitempty"`
+	SafetySettings    []GeminiSafetySetting   `json:"safetySettings,omitempty"`
+	SessionID         string                  `json:"sessionId,omitempty"`
 REDACTED
 
 // GeminiContent Gemini 内容
@@ -31,10 +31,10 @@ REDACTED
 
 // GeminiPart Gemini 内容部分
 type GeminiPart struct {
-	Text             string            `json:"text,omitempty"`
-	Thought          bool              `json:"thought,omitempty"`
-	ThoughtSignature string            `json:"thoughtSignature,omitempty"`
-	InlineData       *GeminiInlineData `json:"inlineData,omitempty"`
+	Text             string                  `json:"text,omitempty"`
+	Thought          bool                    `json:"thought,omitempty"`
+	ThoughtSignature string                  `json:"thoughtSignature,omitempty"`
+	InlineData       *GeminiInlineData       `json:"inlineData,omitempty"`
 	FunctionCall     *GeminiFunctionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *GeminiFunctionResponse `json:"functionResponse,omitempty"`
 REDACTED
@@ -61,12 +61,12 @@ REDACTED
 
 // GeminiGenerationConfig Gemini 生成配置
 type GeminiGenerationConfig struct {
-	MaxOutputTokens int                      `json:"maxOutputTokens,omitempty"`
-	Temperature     *float64                 `json:"temperature,omitempty"`
-	TopP            *float64                 `json:"topP,omitempty"`
-	TopK            *int                     `json:"topK,omitempty"`
-	ThinkingConfig  *GeminiThinkingConfig    `json:"thinkingConfig,omitempty"`
-	StopSequences   []string                 `json:"stopSequences,omitempty"`
+	MaxOutputTokens int                   `json:"maxOutputTokens,omitempty"`
+	Temperature     *float64              `json:"temperature,omitempty"`
+	TopP            *float64              `json:"topP,omitempty"`
+	TopK            *int                  `json:"topK,omitempty"`
+	ThinkingConfig  *GeminiThinkingConfig `json:"thinkingConfig,omitempty"`
+	StopSequences   []string              `json:"stopSequences,omitempty"`
 REDACTED
 
 // GeminiThinkingConfig Gemini thinking 配置

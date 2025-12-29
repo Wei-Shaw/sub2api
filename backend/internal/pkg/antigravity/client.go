@@ -114,7 +114,7 @@ REDACTED
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Token 交换请求失败: %w", err)
+		return nil, fmt.Errorf("token 交换请求失败: %w", err)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
@@ -124,12 +124,12 @@ REDACTED
 REDACTED
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Token 交换失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("token 交换失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
 REDACTED
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(bodyBytes, &tokenResp); err != nil {
-		return nil, fmt.Errorf("Token 解析失败: %w", err)
+		return nil, fmt.Errorf("token 解析失败: %w", err)
 REDACTED
 
 	return &tokenResp, nil
@@ -151,7 +151,7 @@ REDACTED
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Token 刷新请求失败: %w", err)
+		return nil, fmt.Errorf("token 刷新请求失败: %w", err)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
@@ -161,12 +161,12 @@ REDACTED
 REDACTED
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Token 刷新失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("token 刷新失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
 REDACTED
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(bodyBytes, &tokenResp); err != nil {
-		return nil, fmt.Errorf("Token 解析失败: %w", err)
+		return nil, fmt.Errorf("token 解析失败: %w", err)
 REDACTED
 
 	return &tokenResp, nil
