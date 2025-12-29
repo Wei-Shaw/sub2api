@@ -600,3 +600,8 @@ formatters:
           replacement: 'any'
         - pattern: 'a[b:len(a)]'
           replacement: 'a[b:]'
+  exclusions:
+    paths:
+      - internal/pkg/antigravity/claude_types.go
+      - internal/pkg/antigravity/gemini_types.go
+      - internal/pkg/antigravity/stream_transformer.go
