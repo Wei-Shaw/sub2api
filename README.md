@@ -283,6 +283,36 @@ npm run dev
 
 ---
 
+## Antigravity Support
+
+Sub2API supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.
+
+### Dedicated Endpoints
+
+| Endpoint | Model |
+|----------|-------|
+| `/antigravity/v1/messages` | Claude models |
+| `/antigravity/v1beta/` | Gemini models |
+
+### Claude Code Configuration
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:8080/antigravity"
+export ANTHROPIC_AUTH_TOKEN="sk-xxx"
+```
+
+### Hybrid Scheduling Mode
+
+Antigravity accounts support optional **hybrid scheduling**. When enabled, the general endpoints `/v1/messages` and `/v1beta/` will also route requests to Antigravity accounts.
+
+> **⚠️ Warning**: Anthropic Claude and Antigravity Claude **cannot be mixed within the same conversation context**. Use groups to isolate them properly.
+
+### Usage Recommendations
+
+Antigravity Gemini Pro accounts are prone to 429 rate limiting. We recommend keeping the **ratio of Claude Code terminals to Antigravity Gemini Pro accounts at 1:1 or lower**.
+
+---
+
 ## Project Structure
 
 ```
