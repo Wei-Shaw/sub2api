@@ -38,6 +38,8 @@ type AccountRepository interface {
 	ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error)
 	ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error)
 	ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error)
+	ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error)
+	ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error

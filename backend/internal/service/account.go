@@ -346,3 +346,20 @@ func (a *Account) IsOpenAITokenExpired() bool {
 REDACTED
 	return time.Now().Add(60 * time.Second).After(*expiresAt)
 REDACTED
+
+// IsMixedSchedulingEnabled 检查 antigravity 账户是否启用混合调度
+// 启用后可参与 anthropic/gemini 分组的账户调度
+func (a *Account) IsMixedSchedulingEnabled() bool {
+	if a.Platform != PlatformAntigravity {
+		return false
+REDACTED
+	if a.Extra == nil {
+		return false
+REDACTED
+	if v, ok := a.Extra["mixed_scheduling"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED

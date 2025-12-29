@@ -25,13 +25,28 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 REDACTED
-	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
+	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
+	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
+		return
+REDACTED
+
+	// 强制 antigravity 模式：直接返回静态模型列表
+	if forcePlatform == service.PlatformAntigravity {
+		c.JSON(http.StatusOK, gemini.FallbackModelsList())
 		return
 REDACTED
 
 	account, err := h.geminiCompatService.SelectAccountForAIStudioEndpoints(c.Request.Context(), apiKey.GroupID)
 	if err != nil {
+		// 没有 gemini 账户，检查是否有 antigravity 账户可用
+		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
+		if hasAntigravity {
+			// antigravity 账户使用静态模型列表
+			c.JSON(http.StatusOK, gemini.FallbackModelsList())
+			return
+	REDACTED
 		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 		return
 REDACTED
@@ -56,7 +71,9 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 REDACTED
-	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
+	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
+	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 REDACTED
@@ -67,8 +84,21 @@ REDACTED
 		return
 REDACTED
 
+	// 强制 antigravity 模式：直接返回静态模型信息
+	if forcePlatform == service.PlatformAntigravity {
+		c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
+		return
+REDACTED
+
 	account, err := h.geminiCompatService.SelectAccountForAIStudioEndpoints(c.Request.Context(), apiKey.GroupID)
 	if err != nil {
+		// 没有 gemini 账户，检查是否有 antigravity 账户可用
+		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
+		if hasAntigravity {
+			// antigravity 账户使用静态模型信息
+			c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
+			return
+	REDACTED
 		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 		return
 REDACTED
@@ -100,9 +130,12 @@ REDACTED
 		return
 REDACTED
 
-	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
-		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
-		return
+	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
+	if !middleware.HasForcePlatform(c) {
+		if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
+			return
+	REDACTED
 REDACTED
 
 	modelName, action, err := parseGeminiModelAction(strings.TrimPrefix(c.Param("modelAction"), "/"))
@@ -182,8 +215,13 @@ REDACTED
 			return
 	REDACTED
 
-		// 5) forward (writes response to client)
-		result, err := h.geminiCompatService.ForwardNative(c.Request.Context(), c, account, modelName, action, stream, body)
+		// 5) forward (根据平台分流)
+		var result *service.ForwardResult
+		if account.Platform == service.PlatformAntigravity {
+			result, err = h.antigravityGatewayService.ForwardGemini(c.Request.Context(), c, account, modelName, action, stream, body)
+	REDACTED else {
+			result, err = h.geminiCompatService.ForwardNative(c.Request.Context(), c, account, modelName, action, stream, body)
+	REDACTED
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 	REDACTED

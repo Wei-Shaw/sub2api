@@ -559,7 +559,8 @@ const platformOptions = computed(() => [
   { value: '', label: t('admin.accounts.allPlatforms') REDACTED,
   { value: 'anthropic', label: t('admin.accounts.platforms.anthropic') REDACTED,
   { value: 'openai', label: t('admin.accounts.platforms.openai') REDACTED,
-  { value: 'gemini', label: t('admin.accounts.platforms.gemini') REDACTED
+  { value: 'gemini', label: t('admin.accounts.platforms.gemini') REDACTED,
+  { value: 'antigravity', label: t('admin.accounts.platforms.antigravity') REDACTED
 ])
 
 const typeOptions = computed(() => [

@@ -136,6 +136,31 @@
             </svg>
             Gemini
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'antigravity'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'antigravity'
+                ? 'bg-white text-purple-600 shadow-sm dark:bg-dark-600 dark:text-purple-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <svg
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"
+              />
+            </svg>
+            Antigravity
+          </button>
         </div>
       </div>
 
@@ -483,6 +508,36 @@
               >
                 {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Type Selection (Antigravity - OAuth only) -->
+      <div v-if="form.platform === 'antigravity'">
+        <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
+        <div class="mt-2">
+          <div
+            class="flex items-center gap-3 rounded-lg border-2 border-purple-500 bg-purple-50 p-3 dark:bg-purple-900/20"
+          >
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500 text-white">
+              <svg
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
+                />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.antigravityOauth') REDACTEDREDACTED</span>
             </div>
           </div>
         </div>
@@ -971,10 +1026,45 @@
         </div>
       </div>
 
-      <!-- Group Selection - 仅标准模式显示 -->
-      <div v-if="!authStore.isSimpleMode" data-tour="account-form-groups">
-        <GroupSelector v-model="form.group_ids" :groups="groups" :platform="form.platform" />
+      <!-- Mixed Scheduling (only for antigravity accounts) -->
+      <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
+        <label class="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            v-model="mixedScheduling"
+            class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+          />
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.accounts.mixedScheduling') REDACTEDREDACTED
+          </span>
+        </label>
+        <div class="group relative">
+          <span
+            class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
+          >
+            ?
+          </span>
+          <!-- Tooltip（向下显示避免被弹窗裁剪） -->
+          <div
+            class="pointer-events-none absolute left-0 top-full z-[100] mt-1.5 w-72 rounded bg-gray-900 px-3 py-2 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+          >
+            {{ t('admin.accounts.mixedSchedulingTooltip') REDACTEDREDACTED
+            <div
+              class="absolute bottom-full left-3 border-4 border-transparent border-b-gray-900 dark:border-b-gray-700"
+            ></div>
+          </div>
+        </div>
       </div>
+
+      <!-- Group Selection - 仅标准模式显示 -->
+      <GroupSelector
+        v-if="!authStore.isSimpleMode"
+        v-model="form.group_ids"
+        :groups="groups"
+        :platform="form.platform"
+        :mixed-scheduling="mixedScheduling"
+        data-tour="account-form-groups"
+      />
 
     </form>
 
@@ -1095,6 +1185,7 @@ import {
 REDACTED from '@/composables/useAccountOAuth'
 import { useOpenAIOAuth REDACTED from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth REDACTED from '@/composables/useGeminiOAuth'
+import { useAntigravityOAuth REDACTED from '@/composables/useAntigravityOAuth'
 import type { Proxy, Group, AccountPlatform, AccountType REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -1118,6 +1209,7 @@ const authStore = useAuthStore()
 const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
+  if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   return t('admin.accounts.oauth.title')
 REDACTED)
 
@@ -1152,29 +1244,34 @@ const appStore = useAppStore()
 const oauth = useAccountOAuth() // For Anthropic OAuth
 const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
+const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.authUrl.value
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
+  if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   return oauth.authUrl.value
 REDACTED)
 
 const currentSessionId = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.sessionId.value
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
+  if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   return oauth.sessionId.value
 REDACTED)
 
 const currentOAuthLoading = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.loading.value
   if (form.platform === 'gemini') return geminiOAuth.loading.value
+  if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   return oauth.loading.value
 REDACTED)
 
 const currentOAuthError = computed(() => {
   if (form.platform === 'openai') return openaiOAuth.error.value
   if (form.platform === 'gemini') return geminiOAuth.error.value
+  if (form.platform === 'antigravity') return antigravityOAuth.error.value
   return oauth.error.value
 REDACTED)
 
@@ -1201,6 +1298,7 @@ const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
+const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
 const geminiAIStudioOAuthEnabled = ref(false)
 
@@ -1403,6 +1501,9 @@ const canExchangeCode = computed(() => {
   if (form.platform === 'gemini') {
     return authCode.trim() && geminiOAuth.sessionId.value && !geminiOAuth.loading.value
   REDACTED
+  if (form.platform === 'antigravity') {
+    return authCode.trim() && antigravityOAuth.sessionId.value && !antigravityOAuth.loading.value
+  REDACTED
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 REDACTED)
 
@@ -1447,10 +1548,15 @@ watch(
     if (newPlatform !== 'anthropic') {
       interceptWarmupRequests.value = false
     REDACTED
+    // Antigravity only supports OAuth
+    if (newPlatform === 'antigravity') {
+      accountCategory.value = 'oauth-based'
+    REDACTED
     // Reset OAuth states
     oauth.resetState()
     openaiOAuth.resetState()
     geminiOAuth.resetState()
+    antigravityOAuth.resetState()
   REDACTED
 )
 
@@ -1579,6 +1685,7 @@ const resetForm = () => {
   oauth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
+  antigravityOAuth.resetState()
   oauthFlowRef.value?.reset()
 REDACTED
 
@@ -1657,6 +1764,7 @@ const goBackToBasicInfo = () => {
   oauth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
+  antigravityOAuth.resetState()
   oauthFlowRef.value?.reset()
 REDACTED
 
@@ -1665,114 +1773,134 @@ const handleGenerateUrl = async () => {
     await openaiOAuth.generateAuthUrl(form.proxy_id)
   REDACTED else if (form.platform === 'gemini') {
     await geminiOAuth.generateAuthUrl(form.proxy_id, oauthFlowRef.value?.projectId, geminiOAuthType.value)
+  REDACTED else if (form.platform === 'antigravity') {
+    await antigravityOAuth.generateAuthUrl(form.proxy_id)
   REDACTED else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
   REDACTED
 REDACTED
 
-const handleExchangeCode = async () => {
-  const authCode = oauthFlowRef.value?.authCode || ''
+// Create account and handle success/failure
+const createAccountAndFinish = async (
+  platform: AccountPlatform,
+  type: AccountType,
+  credentials: Record<string, unknown>,
+  extra?: Record<string, unknown>
+) => {
+  await adminAPI.accounts.create({
+    name: form.name,
+    platform,
+    type,
+    credentials,
+    extra,
+    proxy_id: form.proxy_id,
+    concurrency: form.concurrency,
+    priority: form.priority,
+    group_ids: form.group_ids
+  REDACTED)
+  appStore.showSuccess(t('admin.accounts.accountCreated'))
+  emit('created')
+  handleClose()
+REDACTED
 
-  // For OpenAI
-  if (form.platform === 'openai') {
-    if (!authCode.trim() || !openaiOAuth.sessionId.value) return
+// OpenAI OAuth 授权码兑换
+const handleOpenAIExchange = async (authCode: string) => {
+  if (!authCode.trim() || !openaiOAuth.sessionId.value) return
 
-    openaiOAuth.loading.value = true
-    openaiOAuth.error.value = ''
+  openaiOAuth.loading.value = true
+  openaiOAuth.error.value = ''
 
-    try {
-      const tokenInfo = await openaiOAuth.exchangeAuthCode(
-        authCode.trim(),
-        openaiOAuth.sessionId.value,
-        form.proxy_id
-      )
+  try {
+    const tokenInfo = await openaiOAuth.exchangeAuthCode(
+      authCode.trim(),
+      openaiOAuth.sessionId.value,
+      form.proxy_id
+    )
+    if (!tokenInfo) return
 
-      if (!tokenInfo) {
-        return // Error already handled by composable
-      REDACTED
-
-      const credentials = openaiOAuth.buildCredentials(tokenInfo)
-      const extra = openaiOAuth.buildExtraInfo(tokenInfo)
-
-      // Note: intercept_warmup_requests is Anthropic-only, not applicable to OpenAI
-
-      await adminAPI.accounts.create({
-        name: form.name,
-        platform: 'openai',
-        type: 'oauth',
-        credentials,
-        extra,
-        proxy_id: form.proxy_id,
-        concurrency: form.concurrency,
-        priority: form.priority,
-        group_ids: form.group_ids
-      REDACTED)
-
-      appStore.showSuccess(t('admin.accounts.accountCreated'))
-      emit('created')
-      handleClose()
-    REDACTED catch (error: any) {
-      openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
-      appStore.showError(openaiOAuth.error.value)
-    REDACTED finally {
-      openaiOAuth.loading.value = false
-    REDACTED
-    return
+    const credentials = openaiOAuth.buildCredentials(tokenInfo)
+    const extra = openaiOAuth.buildExtraInfo(tokenInfo)
+    await createAccountAndFinish('openai', 'oauth', credentials, extra)
+  REDACTED catch (error: any) {
+    openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(openaiOAuth.error.value)
+  REDACTED finally {
+    openaiOAuth.loading.value = false
   REDACTED
+REDACTED
 
-  // For Gemini
-  if (form.platform === 'gemini') {
-    if (!authCode.trim() || !geminiOAuth.sessionId.value) return
+// Gemini OAuth 授权码兑换
+const handleGeminiExchange = async (authCode: string) => {
+  if (!authCode.trim() || !geminiOAuth.sessionId.value) return
 
-    geminiOAuth.loading.value = true
-    geminiOAuth.error.value = ''
+  geminiOAuth.loading.value = true
+  geminiOAuth.error.value = ''
 
-    try {
-      const stateFromInput = oauthFlowRef.value?.oauthState || ''
-      const stateToUse = stateFromInput || geminiOAuth.state.value
-      if (!stateToUse) {
-        geminiOAuth.error.value = t('admin.accounts.oauth.authFailed')
-        appStore.showError(geminiOAuth.error.value)
-        return
-      REDACTED
-
-      const tokenInfo = await geminiOAuth.exchangeAuthCode({
-        code: authCode.trim(),
-        sessionId: geminiOAuth.sessionId.value,
-        state: stateToUse,
-        proxyId: form.proxy_id,
-        oauthType: geminiOAuthType.value
-      REDACTED)
-      if (!tokenInfo) return
-
-      const credentials = geminiOAuth.buildCredentials(tokenInfo)
-
-      // Note: intercept_warmup_requests is Anthropic-only, not applicable to Gemini
-
-      await adminAPI.accounts.create({
-        name: form.name,
-        platform: 'gemini',
-        type: 'oauth',
-        credentials,
-        proxy_id: form.proxy_id,
-        concurrency: form.concurrency,
-        priority: form.priority,
-        group_ids: form.group_ids
-      REDACTED)
-
-      appStore.showSuccess(t('admin.accounts.accountCreated'))
-      emit('created')
-      handleClose()
-    REDACTED catch (error: any) {
-      geminiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+  try {
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || geminiOAuth.state.value
+    if (!stateToUse) {
+      geminiOAuth.error.value = t('admin.accounts.oauth.authFailed')
       appStore.showError(geminiOAuth.error.value)
-    REDACTED finally {
-      geminiOAuth.loading.value = false
+      return
     REDACTED
-    return
-  REDACTED
 
-  // For Anthropic
+    const tokenInfo = await geminiOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId: geminiOAuth.sessionId.value,
+      state: stateToUse,
+      proxyId: form.proxy_id,
+      oauthType: geminiOAuthType.value
+    REDACTED)
+    if (!tokenInfo) return
+
+    const credentials = geminiOAuth.buildCredentials(tokenInfo)
+    await createAccountAndFinish('gemini', 'oauth', credentials)
+  REDACTED catch (error: any) {
+    geminiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(geminiOAuth.error.value)
+  REDACTED finally {
+    geminiOAuth.loading.value = false
+  REDACTED
+REDACTED
+
+// Antigravity OAuth 授权码兑换
+const handleAntigravityExchange = async (authCode: string) => {
+  if (!authCode.trim() || !antigravityOAuth.sessionId.value) return
+
+  antigravityOAuth.loading.value = true
+  antigravityOAuth.error.value = ''
+
+  try {
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || antigravityOAuth.state.value
+    if (!stateToUse) {
+      antigravityOAuth.error.value = t('admin.accounts.oauth.authFailed')
+      appStore.showError(antigravityOAuth.error.value)
+      return
+    REDACTED
+
+    const tokenInfo = await antigravityOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId: antigravityOAuth.sessionId.value,
+      state: stateToUse,
+      proxyId: form.proxy_id
+    REDACTED)
+    if (!tokenInfo) return
+
+    const credentials = antigravityOAuth.buildCredentials(tokenInfo)
+    const extra = mixedScheduling.value ? { mixed_scheduling: true REDACTED : undefined
+    await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
+  REDACTED catch (error: any) {
+    antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(antigravityOAuth.error.value)
+  REDACTED finally {
+    antigravityOAuth.loading.value = false
+  REDACTED
+REDACTED
+
+// Anthropic OAuth 授权码兑换
+const handleAnthropicExchange = async (authCode: string) => {
   if (!authCode.trim() || !oauth.sessionId.value) return
 
   oauth.loading.value = true
@@ -1792,33 +1920,32 @@ const handleExchangeCode = async () => {
     REDACTED)
 
     const extra = oauth.buildExtraInfo(tokenInfo)
-
-    // Merge interceptWarmupRequests into credentials
     const credentials = {
       ...tokenInfo,
       ...(interceptWarmupRequests.value ? { intercept_warmup_requests: true REDACTED : {REDACTED)
     REDACTED
-
-    await adminAPI.accounts.create({
-      name: form.name,
-      platform: form.platform,
-      type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
-      credentials,
-      extra,
-      proxy_id: form.proxy_id,
-      concurrency: form.concurrency,
-      priority: form.priority,
-      group_ids: form.group_ids
-    REDACTED)
-
-    appStore.showSuccess(t('admin.accounts.accountCreated'))
-    emit('created')
-    handleClose()
+    await createAccountAndFinish(form.platform, addMethod.value as AccountType, credentials, extra)
   REDACTED catch (error: any) {
     oauth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(oauth.error.value)
   REDACTED finally {
     oauth.loading.value = false
+  REDACTED
+REDACTED
+
+// 主入口：根据平台路由到对应处理函数
+const handleExchangeCode = async () => {
+  const authCode = oauthFlowRef.value?.authCode || ''
+
+  switch (form.platform) {
+    case 'openai':
+      return handleOpenAIExchange(authCode)
+    case 'gemini':
+      return handleGeminiExchange(authCode)
+    case 'antigravity':
+      return handleAntigravityExchange(authCode)
+    default:
+      return handleAnthropicExchange(authCode)
   REDACTED
 REDACTED
 

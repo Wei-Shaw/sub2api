@@ -224,7 +224,7 @@ REDACTED
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -260,7 +260,7 @@ REDACTED
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
-  custom_key?: string // 可选的自定义API Key
+  custom_key?: string // Optional custom API Key
 REDACTED
 
 export interface UpdateApiKeyRequest {
@@ -288,7 +288,7 @@ REDACTED
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5'
@@ -396,7 +396,7 @@ export interface CreateAccountRequest {
   platform: AccountPlatform
   type: AccountType
   credentials: Record<string, unknown>
-  extra?: Record<string, string>
+  extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number
   priority?: number
@@ -407,7 +407,7 @@ export interface UpdateAccountRequest {
   name?: string
   type?: AccountType
   credentials?: Record<string, unknown>
-  extra?: Record<string, string>
+  extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number
   priority?: number

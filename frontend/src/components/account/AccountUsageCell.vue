@@ -93,6 +93,60 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
+    <!-- Antigravity OAuth accounts: show quota from extra field -->
+    <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
+      <!-- 账户类型徽章 -->
+      <div v-if="antigravityTierLabel" class="mb-1">
+        <span
+          :class="[
+            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            antigravityTierClass
+          ]"
+        >
+          {{ antigravityTierLabel REDACTEDREDACTED
+        </span>
+      </div>
+
+      <div v-if="hasAntigravityQuota" class="space-y-1">
+        <!-- Gemini 3 Pro -->
+        <UsageProgressBar
+          v-if="antigravity3ProUsage !== null"
+          :label="t('admin.accounts.usageWindow.gemini3Pro')"
+          :utilization="antigravity3ProUsage.utilization"
+          :resets-at="antigravity3ProUsage.resetTime"
+          color="indigo"
+        />
+
+        <!-- Gemini 3 Flash -->
+        <UsageProgressBar
+          v-if="antigravity3FlashUsage !== null"
+          :label="t('admin.accounts.usageWindow.gemini3Flash')"
+          :utilization="antigravity3FlashUsage.utilization"
+          :resets-at="antigravity3FlashUsage.resetTime"
+          color="emerald"
+        />
+
+        <!-- Gemini 3 Image -->
+        <UsageProgressBar
+          v-if="antigravity3ImageUsage !== null"
+          :label="t('admin.accounts.usageWindow.gemini3Image')"
+          :utilization="antigravity3ImageUsage.utilization"
+          :resets-at="antigravity3ImageUsage.resetTime"
+          color="purple"
+        />
+
+        <!-- Claude 4.5 -->
+        <UsageProgressBar
+          v-if="antigravityClaude45Usage !== null"
+          :label="t('admin.accounts.usageWindow.claude45')"
+          :utilization="antigravityClaude45Usage.utilization"
+          :resets-at="antigravityClaude45Usage.resetTime"
+          color="amber"
+        />
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Other accounts: no usage window -->
     <template v-else>
       <div class="text-xs text-gray-400">-</div>
@@ -271,6 +325,117 @@ const codex7dResetAt = computed(() => {
   REDACTED
 
   return null
+REDACTED)
+
+// Antigravity quota types
+interface AntigravityModelQuota {
+  remaining: number // 剩余百分比 0-100
+  reset_time: string // ISO 8601 重置时间
+REDACTED
+
+interface AntigravityQuotaData {
+  [model: string]: AntigravityModelQuota
+REDACTED
+
+interface AntigravityUsageResult {
+  utilization: number
+  resetTime: string | null
+REDACTED
+
+// Antigravity quota computed properties
+const hasAntigravityQuota = computed(() => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  return extra && typeof extra.quota === 'object' && extra.quota !== null
+REDACTED)
+
+// 从配额数据中获取使用率（多模型取最低剩余 = 最高使用）
+const getAntigravityUsage = (
+  modelNames: string[]
+): AntigravityUsageResult | null => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (!extra || typeof extra.quota !== 'object' || extra.quota === null) return null
+
+  const quota = extra.quota as AntigravityQuotaData
+
+  let minRemaining = 100
+  let earliestReset: string | null = null
+
+  for (const model of modelNames) {
+    const modelQuota = quota[model]
+    if (!modelQuota) continue
+
+    if (modelQuota.remaining < minRemaining) {
+      minRemaining = modelQuota.remaining
+    REDACTED
+    if (modelQuota.reset_time) {
+      if (!earliestReset || modelQuota.reset_time < earliestReset) {
+        earliestReset = modelQuota.reset_time
+      REDACTED
+    REDACTED
+  REDACTED
+
+  // 如果没有找到任何匹配的模型
+  if (minRemaining === 100 && earliestReset === null) {
+    // 检查是否至少有一个模型有数据
+    const hasAnyData = modelNames.some((m) => quota[m])
+    if (!hasAnyData) return null
+  REDACTED
+
+  return {
+    utilization: 100 - minRemaining,
+    resetTime: earliestReset
+  REDACTED
+REDACTED
+
+// Gemini 3 Pro: gemini-3-pro-low, gemini-3-pro-high, gemini-3-pro-preview
+const antigravity3ProUsage = computed(() =>
+  getAntigravityUsage(['gemini-3-pro-low', 'gemini-3-pro-high', 'gemini-3-pro-preview'])
+)
+
+// Gemini 3 Flash: gemini-3-flash
+const antigravity3FlashUsage = computed(() => getAntigravityUsage(['gemini-3-flash']))
+
+// Gemini 3 Image: gemini-3-pro-image
+const antigravity3ImageUsage = computed(() => getAntigravityUsage(['gemini-3-pro-image']))
+
+// Claude 4.5: claude-sonnet-4-5, claude-opus-4-5-thinking
+const antigravityClaude45Usage = computed(() =>
+  getAntigravityUsage(['claude-sonnet-4-5', 'claude-opus-4-5-thinking'])
+)
+
+// Antigravity 账户类型
+const antigravityTier = computed(() => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (!extra || typeof extra.tier !== 'string') return null
+  return extra.tier as string
+REDACTED)
+
+// 账户类型显示标签
+const antigravityTierLabel = computed(() => {
+  switch (antigravityTier.value) {
+    case 'free-tier':
+      return t('admin.accounts.tier.free')
+    case 'g1-pro-tier':
+      return t('admin.accounts.tier.pro')
+    case 'g1-ultra-tier':
+      return t('admin.accounts.tier.ultra')
+    default:
+      return null
+  REDACTED
+REDACTED)
+
+// 账户类型徽章样式
+const antigravityTierClass = computed(() => {
+  switch (antigravityTier.value) {
+    case 'free-tier':
+      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+    case 'g1-pro-tier':
+      return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
+    case 'g1-ultra-tier':
+      return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
+    default:
+      return ''
+  REDACTED
 REDACTED)
 
 const loadUsage = async () => {

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 
@@ -33,26 +34,32 @@ const (
 )
 
 type GeminiMessagesCompatService struct {
-	accountRepo      AccountRepository
-	cache            GatewayCache
-	tokenProvider    *GeminiTokenProvider
-	rateLimitService *RateLimitService
-	httpUpstream     HTTPUpstream
+	accountRepo               AccountRepository
+	groupRepo                 GroupRepository
+	cache                     GatewayCache
+	tokenProvider             *GeminiTokenProvider
+	rateLimitService          *RateLimitService
+	httpUpstream              HTTPUpstream
+	antigravityGatewayService *AntigravityGatewayService
 REDACTED
 
 func NewGeminiMessagesCompatService(
 	accountRepo AccountRepository,
+	groupRepo GroupRepository,
 	cache GatewayCache,
 	tokenProvider *GeminiTokenProvider,
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
+	antigravityGatewayService *AntigravityGatewayService,
 ) *GeminiMessagesCompatService {
 	return &GeminiMessagesCompatService{
-		accountRepo:      accountRepo,
-		cache:            cache,
-		tokenProvider:    tokenProvider,
-		rateLimitService: rateLimitService,
-		httpUpstream:     httpUpstream,
+		accountRepo:               accountRepo,
+		groupRepo:                 groupRepo,
+		cache:                     cache,
+		tokenProvider:             tokenProvider,
+		rateLimitService:          rateLimitService,
+		httpUpstream:              httpUpstream,
+		antigravityGatewayService: antigravityGatewayService,
 REDACTED
 REDACTED
 
@@ -66,26 +73,71 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 REDACTED
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
+	// 优先检查 context 中的强制平台（/antigravity 路由）
+	var platform string
+	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
+	if hasForcePlatform && forcePlatform != "" {
+		platform = forcePlatform
+REDACTED else if groupID != nil {
+		// 根据分组 platform 决定查询哪种账号
+		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		if err != nil {
+			return nil, fmt.Errorf("get group failed: %w", err)
+	REDACTED
+		platform = group.Platform
+REDACTED else {
+		// 无分组时只使用原生 gemini 平台
+		platform = PlatformGemini
+REDACTED
+
+	// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
+	// 注意：强制平台模式不走混合调度
+	useMixedScheduling := platform == PlatformGemini && !hasForcePlatform
+	var queryPlatforms []string
+	if useMixedScheduling {
+		queryPlatforms = []string{PlatformGemini, PlatformAntigravityREDACTED
+REDACTED else {
+		queryPlatforms = []string{platformREDACTED
+REDACTED
+
 	cacheKey := "gemini:" + sessionHash
+
 	if sessionHash != "" {
 		accountID, err := s.cache.GetSessionAccountID(ctx, cacheKey)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
-				if err == nil && account.IsSchedulable() && account.Platform == PlatformGemini && (requestedModel == "" || account.IsModelSupported(requestedModel)) {
-					_ = s.cache.RefreshSessionTTL(ctx, cacheKey, geminiStickySessionTTL)
-					return account, nil
+				// 检查账号是否有效：原生平台直接匹配，antigravity 需要启用混合调度
+				if err == nil && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+					valid := false
+					if account.Platform == platform {
+						valid = true
+				REDACTED else if useMixedScheduling && account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
+						valid = true
+				REDACTED
+					if valid {
+						_ = s.cache.RefreshSessionTTL(ctx, cacheKey, geminiStickySessionTTL)
+						return account, nil
+				REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
 
+	// 查询可调度账户（强制平台模式：优先按分组查找，找不到再查全部）
 	var accounts []Account
 	var err error
 	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformGemini)
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, queryPlatforms)
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+	REDACTED
+		// 强制平台模式下，分组中找不到账户时回退查询全部
+		if len(accounts) == 0 && hasForcePlatform {
+			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
+	REDACTED
 REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformGemini)
+		accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
 REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -97,7 +149,12 @@ REDACTED
 		if _, excluded := excludedIDs[acc.ID]; excluded {
 			continue
 	REDACTED
-		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+		// 混合调度模式下：原生平台直接通过，antigravity 需要启用 mixed_scheduling
+		// 非混合调度模式（antigravity 分组）：不需要过滤
+		if useMixedScheduling && acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			continue
+	REDACTED
+		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
 			continue
 	REDACTED
 		if selected == nil {
@@ -137,6 +194,34 @@ REDACTED
 REDACTED
 
 	return selected, nil
+REDACTED
+
+// isModelSupportedByAccount 根据账户平台检查模型支持
+func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
+	if account.Platform == PlatformAntigravity {
+		return IsAntigravityModelSupported(requestedModel)
+REDACTED
+	return account.IsModelSupported(requestedModel)
+REDACTED
+
+// GetAntigravityGatewayService 返回 AntigravityGatewayService
+func (s *GeminiMessagesCompatService) GetAntigravityGatewayService() *AntigravityGatewayService {
+	return s.antigravityGatewayService
+REDACTED
+
+// HasAntigravityAccounts 检查是否有可用的 antigravity 账户
+func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context, groupID *int64) (bool, error) {
+	var accounts []Account
+	var err error
+	if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformAntigravity)
+REDACTED else {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformAntigravity)
+REDACTED
+	if err != nil {
+		return false, err
+REDACTED
+	return len(accounts) > 0, nil
 REDACTED
 
 // SelectAccountForAIStudioEndpoints selects an account that is likely to succeed against
