@@ -518,6 +518,43 @@ REDACTED
     @apply overflow-x-auto rounded-xl p-4;
   REDACTED
 
+  /* ============ Tour Description ============ */
+  .tour-step-description {
+    @apply space-y-3 text-sm leading-relaxed text-gray-700 dark:text-gray-200;
+  REDACTED
+
+  .tour-step-description ul {
+    @apply list-disc pl-5;
+  REDACTED
+
+  .tour-step-description ol {
+    @apply list-decimal pl-5;
+  REDACTED
+
+  .tour-step-description li + li {
+    @apply mt-1;
+  REDACTED
+
+  .tour-info-box {
+    @apply rounded-md border-l-4 border-blue-500 bg-blue-50 px-3 py-2 text-xs text-blue-900;
+    @apply dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-200;
+  REDACTED
+
+  .tour-success-box {
+    @apply rounded-md border-l-4 border-emerald-500 bg-emerald-50 px-3 py-2 text-xs text-emerald-900;
+    @apply dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-200;
+  REDACTED
+
+  .tour-warning-box {
+    @apply rounded-md border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900;
+    @apply dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-200;
+  REDACTED
+
+  .tour-error-box {
+    @apply rounded-md border-l-4 border-red-500 bg-red-50 px-3 py-2 text-xs text-red-900;
+    @apply dark:border-red-400 dark:bg-red-950/40 dark:text-red-200;
+  REDACTED
+
   /* ============ 表格页面布局优化 ============ */
   /* 表格容器 - 默认仅支持水平滚动 */
   .table-wrapper {

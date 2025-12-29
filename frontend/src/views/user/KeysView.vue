@@ -23,7 +23,7 @@
             />
           </svg>
         </button>
-        <button @click="showCreateModal = true" class="btn btn-primary">
+        <button @click="showCreateModal = true" class="btn btn-primary" data-tour="keys-create-btn">
           <svg
             class="mr-2 h-5 w-5"
             fill="none"
@@ -313,6 +313,7 @@
             required
             class="input"
             :placeholder="t('keys.namePlaceholder')"
+            data-tour="key-form-name"
           />
         </div>
 
@@ -322,6 +323,7 @@
             v-model="formData.group_id"
             :options="groupOptions"
             :placeholder="t('keys.selectGroup')"
+            data-tour="key-form-group"
           >
             <template #selected="{ option REDACTED">
               <GroupBadge
@@ -391,7 +393,13 @@
           <button @click="closeModals" type="button" class="btn btn-secondary">
             {{ t('common.cancel') REDACTEDREDACTED
           </button>
-          <button form="key-form" type="submit" :disabled="submitting" class="btn btn-primary">
+          <button
+            form="key-form"
+            type="submit"
+            :disabled="submitting"
+            class="btn btn-primary"
+            data-tour="key-form-submit"
+          >
             <svg
               v-if="submitting"
               class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -496,6 +504,7 @@
 import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { useOnboardingStore REDACTED from '@/stores/onboarding'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 
 const { t REDACTED = useI18n()
@@ -524,6 +533,7 @@ interface GroupOption {
 REDACTED
 
 const appStore = useAppStore()
+const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy REDACTED = useClipboard()
 
 const columns = computed<Column[]>(() => [
@@ -812,12 +822,17 @@ const handleSubmit = async () => {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
       await keysAPI.create(formData.value.name, formData.value.group_id, customKey)
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
+      // Only advance tour if active, on submit step, and creation succeeded
+      if (onboardingStore.isCurrentStep('[data-tour="key-form-submit"]')) {
+        onboardingStore.nextStep(500)
+      REDACTED
     REDACTED
     closeModals()
     loadApiKeys()
   REDACTED catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToSave')
     appStore.showError(errorMsg)
+    // Don't advance tour on error
   REDACTED finally {
     submitting.value = false
   REDACTED

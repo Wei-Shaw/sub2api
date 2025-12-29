@@ -13,7 +13,7 @@
     >
       <div>
         <label class="input-label">{{ t('common.name') REDACTEDREDACTED</label>
-        <input v-model="form.name" type="text" required class="input" />
+        <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
       </div>
 
       <!-- API Key fields (only for apikey type) -->
@@ -457,7 +457,13 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
-          <input v-model.number="form.priority" type="number" min="1" class="input" />
+          <input
+            v-model.number="form.priority"
+            type="number"
+            min="1"
+            class="input"
+            data-tour="account-form-priority"
+          />
         </div>
       </div>
 
@@ -467,12 +473,9 @@
       </div>
 
       <!-- Group Selection - 仅标准模式显示 -->
-      <GroupSelector
-        v-if="!authStore.isSimpleMode"
-        v-model="form.group_ids"
-        :groups="groups"
-        :platform="account?.platform"
-      />
+      <div v-if="!authStore.isSimpleMode" data-tour="account-form-groups">
+        <GroupSelector v-model="form.group_ids" :groups="groups" :platform="account?.platform" />
+      </div>
 
     </form>
 
@@ -486,6 +489,7 @@
           form="edit-account-form"
           :disabled="submitting"
           class="btn btn-primary"
+          data-tour="account-form-submit"
         >
           <svg
             v-if="submitting"
