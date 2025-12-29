@@ -7,11 +7,12 @@
 #   ./build_docker.sh [选项]
 #
 # 选项:
-#   -t, --tag TAG       指定镜像标签 (默认: latest)
-#   -r, --registry REG  指定镜像仓库地址 (默认: 无)
-#   -p, --push          构建后推送镜像到仓库
-#   --no-cache          不使用 Docker 构建缓存
-#   -h, --help          显示帮助信息
+#   -t, --tag TAG          指定镜像标签 (默认: latest)
+#   -r, --registry REG     指定镜像仓库地址 (默认: 无)
+#   -b, --base-registry REG 指定基础镜像仓库地址 (默认: 使用 docker.io)
+#   -p, --push             构建后推送镜像到仓库
+#   --no-cache             不使用 Docker 构建缓存
+#   -h, --help             显示帮助信息
 #
 # 示例:
 #   ./build_docker.sh                           # 构建 sub2api:latest
@@ -38,6 +39,7 @@ NC='\033[0m' # No Color
 IMAGE_NAME="sub2api"
 TAG="latest"
 REGISTRY=""
+BASE_IMAGE_REGISTRY="${BASE_IMAGE_REGISTRY:-REDACTED"
 PUSH=false
 NO_CACHE=""
 
@@ -80,6 +82,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -r|--registry)
             REGISTRY="$2"
+            shift 2
+            ;;
+        -b|--base-registry)
+            BASE_IMAGE_REGISTRY="$2"
             shift 2
             ;;
         -p|--push)
@@ -151,6 +157,17 @@ VERSION=$(get_version)
 COMMIT=$(get_commit)
 DATE=$(get_date)
 
+# 解析基础镜像
+NODE_IMAGE="node:24-alpine"
+GOLANG_IMAGE="golang:1.25-alpine"
+ALPINE_IMAGE="alpine:3.19"
+if [[ -n "$BASE_IMAGE_REGISTRY" ]]; then
+    BASE_IMAGE_REGISTRY="${BASE_IMAGE_REGISTRY%/REDACTED"
+    NODE_IMAGE="${BASE_IMAGE_REGISTRYREDACTED/library/node:24-alpine"
+    GOLANG_IMAGE="${BASE_IMAGE_REGISTRYREDACTED/library/golang:1.25-alpine"
+    ALPINE_IMAGE="${BASE_IMAGE_REGISTRYREDACTED/library/alpine:3.19"
+fi
+
 # 构建完整镜像名称
 if [[ -n "$REGISTRY" ]]; then
     FULL_IMAGE_NAME="${REGISTRYREDACTED/${IMAGE_NAMEREDACTED:${TAGREDACTED"
@@ -167,6 +184,9 @@ info "镜像名称: ${FULL_IMAGE_NAMEREDACTED"
 info "版本: ${VERSIONREDACTED"
 info "Commit: ${COMMITREDACTED"
 info "构建时间: ${DATEREDACTED"
+if [[ -n "$BASE_IMAGE_REGISTRY" ]]; then
+    info "基础镜像仓库: ${BASE_IMAGE_REGISTRYREDACTED"
+fi
 if [[ -n "$NO_CACHE" ]]; then
     info "缓存: 禁用"
 fi
@@ -181,6 +201,9 @@ docker build \
     --build-arg VERSION="${VERSIONREDACTED" \
     --build-arg COMMIT="${COMMITREDACTED" \
     --build-arg DATE="${DATEREDACTED" \
+    --build-arg NODE_IMAGE="${NODE_IMAGEREDACTED" \
+    --build-arg GOLANG_IMAGE="${GOLANG_IMAGEREDACTED" \
+    --build-arg ALPINE_IMAGE="${ALPINE_IMAGEREDACTED" \
     -t "${FULL_IMAGE_NAMEREDACTED" \
     -f Dockerfile \
     .
