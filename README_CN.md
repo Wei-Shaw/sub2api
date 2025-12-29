@@ -317,10 +317,6 @@ Antigravity 账户支持可选的**混合调度**功能。开启后，通用端�
 
 > **⚠️ 注意**：Anthropic Claude 和 Antigravity Claude **不能在同一上下文中混合使用**，请通过分组功能做好隔离。
 
-### 使用建议
-
-实测 Antigravity Gemini Pro 账户较容易触发 429 限流。建议 **Claude Code 终端数量与 Antigravity Gemini Pro 账户数量的比例保持在 1:1 或更低**。
-
 ---
 
 ## 项目结构

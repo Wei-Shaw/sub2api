@@ -74,7 +74,6 @@ REDACTED
 // Client Antigravity API 客户端
 type Client struct {
 	httpClient *http.Client
-	proxyURL   string
 REDACTED
 
 func NewClient(proxyURL string) *Client {
@@ -92,7 +91,6 @@ REDACTED
 
 	return &Client{
 		httpClient: client,
-		proxyURL:   proxyURL,
 REDACTED
 REDACTED
 

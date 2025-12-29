@@ -307,10 +307,6 @@ Antigravity accounts support optional **hybrid scheduling**. When enabled, the g
 
 > **⚠️ Warning**: Anthropic Claude and Antigravity Claude **cannot be mixed within the same conversation context**. Use groups to isolate them properly.
 
-### Usage Recommendations
-
-Antigravity Gemini Pro accounts are prone to 429 rate limiting. We recommend keeping the **ratio of Claude Code terminals to Antigravity Gemini Pro accounts at 1:1 or lower**.
-
 ---
 
 ## Project Structure
