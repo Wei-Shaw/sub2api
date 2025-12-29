@@ -20,6 +20,8 @@ English | [中文](README_CN.md)
 
 Try Sub2API online: **https://v2.pincc.ai/**
 
+Demo credentials (shared demo environment; **not** created automatically for self-hosted installs):
+
 | Email | Password |
 |-------|----------|
 | admin@sub2api.com | admin123 |
@@ -260,8 +262,10 @@ jwt:
   expire_hour: 24
 
 default:
-  admin_email: "admin@example.com"
-  admin_password: "admin123"
+  user_concurrency: 5
+  user_balance: 0
+  api_key_prefix: "sk-"
+  rate_multiplier: 1.0
 ```
 
 ```bash
@@ -279,6 +283,16 @@ go run ./cmd/server
 # Frontend (with hot reload)
 cd frontend
 npm run dev
+```
+
+#### Code Generation
+
+When editing `backend/ent/schema`, regenerate Ent + Wire:
+
+```bash
+cd backend
+go generate ./ent
+go generate ./cmd/server
 ```
 
 ---

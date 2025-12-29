@@ -4,25 +4,26 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/gorm"
 )
 
 type GroupRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
-	db   *gorm.DB
+	tx   *sql.Tx
 	repo *groupRepository
 REDACTED
 
 func (s *GroupRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.db = testTx(s.T())
-	s.repo = NewGroupRepository(s.db).(*groupRepository)
+	entClient, tx := testEntSQLTx(s.T())
+	s.tx = tx
+	s.repo = newGroupRepositoryWithSQL(entClient, tx)
 REDACTED
 
 func TestGroupRepoSuite(t *testing.T) {
@@ -33,9 +34,12 @@ REDACTED
 
 func (s *GroupRepoSuite) TestCreate() {
 	group := &service.Group{
-		Name:     "test-create",
-		Platform: service.PlatformAnthropic,
-		Status:   service.StatusActive,
+		Name:             "test-create",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
 REDACTED
 
 	err := s.repo.Create(s.ctx, group)
@@ -50,10 +54,19 @@ REDACTED
 func (s *GroupRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
 REDACTED
 
 func (s *GroupRepoSuite) TestUpdate() {
-	group := groupModelToService(mustCreateGroup(s.T(), s.db, &groupModel{Name: "original"REDACTED))
+	group := &service.Group{
+		Name:             "original",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, group))
 
 	group.Name = "updated"
 	err := s.repo.Update(s.ctx, group)
@@ -65,20 +78,43 @@ func (s *GroupRepoSuite) TestUpdate() {
 REDACTED
 
 func (s *GroupRepoSuite) TestDelete() {
-	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "to-delete"REDACTED)
+	group := &service.Group{
+		Name:             "to-delete",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, group))
 
 	err := s.repo.Delete(s.ctx, group.ID)
 	s.Require().NoError(err, "Delete")
 
 	_, err = s.repo.GetByID(s.ctx, group.ID)
 	s.Require().Error(err, "expected error after delete")
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
 REDACTED
 
 // --- List / ListWithFilters ---
 
 func (s *GroupRepoSuite) TestList() {
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1"REDACTED)
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2"REDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g2",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
 
 	groups, page, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "List")
@@ -87,8 +123,22 @@ func (s *GroupRepoSuite) TestList() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_Platform() {
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", Platform: service.PlatformAnthropicREDACTED)
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", Platform: service.PlatformOpenAIREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g2",
+		Platform:         service.PlatformOpenAI,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
 
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformOpenAI, "", nil)
 	s.Require().NoError(err)
@@ -97,8 +147,22 @@ func (s *GroupRepoSuite) TestListWithFilters_Platform() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_Status() {
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", Status: service.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", Status: service.StatusDisabledREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g2",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusDisabled,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
 
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", service.StatusDisabled, nil)
 	s.Require().NoError(err)
@@ -107,8 +171,22 @@ func (s *GroupRepoSuite) TestListWithFilters_Status() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_IsExclusive() {
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", IsExclusive: falseREDACTED)
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", IsExclusive: trueREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g2",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      true,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
 
 	isExclusive := true
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", &isExclusive)
@@ -118,21 +196,35 @@ func (s *GroupRepoSuite) TestListWithFilters_IsExclusive() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {
-	g1 := mustCreateGroup(s.T(), s.db, &groupModel{
-		Name:     "g1",
-		Platform: service.PlatformAnthropic,
-		Status:   service.StatusActive,
-REDACTED)
-	g2 := mustCreateGroup(s.T(), s.db, &groupModel{
-		Name:        "g2",
-		Platform:    service.PlatformAnthropic,
-		Status:      service.StatusActive,
-		IsExclusive: true,
-REDACTED)
+	g1 := &service.Group{
+		Name:             "g1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	g2 := &service.Group{
+		Name:             "g2",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      true,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, g1))
+	s.Require().NoError(s.repo.Create(s.ctx, g2))
 
-	a := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc1"REDACTED)
-	mustBindAccountToGroup(s.T(), s.db, a.ID, g1.ID, 1)
-	mustBindAccountToGroup(s.T(), s.db, a.ID, g2.ID, 1)
+	var accountID int64
+	s.Require().NoError(s.tx.QueryRowContext(
+		s.ctx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		"acc1", service.PlatformAnthropic, service.AccountTypeOAuth,
+	).Scan(&accountID))
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g1.ID, 1)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g2.ID, 1)
+	s.Require().NoError(err)
 
 	isExclusive := true
 	groups, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformAnthropic, service.StatusActive, &isExclusive)
@@ -146,8 +238,22 @@ REDACTED
 // --- ListActive / ListActiveByPlatform ---
 
 func (s *GroupRepoSuite) TestListActive() {
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "active1", Status: service.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "inactive1", Status: service.StatusDisabledREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "active1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "inactive1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusDisabled,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
 
 	groups, err := s.repo.ListActive(s.ctx)
 	s.Require().NoError(err, "ListActive")
@@ -156,9 +262,30 @@ func (s *GroupRepoSuite) TestListActive() {
 REDACTED
 
 func (s *GroupRepoSuite) TestListActiveByPlatform() {
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g1", Platform: service.PlatformAnthropic, Status: service.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g2", Platform: service.PlatformOpenAI, Status: service.StatusActiveREDACTED)
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "g3", Platform: service.PlatformAnthropic, Status: service.StatusDisabledREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g1",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g2",
+		Platform:         service.PlatformOpenAI,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "g3",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusDisabled,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
 
 	groups, err := s.repo.ListActiveByPlatform(s.ctx, service.PlatformAnthropic)
 	s.Require().NoError(err, "ListActiveByPlatform")
@@ -169,7 +296,14 @@ REDACTED
 // --- ExistsByName ---
 
 func (s *GroupRepoSuite) TestExistsByName() {
-	mustCreateGroup(s.T(), s.db, &groupModel{Name: "existing-group"REDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
+		Name:             "existing-group",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED))
 
 	exists, err := s.repo.ExistsByName(s.ctx, "existing-group")
 	s.Require().NoError(err, "ExistsByName")
@@ -183,11 +317,33 @@ REDACTED
 // --- GetAccountCount ---
 
 func (s *GroupRepoSuite) TestGetAccountCount() {
-	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-count"REDACTED)
-	a1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1"REDACTED)
-	a2 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2"REDACTED)
-	mustBindAccountToGroup(s.T(), s.db, a1.ID, group.ID, 1)
-	mustBindAccountToGroup(s.T(), s.db, a2.ID, group.ID, 2)
+	group := &service.Group{
+		Name:             "g-count",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	var a1 int64
+	s.Require().NoError(s.tx.QueryRowContext(
+		s.ctx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		"a1", service.PlatformAnthropic, service.AccountTypeOAuth,
+	).Scan(&a1))
+	var a2 int64
+	s.Require().NoError(s.tx.QueryRowContext(
+		s.ctx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		"a2", service.PlatformAnthropic, service.AccountTypeOAuth,
+	).Scan(&a2))
+
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a1, group.ID, 1)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a2, group.ID, 2)
+	s.Require().NoError(err)
 
 	count, err := s.repo.GetAccountCount(s.ctx, group.ID)
 	s.Require().NoError(err, "GetAccountCount")
@@ -195,7 +351,15 @@ func (s *GroupRepoSuite) TestGetAccountCount() {
 REDACTED
 
 func (s *GroupRepoSuite) TestGetAccountCount_Empty() {
-	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-empty"REDACTED)
+	group := &service.Group{
+		Name:             "g-empty",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, group))
 
 	count, err := s.repo.GetAccountCount(s.ctx, group.ID)
 	s.Require().NoError(err)
@@ -205,9 +369,23 @@ REDACTED
 // --- DeleteAccountGroupsByGroupID ---
 
 func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
-	g := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-del"REDACTED)
-	a := mustCreateAccount(s.T(), s.db, &accountModel{Name: "acc-del"REDACTED)
-	mustBindAccountToGroup(s.T(), s.db, a.ID, g.ID, 1)
+	g := &service.Group{
+		Name:             "g-del",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, g))
+	var accountID int64
+	s.Require().NoError(s.tx.QueryRowContext(
+		s.ctx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		"acc-del", service.PlatformAnthropic, service.AccountTypeOAuth,
+	).Scan(&accountID))
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g.ID, 1)
+	s.Require().NoError(err)
 
 	affected, err := s.repo.DeleteAccountGroupsByGroupID(s.ctx, g.ID)
 	s.Require().NoError(err, "DeleteAccountGroupsByGroupID")
@@ -219,13 +397,34 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
 REDACTED
 
 func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID_MultipleAccounts() {
-	g := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-multi"REDACTED)
-	a1 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1"REDACTED)
-	a2 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2"REDACTED)
-	a3 := mustCreateAccount(s.T(), s.db, &accountModel{Name: "a3"REDACTED)
-	mustBindAccountToGroup(s.T(), s.db, a1.ID, g.ID, 1)
-	mustBindAccountToGroup(s.T(), s.db, a2.ID, g.ID, 2)
-	mustBindAccountToGroup(s.T(), s.db, a3.ID, g.ID, 3)
+	g := &service.Group{
+		Name:             "g-multi",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, g))
+
+	insertAccount := func(name string) int64 {
+		var id int64
+		s.Require().NoError(s.tx.QueryRowContext(
+			s.ctx,
+			"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+			name, service.PlatformAnthropic, service.AccountTypeOAuth,
+		).Scan(&id))
+		return id
+REDACTED
+	a1 := insertAccount("a1")
+	a2 := insertAccount("a2")
+	a3 := insertAccount("a3")
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a1, g.ID, 1)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a2, g.ID, 2)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a3, g.ID, 3)
+	s.Require().NoError(err)
 
 	affected, err := s.repo.DeleteAccountGroupsByGroupID(s.ctx, g.ID)
 	s.Require().NoError(err)

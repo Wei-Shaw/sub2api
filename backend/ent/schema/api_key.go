@@ -1,0 +1,74 @@
+package schema
+
+import (
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+
+	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
+	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
+	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
+)
+
+// ApiKey holds the schema definition for the ApiKey entity.
+type ApiKey struct {
+	ent.Schema
+REDACTED
+
+func (ApiKey) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		entsql.Annotation{Table: "api_keys"REDACTED,
+REDACTED
+REDACTED
+
+func (ApiKey) Mixin() []ent.Mixin {
+	return []ent.Mixin{
+		mixins.TimeMixin{REDACTED,
+		mixins.SoftDeleteMixin{REDACTED,
+REDACTED
+REDACTED
+
+func (ApiKey) Fields() []ent.Field {
+	return []ent.Field{
+		field.Int64("user_id"),
+		field.String("key").
+			MaxLen(128).
+			NotEmpty().
+			Unique(),
+		field.String("name").
+			MaxLen(100).
+			NotEmpty(),
+		field.Int64("group_id").
+			Optional().
+			Nillable(),
+		field.String("status").
+			MaxLen(20).
+			Default(service.StatusActive),
+REDACTED
+REDACTED
+
+func (ApiKey) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.From("user", User.Type).
+			Ref("api_keys").
+			Field("user_id").
+			Unique().
+			Required(),
+		edge.From("group", Group.Type).
+			Ref("api_keys").
+			Field("group_id").
+			Unique(),
+REDACTED
+REDACTED
+
+func (ApiKey) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("key").Unique(),
+		index.Fields("user_id"),
+		index.Fields("group_id"),
+		index.Fields("status"),
+		index.Fields("deleted_at"),
+REDACTED
+REDACTED

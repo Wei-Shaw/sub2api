@@ -2,280 +2,370 @@ package repository
 
 import (
 	"context"
-	"time"
+	"database/sql"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
-
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 )
 
+type sqlExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+REDACTED
+
+type sqlBeginner interface {
+	sqlExecutor
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+REDACTED
+
 type groupRepository struct {
-	db *gorm.DB
+	client *dbent.Client
+	sql    sqlExecutor
+	begin  sqlBeginner
 REDACTED
 
-func NewGroupRepository(db *gorm.DB) service.GroupRepository {
-	return &groupRepository{db: dbREDACTED
+func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.GroupRepository {
+	return newGroupRepositoryWithSQL(client, sqlDB)
 REDACTED
 
-func (r *groupRepository) Create(ctx context.Context, group *service.Group) error {
-	m := groupModelFromService(group)
-	err := r.db.WithContext(ctx).Create(m).Error
+func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRepository {
+	var beginner sqlBeginner
+	if b, ok := sqlq.(sqlBeginner); ok {
+		beginner = b
+REDACTED
+	return &groupRepository{client: client, sql: sqlq, begin: beginnerREDACTED
+REDACTED
+
+func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
+	builder := r.client.Group.Create().
+		SetName(groupIn.Name).
+		SetDescription(groupIn.Description).
+		SetPlatform(groupIn.Platform).
+		SetRateMultiplier(groupIn.RateMultiplier).
+		SetIsExclusive(groupIn.IsExclusive).
+		SetStatus(groupIn.Status).
+		SetSubscriptionType(groupIn.SubscriptionType).
+		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
+		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
+		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD)
+
+	created, err := builder.Save(ctx)
 	if err == nil {
-		applyGroupModelToService(group, m)
+		groupIn.ID = created.ID
+		groupIn.CreatedAt = created.CreatedAt
+		groupIn.UpdatedAt = created.UpdatedAt
 REDACTED
 	return translatePersistenceError(err, nil, service.ErrGroupExists)
 REDACTED
 
 func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group, error) {
-	var m groupModel
-	err := r.db.WithContext(ctx).First(&m, id).Error
+	m, err := r.client.Group.Query().
+		Where(group.IDEQ(id)).
+		Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 REDACTED
-	group := groupModelToService(&m)
-	count, _ := r.GetAccountCount(ctx, group.ID)
-	group.AccountCount = count
-	return group, nil
+
+	out := groupEntityToService(m)
+	count, _ := r.GetAccountCount(ctx, out.ID)
+	out.AccountCount = count
+	return out, nil
 REDACTED
 
-func (r *groupRepository) Update(ctx context.Context, group *service.Group) error {
-	m := groupModelFromService(group)
-	err := r.db.WithContext(ctx).Save(m).Error
-	if err == nil {
-		applyGroupModelToService(group, m)
+func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	updated, err := r.client.Group.UpdateOneID(groupIn.ID).
+		SetName(groupIn.Name).
+		SetDescription(groupIn.Description).
+		SetPlatform(groupIn.Platform).
+		SetRateMultiplier(groupIn.RateMultiplier).
+		SetIsExclusive(groupIn.IsExclusive).
+		SetStatus(groupIn.Status).
+		SetSubscriptionType(groupIn.SubscriptionType).
+		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
+		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
+		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 REDACTED
-	return err
+	groupIn.UpdatedAt = updated.UpdatedAt
+	return nil
 REDACTED
 
 func (r *groupRepository) Delete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Delete(&groupModel{REDACTED, id).Error
+	_, err := r.client.Group.Delete().Where(group.IDEQ(id)).Exec(ctx)
+	return err
 REDACTED
 
 func (r *groupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", nil)
 REDACTED
 
-// ListWithFilters lists groups with optional filtering by platform, status, and is_exclusive
 func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
-	var groups []groupModel
-	var total int64
+	q := r.client.Group.Query()
 
-	db := r.db.WithContext(ctx).Model(&groupModel{REDACTED)
-
-	// Apply filters
 	if platform != "" {
-		db = db.Where("platform = ?", platform)
+		q = q.Where(group.PlatformEQ(platform))
 REDACTED
 	if status != "" {
-		db = db.Where("status = ?", status)
+		q = q.Where(group.StatusEQ(status))
 REDACTED
 	if isExclusive != nil {
-		db = db.Where("is_exclusive = ?", *isExclusive)
+		q = q.Where(group.IsExclusiveEQ(*isExclusive))
 REDACTED
 
-	if err := db.Count(&total).Error; err != nil {
+	total, err := q.Count(ctx)
+	if err != nil {
 		return nil, nil, err
 REDACTED
 
-	if err := db.Offset(params.Offset()).Limit(params.Limit()).Order("id ASC").Find(&groups).Error; err != nil {
+	groups, err := q.
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Asc(group.FieldID)).
+		All(ctx)
+	if err != nil {
 		return nil, nil, err
 REDACTED
 
+	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
-		outGroups = append(outGroups, *groupModelToService(&groups[i]))
+		g := groupEntityToService(groups[i])
+		outGroups = append(outGroups, *g)
+		groupIDs = append(groupIDs, g.ID)
 REDACTED
 
-	// 获取每个分组的账号数量
-	for i := range outGroups {
-		count, _ := r.GetAccountCount(ctx, outGroups[i].ID)
-		outGroups[i].AccountCount = count
+	counts, err := r.loadAccountCounts(ctx, groupIDs)
+	if err == nil {
+		for i := range outGroups {
+			outGroups[i].AccountCount = counts[outGroups[i].ID]
+	REDACTED
 REDACTED
 
-	return outGroups, paginationResultFromTotal(total, params), nil
+	return outGroups, paginationResultFromTotal(int64(total), params), nil
 REDACTED
 
 func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, error) {
-	var groups []groupModel
-	err := r.db.WithContext(ctx).Where("status = ?", service.StatusActive).Order("id ASC").Find(&groups).Error
+	groups, err := r.client.Group.Query().
+		Where(group.StatusEQ(service.StatusActive)).
+		Order(dbent.Asc(group.FieldID)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
+
+	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
-		outGroups = append(outGroups, *groupModelToService(&groups[i]))
+		g := groupEntityToService(groups[i])
+		outGroups = append(outGroups, *g)
+		groupIDs = append(groupIDs, g.ID)
 REDACTED
-	// 获取每个分组的账号数量
-	for i := range outGroups {
-		count, _ := r.GetAccountCount(ctx, outGroups[i].ID)
-		outGroups[i].AccountCount = count
+
+	counts, err := r.loadAccountCounts(ctx, groupIDs)
+	if err == nil {
+		for i := range outGroups {
+			outGroups[i].AccountCount = counts[outGroups[i].ID]
+	REDACTED
 REDACTED
+
 	return outGroups, nil
 REDACTED
 
 func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
-	var groups []groupModel
-	err := r.db.WithContext(ctx).Where("status = ? AND platform = ?", service.StatusActive, platform).Order("id ASC").Find(&groups).Error
+	groups, err := r.client.Group.Query().
+		Where(group.StatusEQ(service.StatusActive), group.PlatformEQ(platform)).
+		Order(dbent.Asc(group.FieldID)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
+
+	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
-		outGroups = append(outGroups, *groupModelToService(&groups[i]))
+		g := groupEntityToService(groups[i])
+		outGroups = append(outGroups, *g)
+		groupIDs = append(groupIDs, g.ID)
 REDACTED
-	// 获取每个分组的账号数量
-	for i := range outGroups {
-		count, _ := r.GetAccountCount(ctx, outGroups[i].ID)
-		outGroups[i].AccountCount = count
+
+	counts, err := r.loadAccountCounts(ctx, groupIDs)
+	if err == nil {
+		for i := range outGroups {
+			outGroups[i].AccountCount = counts[outGroups[i].ID]
+	REDACTED
 REDACTED
+
 	return outGroups, nil
 REDACTED
 
 func (r *groupRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
-	var count int64
-	err := r.db.WithContext(ctx).Model(&groupModel{REDACTED).Where("name = ?", name).Count(&count).Error
-	return count > 0, err
+	return r.client.Group.Query().Where(group.NameEQ(name)).Exist(ctx)
 REDACTED
 
 func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Table("account_groups").Where("group_id = ?", groupID).Count(&count).Error
-	return count, err
+	if err := r.sql.QueryRowContext(ctx, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", groupID).Scan(&count); err != nil {
+		return 0, err
+REDACTED
+	return count, nil
 REDACTED
 
-// DeleteAccountGroupsByGroupID 删除分组与账号的关联关系
 func (r *groupRepository) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	result := r.db.WithContext(ctx).Exec("DELETE FROM account_groups WHERE group_id = ?", groupID)
-	return result.RowsAffected, result.Error
+	res, err := r.sql.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", groupID)
+	if err != nil {
+		return 0, err
+REDACTED
+	affected, _ := res.RowsAffected()
+	return affected, nil
 REDACTED
 
 func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
-	group, err := r.GetByID(ctx, id)
+	g, err := r.client.Group.Query().Where(group.IDEQ(id)).Only(ctx)
 	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
+REDACTED
+	groupSvc := groupEntityToService(g)
+
+	exec := r.sql
+	txClient := r.client
+	var sqlTx *sql.Tx
+	var txClientClose func() error
+
+	if r.begin != nil {
+		sqlTx, err = r.begin.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+	REDACTED
+		exec = sqlTx
+		txClient = entClientFromSQLTx(sqlTx)
+		txClientClose = txClient.Close
+		defer func() { _ = sqlTx.Rollback() REDACTED()
+REDACTED
+	if txClientClose != nil {
+		defer func() { _ = txClientClose() REDACTED()
+REDACTED
+
+	// Lock the group row to avoid concurrent writes while we cascade.
+	var lockedID int64
+	if err := exec.QueryRowContext(ctx, "SELECT id FROM groups WHERE id = $1 FOR UPDATE", id).Scan(&lockedID); err != nil {
+		if errorsIsNoRows(err) {
+			return nil, service.ErrGroupNotFound
+	REDACTED
 		return nil, err
 REDACTED
 
 	var affectedUserIDs []int64
-	if group.IsSubscriptionType() {
-		if err := r.db.WithContext(ctx).
-			Table("user_subscriptions").
-			Where("group_id = ?", id).
-			Pluck("user_id", &affectedUserIDs).Error; err != nil {
+	if groupSvc.IsSubscriptionType() {
+		rows, err := exec.QueryContext(ctx, "SELECT user_id FROM user_subscriptions WHERE group_id = $1", id)
+		if err != nil {
+			return nil, err
+	REDACTED
+		for rows.Next() {
+			var userID int64
+			if scanErr := rows.Scan(&userID); scanErr != nil {
+				_ = rows.Close()
+				return nil, scanErr
+		REDACTED
+			affectedUserIDs = append(affectedUserIDs, userID)
+	REDACTED
+		if err := rows.Close(); err != nil {
+			return nil, err
+	REDACTED
+		if err := rows.Err(); err != nil {
+			return nil, err
+	REDACTED
+
+		if _, err := exec.ExecContext(ctx, "DELETE FROM user_subscriptions WHERE group_id = $1", id); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
 
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 1. 删除订阅类型分组的订阅记录
-		if group.IsSubscriptionType() {
-			if err := tx.Exec("DELETE FROM user_subscriptions WHERE group_id = ?", id).Error; err != nil {
-				return err
-		REDACTED
-	REDACTED
-
-		// 2. 将 api_keys 中绑定该分组的 group_id 设为 nil
-		if err := tx.Exec("UPDATE api_keys SET group_id = NULL WHERE group_id = ?", id).Error; err != nil {
-			return err
-	REDACTED
-
-		// 3. 从 users.allowed_groups 数组中移除该分组 ID
-		if err := tx.Exec(
-			"UPDATE users SET allowed_groups = array_remove(allowed_groups, ?) WHERE ? = ANY(allowed_groups)",
-			id, id,
-		).Error; err != nil {
-			return err
-	REDACTED
-
-		// 4. 删除 account_groups 中间表的数据
-		if err := tx.Exec("DELETE FROM account_groups WHERE group_id = ?", id).Error; err != nil {
-			return err
-	REDACTED
-
-		// 5. 删除分组本身（带锁，避免并发写）
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"REDACTED).Delete(&groupModel{REDACTED, id).Error; err != nil {
-			return err
-	REDACTED
-
-		return nil
-REDACTED)
-	if err != nil {
+	// 2. Clear group_id for api keys bound to this group.
+	if _, err := txClient.ApiKey.Update().
+		Where(apikey.GroupIDEQ(id)).
+		ClearGroupID().
+		Save(ctx); err != nil {
 		return nil, err
+REDACTED
+
+	// 3. Remove the group id from users.allowed_groups array (legacy representation).
+	// Phase 1 compatibility: also delete from user_allowed_groups join table when present.
+	if _, err := exec.ExecContext(ctx, "DELETE FROM user_allowed_groups WHERE group_id = $1", id); err != nil {
+		return nil, err
+REDACTED
+	if _, err := exec.ExecContext(
+		ctx,
+		"UPDATE users SET allowed_groups = array_remove(allowed_groups, $1) WHERE $1 = ANY(allowed_groups)",
+		id,
+	); err != nil {
+		return nil, err
+REDACTED
+
+	// 4. Delete account_groups join rows.
+	if _, err := exec.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", id); err != nil {
+		return nil, err
+REDACTED
+
+	// 5. Soft-delete group itself.
+	if _, err := txClient.Group.Delete().Where(group.IDEQ(id)).Exec(ctx); err != nil {
+		return nil, err
+REDACTED
+
+	if sqlTx != nil {
+		if err := sqlTx.Commit(); err != nil {
+			return nil, err
+	REDACTED
 REDACTED
 
 	return affectedUserIDs, nil
 REDACTED
 
-type groupModel struct {
-	ID             int64   `gorm:"primaryKey"`
-	Name           string  `gorm:"uniqueIndex;size:100;not null"`
-	Description    string  `gorm:"type:text"`
-	Platform       string  `gorm:"size:50;default:anthropic;not null"`
-	RateMultiplier float64 `gorm:"type:decimal(10,4);default:1.0;not null"`
-	IsExclusive    bool    `gorm:"default:false;not null"`
-	Status         string  `gorm:"size:20;default:active;not null"`
-
-	SubscriptionType string   `gorm:"size:20;default:standard;not null"`
-	DailyLimitUSD    *float64 `gorm:"type:decimal(20,8)"`
-	WeeklyLimitUSD   *float64 `gorm:"type:decimal(20,8)"`
-	MonthlyLimitUSD  *float64 `gorm:"type:decimal(20,8)"`
-
-	CreatedAt time.Time      `gorm:"not null"`
-	UpdatedAt time.Time      `gorm:"not null"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
+func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int64) (map[int64]int64, error) {
+	counts := make(map[int64]int64, len(groupIDs))
+	if len(groupIDs) == 0 {
+		return counts, nil
 REDACTED
 
-func (groupModel) TableName() string { return "groups" REDACTED
+	rows, err := r.sql.QueryContext(
+		ctx,
+		"SELECT group_id, COUNT(*) FROM account_groups WHERE group_id = ANY($1) GROUP BY group_id",
+		pq.Array(groupIDs),
+	)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer rows.Close()
 
-func groupModelToService(m *groupModel) *service.Group {
-	if m == nil {
-		return nil
+	for rows.Next() {
+		var groupID int64
+		var count int64
+		if err := rows.Scan(&groupID, &count); err != nil {
+			return nil, err
+	REDACTED
+		counts[groupID] = count
 REDACTED
-	return &service.Group{
-		ID:               m.ID,
-		Name:             m.Name,
-		Description:      m.Description,
-		Platform:         m.Platform,
-		RateMultiplier:   m.RateMultiplier,
-		IsExclusive:      m.IsExclusive,
-		Status:           m.Status,
-		SubscriptionType: m.SubscriptionType,
-		DailyLimitUSD:    m.DailyLimitUSD,
-		WeeklyLimitUSD:   m.WeeklyLimitUSD,
-		MonthlyLimitUSD:  m.MonthlyLimitUSD,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
-REDACTED
-REDACTED
-
-func groupModelFromService(sg *service.Group) *groupModel {
-	if sg == nil {
-		return nil
-REDACTED
-	return &groupModel{
-		ID:               sg.ID,
-		Name:             sg.Name,
-		Description:      sg.Description,
-		Platform:         sg.Platform,
-		RateMultiplier:   sg.RateMultiplier,
-		IsExclusive:      sg.IsExclusive,
-		Status:           sg.Status,
-		SubscriptionType: sg.SubscriptionType,
-		DailyLimitUSD:    sg.DailyLimitUSD,
-		WeeklyLimitUSD:   sg.WeeklyLimitUSD,
-		MonthlyLimitUSD:  sg.MonthlyLimitUSD,
-		CreatedAt:        sg.CreatedAt,
-		UpdatedAt:        sg.UpdatedAt,
-REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
 REDACTED
 
-func applyGroupModelToService(group *service.Group, m *groupModel) {
-	if group == nil || m == nil {
-		return
+	return counts, nil
 REDACTED
-	group.ID = m.ID
-	group.CreatedAt = m.CreatedAt
-	group.UpdatedAt = m.UpdatedAt
+
+func entClientFromSQLTx(tx *sql.Tx) *dbent.Client {
+	drv := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: txREDACTED)
+	return dbent.NewClient(dbent.Driver(drv))
+REDACTED
+
+func errorsIsNoRows(err error) bool {
+	return err == sql.ErrNoRows
 REDACTED

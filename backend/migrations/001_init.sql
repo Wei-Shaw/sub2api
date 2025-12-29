@@ -170,14 +170,3 @@ CREATE INDEX IF NOT EXISTS idx_usage_logs_account_id ON usage_logs(account_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_model ON usage_logs(model);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user_created ON usage_logs(user_id, created_at);
-
--- 插入默认管理员用户
--- 密码: admin123 (bcrypt hash)
-INSERT INTO users (email, password_hash, role, balance, concurrency, status)
-VALUES ('admin@sub2api.com', '$2a$10$N9qo8uLOickgx2ZMRZoMye.IjJbDdJeCo0U2bBPJj9lS/5LqD.C.C', 'admin', 0, 10, 'active')
-ON CONFLICT (email) DO NOTHING;
-
--- 插入默认分组
-INSERT INTO groups (name, description, rate_multiplier, is_exclusive, status)
-VALUES ('default', '默认分组', 1.0, false, 'active')
-ON CONFLICT (name) DO NOTHING;
