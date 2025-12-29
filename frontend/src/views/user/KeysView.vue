@@ -301,7 +301,7 @@
     <BaseDialog
       :show="showCreateModal || showEditModal"
       :title="showEditModal ? t('keys.editKey') : t('keys.createKey')"
-      width="narrow"
+      width="normal"
       @close="closeModals"
     >
       <form id="key-form" @submit.prevent="handleSubmit" class="space-y-5">
@@ -878,7 +878,20 @@ const importToCcswitch = (apiKey: string) => {
     usageAutoInterval: '30'
   REDACTED)
   const deeplink = `ccswitch://v1/import?${params.toString()REDACTED`
-  window.open(deeplink, '_self')
+
+  try {
+    window.open(deeplink, '_self')
+
+    // Check if the protocol handler worked by detecting if we're still focused
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        // Still focused means the protocol handler likely failed
+        appStore.showError(t('keys.ccSwitchNotInstalled'))
+      REDACTED
+    REDACTED, 100)
+  REDACTED catch (error) {
+    appStore.showError(t('keys.ccSwitchNotInstalled'))
+  REDACTED
 REDACTED
 
 onMounted(() => {

@@ -326,7 +326,8 @@ export default {
     customKeyHint: 'Only letters, numbers, underscores and hyphens allowed. Minimum 16 characters.',
     customKeyTooShort: 'Custom key must be at least 16 characters',
     customKeyInvalidChars: 'Custom key can only contain letters, numbers, underscores, and hyphens',
-    customKeyRequired: 'Please enter a custom key'
+    customKeyRequired: 'Please enter a custom key',
+    ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.'
   REDACTED,
 
   // Usage
@@ -345,6 +346,12 @@ export default {
     allApiKeys: 'All API Keys',
     timeRange: 'Time Range',
     exportCsv: 'Export CSV',
+    exportExcel: 'Export Excel',
+    exportingProgress: 'Exporting data...',
+    exportedCount: 'Exported {currentREDACTED/{totalREDACTED records',
+    estimatedTime: 'Estimated time remaining: {timeREDACTED',
+    cancelExport: 'Cancel Export',
+    exportCancelled: 'Export cancelled',
     exporting: 'Exporting...',
     preparingExport: 'Preparing export...',
     model: 'Model',
@@ -368,6 +375,8 @@ export default {
     noDataToExport: 'No data to export',
     exportSuccess: 'Usage data exported successfully',
     exportFailed: 'Failed to export usage data',
+    exportExcelSuccess: 'Usage data exported successfully (Excel format)',
+    exportExcelFailed: 'Failed to export usage data',
     billingType: 'Billing',
     balance: 'Balance',
     subscription: 'Subscription'
@@ -1291,6 +1300,7 @@ export default {
       account: 'Account',
       group: 'Group',
       requestId: 'Request ID',
+      requestIdCopied: 'Request ID copied',
       allModels: 'All Models',
       allAccounts: 'All Accounts',
       allGroups: 'All Groups',
@@ -1300,6 +1310,10 @@ export default {
       outputCost: 'Output Cost',
       cacheCreationCost: 'Cache Creation Cost',
       cacheReadCost: 'Cache Read Cost',
+      inputTokens: 'Input Tokens',
+      outputTokens: 'Output Tokens',
+      cacheCreationTokens: 'Cache Creation Tokens',
+      cacheReadTokens: 'Cache Read Tokens',
       failedToLoad: 'Failed to load usage records'
     REDACTED,
 

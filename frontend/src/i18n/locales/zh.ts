@@ -322,7 +322,8 @@ export default {
     customKeyHint: '仅允许字母、数字、下划线和连字符，最少16个字符。',
     customKeyTooShort: '自定义密钥至少需要16个字符',
     customKeyInvalidChars: '自定义密钥只能包含字母、数字、下划线和连字符',
-    customKeyRequired: '请输入自定义密钥'
+    customKeyRequired: '请输入自定义密钥',
+    ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。'
   REDACTED,
 
   // Usage
@@ -341,6 +342,12 @@ export default {
     allApiKeys: '全部密钥',
     timeRange: '时间范围',
     exportCsv: '导出 CSV',
+    exportExcel: '导出 Excel',
+    exportingProgress: '正在导出数据...',
+    exportedCount: '已导出 {currentREDACTED/{totalREDACTED 条',
+    estimatedTime: '预计剩余时间：{timeREDACTED',
+    cancelExport: '取消导出',
+    exportCancelled: '导出已取消',
     exporting: '导出中...',
     preparingExport: '正在准备导出...',
     model: '模型',
@@ -364,6 +371,8 @@ export default {
     noDataToExport: '没有可导出的数据',
     exportSuccess: '使用数据导出成功',
     exportFailed: '使用数据导出失败',
+    exportExcelSuccess: '使用数据导出成功（Excel格式）',
+    exportExcelFailed: '使用数据导出失败',
     billingType: '消费类型',
     balance: '余额',
     subscription: '订阅'
@@ -1490,6 +1499,7 @@ export default {
       account: '账户',
       group: '分组',
       requestId: '请求ID',
+      requestIdCopied: '请求ID已复制',
       allModels: '全部模型',
       allAccounts: '全部账户',
       allGroups: '全部分组',
@@ -1499,6 +1509,10 @@ export default {
       outputCost: '输出成本',
       cacheCreationCost: '缓存创建成本',
       cacheReadCost: '缓存读取成本',
+      inputTokens: '输入 Token',
+      outputTokens: '输出 Token',
+      cacheCreationTokens: '缓存创建 Token',
+      cacheReadTokens: '缓存读取 Token',
       failedToLoad: '加载使用记录失败'
     REDACTED,
 
