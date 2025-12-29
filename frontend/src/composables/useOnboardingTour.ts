@@ -76,7 +76,8 @@ export function useOnboardingTour(options: OnboardingOptions) {
   const startTour = async (startIndex = 0) => {
     // 动态获取当前用户角色和步骤
     const isAdmin = userStore.user?.role === 'admin'
-    const steps = isAdmin ? getAdminSteps(t) : getUserSteps(t)
+    const isSimpleMode = userStore.isSimpleMode
+    const steps = isAdmin ? getAdminSteps(t, isSimpleMode) : getUserSteps(t)
 
     // 确保 DOM 就绪
     await nextTick()
@@ -605,6 +606,19 @@ export function useOnboardingTour(options: OnboardingOptions) {
     if (onboardingStore.isDriverActive()) {
       console.log('Tour already active, skipping auto-start')
       driverInstance = onboardingStore.getDriverInstance()
+      return
+    REDACTED
+
+    // 简易模式下禁用新手引导
+    if (userStore.isSimpleMode) {
+      console.log('Simple mode detected, skipping onboarding tour')
+      return
+    REDACTED
+
+    // 只在管理员+标准模式下自动启动
+    const isAdmin = userStore.user?.role === 'admin'
+    if (!isAdmin) {
+      console.log('Non-admin user, skipping auto-start')
       return
     REDACTED
 

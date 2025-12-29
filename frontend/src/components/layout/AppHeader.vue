@@ -199,7 +199,7 @@
                 </div>
               </div>
 
-              <div class="border-t border-gray-100 py-1 dark:border-dark-700">
+              <div v-if="showOnboardingButton" class="border-t border-gray-100 py-1 dark:border-dark-700">
                 <button @click="handleReplayGuide" class="dropdown-item w-full">
                   <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                     <path
@@ -208,6 +208,9 @@
                   </svg>
                   {{ $t('onboarding.restartTour') REDACTEDREDACTED
                 </button>
+              </div>
+
+              <div class="border-t border-gray-100 py-1 dark:border-dark-700">
                 <button
                   @click="handleLogout"
                   class="dropdown-item w-full text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
@@ -255,6 +258,11 @@ const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
+
+// 只在标准模式的管理员下显示新手引导按钮
+const showOnboardingButton = computed(() => {
+  return !authStore.isSimpleMode && user.value?.role === 'admin'
+REDACTED)
 
 const userInitials = computed(() => {
   if (!user.value) return ''
