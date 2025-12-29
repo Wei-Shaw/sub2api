@@ -1025,8 +1025,43 @@
         </div>
       </div>
 
+      <!-- Mixed Scheduling (only for antigravity accounts) -->
+      <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
+        <label class="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            v-model="mixedScheduling"
+            class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+          />
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.accounts.mixedScheduling') REDACTEDREDACTED
+          </span>
+        </label>
+        <div class="group relative">
+          <span
+            class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
+          >
+            ?
+          </span>
+          <!-- Tooltip（向下显示避免被弹窗裁剪） -->
+          <div
+            class="pointer-events-none absolute left-0 top-full z-[100] mt-1.5 w-72 rounded bg-gray-900 px-3 py-2 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+          >
+            {{ t('admin.accounts.mixedSchedulingTooltip') REDACTEDREDACTED
+            <div
+              class="absolute bottom-full left-3 border-4 border-transparent border-b-gray-900 dark:border-b-gray-700"
+            ></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Group Selection -->
-      <GroupSelector v-model="form.group_ids" :groups="groups" :platform="form.platform" />
+      <GroupSelector
+        v-model="form.group_ids"
+        :groups="groups"
+        :platform="form.platform"
+        :mixed-scheduling="mixedScheduling"
+      />
 
     </form>
 
@@ -1244,6 +1279,7 @@ const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
+const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
 const geminiAIStudioOAuthEnabled = ref(false)
 
@@ -1730,7 +1766,7 @@ const createAccountAndFinish = async (
   platform: AccountPlatform,
   type: AccountType,
   credentials: Record<string, unknown>,
-  extra?: Record<string, string>
+  extra?: Record<string, unknown>
 ) => {
   await adminAPI.accounts.create({
     name: form.name,
@@ -1834,7 +1870,8 @@ const handleAntigravityExchange = async (authCode: string) => {
     if (!tokenInfo) return
 
     const credentials = antigravityOAuth.buildCredentials(tokenInfo)
-    await createAccountAndFinish('antigravity', 'oauth', credentials)
+    const extra = mixedScheduling.value ? { mixed_scheduling: true REDACTED : undefined
+    await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
   REDACTED catch (error: any) {
     antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(antigravityOAuth.error.value)

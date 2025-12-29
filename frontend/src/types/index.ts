@@ -392,7 +392,7 @@ export interface CreateAccountRequest {
   platform: AccountPlatform
   type: AccountType
   credentials: Record<string, unknown>
-  extra?: Record<string, string>
+  extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number
   priority?: number
@@ -403,7 +403,7 @@ export interface UpdateAccountRequest {
   name?: string
   type?: AccountType
   credentials?: Record<string, unknown>
-  extra?: Record<string, string>
+  extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number
   priority?: number

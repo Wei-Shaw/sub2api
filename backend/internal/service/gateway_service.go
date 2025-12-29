@@ -93,6 +93,7 @@ REDACTED
 // GatewayService handles API gateway operations
 type GatewayService struct {
 	accountRepo         AccountRepository
+	groupRepo           GroupRepository
 	usageLogRepo        UsageLogRepository
 	userRepo            UserRepository
 	userSubRepo         UserSubscriptionRepository
@@ -109,6 +110,7 @@ REDACTED
 // NewGatewayService creates a new GatewayService
 func NewGatewayService(
 	accountRepo AccountRepository,
+	groupRepo GroupRepository,
 	usageLogRepo UsageLogRepository,
 	userRepo UserRepository,
 	userSubRepo UserSubscriptionRepository,
@@ -123,6 +125,7 @@ func NewGatewayService(
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
+		groupRepo:           groupRepo,
 		usageLogRepo:        usageLogRepo,
 		userRepo:            userRepo,
 		userSubRepo:         userSubRepo,
@@ -291,23 +294,38 @@ REDACTED
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
-	// 使用多平台账户选择，包含 anthropic 和 antigravity 平台
-	platforms := []string{PlatformAnthropic, PlatformAntigravityREDACTED
-	return s.selectAccountForModelWithPlatforms(ctx, groupID, sessionHash, requestedModel, excludedIDs, platforms)
+	// 根据分组 platform 决定查询哪种账号
+	var platform string
+	if groupID != nil {
+		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		if err != nil {
+			return nil, fmt.Errorf("get group failed: %w", err)
+	REDACTED
+		platform = group.Platform
+REDACTED else {
+		// 无分组时只使用原生 anthropic 平台
+		platform = PlatformAnthropic
 REDACTED
 
-// selectAccountForModelWithPlatforms 选择多平台账户
-func (s *GatewayService) selectAccountForModelWithPlatforms(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platforms []string) (*Account, error) {
+	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
+	if platform == PlatformAnthropic || platform == PlatformGemini {
+		return s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+REDACTED
+
+	// antigravity 分组或无分组使用单平台选择
+	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+REDACTED
+
+// selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
+func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platform string) (*Account, error) {
 	// 1. 查询粘性会话
 	if sessionHash != "" {
 		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
-				// 使用IsSchedulable代替IsActive，确保限流/过载账号不会被选中
-				// 同时检查模型支持（根据平台类型分别处理）
-				if err == nil && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
-					// 续期粘性会话
+				// 检查账号平台是否匹配（确保粘性会话不会跨平台）
+				if err == nil && account.Platform == platform && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
 				REDACTED
@@ -317,13 +335,13 @@ func (s *GatewayService) selectAccountForModelWithPlatforms(ctx context.Context,
 	REDACTED
 REDACTED
 
-	// 2. 获取可调度账号列表（排除限流和过载的账号，支持多平台）
+	// 2. 获取可调度账号列表（单平台）
 	var accounts []Account
 	var err error
 	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
 REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -336,7 +354,6 @@ REDACTED
 		if _, excluded := excludedIDs[acc.ID]; excluded {
 			continue
 	REDACTED
-		// 检查模型支持（根据平台类型分别处理）
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
 			continue
 	REDACTED
@@ -344,11 +361,98 @@ REDACTED
 			selected = acc
 			continue
 	REDACTED
-		// 优先选择priority值更小的（priority值越小优先级越高）
 		if acc.Priority < selected.Priority {
 			selected = acc
 	REDACTED else if acc.Priority == selected.Priority {
-			// 优先级相同时，选最久未用的
+			switch {
+			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
+				selected = acc
+			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+				// keep selected (never used is preferred)
+			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+				// keep selected (both never used)
+			default:
+				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+					selected = acc
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if selected == nil {
+		if requestedModel != "" {
+			return nil, fmt.Errorf("no available accounts supporting model: %s", requestedModel)
+	REDACTED
+		return nil, errors.New("no available accounts")
+REDACTED
+
+	// 4. 建立粘性绑定
+	if sessionHash != "" {
+		if err := s.cache.SetSessionAccountID(ctx, sessionHash, selected.ID, stickySessionTTL); err != nil {
+			log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+	REDACTED
+REDACTED
+
+	return selected, nil
+REDACTED
+
+// selectAccountWithMixedScheduling 选择账户（支持混合调度）
+// 查询原生平台账户 + 启用 mixed_scheduling 的 antigravity 账户
+func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, nativePlatform string) (*Account, error) {
+	platforms := []string{nativePlatform, PlatformAntigravityREDACTED
+
+	// 1. 查询粘性会话
+	if sessionHash != "" {
+		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
+		if err == nil && accountID > 0 {
+			if _, excluded := excludedIDs[accountID]; !excluded {
+				account, err := s.accountRepo.GetByID(ctx, accountID)
+				// 检查账号是否有效：原生平台直接匹配，antigravity 需要启用混合调度
+				if err == nil && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
+						if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
+							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+					REDACTED
+						return account, nil
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 2. 获取可调度账号列表
+	var accounts []Account
+	var err error
+	if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
+REDACTED else {
+		accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+REDACTED
+	if err != nil {
+		return nil, fmt.Errorf("query accounts failed: %w", err)
+REDACTED
+
+	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
+	var selected *Account
+	for i := range accounts {
+		acc := &accounts[i]
+		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
+		if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			continue
+	REDACTED
+		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
+			continue
+	REDACTED
+		if selected == nil {
+			selected = acc
+			continue
+	REDACTED
+		if acc.Priority < selected.Priority {
+			selected = acc
+	REDACTED else if acc.Priority == selected.Priority {
 			switch {
 			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc
