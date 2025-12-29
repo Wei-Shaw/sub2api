@@ -40,7 +40,6 @@ REDACTED
 	exec := r.sql
 	txClient := r.client
 	var sqlTx *sql.Tx
-	var txClientClose func() error
 
 	if r.begin != nil {
 		var err error
@@ -50,11 +49,10 @@ REDACTED
 	REDACTED
 		exec = sqlTx
 		txClient = entClientFromSQLTx(sqlTx)
-		txClientClose = txClient.Close
+		// 注意：不能调用 txClient.Close()，因为基于事务的 ent client
+		// 在 Close() 时会尝试将 ExecQuerier 断言为 *sql.DB，但实际是 *sql.Tx
+		// 事务的清理通过 sqlTx.Rollback() 和 sqlTx.Commit() 完成
 		defer func() { _ = sqlTx.Rollback() REDACTED()
-REDACTED
-	if txClientClose != nil {
-		defer func() { _ = txClientClose() REDACTED()
 REDACTED
 
 	created, err := txClient.User.Create().
@@ -126,7 +124,6 @@ REDACTED
 	exec := r.sql
 	txClient := r.client
 	var sqlTx *sql.Tx
-	var txClientClose func() error
 
 	if r.begin != nil {
 		var err error
@@ -136,11 +133,10 @@ REDACTED
 	REDACTED
 		exec = sqlTx
 		txClient = entClientFromSQLTx(sqlTx)
-		txClientClose = txClient.Close
+		// 注意：不能调用 txClient.Close()，因为基于事务的 ent client
+		// 在 Close() 时会尝试将 ExecQuerier 断言为 *sql.DB，但实际是 *sql.Tx
+		// 事务的清理通过 sqlTx.Rollback() 和 sqlTx.Commit() 完成
 		defer func() { _ = sqlTx.Rollback() REDACTED()
-REDACTED
-	if txClientClose != nil {
-		defer func() { _ = txClientClose() REDACTED()
 REDACTED
 
 	updated, err := txClient.User.UpdateOneID(userIn.ID).
