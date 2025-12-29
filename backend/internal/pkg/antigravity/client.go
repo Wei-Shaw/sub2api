@@ -38,16 +38,25 @@ REDACTED
 
 // TierInfo 账户类型信息
 type TierInfo struct {
-	ID          string `json:"id"`          // standard-tier, free-tier, g1-pro-tier, g1-ultra-tier
+	ID          string `json:"id"`          // free-tier, g1-pro-tier, g1-ultra-tier
 	Name        string `json:"name"`        // 显示名称
 	Description string `json:"description"` // 描述
 REDACTED
 
+// IneligibleTier 不符合条件的层级信息
+type IneligibleTier struct {
+	Tier *TierInfo `json:"tier,omitempty"`
+	// ReasonCode 不符合条件的原因代码，如 INELIGIBLE_ACCOUNT
+	ReasonCode    string `json:"reasonCode,omitempty"`
+	ReasonMessage string `json:"reasonMessage,omitempty"`
+REDACTED
+
 // LoadCodeAssistResponse loadCodeAssist 响应
 type LoadCodeAssistResponse struct {
-	CloudAICompanionProject string    `json:"cloudaicompanionProject"`
-	CurrentTier             *TierInfo `json:"currentTier,omitempty"`
-	PaidTier                *TierInfo `json:"paidTier,omitempty"`
+	CloudAICompanionProject string            `json:"cloudaicompanionProject"`
+	CurrentTier             *TierInfo         `json:"currentTier,omitempty"`
+	PaidTier                *TierInfo         `json:"paidTier,omitempty"`
+	IneligibleTiers         []*IneligibleTier `json:"ineligibleTiers,omitempty"`
 REDACTED
 
 // GetTier 获取账户类型

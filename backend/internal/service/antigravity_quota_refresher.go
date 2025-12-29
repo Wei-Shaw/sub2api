@@ -187,6 +187,17 @@ REDACTED
 	if tier != "" {
 		account.Extra["tier"] = tier
 REDACTED
+
+	// 保存不符合条件的原因（如 INELIGIBLE_ACCOUNT）
+	if len(loadResp.IneligibleTiers) > 0 && loadResp.IneligibleTiers[0] != nil {
+		ineligible := loadResp.IneligibleTiers[0]
+		if ineligible.ReasonCode != "" {
+			account.Extra["ineligible_reason_code"] = ineligible.ReasonCode
+	REDACTED
+		if ineligible.ReasonMessage != "" {
+			account.Extra["ineligible_reason_message"] = ineligible.ReasonMessage
+	REDACTED
+REDACTED
 REDACTED
 
 // updateAccountQuota 更新账户的配额信息
