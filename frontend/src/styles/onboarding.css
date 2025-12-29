@@ -6,6 +6,17 @@
   inset: 0 !important;
   z-index: 99999998 !important;
   background-color: transparent !important;
+  /*
+   * 关键修复：让 overlay 不拦截点击事件
+   * 因为已设置 allowClose: false，用户不能通过点击遮罩关闭引导
+   * 这样 Select 下拉菜单等脱离高亮区域的元素才能正常交互
+   * 视觉遮罩效果保持不变（SVG 仍然渲染，pointer-events 只影响交互不影响渲染）
+   */
+  pointer-events: none !important;
+REDACTED
+
+.driver-overlay svg {
+  pointer-events: none !important;
 REDACTED
 
 .driver-active-element {
@@ -54,36 +65,6 @@ REDACTED
   padding-right: 100px !important; /* Ensure title doesn't overlap Skip/Close */
 REDACTED
 .dark .driver-popover-title-text { color: #ffffff !important; REDACTED
-
-/* Skip Button */
-.header-skip-btn {
-  position: absolute !important;
-  top: 18px !important;
-  right: 60px !important;
-  font-size: 12px !important;
-  color: #9ca3af !important;
-  background: transparent !important;
-  border: none !important;
-  padding: 4px 8px !important;
-  cursor: pointer !important;
-  border-radius: 4px !important;
-  transition: all 0.2s !important;
-  white-space: nowrap !important;
-  display: flex !important;
-  align-items: center !important;
-  height: 28px !important;
-  max-width: 120px !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-REDACTED
-.header-skip-btn:hover {
-  background-color: rgba(239, 68, 68, 0.1) !important;
-  color: #ef4444 !important;
-REDACTED
-.dark .header-skip-btn:hover {
-  background-color: rgba(248, 113, 113, 0.1) !important;
-  color: #f87171 !important;
-REDACTED
 
 /* Close Button */
 .theme-tour-popover .driver-popover-close-btn {
@@ -245,8 +226,3 @@ REDACTED
 .dark .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: #1e293b !important; REDACTED
 .dark .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: #1e293b !important; REDACTED
 .dark .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: #1e293b !important; REDACTED
-
-/* 确保被高亮元素的下拉菜单也有足够高的 z-index */
-.driver-active-element .select-dropdown {
-  z-index: 100000001 !important;
-REDACTED

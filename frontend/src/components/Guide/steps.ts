@@ -47,7 +47,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.groupName.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -57,7 +57,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.groupPlatform.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -67,7 +67,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.groupMultiplier.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -77,7 +77,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.groupExclusive.description'),
       side: 'top',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -119,7 +119,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.accountName.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -129,7 +129,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.accountPlatform.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -139,7 +139,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.accountType.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -149,7 +149,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.accountPriority.description'),
       side: 'top',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -159,7 +159,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.accountGroups.description'),
       side: 'top',
       align: 'center',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -201,7 +201,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.keyName.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -211,7 +211,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
       description: t('onboarding.admin.keyGroup.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -283,7 +283,7 @@ export const getUserSteps = (t: (key: string) => string): DriveStep[] => [
       description: t('onboarding.user.keyName.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {
@@ -293,7 +293,7 @@ export const getUserSteps = (t: (key: string) => string): DriveStep[] => [
       description: t('onboarding.user.keyGroup.description'),
       side: 'right',
       align: 'start',
-      showButtons: ['close']
+      showButtons: ['next', 'previous']
     REDACTED
   REDACTED,
   {

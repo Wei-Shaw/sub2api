@@ -25,23 +25,19 @@
 <script setup lang="ts">
 import '@/styles/onboarding.css'
 import { computed, onMounted REDACTED from 'vue'
-import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { useOnboardingTour REDACTED from '@/composables/useOnboardingTour'
-import { getAdminSteps, getUserSteps REDACTED from '@/components/Guide/steps'
 import { useOnboardingStore REDACTED from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const { t REDACTED = useI18n()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const { replayTour REDACTED = useOnboardingTour({
-  steps: isAdmin.value ? getAdminSteps(t) : getUserSteps(t),
   storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',
   autoStart: true
 REDACTED)
