@@ -82,8 +82,9 @@ func (s *GroupRepoSuite) TestList() {
 
 	groups, page, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "List")
-	s.Require().Len(groups, 2)
-	s.Require().Equal(int64(2), page.Total)
+	// 3 default groups + 2 test groups = 5 total
+	s.Require().Len(groups, 5)
+	s.Require().Equal(int64(5), page.Total)
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_Platform() {
@@ -92,8 +93,12 @@ func (s *GroupRepoSuite) TestListWithFilters_Platform() {
 
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformOpenAI, "", nil)
 	s.Require().NoError(err)
-	s.Require().Len(groups, 1)
-	s.Require().Equal(service.PlatformOpenAI, groups[0].Platform)
+	// 1 default openai group + 1 test openai group = 2 total
+	s.Require().Len(groups, 2)
+	// Verify all groups are OpenAI platform
+	for _, g := range groups {
+		s.Require().Equal(service.PlatformOpenAI, g.Platform)
+REDACTED
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_Status() {
@@ -151,8 +156,17 @@ func (s *GroupRepoSuite) TestListActive() {
 
 	groups, err := s.repo.ListActive(s.ctx)
 	s.Require().NoError(err, "ListActive")
-	s.Require().Len(groups, 1)
-	s.Require().Equal("active1", groups[0].Name)
+	// 3 default groups (all active) + 1 test active group = 4 total
+	s.Require().Len(groups, 4)
+	// Verify our test group is in the results
+	var found bool
+	for _, g := range groups {
+		if g.Name == "active1" {
+			found = true
+			break
+	REDACTED
+REDACTED
+	s.Require().True(found, "active1 group should be in results")
 REDACTED
 
 func (s *GroupRepoSuite) TestListActiveByPlatform() {
@@ -162,8 +176,17 @@ func (s *GroupRepoSuite) TestListActiveByPlatform() {
 
 	groups, err := s.repo.ListActiveByPlatform(s.ctx, service.PlatformAnthropic)
 	s.Require().NoError(err, "ListActiveByPlatform")
-	s.Require().Len(groups, 1)
-	s.Require().Equal("g1", groups[0].Name)
+	// 1 default anthropic group + 1 test active anthropic group = 2 total
+	s.Require().Len(groups, 2)
+	// Verify our test group is in the results
+	var found bool
+	for _, g := range groups {
+		if g.Name == "g1" {
+			found = true
+			break
+	REDACTED
+REDACTED
+	s.Require().True(found, "g1 group should be in results")
 REDACTED
 
 // --- ExistsByName ---

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -11,15 +12,15 @@ import (
 )
 
 // ApiKeyAuthGoogle is a Google-style error wrapper for API key auth.
-func ApiKeyAuthGoogle(apiKeyService *service.ApiKeyService) gin.HandlerFunc {
-	return ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil)
+func ApiKeyAuthGoogle(apiKeyService *service.ApiKeyService, cfg *config.Config) gin.HandlerFunc {
+	return ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg)
 REDACTED
 
 // ApiKeyAuthWithSubscriptionGoogle behaves like ApiKeyAuthWithSubscription but returns Google-style errors:
 // {"error":{"code":401,"message":"...","status":"UNAUTHENTICATED"REDACTEDREDACTED
 //
 // It is intended for Gemini native endpoints (/v1beta) to match Gemini SDK expectations.
-func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKeyString := extractAPIKeyFromRequest(c)
 		if apiKeyString == "" {
@@ -47,6 +48,18 @@ func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subs
 	REDACTED
 		if !apiKey.User.IsActive() {
 			abortWithGoogleError(c, 401, "User account is not active")
+			return
+	REDACTED
+
+		// 简易模式：跳过余额和订阅检查
+		if cfg.RunMode == config.RunModeSimple {
+			c.Set(string(ContextKeyApiKey), apiKey)
+			c.Set(string(ContextKeyUser), AuthSubject{
+				UserID:      apiKey.User.ID,
+				Concurrency: apiKey.User.Concurrency,
+		REDACTED)
+			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+			c.Next()
 			return
 	REDACTED
 

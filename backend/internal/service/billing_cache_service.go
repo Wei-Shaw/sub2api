@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 )
 
@@ -32,14 +33,16 @@ type BillingCacheService struct {
 	cache    BillingCache
 	userRepo UserRepository
 	subRepo  UserSubscriptionRepository
+	cfg      *config.Config
 REDACTED
 
 // NewBillingCacheService 创建计费缓存服务
-func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository) *BillingCacheService {
+func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, cfg *config.Config) *BillingCacheService {
 	return &BillingCacheService{
 		cache:    cache,
 		userRepo: userRepo,
 		subRepo:  subRepo,
+		cfg:      cfg,
 REDACTED
 REDACTED
 
@@ -224,6 +227,11 @@ REDACTED
 // 余额模式：检查缓存余额 > 0
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *ApiKey, group *Group, subscription *UserSubscription) error {
+	// 简易模式：跳过所有计费检查
+	if s.cfg.RunMode == config.RunModeSimple {
+		return nil
+REDACTED
+
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 

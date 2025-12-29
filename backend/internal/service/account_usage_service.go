@@ -54,15 +54,23 @@ type UsageLogRepository interface {
 	GetApiKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 REDACTED
 
-// usageCache 用于缓存usage数据
-type usageCache struct {
-	data      *UsageInfo
+// apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
+type apiUsageCache struct {
+	response  *ClaudeUsageResponse
+	timestamp time.Time
+REDACTED
+
+// windowStatsCache 缓存从本地数据库查询的窗口统计（requests, tokens, cost）
+type windowStatsCache struct {
+	stats     *WindowStats
 	timestamp time.Time
 REDACTED
 
 var (
-	usageCacheMap = sync.Map{REDACTED
-	cacheTTL      = 10 * time.Minute
+	apiCacheMap         = sync.Map{REDACTED // 缓存 API 响应
+	windowStatsCacheMap = sync.Map{REDACTED // 缓存窗口统计
+	apiCacheTTL         = 10 * time.Minute
+	windowStatsCacheTTL = 1 * time.Minute
 )
 
 // WindowStats 窗口期统计
@@ -126,7 +134,7 @@ REDACTED
 REDACTED
 
 // GetUsage 获取账号使用量
-// OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），缓存10分钟
+// OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），API响应缓存10分钟，窗口统计缓存1分钟
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
 // API Key账号: 不支持usage查询
 func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
@@ -137,30 +145,34 @@ REDACTED
 
 	// 只有oauth类型账号可以通过API获取usage（有profile scope）
 	if account.CanGetUsage() {
-		// 检查缓存
-		if cached, ok := usageCacheMap.Load(accountID); ok {
-			cache, ok := cached.(*usageCache)
-			if !ok {
-				usageCacheMap.Delete(accountID)
-		REDACTED else if time.Since(cache.timestamp) < cacheTTL {
-				return cache.data, nil
+		var apiResp *ClaudeUsageResponse
+
+		// 1. 检查 API 缓存（10 分钟）
+		if cached, ok := apiCacheMap.Load(accountID); ok {
+			if cache, ok := cached.(*apiUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
+				apiResp = cache.response
 		REDACTED
 	REDACTED
 
-		// 从API获取数据
-		usage, err := s.fetchOAuthUsage(ctx, account)
-		if err != nil {
-			return nil, err
+		// 2. 如果没有缓存，从 API 获取
+		if apiResp == nil {
+			apiResp, err = s.fetchOAuthUsageRaw(ctx, account)
+			if err != nil {
+				return nil, err
+		REDACTED
+			// 缓存 API 响应
+			apiCacheMap.Store(accountID, &apiUsageCache{
+				response:  apiResp,
+				timestamp: time.Now(),
+		REDACTED)
 	REDACTED
 
-		// 添加5h窗口统计数据
-		s.addWindowStats(ctx, account, usage)
+		// 3. 构建 UsageInfo（每次都重新计算 RemainingSeconds）
+		now := time.Now()
+		usage := s.buildUsageInfo(apiResp, &now)
 
-		// 缓存结果
-		usageCacheMap.Store(accountID, &usageCache{
-			data:      usage,
-			timestamp: time.Now(),
-	REDACTED)
+		// 4. 添加窗口统计（有独立缓存，1 分钟）
+		s.addWindowStats(ctx, account, usage)
 
 		return usage, nil
 REDACTED
@@ -177,31 +189,54 @@ REDACTED
 	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
 REDACTED
 
-// addWindowStats 为usage数据添加窗口期统计
+// addWindowStats 为 usage 数据添加窗口期统计
+// 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
-	if usage.FiveHour == nil {
+	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
+	// 因为 SevenDay/SevenDaySonnet 可能需要
+	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil {
 		return
 REDACTED
 
-	// 使用session_window_start作为统计起始时间
-	var startTime time.Time
-	if account.SessionWindowStart != nil {
-		startTime = *account.SessionWindowStart
-REDACTED else {
-		// 如果没有窗口信息，使用5小时前作为默认
-		startTime = time.Now().Add(-5 * time.Hour)
+	// 检查窗口统计缓存（1 分钟）
+	var windowStats *WindowStats
+	if cached, ok := windowStatsCacheMap.Load(account.ID); ok {
+		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
+			windowStats = cache.stats
+	REDACTED
 REDACTED
 
-	stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
-	if err != nil {
-		log.Printf("Failed to get window stats for account %d: %v", account.ID, err)
-		return
+	// 如果没有缓存，从数据库查询
+	if windowStats == nil {
+		var startTime time.Time
+		if account.SessionWindowStart != nil {
+			startTime = *account.SessionWindowStart
+	REDACTED else {
+			startTime = time.Now().Add(-5 * time.Hour)
+	REDACTED
+
+		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
+		if err != nil {
+			log.Printf("Failed to get window stats for account %d: %v", account.ID, err)
+			return
+	REDACTED
+
+		windowStats = &WindowStats{
+			Requests: stats.Requests,
+			Tokens:   stats.Tokens,
+			Cost:     stats.Cost,
+	REDACTED
+
+		// 缓存窗口统计（1 分钟）
+		windowStatsCacheMap.Store(account.ID, &windowStatsCache{
+			stats:     windowStats,
+			timestamp: time.Now(),
+	REDACTED)
 REDACTED
 
-	usage.FiveHour.WindowStats = &WindowStats{
-		Requests: stats.Requests,
-		Tokens:   stats.Tokens,
-		Cost:     stats.Cost,
+	// 为 FiveHour 添加 WindowStats（5h 窗口统计）
+	if usage.FiveHour != nil {
+		usage.FiveHour.WindowStats = windowStats
 REDACTED
 REDACTED
 
@@ -227,8 +262,8 @@ REDACTED
 	return stats, nil
 REDACTED
 
-// fetchOAuthUsage 从Anthropic API获取OAuth账号的使用量
-func (s *AccountUsageService) fetchOAuthUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+// fetchOAuthUsageRaw 从 Anthropic API 获取原始响应（不构建 UsageInfo）
+func (s *AccountUsageService) fetchOAuthUsageRaw(ctx context.Context, account *Account) (*ClaudeUsageResponse, error) {
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
 		return nil, fmt.Errorf("no access token available")
@@ -239,13 +274,7 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	usageResp, err := s.usageFetcher.FetchUsage(ctx, accessToken, proxyURL)
-	if err != nil {
-		return nil, err
-REDACTED
-
-	now := time.Now()
-	return s.buildUsageInfo(usageResp, &now), nil
+	return s.usageFetcher.FetchUsage(ctx, accessToken, proxyURL)
 REDACTED
 
 // parseTime 尝试多种格式解析时间
@@ -270,20 +299,16 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 		UpdatedAt: updatedAt,
 REDACTED
 
-	// 5小时窗口
+	// 5小时窗口 - 始终创建对象（即使 ResetsAt 为空）
+	info.FiveHour = &UsageProgress{
+		Utilization: resp.FiveHour.Utilization,
+REDACTED
 	if resp.FiveHour.ResetsAt != "" {
 		if fiveHourReset, err := parseTime(resp.FiveHour.ResetsAt); err == nil {
-			info.FiveHour = &UsageProgress{
-				Utilization:      resp.FiveHour.Utilization,
-				ResetsAt:         &fiveHourReset,
-				RemainingSeconds: int(time.Until(fiveHourReset).Seconds()),
-		REDACTED
+			info.FiveHour.ResetsAt = &fiveHourReset
+			info.FiveHour.RemainingSeconds = int(time.Until(fiveHourReset).Seconds())
 	REDACTED else {
 			log.Printf("Failed to parse FiveHour.ResetsAt: %s, error: %v", resp.FiveHour.ResetsAt, err)
-			// 即使解析失败也返回utilization
-			info.FiveHour = &UsageProgress{
-				Utilization: resp.FiveHour.Utilization,
-		REDACTED
 	REDACTED
 REDACTED
 

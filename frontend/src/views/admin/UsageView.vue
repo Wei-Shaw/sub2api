@@ -736,9 +736,19 @@ const groupOptions = computed(() => {
   ]
 REDACTED)
 
+// Helper function to format date in local timezone
+const formatLocalDate = (date: Date): string => {
+  return `${date.getFullYear()REDACTED-${String(date.getMonth() + 1).padStart(2, '0')REDACTED-${String(date.getDate()).padStart(2, '0')REDACTED`
+REDACTED
+
+// Initialize date range immediately
+const now = new Date()
+const weekAgo = new Date(now)
+weekAgo.setDate(weekAgo.getDate() - 6)
+
 // Date range state
-const startDate = ref('')
-const endDate = ref('')
+const startDate = ref(formatLocalDate(weekAgo))
+const endDate = ref(formatLocalDate(now))
 
 const filters = ref<AdminUsageQueryParams>({
   user_id: undefined,
@@ -752,18 +762,9 @@ const filters = ref<AdminUsageQueryParams>({
   end_date: undefined
 REDACTED)
 
-// Initialize default date range (last 7 days)
-const initializeDateRange = () => {
-  const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const weekAgo = new Date(now)
-  weekAgo.setDate(weekAgo.getDate() - 6)
-
-  startDate.value = weekAgo.toISOString().split('T')[0]
-  endDate.value = today
-  filters.value.start_date = startDate.value
-  filters.value.end_date = endDate.value
-REDACTED
+// Initialize filters with date range
+filters.value.start_date = startDate.value
+filters.value.end_date = endDate.value
 
 // User search with debounce
 const debounceSearchUsers = () => {
@@ -988,9 +989,12 @@ const loadModelOptions = async () => {
     const endDate = new Date()
     const startDateRange = new Date(endDate)
     startDateRange.setDate(startDateRange.getDate() - 29)
+    // Use local timezone instead of UTC
+    const endDateStr = `${endDate.getFullYear()REDACTED-${String(endDate.getMonth() + 1).padStart(2, '0')REDACTED-${String(endDate.getDate()).padStart(2, '0')REDACTED`
+    const startDateStr = `${startDateRange.getFullYear()REDACTED-${String(startDateRange.getMonth() + 1).padStart(2, '0')REDACTED-${String(startDateRange.getDate()).padStart(2, '0')REDACTED`
     const response = await adminAPI.dashboard.getModelStats({
-      start_date: startDateRange.toISOString().split('T')[0],
-      end_date: endDate.toISOString().split('T')[0]
+      start_date: startDateStr,
+      end_date: endDateStr
     REDACTED)
     const uniqueModels = new Set<string>()
     response.models?.forEach((stat) => {
@@ -1022,7 +1026,13 @@ const resetFilters = () => {
   REDACTED
   granularity.value = 'day'
   // Reset date range to default (last 7 days)
-  initializeDateRange()
+  const now = new Date()
+  const weekAgo = new Date(now)
+  weekAgo.setDate(weekAgo.getDate() - 6)
+  startDate.value = formatLocalDate(weekAgo)
+  endDate.value = formatLocalDate(now)
+  filters.value.start_date = startDate.value
+  filters.value.end_date = endDate.value
   pagination.value.page = 1
   loadApiKeys()
   loadUsageLogs()
@@ -1114,7 +1124,6 @@ const hideTooltip = () => {
 REDACTED
 
 onMounted(() => {
-  initializeDateRange()
   loadFilterOptions()
   loadApiKeys()
   loadUsageLogs()

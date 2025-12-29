@@ -164,6 +164,14 @@ REDACTED
 	return nil
 REDACTED
 
+// UpdateConcurrency 更新用户并发数（管理员功能）
+func (s *UserService) UpdateConcurrency(ctx context.Context, userID int64, concurrency int) error {
+	if err := s.userRepo.UpdateConcurrency(ctx, userID, concurrency); err != nil {
+		return fmt.Errorf("update concurrency: %w", err)
+REDACTED
+	return nil
+REDACTED
+
 // UpdateStatus 更新用户状态（管理员功能）
 func (s *UserService) UpdateStatus(ctx context.Context, userID int64, status string) error {
 	user, err := s.userRepo.GetByID(ctx, userID)

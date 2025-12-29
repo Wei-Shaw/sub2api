@@ -36,7 +36,7 @@ REDACTED
 	r := gin.New()
 	r.Use(middleware2.Recovery())
 
-	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService)
+	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, cfg)
 REDACTED
 
 // ProvideHTTPServer 提供 HTTP 服务器

@@ -488,9 +488,19 @@ const apiKeyOptions = computed(() => {
   ]
 REDACTED)
 
+// Helper function to format date in local timezone
+const formatLocalDate = (date: Date): string => {
+  return `${date.getFullYear()REDACTED-${String(date.getMonth() + 1).padStart(2, '0')REDACTED-${String(date.getDate()).padStart(2, '0')REDACTED`
+REDACTED
+
+// Initialize date range immediately
+const now = new Date()
+const weekAgo = new Date(now)
+weekAgo.setDate(weekAgo.getDate() - 6)
+
 // Date range state
-const startDate = ref('')
-const endDate = ref('')
+const startDate = ref(formatLocalDate(weekAgo))
+const endDate = ref(formatLocalDate(now))
 
 const filters = ref<UsageQueryParams>({
   api_key_id: undefined,
@@ -498,18 +508,9 @@ const filters = ref<UsageQueryParams>({
   end_date: undefined
 REDACTED)
 
-// Initialize default date range (last 7 days)
-const initializeDateRange = () => {
-  const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const weekAgo = new Date(now)
-  weekAgo.setDate(weekAgo.getDate() - 6)
-
-  startDate.value = weekAgo.toISOString().split('T')[0]
-  endDate.value = today
-  filters.value.start_date = startDate.value
-  filters.value.end_date = endDate.value
-REDACTED
+// Initialize filters with date range
+filters.value.start_date = startDate.value
+filters.value.end_date = endDate.value
 
 // Handle date range change from DateRangePicker
 const onDateRangeChange = (range: {
@@ -629,7 +630,13 @@ const resetFilters = () => {
     end_date: undefined
   REDACTED
   // Reset date range to default (last 7 days)
-  initializeDateRange()
+  const now = new Date()
+  const weekAgo = new Date(now)
+  weekAgo.setDate(weekAgo.getDate() - 6)
+  startDate.value = formatLocalDate(weekAgo)
+  endDate.value = formatLocalDate(now)
+  filters.value.start_date = startDate.value
+  filters.value.end_date = endDate.value
   pagination.page = 1
   loadUsageLogs()
   loadUsageStats()
@@ -772,7 +779,6 @@ const hideTooltip = () => {
 REDACTED
 
 onMounted(() => {
-  initializeDateRange()
   loadApiKeys()
   loadUsageLogs()
   loadUsageStats()

@@ -733,14 +733,15 @@ export default {
         platform: '平台',
         rateMultiplier: '费率倍数',
         status: '状态',
+        exclusive: '专属分组',
         nameLabel: '分组名称',
         namePlaceholder: '请输入分组名称',
         descriptionLabel: '描述',
         descriptionPlaceholder: '请输入描述（可选）',
         rateMultiplierLabel: '费率倍数',
         rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
-        exclusiveLabel: '独占模式',
-        exclusiveHint: '启用后，此分组的用户将独占使用分配的账号',
+        exclusiveLabel: '专属分组',
+        exclusiveHint: '专属分组，可以手动指定给用户',
         platformLabel: '平台限制',
         platformPlaceholder: '选择平台（留空则不限制）',
         accountsLabel: '指定账号',
@@ -753,8 +754,14 @@ export default {
         yes: '是',
         no: '否'
       REDACTED,
-      exclusive: '独占',
-      exclusiveHint: '启用后，此分组的用户将独占使用分配的账号',
+      exclusive: '专属',
+      exclusiveHint: '专属分组，可以手动指定给特定用户',
+      exclusiveTooltip: {
+        title: '什么是专属分组？',
+        description: '开启后，用户在创建 API Key 时将无法看到此分组。只有管理员手动将用户分配到此分组后，用户才能使用。',
+        example: '使用场景：',
+        exampleContent: '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
+      REDACTED,
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
       platforms: {
         all: '全部平台',
@@ -773,8 +780,8 @@ export default {
       allPlatforms: '全部平台',
       allStatus: '全部状态',
       allGroups: '全部分组',
-      exclusiveFilter: '独占',
-      nonExclusive: '非独占',
+      exclusiveFilter: '专属',
+      nonExclusive: '公开',
       public: '公开',
       rateAndAccounts: '{rateREDACTEDx 费率 · {countREDACTED 个账号',
       accountsCount: '{countREDACTED 个账号',
@@ -1058,6 +1065,11 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      // OpenAI specific hints
+      openai: {
+        baseUrlHint: '留空使用官方 OpenAI API',
+        apiKeyHint: '您的 OpenAI API Key'
+      REDACTED,
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
       modelMapping: '模型映射',
@@ -1226,7 +1238,8 @@ export default {
       gemini: {
         modelPassthrough: 'Gemini 直接转发模型',
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
-        apiKeyHint: 'Your Gemini API Key（以 AIza 开头）'
+        baseUrlHint: '留空使用官方 Gemini API',
+        apiKeyHint: '您的 Gemini API Key（以 AIza 开头）'
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
@@ -1364,8 +1377,8 @@ export default {
       batchAdd: '快捷添加',
       batchInput: '代理列表',
       batchInputPlaceholder:
-        "每行输入一个代理，支持以下格式：\nsocks5://user:pass@192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass@proxy.example.com:443",
-      batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码@]主机:端口",
+        "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'REDACTED192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'REDACTEDproxy.example.com:443",
+      batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码{'@'REDACTED]主机:端口",
       parsedCount: '有效 {countREDACTED 个',
       invalidCount: '无效 {countREDACTED 个',
       duplicateCount: '重复 {countREDACTED 个',
