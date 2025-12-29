@@ -112,9 +112,6 @@ func (d SoftDeleteMixin) Hooks() []ent.Hook {
 				// 类型断言，获取 mutation 的扩展接口
 				mx, ok := m.(interface {
 					SetOp(ent.Op)
-					Client() interface {
-						Mutate(context.Context, ent.Mutation) (ent.Value, error)
-				REDACTED
 					SetDeletedAt(time.Time)
 					WhereP(...func(*sql.Selector))
 			REDACTED)
@@ -127,7 +124,7 @@ func (d SoftDeleteMixin) Hooks() []ent.Hook {
 				mx.SetOp(ent.OpUpdate)
 				// 设置删除时间为当前时间
 				mx.SetDeletedAt(time.Now())
-				return mx.Client().Mutate(ctx, m)
+				return next.Mutate(ctx, m)
 		REDACTED)
 	REDACTED,
 REDACTED

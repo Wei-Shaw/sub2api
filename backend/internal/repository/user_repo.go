@@ -169,8 +169,14 @@ REDACTED
 REDACTED
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.client.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
-	return err
+	affected, err := r.client.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	if affected == 0 {
+		return service.ErrUserNotFound
+REDACTED
+	return nil
 REDACTED
 
 func (r *userRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
