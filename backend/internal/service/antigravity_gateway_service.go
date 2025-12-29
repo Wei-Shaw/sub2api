@@ -51,23 +51,27 @@ var antigravityModelMapping = map[string]string{
 	"claude-haiku-4-5":           "gemini-3-flash",
 	"claude-3-haiku-20240307":    "gemini-3-flash",
 	"REDACTED":  "gemini-3-flash",
+	// 生图模型：官方名 → Antigravity 内部名
+	"gemini-3-pro-image-preview": "gemini-3-pro-image",
 REDACTED
 
 // AntigravityGatewayService 处理 Antigravity 平台的 API 转发
 type AntigravityGatewayService struct {
+	accountRepo      AccountRepository
 	tokenProvider    *AntigravityTokenProvider
 	rateLimitService *RateLimitService
 	httpUpstream     HTTPUpstream
 REDACTED
 
 func NewAntigravityGatewayService(
-	_ AccountRepository,
+	accountRepo AccountRepository,
 	_ GatewayCache,
 	tokenProvider *AntigravityTokenProvider,
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
+		accountRepo:      accountRepo,
 		tokenProvider:    tokenProvider,
 		rateLimitService: rateLimitService,
 		httpUpstream:     httpUpstream,
@@ -402,13 +406,14 @@ REDACTED
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			_ = resp.Body.Close()
 
-			if resp.StatusCode == 429 {
-				s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		REDACTED
 			if attempt < antigravityMaxRetries {
 				log.Printf("Antigravity account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, antigravityMaxRetries)
 				sleepAntigravityBackoff(attempt)
 				continue
+		REDACTED
+			// 所有重试都失败，标记限流状态
+			if resp.StatusCode == 429 {
+				s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		REDACTED
 			if action == "countTokens" {
 				estimated := estimateGeminiCountTokens(body)
@@ -526,6 +531,23 @@ func sleepAntigravityBackoff(attempt int) {
 REDACTED
 
 func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
+	// 429 使用 Gemini 格式解析（从 body 解析重置时间）
+	if statusCode == 429 {
+		resetAt := ParseGeminiRateLimitResetTime(body)
+		if resetAt == nil {
+			// 解析失败：Gemini 有重试时间用 5 分钟，Claude 没有用 1 分钟
+			defaultDur := 1 * time.Minute
+			if bytes.Contains(body, []byte("Please retry in")) || bytes.Contains(body, []byte("retryDelay")) {
+				defaultDur = 5 * time.Minute
+		REDACTED
+			ra := time.Now().Add(defaultDur)
+			_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
+			return
+	REDACTED
+		_ = s.accountRepo.SetRateLimited(ctx, account.ID, time.Unix(*resetAt, 0))
+		return
+REDACTED
+	// 其他错误码继续使用 rateLimitService
 	if s.rateLimitService == nil {
 		return
 REDACTED
