@@ -15,12 +15,24 @@ import (
 type userRepoStub struct {
 	user       *User
 	getErr     error
+	createErr  error
 	deleteErr  error
+	exists     bool
+	existsErr  error
+	nextID     int64
+	created    []*User
 	deletedIDs []int64
 REDACTED
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
-	panic("unexpected Create call")
+	if s.createErr != nil {
+		return s.createErr
+REDACTED
+	if s.nextID != 0 && user.ID == 0 {
+		user.ID = s.nextID
+REDACTED
+	s.created = append(s.created, user)
+	return nil
 REDACTED
 
 func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
@@ -71,7 +83,10 @@ func (s *userRepoStub) UpdateConcurrency(ctx context.Context, id int64, amount i
 REDACTED
 
 func (s *userRepoStub) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	panic("unexpected ExistsByEmail call")
+	if s.existsErr != nil {
+		return false, s.existsErr
+REDACTED
+	return s.exists, nil
 REDACTED
 
 func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
