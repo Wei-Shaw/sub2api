@@ -91,32 +91,35 @@ REDACTED
 REDACTED
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.ApiKey) error {
-	exists, err := r.activeQuery().Where(apikey.IDEQ(key.ID)).Exist(ctx)
-	if err != nil {
-		return err
-REDACTED
-	if !exists {
-		return service.ErrApiKeyNotFound
-REDACTED
-
-	builder := r.client.ApiKey.UpdateOneID(key.ID).
+	// 使用原子操作：将软删除检查与更新合并到同一语句，避免竞态条件。
+	// 之前的实现先检查 Exist 再 UpdateOneID，若在两步之间发生软删除，
+	// 则会更新已删除的记录。
+	// 这里选择 Update().Where()，确保只有未软删除记录能被更新。
+	// 同时显式设置 updated_at，避免二次查询带来的并发可见性问题。
+	now := time.Now()
+	builder := r.client.ApiKey.Update().
+		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetName(key.Name).
-		SetStatus(key.Status)
+		SetStatus(key.Status).
+		SetUpdatedAt(now)
 	if key.GroupID != nil {
 		builder.SetGroupID(*key.GroupID)
 REDACTED else {
 		builder.ClearGroupID()
 REDACTED
 
-	updated, err := builder.Save(ctx)
-	if err == nil {
-		key.UpdatedAt = updated.UpdatedAt
-		return nil
+	affected, err := builder.Save(ctx)
+	if err != nil {
+		return err
 REDACTED
-	if dbent.IsNotFound(err) {
+	if affected == 0 {
+		// 更新影响行数为 0，说明记录不存在或已被软删除。
 		return service.ErrApiKeyNotFound
 REDACTED
-	return err
+
+	// 使用同一时间戳回填，避免并发删除导致二次查询失败。
+	key.UpdatedAt = now
+	return nil
 REDACTED
 
 func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
