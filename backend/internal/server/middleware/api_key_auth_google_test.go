@@ -20,9 +20,14 @@ type fakeApiKeyRepo struct {
 	getByKey func(ctx context.Context, key string) (*service.ApiKey, error)
 REDACTED
 
-func (f fakeApiKeyRepo) Create(ctx context.Context, key *service.ApiKey) error { return errors.New("not implemented") REDACTED
+func (f fakeApiKeyRepo) Create(ctx context.Context, key *service.ApiKey) error {
+	return errors.New("not implemented")
+REDACTED
 func (f fakeApiKeyRepo) GetByID(ctx context.Context, id int64) (*service.ApiKey, error) {
 	return nil, errors.New("not implemented")
+REDACTED
+func (f fakeApiKeyRepo) GetOwnerID(ctx context.Context, id int64) (int64, error) {
+	return 0, errors.New("not implemented")
 REDACTED
 func (f fakeApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.ApiKey, error) {
 	if f.getByKey == nil {
@@ -30,16 +35,24 @@ func (f fakeApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.ApiK
 REDACTED
 	return f.getByKey(ctx, key)
 REDACTED
-func (f fakeApiKeyRepo) Update(ctx context.Context, key *service.ApiKey) error { return errors.New("not implemented") REDACTED
-func (f fakeApiKeyRepo) Delete(ctx context.Context, id int64) error            { return errors.New("not implemented") REDACTED
+func (f fakeApiKeyRepo) Update(ctx context.Context, key *service.ApiKey) error {
+	return errors.New("not implemented")
+REDACTED
+func (f fakeApiKeyRepo) Delete(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+REDACTED
 func (f fakeApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 func (f fakeApiKeyRepo) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
 	return nil, errors.New("not implemented")
 REDACTED
-func (f fakeApiKeyRepo) CountByUserID(ctx context.Context, userID int64) (int64, error) { return 0, errors.New("not implemented") REDACTED
-func (f fakeApiKeyRepo) ExistsByKey(ctx context.Context, key string) (bool, error)      { return false, errors.New("not implemented") REDACTED
+func (f fakeApiKeyRepo) CountByUserID(ctx context.Context, userID int64) (int64, error) {
+	return 0, errors.New("not implemented")
+REDACTED
+func (f fakeApiKeyRepo) ExistsByKey(ctx context.Context, key string) (bool, error) {
+	return false, errors.New("not implemented")
+REDACTED
 func (f fakeApiKeyRepo) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
@@ -81,7 +94,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_MissingKey(t *testing.T) {
 			return nil, errors.New("should not be called")
 	REDACTED,
 REDACTED)
-	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil))
+	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
@@ -105,7 +118,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_InvalidKey(t *testing.T) {
 			return nil, service.ErrApiKeyNotFound
 	REDACTED,
 REDACTED)
-	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil))
+	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
@@ -130,7 +143,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_RepoError(t *testing.T) {
 			return nil, errors.New("db down")
 	REDACTED,
 REDACTED)
-	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil))
+	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
@@ -163,7 +176,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_DisabledKey(t *testing.T) {
 		REDACTED, nil
 	REDACTED,
 REDACTED)
-	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil))
+	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
@@ -197,7 +210,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_InsufficientBalance(t *testing.T) {
 		REDACTED, nil
 	REDACTED,
 REDACTED)
-	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil))
+	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
