@@ -48,14 +48,14 @@ REDACTED
 // GeminiFunctionCall Gemini 函数调用
 type GeminiFunctionCall struct {
 	Name string      `json:"name"`
-	Args interface{REDACTED `json:"args,omitempty"`
+	Args any `json:"args,omitempty"`
 	ID   string      `json:"id,omitempty"`
 REDACTED
 
 // GeminiFunctionResponse Gemini 函数响应
 type GeminiFunctionResponse struct {
 	Name     string                 `json:"name"`
-	Response map[string]interface{REDACTED `json:"response"`
+	Response map[string]any `json:"response"`
 	ID       string                 `json:"id,omitempty"`
 REDACTED
 
@@ -85,7 +85,7 @@ REDACTED
 type GeminiFunctionDecl struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
-	Parameters  map[string]interface{REDACTED `json:"parameters,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
 REDACTED
 
 // GeminiGoogleSearch Gemini Google 搜索工具

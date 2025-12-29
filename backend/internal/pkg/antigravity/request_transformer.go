@@ -256,7 +256,7 @@ REDACTED
 			parts = append(parts, GeminiPart{
 				FunctionResponse: &GeminiFunctionResponse{
 					Name: funcName,
-					Response: map[string]interface{REDACTED{
+					Response: map[string]any{
 						"result": resultContent,
 				REDACTED,
 					ID: block.ToolUseID,
@@ -290,7 +290,7 @@ REDACTED
 REDACTED
 
 	// 尝试解析为数组
-	var arr []map[string]interface{REDACTED
+	var arr []map[string]any
 	if err := json.Unmarshal(content, &arr); err == nil {
 		var texts []string
 		for _, item := range arr {
@@ -400,12 +400,12 @@ REDACTED
 
 // cleanJSONSchema 清理 JSON Schema，移除 Antigravity/Gemini 不支持的字段
 // 参考 proxycast 的实现，确保 schema 符合 JSON Schema draft 2020-12
-func cleanJSONSchema(schema map[string]interface{REDACTED) map[string]interface{REDACTED {
+func cleanJSONSchema(schema map[string]any) map[string]any {
 	if schema == nil {
 		return nil
 REDACTED
 	cleaned := cleanSchemaValue(schema)
-	result, ok := cleaned.(map[string]interface{REDACTED)
+	result, ok := cleaned.(map[string]any)
 	if !ok {
 		return nil
 REDACTED
@@ -417,13 +417,13 @@ REDACTED
 
 	// 确保有 properties 字段（默认空对象）
 	if _, hasProps := result["properties"]; !hasProps {
-		result["properties"] = make(map[string]interface{REDACTED)
+		result["properties"] = make(map[string]any)
 REDACTED
 
 	// 验证 required 中的字段都存在于 properties 中
-	if required, ok := result["required"].([]interface{REDACTED); ok {
-		if props, ok := result["properties"].(map[string]interface{REDACTED); ok {
-			validRequired := make([]interface{REDACTED, 0, len(required))
+	if required, ok := result["required"].([]any); ok {
+		if props, ok := result["properties"].(map[string]any); ok {
+			validRequired := make([]any, 0, len(required))
 			for _, r := range required {
 				if reqName, ok := r.(string); ok {
 					if _, exists := props[reqName]; exists {
@@ -471,10 +471,10 @@ var excludedSchemaKeys = map[string]bool{
 REDACTED
 
 // cleanSchemaValue 递归清理 schema 值
-func cleanSchemaValue(value interface{REDACTED) interface{REDACTED {
+func cleanSchemaValue(value any) any {
 	switch v := value.(type) {
-	case map[string]interface{REDACTED:
-		result := make(map[string]interface{REDACTED)
+	case map[string]any:
+		result := make(map[string]any)
 		for k, val := range v {
 			// 跳过不支持的字段
 			if excludedSchemaKeys[k] {
@@ -492,9 +492,9 @@ func cleanSchemaValue(value interface{REDACTED) interface{REDACTED {
 	REDACTED
 		return result
 
-	case []interface{REDACTED:
+	case []any:
 		// 递归处理数组中的每个元素
-		cleaned := make([]interface{REDACTED, 0, len(v))
+		cleaned := make([]any, 0, len(v))
 		for _, item := range v {
 			cleaned = append(cleaned, cleanSchemaValue(item))
 	REDACTED
@@ -506,11 +506,11 @@ REDACTED
 REDACTED
 
 // cleanTypeValue 处理 type 字段，转换为大写
-func cleanTypeValue(value interface{REDACTED) interface{REDACTED {
+func cleanTypeValue(value any) any {
 	switch v := value.(type) {
 	case string:
 		return strings.ToUpper(v)
-	case []interface{REDACTED:
+	case []any:
 		// 联合类型 ["string", "null"] -> 取第一个非 null 类型
 		for _, t := range v {
 			if ts, ok := t.(string); ok && ts != "null" {

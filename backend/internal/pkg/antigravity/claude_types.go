@@ -40,7 +40,7 @@ REDACTED
 type ClaudeTool struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
-	InputSchema map[string]interface{REDACTED `json:"input_schema"`
+	InputSchema map[string]any `json:"input_schema"`
 REDACTED
 
 // SystemBlock system prompt 数组形式的元素
@@ -60,7 +60,7 @@ type ContentBlock struct {
 	// tool_use
 	ID    string      `json:"id,omitempty"`
 	Name  string      `json:"name,omitempty"`
-	Input interface{REDACTED `json:"input,omitempty"`
+	Input any `json:"input,omitempty"`
 	// tool_result
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"`
@@ -102,7 +102,7 @@ type ClaudeContentItem struct {
 	// tool_use
 	ID    string      `json:"id,omitempty"`
 	Name  string      `json:"name,omitempty"`
-	Input interface{REDACTED `json:"input,omitempty"`
+	Input any `json:"input,omitempty"`
 REDACTED
 
 // ClaudeUsage Claude 用量统计
