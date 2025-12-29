@@ -154,7 +154,6 @@ const isDark = ref(document.documentElement.classList.contains('dark'))
 const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo)
 const siteVersion = computed(() => appStore.siteVersion)
-const simpleMode = computed(() => appStore.simpleMode)
 
 // SVG Icon Components
 const DashboardIcon = {

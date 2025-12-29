@@ -61,7 +61,7 @@ REDACTED
 export interface AuthResponse {
   access_token: string
   token_type: string
-  user: User
+  user: User & { run_mode?: 'standard' | 'simple' REDACTED
 REDACTED
 
 export interface CurrentUserResponse extends User {
