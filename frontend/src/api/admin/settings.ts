@@ -34,8 +34,6 @@ export interface SystemSettings {
   turnstile_enabled: boolean
   turnstile_site_key: string
   turnstile_secret_key: string
-  // Usage mode
-  simple_mode: boolean
 REDACTED
 
 /**

@@ -26,8 +26,6 @@ type SystemSettings struct {
 
 	DefaultConcurrency int     `json:"default_concurrency"`
 	DefaultBalance     float64 `json:"default_balance"`
-
-	SimpleMode bool `json:"simple_mode"` // 简单模式
 REDACTED
 
 type PublicSettings struct {
@@ -42,5 +40,4 @@ type PublicSettings struct {
 	ContactInfo         string `json:"contact_info"`
 	DocUrl              string `json:"doc_url"`
 	Version             string `json:"version"`
-	SimpleMode          bool   `json:"simple_mode"` // 简单模式
 REDACTED

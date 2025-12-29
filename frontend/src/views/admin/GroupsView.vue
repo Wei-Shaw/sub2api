@@ -683,18 +683,10 @@ const editStatusOptions = computed(() => [
   { value: 'inactive', label: t('common.inactive') REDACTED
 ])
 
-const subscriptionTypeOptions = computed(() => {
-  // 简单模式下只显示订阅模式（配额模式）
-  if (appStore.simpleMode) {
-    return [
-      { value: 'subscription', label: t('admin.groups.subscription.subscription') REDACTED
-    ]
-  REDACTED
-  return [
-    { value: 'standard', label: t('admin.groups.subscription.standard') REDACTED,
-    { value: 'subscription', label: t('admin.groups.subscription.subscription') REDACTED
-  ]
-REDACTED)
+const subscriptionTypeOptions = computed(() => [
+  { value: 'standard', label: t('admin.groups.subscription.standard') REDACTED,
+  { value: 'subscription', label: t('admin.groups.subscription.subscription') REDACTED
+])
 
 const groups = ref<Group[]>([])
 const loading = ref(false)
@@ -804,7 +796,7 @@ const closeCreateModal = () => {
   createForm.platform = 'anthropic'
   createForm.rate_multiplier = 1.0
   createForm.is_exclusive = false
-  createForm.subscription_type = appStore.simpleMode ? 'subscription' : 'standard'
+  createForm.subscription_type = 'standard'
   createForm.daily_limit_usd = null
   createForm.weekly_limit_usd = null
   createForm.monthly_limit_usd = null
@@ -895,9 +887,5 @@ watch(
 
 onMounted(() => {
   loadGroups()
-  // 简单模式下默认使用订阅模式
-  if (appStore.simpleMode) {
-    createForm.subscription_type = 'subscription'
-  REDACTED
 REDACTED)
 </script>

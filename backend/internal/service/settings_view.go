@@ -25,8 +25,6 @@ type SystemSettings struct {
 
 	DefaultConcurrency int
 	DefaultBalance     float64
-
-	SimpleMode bool // 简单模式
 REDACTED
 
 type PublicSettings struct {
@@ -41,5 +39,4 @@ type PublicSettings struct {
 	ContactInfo         string
 	DocUrl              string
 	Version             string
-	SimpleMode          bool // 简单模式
 REDACTED

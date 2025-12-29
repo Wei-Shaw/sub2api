@@ -1610,16 +1610,6 @@ export default {
         securityWarning: '警告：此密钥拥有完整的管理员权限，请妥善保管。',
         usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>'
       REDACTED,
-      usageMode: {
-        title: '使用模式',
-        description: '切换简单模式以简化界面',
-        simpleMode: '简单模式',
-        simpleModeHint: '隐藏多用户管理功能，适合个人使用',
-        simpleModeWarning: '启用后将隐藏用户管理、兑换码管理等菜单，关闭用户注册功能，并将管理员并发数设为无限制',
-        confirmTitle: '确认切换使用模式',
-        confirmEnableMessage: '确定要启用简单模式吗？启用后将隐藏多用户管理相关菜单、关闭用户注册功能，并将管理员并发数设为 99999（无限制）。',
-        confirmDisableMessage: '确定要关闭简单模式吗？关闭后将恢复显示所有管理菜单。'
-      REDACTED,
       saveSettings: '保存设置',
       saving: '保存中...',
       settingsSaved: '设置保存成功',

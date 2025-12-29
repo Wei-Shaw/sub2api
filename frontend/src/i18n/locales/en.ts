@@ -1413,16 +1413,6 @@ export default {
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
         usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
       REDACTED,
-      usageMode: {
-        title: 'Usage Mode',
-        description: 'Toggle simple mode for a simplified interface',
-        simpleMode: 'Simple Mode',
-        simpleModeHint: 'Hide multi-user management features, suitable for personal use',
-        simpleModeWarning: 'When enabled, user management and redeem code menus will be hidden, registration will be disabled, and admin concurrency will be set to unlimited',
-        confirmTitle: 'Confirm Mode Change',
-        confirmEnableMessage: 'Are you sure you want to enable Simple Mode? This will hide multi-user management menus, disable registration, and set admin concurrency to 99999 (unlimited).',
-        confirmDisableMessage: 'Are you sure you want to disable Simple Mode? This will restore all management menus.'
-      REDACTED,
       saveSettings: 'Save Settings',
       saving: 'Saving...',
       settingsSaved: 'Settings saved successfully',
