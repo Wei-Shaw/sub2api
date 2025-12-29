@@ -1,4 +1,4 @@
-.PHONY: wire build build-embed test-unit test-integration test-cover-integration clean-coverage
+.PHONY: wire build build-embed test-unit test-integration test-cover-integration clean-coverage clean
 
 wire:
 	@echo "生成 Wire 代码..."
@@ -31,3 +31,7 @@ test-cover-integration:
 clean-coverage:
 	@rm -f coverage.out coverage.html
 	@echo "覆盖率文件已清理"
+
+clean: clean-coverage
+	@rm -rf bin/
+	@echo "构建产物已清理"
