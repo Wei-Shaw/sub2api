@@ -4,7 +4,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
@@ -17,17 +16,19 @@ import (
 type UserRepoSuite struct {
 	suite.Suite
 	ctx    context.Context
-	tx     *sql.Tx
 	client *dbent.Client
 	repo   *userRepository
 REDACTED
 
 func (s *UserRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	entClient, tx := testEntSQLTx(s.T())
-	s.tx = tx
-	s.client = entClient
-	s.repo = newUserRepositoryWithSQL(entClient, tx)
+	s.client = testEntClient(s.T())
+	s.repo = newUserRepositoryWithSQL(s.client, integrationDB)
+
+	// 清理测试数据，确保每个测试从干净状态开始
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
 REDACTED
 
 func TestUserRepoSuite(t *testing.T) {

@@ -13,7 +13,6 @@ import (
 
 type sqlQuerier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 REDACTED
 
 type proxyRepository struct {
@@ -170,9 +169,8 @@ REDACTED
 
 // CountAccountsByProxyID returns the number of accounts using a specific proxy
 func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
-	row := r.sql.QueryRowContext(ctx, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1", proxyID)
 	var count int64
-	if err := row.Scan(&count); err != nil {
+	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1", []any{proxyIDREDACTED, &count); err != nil {
 		return 0, err
 REDACTED
 	return count, nil

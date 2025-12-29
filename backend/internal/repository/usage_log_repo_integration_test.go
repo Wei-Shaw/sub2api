@@ -4,7 +4,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
@@ -19,17 +18,17 @@ import (
 type UsageLogRepoSuite struct {
 	suite.Suite
 	ctx    context.Context
-	tx     *sql.Tx
+	tx     *dbent.Tx
 	client *dbent.Client
 	repo   *usageLogRepository
 REDACTED
 
 func (s *UsageLogRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	client, tx := testEntSQLTx(s.T())
-	s.client = client
+	tx := testEntTx(s.T())
 	s.tx = tx
-	s.repo = newUsageLogRepositoryWithSQL(client, tx)
+	s.client = tx.Client()
+	s.repo = newUsageLogRepositoryWithSQL(s.client, tx)
 REDACTED
 
 func TestUsageLogRepoSuite(t *testing.T) {
@@ -197,6 +196,8 @@ REDACTED
 func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 	now := time.Now()
 	todayStart := timezone.Today()
+	baseStats, err := s.repo.GetDashboardStats(s.ctx)
+	s.Require().NoError(err, "GetDashboardStats base")
 
 	userToday := mustCreateUser(s.T(), s.client, &service.User{
 		Email:     "today@example.com",
@@ -268,24 +269,24 @@ REDACTED
 	stats, err := s.repo.GetDashboardStats(s.ctx)
 	s.Require().NoError(err, "GetDashboardStats")
 
-	s.Require().Equal(int64(2), stats.TotalUsers, "TotalUsers mismatch")
-	s.Require().Equal(int64(1), stats.TodayNewUsers, "TodayNewUsers mismatch")
-	s.Require().Equal(int64(1), stats.ActiveUsers, "ActiveUsers mismatch")
-	s.Require().Equal(int64(2), stats.TotalApiKeys, "TotalApiKeys mismatch")
-	s.Require().Equal(int64(1), stats.ActiveApiKeys, "ActiveApiKeys mismatch")
-	s.Require().Equal(int64(4), stats.TotalAccounts, "TotalAccounts mismatch")
-	s.Require().Equal(int64(1), stats.ErrorAccounts, "ErrorAccounts mismatch")
-	s.Require().Equal(int64(1), stats.RateLimitAccounts, "RateLimitAccounts mismatch")
-	s.Require().Equal(int64(1), stats.OverloadAccounts, "OverloadAccounts mismatch")
+	s.Require().Equal(baseStats.TotalUsers+2, stats.TotalUsers, "TotalUsers mismatch")
+	s.Require().Equal(baseStats.TodayNewUsers+1, stats.TodayNewUsers, "TodayNewUsers mismatch")
+	s.Require().Equal(baseStats.ActiveUsers+1, stats.ActiveUsers, "ActiveUsers mismatch")
+	s.Require().Equal(baseStats.TotalApiKeys+2, stats.TotalApiKeys, "TotalApiKeys mismatch")
+	s.Require().Equal(baseStats.ActiveApiKeys+1, stats.ActiveApiKeys, "ActiveApiKeys mismatch")
+	s.Require().Equal(baseStats.TotalAccounts+4, stats.TotalAccounts, "TotalAccounts mismatch")
+	s.Require().Equal(baseStats.ErrorAccounts+1, stats.ErrorAccounts, "ErrorAccounts mismatch")
+	s.Require().Equal(baseStats.RateLimitAccounts+1, stats.RateLimitAccounts, "RateLimitAccounts mismatch")
+	s.Require().Equal(baseStats.OverloadAccounts+1, stats.OverloadAccounts, "OverloadAccounts mismatch")
 
-	s.Require().Equal(int64(3), stats.TotalRequests, "TotalRequests mismatch")
-	s.Require().Equal(int64(16), stats.TotalInputTokens, "TotalInputTokens mismatch")
-	s.Require().Equal(int64(28), stats.TotalOutputTokens, "TotalOutputTokens mismatch")
-	s.Require().Equal(int64(3), stats.TotalCacheCreationTokens, "TotalCacheCreationTokens mismatch")
-	s.Require().Equal(int64(4), stats.TotalCacheReadTokens, "TotalCacheReadTokens mismatch")
-	s.Require().Equal(int64(51), stats.TotalTokens, "TotalTokens mismatch")
-	s.Require().Equal(2.3, stats.TotalCost, "TotalCost mismatch")
-	s.Require().Equal(2.0, stats.TotalActualCost, "TotalActualCost mismatch")
+	s.Require().Equal(baseStats.TotalRequests+3, stats.TotalRequests, "TotalRequests mismatch")
+	s.Require().Equal(baseStats.TotalInputTokens+int64(16), stats.TotalInputTokens, "TotalInputTokens mismatch")
+	s.Require().Equal(baseStats.TotalOutputTokens+int64(28), stats.TotalOutputTokens, "TotalOutputTokens mismatch")
+	s.Require().Equal(baseStats.TotalCacheCreationTokens+int64(3), stats.TotalCacheCreationTokens, "TotalCacheCreationTokens mismatch")
+	s.Require().Equal(baseStats.TotalCacheReadTokens+int64(4), stats.TotalCacheReadTokens, "TotalCacheReadTokens mismatch")
+	s.Require().Equal(baseStats.TotalTokens+int64(51), stats.TotalTokens, "TotalTokens mismatch")
+	s.Require().Equal(baseStats.TotalCost+2.3, stats.TotalCost, "TotalCost mismatch")
+	s.Require().Equal(baseStats.TotalActualCost+2.0, stats.TotalActualCost, "TotalActualCost mismatch")
 	s.Require().GreaterOrEqual(stats.TodayRequests, int64(1), "expected TodayRequests >= 1")
 	s.Require().GreaterOrEqual(stats.TodayCost, 0.0, "expected TodayCost >= 0")
 

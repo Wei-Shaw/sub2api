@@ -28,6 +28,7 @@ import (
 	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 )
 
 // accountRepository 实现 service.AccountRepository 接口。
@@ -36,11 +37,9 @@ import (
 // 设计说明：
 //   - client: Ent 客户端，用于类型安全的 ORM 操作
 //   - sql: 原生 SQL 执行器，用于复杂查询和批量操作
-//   - begin: SQL 事务开启器，用于需要事务的操作
 type accountRepository struct {
-	client *dbent.Client  // Ent ORM 客户端
-	sql    sqlExecutor    // 原生 SQL 执行接口
-	begin  sqlBeginner    // 事务开启接口
+	client *dbent.Client // Ent ORM 客户端
+	sql    sqlExecutor   // 原生 SQL 执行接口
 REDACTED
 
 // NewAccountRepository 创建账户仓储实例。
@@ -52,11 +51,7 @@ REDACTED
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
 // 这种设计便于单元测试时注入 mock 对象。
 func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *accountRepository {
-	var beginner sqlBeginner
-	if b, ok := sqlq.(sqlBeginner); ok {
-		beginner = b
-REDACTED
-	return &accountRepository{client: client, sql: sqlq, begin: beginnerREDACTED
+	return &accountRepository{client: client, sql: sqlqREDACTED
 REDACTED
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
@@ -146,9 +141,10 @@ func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID 
 		return nil, nil
 REDACTED
 
+	// 使用 sqljson.ValueEQ 生成 JSON 路径过滤，避免手写 SQL 片段导致语法兼容问题。
 	m, err := r.client.Account.Query().
 		Where(func(s *entsql.Selector) {
-			s.Where(entsql.ExprP("extra->>'crs_account_id' = ?", crsAccountID))
+			s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, crsAccountID, sqljson.Path("crs_account_id")))
 	REDACTED).
 		Only(ctx)
 	if err != nil {

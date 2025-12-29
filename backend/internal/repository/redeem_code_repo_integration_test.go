@@ -22,9 +22,9 @@ REDACTED
 
 func (s *RedeemCodeRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	entClient, _ := testEntSQLTx(s.T())
-	s.client = entClient
-	s.repo = NewRedeemCodeRepository(entClient).(*redeemCodeRepository)
+	tx := testEntTx(s.T())
+	s.client = tx.Client()
+	s.repo = NewRedeemCodeRepository(s.client).(*redeemCodeRepository)
 REDACTED
 
 func TestRedeemCodeRepoSuite(t *testing.T) {

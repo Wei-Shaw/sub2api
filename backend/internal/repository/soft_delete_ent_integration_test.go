@@ -34,7 +34,8 @@ REDACTED
 
 func TestEntSoftDelete_ApiKey_DefaultFilterAndSkip(t *testing.T) {
 	ctx := context.Background()
-	client, _ := testEntSQLTx(t)
+	// 使用全局 ent client，确保软删除验证在实际持久化数据上进行。
+	client := testEntClient(t)
 
 	u := createEntUser(t, ctx, client, uniqueSoftDeleteValue(t, "sd-user")+"@example.com")
 
@@ -65,7 +66,8 @@ REDACTED
 
 func TestEntSoftDelete_ApiKey_DeleteIdempotent(t *testing.T) {
 	ctx := context.Background()
-	client, _ := testEntSQLTx(t)
+	// 使用全局 ent client，避免事务回滚影响幂等性验证。
+	client := testEntClient(t)
 
 	u := createEntUser(t, ctx, client, uniqueSoftDeleteValue(t, "sd-user2")+"@example.com")
 
@@ -84,7 +86,8 @@ REDACTED
 
 func TestEntSoftDelete_ApiKey_HardDeleteViaSkipSoftDelete(t *testing.T) {
 	ctx := context.Background()
-	client, _ := testEntSQLTx(t)
+	// 使用全局 ent client，确保 SkipSoftDelete 的硬删除语义可验证。
+	client := testEntClient(t)
 
 	u := createEntUser(t, ctx, client, uniqueSoftDeleteValue(t, "sd-user3")+"@example.com")
 

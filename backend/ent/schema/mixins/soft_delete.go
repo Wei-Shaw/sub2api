@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/ent/intercept"
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
@@ -79,16 +80,13 @@ REDACTED
 // 确保软删除的记录不会出现在普通查询结果中。
 func (d SoftDeleteMixin) Interceptors() []ent.Interceptor {
 	return []ent.Interceptor{
-		ent.TraverseFunc(func(ctx context.Context, q ent.Query) error {
+		intercept.TraverseFunc(func(ctx context.Context, q intercept.Query) error {
 			// 检查是否需要跳过软删除过滤
 			if skip, _ := ctx.Value(softDeleteKey{REDACTED).(bool); skip {
 				return nil
 		REDACTED
 			// 为查询添加 deleted_at IS NULL 条件
-			w, ok := q.(interface{ WhereP(...func(*sql.Selector)) REDACTED)
-			if ok {
-				d.applyPredicate(w)
-		REDACTED
+			d.applyPredicate(q)
 			return nil
 	REDACTED),
 REDACTED

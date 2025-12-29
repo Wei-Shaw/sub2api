@@ -18,8 +18,8 @@ REDACTED
 
 func (s *SettingRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	entClient, _ := testEntSQLTx(s.T())
-	s.repo = NewSettingRepository(entClient).(*settingRepository)
+	tx := testEntTx(s.T())
+	s.repo = NewSettingRepository(tx.Client()).(*settingRepository)
 REDACTED
 
 func TestSettingRepoSuite(t *testing.T) {

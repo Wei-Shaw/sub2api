@@ -4,7 +4,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
@@ -17,18 +16,16 @@ import (
 
 type AccountRepoSuite struct {
 	suite.Suite
-	ctx  context.Context
-	tx   *sql.Tx
+	ctx    context.Context
 	client *dbent.Client
-	repo *accountRepository
+	repo   *accountRepository
 REDACTED
 
 func (s *AccountRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	client, tx := testEntSQLTx(s.T())
-	s.client = client
-	s.tx = tx
-	s.repo = newAccountRepositoryWithSQL(client, tx)
+	tx := testEntTx(s.T())
+	s.client = tx.Client()
+	s.repo = newAccountRepositoryWithSQL(s.client, tx)
 REDACTED
 
 func TestAccountRepoSuite(t *testing.T) {
@@ -175,7 +172,8 @@ REDACTED
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			// 每个 case 重新获取隔离资源
-			client, tx := testEntSQLTx(s.T())
+			tx := testEntTx(s.T())
+			client := tx.Client()
 			repo := newAccountRepositoryWithSQL(client, tx)
 			ctx := context.Background()
 

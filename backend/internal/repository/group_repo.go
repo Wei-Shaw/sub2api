@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -10,26 +11,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
-
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 )
 
 type sqlExecutor interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-REDACTED
-
-type sqlBeginner interface {
-	sqlExecutor
-	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 REDACTED
 
 type groupRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
-	begin  sqlBeginner
 REDACTED
 
 func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.GroupRepository {
@@ -37,11 +28,7 @@ func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.GroupReposi
 REDACTED
 
 func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRepository {
-	var beginner sqlBeginner
-	if b, ok := sqlq.(sqlBeginner); ok {
-		beginner = b
-REDACTED
-	return &groupRepository{client: client, sql: sqlq, begin: beginnerREDACTED
+	return &groupRepository{client: client, sql: sqlqREDACTED
 REDACTED
 
 func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
@@ -214,7 +201,7 @@ REDACTED
 
 func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {
 	var count int64
-	if err := r.sql.QueryRowContext(ctx, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", groupID).Scan(&count); err != nil {
+	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{groupIDREDACTED, &count); err != nil {
 		return 0, err
 REDACTED
 	return count, nil
@@ -236,30 +223,43 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 REDACTED
 	groupSvc := groupEntityToService(g)
 
-	exec := r.sql
+	// 使用 ent 事务统一包裹：避免手工基于 *sql.Tx 构造 ent client 带来的驱动断言问题，
+	// 同时保证级联删除的原子性。
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return nil, err
+REDACTED
+	exec := r.client
 	txClient := r.client
-	var sqlTx *sql.Tx
-
-	if r.begin != nil {
-		sqlTx, err = r.begin.BeginTx(ctx, nil)
-		if err != nil {
-			return nil, err
-	REDACTED
-		exec = sqlTx
-		txClient = entClientFromSQLTx(sqlTx)
-		// 注意：不能调用 txClient.Close()，因为基于事务的 ent client
-		// 在 Close() 时会尝试将 ExecQuerier 断言为 *sql.DB，但实际是 *sql.Tx
-		// 事务的清理通过 sqlTx.Rollback() 和 sqlTx.Commit() 完成
-		defer func() { _ = sqlTx.Rollback() REDACTED()
+	if err == nil {
+		defer func() { _ = tx.Rollback() REDACTED()
+		exec = tx.Client()
+		txClient = exec
+REDACTED else {
+		// 已处于外部事务中（ErrTxStarted），复用当前 client 参与同一事务。
 REDACTED
 
 	// Lock the group row to avoid concurrent writes while we cascade.
-	var lockedID int64
-	if err := exec.QueryRowContext(ctx, "SELECT id FROM groups WHERE id = $1 FOR UPDATE", id).Scan(&lockedID); err != nil {
-		if errorsIsNoRows(err) {
-			return nil, service.ErrGroupNotFound
-	REDACTED
+	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分“未找到”与其他错误。
+	rows, err := exec.QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 FOR UPDATE", id)
+	if err != nil {
 		return nil, err
+REDACTED
+	var lockedID int64
+	if rows.Next() {
+		if err := rows.Scan(&lockedID); err != nil {
+			_ = rows.Close()
+			return nil, err
+	REDACTED
+REDACTED
+	if err := rows.Close(); err != nil {
+		return nil, err
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	if lockedID == 0 {
+		return nil, service.ErrGroupNotFound
 REDACTED
 
 	var affectedUserIDs []int64
@@ -319,8 +319,8 @@ REDACTED
 		return nil, err
 REDACTED
 
-	if sqlTx != nil {
-		if err := sqlTx.Commit(); err != nil {
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
@@ -357,11 +357,6 @@ REDACTED
 REDACTED
 
 	return counts, nil
-REDACTED
-
-func entClientFromSQLTx(tx *sql.Tx) *dbent.Client {
-	drv := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: txREDACTED)
-	return dbent.NewClient(dbent.Driver(drv))
 REDACTED
 
 func errorsIsNoRows(err error) bool {

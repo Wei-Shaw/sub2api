@@ -36,8 +36,9 @@ const (
 )
 
 var (
-	integrationDB    *sql.DB
-	integrationRedis *redisclient.Client
+	integrationDB        *sql.DB
+	integrationEntClient *dbent.Client
+	integrationRedis     *redisclient.Client
 
 	redisNamespaceSeq uint64
 )
@@ -101,6 +102,10 @@ REDACTED
 		os.Exit(1)
 REDACTED
 
+	// 创建 ent client 用于集成测试
+	drv := entsql.OpenDB(dialect.Postgres, integrationDB)
+	integrationEntClient = dbent.NewClient(dbent.Driver(drv))
+
 	redisHost, err := redisContainer.Host(ctx)
 	if err != nil {
 		log.Printf("failed to get redis host: %v", err)
@@ -123,6 +128,7 @@ REDACTED
 
 	code := m.Run()
 
+	_ = integrationEntClient.Close()
 	_ = integrationRedis.Close()
 	_ = integrationDB.Close()
 
@@ -193,18 +199,38 @@ REDACTED)
 	return tx
 REDACTED
 
+// testEntClient 返回全局的 ent client，用于测试需要内部管理事务的代码（如 Create/Update 方法）。
+// 注意：此 client 的操作会真正写入数据库，测试结束后不会自动回滚。
+func testEntClient(t *testing.T) *dbent.Client {
+REDACTED
+	return integrationEntClient
+REDACTED
+
+// testEntTx 返回一个 ent 事务，用于需要事务隔离的测试。
+// 测试结束后会自动回滚，不会影响数据库状态。
+func testEntTx(t *testing.T) *dbent.Tx {
+REDACTED
+
+	tx, err := integrationEntClient.Tx(context.Background())
+	require.NoError(t, err, "begin ent tx")
+	t.Cleanup(func() {
+		_ = tx.Rollback()
+REDACTED)
+	return tx
+REDACTED
+
+// testEntSQLTx 已弃用：不要在新测试中使用此函数。
+// 基于 *sql.Tx 创建的 ent client 在调用 client.Tx() 时会 panic。
+// 对于需要测试内部使用事务的代码，请使用 testEntClient。
+// 对于需要事务隔离的测试，请使用 testEntTx。
+//
+// Deprecated: Use testEntClient or testEntTx instead.
 func testEntSQLTx(t *testing.T) (*dbent.Client, *sql.Tx) {
 REDACTED
 
-	tx := testTx(t)
-	drv := entsql.NewDriver(dialect.Postgres, entsql.Conn{ExecQuerier: txREDACTED)
-	client := dbent.NewClient(dbent.Driver(drv))
-
-	t.Cleanup(func() {
-		_ = client.Close()
-REDACTED)
-
-	return client, tx
+	// 直接失败，避免旧测试误用导致的事务嵌套 panic。
+	t.Fatalf("testEntSQLTx 已弃用：请使用 testEntClient 或 testEntTx")
+	return nil, nil
 REDACTED
 
 func testRedis(t *testing.T) *redisclient.Client {
@@ -363,13 +389,16 @@ type IntegrationDBSuite struct {
 	suite.Suite
 	ctx    context.Context
 	client *dbent.Client
-	tx     *sql.Tx
+	tx     *dbent.Tx
 REDACTED
 
 // SetupTest initializes ctx and client for each test method.
 func (s *IntegrationDBSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.client, s.tx = testEntSQLTx(s.T())
+	// 统一使用 ent.Tx，确保每个测试都有独立事务并自动回滚。
+	tx := testEntTx(s.T())
+	s.tx = tx
+	s.client = tx.Client()
 REDACTED
 
 // RequireNoError is a convenience method wrapping require.NoError with s.T().

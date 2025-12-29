@@ -4,9 +4,9 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -15,15 +15,15 @@ import (
 type GroupRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
-	tx   *sql.Tx
+	tx   *dbent.Tx
 	repo *groupRepository
 REDACTED
 
 func (s *GroupRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	entClient, tx := testEntSQLTx(s.T())
+	tx := testEntTx(s.T())
 	s.tx = tx
-	s.repo = newGroupRepositoryWithSQL(entClient, tx)
+	s.repo = newGroupRepositoryWithSQL(tx.Client(), tx)
 REDACTED
 
 func TestGroupRepoSuite(t *testing.T) {
@@ -99,6 +99,9 @@ REDACTED
 // --- List / ListWithFilters ---
 
 func (s *GroupRepoSuite) TestList() {
+	baseGroups, basePage, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
+	s.Require().NoError(err, "List base")
+
 	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
 		Name:             "g1",
 		Platform:         service.PlatformAnthropic,
@@ -118,12 +121,20 @@ REDACTED))
 
 	groups, page, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "List")
-	// 3 default groups + 2 test groups = 5 total
-	s.Require().Len(groups, 5)
-	s.Require().Equal(int64(5), page.Total)
+	s.Require().Len(groups, len(baseGroups)+2)
+	s.Require().Equal(basePage.Total+2, page.Total)
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_Platform() {
+	baseGroups, _, err := s.repo.ListWithFilters(
+		s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 10REDACTED,
+		service.PlatformOpenAI,
+		"",
+		nil,
+	)
+	s.Require().NoError(err, "ListWithFilters base")
+
 	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
 		Name:             "g1",
 		Platform:         service.PlatformAnthropic,
@@ -143,8 +154,7 @@ REDACTED))
 
 	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformOpenAI, "", nil)
 	s.Require().NoError(err)
-	// 1 default openai group + 1 test openai group = 2 total
-	s.Require().Len(groups, 2)
+	s.Require().Len(groups, len(baseGroups)+1)
 	// Verify all groups are OpenAI platform
 	for _, g := range groups {
 		s.Require().Equal(service.PlatformOpenAI, g.Platform)
@@ -221,11 +231,13 @@ REDACTED
 	s.Require().NoError(s.repo.Create(s.ctx, g2))
 
 	var accountID int64
-	s.Require().NoError(s.tx.QueryRowContext(
+	s.Require().NoError(scanSingleRow(
 		s.ctx,
+		s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		"acc1", service.PlatformAnthropic, service.AccountTypeOAuth,
-	).Scan(&accountID))
+		[]any{"acc1", service.PlatformAnthropic, service.AccountTypeOAuthREDACTED,
+		&accountID,
+	))
 	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g1.ID, 1)
 	s.Require().NoError(err)
 	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g2.ID, 1)
@@ -243,6 +255,9 @@ REDACTED
 // --- ListActive / ListActiveByPlatform ---
 
 func (s *GroupRepoSuite) TestListActive() {
+	baseGroups, err := s.repo.ListActive(s.ctx)
+	s.Require().NoError(err, "ListActive base")
+
 	s.Require().NoError(s.repo.Create(s.ctx, &service.Group{
 		Name:             "active1",
 		Platform:         service.PlatformAnthropic,
@@ -262,8 +277,7 @@ REDACTED))
 
 	groups, err := s.repo.ListActive(s.ctx)
 	s.Require().NoError(err, "ListActive")
-	// 3 default groups (all active) + 1 test active group = 4 total
-	s.Require().Len(groups, 4)
+	s.Require().Len(groups, len(baseGroups)+1)
 	// Verify our test group is in the results
 	var found bool
 	for _, g := range groups {
@@ -351,17 +365,21 @@ REDACTED
 	s.Require().NoError(s.repo.Create(s.ctx, group))
 
 	var a1 int64
-	s.Require().NoError(s.tx.QueryRowContext(
+	s.Require().NoError(scanSingleRow(
 		s.ctx,
+		s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		"a1", service.PlatformAnthropic, service.AccountTypeOAuth,
-	).Scan(&a1))
+		[]any{"a1", service.PlatformAnthropic, service.AccountTypeOAuthREDACTED,
+		&a1,
+	))
 	var a2 int64
-	s.Require().NoError(s.tx.QueryRowContext(
+	s.Require().NoError(scanSingleRow(
 		s.ctx,
+		s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		"a2", service.PlatformAnthropic, service.AccountTypeOAuth,
-	).Scan(&a2))
+		[]any{"a2", service.PlatformAnthropic, service.AccountTypeOAuthREDACTED,
+		&a2,
+	))
 
 	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a1, group.ID, 1)
 	s.Require().NoError(err)
@@ -402,11 +420,13 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
 REDACTED
 	s.Require().NoError(s.repo.Create(s.ctx, g))
 	var accountID int64
-	s.Require().NoError(s.tx.QueryRowContext(
+	s.Require().NoError(scanSingleRow(
 		s.ctx,
+		s.tx,
 		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		"acc-del", service.PlatformAnthropic, service.AccountTypeOAuth,
-	).Scan(&accountID))
+		[]any{"acc-del", service.PlatformAnthropic, service.AccountTypeOAuthREDACTED,
+		&accountID,
+	))
 	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g.ID, 1)
 	s.Require().NoError(err)
 
@@ -432,11 +452,13 @@ REDACTED
 
 	insertAccount := func(name string) int64 {
 		var id int64
-		s.Require().NoError(s.tx.QueryRowContext(
+		s.Require().NoError(scanSingleRow(
 			s.ctx,
+			s.tx,
 			"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-			name, service.PlatformAnthropic, service.AccountTypeOAuth,
-		).Scan(&id))
+			[]any{name, service.PlatformAnthropic, service.AccountTypeOAuthREDACTED,
+			&id,
+		))
 		return id
 REDACTED
 	a1 := insertAccount("a1")

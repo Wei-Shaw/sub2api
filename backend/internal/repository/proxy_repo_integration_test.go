@@ -4,10 +4,10 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -15,16 +15,16 @@ import (
 
 type ProxyRepoSuite struct {
 	suite.Suite
-	ctx   context.Context
-	sqlTx *sql.Tx
-	repo  *proxyRepository
+	ctx  context.Context
+	tx   *dbent.Tx
+	repo *proxyRepository
 REDACTED
 
 func (s *ProxyRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	entClient, sqlTx := testEntSQLTx(s.T())
-	s.sqlTx = sqlTx
-	s.repo = newProxyRepositoryWithSQL(entClient, sqlTx)
+	tx := testEntTx(s.T())
+	s.tx = tx
+	s.repo = newProxyRepositoryWithSQL(tx.Client(), tx)
 REDACTED
 
 func TestProxyRepoSuite(t *testing.T) {
@@ -306,7 +306,7 @@ func (s *ProxyRepoSuite) mustCreateProxyWithTimes(name, status string, createdAt
 		Port:     8080,
 		Status:   status,
 REDACTED)
-	_, err := s.sqlTx.ExecContext(s.ctx, "UPDATE proxies SET created_at = $1, updated_at = $1 WHERE id = $2", createdAt, p.ID)
+	_, err := s.tx.ExecContext(s.ctx, "UPDATE proxies SET created_at = $1, updated_at = $1 WHERE id = $2", createdAt, p.ID)
 	s.Require().NoError(err, "update proxy timestamps")
 	return p
 REDACTED
@@ -317,7 +317,7 @@ func (s *ProxyRepoSuite) mustInsertAccount(name string, proxyID *int64) {
 	if proxyID != nil {
 		pid = *proxyID
 REDACTED
-	_, err := s.sqlTx.ExecContext(
+	_, err := s.tx.ExecContext(
 		s.ctx,
 		"INSERT INTO accounts (name, platform, type, proxy_id) VALUES ($1, $2, $3, $4)",
 		name,

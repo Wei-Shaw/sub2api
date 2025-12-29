@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -33,6 +32,7 @@ func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLog
 REDACTED
 
 func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageLogRepository {
+	// 使用 scanSingleRow 替代 QueryRowContext，保证 ent.Tx 作为 sqlExecutor 可用。
 	return &usageLogRepository{client: client, sql: sqlqREDACTED
 REDACTED
 
@@ -53,7 +53,7 @@ REDACTED
 
 	var requestCount int64
 	var tokenCount int64
-	if err := r.sql.QueryRowContext(ctx, query, args...).Scan(&requestCount, &tokenCount); err != nil {
+	if err := scanSingleRow(ctx, r.sql, query, args, &requestCount, &tokenCount); err != nil {
 		return 0, 0, err
 REDACTED
 	return requestCount / 5, tokenCount / 5, nil
@@ -114,9 +114,7 @@ REDACTED
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
 
-	row := r.sql.QueryRowContext(
-		ctx,
-		query,
+	args := []any{
 		log.UserID,
 		log.ApiKeyID,
 		log.AccountID,
@@ -142,9 +140,8 @@ REDACTED
 		duration,
 		firstToken,
 		createdAt,
-	)
-
-	if err := row.Scan(&log.ID, &log.CreatedAt); err != nil {
+REDACTED
+	if err := scanSingleRow(ctx, r.sql, query, args, &log.ID, &log.CreatedAt); err != nil {
 		return err
 REDACTED
 	log.RateMultiplier = rateMultiplier
@@ -153,11 +150,22 @@ REDACTED
 
 func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (*service.UsageLog, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
-	log, err := scanUsageLog(r.sql.QueryRowContext(ctx, query, id))
+	rows, err := r.sql.QueryContext(ctx, query, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, service.ErrUsageLogNotFound
+		return nil, err
+REDACTED
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
 	REDACTED
+		return nil, service.ErrUsageLogNotFound
+REDACTED
+	log, err := scanUsageLog(rows)
+	if err != nil {
+		return nil, err
+REDACTED
+	if err := rows.Err(); err != nil {
 		return nil, err
 REDACTED
 	return log, nil
@@ -195,8 +203,18 @@ func (r *usageLogRepository) GetUserStats(ctx context.Context, userID int64, sta
 	`
 
 	stats := &UserStats{REDACTED
-	if err := r.sql.QueryRowContext(ctx, query, userID, startTime, endTime).
-		Scan(&stats.TotalRequests, &stats.TotalTokens, &stats.TotalCost, &stats.InputTokens, &stats.OutputTokens, &stats.CacheReadTokens); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{userID, startTime, endTimeREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalTokens,
+		&stats.TotalCost,
+		&stats.InputTokens,
+		&stats.OutputTokens,
+		&stats.CacheReadTokens,
+	); err != nil {
 		return nil, err
 REDACTED
 	return stats, nil
@@ -219,8 +237,15 @@ func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardS
 		FROM users
 		WHERE deleted_at IS NULL
 	`
-	if err := r.sql.QueryRowContext(ctx, userStatsQuery, today, today).
-		Scan(&stats.TotalUsers, &stats.TodayNewUsers, &stats.ActiveUsers); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		userStatsQuery,
+		[]any{today, todayREDACTED,
+		&stats.TotalUsers,
+		&stats.TodayNewUsers,
+		&stats.ActiveUsers,
+	); err != nil {
 		return nil, err
 REDACTED
 
@@ -232,8 +257,14 @@ REDACTED
 		FROM api_keys
 		WHERE deleted_at IS NULL
 	`
-	if err := r.sql.QueryRowContext(ctx, apiKeyStatsQuery, service.StatusActive).
-		Scan(&stats.TotalApiKeys, &stats.ActiveApiKeys); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		apiKeyStatsQuery,
+		[]any{service.StatusActiveREDACTED,
+		&stats.TotalApiKeys,
+		&stats.ActiveApiKeys,
+	); err != nil {
 		return nil, err
 REDACTED
 
@@ -248,8 +279,17 @@ REDACTED
 		FROM accounts
 		WHERE deleted_at IS NULL
 	`
-	if err := r.sql.QueryRowContext(ctx, accountStatsQuery, service.StatusActive, service.StatusError, now, now).
-		Scan(&stats.TotalAccounts, &stats.NormalAccounts, &stats.ErrorAccounts, &stats.RateLimitAccounts, &stats.OverloadAccounts); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		accountStatsQuery,
+		[]any{service.StatusActive, service.StatusError, now, nowREDACTED,
+		&stats.TotalAccounts,
+		&stats.NormalAccounts,
+		&stats.ErrorAccounts,
+		&stats.RateLimitAccounts,
+		&stats.OverloadAccounts,
+	); err != nil {
 		return nil, err
 REDACTED
 
@@ -266,17 +306,20 @@ REDACTED
 			COALESCE(AVG(duration_ms), 0) as avg_duration_ms
 		FROM usage_logs
 	`
-	if err := r.sql.QueryRowContext(ctx, totalStatsQuery).
-		Scan(
-			&stats.TotalRequests,
-			&stats.TotalInputTokens,
-			&stats.TotalOutputTokens,
-			&stats.TotalCacheCreationTokens,
-			&stats.TotalCacheReadTokens,
-			&stats.TotalCost,
-			&stats.TotalActualCost,
-			&stats.AverageDurationMs,
-		); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		totalStatsQuery,
+		nil,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheCreationTokens,
+		&stats.TotalCacheReadTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
 		return nil, err
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheCreationTokens + stats.TotalCacheReadTokens
@@ -294,16 +337,19 @@ REDACTED
 		FROM usage_logs
 		WHERE created_at >= $1
 	`
-	if err := r.sql.QueryRowContext(ctx, todayStatsQuery, today).
-		Scan(
-			&stats.TodayRequests,
-			&stats.TodayInputTokens,
-			&stats.TodayOutputTokens,
-			&stats.TodayCacheCreationTokens,
-			&stats.TodayCacheReadTokens,
-			&stats.TodayCost,
-			&stats.TodayActualCost,
-		); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		todayStatsQuery,
+		[]any{todayREDACTED,
+		&stats.TodayRequests,
+		&stats.TodayInputTokens,
+		&stats.TodayOutputTokens,
+		&stats.TodayCacheCreationTokens,
+		&stats.TodayCacheReadTokens,
+		&stats.TodayCost,
+		&stats.TodayActualCost,
+	); err != nil {
 		return nil, err
 REDACTED
 	stats.TodayTokens = stats.TodayInputTokens + stats.TodayOutputTokens + stats.TodayCacheCreationTokens + stats.TodayCacheReadTokens
@@ -345,16 +391,19 @@ func (r *usageLogRepository) GetUserStatsAggregated(ctx context.Context, userID 
 	`
 
 	var stats usagestats.UsageStats
-	if err := r.sql.QueryRowContext(ctx, query, userID, startTime, endTime).
-		Scan(
-			&stats.TotalRequests,
-			&stats.TotalInputTokens,
-			&stats.TotalOutputTokens,
-			&stats.TotalCacheTokens,
-			&stats.TotalCost,
-			&stats.TotalActualCost,
-			&stats.AverageDurationMs,
-		); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{userID, startTime, endTimeREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
 		return nil, err
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
@@ -377,16 +426,19 @@ func (r *usageLogRepository) GetApiKeyStatsAggregated(ctx context.Context, apiKe
 	`
 
 	var stats usagestats.UsageStats
-	if err := r.sql.QueryRowContext(ctx, query, apiKeyID, startTime, endTime).
-		Scan(
-			&stats.TotalRequests,
-			&stats.TotalInputTokens,
-			&stats.TotalOutputTokens,
-			&stats.TotalCacheTokens,
-			&stats.TotalCost,
-			&stats.TotalActualCost,
-			&stats.AverageDurationMs,
-		); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{apiKeyID, startTime, endTimeREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
 		return nil, err
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
@@ -430,8 +482,15 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 	`
 
 	stats := &usagestats.AccountStats{REDACTED
-	if err := r.sql.QueryRowContext(ctx, query, accountID, today).
-		Scan(&stats.Requests, &stats.Tokens, &stats.Cost); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{accountID, todayREDACTED,
+		&stats.Requests,
+		&stats.Tokens,
+		&stats.Cost,
+	); err != nil {
 		return nil, err
 REDACTED
 	return stats, nil
@@ -449,8 +508,15 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 	`
 
 	stats := &usagestats.AccountStats{REDACTED
-	if err := r.sql.QueryRowContext(ctx, query, accountID, startTime).
-		Scan(&stats.Requests, &stats.Tokens, &stats.Cost); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{accountID, startTimeREDACTED,
+		&stats.Requests,
+		&stats.Tokens,
+		&stats.Cost,
+	); err != nil {
 		return nil, err
 REDACTED
 	return stats, nil
@@ -581,12 +647,22 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	today := timezone.Today()
 
 	// API Key 统计
-	if err := r.sql.QueryRowContext(ctx, "SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL", userID).
-		Scan(&stats.TotalApiKeys); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		"SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL",
+		[]any{userIDREDACTED,
+		&stats.TotalApiKeys,
+	); err != nil {
 		return nil, err
 REDACTED
-	if err := r.sql.QueryRowContext(ctx, "SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND status = $2 AND deleted_at IS NULL", userID, service.StatusActive).
-		Scan(&stats.ActiveApiKeys); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		"SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND status = $2 AND deleted_at IS NULL",
+		[]any{userID, service.StatusActiveREDACTED,
+		&stats.ActiveApiKeys,
+	); err != nil {
 		return nil, err
 REDACTED
 
@@ -604,17 +680,20 @@ REDACTED
 		FROM usage_logs
 		WHERE user_id = $1
 	`
-	if err := r.sql.QueryRowContext(ctx, totalStatsQuery, userID).
-		Scan(
-			&stats.TotalRequests,
-			&stats.TotalInputTokens,
-			&stats.TotalOutputTokens,
-			&stats.TotalCacheCreationTokens,
-			&stats.TotalCacheReadTokens,
-			&stats.TotalCost,
-			&stats.TotalActualCost,
-			&stats.AverageDurationMs,
-		); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		totalStatsQuery,
+		[]any{userIDREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheCreationTokens,
+		&stats.TotalCacheReadTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
 		return nil, err
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheCreationTokens + stats.TotalCacheReadTokens
@@ -632,16 +711,19 @@ REDACTED
 		FROM usage_logs
 		WHERE user_id = $1 AND created_at >= $2
 	`
-	if err := r.sql.QueryRowContext(ctx, todayStatsQuery, userID, today).
-		Scan(
-			&stats.TodayRequests,
-			&stats.TodayInputTokens,
-			&stats.TodayOutputTokens,
-			&stats.TodayCacheCreationTokens,
-			&stats.TodayCacheReadTokens,
-			&stats.TodayCost,
-			&stats.TodayActualCost,
-		); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		todayStatsQuery,
+		[]any{userID, todayREDACTED,
+		&stats.TodayRequests,
+		&stats.TodayInputTokens,
+		&stats.TodayOutputTokens,
+		&stats.TodayCacheCreationTokens,
+		&stats.TodayCacheReadTokens,
+		&stats.TodayCost,
+		&stats.TodayActualCost,
+	); err != nil {
 		return nil, err
 REDACTED
 	stats.TodayTokens = stats.TodayInputTokens + stats.TodayOutputTokens + stats.TodayCacheCreationTokens + stats.TodayCacheReadTokens
@@ -1007,16 +1089,19 @@ func (r *usageLogRepository) GetGlobalStats(ctx context.Context, startTime, endT
 	`
 
 	stats := &UsageStats{REDACTED
-	if err := r.sql.QueryRowContext(ctx, query, startTime, endTime).
-		Scan(
-			&stats.TotalRequests,
-			&stats.TotalInputTokens,
-			&stats.TotalOutputTokens,
-			&stats.TotalCacheTokens,
-			&stats.TotalCost,
-			&stats.TotalActualCost,
-			&stats.AverageDurationMs,
-		); err != nil {
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{startTime, endTimeREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
 		return nil, err
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
@@ -1108,7 +1193,7 @@ REDACTED
 
 	avgQuery := "SELECT COALESCE(AVG(duration_ms), 0) as avg_duration_ms FROM usage_logs WHERE account_id = $1 AND created_at >= $2 AND created_at < $3"
 	var avgDuration float64
-	if err := r.sql.QueryRowContext(ctx, avgQuery, accountID, startTime, endTime).Scan(&avgDuration); err != nil {
+	if err := scanSingleRow(ctx, r.sql, avgQuery, []any{accountID, startTime, endTimeREDACTED, &avgDuration); err != nil {
 		return nil, err
 REDACTED
 
@@ -1186,7 +1271,7 @@ REDACTED
 func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	countQuery := "SELECT COUNT(*) FROM usage_logs " + whereClause
 	var total int64
-	if err := r.sql.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := scanSingleRow(ctx, r.sql, countQuery, args, &total); err != nil {
 		return nil, nil, err
 REDACTED
 
