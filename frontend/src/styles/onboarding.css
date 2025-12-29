@@ -245,3 +245,8 @@ REDACTED
 .dark .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: #1e293b !important; REDACTED
 .dark .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: #1e293b !important; REDACTED
 .dark .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: #1e293b !important; REDACTED
+
+/* 确保被高亮元素的下拉菜单也有足够高的 z-index */
+.driver-active-element .select-dropdown {
+  z-index: 100000001 !important;
+REDACTED
