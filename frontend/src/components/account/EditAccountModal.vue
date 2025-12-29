@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.editAccount')"
-    width="wide"
+    width="normal"
     @close="handleClose"
   >
     <form
@@ -13,7 +13,7 @@
     >
       <div>
         <label class="input-label">{{ t('common.name') REDACTEDREDACTED</label>
-        <input v-model="form.name" type="text" required class="input" />
+        <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
       </div>
 
       <!-- API Key fields (only for apikey type) -->
@@ -457,7 +457,13 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
-          <input v-model.number="form.priority" type="number" min="1" class="input" />
+          <input
+            v-model.number="form.priority"
+            type="number"
+            min="1"
+            class="input"
+            data-tour="account-form-priority"
+          />
         </div>
       </div>
 
@@ -504,6 +510,7 @@
         :groups="groups"
         :platform="account?.platform"
         :mixed-scheduling="mixedScheduling"
+        data-tour="account-form-groups"
       />
 
     </form>
@@ -518,6 +525,7 @@
           form="edit-account-form"
           :disabled="submitting"
           class="btn btn-primary"
+          data-tour="account-form-submit"
         >
           <svg
             v-if="submitting"

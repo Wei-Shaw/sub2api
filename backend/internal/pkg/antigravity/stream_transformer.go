@@ -135,18 +135,18 @@ REDACTED
 		responseID = "msg_" + generateRandomID()
 REDACTED
 
-	message := map[string]interface{REDACTED{
+	message := map[string]any{
 		"id":            responseID,
 		"type":          "message",
 		"role":          "assistant",
-		"content":       []interface{REDACTED{REDACTED,
+		"content":       []any{REDACTED,
 		"model":         p.originalModel,
 		"stop_reason":   nil,
 		"stop_sequence": nil,
 		"usage":         usage,
 REDACTED
 
-	event := map[string]interface{REDACTED{
+	event := map[string]any{
 		"type":    "message_start",
 		"message": message,
 REDACTED
@@ -205,14 +205,14 @@ REDACTED
 
 	// 开始或继续 thinking 块
 	if p.blockType != BlockTypeThinking {
-		_, _ = result.Write(p.startBlock(BlockTypeThinking, map[string]interface{REDACTED{
+		_, _ = result.Write(p.startBlock(BlockTypeThinking, map[string]any{
 			"type":     "thinking",
 			"thinking": "",
 	REDACTED))
 REDACTED
 
 	if text != "" {
-		_, _ = result.Write(p.emitDelta("thinking_delta", map[string]interface{REDACTED{
+		_, _ = result.Write(p.emitDelta("thinking_delta", map[string]any{
 			"thinking": text,
 	REDACTED))
 REDACTED
@@ -246,11 +246,11 @@ REDACTED
 
 	// 非空 text 带签名 - 特殊处理
 	if signature != "" {
-		_, _ = result.Write(p.startBlock(BlockTypeText, map[string]interface{REDACTED{
+		_, _ = result.Write(p.startBlock(BlockTypeText, map[string]any{
 			"type": "text",
 			"text": "",
 	REDACTED))
-		_, _ = result.Write(p.emitDelta("text_delta", map[string]interface{REDACTED{
+		_, _ = result.Write(p.emitDelta("text_delta", map[string]any{
 			"text": text,
 	REDACTED))
 		_, _ = result.Write(p.endBlock())
@@ -260,13 +260,13 @@ REDACTED
 
 	// 普通 text (无签名)
 	if p.blockType != BlockTypeText {
-		_, _ = result.Write(p.startBlock(BlockTypeText, map[string]interface{REDACTED{
+		_, _ = result.Write(p.startBlock(BlockTypeText, map[string]any{
 			"type": "text",
 			"text": "",
 	REDACTED))
 REDACTED
 
-	_, _ = result.Write(p.emitDelta("text_delta", map[string]interface{REDACTED{
+	_, _ = result.Write(p.emitDelta("text_delta", map[string]any{
 		"text": text,
 REDACTED))
 
@@ -284,11 +284,11 @@ func (p *StreamingProcessor) processFunctionCall(fc *GeminiFunctionCall, signatu
 		toolID = fmt.Sprintf("%s-%s", fc.Name, generateRandomID())
 REDACTED
 
-	toolUse := map[string]interface{REDACTED{
+	toolUse := map[string]any{
 		"type":  "tool_use",
 		"id":    toolID,
 		"name":  fc.Name,
-		"input": map[string]interface{REDACTED{REDACTED, // 必须为空，参数通过 delta 发送
+		"input": map[string]any{REDACTED,
 REDACTED
 
 	if signature != "" {
@@ -300,7 +300,7 @@ REDACTED
 	// 发送 input_json_delta
 	if fc.Args != nil {
 		argsJSON, _ := json.Marshal(fc.Args)
-		_, _ = result.Write(p.emitDelta("input_json_delta", map[string]interface{REDACTED{
+		_, _ = result.Write(p.emitDelta("input_json_delta", map[string]any{
 			"partial_json": string(argsJSON),
 	REDACTED))
 REDACTED
@@ -311,14 +311,14 @@ REDACTED
 REDACTED
 
 // startBlock 开始新的内容块
-func (p *StreamingProcessor) startBlock(blockType BlockType, contentBlock map[string]interface{REDACTED) []byte {
+func (p *StreamingProcessor) startBlock(blockType BlockType, contentBlock map[string]any) []byte {
 	var result bytes.Buffer
 
 	if p.blockType != BlockTypeNone {
 		_, _ = result.Write(p.endBlock())
 REDACTED
 
-	event := map[string]interface{REDACTED{
+	event := map[string]any{
 		"type":          "content_block_start",
 		"index":         p.blockIndex,
 		"content_block": contentBlock,
@@ -340,13 +340,13 @@ REDACTED
 
 	// Thinking 块结束时发送暂存的签名
 	if p.blockType == BlockTypeThinking && p.pendingSignature != "" {
-		_, _ = result.Write(p.emitDelta("signature_delta", map[string]interface{REDACTED{
+		_, _ = result.Write(p.emitDelta("signature_delta", map[string]any{
 			"signature": p.pendingSignature,
 	REDACTED))
 		p.pendingSignature = ""
 REDACTED
 
-	event := map[string]interface{REDACTED{
+	event := map[string]any{
 		"type":  "content_block_stop",
 		"index": p.blockIndex,
 REDACTED
@@ -360,15 +360,15 @@ REDACTED
 REDACTED
 
 // emitDelta 发送 delta 事件
-func (p *StreamingProcessor) emitDelta(deltaType string, deltaContent map[string]interface{REDACTED) []byte {
-	delta := map[string]interface{REDACTED{
+func (p *StreamingProcessor) emitDelta(deltaType string, deltaContent map[string]any) []byte {
+	delta := map[string]any{
 		"type": deltaType,
 REDACTED
 	for k, v := range deltaContent {
 		delta[k] = v
 REDACTED
 
-	event := map[string]interface{REDACTED{
+	event := map[string]any{
 		"type":  "content_block_delta",
 		"index": p.blockIndex,
 		"delta": delta,
@@ -381,14 +381,14 @@ REDACTED
 func (p *StreamingProcessor) emitEmptyThinkingWithSignature(signature string) []byte {
 	var result bytes.Buffer
 
-	_, _ = result.Write(p.startBlock(BlockTypeThinking, map[string]interface{REDACTED{
+	_, _ = result.Write(p.startBlock(BlockTypeThinking, map[string]any{
 		"type":     "thinking",
 		"thinking": "",
 REDACTED))
-	_, _ = result.Write(p.emitDelta("thinking_delta", map[string]interface{REDACTED{
+	_, _ = result.Write(p.emitDelta("thinking_delta", map[string]any{
 		"thinking": "",
 REDACTED))
-	_, _ = result.Write(p.emitDelta("signature_delta", map[string]interface{REDACTED{
+	_, _ = result.Write(p.emitDelta("signature_delta", map[string]any{
 		"signature": signature,
 REDACTED))
 	_, _ = result.Write(p.endBlock())
@@ -422,9 +422,9 @@ REDACTED
 		OutputTokens: p.outputTokens,
 REDACTED
 
-	deltaEvent := map[string]interface{REDACTED{
+	deltaEvent := map[string]any{
 		"type": "message_delta",
-		"delta": map[string]interface{REDACTED{
+		"delta": map[string]any{
 			"stop_reason":   stopReason,
 			"stop_sequence": nil,
 	REDACTED,
@@ -434,7 +434,7 @@ REDACTED
 	_, _ = result.Write(p.formatSSE("message_delta", deltaEvent))
 
 	if !p.messageStopSent {
-		stopEvent := map[string]interface{REDACTED{
+		stopEvent := map[string]any{
 			"type": "message_stop",
 	REDACTED
 		_, _ = result.Write(p.formatSSE("message_stop", stopEvent))
@@ -445,7 +445,7 @@ REDACTED
 REDACTED
 
 // formatSSE 格式化 SSE 事件
-func (p *StreamingProcessor) formatSSE(eventType string, data interface{REDACTED) []byte {
+func (p *StreamingProcessor) formatSSE(eventType string, data any) []byte {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return nil

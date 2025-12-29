@@ -182,6 +182,7 @@ REDACTED
 			COUNT(CASE WHEN rate_limited_at IS NOT NULL AND rate_limit_reset_at > ? THEN 1 END) as ratelimit_accounts,
 			COUNT(CASE WHEN overload_until IS NOT NULL AND overload_until > ? THEN 1 END) as overload_accounts
 		FROM accounts
+		WHERE deleted_at IS NULL
 	`, service.StatusActive, service.StatusError, now, now).Scan(&accountStats).Error; err != nil {
 		return nil, err
 REDACTED

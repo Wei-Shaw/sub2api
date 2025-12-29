@@ -151,6 +151,10 @@ watch(
 )
 
 const handleClose = () => {
+  // 防止在同步进行中关闭对话框
+  if (syncing.value) {
+    return
+  REDACTED
   emit('close')
 REDACTED
 

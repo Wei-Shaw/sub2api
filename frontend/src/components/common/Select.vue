@@ -29,67 +29,73 @@
       </span>
     </button>
 
-    <Transition name="select-dropdown">
-      <div
-        v-if="isOpen"
-        ref="dropdownRef"
-        :class="['select-dropdown', dropdownPosition === 'top' && 'select-dropdown-top']"
-      >
-        <!-- Search input -->
-        <div v-if="searchable" class="select-search">
-          <svg
-            class="h-4 w-4 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+    <!-- Teleport dropdown to body to escape stacking context (for driver.js overlay compatibility) -->
+    <Teleport to="body">
+      <Transition name="select-dropdown">
+        <div
+          v-if="isOpen"
+          ref="dropdownRef"
+          class="select-dropdown-portal"
+          :style="dropdownStyle"
+          @click.stop
+          @mousedown.stop
+        >
+          <!-- Search input -->
+          <div v-if="searchable" class="select-search">
+            <svg
+              class="h-4 w-4 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            </svg>
+            <input
+              ref="searchInputRef"
+              v-model="searchQuery"
+              type="text"
+              :placeholder="searchPlaceholderText"
+              class="select-search-input"
+              @click.stop
             />
-          </svg>
-          <input
-            ref="searchInputRef"
-            v-model="searchQuery"
-            type="text"
-            :placeholder="searchPlaceholderText"
-            class="select-search-input"
-            @click.stop
-          />
-        </div>
-
-        <!-- Options list -->
-        <div class="select-options">
-          <div
-            v-for="option in filteredOptions"
-            :key="`${typeof getOptionValue(option)REDACTED:${String(getOptionValue(option) ?? '')REDACTED`"
-            @click="selectOption(option)"
-            :class="['select-option', isSelected(option) && 'select-option-selected']"
-          >
-            <slot name="option" :option="option" :selected="isSelected(option)">
-              <span class="select-option-label">{{ getOptionLabel(option) REDACTEDREDACTED</span>
-              <svg
-                v-if="isSelected(option)"
-                class="h-4 w-4 text-primary-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="2"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-              </svg>
-            </slot>
           </div>
 
-          <!-- Empty state -->
-          <div v-if="filteredOptions.length === 0" class="select-empty">
-            {{ emptyTextDisplay REDACTEDREDACTED
+          <!-- Options list -->
+          <div class="select-options">
+            <div
+              v-for="option in filteredOptions"
+              :key="`${typeof getOptionValue(option)REDACTED:${String(getOptionValue(option) ?? '')REDACTED`"
+              @click.stop="selectOption(option)"
+              :class="['select-option', isSelected(option) && 'select-option-selected']"
+            >
+              <slot name="option" :option="option" :selected="isSelected(option)">
+                <span class="select-option-label">{{ getOptionLabel(option) REDACTEDREDACTED</span>
+                <svg
+                  v-if="isSelected(option)"
+                  class="h-4 w-4 text-primary-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+              </slot>
+            </div>
+
+            <!-- Empty state -->
+            <div v-if="filteredOptions.length === 0" class="select-empty">
+              {{ emptyTextDisplay REDACTEDREDACTED
+            </div>
           </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -147,6 +153,28 @@ const containerRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<'bottom' | 'top'>('bottom')
+const triggerRect = ref<DOMRect | null>(null)
+
+// Computed style for teleported dropdown
+const dropdownStyle = computed(() => {
+  if (!triggerRect.value) return {REDACTED
+
+  const rect = triggerRect.value
+  const style: Record<string, string> = {
+    position: 'fixed',
+    left: `${rect.leftREDACTEDpx`,
+    minWidth: `${rect.widthREDACTEDpx`,
+    zIndex: '100000020' // Higher than driver.js overlay (99999998)
+  REDACTED
+
+  if (dropdownPosition.value === 'top') {
+    style.bottom = `${window.innerHeight - rect.top + 8REDACTEDpx`
+  REDACTED else {
+    style.top = `${rect.bottom + 8REDACTEDpx`
+  REDACTED
+
+  return style
+REDACTED)
 
 const getOptionValue = (
   option: SelectOption | Record<string, unknown>
@@ -193,14 +221,17 @@ REDACTED
 const calculateDropdownPosition = () => {
   if (!containerRef.value) return
 
+  // Update trigger rect for positioning
+  triggerRect.value = containerRef.value.getBoundingClientRect()
+
   nextTick(() => {
     if (!containerRef.value || !dropdownRef.value) return
 
-    const triggerRect = containerRef.value.getBoundingClientRect()
+    const rect = triggerRect.value!
     const dropdownHeight = dropdownRef.value.offsetHeight || 240 // Max height fallback
     const viewportHeight = window.innerHeight
-    const spaceBelow = viewportHeight - triggerRect.bottom
-    const spaceAbove = triggerRect.top
+    const spaceBelow = viewportHeight - rect.bottom
+    const spaceAbove = rect.top
 
     // If not enough space below but enough space above, show dropdown on top
     if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
@@ -233,10 +264,21 @@ const selectOption = (option: SelectOption | Record<string, unknown>) => {
 REDACTED
 
 const handleClickOutside = (event: MouseEvent) => {
-  if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
-    isOpen.value = false
-    searchQuery.value = ''
+  const target = event.target as HTMLElement
+
+  // 使用 closest 检查点击是否在下拉菜单内部（更可靠，不依赖 ref）
+  if (target.closest('.select-dropdown-portal')) {
+    return // 点击在下拉菜单内，不关闭
   REDACTED
+
+  // 检查是否点击在触发器内
+  if (containerRef.value && containerRef.value.contains(target)) {
+    return // 点击在触发器内，让 toggle 处理
+  REDACTED
+
+  // 点击在外部，关闭下拉菜单
+  isOpen.value = false
+  searchQuery.value = ''
 REDACTED
 
 const handleEscape = (event: KeyboardEvent) => {
@@ -295,54 +337,57 @@ REDACTED
 .select-icon {
   @apply flex-shrink-0 text-gray-400 dark:text-dark-400;
 REDACTED
+</style>
 
-.select-dropdown {
-  @apply absolute left-0 z-[100] mt-2 min-w-full w-max max-w-[300px];
+<!-- Global styles for teleported dropdown -->
+<style>
+.select-dropdown-portal {
+  @apply w-max max-w-[300px];
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
+  /* 确保下拉菜单在引导期间可点击（覆盖 driver.js 的 pointer-events 影响） */
+  pointer-events: auto !important;
 REDACTED
 
-.select-dropdown-top {
-  @apply bottom-full mb-2 mt-0;
-REDACTED
-
-.select-search {
+.select-dropdown-portal .select-search {
   @apply flex items-center gap-2 px-3 py-2;
   @apply border-b border-gray-100 dark:border-dark-700;
 REDACTED
 
-.select-search-input {
+.select-dropdown-portal .select-search-input {
   @apply flex-1 bg-transparent text-sm;
   @apply text-gray-900 dark:text-gray-100;
   @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
   @apply focus:outline-none;
 REDACTED
 
-.select-options {
+.select-dropdown-portal .select-options {
   @apply max-h-60 overflow-y-auto py-1;
 REDACTED
 
-.select-option {
+.select-dropdown-portal .select-option {
   @apply flex items-center justify-between gap-2;
   @apply px-4 py-2.5 text-sm;
   @apply text-gray-700 dark:text-gray-300;
   @apply cursor-pointer transition-colors duration-150;
   @apply hover:bg-gray-50 dark:hover:bg-dark-700;
+  /* 确保选项在引导期间可点击 */
+  pointer-events: auto !important;
 REDACTED
 
-.select-option-selected {
+.select-dropdown-portal .select-option-selected {
   @apply bg-primary-50 dark:bg-primary-900/20;
   @apply text-primary-700 dark:text-primary-300;
 REDACTED
 
-.select-option-label {
+.select-dropdown-portal .select-option-label {
   @apply flex-1 min-w-0 truncate text-left;
 REDACTED
 
-.select-empty {
+.select-dropdown-portal .select-empty {
   @apply px-4 py-8 text-center text-sm;
   @apply text-gray-500 dark:text-dark-400;
 REDACTED
@@ -356,17 +401,6 @@ REDACTED
 .select-dropdown-enter-from,
 .select-dropdown-leave-to {
   opacity: 0;
-REDACTED
-
-/* Animation for dropdown opening downward (default) */
-.select-dropdown:not(.select-dropdown-top).select-dropdown-enter-from,
-.select-dropdown:not(.select-dropdown-top).select-dropdown-leave-to {
   transform: translateY(-8px);
-REDACTED
-
-/* Animation for dropdown opening upward */
-.select-dropdown-top.select-dropdown-enter-from,
-.select-dropdown-top.select-dropdown-leave-to {
-  transform: translateY(8px);
 REDACTED
 </style>

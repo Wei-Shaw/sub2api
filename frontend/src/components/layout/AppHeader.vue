@@ -199,6 +199,17 @@
                 </div>
               </div>
 
+              <div v-if="showOnboardingButton" class="border-t border-gray-100 py-1 dark:border-dark-700">
+                <button @click="handleReplayGuide" class="dropdown-item w-full">
+                  <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                      d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 14a1 1 0 110 2 1 1 0 010-2zm1.07-7.75c0-.6-.49-1.25-1.32-1.25-.7 0-1.22.4-1.43 1.02a1 1 0 11-1.9-.62A3.41 3.41 0 0111.8 5c2.02 0 3.25 1.4 3.25 2.9 0 2-1.83 2.55-2.43 3.12-.43.4-.47.75-.47 1.23a1 1 0 01-2 0c0-1 .16-1.82 1.1-2.7.69-.64 1.82-1.05 1.82-2.06z"
+                    />
+                  </svg>
+                  {{ $t('onboarding.restartTour') REDACTEDREDACTED
+                </button>
+              </div>
+
               <div class="border-t border-gray-100 py-1 dark:border-dark-700">
                 <button
                   @click="handleLogout"
@@ -232,7 +243,7 @@
 import { ref, computed, onMounted, onBeforeUnmount REDACTED from 'vue'
 import { useRouter, useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
-import { useAppStore, useAuthStore REDACTED from '@/stores'
+import { useAppStore, useAuthStore, useOnboardingStore REDACTED from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 
@@ -241,11 +252,17 @@ const route = useRoute()
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const onboardingStore = useOnboardingStore()
 
 const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
+
+// 只在标准模式的管理员下显示新手引导按钮
+const showOnboardingButton = computed(() => {
+  return !authStore.isSimpleMode && user.value?.role === 'admin'
+REDACTED)
 
 const userInitials = computed(() => {
   if (!user.value) return ''
@@ -298,6 +315,11 @@ async function handleLogout() {
   closeDropdown()
   authStore.logout()
   await router.push('/login')
+REDACTED
+
+function handleReplayGuide() {
+  closeDropdown()
+  onboardingStore.replay()
 REDACTED
 
 function handleClickOutside(event: MouseEvent) {

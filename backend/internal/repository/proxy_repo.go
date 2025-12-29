@@ -119,6 +119,7 @@ func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID in
 	var count int64
 	err := r.db.WithContext(ctx).Table("accounts").
 		Where("proxy_id = ?", proxyID).
+		Where("deleted_at IS NULL").
 		Count(&count).Error
 	return count, err
 REDACTED
@@ -134,6 +135,7 @@ REDACTED
 		Table("accounts").
 		Select("proxy_id, COUNT(*) as count").
 		Where("proxy_id IS NOT NULL").
+		Where("deleted_at IS NULL").
 		Group("proxy_id").
 		Scan(&results).Error
 	if err != nil {

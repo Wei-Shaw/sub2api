@@ -300,8 +300,8 @@
               <button @click="resetFilters" class="btn btn-secondary">
                 {{ t('common.reset') REDACTEDREDACTED
               </button>
-              <button @click="exportToCSV" class="btn btn-primary">
-                {{ t('usage.exportCsv') REDACTEDREDACTED
+              <button @click="exportToExcel" :disabled="exporting" class="btn btn-primary">
+                {{ t('usage.exportExcel') REDACTEDREDACTED
               </button>
             </div>
           </div>
@@ -361,90 +361,114 @@
           </template>
 
           <template #cell-tokens="{ row REDACTED">
-            <div class="space-y-1.5 text-sm">
-              <!-- Input / Output Tokens -->
-              <div class="flex items-center gap-2">
-                <!-- Input -->
-                <div class="inline-flex items-center gap-1">
-                  <svg
-                    class="h-3.5 w-3.5 text-emerald-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 14l-7 7m0 0l-7-7m7 7V3"
-                    />
-                  </svg>
-                  <span class="font-medium text-gray-900 dark:text-white">{{
-                    row.input_tokens.toLocaleString()
-                  REDACTEDREDACTED</span>
+            <div class="flex items-center gap-1.5">
+              <div class="space-y-1.5 text-sm">
+                <!-- Input / Output Tokens -->
+                <div class="flex items-center gap-2">
+                  <!-- Input -->
+                  <div class="inline-flex items-center gap-1">
+                    <svg
+                      class="h-3.5 w-3.5 text-emerald-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                      />
+                    </svg>
+                    <span class="font-medium text-gray-900 dark:text-white">{{
+                      row.input_tokens.toLocaleString()
+                    REDACTEDREDACTED</span>
+                  </div>
+                  <!-- Output -->
+                  <div class="inline-flex items-center gap-1">
+                    <svg
+                      class="h-3.5 w-3.5 text-violet-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 10l7-7m0 0l7 7m-7-7v18"
+                      />
+                    </svg>
+                    <span class="font-medium text-gray-900 dark:text-white">{{
+                      row.output_tokens.toLocaleString()
+                    REDACTEDREDACTED</span>
+                  </div>
                 </div>
-                <!-- Output -->
-                <div class="inline-flex items-center gap-1">
-                  <svg
-                    class="h-3.5 w-3.5 text-violet-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M5 10l7-7m0 0l7 7m-7-7v18"
-                    />
-                  </svg>
-                  <span class="font-medium text-gray-900 dark:text-white">{{
-                    row.output_tokens.toLocaleString()
-                  REDACTEDREDACTED</span>
+                <!-- Cache Tokens (Read + Write) -->
+                <div
+                  v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0"
+                  class="flex items-center gap-2"
+                >
+                  <!-- Cache Read -->
+                  <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
+                    <svg
+                      class="h-3.5 w-3.5 text-sky-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                      />
+                    </svg>
+                    <span class="font-medium text-sky-600 dark:text-sky-400">{{
+                      formatCacheTokens(row.cache_read_tokens)
+                    REDACTEDREDACTED</span>
+                  </div>
+                  <!-- Cache Write -->
+                  <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
+                    <svg
+                      class="h-3.5 w-3.5 text-amber-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
+                    <span class="font-medium text-amber-600 dark:text-amber-400">{{
+                      formatCacheTokens(row.cache_creation_tokens)
+                    REDACTEDREDACTED</span>
+                  </div>
                 </div>
               </div>
-              <!-- Cache Tokens (Read + Write) -->
+              <!-- Token Detail Tooltip -->
               <div
-                v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0"
-                class="flex items-center gap-2"
+                class="group relative"
+                @mouseenter="showTokenTooltip($event, row)"
+                @mouseleave="hideTokenTooltip"
               >
-                <!-- Cache Read -->
-                <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
+                <div
+                  class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50"
+                >
                   <svg
-                    class="h-3.5 w-3.5 text-sky-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                    class="h-3 w-3 text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
                   >
                     <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                      fill-rule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clip-rule="evenodd"
                     />
                   </svg>
-                  <span class="font-medium text-sky-600 dark:text-sky-400">{{
-                    formatCacheTokens(row.cache_read_tokens)
-                  REDACTEDREDACTED</span>
-                </div>
-                <!-- Cache Write -->
-                <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
-                  <svg
-                    class="h-3.5 w-3.5 text-amber-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                    />
-                  </svg>
-                  <span class="font-medium text-amber-600 dark:text-amber-400">{{
-                    formatCacheTokens(row.cache_creation_tokens)
-                  REDACTEDREDACTED</span>
                 </div>
               </div>
             </div>
@@ -516,9 +540,50 @@
           </template>
 
           <template #cell-request_id="{ row REDACTED">
-            <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{
-              row.request_id || '-'
-            REDACTEDREDACTED</span>
+            <div v-if="row.request_id" class="flex items-center gap-1.5 max-w-[120px]">
+              <span
+                class="font-mono text-xs text-gray-500 dark:text-gray-400 truncate"
+                :title="row.request_id"
+              >
+                {{ row.request_id REDACTEDREDACTED
+              </span>
+              <button
+                @click="copyRequestId(row.request_id)"
+                class="flex-shrink-0 rounded p-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+                :class="
+                  copiedRequestId === row.request_id
+                    ? 'text-green-500'
+                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                "
+                :title="copiedRequestId === row.request_id ? t('keys.copied') : t('keys.copyToClipboard')"
+              >
+                <svg
+                  v-if="copiedRequestId === row.request_id"
+                  class="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <svg
+                  v-else
+                  class="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+              </button>
+            </div>
+            <span v-else class="text-gray-400 dark:text-gray-500">-</span>
           </template>
 
           <template #empty>
@@ -539,6 +604,63 @@
       />
     </div>
   </AppLayout>
+
+  <ExportProgressDialog
+    :show="exportProgress.show"
+    :progress="exportProgress.progress"
+    :current="exportProgress.current"
+    :total="exportProgress.total"
+    :estimated-time="exportProgress.estimatedTime"
+    @cancel="cancelExport"
+  />
+
+  <!-- Token Tooltip Portal -->
+  <Teleport to="body">
+    <div
+      v-if="tokenTooltipVisible"
+      class="fixed z-[9999] pointer-events-none -translate-y-1/2"
+      :style="{
+        left: tokenTooltipPosition.x + 'px',
+        top: tokenTooltipPosition.y + 'px'
+      REDACTED"
+    >
+      <div
+        class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+      >
+        <div class="space-y-1.5">
+          <!-- Token Breakdown -->
+          <div class="mb-2 border-b border-gray-700 pb-1.5">
+            <div class="text-xs font-semibold text-gray-300 mb-1">Token 明细</div>
+            <div v-if="tokenTooltipData && tokenTooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.inputTokens') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">{{ tokenTooltipData.input_tokens.toLocaleString() REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tokenTooltipData && tokenTooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.outputTokens') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">{{ tokenTooltipData.output_tokens.toLocaleString() REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tokenTooltipData && tokenTooltipData.cache_creation_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.cacheCreationTokens') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">{{ tokenTooltipData.cache_creation_tokens.toLocaleString() REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tokenTooltipData && tokenTooltipData.cache_read_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.cacheReadTokens') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">{{ tokenTooltipData.cache_read_tokens.toLocaleString() REDACTEDREDACTED</span>
+            </div>
+          </div>
+          <!-- Total -->
+          <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
+            <span class="text-gray-400">{{ t('usage.totalTokens') REDACTEDREDACTED</span>
+            <span class="font-semibold text-blue-400">{{ ((tokenTooltipData?.input_tokens || 0) + (tokenTooltipData?.output_tokens || 0) + (tokenTooltipData?.cache_creation_tokens || 0) + (tokenTooltipData?.cache_read_tokens || 0)).toLocaleString() REDACTEDREDACTED</span>
+          </div>
+        </div>
+        <!-- Tooltip Arrow (left side) -->
+        <div
+          class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"
+        ></div>
+      </div>
+    </div>
+  </Teleport>
 
   <!-- Tooltip Portal -->
   <Teleport to="body">
@@ -602,10 +724,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted REDACTED from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import * as XLSX from 'xlsx'
+import { saveAs REDACTED from 'file-saver'
 import { useAppStore REDACTED from '@/stores/app'
+import { useClipboard REDACTED from '@/composables/useClipboard'
 import { adminAPI REDACTED from '@/api/admin'
+import { adminUsageAPI REDACTED from '@/api/admin/usage'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -615,6 +741,7 @@ import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
+import ExportProgressDialog from '@/components/common/ExportProgressDialog.vue'
 import type { UsageLog, TrendDataPoint, ModelStat REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import type {
@@ -626,11 +753,20 @@ REDACTED from '@/api/admin/usage'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard: clipboardCopy REDACTED = useClipboard()
 
 // Tooltip state
 const tooltipVisible = ref(false)
 const tooltipPosition = ref({ x: 0, y: 0 REDACTED)
 const tooltipData = ref<UsageLog | null>(null)
+
+// Token tooltip state
+const tokenTooltipVisible = ref(false)
+const tokenTooltipPosition = ref({ x: 0, y: 0 REDACTED)
+const tokenTooltipData = ref<UsageLog | null>(null)
+
+// Request ID copy state
+const copiedRequestId = ref<string | null>(null)
 
 // Usage stats from API
 const usageStats = ref<AdminUsageStatsResponse | null>(null)
@@ -657,6 +793,7 @@ const columns = computed<Column[]>(() => [
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
   { key: 'billing_type', label: t('usage.billingType'), sortable: false REDACTED,
+  { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
   { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
   { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
   { key: 'request_id', label: t('admin.usage.requestId'), sortable: false REDACTED
@@ -669,6 +806,15 @@ const accounts = ref<any[]>([])
 const groups = ref<any[]>([])
 const loading = ref(false)
 let abortController: AbortController | null = null
+let exportAbortController: AbortController | null = null
+const exporting = ref(false)
+const exportProgress = reactive({
+  show: false,
+  progress: 0,
+  current: 0,
+  total: 0,
+  estimatedTime: ''
+REDACTED)
 
 // User search state
 const userSearchKeyword = ref('')
@@ -868,6 +1014,16 @@ const formatCacheTokens = (value: number): string => {
   return value.toLocaleString()
 REDACTED
 
+const copyRequestId = async (requestId: string) => {
+  const success = await clipboardCopy(requestId, t('admin.usage.requestIdCopied'))
+  if (success) {
+    copiedRequestId.value = requestId
+    setTimeout(() => {
+      copiedRequestId.value = null
+    REDACTED, 800)
+  REDACTED
+REDACTED
+
 const isAbortError = (error: unknown): boolean => {
   if (error instanceof DOMException && error.name === 'AbortError') {
     return true
@@ -877,6 +1033,40 @@ const isAbortError = (error: unknown): boolean => {
     return maybeError.code === 'ERR_CANCELED' || maybeError.name === 'CanceledError'
   REDACTED
   return false
+REDACTED
+
+const formatExportTimestamp = (date: Date): string => {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()REDACTED-${pad(date.getMonth() + 1)REDACTED-${pad(date.getDate())REDACTED_${pad(date.getHours())REDACTED-${pad(date.getMinutes())REDACTED-${pad(date.getSeconds())REDACTED`
+REDACTED
+
+const formatRemainingTime = (ms: number): string => {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  const parts = []
+  if (hours > 0) {
+    parts.push(`${hoursREDACTEDh`)
+  REDACTED
+  if (minutes > 0 || hours > 0) {
+    parts.push(`${minutesREDACTEDm`)
+  REDACTED
+  parts.push(`${secondsREDACTEDs`)
+  return parts.join(' ')
+REDACTED
+
+const updateExportProgress = (current: number, total: number, startedAt: number) => {
+  exportProgress.current = current
+  exportProgress.total = total
+  exportProgress.progress = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0
+  if (current > 0 && total > 0) {
+    const elapsedMs = Date.now() - startedAt
+    const remainingMs = Math.max(0, Math.round((elapsedMs / current) * (total - current)))
+    exportProgress.estimatedTime = formatRemainingTime(remainingMs)
+  REDACTED else {
+    exportProgress.estimatedTime = ''
+  REDACTED
 REDACTED
 
 const loadUsageLogs = async () => {
@@ -1051,52 +1241,129 @@ const handlePageSizeChange = (pageSize: number) => {
   loadUsageLogs()
 REDACTED
 
-const exportToCSV = () => {
-  if (usageLogs.value.length === 0) {
+const cancelExport = () => {
+  if (!exporting.value) {
+    return
+  REDACTED
+  exportAbortController?.abort()
+REDACTED
+
+const exportToExcel = async () => {
+  if (pagination.value.total === 0) {
     appStore.showWarning(t('usage.noDataToExport'))
     return
   REDACTED
 
-  const headers = [
-    'User',
-    'API Key',
-    'Model',
-    'Type',
-    'Input Tokens',
-    'Output Tokens',
-    'Cache Read Tokens',
-    'Cache Write Tokens',
-    'Total Cost',
-    'Billing Type',
-    'Duration (ms)',
-    'Time'
-  ]
-  const rows = usageLogs.value.map((log) => [
-    log.user?.email || '',
-    log.api_key?.name || '',
-    log.model,
-    log.stream ? 'Stream' : 'Sync',
-    log.input_tokens,
-    log.output_tokens,
-    log.cache_read_tokens,
-    log.cache_creation_tokens,
-    log.total_cost.toFixed(6),
-    log.billing_type === 1 ? 'Subscription' : 'Balance',
-    log.duration_ms,
-    log.created_at
-  ])
+  if (exporting.value) {
+    return
+  REDACTED
 
-  const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n')
+  exporting.value = true
+  exportProgress.show = true
+  exportProgress.progress = 0
+  exportProgress.current = 0
+  exportProgress.total = pagination.value.total
+  exportProgress.estimatedTime = ''
 
-  const blob = new Blob([csvContent], { type: 'text/csv' REDACTED)
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `admin_usage_${new Date().toISOString().split('T')[0]REDACTED.csv`
-  link.click()
-  window.URL.revokeObjectURL(url)
+  const startedAt = Date.now()
+  const controller = new AbortController()
+  exportAbortController = controller
 
-  appStore.showSuccess(t('usage.exportSuccess'))
+  try {
+    const allLogs: UsageLog[] = []
+    const pageSize = 100
+    let page = 1
+    let total = pagination.value.total
+
+    while (true) {
+      const params: AdminUsageQueryParams = {
+        page,
+        page_size: pageSize,
+        ...filters.value
+      REDACTED
+      const response = await adminUsageAPI.list(params, { signal: controller.signal REDACTED)
+      if (controller.signal.aborted) {
+        break
+      REDACTED
+      if (page === 1) {
+        total = response.total
+        exportProgress.total = total
+      REDACTED
+      if (response.items?.length) {
+        allLogs.push(...response.items)
+      REDACTED
+
+      updateExportProgress(allLogs.length, total, startedAt)
+
+      if (allLogs.length >= total || response.items.length < pageSize) {
+        break
+      REDACTED
+      page += 1
+    REDACTED
+
+    if (controller.signal.aborted) {
+      appStore.showInfo(t('usage.exportCancelled'))
+      return
+    REDACTED
+
+    if (allLogs.length === 0) {
+      appStore.showWarning(t('usage.noDataToExport'))
+      return
+    REDACTED
+
+    const headers = [
+      'User',
+      'API Key',
+      'Model',
+      'Type',
+      'Input Tokens',
+      'Output Tokens',
+      'Cache Read Tokens',
+      'Cache Write Tokens',
+      'Total Cost',
+      'Billing Type',
+      'Duration (ms)',
+      'Time'
+    ]
+    const rows = allLogs.map((log) => [
+      log.user?.email || '',
+      log.api_key?.name || '',
+      log.model,
+      log.stream ? 'Stream' : 'Sync',
+      log.input_tokens,
+      log.output_tokens,
+      log.cache_read_tokens,
+      log.cache_creation_tokens,
+      Number(log.total_cost.toFixed(6)),
+      log.billing_type === 1 ? 'Subscription' : 'Balance',
+      log.duration_ms,
+      log.created_at
+    ])
+
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Usage')
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' REDACTED)
+    const blob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    REDACTED)
+
+    saveAs(blob, `admin_usage_${formatExportTimestamp(new Date())REDACTED.xlsx`)
+    appStore.showSuccess(t('usage.exportExcelSuccess'))
+  REDACTED catch (error) {
+    if (controller.signal.aborted || isAbortError(error)) {
+      appStore.showInfo(t('usage.exportCancelled'))
+      return
+    REDACTED
+    appStore.showError(t('usage.exportExcelFailed'))
+    console.error('Excel export failed:', error)
+  REDACTED finally {
+    if (exportAbortController === controller) {
+      exportAbortController = null
+    REDACTED
+    exporting.value = false
+    exportProgress.show = false
+  REDACTED
 REDACTED
 
 // Click outside to close dropdown
@@ -1123,6 +1390,22 @@ const hideTooltip = () => {
   tooltipData.value = null
 REDACTED
 
+// Token tooltip functions
+const showTokenTooltip = (event: MouseEvent, row: UsageLog) => {
+  const target = event.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+
+  tokenTooltipData.value = row
+  tokenTooltipPosition.value.x = rect.right + 8
+  tokenTooltipPosition.value.y = rect.top + rect.height / 2
+  tokenTooltipVisible.value = true
+REDACTED
+
+const hideTokenTooltip = () => {
+  tokenTooltipVisible.value = false
+  tokenTooltipData.value = null
+REDACTED
+
 onMounted(() => {
   loadFilterOptions()
   loadApiKeys()
@@ -1139,6 +1422,9 @@ onUnmounted(() => {
   REDACTED
   if (abortController) {
     abortController.abort()
+  REDACTED
+  if (exportAbortController) {
+    exportAbortController.abort()
   REDACTED
 REDACTED)
 </script>

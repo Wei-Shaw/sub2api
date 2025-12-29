@@ -38,8 +38,8 @@ REDACTED
 
 // ClaudeTool Claude 工具定义
 type ClaudeTool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
 	InputSchema map[string]any `json:"input_schema"`
 REDACTED
 
@@ -58,9 +58,9 @@ type ContentBlock struct {
 	Thinking  string `json:"thinking,omitempty"`
 	Signature string `json:"signature,omitempty"`
 	// tool_use
-	ID    string      `json:"id,omitempty"`
-	Name  string      `json:"name,omitempty"`
-	Input any `json:"input,omitempty"`
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Input any    `json:"input,omitempty"`
 	// tool_result
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"`
@@ -100,9 +100,9 @@ type ClaudeContentItem struct {
 	Signature string `json:"signature,omitempty"`
 
 	// tool_use
-	ID    string      `json:"id,omitempty"`
-	Name  string      `json:"name,omitempty"`
-	Input any `json:"input,omitempty"`
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Input any    `json:"input,omitempty"`
 REDACTED
 
 // ClaudeUsage Claude 用量统计

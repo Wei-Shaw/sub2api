@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.reAuthorizeAccount')"
-    width="wide"
+    width="normal"
     @close="handleClose"
   >
     <div v-if="account" class="space-y-4">
