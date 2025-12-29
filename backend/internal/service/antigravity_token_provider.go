@@ -19,8 +19,8 @@ type AntigravityTokenCache = GeminiTokenCache
 
 // AntigravityTokenProvider 管理 Antigravity 账户的 access_token
 type AntigravityTokenProvider struct {
-	accountRepo            AccountRepository
-	tokenCache             AntigravityTokenCache
+	accountRepo             AccountRepository
+	tokenCache              AntigravityTokenCache
 	antigravityOAuthService *AntigravityOAuthService
 REDACTED
 
@@ -30,8 +30,8 @@ func NewAntigravityTokenProvider(
 	antigravityOAuthService *AntigravityOAuthService,
 ) *AntigravityTokenProvider {
 	return &AntigravityTokenProvider{
-		accountRepo:            accountRepo,
-		tokenCache:             tokenCache,
+		accountRepo:             accountRepo,
+		tokenCache:              tokenCache,
 		antigravityOAuthService: antigravityOAuthService,
 REDACTED
 REDACTED

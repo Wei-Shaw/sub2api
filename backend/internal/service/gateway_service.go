@@ -31,7 +31,6 @@ const (
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 )
 
-
 // sseDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var sseDataRe = regexp.MustCompile(`^data:\s*`)
