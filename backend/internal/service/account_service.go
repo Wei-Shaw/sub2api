@@ -16,6 +16,8 @@ var (
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
 	GetByID(ctx context.Context, id int64) (*Account, error)
+	// ExistsByID 检查账号是否存在，仅返回布尔值，用于删除前的轻量级存在性检查
+	ExistsByID(ctx context.Context, id int64) (bool, error)
 	// GetByCRSAccountID finds an account previously synced from CRS.
 	// Returns (nil, nil) if not found.
 	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
@@ -235,11 +237,17 @@ REDACTED
 REDACTED
 
 // Delete 删除账号
+// 优化：使用 ExistsByID 替代 GetByID 进行存在性检查，
+// 避免加载完整账号对象及其关联数据，提升删除操作的性能
 func (s *AccountService) Delete(ctx context.Context, id int64) error {
-	// 检查账号是否存在
-	_, err := s.accountRepo.GetByID(ctx, id)
+	// 使用轻量级的存在性检查，而非加载完整账号对象
+	exists, err := s.accountRepo.ExistsByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("get account: %w", err)
+		return fmt.Errorf("check account: %w", err)
+REDACTED
+	// 明确返回账号不存在错误，便于调用方区分错误类型
+	if !exists {
+		return ErrAccountNotFound
 REDACTED
 
 	if err := s.accountRepo.Delete(ctx, id); err != nil {

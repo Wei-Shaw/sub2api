@@ -823,6 +823,11 @@ const handleSubmit = async () => {
   REDACTED
 REDACTED
 
+/**
+ * 处理删除 API Key 的操作
+ * 优化：错误处理改进，优先显示后端返回的具体错误消息（如权限不足等），
+ * 若后端未返回消息则显示默认的国际化文本
+ */
 const handleDelete = async () => {
   if (!selectedKey.value) return
 
@@ -831,8 +836,10 @@ const handleDelete = async () => {
     appStore.showSuccess(t('keys.keyDeletedSuccess'))
     showDeleteDialog.value = false
     loadApiKeys()
-  REDACTED catch (error) {
-    appStore.showError(t('keys.failedToDelete'))
+  REDACTED catch (error: any) {
+    // 优先使用后端返回的错误消息，提供更具体的错误信息给用户
+    const errorMsg = error?.message || t('keys.failedToDelete')
+    appStore.showError(errorMsg)
   REDACTED
 REDACTED
 

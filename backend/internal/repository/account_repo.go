@@ -128,6 +128,19 @@ REDACTED
 	return &accounts[0], nil
 REDACTED
 
+// ExistsByID 检查指定 ID 的账号是否存在。
+// 相比 GetByID，此方法性能更优，因为：
+//   - 使用 Exist() 方法生成 SELECT EXISTS 查询，只返回布尔值
+//   - 不加载完整的账号实体及其关联数据（Groups、Proxy 等）
+//   - 适用于删除前的存在性检查等只需判断有无的场景
+func (r *accountRepository) ExistsByID(ctx context.Context, id int64) (bool, error) {
+	exists, err := r.client.Account.Query().Where(dbaccount.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return false, err
+REDACTED
+	return exists, nil
+REDACTED
+
 func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*service.Account, error) {
 	if crsAccountID == "" {
 		return nil, nil
