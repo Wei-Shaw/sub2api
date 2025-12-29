@@ -40,4 +40,24 @@ REDACTED
 
 	// OpenAI Responses API（不带v1前缀的别名）
 	r.POST("/responses", gin.HandlerFunc(apiKeyAuth), h.OpenAIGateway.Responses)
+
+	// Antigravity 专用路由（仅使用 antigravity 账户，不混合调度）
+	antigravityV1 := r.Group("/antigravity/v1")
+	antigravityV1.Use(middleware.ForcePlatform(service.PlatformAntigravity))
+	antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))
+	{
+		antigravityV1.POST("/messages", h.Gateway.Messages)
+		antigravityV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
+		antigravityV1.GET("/models", h.Gateway.Models)
+		antigravityV1.GET("/usage", h.Gateway.Usage)
+REDACTED
+
+	antigravityV1Beta := r.Group("/antigravity/v1beta")
+	antigravityV1Beta.Use(middleware.ForcePlatform(service.PlatformAntigravity))
+	antigravityV1Beta.Use(middleware.ApiKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService))
+	{
+		antigravityV1Beta.GET("/models", h.Gateway.GeminiV1BetaListModels)
+		antigravityV1Beta.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
+		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
+REDACTED
 REDACTED

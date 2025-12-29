@@ -72,9 +72,13 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 REDACTED
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
-	// 根据分组 platform 决定查询哪种账号
+	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
-	if groupID != nil {
+	forcePlatform, hasForcePlatform := ctx.Value(ctxKeyForcePlatform).(string)
+	if hasForcePlatform && forcePlatform != "" {
+		platform = forcePlatform
+REDACTED else if groupID != nil {
+		// 根据分组 platform 决定查询哪种账号
 		group, err := s.groupRepo.GetByID(ctx, *groupID)
 		if err != nil {
 			return nil, fmt.Errorf("get group failed: %w", err)
@@ -86,7 +90,8 @@ REDACTED else {
 REDACTED
 
 	// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
-	useMixedScheduling := platform == PlatformGemini
+	// 注意：强制平台模式不走混合调度
+	useMixedScheduling := platform == PlatformGemini && !hasForcePlatform
 	var queryPlatforms []string
 	if useMixedScheduling {
 		queryPlatforms = []string{PlatformGemini, PlatformAntigravityREDACTED
@@ -118,11 +123,18 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 查询可调度账户
+	// 查询可调度账户（强制平台模式：优先按分组查找，找不到再查全部）
 	var accounts []Account
 	var err error
 	if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, queryPlatforms)
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+	REDACTED
+		// 强制平台模式下，分组中找不到账户时回退查询全部
+		if len(accounts) == 0 && hasForcePlatform {
+			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
+	REDACTED
 REDACTED else {
 		accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
 REDACTED

@@ -25,8 +25,16 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 REDACTED
-	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
+	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
+	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
+		return
+REDACTED
+
+	// 强制 antigravity 模式：直接返回静态模型列表
+	if forcePlatform == service.PlatformAntigravity {
+		c.JSON(http.StatusOK, gemini.FallbackModelsList())
 		return
 REDACTED
 
@@ -63,7 +71,9 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 		googleError(c, http.StatusUnauthorized, "Invalid API key")
 		return
 REDACTED
-	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
+	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
+	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 REDACTED
@@ -71,6 +81,12 @@ REDACTED
 	modelName := strings.TrimSpace(c.Param("model"))
 	if modelName == "" {
 		googleError(c, http.StatusBadRequest, "Missing model in URL")
+		return
+REDACTED
+
+	// 强制 antigravity 模式：直接返回静态模型信息
+	if forcePlatform == service.PlatformAntigravity {
+		c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
 		return
 REDACTED
 
@@ -114,9 +130,12 @@ REDACTED
 		return
 REDACTED
 
-	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
-		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
-		return
+	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
+	if !middleware.HasForcePlatform(c) {
+		if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
+			return
+	REDACTED
 REDACTED
 
 	modelName, action, err := parseGeminiModelAction(strings.TrimPrefix(c.Param("modelAction"), "/"))

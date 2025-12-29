@@ -126,8 +126,11 @@ REDACTED
 	// 计算粘性会话hash
 	sessionHash := h.gatewayService.GenerateSessionHash(body)
 
+	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
 	platform := ""
-	if apiKey.Group != nil {
+	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
+		platform = forcePlatform
+REDACTED else if apiKey.Group != nil {
 		platform = apiKey.Group.Platform
 REDACTED
 

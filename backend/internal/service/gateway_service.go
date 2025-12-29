@@ -30,6 +30,10 @@ const (
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 )
 
+// ctxKeyForcePlatform 用于从 context 读取强制平台（由 middleware.ForcePlatform 设置）
+// 必须与 middleware.ctxKeyForcePlatformStr 使用相同的字符串值
+const ctxKeyForcePlatform = "ctx_force_platform"
+
 // sseDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var sseDataRe = regexp.MustCompile(`^data:\s*`)
@@ -294,9 +298,13 @@ REDACTED
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
-	// 根据分组 platform 决定查询哪种账号
+	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
-	if groupID != nil {
+	forcePlatform, hasForcePlatform := ctx.Value(ctxKeyForcePlatform).(string)
+	if hasForcePlatform && forcePlatform != "" {
+		platform = forcePlatform
+REDACTED else if groupID != nil {
+		// 根据分组 platform 决定查询哪种账号
 		group, err := s.groupRepo.GetByID(ctx, *groupID)
 		if err != nil {
 			return nil, fmt.Errorf("get group failed: %w", err)
@@ -308,11 +316,22 @@ REDACTED else {
 REDACTED
 
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
-	if platform == PlatformAnthropic || platform == PlatformGemini {
+	// 注意：强制平台模式不走混合调度
+	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
 		return s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 REDACTED
 
-	// antigravity 分组或无分组使用单平台选择
+	// 强制平台模式：优先按分组查找，找不到再查全部该平台账户
+	if hasForcePlatform && groupID != nil {
+		account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		if err == nil {
+			return account, nil
+	REDACTED
+		// 分组中找不到，回退查询全部该平台账户
+		groupID = nil
+REDACTED
+
+	// antigravity 分组、强制平台模式或无分组使用单平台选择
 	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 REDACTED
 

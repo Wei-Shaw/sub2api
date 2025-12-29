@@ -231,7 +231,7 @@ func testGeminiGenerate(t *testing.T, model string, stream bool) {
 	if stream {
 		action = "streamGenerateContent"
 REDACTED
-	url := fmt.Sprintf("%s/v1beta/models/%s:%s", baseURL, model, action)
+	url := fmt.Sprintf("%s%s/v1beta/models/%s:%s", baseURL, endpointPrefix, model, action)
 	if stream {
 		url += "?alt=sse"
 REDACTED
