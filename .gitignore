@@ -111,4 +111,6 @@ CLAUDE.md
 .claude
 scripts
 .code-review-state
-
+openspec/
+code-reviews/
+docs/
