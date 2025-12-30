@@ -1,6 +1,7 @@
 package antigravity
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,19 @@ import (
 	"strings"
 	"time"
 )
+
+// NewAPIRequest 创建 Antigravity API 请求（v1internal 端点）
+func NewAPIRequest(ctx context.Context, action, accessToken string, body []byte) (*http.Request, error) {
+	apiURL := fmt.Sprintf("%s/v1internal:%s", BaseURL, action)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("User-Agent", UserAgent)
+	return req, nil
+REDACTED
 
 // TokenResponse Google OAuth token 响应
 type TokenResponse struct {

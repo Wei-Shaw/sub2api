@@ -125,8 +125,8 @@ func (r *AntigravityQuotaRefresher) refreshAccountQuota(ctx context.Context, acc
 	accessToken := account.GetCredential("access_token")
 	projectID := account.GetCredential("project_id")
 
-	if accessToken == "" || projectID == "" {
-		return nil // 没有有效凭证，跳过
+	if accessToken == "" {
+		return nil // 没有 access_token，跳过
 REDACTED
 
 	// token 过期则跳过，由 TokenRefreshService 负责刷新
@@ -151,7 +151,10 @@ REDACTED
 		r.updateAccountTier(account, loadResp)
 REDACTED
 
-	// 调用 API 获取配额
+	// 调用 API 获取配额（需要 projectID）
+	if projectID == "" {
+		return r.accountRepo.Update(ctx, account) // 没有 projectID，只更新 tier
+REDACTED
 	modelsResp, err := client.FetchAvailableModels(ctx, accessToken, projectID)
 	if err != nil {
 		return err

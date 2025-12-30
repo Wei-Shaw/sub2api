@@ -141,7 +141,7 @@ REDACTED else {
 		result.Email = userInfo.Email
 REDACTED
 
-	// 获取 project_id
+	// 获取 project_id（部分账户类型可能没有）
 	loadResp, err := client.LoadCodeAssist(ctx, tokenResp.AccessToken)
 	if err != nil {
 		fmt.Printf("[AntigravityOAuth] 警告: 获取 project_id 失败: %v\n", err)
