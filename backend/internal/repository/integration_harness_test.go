@@ -93,7 +93,8 @@ REDACTED
 		log.Printf("failed to open gorm db: %v", err)
 		os.Exit(1)
 REDACTED
-	if err := AutoMigrate(integrationDB); err != nil {
+	// 使用 simple 模式以便测试默认分组功能
+	if err := AutoMigrate(integrationDB, "simple"); err != nil {
 		log.Printf("failed to automigrate db: %v", err)
 		os.Exit(1)
 REDACTED

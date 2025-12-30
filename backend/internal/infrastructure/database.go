@@ -30,7 +30,7 @@ REDACTED
 
 	// 自动迁移（始终执行，确保数据库结构与代码同步）
 	// GORM 的 AutoMigrate 只会添加新字段，不会删除或修改已有字段，是安全的
-	if err := repository.AutoMigrate(db); err != nil {
+	if err := repository.AutoMigrate(db, cfg.RunMode); err != nil {
 		return nil, err
 REDACTED
 

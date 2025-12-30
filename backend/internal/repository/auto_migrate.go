@@ -13,7 +13,8 @@ var maxExpiresAt = time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
 
 // AutoMigrate runs schema migrations for all repository persistence models.
 // Persistence models are defined within individual `*_repo.go` files.
-func AutoMigrate(db *gorm.DB) error {
+// runMode: "standard" or "simple" - determines whether to create default groups
+func AutoMigrate(db *gorm.DB, runMode string) error {
 	err := db.AutoMigrate(
 		&userModel{REDACTED,
 		&apiKeyModel{REDACTED,
@@ -31,7 +32,7 @@ func AutoMigrate(db *gorm.DB) error {
 REDACTED
 
 	// 创建默认分组(简易模式支持)
-	if err := ensureDefaultGroups(db); err != nil {
+	if err := ensureDefaultGroups(db, runMode); err != nil {
 		return err
 REDACTED
 
@@ -55,7 +56,13 @@ REDACTED
 
 // ensureDefaultGroups 确保默认分组存在(简易模式支持)
 // 为每个平台创建一个默认分组,配置最大权限以确保简易模式下不受限制
-func ensureDefaultGroups(db *gorm.DB) error {
+// runMode: "standard" 时跳过创建, "simple" 时创建/恢复默认分组
+func ensureDefaultGroups(db *gorm.DB, runMode string) error {
+	// 标准版不创建默认分组
+	if runMode == "standard" {
+		return nil
+REDACTED
+
 	defaultGroups := []struct {
 		name        string
 		platform    string
@@ -79,12 +86,34 @@ REDACTED{
 REDACTED
 
 	for _, dg := range defaultGroups {
-		var count int64
-		if err := db.Model(&groupModel{REDACTED).Where("name = ?", dg.name).Count(&count).Error; err != nil {
+		// 步骤1: 检查是否有软删除的记录
+		var softDeletedCount int64
+		if err := db.Unscoped().Model(&groupModel{REDACTED).
+			Where("name = ? AND deleted_at IS NOT NULL", dg.name).
+			Count(&softDeletedCount).Error; err != nil {
 			return err
 	REDACTED
 
-		if count == 0 {
+		if softDeletedCount > 0 {
+			// 恢复软删除的记录
+			if err := db.Unscoped().Model(&groupModel{REDACTED).
+				Where("name = ?", dg.name).
+				Update("deleted_at", nil).Error; err != nil {
+				log.Printf("[AutoMigrate] Failed to restore default group %s: %v", dg.name, err)
+				return err
+		REDACTED
+			log.Printf("[AutoMigrate] Restored default group: %s (platform: %s)", dg.name, dg.platform)
+			continue
+	REDACTED
+
+		// 步骤2: 检查是否有活跃记录
+		var activeCount int64
+		if err := db.Model(&groupModel{REDACTED).Where("name = ?", dg.name).Count(&activeCount).Error; err != nil {
+			return err
+	REDACTED
+
+		if activeCount == 0 {
+			// 创建新分组
 			group := &groupModel{
 				Name:             dg.name,
 				Description:      dg.description,
