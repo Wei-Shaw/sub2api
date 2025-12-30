@@ -464,6 +464,56 @@ func (r *accountRepository) ListSchedulableByGroupIDAndPlatform(ctx context.Cont
 REDACTED)
 REDACTED
 
+func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
+	if len(platforms) == 0 {
+		return nil, nil
+REDACTED
+	var accounts []accountModel
+	now := time.Now()
+	err := r.db.WithContext(ctx).
+		Where("platform IN ?", platforms).
+		Where("status = ? AND schedulable = ?", service.StatusActive, true).
+		Where("(overload_until IS NULL OR overload_until <= ?)", now).
+		Where("(rate_limit_reset_at IS NULL OR rate_limit_reset_at <= ?)", now).
+		Preload("Proxy").
+		Order("priority ASC").
+		Find(&accounts).Error
+	if err != nil {
+		return nil, err
+REDACTED
+	outAccounts := make([]service.Account, 0, len(accounts))
+	for i := range accounts {
+		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
+REDACTED
+	return outAccounts, nil
+REDACTED
+
+func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]service.Account, error) {
+	if len(platforms) == 0 {
+		return nil, nil
+REDACTED
+	var accounts []accountModel
+	now := time.Now()
+	err := r.db.WithContext(ctx).
+		Joins("JOIN account_groups ON account_groups.account_id = accounts.id").
+		Where("account_groups.group_id = ?", groupID).
+		Where("accounts.platform IN ?", platforms).
+		Where("accounts.status = ? AND accounts.schedulable = ?", service.StatusActive, true).
+		Where("(accounts.overload_until IS NULL OR accounts.overload_until <= ?)", now).
+		Where("(accounts.rate_limit_reset_at IS NULL OR accounts.rate_limit_reset_at <= ?)", now).
+		Preload("Proxy").
+		Order("account_groups.priority ASC, accounts.priority ASC").
+		Find(&accounts).Error
+	if err != nil {
+		return nil, err
+REDACTED
+	outAccounts := make([]service.Account, 0, len(accounts))
+	for i := range accounts {
+		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
+REDACTED
+	return outAccounts, nil
+REDACTED
+
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	now := time.Now()
 	_, err := r.client.Account.Update().

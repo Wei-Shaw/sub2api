@@ -17,7 +17,7 @@ REDACTED
 func ProvidePricingService(cfg *config.Config, remoteClient PricingRemoteClient) (*PricingService, error) {
 	svc := NewPricingService(cfg, remoteClient)
 	if err := svc.Initialize(); err != nil {
-		// 价格服务初始化失败不应阻止启动,使用回退价格
+		// Pricing service initialization failure should not block startup, use fallback prices
 		println("[Service] Warning: Pricing service initialization failed:", err.Error())
 REDACTED
 	return svc, nil
@@ -39,9 +39,10 @@ func ProvideTokenRefreshService(
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
+	antigravityOAuthService *AntigravityOAuthService,
 	cfg *config.Config,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, cfg)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cfg)
 	svc.Start()
 	return svc
 REDACTED
@@ -49,6 +50,18 @@ REDACTED
 // ProvideTimingWheelService creates and starts TimingWheelService
 func ProvideTimingWheelService() *TimingWheelService {
 	svc := NewTimingWheelService()
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideAntigravityQuotaRefresher creates and starts AntigravityQuotaRefresher
+func ProvideAntigravityQuotaRefresher(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	oauthSvc *AntigravityOAuthService,
+	cfg *config.Config,
+) *AntigravityQuotaRefresher {
+	svc := NewAntigravityQuotaRefresher(accountRepo, proxyRepo, oauthSvc, cfg)
 	svc.Start()
 	return svc
 REDACTED
@@ -81,8 +94,11 @@ var ProviderSet = wire.NewSet(
 	NewOAuthService,
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
+	NewAntigravityOAuthService,
 	NewGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
+	NewAntigravityTokenProvider,
+	NewAntigravityGatewayService,
 	NewRateLimitService,
 	NewAccountUsageService,
 	NewAccountTestService,
@@ -98,4 +114,5 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenRefreshService,
 	ProvideTimingWheelService,
 	ProvideDeferredService,
+	ProvideAntigravityQuotaRefresher,
 )

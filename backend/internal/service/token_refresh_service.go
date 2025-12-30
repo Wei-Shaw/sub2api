@@ -27,6 +27,7 @@ func NewTokenRefreshService(
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
+	antigravityOAuthService *AntigravityOAuthService,
 	cfg *config.Config,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
@@ -40,6 +41,7 @@ REDACTED
 		NewClaudeTokenRefresher(oauthService),
 		NewOpenAITokenRefresher(openaiOAuthService),
 		NewGeminiTokenRefresher(geminiOAuthService),
+		NewAntigravityTokenRefresher(antigravityOAuthService),
 REDACTED
 
 	return s

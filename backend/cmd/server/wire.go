@@ -29,26 +29,26 @@ REDACTED
 
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	wire.Build(
-		// 基础设施层 ProviderSets
+		// Infrastructure layer ProviderSets
 		config.ProviderSet,
 		infrastructure.ProviderSet,
 
-		// 业务层 ProviderSets
+		// Business layer ProviderSets
 		repository.ProviderSet,
 		service.ProviderSet,
 		middleware.ProviderSet,
 		handler.ProviderSet,
 
-		// 服务器层 ProviderSet
+		// Server layer ProviderSet
 		server.ProviderSet,
 
 		// BuildInfo provider
 		provideServiceBuildInfo,
 
-		// 清理函数提供者
+		// Cleanup function provider
 		provideCleanup,
 
-		// 应用程序结构体
+		// Application struct
 		wire.Struct(new(Application), "Server", "Cleanup"),
 	)
 	return nil, nil
@@ -70,6 +70,8 @@ func provideCleanup(
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
+	antigravityOAuth *service.AntigravityOAuthService,
+	antigravityQuota *service.AntigravityQuotaRefresher,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -102,6 +104,14 @@ func provideCleanup(
 	REDACTED
 			{"GeminiOAuthService", func() error {
 				geminiOAuth.Stop()
+				return nil
+	REDACTED
+			{"AntigravityOAuthService", func() error {
+				antigravityOAuth.Stop()
+				return nil
+	REDACTED
+			{"AntigravityQuotaRefresher", func() error {
+				antigravityQuota.Stop()
 				return nil
 	REDACTED
 			{"Redis", func() error {

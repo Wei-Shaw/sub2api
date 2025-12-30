@@ -34,6 +34,9 @@ func RegisterAdminRoutes(
 		// Gemini OAuth
 		registerGeminiOAuthRoutes(admin, h)
 
+		// Antigravity OAuth
+		registerAntigravityOAuthRoutes(admin, h)
+
 		// 代理管理
 		registerProxyRoutes(admin, h)
 
@@ -145,6 +148,14 @@ func registerGeminiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		gemini.POST("/oauth/auth-url", h.Admin.GeminiOAuth.GenerateAuthURL)
 		gemini.POST("/oauth/exchange-code", h.Admin.GeminiOAuth.ExchangeCode)
 		gemini.GET("/oauth/capabilities", h.Admin.GeminiOAuth.GetCapabilities)
+REDACTED
+REDACTED
+
+func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	antigravity := admin.Group("/antigravity")
+	{
+		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
+		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
 REDACTED
 REDACTED
 

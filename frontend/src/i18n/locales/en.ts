@@ -33,6 +33,7 @@ export default {
       soon: 'Soon',
       claude: 'Claude',
       gemini: 'Gemini',
+      antigravity: 'Antigravity',
       more: 'More'
     REDACTED,
     footer: {
@@ -842,14 +843,16 @@ export default {
         anthropic: 'Anthropic',
         claude: 'Claude',
         openai: 'OpenAI',
-        gemini: 'Gemini'
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
       REDACTED,
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
-        codeAssist: 'Code Assist'
+        codeAssist: 'Code Assist',
+        antigravityOauth: 'Antigravity OAuth'
       REDACTED,
       columns: {
         name: 'Name',
@@ -959,6 +962,10 @@ export default {
       priority: 'Priority',
       priorityHint: 'Higher priority accounts are used first',
       higherPriorityFirst: 'Higher value means higher priority',
+      mixedScheduling: 'Mixed Scheduling',
+      mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
+      mixedSchedulingTooltip:
+        'When enabled, this account can be scheduled by /v1/messages and /v1beta endpoints. Otherwise, it will only be scheduled by /antigravity. Note: Anthropic Claude and Antigravity Claude cannot be mixed in the same context. Please manage groups carefully when enabled.',
       creating: 'Creating...',
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
@@ -1083,7 +1090,28 @@ export default {
 	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback (Consent screen scopes must include https://www.googleapis.com/auth/generative-language.retriever)',
 	          aiStudioNotConfigured:
 	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback'
-	        REDACTED
+	        REDACTED,
+        // Antigravity specific
+        antigravity: {
+          title: 'Antigravity Account Authorization',
+          followSteps: 'Follow these steps to authorize your Antigravity account:',
+          step1GenerateUrl: 'Generate the authorization URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and complete authorization',
+          openUrlDesc: 'Open the authorization URL in a new tab, log in to your Google account and authorize.',
+          importantNotice:
+            '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar shows <code>http://localhost...</code>, authorization is complete.',
+          step3EnterCode: 'Enter Authorization URL or Code',
+          authCodeDesc:
+            'After authorization, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+          authCode: 'Authorization URL or Code',
+          authCodePlaceholder:
+            'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
+          authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+          failedToGenerateUrl: 'Failed to generate Antigravity auth URL',
+          missingExchangeParams: 'Missing code, session ID, or state',
+          failedToExchangeCode: 'Failed to exchange Antigravity auth code'
+        REDACTED
 	      REDACTED,
       // Gemini specific (platform-wide)
       gemini: {
@@ -1098,6 +1126,7 @@ export default {
       claudeCodeAccount: 'Claude Code Account',
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
+      antigravityAccount: 'Antigravity Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
@@ -1155,7 +1184,16 @@ export default {
         noData: 'No usage data available for this account'
       REDACTED,
       usageWindow: {
-        statsTitle: '5-Hour Window Usage Statistics'
+        statsTitle: '5-Hour Window Usage Statistics',
+        gemini3Pro: 'G3P',
+        gemini3Flash: 'G3F',
+        gemini3Image: 'G3I',
+        claude45: 'C4.5'
+      REDACTED,
+      tier: {
+        free: 'Free',
+        pro: 'Pro',
+        ultra: 'Ultra'
       REDACTED
     REDACTED,
 

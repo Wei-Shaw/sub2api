@@ -307,6 +307,32 @@ go generate ./cmd/server
 
 ---
 
+## Antigravity 使用说明
+
+Sub2API 支持 [Antigravity](https://antigravity.so/) 账户，授权后可通过专用端点访问 Claude 和 Gemini 模型。
+
+### 专用端点
+
+| 端点 | 模型 |
+|------|------|
+| `/antigravity/v1/messages` | Claude 模型 |
+| `/antigravity/v1beta/` | Gemini 模型 |
+
+### Claude Code 配置示例
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:8080/antigravity"
+export ANTHROPIC_AUTH_TOKEN="sk-xxx"
+```
+
+### 混合调度模式
+
+Antigravity 账户支持可选的**混合调度**功能。开启后，通用端点 `/v1/messages` 和 `/v1beta/` 也会调度该账户。
+
+> **⚠️ 注意**：Anthropic Claude 和 Antigravity Claude **不能在同一上下文中混合使用**，请通过分组功能做好隔离。
+
+---
+
 ## 项目结构
 
 ```
