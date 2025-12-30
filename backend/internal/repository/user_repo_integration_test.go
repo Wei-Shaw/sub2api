@@ -76,8 +76,8 @@ func (s *UserRepoSuite) mustCreateSubscription(userID, groupID int64, mutate fun
 	create := s.client.UserSubscription.Create().
 		SetUserID(userID).
 		SetGroupID(groupID).
-		SetStartsAt(now.Add(-1*time.Hour)).
-		SetExpiresAt(now.Add(24*time.Hour)).
+		SetStartsAt(now.Add(-1 * time.Hour)).
+		SetExpiresAt(now.Add(24 * time.Hour)).
 		SetStatus(service.SubscriptionStatusActive).
 		SetAssignedAt(now).
 		SetNotes("")
@@ -507,4 +507,3 @@ REDACTED)
 	s.Require().Len(users, 1, "ListWithFilters len mismatch")
 	s.Require().Equal(user2.ID, users[0].ID, "ListWithFilters result mismatch")
 REDACTED
-

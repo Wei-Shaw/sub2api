@@ -146,8 +146,8 @@ func TestApiKeyService_Delete_OwnerMismatch(t *testing.T) {
 
 	err := svc.Delete(context.Background(), 10, 2) // API Key ID=10, 调用者 userID=2
 	require.ErrorIs(t, err, ErrInsufficientPerms)
-	require.Empty(t, repo.deletedIDs)    // 验证删除操作未被调用
-	require.Empty(t, cache.invalidated)  // 验证缓存未被清除
+	require.Empty(t, repo.deletedIDs)   // 验证删除操作未被调用
+	require.Empty(t, cache.invalidated) // 验证缓存未被清除
 REDACTED
 
 // TestApiKeyService_Delete_Success 测试所有者成功删除 API Key 的场景。
@@ -164,7 +164,7 @@ func TestApiKeyService_Delete_Success(t *testing.T) {
 
 	err := svc.Delete(context.Background(), 42, 7) // API Key ID=42, 调用者 userID=7
 REDACTED
-	require.Equal(t, []int64{42REDACTED, repo.deletedIDs) // 验证正确的 API Key 被删除
+	require.Equal(t, []int64{42REDACTED, repo.deletedIDs)  // 验证正确的 API Key 被删除
 	require.Equal(t, []int64{7REDACTED, cache.invalidated) // 验证所有者的缓存被清除
 REDACTED
 
