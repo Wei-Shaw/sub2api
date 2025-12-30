@@ -145,10 +145,16 @@ REDACTED
 
 	client := antigravity.NewClient(proxyURL)
 
-	// 获取账户类型（tier）和 project_id
-	loadResp, _ := client.LoadCodeAssist(ctx, accessToken)
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+REDACTED
+
+	// 获取账户信息（tier、project_id 等）
+	loadResp, loadRaw, _ := client.LoadCodeAssist(ctx, accessToken)
+	if loadRaw != nil {
+		account.Extra["load_code_assist"] = loadRaw
+REDACTED
 	if loadResp != nil {
-		r.updateAccountTier(account, loadResp)
 		// 尝试从 API 获取 project_id
 		if projectID == "" && loadResp.CloudAICompanionProject != "" {
 			projectID = loadResp.CloudAICompanionProject
@@ -164,13 +170,20 @@ REDACTED
 REDACTED
 
 	// 调用 API 获取配额
-	modelsResp, err := client.FetchAvailableModels(ctx, accessToken, projectID)
+	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID)
 	if err != nil {
-		return err
+		return r.accountRepo.Update(ctx, account) // 保存已有的 load_code_assist 信息
 REDACTED
 
-	// 解析配额数据并更新 extra 字段
+	// 保存完整的配额响应
+	if modelsRaw != nil {
+		account.Extra["available_models"] = modelsRaw
+REDACTED
+
+	// 解析配额数据为前端使用的格式
 	r.updateAccountQuota(account, modelsResp)
+
+	account.Extra["last_refresh"] = time.Now().Format(time.RFC3339)
 
 	// 保存到数据库
 	return r.accountRepo.Update(ctx, account)
@@ -187,35 +200,8 @@ REDACTED
 	return time.Now().Add(5 * time.Minute).After(*expiresAt)
 REDACTED
 
-// updateAccountTier 更新账户类型信息
-func (r *AntigravityQuotaRefresher) updateAccountTier(account *Account, loadResp *antigravity.LoadCodeAssistResponse) {
-	if account.Extra == nil {
-		account.Extra = make(map[string]any)
-REDACTED
-
-	tier := loadResp.GetTier()
-	if tier != "" {
-		account.Extra["tier"] = tier
-REDACTED
-
-	// 保存不符合条件的原因（如 INELIGIBLE_ACCOUNT）
-	if len(loadResp.IneligibleTiers) > 0 && loadResp.IneligibleTiers[0] != nil {
-		ineligible := loadResp.IneligibleTiers[0]
-		if ineligible.ReasonCode != "" {
-			account.Extra["ineligible_reason_code"] = ineligible.ReasonCode
-	REDACTED
-		if ineligible.ReasonMessage != "" {
-			account.Extra["ineligible_reason_message"] = ineligible.ReasonMessage
-	REDACTED
-REDACTED
-REDACTED
-
-// updateAccountQuota 更新账户的配额信息
+// updateAccountQuota 更新账户的配额信息（前端使用的格式）
 func (r *AntigravityQuotaRefresher) updateAccountQuota(account *Account, modelsResp *antigravity.FetchAvailableModelsResponse) {
-	if account.Extra == nil {
-		account.Extra = make(map[string]any)
-REDACTED
-
 	quota := make(map[string]any)
 
 	for modelName, modelInfo := range modelsResp.Models {
@@ -233,5 +219,4 @@ REDACTED
 REDACTED
 
 	account.Extra["quota"] = quota
-	account.Extra["last_quota_check"] = time.Now().Format(time.RFC3339)
 REDACTED

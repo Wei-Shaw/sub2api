@@ -403,11 +403,26 @@ const antigravityClaude45Usage = computed(() =>
   getAntigravityUsage(['claude-sonnet-4-5', 'claude-opus-4-5-thinking'])
 )
 
-// Antigravity 账户类型
+// Antigravity 账户类型（从 load_code_assist 响应中提取）
 const antigravityTier = computed(() => {
   const extra = props.account.extra as Record<string, unknown> | undefined
-  if (!extra || typeof extra.tier !== 'string') return null
-  return extra.tier as string
+  if (!extra) return null
+
+  const loadCodeAssist = extra.load_code_assist as Record<string, unknown> | undefined
+  if (!loadCodeAssist) return null
+
+  // 优先取 paidTier，否则取 currentTier
+  const paidTier = loadCodeAssist.paidTier as Record<string, unknown> | undefined
+  if (paidTier && typeof paidTier.id === 'string') {
+    return paidTier.id
+  REDACTED
+
+  const currentTier = loadCodeAssist.currentTier as Record<string, unknown> | undefined
+  if (currentTier && typeof currentTier.id === 'string') {
+    return currentTier.id
+  REDACTED
+
+  return null
 REDACTED)
 
 // 账户类型显示标签
