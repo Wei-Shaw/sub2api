@@ -110,3 +110,5 @@ tests
 CLAUDE.md
 .claude
 scripts
+.code-review-state
+
