@@ -116,6 +116,7 @@ REDACTED
 REDACTED
 
 // ChangePassword 修改密码
+// Security: Increments TokenVersion to invalidate all existing JWT tokens
 func (s *UserService) ChangePassword(ctx context.Context, userID int64, req ChangePasswordRequest) error {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -130,6 +131,10 @@ REDACTED
 	if err := user.SetPassword(req.NewPassword); err != nil {
 		return fmt.Errorf("set password: %w", err)
 REDACTED
+
+	// Increment TokenVersion to invalidate all existing tokens
+	// This ensures that any tokens issued before the password change become invalid
+	user.TokenVersion++
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("update user: %w", err)
