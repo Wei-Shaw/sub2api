@@ -334,7 +334,7 @@ REDACTED
 
 	idx := 1
 	for id, ts := range updates {
-		caseSQL += " WHEN $" + itoa(idx) + " THEN $" + itoa(idx+1)
+		caseSQL += " WHEN $" + itoa(idx) + " THEN $" + itoa(idx+1) + "::timestamptz"
 		args = append(args, id, ts)
 		ids = append(ids, id)
 		idx += 2
