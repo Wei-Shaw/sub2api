@@ -457,10 +457,11 @@ REDACTED
 REDACTED
 
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]service.Account, error) {
+	// 单平台查询复用多平台逻辑，保持过滤条件与排序策略一致。
 	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
 		status:      service.StatusActive,
 		schedulable: true,
-		platform:    platform,
+		platforms:   []string{platformREDACTED,
 REDACTED)
 REDACTED
 
@@ -468,50 +469,35 @@ func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, plat
 	if len(platforms) == 0 {
 		return nil, nil
 REDACTED
-	var accounts []accountModel
+	// 仅返回可调度的活跃账号，并过滤处于过载/限流窗口的账号。
+	// 代理与分组信息统一在 accountsToService 中批量加载，避免 N+1 查询。
 	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Where("platform IN ?", platforms).
-		Where("status = ? AND schedulable = ?", service.StatusActive, true).
-		Where("(overload_until IS NULL OR overload_until <= ?)", now).
-		Where("(rate_limit_reset_at IS NULL OR rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("priority ASC").
-		Find(&accounts).Error
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformIn(platforms...),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return r.accountsToService(ctx, accounts)
 REDACTED
 
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]service.Account, error) {
 	if len(platforms) == 0 {
 		return nil, nil
 REDACTED
-	var accounts []accountModel
-	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Joins("JOIN account_groups ON account_groups.account_id = accounts.id").
-		Where("account_groups.group_id = ?", groupID).
-		Where("accounts.platform IN ?", platforms).
-		Where("accounts.status = ? AND accounts.schedulable = ?", service.StatusActive, true).
-		Where("(accounts.overload_until IS NULL OR accounts.overload_until <= ?)", now).
-		Where("(accounts.rate_limit_reset_at IS NULL OR accounts.rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("account_groups.priority ASC, accounts.priority ASC").
-		Find(&accounts).Error
-	if err != nil {
-		return nil, err
-REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	// 复用按分组查询逻辑，保证分组优先级 + 账号优先级的排序与筛选一致。
+	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
+		status:      service.StatusActive,
+		schedulable: true,
+		platforms:   platforms,
+REDACTED)
 REDACTED
 
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
@@ -666,20 +652,21 @@ REDACTED
 type accountGroupQueryOptions struct {
 	status      string
 	schedulable bool
-	platform    string
+	platforms   []string // 允许的多个平台，空切片表示不进行平台过滤
 REDACTED
 
 func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID int64, opts accountGroupQueryOptions) ([]service.Account, error) {
 	q := r.client.AccountGroup.Query().
 		Where(dbaccountgroup.GroupIDEQ(groupID))
 
+	// 通过 account_groups 中间表查询账号，并按需叠加状态/平台/调度能力过滤。
 	preds := make([]dbpredicate.Account, 0, 6)
 	preds = append(preds, dbaccount.DeletedAtIsNil())
 	if opts.status != "" {
 		preds = append(preds, dbaccount.StatusEQ(opts.status))
 REDACTED
-	if opts.platform != "" {
-		preds = append(preds, dbaccount.PlatformEQ(opts.platform))
+	if len(opts.platforms) > 0 {
+		preds = append(preds, dbaccount.PlatformIn(opts.platforms...))
 REDACTED
 	if opts.schedulable {
 		now := time.Now()
