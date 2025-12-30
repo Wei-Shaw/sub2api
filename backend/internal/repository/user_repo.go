@@ -198,6 +198,7 @@ type userModel struct {
 	Concurrency   int            `gorm:"default:5;not null"`
 	Status        string         `gorm:"size:20;default:active;not null"`
 	AllowedGroups pq.Int64Array  `gorm:"type:bigint[]"`
+	TokenVersion  int64          `gorm:"default:0;not null"` // Incremented on password change
 	CreatedAt     time.Time      `gorm:"not null"`
 	UpdatedAt     time.Time      `gorm:"not null"`
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
@@ -221,6 +222,7 @@ REDACTED
 		Concurrency:   m.Concurrency,
 		Status:        m.Status,
 		AllowedGroups: []int64(m.AllowedGroups),
+		TokenVersion:  m.TokenVersion,
 		CreatedAt:     m.CreatedAt,
 		UpdatedAt:     m.UpdatedAt,
 REDACTED
@@ -242,6 +244,7 @@ REDACTED
 		Concurrency:   u.Concurrency,
 		Status:        u.Status,
 		AllowedGroups: pq.Int64Array(u.AllowedGroups),
+		TokenVersion:  u.TokenVersion,
 		CreatedAt:     u.CreatedAt,
 		UpdatedAt:     u.UpdatedAt,
 REDACTED
@@ -252,6 +255,7 @@ func applyUserModelToService(dst *service.User, src *userModel) {
 		return
 REDACTED
 	dst.ID = src.ID
+	dst.TokenVersion = src.TokenVersion
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
 REDACTED
