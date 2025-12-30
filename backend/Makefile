@@ -1,4 +1,4 @@
-.PHONY: wire build build-embed test-unit test-integration test-e2e test-cover-integration clean-coverage
+.PHONY: wire build build-embed test-unit test-integration test-e2e test-cover-integration
 
 wire:
 	@echo "生成 Wire 代码..."
