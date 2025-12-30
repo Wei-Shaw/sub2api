@@ -328,7 +328,7 @@ REDACTED else if account.Type == "apikey" {
 		if baseURL == "" {
 			baseURL = "https://api.openai.com"
 	REDACTED
-		apiURL = strings.TrimSuffix(baseURL, "/") + "/v1/responses"
+		apiURL = strings.TrimSuffix(baseURL, "/") + "/responses"
 REDACTED else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 REDACTED
