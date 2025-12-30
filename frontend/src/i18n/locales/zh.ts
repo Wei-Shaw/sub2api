@@ -994,6 +994,8 @@ export default {
         pro: 'Pro',
         ultra: 'Ultra'
       REDACTED,
+      ineligibleWarning:
+        '该账号无 Antigravity 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
       form: {
         nameLabel: '账号名称',
         namePlaceholder: '请输入账号名称',
