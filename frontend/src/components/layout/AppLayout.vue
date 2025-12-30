@@ -23,11 +23,30 @@
 </template>
 
 <script setup lang="ts">
-import { computed REDACTED from 'vue'
+import '@/styles/onboarding.css'
+import { computed, onMounted REDACTED from 'vue'
 import { useAppStore REDACTED from '@/stores'
+import { useAuthStore REDACTED from '@/stores/auth'
+import { useOnboardingTour REDACTED from '@/composables/useOnboardingTour'
+import { useOnboardingStore REDACTED from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
+const isAdmin = computed(() => authStore.user?.role === 'admin')
+
+const { replayTour REDACTED = useOnboardingTour({
+  storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',
+  autoStart: true
+REDACTED)
+
+const onboardingStore = useOnboardingStore()
+
+onMounted(() => {
+  onboardingStore.setReplayCallback(replayTour)
+REDACTED)
+
+defineExpose({ replayTour REDACTED)
 </script>

@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.createAccount')"
-    width="wide"
+    width="normal"
     @close="handleClose"
   >
     <!-- Step Indicator for OAuth accounts -->
@@ -53,13 +53,14 @@
           required
           class="input"
           :placeholder="t('admin.accounts.enterAccountName')"
+          data-tour="account-form-name"
         />
       </div>
 
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') REDACTEDREDACTED</label>
-        <div class="mt-2 flex rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+        <div class="mt-2 flex rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-tour="account-form-platform">
           <button
             type="button"
             @click="form.platform = 'anthropic'"
@@ -141,7 +142,7 @@
       <!-- Account Type Selection (Anthropic) -->
       <div v-if="form.platform === 'anthropic'">
         <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
-        <div class="mt-2 grid grid-cols-2 gap-3">
+        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -231,7 +232,7 @@
       <!-- Account Type Selection (OpenAI) -->
       <div v-if="form.platform === 'openai'">
         <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
-        <div class="mt-2 grid grid-cols-2 gap-3">
+        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -313,7 +314,7 @@
       <!-- Account Type Selection (Gemini) -->
       <div v-if="form.platform === 'gemini'">
         <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
-        <div class="mt-2 grid grid-cols-2 gap-3">
+        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -959,18 +960,21 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
-          <input v-model.number="form.priority" type="number" min="1" class="input" />
+          <input
+            v-model.number="form.priority"
+            type="number"
+            min="1"
+            class="input"
+            data-tour="account-form-priority"
+          />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') REDACTEDREDACTED</p>
         </div>
       </div>
 
       <!-- Group Selection - 仅标准模式显示 -->
-      <GroupSelector
-        v-if="!authStore.isSimpleMode"
-        v-model="form.group_ids"
-        :groups="groups"
-        :platform="form.platform"
-      />
+      <div v-if="!authStore.isSimpleMode" data-tour="account-form-groups">
+        <GroupSelector v-model="form.group_ids" :groups="groups" :platform="form.platform" />
+      </div>
 
     </form>
 
@@ -1005,6 +1009,7 @@
           form="create-account-form"
           :disabled="submitting"
           class="btn btn-primary"
+          data-tour="account-form-submit"
         >
           <svg
             v-if="submitting"
