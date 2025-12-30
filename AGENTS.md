@@ -16,3 +16,10 @@ Use `@/openspec/AGENTS.md` to learn:
 Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
+
+## 强制语言规范
+
+以下为强制规定：
+- 与用户交流一律使用中文。
+- 代码文档与代码注释一律使用中文。
+- OpenSpec 提案与相关说明一律使用中文。
