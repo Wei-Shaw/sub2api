@@ -148,24 +148,31 @@ REDACTED
 	return nil
 REDACTED
 
-func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (*service.UsageLog, error) {
+func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
 	rows, err := r.sql.QueryContext(ctx, query, id)
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			log = nil
+	REDACTED
+REDACTED()
 	if !rows.Next() {
-		if err := rows.Err(); err != nil {
+		if err = rows.Err(); err != nil {
 			return nil, err
 	REDACTED
 		return nil, service.ErrUsageLogNotFound
 REDACTED
-	log, err := scanUsageLog(rows)
+	log, err = scanUsageLog(rows)
 	if err != nil {
 		return nil, err
 REDACTED
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 	return log, nil
@@ -535,7 +542,7 @@ type UserUsageTrendPoint = usagestats.UserUsageTrendPoint
 type ApiKeyUsageTrendPoint = usagestats.ApiKeyUsageTrendPoint
 
 // GetApiKeyUsageTrend returns usage trend data grouped by API key and date
-func (r *usageLogRepository) GetApiKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]ApiKeyUsageTrendPoint, error) {
+func (r *usageLogRepository) GetApiKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []ApiKeyUsageTrendPoint, err error) {
 	dateFormat := "YYYY-MM-DD"
 	if granularity == "hour" {
 		dateFormat = "YYYY-MM-DD HH24:00"
@@ -568,17 +575,24 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+	REDACTED
+REDACTED()
 
-	results := make([]ApiKeyUsageTrendPoint, 0)
+	results = make([]ApiKeyUsageTrendPoint, 0)
 	for rows.Next() {
 		var row ApiKeyUsageTrendPoint
-		if err := rows.Scan(&row.Date, &row.ApiKeyID, &row.KeyName, &row.Requests, &row.Tokens); err != nil {
+		if err = rows.Scan(&row.Date, &row.ApiKeyID, &row.KeyName, &row.Requests, &row.Tokens); err != nil {
 			return nil, err
 	REDACTED
 		results = append(results, row)
 REDACTED
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
@@ -586,7 +600,7 @@ REDACTED
 REDACTED
 
 // GetUserUsageTrend returns usage trend data grouped by user and date
-func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]UserUsageTrendPoint, error) {
+func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []UserUsageTrendPoint, err error) {
 	dateFormat := "YYYY-MM-DD"
 	if granularity == "hour" {
 		dateFormat = "YYYY-MM-DD HH24:00"
@@ -621,17 +635,24 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+	REDACTED
+REDACTED()
 
-	results := make([]UserUsageTrendPoint, 0)
+	results = make([]UserUsageTrendPoint, 0)
 	for rows.Next() {
 		var row UserUsageTrendPoint
-		if err := rows.Scan(&row.Date, &row.UserID, &row.Email, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost); err != nil {
+		if err = rows.Scan(&row.Date, &row.UserID, &row.Email, &row.Requests, &row.Tokens, &row.Cost, &row.ActualCost); err != nil {
 			return nil, err
 	REDACTED
 		results = append(results, row)
 REDACTED
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
@@ -740,7 +761,7 @@ REDACTED
 REDACTED
 
 // GetUserUsageTrendByUserID 获取指定用户的使用趋势
-func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]TrendDataPoint, error) {
+func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) (results []TrendDataPoint, err error) {
 	dateFormat := "YYYY-MM-DD"
 	if granularity == "hour" {
 		dateFormat = "YYYY-MM-DD HH24:00"
@@ -766,13 +787,24 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+	REDACTED
+REDACTED()
 
-	return scanTrendRows(rows)
+	results, err = scanTrendRows(rows)
+	if err != nil {
+		return nil, err
+REDACTED
+	return results, nil
 REDACTED
 
 // GetUserModelStats 获取指定用户的模型统计
-func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]ModelStat, error) {
+func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) (results []ModelStat, err error) {
 	query := `
 		SELECT
 			model,
@@ -792,9 +824,20 @@ func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+	REDACTED
+REDACTED()
 
-	return scanModelStatsRows(rows)
+	results, err = scanModelStatsRows(rows)
+	if err != nil {
+		return nil, err
+REDACTED
+	return results, nil
 REDACTED
 
 // UsageLogFilters represents filters for usage log queries
@@ -994,7 +1037,7 @@ REDACTED
 REDACTED
 
 // GetUsageTrendWithFilters returns usage trend data with optional user/api_key filters
-func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) ([]TrendDataPoint, error) {
+func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) (results []TrendDataPoint, err error) {
 	dateFormat := "YYYY-MM-DD"
 	if granularity == "hour" {
 		dateFormat = "YYYY-MM-DD HH24:00"
@@ -1029,13 +1072,24 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+	REDACTED
+REDACTED()
 
-	return scanTrendRows(rows)
+	results, err = scanTrendRows(rows)
+	if err != nil {
+		return nil, err
+REDACTED
+	return results, nil
 REDACTED
 
 // GetModelStatsWithFilters returns model statistics with optional user/api_key filters
-func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) ([]ModelStat, error) {
+func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) (results []ModelStat, err error) {
 	query := `
 		SELECT
 			model,
@@ -1068,9 +1122,20 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+	REDACTED
+REDACTED()
 
-	return scanModelStatsRows(rows)
+	results, err = scanModelStatsRows(rows)
+	if err != nil {
+		return nil, err
+REDACTED
+	return results, nil
 REDACTED
 
 // GetGlobalStats gets usage statistics for all users within a time range
@@ -1118,7 +1183,7 @@ type AccountUsageSummary = usagestats.AccountUsageSummary
 type AccountUsageStatsResponse = usagestats.AccountUsageStatsResponse
 
 // GetAccountUsageStats returns comprehensive usage statistics for an account over a time range
-func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*AccountUsageStatsResponse, error) {
+func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (resp *AccountUsageStatsResponse, err error) {
 	daysCount := int(endTime.Sub(startTime).Hours()/24) + 1
 	if daysCount <= 0 {
 		daysCount = 30
@@ -1141,7 +1206,14 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			resp = nil
+	REDACTED
+REDACTED()
 
 	history := make([]AccountUsageHistory, 0)
 	for rows.Next() {
@@ -1150,7 +1222,7 @@ REDACTED
 		var tokens int64
 		var cost float64
 		var actualCost float64
-		if err := rows.Scan(&date, &requests, &tokens, &cost, &actualCost); err != nil {
+		if err = rows.Scan(&date, &requests, &tokens, &cost, &actualCost); err != nil {
 			return nil, err
 	REDACTED
 		t, _ := time.Parse("2006-01-02", date)
@@ -1163,7 +1235,7 @@ REDACTED
 			ActualCost: actualCost,
 	REDACTED)
 REDACTED
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
@@ -1261,11 +1333,12 @@ REDACTED
 		models = []ModelStat{REDACTED
 REDACTED
 
-	return &AccountUsageStatsResponse{
+	resp = &AccountUsageStatsResponse{
 		History: history,
 		Summary: summary,
 		Models:  models,
-REDACTED, nil
+REDACTED
+	return resp, nil
 REDACTED
 
 func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -1286,22 +1359,30 @@ REDACTED
 	return logs, paginationResultFromTotal(total, params), nil
 REDACTED
 
-func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, args ...any) ([]service.UsageLog, error) {
+func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, args ...any) (logs []service.UsageLog, err error) {
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 REDACTED
-	defer func() { _ = rows.Close() REDACTED()
+	defer func() {
+		// 保持主错误优先；仅在无错误时回传 Close 失败。
+		// 同时清空返回值，避免误用不完整结果。
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			logs = nil
+	REDACTED
+REDACTED()
 
-	logs := make([]service.UsageLog, 0)
+	logs = make([]service.UsageLog, 0)
 	for rows.Next() {
-		log, err := scanUsageLog(rows)
+		var log *service.UsageLog
+		log, err = scanUsageLog(rows)
 		if err != nil {
 			return nil, err
 	REDACTED
 		logs = append(logs, *log)
 REDACTED
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 	return logs, nil

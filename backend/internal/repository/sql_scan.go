@@ -3,14 +3,16 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
 
 type sqlQueryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 REDACTED
 
-// scanSingleRow executes a query and scans the first row into dest.
-// If no rows are returned, sql.ErrNoRows is returned.
+// scanSingleRow 执行查询并扫描第一行到 dest。
+// 若无结果，可通过 errors.Is(err, sql.ErrNoRows) 判断。
+// 如果 Close 失败，会与原始错误合并返回。
 // 设计目的：仅依赖 QueryContext，避免 QueryRowContext 对 *sql.Tx 的强绑定，
 // 让 ent.Tx 也能作为 sqlExecutor/Queryer 使用。
 func scanSingleRow(ctx context.Context, q sqlQueryer, query string, args []any, dest ...any) (err error) {
@@ -19,8 +21,8 @@ func scanSingleRow(ctx context.Context, q sqlQueryer, query string, args []any, 
 		return err
 REDACTED
 	defer func() {
-		if closeErr := rows.Close(); closeErr != nil && err == nil {
-			err = closeErr
+		if closeErr := rows.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
 	REDACTED
 REDACTED()
 
