@@ -110,4 +110,3 @@ func (UserSubscription) Indexes() []ent.Index {
 		index.Fields("user_id", "group_id").Unique(),
 REDACTED
 REDACTED
-

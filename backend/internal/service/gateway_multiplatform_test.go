@@ -32,6 +32,14 @@ REDACTED
 	return nil, errors.New("account not found")
 REDACTED
 
+func (m *mockAccountRepoForPlatform) ExistsByID(ctx context.Context, id int64) (bool, error) {
+	if m.accountsByID == nil {
+		return false, nil
+REDACTED
+	_, ok := m.accountsByID[id]
+	return ok, nil
+REDACTED
+
 func (m *mockAccountRepoForPlatform) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	if m.listPlatformFunc != nil {
 		return m.listPlatformFunc(ctx, platform)

@@ -175,16 +175,16 @@ REDACTED
 // 每个索引对应一个常用的查询条件。
 func (Account) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("platform"),           // 按平台筛选
-		index.Fields("type"),               // 按认证类型筛选
-		index.Fields("status"),             // 按状态筛选
-		index.Fields("proxy_id"),           // 按代理筛选
-		index.Fields("priority"),           // 按优先级排序
-		index.Fields("last_used_at"),       // 按最后使用时间排序
-		index.Fields("schedulable"),        // 筛选可调度账户
-		index.Fields("rate_limited_at"),    // 筛选速率限制账户
+		index.Fields("platform"),            // 按平台筛选
+		index.Fields("type"),                // 按认证类型筛选
+		index.Fields("status"),              // 按状态筛选
+		index.Fields("proxy_id"),            // 按代理筛选
+		index.Fields("priority"),            // 按优先级排序
+		index.Fields("last_used_at"),        // 按最后使用时间排序
+		index.Fields("schedulable"),         // 筛选可调度账户
+		index.Fields("rate_limited_at"),     // 筛选速率限制账户
 		index.Fields("rate_limit_reset_at"), // 筛选速率限制解除时间
-		index.Fields("overload_until"),     // 筛选过载账户
-		index.Fields("deleted_at"),         // 软删除查询优化
+		index.Fields("overload_until"),      // 筛选过载账户
+		index.Fields("deleted_at"),          // 软删除查询优化
 REDACTED
 REDACTED

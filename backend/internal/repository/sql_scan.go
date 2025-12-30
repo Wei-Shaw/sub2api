@@ -13,21 +13,28 @@ REDACTED
 // If no rows are returned, sql.ErrNoRows is returned.
 // 设计目的：仅依赖 QueryContext，避免 QueryRowContext 对 *sql.Tx 的强绑定，
 // 让 ent.Tx 也能作为 sqlExecutor/Queryer 使用。
-func scanSingleRow(ctx context.Context, q sqlQueryer, query string, args []any, dest ...any) error {
+func scanSingleRow(ctx context.Context, q sqlQueryer, query string, args []any, dest ...any) (err error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return err
 REDACTED
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+	REDACTED
+REDACTED()
 
 	if !rows.Next() {
-		if err := rows.Err(); err != nil {
+		if err = rows.Err(); err != nil {
 			return err
 	REDACTED
 		return sql.ErrNoRows
 REDACTED
-	if err := rows.Scan(dest...); err != nil {
+	if err = rows.Scan(dest...); err != nil {
 		return err
 REDACTED
-	return rows.Err()
+	if err = rows.Err(); err != nil {
+		return err
+REDACTED
+	return nil
 REDACTED

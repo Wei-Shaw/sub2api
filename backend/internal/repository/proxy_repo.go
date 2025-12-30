@@ -177,22 +177,27 @@ REDACTED
 REDACTED
 
 // GetAccountCountsForProxies returns a map of proxy ID to account count for all proxies
-func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (map[int64]int64, error) {
+func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (counts map[int64]int64, err error) {
 	rows, err := r.sql.QueryContext(ctx, "SELECT proxy_id, COUNT(*) AS count FROM accounts WHERE proxy_id IS NOT NULL GROUP BY proxy_id")
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			counts = nil
+	REDACTED
+REDACTED()
 
-	counts := make(map[int64]int64)
+	counts = make(map[int64]int64)
 	for rows.Next() {
 		var proxyID, count int64
-		if err := rows.Scan(&proxyID, &count); err != nil {
+		if err = rows.Scan(&proxyID, &count); err != nil {
 			return nil, err
 	REDACTED
 		counts[proxyID] = count
 REDACTED
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 	return counts, nil

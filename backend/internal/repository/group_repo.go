@@ -235,9 +235,8 @@ REDACTED
 		defer func() { _ = tx.Rollback() REDACTED()
 		exec = tx.Client()
 		txClient = exec
-REDACTED else {
-		// 已处于外部事务中（ErrTxStarted），复用当前 client 参与同一事务。
 REDACTED
+	// err 为 dbent.ErrTxStarted 时，复用当前 client 参与同一事务。
 
 	// Lock the group row to avoid concurrent writes while we cascade.
 	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分“未找到”与其他错误。
@@ -330,8 +329,8 @@ REDACTED
 	return affectedUserIDs, nil
 REDACTED
 
-func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int64) (map[int64]int64, error) {
-	counts := make(map[int64]int64, len(groupIDs))
+func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int64) (counts map[int64]int64, err error) {
+	counts = make(map[int64]int64, len(groupIDs))
 	if len(groupIDs) == 0 {
 		return counts, nil
 REDACTED
@@ -344,23 +343,24 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			counts = nil
+	REDACTED
+REDACTED()
 
 	for rows.Next() {
 		var groupID int64
 		var count int64
-		if err := rows.Scan(&groupID, &count); err != nil {
+		if err = rows.Scan(&groupID, &count); err != nil {
 			return nil, err
 	REDACTED
 		counts[groupID] = count
 REDACTED
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
 	return counts, nil
-REDACTED
-
-func errorsIsNoRows(err error) bool {
-	return err == sql.ErrNoRows
 REDACTED

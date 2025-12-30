@@ -154,7 +154,7 @@ func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (*service.Us
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return nil, err
@@ -568,7 +568,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	results := make([]ApiKeyUsageTrendPoint, 0)
 	for rows.Next() {
@@ -621,7 +621,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	results := make([]UserUsageTrendPoint, 0)
 	for rows.Next() {
@@ -766,7 +766,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	return scanTrendRows(rows)
 REDACTED
@@ -792,7 +792,7 @@ func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	return scanModelStatsRows(rows)
 REDACTED
@@ -1029,7 +1029,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	return scanTrendRows(rows)
 REDACTED
@@ -1068,7 +1068,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	return scanModelStatsRows(rows)
 REDACTED
@@ -1141,7 +1141,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	history := make([]AccountUsageHistory, 0)
 	for rows.Next() {
@@ -1291,7 +1291,7 @@ func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, a
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	logs := make([]service.UsageLog, 0)
 	for rows.Next() {
