@@ -145,16 +145,25 @@ REDACTED
 
 	client := antigravity.NewClient(proxyURL)
 
-	// 获取账户类型（tier）
+	// 获取账户类型（tier）和 project_id
 	loadResp, _ := client.LoadCodeAssist(ctx, accessToken)
 	if loadResp != nil {
 		r.updateAccountTier(account, loadResp)
+		// 尝试从 API 获取 project_id
+		if projectID == "" && loadResp.CloudAICompanionProject != "" {
+			projectID = loadResp.CloudAICompanionProject
+			account.Credentials["project_id"] = projectID
+	REDACTED
 REDACTED
 
-	// 调用 API 获取配额（需要 projectID）
+	// 如果仍然没有 project_id，随机生成一个并保存
 	if projectID == "" {
-		return r.accountRepo.Update(ctx, account) // 没有 projectID，只更新 tier
+		projectID = antigravity.GenerateMockProjectID()
+		account.Credentials["project_id"] = projectID
+		log.Printf("[AntigravityQuotaRefresher] 为账户 %d 生成随机 project_id: %s", account.ID, projectID)
 REDACTED
+
+	// 调用 API 获取配额
 	modelsResp, err := client.FetchAvailableModels(ctx, accessToken, projectID)
 	if err != nil {
 		return err
