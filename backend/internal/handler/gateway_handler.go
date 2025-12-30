@@ -216,7 +216,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	const maxAccountSwitches = 3
+	const maxAccountSwitches = 10
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	lastFailoverStatus := 0
