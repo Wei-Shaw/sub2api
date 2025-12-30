@@ -1498,7 +1498,11 @@ const handleCreateUser = async () => {
     closeCreateModal()
     loadUsers()
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToCreate'))
+    appStore.showError(
+      error.response?.data?.message ||
+        error.response?.data?.detail ||
+        t('admin.users.failedToCreate')
+    )
     console.error('Error creating user:', error)
   REDACTED finally {
     submitting.value = false
@@ -1652,7 +1656,11 @@ const confirmDelete = async () => {
     deletingUser.value = null
     loadUsers()
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
+    appStore.showError(
+      error.response?.data?.message ||
+        error.response?.data?.detail ||
+        t('admin.users.failedToDelete')
+    )
     console.error('Error deleting user:', error)
   REDACTED
 REDACTED

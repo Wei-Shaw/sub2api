@@ -6,10 +6,16 @@
 # Stage 3: Final minimal image
 # =============================================================================
 
+ARG NODE_IMAGE=node:24-alpine
+ARG GOLANG_IMAGE=golang:1.25-alpine
+ARG ALPINE_IMAGE=alpine:3.19
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
-FROM node:24-alpine AS frontend-builder
+FROM ${NODE_IMAGEREDACTED AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -24,12 +30,17 @@ RUN npm run build
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
 # -----------------------------------------------------------------------------
-FROM golang:1.25-alpine AS backend-builder
+FROM ${GOLANG_IMAGEREDACTED AS backend-builder
 
 # Build arguments for version info (set by CI)
 ARG VERSION=docker
 ARG COMMIT=docker
 ARG DATE
+ARG GOPROXY
+ARG GOSUMDB
+
+ENV GOPROXY=${GOPROXYREDACTED
+ENV GOSUMDB=${GOSUMDBREDACTED
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -56,7 +67,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # -----------------------------------------------------------------------------
 # Stage 3: Final Runtime Image
 # -----------------------------------------------------------------------------
-FROM alpine:3.19
+FROM ${ALPINE_IMAGEREDACTED
 
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"

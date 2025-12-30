@@ -20,6 +20,8 @@
 
 体验地址：**https://v2.pincc.ai/**
 
+演示账号（共享演示环境；自建部署不会自动创建该账号）：
+
 | 邮箱 | 密码 |
 |------|------|
 | admin@sub2api.com | admin123 |
@@ -260,8 +262,10 @@ jwt:
   expire_hour: 24
 
 default:
-  admin_email: "admin@example.com"
-  admin_password: "admin123"
+  user_concurrency: 5
+  user_balance: 0
+  api_key_prefix: "sk-"
+  rate_multiplier: 1.0
 ```
 
 ```bash
@@ -279,6 +283,16 @@ go run ./cmd/server
 # 前端（支持热重载）
 cd frontend
 npm run dev
+```
+
+#### 代码生成
+
+修改 `backend/ent/schema` 后，需要重新生成 Ent + Wire：
+
+```bash
+cd backend
+go generate ./ent
+go generate ./cmd/server
 ```
 
 ---

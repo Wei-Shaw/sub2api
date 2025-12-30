@@ -7,23 +7,24 @@ import (
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/gorm"
 )
 
 type ProxyRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
-	db   *gorm.DB
+	tx   *dbent.Tx
 	repo *proxyRepository
 REDACTED
 
 func (s *ProxyRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.db = testTx(s.T())
-	s.repo = NewProxyRepository(s.db).(*proxyRepository)
+	tx := testEntTx(s.T())
+	s.tx = tx
+	s.repo = newProxyRepositoryWithSQL(tx.Client(), tx)
 REDACTED
 
 func TestProxyRepoSuite(t *testing.T) {
@@ -56,7 +57,14 @@ func (s *ProxyRepoSuite) TestGetByID_NotFound() {
 REDACTED
 
 func (s *ProxyRepoSuite) TestUpdate() {
-	proxy := proxyModelToService(mustCreateProxy(s.T(), s.db, &proxyModel{Name: "original"REDACTED))
+	proxy := &service.Proxy{
+		Name:     "original",
+		Protocol: "http",
+		Host:     "127.0.0.1",
+		Port:     8080,
+		Status:   service.StatusActive,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, proxy))
 
 	proxy.Name = "updated"
 	err := s.repo.Update(s.ctx, proxy)
@@ -68,7 +76,14 @@ func (s *ProxyRepoSuite) TestUpdate() {
 REDACTED
 
 func (s *ProxyRepoSuite) TestDelete() {
-	proxy := mustCreateProxy(s.T(), s.db, &proxyModel{Name: "to-delete"REDACTED)
+	proxy := &service.Proxy{
+		Name:     "to-delete",
+		Protocol: "http",
+		Host:     "127.0.0.1",
+		Port:     8080,
+		Status:   service.StatusActive,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, proxy))
 
 	err := s.repo.Delete(s.ctx, proxy.ID)
 	s.Require().NoError(err, "Delete")
@@ -80,8 +95,8 @@ REDACTED
 // --- List / ListWithFilters ---
 
 func (s *ProxyRepoSuite) TestList() {
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p1"REDACTED)
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p2"REDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "p1", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "p2", Protocol: "http", Host: "127.0.0.1", Port: 8081, Status: service.StatusActiveREDACTED)
 
 	proxies, page, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "List")
@@ -90,8 +105,8 @@ func (s *ProxyRepoSuite) TestList() {
 REDACTED
 
 func (s *ProxyRepoSuite) TestListWithFilters_Protocol() {
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p1", Protocol: "http"REDACTED)
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p2", Protocol: "socks5"REDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "p1", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "p2", Protocol: "socks5", Host: "127.0.0.1", Port: 8081, Status: service.StatusActiveREDACTED)
 
 	proxies, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "socks5", "", "")
 	s.Require().NoError(err)
@@ -100,8 +115,8 @@ func (s *ProxyRepoSuite) TestListWithFilters_Protocol() {
 REDACTED
 
 func (s *ProxyRepoSuite) TestListWithFilters_Status() {
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p1", Status: service.StatusActiveREDACTED)
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p2", Status: service.StatusDisabledREDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "p1", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "p2", Protocol: "http", Host: "127.0.0.1", Port: 8081, Status: service.StatusDisabledREDACTED)
 
 	proxies, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", service.StatusDisabled, "")
 	s.Require().NoError(err)
@@ -110,8 +125,8 @@ func (s *ProxyRepoSuite) TestListWithFilters_Status() {
 REDACTED
 
 func (s *ProxyRepoSuite) TestListWithFilters_Search() {
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "production-proxy"REDACTED)
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "dev-proxy"REDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "production-proxy", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "dev-proxy", Protocol: "http", Host: "127.0.0.1", Port: 8081, Status: service.StatusActiveREDACTED)
 
 	proxies, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "prod")
 	s.Require().NoError(err)
@@ -122,8 +137,8 @@ REDACTED
 // --- ListActive ---
 
 func (s *ProxyRepoSuite) TestListActive() {
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "active1", Status: service.StatusActiveREDACTED)
-	mustCreateProxy(s.T(), s.db, &proxyModel{Name: "inactive1", Status: service.StatusDisabledREDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "active1", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
+	s.mustCreateProxy(&service.Proxy{Name: "inactive1", Protocol: "http", Host: "127.0.0.1", Port: 8081, Status: service.StatusDisabledREDACTED)
 
 	proxies, err := s.repo.ListActive(s.ctx)
 	s.Require().NoError(err, "ListActive")
@@ -134,13 +149,14 @@ REDACTED
 // --- ExistsByHostPortAuth ---
 
 func (s *ProxyRepoSuite) TestExistsByHostPortAuth() {
-	mustCreateProxy(s.T(), s.db, &proxyModel{
+	s.mustCreateProxy(&service.Proxy{
 		Name:     "p1",
 		Protocol: "http",
 		Host:     "1.2.3.4",
 		Port:     8080,
 		Username: "user",
 		Password: "pass",
+		Status:   service.StatusActive,
 REDACTED)
 
 	exists, err := s.repo.ExistsByHostPortAuth(s.ctx, "1.2.3.4", 8080, "user", "pass")
@@ -153,13 +169,14 @@ REDACTED)
 REDACTED
 
 func (s *ProxyRepoSuite) TestExistsByHostPortAuth_NoAuth() {
-	mustCreateProxy(s.T(), s.db, &proxyModel{
+	s.mustCreateProxy(&service.Proxy{
 		Name:     "p-noauth",
 		Protocol: "http",
 		Host:     "5.6.7.8",
 		Port:     8081,
 		Username: "",
 		Password: "",
+		Status:   service.StatusActive,
 REDACTED)
 
 	exists, err := s.repo.ExistsByHostPortAuth(s.ctx, "5.6.7.8", 8081, "", "")
@@ -170,10 +187,10 @@ REDACTED
 // --- CountAccountsByProxyID ---
 
 func (s *ProxyRepoSuite) TestCountAccountsByProxyID() {
-	proxy := mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p-count"REDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1", ProxyID: &proxy.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2", ProxyID: &proxy.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a3"REDACTED) // no proxy
+	proxy := s.mustCreateProxy(&service.Proxy{Name: "p-count", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
+	s.mustInsertAccount("a1", &proxy.ID)
+	s.mustInsertAccount("a2", &proxy.ID)
+	s.mustInsertAccount("a3", nil) // no proxy
 
 	count, err := s.repo.CountAccountsByProxyID(s.ctx, proxy.ID)
 	s.Require().NoError(err, "CountAccountsByProxyID")
@@ -181,7 +198,7 @@ func (s *ProxyRepoSuite) TestCountAccountsByProxyID() {
 REDACTED
 
 func (s *ProxyRepoSuite) TestCountAccountsByProxyID_Zero() {
-	proxy := mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p-zero"REDACTED)
+	proxy := s.mustCreateProxy(&service.Proxy{Name: "p-zero", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
 
 	count, err := s.repo.CountAccountsByProxyID(s.ctx, proxy.ID)
 	s.Require().NoError(err)
@@ -191,12 +208,12 @@ REDACTED
 // --- GetAccountCountsForProxies ---
 
 func (s *ProxyRepoSuite) TestGetAccountCountsForProxies() {
-	p1 := mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p1"REDACTED)
-	p2 := mustCreateProxy(s.T(), s.db, &proxyModel{Name: "p2"REDACTED)
+	p1 := s.mustCreateProxy(&service.Proxy{Name: "p1", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActiveREDACTED)
+	p2 := s.mustCreateProxy(&service.Proxy{Name: "p2", Protocol: "http", Host: "127.0.0.1", Port: 8081, Status: service.StatusActiveREDACTED)
 
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1", ProxyID: &p1.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2", ProxyID: &p1.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a3", ProxyID: &p2.IDREDACTED)
+	s.mustInsertAccount("a1", &p1.ID)
+	s.mustInsertAccount("a2", &p1.ID)
+	s.mustInsertAccount("a3", &p2.ID)
 
 	counts, err := s.repo.GetAccountCountsForProxies(s.ctx)
 	s.Require().NoError(err, "GetAccountCountsForProxies")
@@ -215,24 +232,13 @@ REDACTED
 func (s *ProxyRepoSuite) TestListActiveWithAccountCount() {
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	p1 := mustCreateProxy(s.T(), s.db, &proxyModel{
-		Name:      "p1",
-		Status:    service.StatusActive,
-		CreatedAt: base.Add(-1 * time.Hour),
-REDACTED)
-	p2 := mustCreateProxy(s.T(), s.db, &proxyModel{
-		Name:      "p2",
-		Status:    service.StatusActive,
-		CreatedAt: base,
-REDACTED)
-	mustCreateProxy(s.T(), s.db, &proxyModel{
-		Name:   "p3-inactive",
-		Status: service.StatusDisabled,
-REDACTED)
+	p1 := s.mustCreateProxyWithTimes("p1", service.StatusActive, base.Add(-1*time.Hour))
+	p2 := s.mustCreateProxyWithTimes("p2", service.StatusActive, base)
+	s.mustCreateProxyWithTimes("p3-inactive", service.StatusDisabled, base.Add(1*time.Hour))
 
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1", ProxyID: &p1.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2", ProxyID: &p1.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a3", ProxyID: &p2.IDREDACTED)
+	s.mustInsertAccount("a1", &p1.ID)
+	s.mustInsertAccount("a2", &p1.ID)
+	s.mustInsertAccount("a3", &p2.ID)
 
 	withCounts, err := s.repo.ListActiveWithAccountCount(s.ctx)
 	s.Require().NoError(err, "ListActiveWithAccountCount")
@@ -248,34 +254,16 @@ REDACTED
 // --- Combined original test ---
 
 func (s *ProxyRepoSuite) TestExistsByHostPortAuth_And_AccountCountAggregates() {
-	p1 := mustCreateProxy(s.T(), s.db, &proxyModel{
-		Name:      "p1",
-		Protocol:  "http",
-		Host:      "1.2.3.4",
-		Port:      8080,
-		Username:  "u",
-		Password:  "p",
-		CreatedAt: time.Now().Add(-1 * time.Hour),
-		UpdatedAt: time.Now().Add(-1 * time.Hour),
-REDACTED)
-	p2 := mustCreateProxy(s.T(), s.db, &proxyModel{
-		Name:      "p2",
-		Protocol:  "http",
-		Host:      "5.6.7.8",
-		Port:      8081,
-		Username:  "",
-		Password:  "",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-REDACTED)
+	p1 := s.mustCreateProxy(&service.Proxy{Name: "p1", Protocol: "http", Host: "1.2.3.4", Port: 8080, Username: "u", Password: "p", Status: service.StatusActiveREDACTED)
+	p2 := s.mustCreateProxy(&service.Proxy{Name: "p2", Protocol: "http", Host: "5.6.7.8", Port: 8081, Username: "", Password: "", Status: service.StatusActiveREDACTED)
 
 	exists, err := s.repo.ExistsByHostPortAuth(s.ctx, "1.2.3.4", 8080, "u", "p")
 	s.Require().NoError(err, "ExistsByHostPortAuth")
 	s.Require().True(exists, "expected proxy to exist")
 
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a1", ProxyID: &p1.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a2", ProxyID: &p1.IDREDACTED)
-	mustCreateAccount(s.T(), s.db, &accountModel{Name: "a3", ProxyID: &p2.IDREDACTED)
+	s.mustInsertAccount("a1", &p1.ID)
+	s.mustInsertAccount("a2", &p1.ID)
+	s.mustInsertAccount("a3", &p2.ID)
 
 	count1, err := s.repo.CountAccountsByProxyID(s.ctx, p1.ID)
 	s.Require().NoError(err, "CountAccountsByProxyID")
@@ -299,4 +287,43 @@ REDACTED)
 			s.Require().Fail("unexpected proxy id", pc.ID)
 	REDACTED
 REDACTED
+REDACTED
+
+func (s *ProxyRepoSuite) mustCreateProxy(p *service.Proxy) *service.Proxy {
+	s.T().Helper()
+	s.Require().NoError(s.repo.Create(s.ctx, p), "create proxy")
+	return p
+REDACTED
+
+func (s *ProxyRepoSuite) mustCreateProxyWithTimes(name, status string, createdAt time.Time) *service.Proxy {
+	s.T().Helper()
+
+	// Use the repository create for standard fields, then update timestamps via raw SQL to keep deterministic ordering.
+	p := s.mustCreateProxy(&service.Proxy{
+		Name:     name,
+		Protocol: "http",
+		Host:     "127.0.0.1",
+		Port:     8080,
+		Status:   status,
+REDACTED)
+	_, err := s.tx.ExecContext(s.ctx, "UPDATE proxies SET created_at = $1, updated_at = $1 WHERE id = $2", createdAt, p.ID)
+	s.Require().NoError(err, "update proxy timestamps")
+	return p
+REDACTED
+
+func (s *ProxyRepoSuite) mustInsertAccount(name string, proxyID *int64) {
+	s.T().Helper()
+	var pid any
+	if proxyID != nil {
+		pid = *proxyID
+REDACTED
+	_, err := s.tx.ExecContext(
+		s.ctx,
+		"INSERT INTO accounts (name, platform, type, proxy_id) VALUES ($1, $2, $3, $4)",
+		name,
+		service.PlatformAnthropic,
+		service.AccountTypeOAuth,
+		pid,
+	)
+	s.Require().NoError(err, "insert account")
 REDACTED

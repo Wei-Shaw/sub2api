@@ -131,6 +131,10 @@ func (r *stubApiKeyRepo) GetByID(ctx context.Context, id int64) (*service.ApiKey
 	return nil, errors.New("not implemented")
 REDACTED
 
+func (r *stubApiKeyRepo) GetOwnerID(ctx context.Context, id int64) (int64, error) {
+	return 0, errors.New("not implemented")
+REDACTED
+
 func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.ApiKey, error) {
 	if r.getByKey != nil {
 		return r.getByKey(ctx, key)

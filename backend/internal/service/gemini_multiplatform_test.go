@@ -25,6 +25,14 @@ REDACTED
 	return nil, errors.New("account not found")
 REDACTED
 
+func (m *mockAccountRepoForGemini) ExistsByID(ctx context.Context, id int64) (bool, error) {
+	if m.accountsByID == nil {
+		return false, nil
+REDACTED
+	_, ok := m.accountsByID[id]
+	return ok, nil
+REDACTED
+
 func (m *mockAccountRepoForGemini) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range m.accounts {

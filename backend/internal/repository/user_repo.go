@@ -2,260 +2,414 @@ package repository
 
 import (
 	"context"
-	"time"
+	"database/sql"
+	"errors"
+	"sort"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
-
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
-	"gorm.io/gorm"
 )
 
 type userRepository struct {
-	db *gorm.DB
+	client *dbent.Client
+	sql    sqlExecutor
 REDACTED
 
-func NewUserRepository(db *gorm.DB) service.UserRepository {
-	return &userRepository{db: dbREDACTED
+func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
+	return newUserRepositoryWithSQL(client, sqlDB)
 REDACTED
 
-func (r *userRepository) Create(ctx context.Context, user *service.User) error {
-	m := userModelFromService(user)
-	err := r.db.WithContext(ctx).Create(m).Error
+func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepository {
+	return &userRepository{client: client, sql: sqlqREDACTED
+REDACTED
+
+func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
+	if userIn == nil {
+		return nil
+REDACTED
+
+	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
+	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+REDACTED
+
+	var txClient *dbent.Client
 	if err == nil {
-		applyUserModelToService(user, m)
+		defer func() { _ = tx.Rollback() REDACTED()
+		txClient = tx.Client()
+REDACTED else {
+		// 已处于外部事务中（ErrTxStarted），复用当前 client 并由调用方负责提交/回滚。
+		txClient = r.client
 REDACTED
-	return translatePersistenceError(err, nil, service.ErrEmailExists)
+
+	created, err := txClient.User.Create().
+		SetEmail(userIn.Email).
+		SetUsername(userIn.Username).
+		SetWechat(userIn.Wechat).
+		SetNotes(userIn.Notes).
+		SetPasswordHash(userIn.PasswordHash).
+		SetRole(userIn.Role).
+		SetBalance(userIn.Balance).
+		SetConcurrency(userIn.Concurrency).
+		SetStatus(userIn.Status).
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, nil, service.ErrEmailExists)
+REDACTED
+
+	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, created.ID, userIn.AllowedGroups); err != nil {
+		return err
+REDACTED
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+	REDACTED
+REDACTED
+
+	applyUserEntityToService(userIn, created)
+	return nil
 REDACTED
 
 func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, error) {
-	var m userModel
-	err := r.db.WithContext(ctx).First(&m, id).Error
+	m, err := r.client.User.Query().Where(dbuser.IDEQ(id)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 REDACTED
-	return userModelToService(&m), nil
+
+	out := userEntityToService(m)
+	groups, err := r.loadAllowedGroups(ctx, []int64{idREDACTED)
+	if err == nil {
+		if v, ok := groups[id]; ok {
+			out.AllowedGroups = v
+	REDACTED
+REDACTED
+	return out, nil
 REDACTED
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service.User, error) {
-	var m userModel
-	err := r.db.WithContext(ctx).Where("email = ?", email).First(&m).Error
+	m, err := r.client.User.Query().Where(dbuser.EmailEQ(email)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 REDACTED
-	return userModelToService(&m), nil
+
+	out := userEntityToService(m)
+	groups, err := r.loadAllowedGroups(ctx, []int64{m.IDREDACTED)
+	if err == nil {
+		if v, ok := groups[m.ID]; ok {
+			out.AllowedGroups = v
+	REDACTED
+REDACTED
+	return out, nil
 REDACTED
 
-func (r *userRepository) Update(ctx context.Context, user *service.User) error {
-	m := userModelFromService(user)
-	err := r.db.WithContext(ctx).Save(m).Error
-	if err == nil {
-		applyUserModelToService(user, m)
+func (r *userRepository) Update(ctx context.Context, userIn *service.User) error {
+	if userIn == nil {
+		return nil
 REDACTED
-	return translatePersistenceError(err, nil, service.ErrEmailExists)
+
+	// 使用 ent 事务包裹用户更新与 allowed_groups 同步，避免跨层事务不一致。
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+REDACTED
+
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() REDACTED()
+		txClient = tx.Client()
+REDACTED else {
+		// 已处于外部事务中（ErrTxStarted），复用当前 client 并由调用方负责提交/回滚。
+		txClient = r.client
+REDACTED
+
+	updated, err := txClient.User.UpdateOneID(userIn.ID).
+		SetEmail(userIn.Email).
+		SetUsername(userIn.Username).
+		SetWechat(userIn.Wechat).
+		SetNotes(userIn.Notes).
+		SetPasswordHash(userIn.PasswordHash).
+		SetRole(userIn.Role).
+		SetBalance(userIn.Balance).
+		SetConcurrency(userIn.Concurrency).
+		SetStatus(userIn.Status).
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, service.ErrEmailExists)
+REDACTED
+
+	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
+		return err
+REDACTED
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+	REDACTED
+REDACTED
+
+	userIn.UpdatedAt = updated.UpdatedAt
+	return nil
 REDACTED
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Delete(&userModel{REDACTED, id).Error
+	affected, err := r.client.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	if affected == 0 {
+		return service.ErrUserNotFound
+REDACTED
+	return nil
 REDACTED
 
 func (r *userRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
 	return r.ListWithFilters(ctx, params, "", "", "")
 REDACTED
 
-// ListWithFilters lists users with optional filtering by status, role, and search query
 func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, role, search string) ([]service.User, *pagination.PaginationResult, error) {
-	var users []userModel
-	var total int64
+	q := r.client.User.Query()
 
-	db := r.db.WithContext(ctx).Model(&userModel{REDACTED)
-
-	// Apply filters
 	if status != "" {
-		db = db.Where("status = ?", status)
+		q = q.Where(dbuser.StatusEQ(status))
 REDACTED
 	if role != "" {
-		db = db.Where("role = ?", role)
+		q = q.Where(dbuser.RoleEQ(role))
 REDACTED
 	if search != "" {
-		searchPattern := "%" + search + "%"
-		db = db.Where(
-			"email ILIKE ? OR username ILIKE ? OR wechat ILIKE ?",
-			searchPattern, searchPattern, searchPattern,
+		q = q.Where(
+			dbuser.Or(
+				dbuser.EmailContainsFold(search),
+				dbuser.UsernameContainsFold(search),
+				dbuser.WechatContainsFold(search),
+			),
 		)
 REDACTED
 
-	if err := db.Count(&total).Error; err != nil {
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
 		return nil, nil, err
 REDACTED
 
-	// Query users with pagination (reuse the same db with filters applied)
-	if err := db.Offset(params.Offset()).Limit(params.Limit()).Order("id DESC").Find(&users).Error; err != nil {
+	users, err := q.
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Desc(dbuser.FieldID)).
+		All(ctx)
+	if err != nil {
 		return nil, nil, err
-REDACTED
-
-	// Batch load subscriptions for all users (avoid N+1)
-	if len(users) > 0 {
-		userIDs := make([]int64, len(users))
-		userMap := make(map[int64]*service.User, len(users))
-		outUsers := make([]service.User, 0, len(users))
-		for i := range users {
-			userIDs[i] = users[i].ID
-			u := userModelToService(&users[i])
-			outUsers = append(outUsers, *u)
-			userMap[u.ID] = &outUsers[len(outUsers)-1]
-	REDACTED
-
-		// Query active subscriptions with groups in one query
-		var subscriptions []userSubscriptionModel
-		if err := r.db.WithContext(ctx).
-			Preload("Group").
-			Where("user_id IN ? AND status = ?", userIDs, service.SubscriptionStatusActive).
-			Find(&subscriptions).Error; err != nil {
-			return nil, nil, err
-	REDACTED
-
-		// Associate subscriptions with users
-		for i := range subscriptions {
-			if user, ok := userMap[subscriptions[i].UserID]; ok {
-				user.Subscriptions = append(user.Subscriptions, *userSubscriptionModelToService(&subscriptions[i]))
-		REDACTED
-	REDACTED
-
-		return outUsers, paginationResultFromTotal(total, params), nil
 REDACTED
 
 	outUsers := make([]service.User, 0, len(users))
-	for i := range users {
-		outUsers = append(outUsers, *userModelToService(&users[i]))
+	if len(users) == 0 {
+		return outUsers, paginationResultFromTotal(int64(total), params), nil
 REDACTED
 
-	return outUsers, paginationResultFromTotal(total, params), nil
+	userIDs := make([]int64, 0, len(users))
+	userMap := make(map[int64]*service.User, len(users))
+	for i := range users {
+		userIDs = append(userIDs, users[i].ID)
+		u := userEntityToService(users[i])
+		outUsers = append(outUsers, *u)
+		userMap[u.ID] = &outUsers[len(outUsers)-1]
+REDACTED
+
+	// Batch load active subscriptions with groups to avoid N+1.
+	subs, err := r.client.UserSubscription.Query().
+		Where(
+			usersubscription.UserIDIn(userIDs...),
+			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+		).
+		WithGroup().
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+
+	for i := range subs {
+		if u, ok := userMap[subs[i].UserID]; ok {
+			u.Subscriptions = append(u.Subscriptions, *userSubscriptionEntityToService(subs[i]))
+	REDACTED
+REDACTED
+
+	allowedGroupsByUser, err := r.loadAllowedGroups(ctx, userIDs)
+	if err == nil {
+		for id, u := range userMap {
+			if groups, ok := allowedGroupsByUser[id]; ok {
+				u.AllowedGroups = groups
+		REDACTED
+	REDACTED
+REDACTED
+
+	return outUsers, paginationResultFromTotal(int64(total), params), nil
 REDACTED
 
 func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount float64) error {
-	return r.db.WithContext(ctx).Model(&userModel{REDACTED).Where("id = ?", id).
-		Update("balance", gorm.Expr("balance + ?", amount)).Error
+	_, err := r.client.User.Update().Where(dbuser.IDEQ(id)).AddBalance(amount).Save(ctx)
+	return err
 REDACTED
 
-// DeductBalance 扣减用户余额，仅当余额充足时执行
 func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount float64) error {
-	result := r.db.WithContext(ctx).Model(&userModel{REDACTED).
-		Where("id = ? AND balance >= ?", id, amount).
-		Update("balance", gorm.Expr("balance - ?", amount))
-	if result.Error != nil {
-		return result.Error
+	n, err := r.client.User.Update().
+		Where(dbuser.IDEQ(id), dbuser.BalanceGTE(amount)).
+		AddBalance(-amount).
+		Save(ctx)
+	if err != nil {
+		return err
 REDACTED
-	if result.RowsAffected == 0 {
+	if n == 0 {
 		return service.ErrInsufficientBalance
 REDACTED
 	return nil
 REDACTED
 
 func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
-	return r.db.WithContext(ctx).Model(&userModel{REDACTED).Where("id = ?", id).
-		Update("concurrency", gorm.Expr("concurrency + ?", amount)).Error
+	_, err := r.client.User.Update().Where(dbuser.IDEQ(id)).AddConcurrency(amount).Save(ctx)
+	return err
 REDACTED
 
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	var count int64
-	err := r.db.WithContext(ctx).Model(&userModel{REDACTED).Where("email = ?", email).Count(&count).Error
-	return count > 0, err
+	return r.client.User.Query().Where(dbuser.EmailEQ(email)).Exist(ctx)
 REDACTED
 
-// RemoveGroupFromAllowedGroups 从所有用户的 allowed_groups 数组中移除指定的分组ID
-// 使用 PostgreSQL 的 array_remove 函数
 func (r *userRepository) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
-	result := r.db.WithContext(ctx).Model(&userModel{REDACTED).
-		Where("? = ANY(allowed_groups)", groupID).
-		Update("allowed_groups", gorm.Expr("array_remove(allowed_groups, ?)", groupID))
-	return result.RowsAffected, result.Error
+	exec := r.sql
+	if exec == nil {
+		// 未注入 sqlExecutor 时，退回到 ent client 的 ExecContext（支持事务）。
+		exec = r.client
 REDACTED
 
-// GetFirstAdmin 获取第一个管理员用户（用于 Admin API Key 认证）
+	joinAffected, err := r.client.UserAllowedGroup.Delete().
+		Where(userallowedgroup.GroupIDEQ(groupID)).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+REDACTED
+
+	arrayRes, err := exec.ExecContext(
+		ctx,
+		"UPDATE users SET allowed_groups = array_remove(allowed_groups, $1), updated_at = NOW() WHERE $1 = ANY(allowed_groups)",
+		groupID,
+	)
+	if err != nil {
+		return 0, err
+REDACTED
+	arrayAffected, _ := arrayRes.RowsAffected()
+
+	if int64(joinAffected) > arrayAffected {
+		return int64(joinAffected), nil
+REDACTED
+	return arrayAffected, nil
+REDACTED
+
 func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, error) {
-	var m userModel
-	err := r.db.WithContext(ctx).
-		Where("role = ? AND status = ?", service.RoleAdmin, service.StatusActive).
-		Order("id ASC").
-		First(&m).Error
+	m, err := r.client.User.Query().
+		Where(
+			dbuser.RoleEQ(service.RoleAdmin),
+			dbuser.StatusEQ(service.StatusActive),
+		).
+		Order(dbent.Asc(dbuser.FieldID)).
+		First(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 REDACTED
-	return userModelToService(&m), nil
+
+	out := userEntityToService(m)
+	groups, err := r.loadAllowedGroups(ctx, []int64{m.IDREDACTED)
+	if err == nil {
+		if v, ok := groups[m.ID]; ok {
+			out.AllowedGroups = v
+	REDACTED
+REDACTED
+	return out, nil
 REDACTED
 
-type userModel struct {
-	ID            int64          `gorm:"primaryKey"`
-	Email         string         `gorm:"uniqueIndex;size:255;not null"`
-	Username      string         `gorm:"size:100;default:''"`
-	Wechat        string         `gorm:"size:100;default:''"`
-	Notes         string         `gorm:"type:text;default:''"`
-	PasswordHash  string         `gorm:"size:255;not null"`
-	Role          string         `gorm:"size:20;default:user;not null"`
-	Balance       float64        `gorm:"type:decimal(20,8);default:0;not null"`
-	Concurrency   int            `gorm:"default:5;not null"`
-	Status        string         `gorm:"size:20;default:active;not null"`
-	AllowedGroups pq.Int64Array  `gorm:"type:bigint[]"`
-	TokenVersion  int64          `gorm:"default:0;not null"` // Incremented on password change
-	CreatedAt     time.Time      `gorm:"not null"`
-	UpdatedAt     time.Time      `gorm:"not null"`
-	DeletedAt     gorm.DeletedAt `gorm:"index"`
+func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64) (map[int64][]int64, error) {
+	out := make(map[int64][]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
 REDACTED
 
-func (userModel) TableName() string { return "users" REDACTED
+	rows, err := r.client.UserAllowedGroup.Query().
+		Where(userallowedgroup.UserIDIn(userIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
 
-func userModelToService(m *userModel) *service.User {
-	if m == nil {
+	for i := range rows {
+		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].GroupID)
+REDACTED
+
+	for userID := range out {
+		sort.Slice(out[userID], func(i, j int) bool { return out[userID][i] < out[userID][j] REDACTED)
+REDACTED
+
+	return out, nil
+REDACTED
+
+// syncUserAllowedGroupsWithClient 在 ent client/事务内同步用户允许分组：
+// 1) 以 user_allowed_groups 为读写源，确保新旧逻辑一致；
+// 2) 额外更新 users.allowed_groups（历史字段）以保持兼容。
+func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, client *dbent.Client, userID int64, groupIDs []int64) error {
+	if client == nil {
 		return nil
 REDACTED
-	return &service.User{
-		ID:            m.ID,
-		Email:         m.Email,
-		Username:      m.Username,
-		Wechat:        m.Wechat,
-		Notes:         m.Notes,
-		PasswordHash:  m.PasswordHash,
-		Role:          m.Role,
-		Balance:       m.Balance,
-		Concurrency:   m.Concurrency,
-		Status:        m.Status,
-		AllowedGroups: []int64(m.AllowedGroups),
-		TokenVersion:  m.TokenVersion,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-REDACTED
+
+	// Keep join table as the source of truth for reads.
+	if _, err := client.UserAllowedGroup.Delete().Where(userallowedgroup.UserIDEQ(userID)).Exec(ctx); err != nil {
+		return err
 REDACTED
 
-func userModelFromService(u *service.User) *userModel {
-	if u == nil {
-		return nil
-REDACTED
-	return &userModel{
-		ID:            u.ID,
-		Email:         u.Email,
-		Username:      u.Username,
-		Wechat:        u.Wechat,
-		Notes:         u.Notes,
-		PasswordHash:  u.PasswordHash,
-		Role:          u.Role,
-		Balance:       u.Balance,
-		Concurrency:   u.Concurrency,
-		Status:        u.Status,
-		AllowedGroups: pq.Int64Array(u.AllowedGroups),
-		TokenVersion:  u.TokenVersion,
-		CreatedAt:     u.CreatedAt,
-		UpdatedAt:     u.UpdatedAt,
-REDACTED
+	unique := make(map[int64]struct{REDACTED, len(groupIDs))
+	for _, id := range groupIDs {
+		if id <= 0 {
+			continue
+	REDACTED
+		unique[id] = struct{REDACTED{REDACTED
 REDACTED
 
-func applyUserModelToService(dst *service.User, src *userModel) {
+	legacyGroups := make([]int64, 0, len(unique))
+	if len(unique) > 0 {
+		creates := make([]*dbent.UserAllowedGroupCreate, 0, len(unique))
+		for groupID := range unique {
+			creates = append(creates, client.UserAllowedGroup.Create().SetUserID(userID).SetGroupID(groupID))
+			legacyGroups = append(legacyGroups, groupID)
+	REDACTED
+		if err := client.UserAllowedGroup.
+			CreateBulk(creates...).
+			OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).
+			DoNothing().
+			Exec(ctx); err != nil {
+			return err
+	REDACTED
+REDACTED
+
+	// Phase 1 兼容：保持 users.allowed_groups（数组字段）同步，避免旧查询路径读取到过期数据。
+	var legacy any
+	if len(legacyGroups) > 0 {
+		sort.Slice(legacyGroups, func(i, j int) bool { return legacyGroups[i] < legacyGroups[j] REDACTED)
+		legacy = pq.Array(legacyGroups)
+REDACTED
+	if _, err := client.ExecContext(ctx, "UPDATE users SET allowed_groups = $1::bigint[] WHERE id = $2", legacy, userID); err != nil {
+		return err
+REDACTED
+
+	return nil
+REDACTED
+
+func applyUserEntityToService(dst *service.User, src *dbent.User) {
 	if dst == nil || src == nil {
 		return
 REDACTED
 	dst.ID = src.ID
-	dst.TokenVersion = src.TokenVersion
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
 REDACTED

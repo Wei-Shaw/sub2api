@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
@@ -19,7 +20,6 @@ import (
 
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 type Application struct {
@@ -62,7 +62,7 @@ REDACTED
 REDACTED
 
 func provideCleanup(
-	db *gorm.DB,
+	entClient *ent.Client,
 	rdb *redis.Client,
 	tokenRefresh *service.TokenRefreshService,
 	pricing *service.PricingService,
@@ -117,12 +117,8 @@ func provideCleanup(
 			{"Redis", func() error {
 				return rdb.Close()
 	REDACTED
-			{"Database", func() error {
-				sqlDB, err := db.DB()
-				if err != nil {
-					return err
-			REDACTED
-				return sqlDB.Close()
+			{"Ent", func() error {
+				return entClient.Close()
 	REDACTED
 	REDACTED
 

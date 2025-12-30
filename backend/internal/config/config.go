@@ -215,8 +215,10 @@ func setDefaults() {
 	viper.SetDefault("jwt.expire_hour", 24)
 
 	// Default
-	viper.SetDefault("default.admin_email", "admin@sub2api.com")
-	viper.SetDefault("default.admin_password", "admin123")
+	// Admin credentials are created via the setup flow (web wizard / CLI / AUTO_SETUP).
+	// Do not ship fixed defaults here to avoid insecure "known credentials" in production.
+	viper.SetDefault("default.admin_email", "")
+	viper.SetDefault("default.admin_password", "")
 	viper.SetDefault("default.user_concurrency", 5)
 	viper.SetDefault("default.user_balance", 0)
 	viper.SetDefault("default.api_key_prefix", "sk-")

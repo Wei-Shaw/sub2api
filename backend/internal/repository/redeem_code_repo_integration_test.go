@@ -7,27 +7,45 @@ import (
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/gorm"
 )
 
 type RedeemCodeRepoSuite struct {
 	suite.Suite
-	ctx  context.Context
-	db   *gorm.DB
-	repo *redeemCodeRepository
+	ctx    context.Context
+	client *dbent.Client
+	repo   *redeemCodeRepository
 REDACTED
 
 func (s *RedeemCodeRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.db = testTx(s.T())
-	s.repo = NewRedeemCodeRepository(s.db).(*redeemCodeRepository)
+	tx := testEntTx(s.T())
+	s.client = tx.Client()
+	s.repo = NewRedeemCodeRepository(s.client).(*redeemCodeRepository)
 REDACTED
 
 func TestRedeemCodeRepoSuite(t *testing.T) {
 	suite.Run(t, new(RedeemCodeRepoSuite))
+REDACTED
+
+func (s *RedeemCodeRepoSuite) createUser(email string) *dbent.User {
+	u, err := s.client.User.Create().
+		SetEmail(email).
+		SetPasswordHash("test-password-hash").
+		Save(s.ctx)
+	s.Require().NoError(err, "create user")
+	return u
+REDACTED
+
+func (s *RedeemCodeRepoSuite) createGroup(name string) *dbent.Group {
+	g, err := s.client.Group.Create().
+		SetName(name).
+		Save(s.ctx)
+	s.Require().NoError(err, "create group")
+	return g
 REDACTED
 
 // --- Create / CreateBatch / GetByID / GetByCode ---
@@ -70,10 +88,19 @@ REDACTED
 func (s *RedeemCodeRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")
+	s.Require().ErrorIs(err, service.ErrRedeemCodeNotFound)
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestGetByCode() {
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "GET-BY-CODE", Type: service.RedeemTypeBalanceREDACTED)
+	_, err := s.client.RedeemCode.Create().
+		SetCode("GET-BY-CODE").
+		SetType(service.RedeemTypeBalance).
+		SetStatus(service.StatusUnused).
+		SetValue(0).
+		SetNotes("").
+		SetValidityDays(30).
+		Save(s.ctx)
+	s.Require().NoError(err, "seed redeem code")
 
 	got, err := s.repo.GetByCode(s.ctx, "GET-BY-CODE")
 	s.Require().NoError(err, "GetByCode")
@@ -83,25 +110,35 @@ REDACTED
 func (s *RedeemCodeRepoSuite) TestGetByCode_NotFound() {
 	_, err := s.repo.GetByCode(s.ctx, "NON-EXISTENT")
 	s.Require().Error(err, "expected error for non-existent code")
+	s.Require().ErrorIs(err, service.ErrRedeemCodeNotFound)
 REDACTED
 
 // --- Delete ---
 
 func (s *RedeemCodeRepoSuite) TestDelete() {
-	code := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "TO-DELETE", Type: service.RedeemTypeBalanceREDACTED)
+	created, err := s.client.RedeemCode.Create().
+		SetCode("TO-DELETE").
+		SetType(service.RedeemTypeBalance).
+		SetStatus(service.StatusUnused).
+		SetValue(0).
+		SetNotes("").
+		SetValidityDays(30).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
-	err := s.repo.Delete(s.ctx, code.ID)
+	err = s.repo.Delete(s.ctx, created.ID)
 	s.Require().NoError(err, "Delete")
 
-	_, err = s.repo.GetByID(s.ctx, code.ID)
+	_, err = s.repo.GetByID(s.ctx, created.ID)
 	s.Require().Error(err, "expected error after delete")
+	s.Require().ErrorIs(err, service.ErrRedeemCodeNotFound)
 REDACTED
 
 // --- List / ListWithFilters ---
 
 func (s *RedeemCodeRepoSuite) TestList() {
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "LIST-1", Type: service.RedeemTypeBalanceREDACTED)
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "LIST-2", Type: service.RedeemTypeBalanceREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "LIST-1", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "LIST-2", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED))
 
 	codes, page, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "List")
@@ -110,8 +147,8 @@ func (s *RedeemCodeRepoSuite) TestList() {
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestListWithFilters_Type() {
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "TYPE-BAL", Type: service.RedeemTypeBalanceREDACTED)
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "TYPE-SUB", Type: service.RedeemTypeSubscriptionREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "TYPE-BAL", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "TYPE-SUB", Type: service.RedeemTypeSubscription, Value: 0, Status: service.StatusUnusedREDACTED))
 
 	codes, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.RedeemTypeSubscription, "", "")
 	s.Require().NoError(err)
@@ -120,8 +157,8 @@ func (s *RedeemCodeRepoSuite) TestListWithFilters_Type() {
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestListWithFilters_Status() {
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "STAT-UNUSED", Type: service.RedeemTypeBalance, Status: service.StatusUnusedREDACTED)
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "STAT-USED", Type: service.RedeemTypeBalance, Status: service.StatusUsedREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "STAT-UNUSED", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "STAT-USED", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUsedREDACTED))
 
 	codes, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", service.StatusUsed, "")
 	s.Require().NoError(err)
@@ -130,8 +167,8 @@ func (s *RedeemCodeRepoSuite) TestListWithFilters_Status() {
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestListWithFilters_Search() {
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "ALPHA-CODE", Type: service.RedeemTypeBalanceREDACTED)
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "BETA-CODE", Type: service.RedeemTypeBalanceREDACTED)
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "ALPHA-CODE", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED))
+	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "BETA-CODE", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED))
 
 	codes, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "alpha")
 	s.Require().NoError(err)
@@ -140,12 +177,17 @@ func (s *RedeemCodeRepoSuite) TestListWithFilters_Search() {
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestListWithFilters_GroupPreload() {
-	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-preload"REDACTED)
-	mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{
-		Code:    "WITH-GROUP",
-		Type:    service.RedeemTypeSubscription,
-		GroupID: &group.ID,
-REDACTED)
+	group := s.createGroup(uniqueTestValue(s.T(), "g-preload"))
+	_, err := s.client.RedeemCode.Create().
+		SetCode("WITH-GROUP").
+		SetType(service.RedeemTypeSubscription).
+		SetStatus(service.StatusUnused).
+		SetValue(0).
+		SetNotes("").
+		SetValidityDays(30).
+		SetGroupID(group.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
 	codes, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "")
 	s.Require().NoError(err)
@@ -157,7 +199,13 @@ REDACTED
 // --- Update ---
 
 func (s *RedeemCodeRepoSuite) TestUpdate() {
-	code := redeemCodeModelToService(mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "UPDATE-ME", Type: service.RedeemTypeBalance, Value: 10REDACTED))
+	code := &service.RedeemCode{
+		Code:   "UPDATE-ME",
+		Type:   service.RedeemTypeBalance,
+		Value:  10,
+		Status: service.StatusUnused,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, code))
 
 	code.Value = 50
 	err := s.repo.Update(s.ctx, code)
@@ -171,8 +219,9 @@ REDACTED
 // --- Use ---
 
 func (s *RedeemCodeRepoSuite) TestUse() {
-	user := mustCreateUser(s.T(), s.db, &userModel{Email: "use@test.com"REDACTED)
-	code := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "USE-ME", Type: service.RedeemTypeBalance, Status: service.StatusUnusedREDACTED)
+	user := s.createUser(uniqueTestValue(s.T(), "use") + "@example.com")
+	code := &service.RedeemCode{Code: "USE-ME", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, code))
 
 	err := s.repo.Use(s.ctx, code.ID, user.ID)
 	s.Require().NoError(err, "Use")
@@ -186,8 +235,9 @@ func (s *RedeemCodeRepoSuite) TestUse() {
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestUse_Idempotency() {
-	user := mustCreateUser(s.T(), s.db, &userModel{Email: "idem@test.com"REDACTED)
-	code := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "IDEM-CODE", Type: service.RedeemTypeBalance, Status: service.StatusUnusedREDACTED)
+	user := s.createUser(uniqueTestValue(s.T(), "idem") + "@example.com")
+	code := &service.RedeemCode{Code: "IDEM-CODE", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnusedREDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, code))
 
 	err := s.repo.Use(s.ctx, code.ID, user.ID)
 	s.Require().NoError(err, "Use first time")
@@ -199,8 +249,9 @@ func (s *RedeemCodeRepoSuite) TestUse_Idempotency() {
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestUse_AlreadyUsed() {
-	user := mustCreateUser(s.T(), s.db, &userModel{Email: "already@test.com"REDACTED)
-	code := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{Code: "ALREADY-USED", Type: service.RedeemTypeBalance, Status: service.StatusUsedREDACTED)
+	user := s.createUser(uniqueTestValue(s.T(), "already") + "@example.com")
+	code := &service.RedeemCode{Code: "ALREADY-USED", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUsedREDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, code))
 
 	err := s.repo.Use(s.ctx, code.ID, user.ID)
 	s.Require().Error(err, "expected error for already used code")
@@ -210,25 +261,34 @@ REDACTED
 // --- ListByUser ---
 
 func (s *RedeemCodeRepoSuite) TestListByUser() {
-	user := mustCreateUser(s.T(), s.db, &userModel{Email: "listby@test.com"REDACTED)
+	user := s.createUser(uniqueTestValue(s.T(), "listby") + "@example.com")
 	base := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	// Create codes with explicit used_at for ordering
-	c1 := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{
-		Code:   "USER-1",
-		Type:   service.RedeemTypeBalance,
-		Status: service.StatusUsed,
-		UsedBy: &user.ID,
-REDACTED)
-	s.db.Model(c1).Update("used_at", base)
+	usedAt1 := base
+	_, err := s.client.RedeemCode.Create().
+		SetCode("USER-1").
+		SetType(service.RedeemTypeBalance).
+		SetStatus(service.StatusUsed).
+		SetValue(0).
+		SetNotes("").
+		SetValidityDays(30).
+		SetUsedBy(user.ID).
+		SetUsedAt(usedAt1).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
-	c2 := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{
-		Code:   "USER-2",
-		Type:   service.RedeemTypeBalance,
-		Status: service.StatusUsed,
-		UsedBy: &user.ID,
-REDACTED)
-	s.db.Model(c2).Update("used_at", base.Add(1*time.Hour))
+	usedAt2 := base.Add(1 * time.Hour)
+	_, err = s.client.RedeemCode.Create().
+		SetCode("USER-2").
+		SetType(service.RedeemTypeBalance).
+		SetStatus(service.StatusUsed).
+		SetValue(0).
+		SetNotes("").
+		SetValidityDays(30).
+		SetUsedBy(user.ID).
+		SetUsedAt(usedAt2).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
 	codes, err := s.repo.ListByUser(s.ctx, user.ID, 10)
 	s.Require().NoError(err, "ListByUser")
@@ -239,17 +299,21 @@ REDACTED)
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestListByUser_WithGroupPreload() {
-	user := mustCreateUser(s.T(), s.db, &userModel{Email: "grp@test.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-listby"REDACTED)
+	user := s.createUser(uniqueTestValue(s.T(), "grp") + "@example.com")
+	group := s.createGroup(uniqueTestValue(s.T(), "g-listby"))
 
-	c := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{
-		Code:    "WITH-GRP",
-		Type:    service.RedeemTypeSubscription,
-		Status:  service.StatusUsed,
-		UsedBy:  &user.ID,
-		GroupID: &group.ID,
-REDACTED)
-	s.db.Model(c).Update("used_at", time.Now())
+	_, err := s.client.RedeemCode.Create().
+		SetCode("WITH-GRP").
+		SetType(service.RedeemTypeSubscription).
+		SetStatus(service.StatusUsed).
+		SetValue(0).
+		SetNotes("").
+		SetValidityDays(30).
+		SetUsedBy(user.ID).
+		SetUsedAt(time.Now()).
+		SetGroupID(group.ID).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
 	codes, err := s.repo.ListByUser(s.ctx, user.ID, 10)
 	s.Require().NoError(err)
@@ -259,14 +323,18 @@ REDACTED)
 REDACTED
 
 func (s *RedeemCodeRepoSuite) TestListByUser_DefaultLimit() {
-	user := mustCreateUser(s.T(), s.db, &userModel{Email: "deflimit@test.com"REDACTED)
-	c := mustCreateRedeemCode(s.T(), s.db, &redeemCodeModel{
-		Code:   "DEF-LIM",
-		Type:   service.RedeemTypeBalance,
-		Status: service.StatusUsed,
-		UsedBy: &user.ID,
-REDACTED)
-	s.db.Model(c).Update("used_at", time.Now())
+	user := s.createUser(uniqueTestValue(s.T(), "deflimit") + "@example.com")
+	_, err := s.client.RedeemCode.Create().
+		SetCode("DEF-LIM").
+		SetType(service.RedeemTypeBalance).
+		SetStatus(service.StatusUsed).
+		SetValue(0).
+		SetNotes("").
+		SetValidityDays(30).
+		SetUsedBy(user.ID).
+		SetUsedAt(time.Now()).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
 	// limit <= 0 should default to 10
 	codes, err := s.repo.ListByUser(s.ctx, user.ID, 0)
@@ -277,12 +345,13 @@ REDACTED
 // --- Combined original test ---
 
 func (s *RedeemCodeRepoSuite) TestCreateBatch_Filters_Use_Idempotency_ListByUser() {
-	user := mustCreateUser(s.T(), s.db, &userModel{Email: "rc@example.com"REDACTED)
-	group := mustCreateGroup(s.T(), s.db, &groupModel{Name: "g-rc"REDACTED)
+	user := s.createUser(uniqueTestValue(s.T(), "rc") + "@example.com")
+	group := s.createGroup(uniqueTestValue(s.T(), "g-rc"))
+	groupID := group.ID
 
 	codes := []service.RedeemCode{
-		{Code: "CODEA", Type: service.RedeemTypeBalance, Value: 1, Status: service.StatusUnused, CreatedAt: time.Now()REDACTED,
-		{Code: "CODEB", Type: service.RedeemTypeSubscription, Value: 0, Status: service.StatusUnused, GroupID: &group.ID, ValidityDays: 7, CreatedAt: time.Now()REDACTED,
+		{Code: "CODEA", Type: service.RedeemTypeBalance, Value: 1, Status: service.StatusUnused, Notes: ""REDACTED,
+		{Code: "CODEB", Type: service.RedeemTypeSubscription, Value: 0, Status: service.StatusUnused, Notes: "", GroupID: &groupID, ValidityDays: 7REDACTED,
 REDACTED
 	s.Require().NoError(s.repo.CreateBatch(s.ctx, codes), "CreateBatch")
 
@@ -303,10 +372,16 @@ REDACTED
 	codeA, err := s.repo.GetByCode(s.ctx, "CODEA")
 	s.Require().NoError(err, "GetByCode")
 
-	// Use fixed time instead of time.Sleep for deterministic ordering
-	s.db.Model(&redeemCodeModel{REDACTED).Where("id = ?", codeB.ID).Update("used_at", time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	// Use fixed time instead of time.Sleep for deterministic ordering.
+	_, err = s.client.RedeemCode.UpdateOneID(codeB.ID).
+		SetUsedAt(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)).
+		Save(s.ctx)
+	s.Require().NoError(err)
 	s.Require().NoError(s.repo.Use(s.ctx, codeA.ID, user.ID), "Use codeA")
-	s.db.Model(&redeemCodeModel{REDACTED).Where("id = ?", codeA.ID).Update("used_at", time.Date(2025, 1, 1, 13, 0, 0, 0, time.UTC))
+	_, err = s.client.RedeemCode.UpdateOneID(codeA.ID).
+		SetUsedAt(time.Date(2025, 1, 1, 13, 0, 0, 0, time.UTC)).
+		Save(s.ctx)
+	s.Require().NoError(err)
 
 	used, err := s.repo.ListByUser(s.ctx, user.ID, 10)
 	s.Require().NoError(err, "ListByUser")

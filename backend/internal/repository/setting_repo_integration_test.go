@@ -8,20 +8,18 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/gorm"
 )
 
 type SettingRepoSuite struct {
 	suite.Suite
 	ctx  context.Context
-	db   *gorm.DB
 	repo *settingRepository
 REDACTED
 
 func (s *SettingRepoSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.db = testTx(s.T())
-	s.repo = NewSettingRepository(s.db).(*settingRepository)
+	tx := testEntTx(s.T())
+	s.repo = NewSettingRepository(tx.Client()).(*settingRepository)
 REDACTED
 
 func TestSettingRepoSuite(t *testing.T) {

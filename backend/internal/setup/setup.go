@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -10,13 +11,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	"gopkg.in/yaml.v3"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 // Config paths
@@ -92,20 +92,16 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.SSLMode,
 	)
 
-	db, err := gorm.Open(postgres.Open(defaultDSN), &gorm.Config{REDACTED)
+	db, err := sql.Open("postgres", defaultDSN)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 REDACTED
 
-	sqlDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get db instance: %w", err)
-REDACTED
 	defer func() {
-		if sqlDB == nil {
+		if db == nil {
 			return
 	REDACTED
-		if err := sqlDB.Close(); err != nil {
+		if err := db.Close(); err != nil {
 			log.Printf("failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
@@ -113,22 +109,23 @@ REDACTED()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := sqlDB.PingContext(ctx); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping failed: %w", err)
 REDACTED
 
 	// Check if target database exists
 	var exists bool
-	row := sqlDB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
+	row := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
 	if err := row.Scan(&exists); err != nil {
 		return fmt.Errorf("failed to check database existence: %w", err)
 REDACTED
 
 	// Create database if not exists
 	if !exists {
+		// 注意：数据库名不能参数化，依赖前置输入校验保障安全。
 		// Note: Database names cannot be parameterized, but we've already validated cfg.DBName
 		// in the handler using validateDBName() which only allows [a-zA-Z][a-zA-Z0-9_]*
-		_, err := sqlDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", cfg.DBName))
+		_, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", cfg.DBName))
 		if err != nil {
 			return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
 	REDACTED
@@ -136,27 +133,23 @@ REDACTED
 REDACTED
 
 	// Now connect to the target database to verify
-	if err := sqlDB.Close(); err != nil {
+	if err := db.Close(); err != nil {
 		log.Printf("failed to close postgres connection: %v", err)
 REDACTED
-	sqlDB = nil
+	db = nil
 
 	targetDSN := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
 	)
 
-	targetDB, err := gorm.Open(postgres.Open(targetDSN), &gorm.Config{REDACTED)
+	targetDB, err := sql.Open("postgres", targetDSN)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database '%s': %w", cfg.DBName, err)
 REDACTED
 
-	targetSqlDB, err := targetDB.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get target db instance: %w", err)
-REDACTED
 	defer func() {
-		if err := targetSqlDB.Close(); err != nil {
+		if err := targetDB.Close(); err != nil {
 			log.Printf("failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
@@ -164,7 +157,7 @@ REDACTED()
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel2()
 
-	if err := targetSqlDB.PingContext(ctx2); err != nil {
+	if err := targetDB.PingContext(ctx2); err != nil {
 		return fmt.Errorf("ping target database failed: %w", err)
 REDACTED
 
@@ -256,24 +249,20 @@ func initializeDatabase(cfg *SetupConfig) error {
 		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode,
 	)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{REDACTED)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return err
 REDACTED
 
-	sqlDB, err := db.DB()
-	if err != nil {
-		return err
-REDACTED
 	defer func() {
-		if err := sqlDB.Close(); err != nil {
+		if err := db.Close(); err != nil {
 			log.Printf("failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
-	// setup 阶段使用 standard 模式（不创建默认分组）
-	// 默认分组将在正常启动时根据实际 runMode 决定是否创建
-	return repository.AutoMigrate(db, "standard")
+	migrationCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	return infrastructure.ApplyMigrations(migrationCtx, db)
 REDACTED
 
 func createAdminUser(cfg *SetupConfig) error {
@@ -283,24 +272,24 @@ func createAdminUser(cfg *SetupConfig) error {
 		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode,
 	)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{REDACTED)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return err
 REDACTED
 
-	sqlDB, err := db.DB()
-	if err != nil {
-		return err
-REDACTED
 	defer func() {
-		if err := sqlDB.Close(); err != nil {
+		if err := db.Close(); err != nil {
 			log.Printf("failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
+	// 使用超时上下文避免安装流程因数据库异常而长时间阻塞。
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	// Check if admin already exists
 	var count int64
-	if err := db.Table("users").Where("role = ?", service.RoleAdmin).Count(&count).Error; err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&count); err != nil {
 		return err
 REDACTED
 	if count > 0 {
@@ -321,7 +310,20 @@ REDACTED
 		return err
 REDACTED
 
-	return repository.NewUserRepository(db).Create(context.Background(), admin)
+	_, err = db.ExecContext(
+		ctx,
+		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		admin.Email,
+		admin.PasswordHash,
+		admin.Role,
+		admin.Balance,
+		admin.Concurrency,
+		admin.Status,
+		admin.CreatedAt,
+		admin.UpdatedAt,
+	)
+	return err
 REDACTED
 
 func writeConfigFile(cfg *SetupConfig) error {
@@ -341,7 +343,10 @@ REDACTED
 			ExpireHour int    `yaml:"expire_hour"`
 	REDACTED `yaml:"jwt"`
 		Default struct {
-			GroupID uint `yaml:"group_id"`
+			UserConcurrency int     `yaml:"user_concurrency"`
+			UserBalance     float64 `yaml:"user_balance"`
+			ApiKeyPrefix    string  `yaml:"api_key_prefix"`
+			RateMultiplier  float64 `yaml:"rate_multiplier"`
 	REDACTED `yaml:"default"`
 		RateLimit struct {
 			RequestsPerMinute int `yaml:"requests_per_minute"`
@@ -360,9 +365,15 @@ REDACTED{
 			ExpireHour: cfg.JWT.ExpireHour,
 	REDACTED,
 		Default: struct {
-			GroupID uint `yaml:"group_id"`
+			UserConcurrency int     `yaml:"user_concurrency"`
+			UserBalance     float64 `yaml:"user_balance"`
+			ApiKeyPrefix    string  `yaml:"api_key_prefix"`
+			RateMultiplier  float64 `yaml:"rate_multiplier"`
 	REDACTED{
-			GroupID: 1,
+			UserConcurrency: 5,
+			UserBalance:     0,
+			ApiKeyPrefix:    "sk-",
+			RateMultiplier:  1.0,
 	REDACTED,
 		RateLimit: struct {
 			RequestsPerMinute int `yaml:"requests_per_minute"`

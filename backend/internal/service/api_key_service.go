@@ -29,6 +29,8 @@ const (
 type ApiKeyRepository interface {
 	Create(ctx context.Context, key *ApiKey) error
 	GetByID(ctx context.Context, id int64) (*ApiKey, error)
+	// GetOwnerID 仅获取 API Key 的所有者 ID，用于删除前的轻量级权限验证
+	GetOwnerID(ctx context.Context, id int64) (int64, error)
 	GetByKey(ctx context.Context, key string) (*ApiKey, error)
 	Update(ctx context.Context, key *ApiKey) error
 	Delete(ctx context.Context, id int64) error
@@ -350,20 +352,23 @@ REDACTED
 REDACTED
 
 // Delete 删除API Key
+// 优化：使用 GetOwnerID 替代 GetByID 进行权限验证，
+// 避免加载完整 ApiKey 对象及其关联数据（User、Group），提升删除操作的性能
 func (s *ApiKeyService) Delete(ctx context.Context, id int64, userID int64) error {
-	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
+	// 仅获取所有者 ID 用于权限验证，而非加载完整对象
+	ownerID, err := s.apiKeyRepo.GetOwnerID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get api key: %w", err)
 REDACTED
 
-	// 验证所有权
-	if apiKey.UserID != userID {
+	// 验证当前用户是否为该 API Key 的所有者
+	if ownerID != userID {
 		return ErrInsufficientPerms
 REDACTED
 
-	// 清除Redis缓存
+	// 清除Redis缓存（使用 ownerID 而非 apiKey.UserID）
 	if s.cache != nil {
-		_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
+		_ = s.cache.DeleteCreateAttemptCount(ctx, ownerID)
 REDACTED
 
 	if err := s.apiKeyRepo.Delete(ctx, id); err != nil {

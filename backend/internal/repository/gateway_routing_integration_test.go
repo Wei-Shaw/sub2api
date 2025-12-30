@@ -6,10 +6,9 @@ import (
 	"context"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 // GatewayRoutingSuite 测试网关路由相关的数据库查询
@@ -17,14 +16,15 @@ import (
 type GatewayRoutingSuite struct {
 	suite.Suite
 	ctx         context.Context
-	db          *gorm.DB
+	client      *dbent.Client
 	accountRepo *accountRepository
 REDACTED
 
 func (s *GatewayRoutingSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.db = testTx(s.T())
-	s.accountRepo = NewAccountRepository(s.db).(*accountRepository)
+	tx := testEntTx(s.T())
+	s.client = tx.Client()
+	s.accountRepo = newAccountRepositoryWithSQL(s.client, tx)
 REDACTED
 
 func TestGatewayRoutingSuite(t *testing.T) {
@@ -34,7 +34,7 @@ REDACTED
 // TestListSchedulableByPlatforms_GeminiAndAntigravity 验证多平台账户查询
 func (s *GatewayRoutingSuite) TestListSchedulableByPlatforms_GeminiAndAntigravity() {
 	// 创建各平台账户
-	geminiAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	geminiAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "gemini-oauth",
 		Platform:    service.PlatformGemini,
 		Type:        service.AccountTypeOAuth,
@@ -43,14 +43,14 @@ func (s *GatewayRoutingSuite) TestListSchedulableByPlatforms_GeminiAndAntigravit
 		Priority:    1,
 REDACTED)
 
-	antigravityAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	antigravityAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "antigravity-oauth",
 		Platform:    service.PlatformAntigravity,
 		Type:        service.AccountTypeOAuth,
 		Status:      service.StatusActive,
 		Schedulable: true,
 		Priority:    2,
-		Credentials: datatypes.JSONMap{
+REDACTED
 			"access_token":  "test-token",
 			"refresh_token": "test-refresh",
 			"project_id":    "test-project",
@@ -58,7 +58,7 @@ REDACTED)
 REDACTED)
 
 	// 创建不应被选中的 anthropic 账户
-	mustCreateAccount(s.T(), s.db, &accountModel{
+	mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "anthropic-oauth",
 		Platform:    service.PlatformAnthropic,
 		Type:        service.AccountTypeOAuth,
@@ -97,20 +97,20 @@ REDACTED
 // TestListSchedulableByGroupIDAndPlatforms_WithGroupBinding 验证按分组过滤
 func (s *GatewayRoutingSuite) TestListSchedulableByGroupIDAndPlatforms_WithGroupBinding() {
 	// 创建 gemini 分组
-	group := mustCreateGroup(s.T(), s.db, &groupModel{
+	group := mustCreateGroup(s.T(), s.client, &service.Group{
 		Name:     "gemini-group",
 		Platform: service.PlatformGemini,
 		Status:   service.StatusActive,
 REDACTED)
 
 	// 创建账户
-	boundAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	boundAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "bound-antigravity",
 		Platform:    service.PlatformAntigravity,
 		Status:      service.StatusActive,
 		Schedulable: true,
 REDACTED)
-	unboundAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	unboundAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "unbound-antigravity",
 		Platform:    service.PlatformAntigravity,
 		Status:      service.StatusActive,
@@ -118,7 +118,7 @@ REDACTED)
 REDACTED)
 
 	// 只绑定一个账户到分组
-	mustBindAccountToGroup(s.T(), s.db, boundAcc.ID, group.ID, 1)
+	mustBindAccountToGroup(s.T(), s.client, boundAcc.ID, group.ID, 1)
 
 	// 查询分组内的账户
 	accounts, err := s.accountRepo.ListSchedulableByGroupIDAndPlatforms(s.ctx, group.ID, []string{
@@ -139,14 +139,14 @@ REDACTED
 // TestListSchedulableByPlatform_Antigravity 验证单平台查询
 func (s *GatewayRoutingSuite) TestListSchedulableByPlatform_Antigravity() {
 	// 创建多种平台账户
-	mustCreateAccount(s.T(), s.db, &accountModel{
+	mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "gemini-1",
 		Platform:    service.PlatformGemini,
 		Status:      service.StatusActive,
 		Schedulable: true,
 REDACTED)
 
-	antigravity := mustCreateAccount(s.T(), s.db, &accountModel{
+	antigravity := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "antigravity-1",
 		Platform:    service.PlatformAntigravity,
 		Status:      service.StatusActive,
@@ -165,7 +165,7 @@ REDACTED
 // TestSchedulableFilter_ExcludesInactive 验证不可调度账户被过滤
 func (s *GatewayRoutingSuite) TestSchedulableFilter_ExcludesInactive() {
 	// 创建可调度账户
-	activeAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	activeAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "active-antigravity",
 		Platform:    service.PlatformAntigravity,
 		Status:      service.StatusActive,
@@ -173,15 +173,15 @@ func (s *GatewayRoutingSuite) TestSchedulableFilter_ExcludesInactive() {
 REDACTED)
 
 	// 创建不可调度账户（需要先创建再更新，因为 fixture 默认设置 Schedulable=true）
-	inactiveAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	inactiveAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:     "inactive-antigravity",
 		Platform: service.PlatformAntigravity,
 		Status:   service.StatusActive,
 REDACTED)
-	s.Require().NoError(s.db.Model(&accountModel{REDACTED).Where("id = ?", inactiveAcc.ID).Update("schedulable", false).Error)
+	s.Require().NoError(s.client.Account.UpdateOneID(inactiveAcc.ID).SetSchedulable(false).Exec(s.ctx))
 
 	// 创建错误状态账户
-	mustCreateAccount(s.T(), s.db, &accountModel{
+	mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "error-antigravity",
 		Platform:    service.PlatformAntigravity,
 		Status:      service.StatusError,
@@ -199,14 +199,14 @@ REDACTED
 // 这个测试模拟 Handler 层在选择账户后的路由决策逻辑
 func (s *GatewayRoutingSuite) TestPlatformRoutingDecision() {
 	// 创建两种平台的账户
-	geminiAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	geminiAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "gemini-route-test",
 		Platform:    service.PlatformGemini,
 		Status:      service.StatusActive,
 		Schedulable: true,
 REDACTED)
 
-	antigravityAcc := mustCreateAccount(s.T(), s.db, &accountModel{
+	antigravityAcc := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "antigravity-route-test",
 		Platform:    service.PlatformAntigravity,
 		Status:      service.StatusActive,

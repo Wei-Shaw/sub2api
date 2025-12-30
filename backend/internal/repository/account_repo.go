@@ -1,42 +1,139 @@
+// Package repository 实现数据访问层（Repository Pattern）。
+//
+// 该包提供了与数据库交互的所有操作，包括 CRUD、复杂查询和批量操作。
+// 采用 Repository 模式将数据访问逻辑与业务逻辑分离，便于测试和维护。
+//
+// 主要特性：
+//   - 使用 Ent ORM 进行类型安全的数据库操作
+//   - 对于复杂查询（如批量更新、聚合统计）使用原生 SQL
+//   - 提供统一的错误翻译机制，将数据库错误转换为业务错误
+//   - 支持软删除，所有查询自动过滤已删除记录
 package repository
 
 import (
 	"context"
-	"errors"
+	"database/sql"
+	"encoding/json"
+	"strconv"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
+	dbaccountgroup "github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
+	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
+	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
+	entsql "entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 )
 
+// accountRepository 实现 service.AccountRepository 接口。
+// 提供 AI API 账户的完整数据访问功能。
+//
+// 设计说明：
+//   - client: Ent 客户端，用于类型安全的 ORM 操作
+//   - sql: 原生 SQL 执行器，用于复杂查询和批量操作
 type accountRepository struct {
-	db *gorm.DB
+	client *dbent.Client // Ent ORM 客户端
+	sql    sqlExecutor   // 原生 SQL 执行接口
 REDACTED
 
-func NewAccountRepository(db *gorm.DB) service.AccountRepository {
-	return &accountRepository{db: dbREDACTED
+// NewAccountRepository 创建账户仓储实例。
+// 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
+func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB) service.AccountRepository {
+	return newAccountRepositoryWithSQL(client, sqlDB)
+REDACTED
+
+// newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
+// 这种设计便于单元测试时注入 mock 对象。
+func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *accountRepository {
+	return &accountRepository{client: client, sql: sqlqREDACTED
 REDACTED
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
-	m := accountModelFromService(account)
-	err := r.db.WithContext(ctx).Create(m).Error
-	if err == nil {
-		applyAccountModelToService(account, m)
+	if account == nil {
+		return nil
 REDACTED
-	return err
+
+	builder := r.client.Account.Create().
+		SetName(account.Name).
+		SetPlatform(account.Platform).
+		SetType(account.Type).
+		SetCredentials(normalizeJSONMap(account.Credentials)).
+		SetExtra(normalizeJSONMap(account.Extra)).
+		SetConcurrency(account.Concurrency).
+		SetPriority(account.Priority).
+		SetStatus(account.Status).
+		SetErrorMessage(account.ErrorMessage).
+		SetSchedulable(account.Schedulable)
+
+	if account.ProxyID != nil {
+		builder.SetProxyID(*account.ProxyID)
+REDACTED
+	if account.LastUsedAt != nil {
+		builder.SetLastUsedAt(*account.LastUsedAt)
+REDACTED
+	if account.RateLimitedAt != nil {
+		builder.SetRateLimitedAt(*account.RateLimitedAt)
+REDACTED
+	if account.RateLimitResetAt != nil {
+		builder.SetRateLimitResetAt(*account.RateLimitResetAt)
+REDACTED
+	if account.OverloadUntil != nil {
+		builder.SetOverloadUntil(*account.OverloadUntil)
+REDACTED
+	if account.SessionWindowStart != nil {
+		builder.SetSessionWindowStart(*account.SessionWindowStart)
+REDACTED
+	if account.SessionWindowEnd != nil {
+		builder.SetSessionWindowEnd(*account.SessionWindowEnd)
+REDACTED
+	if account.SessionWindowStatus != "" {
+		builder.SetSessionWindowStatus(account.SessionWindowStatus)
+REDACTED
+
+	created, err := builder.Save(ctx)
+	if err != nil {
+		return err
+REDACTED
+
+	account.ID = created.ID
+	account.CreatedAt = created.CreatedAt
+	account.UpdatedAt = created.UpdatedAt
+	return nil
 REDACTED
 
 func (r *accountRepository) GetByID(ctx context.Context, id int64) (*service.Account, error) {
-	var m accountModel
-	err := r.db.WithContext(ctx).Preload("Proxy").Preload("AccountGroups.Group").First(&m, id).Error
+	m, err := r.client.Account.Query().Where(dbaccount.IDEQ(id)).Only(ctx)
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrAccountNotFound, nil)
 REDACTED
-	return accountModelToService(&m), nil
+
+	accounts, err := r.accountsToService(ctx, []*dbent.Account{mREDACTED)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(accounts) == 0 {
+		return nil, service.ErrAccountNotFound
+REDACTED
+	return &accounts[0], nil
+REDACTED
+
+// ExistsByID 检查指定 ID 的账号是否存在。
+// 相比 GetByID，此方法性能更优，因为：
+//   - 使用 Exist() 方法生成 SELECT EXISTS 查询，只返回布尔值
+//   - 不加载完整的账号实体及其关联数据（Groups、Proxy 等）
+//   - 适用于删除前的存在性检查等只需判断有无的场景
+func (r *accountRepository) ExistsByID(ctx context.Context, id int64) (bool, error) {
+	exists, err := r.client.Account.Query().Where(dbaccount.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return false, err
+REDACTED
+	return exists, nil
 REDACTED
 
 func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*service.Account, error) {
@@ -44,31 +141,101 @@ func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID 
 		return nil, nil
 REDACTED
 
-	var m accountModel
-	err := r.db.WithContext(ctx).Where("extra->>'crs_account_id' = ?", crsAccountID).First(&m).Error
+	// 使用 sqljson.ValueEQ 生成 JSON 路径过滤，避免手写 SQL 片段导致语法兼容问题。
+	m, err := r.client.Account.Query().
+		Where(func(s *entsql.Selector) {
+			s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, crsAccountID, sqljson.Path("crs_account_id")))
+	REDACTED).
+		Only(ctx)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if dbent.IsNotFound(err) {
 			return nil, nil
 	REDACTED
 		return nil, err
 REDACTED
-	return accountModelToService(&m), nil
+
+	accounts, err := r.accountsToService(ctx, []*dbent.Account{mREDACTED)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(accounts) == 0 {
+		return nil, nil
+REDACTED
+	return &accounts[0], nil
 REDACTED
 
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
-	m := accountModelFromService(account)
-	err := r.db.WithContext(ctx).Save(m).Error
-	if err == nil {
-		applyAccountModelToService(account, m)
+	if account == nil {
+		return nil
 REDACTED
-	return err
+
+	builder := r.client.Account.UpdateOneID(account.ID).
+		SetName(account.Name).
+		SetPlatform(account.Platform).
+		SetType(account.Type).
+		SetCredentials(normalizeJSONMap(account.Credentials)).
+		SetExtra(normalizeJSONMap(account.Extra)).
+		SetConcurrency(account.Concurrency).
+		SetPriority(account.Priority).
+		SetStatus(account.Status).
+		SetErrorMessage(account.ErrorMessage).
+		SetSchedulable(account.Schedulable)
+
+	if account.ProxyID != nil {
+		builder.SetProxyID(*account.ProxyID)
+REDACTED else {
+		builder.ClearProxyID()
+REDACTED
+	if account.LastUsedAt != nil {
+		builder.SetLastUsedAt(*account.LastUsedAt)
+REDACTED else {
+		builder.ClearLastUsedAt()
+REDACTED
+	if account.RateLimitedAt != nil {
+		builder.SetRateLimitedAt(*account.RateLimitedAt)
+REDACTED else {
+		builder.ClearRateLimitedAt()
+REDACTED
+	if account.RateLimitResetAt != nil {
+		builder.SetRateLimitResetAt(*account.RateLimitResetAt)
+REDACTED else {
+		builder.ClearRateLimitResetAt()
+REDACTED
+	if account.OverloadUntil != nil {
+		builder.SetOverloadUntil(*account.OverloadUntil)
+REDACTED else {
+		builder.ClearOverloadUntil()
+REDACTED
+	if account.SessionWindowStart != nil {
+		builder.SetSessionWindowStart(*account.SessionWindowStart)
+REDACTED else {
+		builder.ClearSessionWindowStart()
+REDACTED
+	if account.SessionWindowEnd != nil {
+		builder.SetSessionWindowEnd(*account.SessionWindowEnd)
+REDACTED else {
+		builder.ClearSessionWindowEnd()
+REDACTED
+	if account.SessionWindowStatus != "" {
+		builder.SetSessionWindowStatus(account.SessionWindowStatus)
+REDACTED else {
+		builder.ClearSessionWindowStatus()
+REDACTED
+
+	updated, err := builder.Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+REDACTED
+	account.UpdatedAt = updated.UpdatedAt
+	return nil
 REDACTED
 
 func (r *accountRepository) Delete(ctx context.Context, id int64) error {
-	if err := r.db.WithContext(ctx).Where("account_id = ?", id).Delete(&accountGroupModel{REDACTED).Error; err != nil {
+	if _, err := r.client.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(id)).Exec(ctx); err != nil {
 		return err
 REDACTED
-	return r.db.WithContext(ctx).Delete(&accountModel{REDACTED, id).Error
+	_, err := r.client.Account.Delete().Where(dbaccount.IDEQ(id)).Exec(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
@@ -76,99 +243,84 @@ func (r *accountRepository) List(ctx context.Context, params pagination.Paginati
 REDACTED
 
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string) ([]service.Account, *pagination.PaginationResult, error) {
-	var accounts []accountModel
-	var total int64
-
-	db := r.db.WithContext(ctx).Model(&accountModel{REDACTED)
+	q := r.client.Account.Query()
 
 	if platform != "" {
-		db = db.Where("platform = ?", platform)
+		q = q.Where(dbaccount.PlatformEQ(platform))
 REDACTED
 	if accountType != "" {
-		db = db.Where("type = ?", accountType)
+		q = q.Where(dbaccount.TypeEQ(accountType))
 REDACTED
 	if status != "" {
-		db = db.Where("status = ?", status)
+		q = q.Where(dbaccount.StatusEQ(status))
 REDACTED
 	if search != "" {
-		searchPattern := "%" + search + "%"
-		db = db.Where("name ILIKE ?", searchPattern)
+		q = q.Where(dbaccount.NameContainsFold(search))
 REDACTED
 
-	if err := db.Count(&total).Error; err != nil {
+	total, err := q.Count(ctx)
+	if err != nil {
 		return nil, nil, err
 REDACTED
 
-	if err := db.Preload("Proxy").Preload("AccountGroups.Group").Offset(params.Offset()).Limit(params.Limit()).Order("id DESC").Find(&accounts).Error; err != nil {
+	accounts, err := q.
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Desc(dbaccount.FieldID)).
+		All(ctx)
+	if err != nil {
 		return nil, nil, err
 REDACTED
 
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
+	outAccounts, err := r.accountsToService(ctx, accounts)
+	if err != nil {
+		return nil, nil, err
 REDACTED
-
-	return outAccounts, paginationResultFromTotal(total, params), nil
+	return outAccounts, paginationResultFromTotal(int64(total), params), nil
 REDACTED
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
-	var accounts []accountModel
-	err := r.db.WithContext(ctx).
-		Joins("JOIN account_groups ON account_groups.account_id = accounts.id").
-		Where("account_groups.group_id = ? AND accounts.status = ?", groupID, service.StatusActive).
-		Preload("Proxy").
-		Order("account_groups.priority ASC, accounts.priority ASC").
-		Find(&accounts).Error
+	accounts, err := r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
+		status: service.StatusActive,
+REDACTED)
 	if err != nil {
 		return nil, err
 REDACTED
-
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return accounts, nil
 REDACTED
 
 func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, error) {
-	var accounts []accountModel
-	err := r.db.WithContext(ctx).
-		Where("status = ?", service.StatusActive).
-		Preload("Proxy").
-		Order("priority ASC").
-		Find(&accounts).Error
+	accounts, err := r.client.Account.Query().
+		Where(dbaccount.StatusEQ(service.StatusActive)).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
-
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return r.accountsToService(ctx, accounts)
 REDACTED
 
 func (r *accountRepository) ListByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
-	var accounts []accountModel
-	err := r.db.WithContext(ctx).
-		Where("platform = ? AND status = ?", platform, service.StatusActive).
-		Preload("Proxy").
-		Order("priority ASC").
-		Find(&accounts).Error
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(platform),
+			dbaccount.StatusEQ(service.StatusActive),
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
-
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return r.accountsToService(ctx, accounts)
 REDACTED
 
 func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error {
 	now := time.Now()
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).Update("last_used_at", now).Error
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetLastUsedAt(now).
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -176,63 +328,72 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 		return nil
 REDACTED
 
-	var caseSql = "UPDATE accounts SET last_used_at = CASE id"
-	var args []any
-	var ids []int64
+	ids := make([]int64, 0, len(updates))
+	args := make([]any, 0, len(updates)*2+1)
+	caseSQL := "UPDATE accounts SET last_used_at = CASE id"
 
+	idx := 1
 	for id, ts := range updates {
-		caseSql += " WHEN ? THEN CAST(? AS TIMESTAMP)"
+		caseSQL += " WHEN $" + itoa(idx) + " THEN $" + itoa(idx+1)
 		args = append(args, id, ts)
 		ids = append(ids, id)
+		idx += 2
 REDACTED
 
-	caseSql += " END WHERE id IN ? AND deleted_at IS NULL"
-	args = append(args, ids)
+	caseSQL += " END, updated_at = NOW() WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
+	args = append(args, pq.Array(ids))
 
-	return r.db.WithContext(ctx).Exec(caseSql, args...).Error
+	_, err := r.sql.ExecContext(ctx, caseSQL, args...)
+	return err
 REDACTED
 
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).
-		Updates(map[string]any{
-			"status":        service.StatusError,
-			"error_message": errorMsg,
-	REDACTED).Error
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetStatus(service.StatusError).
+		SetErrorMessage(errorMsg).
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID int64, priority int) error {
-	ag := &accountGroupModel{
-		AccountID: accountID,
-		GroupID:   groupID,
-		Priority:  priority,
-REDACTED
-	return r.db.WithContext(ctx).Create(ag).Error
+	_, err := r.client.AccountGroup.Create().
+		SetAccountID(accountID).
+		SetGroupID(groupID).
+		SetPriority(priority).
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) RemoveFromGroup(ctx context.Context, accountID, groupID int64) error {
-	return r.db.WithContext(ctx).Where("account_id = ? AND group_id = ?", accountID, groupID).
-		Delete(&accountGroupModel{REDACTED).Error
+	_, err := r.client.AccountGroup.Delete().
+		Where(
+			dbaccountgroup.AccountIDEQ(accountID),
+			dbaccountgroup.GroupIDEQ(groupID),
+		).
+		Exec(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) GetGroups(ctx context.Context, accountID int64) ([]service.Group, error) {
-	var groups []groupModel
-	err := r.db.WithContext(ctx).
-		Joins("JOIN account_groups ON account_groups.group_id = groups.id").
-		Where("account_groups.account_id = ?", accountID).
-		Find(&groups).Error
+	groups, err := r.client.Group.Query().
+		Where(
+			dbgroup.HasAccountsWith(dbaccount.IDEQ(accountID)),
+		).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
 
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
-		outGroups = append(outGroups, *groupModelToService(&groups[i]))
+		outGroups = append(outGroups, *groupEntityToService(groups[i]))
 REDACTED
 	return outGroups, nil
 REDACTED
 
 func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
-	if err := r.db.WithContext(ctx).Where("account_id = ?", accountID).Delete(&accountGroupModel{REDACTED).Error; err != nil {
+	if _, err := r.client.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(accountID)).Exec(ctx); err != nil {
 		return err
 REDACTED
 
@@ -240,192 +401,153 @@ REDACTED
 		return nil
 REDACTED
 
-	accountGroups := make([]accountGroupModel, 0, len(groupIDs))
+	builders := make([]*dbent.AccountGroupCreate, 0, len(groupIDs))
 	for i, groupID := range groupIDs {
-		accountGroups = append(accountGroups, accountGroupModel{
-			AccountID: accountID,
-			GroupID:   groupID,
-			Priority:  i + 1,
-	REDACTED)
+		builders = append(builders, r.client.AccountGroup.Create().
+			SetAccountID(accountID).
+			SetGroupID(groupID).
+			SetPriority(i+1),
+		)
 REDACTED
-	return r.db.WithContext(ctx).Create(&accountGroups).Error
+
+	_, err := r.client.AccountGroup.CreateBulk(builders...).Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) ListSchedulable(ctx context.Context) ([]service.Account, error) {
-	var accounts []accountModel
 	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Where("status = ? AND schedulable = ?", service.StatusActive, true).
-		Where("(overload_until IS NULL OR overload_until <= ?)", now).
-		Where("(rate_limit_reset_at IS NULL OR rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("priority ASC").
-		Find(&accounts).Error
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return r.accountsToService(ctx, accounts)
 REDACTED
 
 func (r *accountRepository) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]service.Account, error) {
-	var accounts []accountModel
-	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Joins("JOIN account_groups ON account_groups.account_id = accounts.id").
-		Where("account_groups.group_id = ?", groupID).
-		Where("accounts.status = ? AND accounts.schedulable = ?", service.StatusActive, true).
-		Where("(accounts.overload_until IS NULL OR accounts.overload_until <= ?)", now).
-		Where("(accounts.rate_limit_reset_at IS NULL OR accounts.rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("account_groups.priority ASC, accounts.priority ASC").
-		Find(&accounts).Error
-	if err != nil {
-		return nil, err
-REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
+		status:      service.StatusActive,
+		schedulable: true,
+REDACTED)
 REDACTED
 
 func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
-	var accounts []accountModel
 	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Where("platform = ?", platform).
-		Where("status = ? AND schedulable = ?", service.StatusActive, true).
-		Where("(overload_until IS NULL OR overload_until <= ?)", now).
-		Where("(rate_limit_reset_at IS NULL OR rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("priority ASC").
-		Find(&accounts).Error
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(platform),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return r.accountsToService(ctx, accounts)
 REDACTED
 
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]service.Account, error) {
-	var accounts []accountModel
-	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Joins("JOIN account_groups ON account_groups.account_id = accounts.id").
-		Where("account_groups.group_id = ?", groupID).
-		Where("accounts.platform = ?", platform).
-		Where("accounts.status = ? AND accounts.schedulable = ?", service.StatusActive, true).
-		Where("(accounts.overload_until IS NULL OR accounts.overload_until <= ?)", now).
-		Where("(accounts.rate_limit_reset_at IS NULL OR accounts.rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("account_groups.priority ASC, accounts.priority ASC").
-		Find(&accounts).Error
-	if err != nil {
-		return nil, err
-REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	// 单平台查询复用多平台逻辑，保持过滤条件与排序策略一致。
+	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
+		status:      service.StatusActive,
+		schedulable: true,
+		platforms:   []string{platformREDACTED,
+REDACTED)
 REDACTED
 
 func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
 	if len(platforms) == 0 {
 		return nil, nil
 REDACTED
-	var accounts []accountModel
+	// 仅返回可调度的活跃账号，并过滤处于过载/限流窗口的账号。
+	// 代理与分组信息统一在 accountsToService 中批量加载，避免 N+1 查询。
 	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Where("platform IN ?", platforms).
-		Where("status = ? AND schedulable = ?", service.StatusActive, true).
-		Where("(overload_until IS NULL OR overload_until <= ?)", now).
-		Where("(rate_limit_reset_at IS NULL OR rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("priority ASC").
-		Find(&accounts).Error
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformIn(platforms...),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	return r.accountsToService(ctx, accounts)
 REDACTED
 
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]service.Account, error) {
 	if len(platforms) == 0 {
 		return nil, nil
 REDACTED
-	var accounts []accountModel
-	now := time.Now()
-	err := r.db.WithContext(ctx).
-		Joins("JOIN account_groups ON account_groups.account_id = accounts.id").
-		Where("account_groups.group_id = ?", groupID).
-		Where("accounts.platform IN ?", platforms).
-		Where("accounts.status = ? AND accounts.schedulable = ?", service.StatusActive, true).
-		Where("(accounts.overload_until IS NULL OR accounts.overload_until <= ?)", now).
-		Where("(accounts.rate_limit_reset_at IS NULL OR accounts.rate_limit_reset_at <= ?)", now).
-		Preload("Proxy").
-		Order("account_groups.priority ASC, accounts.priority ASC").
-		Find(&accounts).Error
-	if err != nil {
-		return nil, err
-REDACTED
-	outAccounts := make([]service.Account, 0, len(accounts))
-	for i := range accounts {
-		outAccounts = append(outAccounts, *accountModelToService(&accounts[i]))
-REDACTED
-	return outAccounts, nil
+	// 复用按分组查询逻辑，保证分组优先级 + 账号优先级的排序与筛选一致。
+	return r.queryAccountsByGroup(ctx, groupID, accountGroupQueryOptions{
+		status:      service.StatusActive,
+		schedulable: true,
+		platforms:   platforms,
+REDACTED)
 REDACTED
 
 func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	now := time.Now()
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).
-		Updates(map[string]any{
-			"rate_limited_at":     now,
-			"rate_limit_reset_at": resetAt,
-	REDACTED).Error
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetRateLimitedAt(now).
+		SetRateLimitResetAt(resetAt).
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).
-		Update("overload_until", until).Error
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetOverloadUntil(until).
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).
-		Updates(map[string]any{
-			"rate_limited_at":     nil,
-			"rate_limit_reset_at": nil,
-			"overload_until":      nil,
-	REDACTED).Error
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		ClearRateLimitedAt().
+		ClearRateLimitResetAt().
+		ClearOverloadUntil().
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
-	updates := map[string]any{
-		"session_window_status": status,
-REDACTED
+	builder := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetSessionWindowStatus(status)
 	if start != nil {
-		updates["session_window_start"] = start
+		builder.SetSessionWindowStart(*start)
 REDACTED
 	if end != nil {
-		updates["session_window_end"] = end
+		builder.SetSessionWindowEnd(*end)
 REDACTED
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).Updates(updates).Error
+	_, err := builder.Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).
-		Update("schedulable", schedulable).Error
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetSchedulable(schedulable).
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
@@ -433,20 +555,24 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		return nil
 REDACTED
 
-	var account accountModel
-	if err := r.db.WithContext(ctx).Select("extra").Where("id = ?", id).First(&account).Error; err != nil {
-		return err
+	accountExtra, err := r.client.Account.Query().
+		Where(dbaccount.IDEQ(id)).
+		Select(dbaccount.FieldExtra).
+		Only(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 REDACTED
 
-	if account.Extra == nil {
-		account.Extra = datatypes.JSONMap{REDACTED
-REDACTED
+	extra := normalizeJSONMap(accountExtra.Extra)
 	for k, v := range updates {
-		account.Extra[k] = v
+		extra[k] = v
 REDACTED
 
-	return r.db.WithContext(ctx).Model(&accountModel{REDACTED).Where("id = ?", id).
-		Update("extra", account.Extra).Error
+	_, err = r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetExtra(extra).
+		Save(ctx)
+	return err
 REDACTED
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
@@ -454,129 +580,261 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		return 0, nil
 REDACTED
 
-	updateMap := map[string]any{REDACTED
+	setClauses := make([]string, 0, 8)
+	args := make([]any, 0, 8)
 
+	idx := 1
 	if updates.Name != nil {
-		updateMap["name"] = *updates.Name
+		setClauses = append(setClauses, "name = $"+itoa(idx))
+		args = append(args, *updates.Name)
+		idx++
 REDACTED
 	if updates.ProxyID != nil {
-		updateMap["proxy_id"] = updates.ProxyID
+		setClauses = append(setClauses, "proxy_id = $"+itoa(idx))
+		args = append(args, *updates.ProxyID)
+		idx++
 REDACTED
 	if updates.Concurrency != nil {
-		updateMap["concurrency"] = *updates.Concurrency
+		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
+		args = append(args, *updates.Concurrency)
+		idx++
 REDACTED
 	if updates.Priority != nil {
-		updateMap["priority"] = *updates.Priority
+		setClauses = append(setClauses, "priority = $"+itoa(idx))
+		args = append(args, *updates.Priority)
+		idx++
 REDACTED
 	if updates.Status != nil {
-		updateMap["status"] = *updates.Status
+		setClauses = append(setClauses, "status = $"+itoa(idx))
+		args = append(args, *updates.Status)
+		idx++
 REDACTED
+	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
-		updateMap["credentials"] = gorm.Expr("COALESCE(credentials,'{REDACTED') || ?", datatypes.JSONMap(updates.Credentials))
+		payload, err := json.Marshal(updates.Credentials)
+		if err != nil {
+			return 0, err
+	REDACTED
+		setClauses = append(setClauses, "credentials = COALESCE(credentials, '{REDACTED'::jsonb) || $"+itoa(idx)+"::jsonb")
+		args = append(args, payload)
+		idx++
 REDACTED
 	if len(updates.Extra) > 0 {
-		updateMap["extra"] = gorm.Expr("COALESCE(extra,'{REDACTED') || ?", datatypes.JSONMap(updates.Extra))
+		payload, err := json.Marshal(updates.Extra)
+		if err != nil {
+			return 0, err
+	REDACTED
+		setClauses = append(setClauses, "extra = COALESCE(extra, '{REDACTED'::jsonb) || $"+itoa(idx)+"::jsonb")
+		args = append(args, payload)
+		idx++
 REDACTED
 
-	if len(updateMap) == 0 {
+	if len(setClauses) == 0 {
 		return 0, nil
 REDACTED
 
-	result := r.db.WithContext(ctx).
-		Model(&accountModel{REDACTED).
-		Where("id IN ?", ids).
-		Clauses(clause.Returning{REDACTED).
-		Updates(updateMap)
+	setClauses = append(setClauses, "updated_at = NOW()")
 
-	return result.RowsAffected, result.Error
+	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
+	args = append(args, pq.Array(ids))
+
+	result, err := r.sql.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+REDACTED
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+REDACTED
+	return rows, nil
 REDACTED
 
-type accountModel struct {
-	ID           int64             `gorm:"primaryKey"`
-	Name         string            `gorm:"size:100;not null"`
-	Platform     string            `gorm:"size:50;not null"`
-	Type         string            `gorm:"size:20;not null"`
-	Credentials  datatypes.JSONMap `gorm:"type:jsonb;default:'{REDACTED'"`
-	Extra        datatypes.JSONMap `gorm:"type:jsonb;default:'{REDACTED'"`
-	ProxyID      *int64            `gorm:"index"`
-	Concurrency  int               `gorm:"default:3;not null"`
-	Priority     int               `gorm:"default:50;not null"`
-	Status       string            `gorm:"size:20;default:active;not null"`
-	ErrorMessage string            `gorm:"type:text"`
-	LastUsedAt   *time.Time        `gorm:"index"`
-	CreatedAt    time.Time         `gorm:"not null"`
-	UpdatedAt    time.Time         `gorm:"not null"`
-	DeletedAt    gorm.DeletedAt    `gorm:"index"`
-
-	Schedulable bool `gorm:"default:true;not null"`
-
-	RateLimitedAt    *time.Time `gorm:"index"`
-	RateLimitResetAt *time.Time `gorm:"index"`
-	OverloadUntil    *time.Time `gorm:"index"`
-
-	SessionWindowStart  *time.Time
-	SessionWindowEnd    *time.Time
-	SessionWindowStatus string `gorm:"size:20"`
-
-	Proxy         *proxyModel         `gorm:"foreignKey:ProxyID"`
-	AccountGroups []accountGroupModel `gorm:"foreignKey:AccountID"`
+type accountGroupQueryOptions struct {
+	status      string
+	schedulable bool
+	platforms   []string // 允许的多个平台，空切片表示不进行平台过滤
 REDACTED
 
-func (accountModel) TableName() string { return "accounts" REDACTED
+func (r *accountRepository) queryAccountsByGroup(ctx context.Context, groupID int64, opts accountGroupQueryOptions) ([]service.Account, error) {
+	q := r.client.AccountGroup.Query().
+		Where(dbaccountgroup.GroupIDEQ(groupID))
 
-type accountGroupModel struct {
-	AccountID int64     `gorm:"primaryKey"`
-	GroupID   int64     `gorm:"primaryKey"`
-	Priority  int       `gorm:"default:50;not null"`
-	CreatedAt time.Time `gorm:"not null"`
-
-	Account *accountModel `gorm:"foreignKey:AccountID"`
-	Group   *groupModel   `gorm:"foreignKey:GroupID"`
+	// 通过 account_groups 中间表查询账号，并按需叠加状态/平台/调度能力过滤。
+	preds := make([]dbpredicate.Account, 0, 6)
+	preds = append(preds, dbaccount.DeletedAtIsNil())
+	if opts.status != "" {
+		preds = append(preds, dbaccount.StatusEQ(opts.status))
+REDACTED
+	if len(opts.platforms) > 0 {
+		preds = append(preds, dbaccount.PlatformIn(opts.platforms...))
+REDACTED
+	if opts.schedulable {
+		now := time.Now()
+		preds = append(preds,
+			dbaccount.SchedulableEQ(true),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		)
 REDACTED
 
-func (accountGroupModel) TableName() string { return "account_groups" REDACTED
+	if len(preds) > 0 {
+		q = q.Where(dbaccountgroup.HasAccountWith(preds...))
+REDACTED
 
-func accountGroupModelToService(m *accountGroupModel) *service.AccountGroup {
+	groups, err := q.
+		Order(
+			dbaccountgroup.ByPriority(),
+			dbaccountgroup.ByAccountField(dbaccount.FieldPriority),
+		).
+		WithAccount().
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	orderedIDs := make([]int64, 0, len(groups))
+	accountMap := make(map[int64]*dbent.Account, len(groups))
+	for _, ag := range groups {
+		if ag.Edges.Account == nil {
+			continue
+	REDACTED
+		if _, exists := accountMap[ag.AccountID]; exists {
+			continue
+	REDACTED
+		accountMap[ag.AccountID] = ag.Edges.Account
+		orderedIDs = append(orderedIDs, ag.AccountID)
+REDACTED
+
+	accounts := make([]*dbent.Account, 0, len(orderedIDs))
+	for _, id := range orderedIDs {
+		if acc, ok := accountMap[id]; ok {
+			accounts = append(accounts, acc)
+	REDACTED
+REDACTED
+
+	return r.accountsToService(ctx, accounts)
+REDACTED
+
+func (r *accountRepository) accountsToService(ctx context.Context, accounts []*dbent.Account) ([]service.Account, error) {
+	if len(accounts) == 0 {
+		return []service.Account{REDACTED, nil
+REDACTED
+
+	accountIDs := make([]int64, 0, len(accounts))
+	proxyIDs := make([]int64, 0, len(accounts))
+	for _, acc := range accounts {
+		accountIDs = append(accountIDs, acc.ID)
+		if acc.ProxyID != nil {
+			proxyIDs = append(proxyIDs, *acc.ProxyID)
+	REDACTED
+REDACTED
+
+	proxyMap, err := r.loadProxies(ctx, proxyIDs)
+	if err != nil {
+		return nil, err
+REDACTED
+	groupsByAccount, groupIDsByAccount, accountGroupsByAccount, err := r.loadAccountGroups(ctx, accountIDs)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	outAccounts := make([]service.Account, 0, len(accounts))
+	for _, acc := range accounts {
+		out := accountEntityToService(acc)
+		if out == nil {
+			continue
+	REDACTED
+		if acc.ProxyID != nil {
+			if proxy, ok := proxyMap[*acc.ProxyID]; ok {
+				out.Proxy = proxy
+		REDACTED
+	REDACTED
+		if groups, ok := groupsByAccount[acc.ID]; ok {
+			out.Groups = groups
+	REDACTED
+		if groupIDs, ok := groupIDsByAccount[acc.ID]; ok {
+			out.GroupIDs = groupIDs
+	REDACTED
+		if ags, ok := accountGroupsByAccount[acc.ID]; ok {
+			out.AccountGroups = ags
+	REDACTED
+		outAccounts = append(outAccounts, *out)
+REDACTED
+
+	return outAccounts, nil
+REDACTED
+
+func (r *accountRepository) loadProxies(ctx context.Context, proxyIDs []int64) (map[int64]*service.Proxy, error) {
+	proxyMap := make(map[int64]*service.Proxy)
+	if len(proxyIDs) == 0 {
+		return proxyMap, nil
+REDACTED
+
+	proxies, err := r.client.Proxy.Query().Where(dbproxy.IDIn(proxyIDs...)).All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	for _, p := range proxies {
+		proxyMap[p.ID] = proxyEntityToService(p)
+REDACTED
+	return proxyMap, nil
+REDACTED
+
+func (r *accountRepository) loadAccountGroups(ctx context.Context, accountIDs []int64) (map[int64][]*service.Group, map[int64][]int64, map[int64][]service.AccountGroup, error) {
+	groupsByAccount := make(map[int64][]*service.Group)
+	groupIDsByAccount := make(map[int64][]int64)
+	accountGroupsByAccount := make(map[int64][]service.AccountGroup)
+
+	if len(accountIDs) == 0 {
+		return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
+REDACTED
+
+	entries, err := r.client.AccountGroup.Query().
+		Where(dbaccountgroup.AccountIDIn(accountIDs...)).
+		WithGroup().
+		Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
+		All(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+REDACTED
+
+	for _, ag := range entries {
+		groupSvc := groupEntityToService(ag.Edges.Group)
+		agSvc := service.AccountGroup{
+			AccountID: ag.AccountID,
+			GroupID:   ag.GroupID,
+			Priority:  ag.Priority,
+			CreatedAt: ag.CreatedAt,
+			Group:     groupSvc,
+	REDACTED
+		accountGroupsByAccount[ag.AccountID] = append(accountGroupsByAccount[ag.AccountID], agSvc)
+		groupIDsByAccount[ag.AccountID] = append(groupIDsByAccount[ag.AccountID], ag.GroupID)
+		if groupSvc != nil {
+			groupsByAccount[ag.AccountID] = append(groupsByAccount[ag.AccountID], groupSvc)
+	REDACTED
+REDACTED
+
+	return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
+REDACTED
+
+func accountEntityToService(m *dbent.Account) *service.Account {
 	if m == nil {
 		return nil
 REDACTED
-	return &service.AccountGroup{
-		AccountID: m.AccountID,
-		GroupID:   m.GroupID,
-		Priority:  m.Priority,
-		CreatedAt: m.CreatedAt,
-		Account:   accountModelToService(m.Account),
-		Group:     groupModelToService(m.Group),
-REDACTED
-REDACTED
 
-func accountModelToService(m *accountModel) *service.Account {
-	if m == nil {
-		return nil
-REDACTED
-
-	var credentials map[string]any
-	if m.Credentials != nil {
-		credentials = map[string]any(m.Credentials)
-REDACTED
-
-	var extra map[string]any
-	if m.Extra != nil {
-		extra = map[string]any(m.Extra)
-REDACTED
-
-	account := &service.Account{
+	return &service.Account{
 		ID:                  m.ID,
 		Name:                m.Name,
 		Platform:            m.Platform,
 		Type:                m.Type,
-		Credentials:         credentials,
-		Extra:               extra,
+		Credentials:         copyJSONMap(m.Credentials),
+		Extra:               copyJSONMap(m.Extra),
 		ProxyID:             m.ProxyID,
 		Concurrency:         m.Concurrency,
 		Priority:            m.Priority,
 		Status:              m.Status,
-		ErrorMessage:        m.ErrorMessage,
+		ErrorMessage:        derefString(m.ErrorMessage),
 		LastUsedAt:          m.LastUsedAt,
 		CreatedAt:           m.CreatedAt,
 		UpdatedAt:           m.UpdatedAt,
@@ -586,75 +844,39 @@ REDACTED
 		OverloadUntil:       m.OverloadUntil,
 		SessionWindowStart:  m.SessionWindowStart,
 		SessionWindowEnd:    m.SessionWindowEnd,
-		SessionWindowStatus: m.SessionWindowStatus,
-		Proxy:               proxyModelToService(m.Proxy),
+		SessionWindowStatus: derefString(m.SessionWindowStatus),
+REDACTED
 REDACTED
 
-	if len(m.AccountGroups) > 0 {
-		account.AccountGroups = make([]service.AccountGroup, 0, len(m.AccountGroups))
-		account.GroupIDs = make([]int64, 0, len(m.AccountGroups))
-		account.Groups = make([]*service.Group, 0, len(m.AccountGroups))
-		for i := range m.AccountGroups {
-			ag := accountGroupModelToService(&m.AccountGroups[i])
-			if ag == nil {
-				continue
-		REDACTED
-			account.AccountGroups = append(account.AccountGroups, *ag)
-			account.GroupIDs = append(account.GroupIDs, ag.GroupID)
-			if ag.Group != nil {
-				account.Groups = append(account.Groups, ag.Group)
-		REDACTED
-	REDACTED
+func normalizeJSONMap(in map[string]any) map[string]any {
+	if in == nil {
+		return map[string]any{REDACTED
+REDACTED
+	return in
 REDACTED
 
-	return account
-REDACTED
-
-func accountModelFromService(a *service.Account) *accountModel {
-	if a == nil {
+func copyJSONMap(in map[string]any) map[string]any {
+	if in == nil {
 		return nil
 REDACTED
-
-	var credentials datatypes.JSONMap
-	if a.Credentials != nil {
-		credentials = datatypes.JSONMap(a.Credentials)
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+REDACTED
+	return out
 REDACTED
 
-	var extra datatypes.JSONMap
-	if a.Extra != nil {
-		extra = datatypes.JSONMap(a.Extra)
+func joinClauses(clauses []string, sep string) string {
+	if len(clauses) == 0 {
+		return ""
+REDACTED
+	out := clauses[0]
+	for i := 1; i < len(clauses); i++ {
+		out += sep + clauses[i]
+REDACTED
+	return out
 REDACTED
 
-	return &accountModel{
-		ID:                  a.ID,
-		Name:                a.Name,
-		Platform:            a.Platform,
-		Type:                a.Type,
-		Credentials:         credentials,
-		Extra:               extra,
-		ProxyID:             a.ProxyID,
-		Concurrency:         a.Concurrency,
-		Priority:            a.Priority,
-		Status:              a.Status,
-		ErrorMessage:        a.ErrorMessage,
-		LastUsedAt:          a.LastUsedAt,
-		CreatedAt:           a.CreatedAt,
-		UpdatedAt:           a.UpdatedAt,
-		Schedulable:         a.Schedulable,
-		RateLimitedAt:       a.RateLimitedAt,
-		RateLimitResetAt:    a.RateLimitResetAt,
-		OverloadUntil:       a.OverloadUntil,
-		SessionWindowStart:  a.SessionWindowStart,
-		SessionWindowEnd:    a.SessionWindowEnd,
-		SessionWindowStatus: a.SessionWindowStatus,
-REDACTED
-REDACTED
-
-func applyAccountModelToService(account *service.Account, m *accountModel) {
-	if account == nil || m == nil {
-		return
-REDACTED
-	account.ID = m.ID
-	account.CreatedAt = m.CreatedAt
-	account.UpdatedAt = m.UpdatedAt
+func itoa(v int) string {
+	return strconv.Itoa(v)
 REDACTED
