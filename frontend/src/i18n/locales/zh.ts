@@ -840,6 +840,7 @@ export default {
       weekly: '每周',
       monthly: '每月',
       noLimits: '未配置限额',
+      unlimited: '无限制',
       resetNow: '即将重置',
       windowNotActive: '窗口未激活',
       resetInMinutes: '{minutesREDACTED 分钟后重置',
@@ -1689,7 +1690,8 @@ export default {
     expiresToday: '今天到期',
     expiresTomorrow: '明天到期',
     viewAll: '查看全部订阅',
-    noSubscriptions: '暂无有效订阅'
+    noSubscriptions: '暂无有效订阅',
+    unlimited: '无限制'
   REDACTED,
 
   // Version Badge
@@ -1731,6 +1733,7 @@ export default {
     expires: '到期时间',
     noExpiration: '无到期时间',
     unlimited: '无限制',
+    unlimitedDesc: '该订阅无用量限制',
     daily: '每日',
     weekly: '每周',
     monthly: '每月',

@@ -749,6 +749,7 @@ export default {
       weekly: 'Weekly',
       monthly: 'Monthly',
       noLimits: 'No limits configured',
+      unlimited: 'Unlimited',
       resetNow: 'Resetting soon',
       windowNotActive: 'Window not active',
       resetInMinutes: 'Resets in {minutesREDACTEDm',
@@ -1492,7 +1493,8 @@ export default {
     expiresToday: 'Expires today',
     expiresTomorrow: 'Expires tomorrow',
     viewAll: 'View all subscriptions',
-    noSubscriptions: 'No active subscriptions'
+    noSubscriptions: 'No active subscriptions',
+    unlimited: 'Unlimited'
   REDACTED,
 
   // Version Badge
@@ -1535,6 +1537,7 @@ export default {
     expires: 'Expires',
     noExpiration: 'No expiration',
     unlimited: 'Unlimited',
+    unlimitedDesc: 'No usage limits on this subscription',
     daily: 'Daily',
     weekly: 'Weekly',
     monthly: 'Monthly',

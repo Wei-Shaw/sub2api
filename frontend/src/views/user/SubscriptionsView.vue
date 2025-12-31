@@ -230,18 +230,26 @@
               </p>
             </div>
 
-            <!-- No limits configured -->
+            <!-- No limits configured - Unlimited badge -->
             <div
               v-if="
                 !subscription.group?.daily_limit_usd &&
                 !subscription.group?.weekly_limit_usd &&
                 !subscription.group?.monthly_limit_usd
               "
-              class="py-4 text-center"
+              class="flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 py-6 dark:from-emerald-900/20 dark:to-teal-900/20"
             >
-              <span class="text-sm text-gray-500 dark:text-dark-400">{{
-                t('userSubscriptions.unlimited')
-              REDACTEDREDACTED</span>
+              <div class="flex items-center gap-3">
+                <span class="text-4xl text-emerald-600 dark:text-emerald-400">∞</span>
+                <div>
+                  <p class="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                    {{ t('userSubscriptions.unlimited') REDACTEDREDACTED
+                  </p>
+                  <p class="text-xs text-emerald-600/70 dark:text-emerald-400/70">
+                    {{ t('userSubscriptions.unlimitedDesc') REDACTEDREDACTED
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
