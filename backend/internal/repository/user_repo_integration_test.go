@@ -76,8 +76,8 @@ func (s *UserRepoSuite) mustCreateSubscription(userID, groupID int64, mutate fun
 	create := s.client.UserSubscription.Create().
 		SetUserID(userID).
 		SetGroupID(groupID).
-		SetStartsAt(now.Add(-1*time.Hour)).
-		SetExpiresAt(now.Add(24*time.Hour)).
+		SetStartsAt(now.Add(-1 * time.Hour)).
+		SetExpiresAt(now.Add(24 * time.Hour)).
 		SetStatus(service.SubscriptionStatusActive).
 		SetAssignedAt(now).
 		SetNotes("")
@@ -528,4 +528,3 @@ func (s *UserRepoSuite) TestDeductBalance_NotFound() {
 	// DeductBalance 在用户不存在时返回 ErrInsufficientBalance 因为 WHERE 条件不匹配
 	s.Require().ErrorIs(err, service.ErrInsufficientBalance)
 REDACTED
-

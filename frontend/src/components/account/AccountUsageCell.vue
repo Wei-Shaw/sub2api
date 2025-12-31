@@ -96,7 +96,7 @@
     <!-- Antigravity OAuth accounts: show quota from extra field -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
       <!-- 账户类型徽章 -->
-      <div v-if="antigravityTierLabel" class="mb-1">
+      <div v-if="antigravityTierLabel" class="mb-1 flex items-center gap-1">
         <span
           :class="[
             'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
@@ -104,6 +104,28 @@
           ]"
         >
           {{ antigravityTierLabel REDACTEDREDACTED
+        </span>
+        <!-- 不合格账户警告图标 -->
+        <span
+          v-if="hasIneligibleTiers"
+          class="group relative cursor-help"
+        >
+          <svg
+            class="h-3.5 w-3.5 text-red-500"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <span
+            class="pointer-events-none absolute left-0 top-full z-50 mt-1 w-80 whitespace-normal break-words rounded bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+          >
+            {{ t('admin.accounts.ineligibleWarning') REDACTEDREDACTED
+          </span>
         </span>
       </div>
 
@@ -403,11 +425,26 @@ const antigravityClaude45Usage = computed(() =>
   getAntigravityUsage(['claude-sonnet-4-5', 'claude-opus-4-5-thinking'])
 )
 
-// Antigravity 账户类型
+// Antigravity 账户类型（从 load_code_assist 响应中提取）
 const antigravityTier = computed(() => {
   const extra = props.account.extra as Record<string, unknown> | undefined
-  if (!extra || typeof extra.tier !== 'string') return null
-  return extra.tier as string
+  if (!extra) return null
+
+  const loadCodeAssist = extra.load_code_assist as Record<string, unknown> | undefined
+  if (!loadCodeAssist) return null
+
+  // 优先取 paidTier，否则取 currentTier
+  const paidTier = loadCodeAssist.paidTier as Record<string, unknown> | undefined
+  if (paidTier && typeof paidTier.id === 'string') {
+    return paidTier.id
+  REDACTED
+
+  const currentTier = loadCodeAssist.currentTier as Record<string, unknown> | undefined
+  if (currentTier && typeof currentTier.id === 'string') {
+    return currentTier.id
+  REDACTED
+
+  return null
 REDACTED)
 
 // 账户类型显示标签
@@ -436,6 +473,18 @@ const antigravityTierClass = computed(() => {
     default:
       return ''
   REDACTED
+REDACTED)
+
+// 检测账户是否有不合格状态（ineligibleTiers）
+const hasIneligibleTiers = computed(() => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (!extra) return false
+
+  const loadCodeAssist = extra.load_code_assist as Record<string, unknown> | undefined
+  if (!loadCodeAssist) return false
+
+  const ineligibleTiers = loadCodeAssist.ineligibleTiers as unknown[] | undefined
+  return Array.isArray(ineligibleTiers) && ineligibleTiers.length > 0
 REDACTED)
 
 const loadUsage = async () => {

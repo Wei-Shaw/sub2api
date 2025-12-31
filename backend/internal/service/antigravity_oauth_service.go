@@ -141,12 +141,18 @@ REDACTED else {
 		result.Email = userInfo.Email
 REDACTED
 
-	// 获取 project_id
-	loadResp, err := client.LoadCodeAssist(ctx, tokenResp.AccessToken)
+	// 获取 project_id（部分账户类型可能没有）
+	loadResp, _, err := client.LoadCodeAssist(ctx, tokenResp.AccessToken)
 	if err != nil {
 		fmt.Printf("[AntigravityOAuth] 警告: 获取 project_id 失败: %v\n", err)
 REDACTED else if loadResp != nil && loadResp.CloudAICompanionProject != "" {
 		result.ProjectID = loadResp.CloudAICompanionProject
+REDACTED
+
+	// 兜底：随机生成 project_id
+	if result.ProjectID == "" {
+		result.ProjectID = antigravity.GenerateMockProjectID()
+		fmt.Printf("[AntigravityOAuth] 使用随机生成的 project_id: %s\n", result.ProjectID)
 REDACTED
 
 	return result, nil
@@ -168,7 +174,10 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 		client := antigravity.NewClient(proxyURL)
 		tokenResp, err := client.RefreshToken(ctx, refreshToken)
 		if err == nil {
-			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
+			now := time.Now()
+			expiresAt := now.Unix() + tokenResp.ExpiresIn - 300
+			fmt.Printf("[AntigravityOAuth] Token refreshed: expires_in=%d, expires_at=%d (%s)\n",
+				tokenResp.ExpiresIn, expiresAt, time.Unix(expiresAt, 0).Format("2006-01-02 15:04:05"))
 			return &AntigravityTokenInfo{
 				AccessToken:  tokenResp.AccessToken,
 				RefreshToken: tokenResp.RefreshToken,

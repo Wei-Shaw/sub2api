@@ -130,6 +130,158 @@ REDACTED
 	return false
 REDACTED
 
+// TestConnectionResult 测试连接结果
+type TestConnectionResult struct {
+	Text        string // 响应文本
+	MappedModel string // 实际使用的模型
+REDACTED
+
+// TestConnection 测试 Antigravity 账号连接（非流式，无重试、无计费）
+// 支持 Claude 和 Gemini 两种协议，根据 modelID 前缀自动选择
+func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+	// 获取 token
+	if s.tokenProvider == nil {
+		return nil, errors.New("antigravity token provider not configured")
+REDACTED
+	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("获取 access_token 失败: %w", err)
+REDACTED
+
+	// 获取 project_id（部分账户类型可能没有）
+	projectID := strings.TrimSpace(account.GetCredential("project_id"))
+
+	// 模型映射
+	mappedModel := s.getMappedModel(account, modelID)
+
+	// 构建请求体
+	var requestBody []byte
+	if strings.HasPrefix(modelID, "gemini-") {
+		// Gemini 模型：直接使用 Gemini 格式
+		requestBody, err = s.buildGeminiTestRequest(projectID, mappedModel)
+REDACTED else {
+		// Claude 模型：使用协议转换
+		requestBody, err = s.buildClaudeTestRequest(projectID, mappedModel)
+REDACTED
+	if err != nil {
+		return nil, fmt.Errorf("构建请求失败: %w", err)
+REDACTED
+
+	// 构建 HTTP 请求（非流式）
+	req, err := antigravity.NewAPIRequest(ctx, "generateContent", accessToken, requestBody)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// 代理 URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	// 发送请求
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	// 读取响应
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+REDACTED
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("API 返回 %d: %s", resp.StatusCode, string(respBody))
+REDACTED
+
+	// 解包 v1internal 响应
+	unwrapped, err := s.unwrapV1InternalResponse(respBody)
+	if err != nil {
+		return nil, fmt.Errorf("解包响应失败: %w", err)
+REDACTED
+
+	// 提取响应文本
+	text := extractGeminiResponseText(unwrapped)
+
+	return &TestConnectionResult{
+		Text:        text,
+		MappedModel: mappedModel,
+REDACTED, nil
+REDACTED
+
+// buildGeminiTestRequest 构建 Gemini 格式测试请求
+func (s *AntigravityGatewayService) buildGeminiTestRequest(projectID, model string) ([]byte, error) {
+	payload := map[string]any{
+		"contents": []map[string]any{
+			{
+				"role": "user",
+				"parts": []map[string]any{
+					{"text": "hi"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	payloadBytes, _ := json.Marshal(payload)
+	return s.wrapV1InternalRequest(projectID, model, payloadBytes)
+REDACTED
+
+// buildClaudeTestRequest 构建 Claude 格式测试请求并转换为 Gemini 格式
+func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedModel string) ([]byte, error) {
+	claudeReq := &antigravity.ClaudeRequest{
+		Model: mappedModel,
+		Messages: []antigravity.ClaudeMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`"hi"`),
+		REDACTED,
+	REDACTED,
+		MaxTokens: 1024,
+		Stream:    false,
+REDACTED
+	return antigravity.TransformClaudeToGemini(claudeReq, projectID, mappedModel)
+REDACTED
+
+// extractGeminiResponseText 从 Gemini 响应中提取文本
+func extractGeminiResponseText(respBody []byte) string {
+	var resp map[string]any
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return ""
+REDACTED
+
+	candidates, ok := resp["candidates"].([]any)
+	if !ok || len(candidates) == 0 {
+		return ""
+REDACTED
+
+	candidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		return ""
+REDACTED
+
+	content, ok := candidate["content"].(map[string]any)
+	if !ok {
+		return ""
+REDACTED
+
+	parts, ok := content["parts"].([]any)
+	if !ok {
+		return ""
+REDACTED
+
+	var texts []string
+	for _, part := range parts {
+		if partMap, ok := part.(map[string]any); ok {
+			if text, ok := partMap["text"].(string); ok && text != "" {
+				texts = append(texts, text)
+		REDACTED
+	REDACTED
+REDACTED
+
+	return strings.Join(texts, "")
+REDACTED
+
 // wrapV1InternalRequest 包装请求为 v1internal 格式
 func (s *AntigravityGatewayService) wrapV1InternalRequest(projectID, model string, originalBody []byte) ([]byte, error) {
 	var request any
@@ -191,11 +343,8 @@ REDACTED
 		return nil, fmt.Errorf("获取 access_token 失败: %w", err)
 REDACTED
 
-	// 获取 project_id
+	// 获取 project_id（部分账户类型可能没有）
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
-	if projectID == "" {
-		return nil, errors.New("project_id not found in credentials")
-REDACTED
 
 	// 代理 URL
 	proxyURL := ""
@@ -209,26 +358,19 @@ REDACTED
 		return nil, fmt.Errorf("transform request: %w", err)
 REDACTED
 
-	// 构建上游 URL
+	// 构建上游 action
 	action := "generateContent"
 	if claudeReq.Stream {
-		action = "streamGenerateContent"
-REDACTED
-	fullURL := fmt.Sprintf("%s/v1internal:%s", antigravity.BaseURL, action)
-	if claudeReq.Stream {
-		fullURL += "?alt=sse"
+		action = "streamGenerateContent?alt=sse"
 REDACTED
 
 	// 重试循环
 	var resp *http.Response
 	for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
-		upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(geminiBody))
+		upstreamReq, err := antigravity.NewAPIRequest(ctx, action, accessToken, geminiBody)
 		if err != nil {
 			return nil, err
 	REDACTED
-		upstreamReq.Header.Set("Content-Type", "application/json")
-		upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
-		upstreamReq.Header.Set("User-Agent", antigravity.UserAgent)
 
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
@@ -341,11 +483,8 @@ REDACTED
 		return nil, fmt.Errorf("获取 access_token 失败: %w", err)
 REDACTED
 
-	// 获取 project_id
+	// 获取 project_id（部分账户类型可能没有）
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
-	if projectID == "" {
-		return nil, errors.New("project_id not found in credentials")
-REDACTED
 
 	// 代理 URL
 	proxyURL := ""
@@ -359,26 +498,22 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 构建上游 URL
+	// 构建上游 action
 	upstreamAction := action
 	if action == "generateContent" && stream {
 		upstreamAction = "streamGenerateContent"
 REDACTED
-	fullURL := fmt.Sprintf("%s/v1internal:%s", antigravity.BaseURL, upstreamAction)
 	if stream || upstreamAction == "streamGenerateContent" {
-		fullURL += "?alt=sse"
+		upstreamAction += "?alt=sse"
 REDACTED
 
 	// 重试循环
 	var resp *http.Response
 	for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
-		upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(wrappedBody))
+		upstreamReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, wrappedBody)
 		if err != nil {
 			return nil, err
 	REDACTED
-		upstreamReq.Header.Set("Content-Type", "application/json")
-		upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
-		upstreamReq.Header.Set("User-Agent", antigravity.UserAgent)
 
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {

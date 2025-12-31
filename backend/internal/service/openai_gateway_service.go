@@ -371,7 +371,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		// API Key accounts use Platform API or custom base URL
 		baseURL := account.GetOpenAIBaseURL()
 		if baseURL != "" {
-			targetURL = baseURL + "/v1/responses"
+			targetURL = baseURL + "/responses"
 	REDACTED else {
 			targetURL = openaiPlatformAPIURL
 	REDACTED
