@@ -51,7 +51,7 @@ REDACTED{
 	{"claude-sonnet-4-5", "claude-sonnet-4-5"REDACTED,   // claude-sonnet-4-5-xxx
 	{"claude-haiku-4-5", "gemini-3-flash"REDACTED,       // claude-haiku-4-5-xxx
 	{"claude-opus-4-5", "claude-opus-4-5-thinking"REDACTED,
-	{"claude-3-haiku", "gemini-3-flash"REDACTED,   // 旧版 claude-3-haiku-xxx
+	{"claude-3-haiku", "gemini-3-flash"REDACTED, // 旧版 claude-3-haiku-xxx
 	{"claude-sonnet-4", "claude-sonnet-4-5"REDACTED,
 	{"claude-haiku-4", "gemini-3-flash"REDACTED,
 	{"claude-opus-4", "claude-opus-4-5-thinking"REDACTED,
