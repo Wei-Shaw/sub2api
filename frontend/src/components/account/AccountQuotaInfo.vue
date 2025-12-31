@@ -5,53 +5,24 @@
       {{ tierLabel REDACTEDREDACTED
     </span>
 
-    <!-- 限额文本 -->
-    <span class="text-xs text-gray-500 dark:text-gray-400">{{ quotaText REDACTEDREDACTED</span>
-
-    <!-- 二元进度条 -->
-    <div class="group/progress relative flex items-center gap-1">
-      <div class="h-2 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div
-          :class="[
-            'h-full transition-all',
-            isRateLimited ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'
-          ]"
-          :style="{ width: isRateLimited ? '100%' : '0%' REDACTED"
-        ></div>
-      </div>
-
-      <span
-        :class="[
-          'text-xs font-medium',
-          isRateLimited ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'
-        ]"
-      >
-        {{ isRateLimited ? '100%' : '0%' REDACTEDREDACTED
-      </span>
-
-      <!-- 倒计时 -->
-      <span
-        v-if="isRateLimited"
-        :class="[
-          'text-xs font-medium',
-          isUrgent
-            ? 'text-red-600 dark:text-red-400 animate-pulse'
-            : 'text-amber-600 dark:text-amber-400'
-        ]"
-      >
-        ⚠️ {{ resetCountdown REDACTEDREDACTED
-      </span>
-
-      <!-- Tooltip -->
-      <div
-        class="pointer-events-none absolute -top-10 left-0 z-10 hidden whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg group-hover/progress:block dark:bg-gray-700"
-      >
-        ⓘ 无法提供实时额度
-        <div
-          class="absolute left-4 top-full border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
-        ></div>
-      </div>
-    </div>
+    <!-- 限流状态 -->
+    <span
+      v-if="!isRateLimited"
+      class="text-xs text-gray-400 dark:text-gray-500"
+    >
+      未限流
+    </span>
+    <span
+      v-else
+      :class="[
+        'text-xs font-medium',
+        isUrgent
+          ? 'text-red-600 dark:text-red-400 animate-pulse'
+          : 'text-amber-600 dark:text-amber-400'
+      ]"
+    >
+      限流 {{ resetCountdown REDACTEDREDACTED
+    </span>
   </div>
 </template>
 
@@ -85,8 +56,8 @@ const tierLabel = computed(() => {
     const creds = props.account.credentials as GeminiCredentials | undefined
     const tierMap: Record<string, string> = {
       LEGACY: 'Free',
-      PRO: 'Standard',
-      ULTRA: 'Enterprise'
+      PRO: 'Pro',
+      ULTRA: 'Ultra'
     REDACTED
     return tierMap[creds?.tier_id || ''] || 'Unknown'
   REDACTED
@@ -108,20 +79,6 @@ const tierBadgeClass = computed(() => {
     tierColorMap[creds?.tier_id || ''] ||
     'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
   )
-REDACTED)
-
-// 限额文本
-const quotaText = computed(() => {
-  if (isCodeAssist.value) {
-    const creds = props.account.credentials as GeminiCredentials | undefined
-    const limitMap: Record<string, string> = {
-      LEGACY: '1000/day, 60/min',
-      PRO: '1500/day, 120/min',
-      ULTRA: '5000/day, 300/min'
-    REDACTED
-    return limitMap[creds?.tier_id || ''] || '-'
-  REDACTED
-  return 'RPM/RPD limits'
 REDACTED)
 
 // 是否限流

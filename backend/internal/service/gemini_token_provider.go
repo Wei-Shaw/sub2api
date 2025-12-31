@@ -118,6 +118,7 @@ REDACTED
 			return accessToken, nil
 	REDACTED
 		detected = strings.TrimSpace(detected)
+		tierID = strings.TrimSpace(tierID)
 		if detected != "" {
 			if account.Credentials == nil {
 				account.Credentials = make(map[string]any)
