@@ -1082,10 +1082,10 @@ export default {
 	          stateWarningTitle: 'Note',
 	          stateWarningDesc: 'Recommended: paste the full callback URL (includes code & state).',
 	          oauthTypeLabel: 'OAuth Type',
-	          needsProjectId: 'For GCP Developers',
-	          needsProjectIdDesc: 'Requires GCP project',
-	          noProjectIdNeeded: 'For Regular Users',
-	          noProjectIdNeededDesc: 'Requires admin-configured OAuth client',
+          needsProjectId: 'Built-in OAuth (Code Assist)',
+          needsProjectIdDesc: 'Requires GCP project and Project ID',
+          noProjectIdNeeded: 'Custom OAuth (AI Studio)',
+          noProjectIdNeededDesc: 'Requires admin-configured OAuth client',
 	          aiStudioNotConfiguredShort: 'Not configured',
 	          aiStudioNotConfiguredTip:
 	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback (Consent screen scopes must include https://www.googleapis.com/auth/generative-language.retriever)',
@@ -1120,7 +1120,95 @@ export default {
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
-        apiKeyHint: 'Your Gemini API Key (starts with AIza)'
+        apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        accountType: {
+          oauthTitle: 'OAuth (Gemini)',
+          oauthDesc: 'Authorize with your Google account and choose an OAuth type.',
+          apiKeyTitle: 'API Key (AI Studio)',
+          apiKeyDesc: 'Fastest setup. Use an AIza API key.',
+          apiKeyNote:
+            'Best for light testing. Free tier has strict rate limits and data may be used for training.',
+          apiKeyLink: 'Get API Key',
+          quotaLink: 'Quota guide'
+        REDACTED,
+        oauthType: {
+          builtInTitle: 'Built-in OAuth (Gemini CLI / Code Assist)',
+          builtInDesc: 'Uses Google built-in client ID. No admin configuration required.',
+          builtInRequirement: 'Requires a GCP project and Project ID.',
+          gcpProjectLink: 'Create project',
+          customTitle: 'Custom OAuth (AI Studio OAuth)',
+          customDesc: 'Uses admin-configured OAuth client for org management.',
+          customRequirement: 'Admin must configure Client ID and add you as a test user.',
+          badges: {
+            recommended: 'Recommended',
+            highConcurrency: 'High concurrency',
+            noAdmin: 'No admin setup',
+            orgManaged: 'Org managed',
+            adminRequired: 'Admin required'
+          REDACTED
+        REDACTED,
+        setupGuide: {
+          title: 'Gemini Setup Checklist',
+          checklistTitle: 'Checklist',
+          checklistItems: {
+            usIp: 'Use a US IP and ensure your account country is set to US.',
+            age: 'Account must be 18+.'
+          REDACTED,
+          activationTitle: 'One-click Activation',
+          activationItems: {
+            geminiWeb: 'Activate Gemini Web to avoid User not initialized.',
+            gcpProject: 'Activate a GCP project and get the Project ID for Code Assist.'
+          REDACTED,
+          links: {
+            countryCheck: 'Check country association',
+            geminiWebActivation: 'Activate Gemini Web',
+            gcpProject: 'Open GCP Console'
+          REDACTED
+        REDACTED,
+        quotaPolicy: {
+          title: 'Gemini Quota & Limit Policy (Reference)',
+          note: 'Note: Gemini does not provide an official quota inquiry API. The "Daily Quota" shown here is an estimate simulated by the system based on account tiers for scheduling reference only. Please refer to official Google errors for actual limits.',
+          columns: {
+            channel: 'Auth Channel',
+            account: 'Account Status',
+            limits: 'Limit Policy',
+            docs: 'Official Docs'
+          REDACTED,
+          docs: {
+            codeAssist: 'Code Assist Quotas',
+            aiStudio: 'AI Studio Pricing',
+            vertex: 'Vertex AI Quotas'
+          REDACTED,
+          simulatedNote: 'Simulated quota, for reference only',
+          rows: {
+            cli: {
+              channel: 'Gemini CLI (Official Google Login / Code Assist)',
+              free: 'Free Google Account',
+              premium: 'Google One AI Premium',
+              limitsFree: 'RPD ~1000; RPM ~60 (soft)',
+              limitsPremium: 'RPD ~1500+; RPM ~60+ (priority queue)'
+            REDACTED,
+            gcloud: {
+              channel: 'GCP Code Assist (gcloud auth)',
+              account: 'No Code Assist subscription',
+              limits: 'RPD ~1000; RPM ~60 (preview)'
+            REDACTED,
+            aiStudio: {
+              channel: 'AI Studio API Key / OAuth',
+              free: 'No billing (free tier)',
+              paid: 'Billing enabled (pay-as-you-go)',
+              limitsFree: 'RPD 50; RPM 2 (Pro) / 15 (Flash)',
+              limitsPaid: 'RPD unlimited; RPM 1000+ (per model quota)'
+            REDACTED,
+            customOAuth: {
+              channel: 'Custom OAuth Client (GCP)',
+              free: 'Project not billed',
+              paid: 'Project billed',
+              limitsFree: 'RPD 50; RPM 2 (project quota)',
+              limitsPaid: 'RPD unlimited; RPM 1000+ (project quota)'
+            REDACTED
+          REDACTED
+        REDACTED
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',
@@ -1186,6 +1274,9 @@ export default {
       REDACTED,
       usageWindow: {
         statsTitle: '5-Hour Window Usage Statistics',
+        statsTitleDaily: 'Daily Usage Statistics',
+        geminiProDaily: 'RPD Pro',
+        geminiFlashDaily: 'RPD Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G3I',

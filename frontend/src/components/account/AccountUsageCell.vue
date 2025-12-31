@@ -169,9 +169,44 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
-    <!-- Gemini platform: show quota info with AccountQuotaInfo component -->
+    <!-- Gemini platform: show quota + local usage window -->
     <template v-else-if="account.platform === 'gemini'">
-      <AccountQuotaInfo :account="account" />
+      <div class="space-y-1">
+        <AccountQuotaInfo :account="account" />
+        <div v-if="loading" class="space-y-1">
+          <div class="flex items-center gap-1">
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          </div>
+        </div>
+        <div v-else-if="error" class="text-xs text-red-500">
+          {{ error REDACTEDREDACTED
+        </div>
+        <div v-else-if="geminiUsageAvailable" class="space-y-1">
+          <UsageProgressBar
+            v-if="usageInfo?.gemini_pro_daily"
+            :label="t('admin.accounts.usageWindow.geminiProDaily')"
+            :utilization="usageInfo.gemini_pro_daily.utilization"
+            :resets-at="usageInfo.gemini_pro_daily.resets_at"
+            :window-stats="usageInfo.gemini_pro_daily.window_stats"
+            :stats-title="t('admin.accounts.usageWindow.statsTitleDaily')"
+            color="indigo"
+          />
+          <UsageProgressBar
+            v-if="usageInfo?.gemini_flash_daily"
+            :label="t('admin.accounts.usageWindow.geminiFlashDaily')"
+            :utilization="usageInfo.gemini_flash_daily.utilization"
+            :resets-at="usageInfo.gemini_flash_daily.resets_at"
+            :window-stats="usageInfo.gemini_flash_daily.window_stats"
+            :stats-title="t('admin.accounts.usageWindow.statsTitleDaily')"
+            color="emerald"
+          />
+          <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
+            * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' REDACTEDREDACTED
+          </p>
+        </div>
+      </div>
     </template>
 
     <!-- Other accounts: no usage window -->
@@ -210,6 +245,23 @@ const usageInfo = ref<AccountUsageInfo | null>(null)
 const showUsageWindows = computed(
   () => props.account.type === 'oauth' || props.account.type === 'setup-token'
 )
+
+const shouldFetchUsage = computed(() => {
+  if (props.account.platform === 'anthropic') {
+    return props.account.type === 'oauth' || props.account.type === 'setup-token'
+  REDACTED
+  if (props.account.platform === 'gemini') {
+    return props.account.type === 'oauth'
+  REDACTED
+  return false
+REDACTED)
+
+const geminiUsageAvailable = computed(() => {
+  return (
+    !!usageInfo.value?.gemini_pro_daily ||
+    !!usageInfo.value?.gemini_flash_daily
+  )
+REDACTED)
 
 // OpenAI Codex usage computed properties
 const hasCodexUsage = computed(() => {
@@ -498,10 +550,7 @@ const hasIneligibleTiers = computed(() => {
 REDACTED)
 
 const loadUsage = async () => {
-  // Fetch usage for Anthropic OAuth and Setup Token accounts
-  // OpenAI usage comes from account.extra field (updated during forwarding)
-  if (props.account.platform !== 'anthropic') return
-  if (props.account.type !== 'oauth' && props.account.type !== 'setup-token') return
+  if (!shouldFetchUsage.value) return
 
   loading.value = true
   error.value = null
