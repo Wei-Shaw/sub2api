@@ -379,12 +379,26 @@ REDACTED
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
 	for _, tool := range tools {
+		var description string
+		var inputSchema map[string]any
+
+		// 检查是否为 custom 类型工具 (MCP)
+		if tool.Type == "custom" && tool.Custom != nil {
+			// Custom 格式: 从 custom 字段获取 description 和 input_schema
+			description = tool.Custom.Description
+			inputSchema = tool.Custom.InputSchema
+	REDACTED else {
+			// 标准格式: 从顶层字段获取
+			description = tool.Description
+			inputSchema = tool.InputSchema
+	REDACTED
+
 		// 清理 JSON Schema
-		params := cleanJSONSchema(tool.InputSchema)
+		params := cleanJSONSchema(inputSchema)
 
 		funcDecls = append(funcDecls, GeminiFunctionDecl{
 			Name:        tool.Name,
-			Description: tool.Description,
+			Description: description,
 			Parameters:  params,
 	REDACTED)
 REDACTED

@@ -2245,12 +2245,32 @@ REDACTED
 		if !ok {
 			continue
 	REDACTED
-		name, _ := tm["name"].(string)
-		desc, _ := tm["description"].(string)
-		params := tm["input_schema"]
+
+		var name, desc string
+		var params any
+
+		// 检查是否为 custom 类型工具 (MCP)
+		toolType, _ := tm["type"].(string)
+		if toolType == "custom" {
+			// Custom 格式: 从 custom 字段获取 description 和 input_schema
+			custom, ok := tm["custom"].(map[string]any)
+			if !ok {
+				continue
+		REDACTED
+			name, _ = tm["name"].(string)
+			desc, _ = custom["description"].(string)
+			params = custom["input_schema"]
+	REDACTED else {
+			// 标准格式: 从顶层字段获取
+			name, _ = tm["name"].(string)
+			desc, _ = tm["description"].(string)
+			params = tm["input_schema"]
+	REDACTED
+
 		if name == "" {
 			continue
 	REDACTED
+
 		funcDecls = append(funcDecls, map[string]any{
 			"name":        name,
 			"description": desc,
