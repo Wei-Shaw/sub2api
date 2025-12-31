@@ -174,7 +174,10 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 		client := antigravity.NewClient(proxyURL)
 		tokenResp, err := client.RefreshToken(ctx, refreshToken)
 		if err == nil {
-			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
+			now := time.Now()
+			expiresAt := now.Unix() + tokenResp.ExpiresIn - 300
+			fmt.Printf("[AntigravityOAuth] Token refreshed: expires_in=%d, expires_at=%d (%s)\n",
+				tokenResp.ExpiresIn, expiresAt, time.Unix(expiresAt, 0).Format("2006-01-02 15:04:05"))
 			return &AntigravityTokenInfo{
 				AccessToken:  tokenResp.AccessToken,
 				RefreshToken: tokenResp.RefreshToken,
