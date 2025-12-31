@@ -490,6 +490,7 @@ REDACTED
 REDACTED
 
 // CheckUsageLimits 检查使用限额（返回错误如果超限）
+// 用于中间件的快速预检查，additionalCost 通常为 0
 func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSubscription, group *Group, additionalCost float64) error {
 	if !sub.CheckDailyLimit(group, additionalCost) {
 		return ErrDailyLimitExceeded

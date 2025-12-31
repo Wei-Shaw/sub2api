@@ -291,13 +291,11 @@ func (r *userSubscriptionRepository) ResetMonthlyUsage(ctx context.Context, id i
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 REDACTED
 
-// IncrementUsage 原子性地累加用量并校验限额。
-// 使用单条 SQL 语句同时检查 Group 的限额，如果任一限额即将超出则拒绝更新。
-// 当更新失败时，会执行额外查询确定具体超出的限额类型。
+// IncrementUsage 原子性地累加订阅用量。
+// 限额检查已在请求前由 BillingCacheService.CheckBillingEligibility 完成，
+// 此处仅负责记录实际消费，确保消费数据的完整性。
 func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
-	// 使用 JOIN 的原子更新：只有当所有限额条件满足时才执行累加
-	// NULL 限额表示无限制
-	const atomicUpdateSQL = `
+	const updateSQL = `
 		UPDATE user_subscriptions us
 		SET
 			daily_usage_usd = us.daily_usage_usd + $1,
@@ -309,13 +307,10 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 			AND us.deleted_at IS NULL
 			AND us.group_id = g.id
 			AND g.deleted_at IS NULL
-			AND (g.daily_limit_usd IS NULL OR us.daily_usage_usd + $1 <= g.daily_limit_usd)
-			AND (g.weekly_limit_usd IS NULL OR us.weekly_usage_usd + $1 <= g.weekly_limit_usd)
-			AND (g.monthly_limit_usd IS NULL OR us.monthly_usage_usd + $1 <= g.monthly_limit_usd)
 	`
 
 	client := clientFromContext(ctx, r.client)
-	result, err := client.ExecContext(ctx, atomicUpdateSQL, costUSD, id)
+	result, err := client.ExecContext(ctx, updateSQL, costUSD, id)
 	if err != nil {
 		return err
 REDACTED
@@ -326,64 +321,11 @@ REDACTED
 REDACTED
 
 	if affected > 0 {
-		return nil // 更新成功
+		return nil
 REDACTED
 
-	// affected == 0：可能是订阅不存在、分组已删除、或限额超出
-	// 执行额外查询确定具体原因
-	return r.checkIncrementFailureReason(ctx, id, costUSD)
-REDACTED
-
-// checkIncrementFailureReason 查询更新失败的具体原因
-func (r *userSubscriptionRepository) checkIncrementFailureReason(ctx context.Context, id int64, costUSD float64) error {
-	const checkSQL = `
-		SELECT
-			CASE WHEN us.deleted_at IS NOT NULL THEN 'subscription_deleted'
-			     WHEN g.id IS NULL THEN 'subscription_not_found'
-			     WHEN g.deleted_at IS NOT NULL THEN 'group_deleted'
-			     WHEN g.daily_limit_usd IS NOT NULL AND us.daily_usage_usd + $1 > g.daily_limit_usd THEN 'daily_exceeded'
-			     WHEN g.weekly_limit_usd IS NOT NULL AND us.weekly_usage_usd + $1 > g.weekly_limit_usd THEN 'weekly_exceeded'
-			     WHEN g.monthly_limit_usd IS NOT NULL AND us.monthly_usage_usd + $1 > g.monthly_limit_usd THEN 'monthly_exceeded'
-			     ELSE 'unknown'
-			END AS reason
-		FROM user_subscriptions us
-		LEFT JOIN groups g ON us.group_id = g.id
-		WHERE us.id = $2
-	`
-
-	client := clientFromContext(ctx, r.client)
-	rows, err := client.QueryContext(ctx, checkSQL, costUSD, id)
-	if err != nil {
-		return err
-REDACTED
-	defer func() { _ = rows.Close() REDACTED()
-
-	if !rows.Next() {
-		return service.ErrSubscriptionNotFound
-REDACTED
-
-	var reason string
-	if err := rows.Scan(&reason); err != nil {
-		return err
-REDACTED
-
-	if err := rows.Err(); err != nil {
-		return err
-REDACTED
-
-	switch reason {
-	case "subscription_not_found", "subscription_deleted", "group_deleted":
-		return service.ErrSubscriptionNotFound
-	case "daily_exceeded":
-		return service.ErrDailyLimitExceeded
-	case "weekly_exceeded":
-		return service.ErrWeeklyLimitExceeded
-	case "monthly_exceeded":
-		return service.ErrMonthlyLimitExceeded
-	default:
-		// unknown 情况理论上不应发生，但作为兜底返回
-		return service.ErrSubscriptionNotFound
-REDACTED
+	// affected == 0：订阅不存在或已删除
+	return service.ErrSubscriptionNotFound
 REDACTED
 
 func (r *userSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
