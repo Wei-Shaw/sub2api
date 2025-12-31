@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -16,10 +17,14 @@ type pricingRemoteClient struct {
 REDACTED
 
 func NewPricingRemoteClient() service.PricingRemoteClient {
+	sharedClient, err := httpclient.GetClient(httpclient.Options{
+		Timeout: 30 * time.Second,
+REDACTED)
+	if err != nil {
+		sharedClient = &http.Client{Timeout: 30 * time.SecondREDACTED
+REDACTED
 	return &pricingRemoteClient{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-	REDACTED,
+		httpClient: sharedClient,
 REDACTED
 REDACTED
 

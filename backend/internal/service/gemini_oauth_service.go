@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 )
 
 type GeminiOAuthService struct {
@@ -497,11 +497,12 @@ REDACTED
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
 
-	client := &http.Client{Timeout: 30 * time.SecondREDACTED
-	if strings.TrimSpace(proxyURL) != "" {
-		if proxyURLParsed, err := url.Parse(strings.TrimSpace(proxyURL)); err == nil {
-			client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURLParsed)REDACTED
-	REDACTED
+	client, err := httpclient.GetClient(httpclient.Options{
+		ProxyURL: strings.TrimSpace(proxyURL),
+		Timeout:  30 * time.Second,
+REDACTED)
+	if err != nil {
+		client = &http.Client{Timeout: 30 * time.SecondREDACTED
 REDACTED
 
 	resp, err := client.Do(req)

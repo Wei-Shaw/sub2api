@@ -9,22 +9,22 @@ import (
 	"time"
 )
 
-// ConcurrencyCache defines cache operations for concurrency service
-// Uses independent keys per request slot with native Redis TTL for automatic cleanup
+// ConcurrencyCache 定义并发控制的缓存接口
+// 使用有序集合存储槽位，按时间戳清理过期条目
 type ConcurrencyCache interface {
-	// Account slot management - each slot is a separate key with independent TTL
-	// Key format: concurrency:account:{accountIDREDACTED:{requestIDREDACTED
+	// 账号槽位管理
+	// 键格式: concurrency:account:{accountIDREDACTED（有序集合，成员为 requestID）
 	AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error)
 	ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error
 	GetAccountConcurrency(ctx context.Context, accountID int64) (int, error)
 
-	// User slot management - each slot is a separate key with independent TTL
-	// Key format: concurrency:user:{userIDREDACTED:{requestIDREDACTED
+	// 用户槽位管理
+	// 键格式: concurrency:user:{userIDREDACTED（有序集合，成员为 requestID）
 	AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error)
 	ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error
 	GetUserConcurrency(ctx context.Context, userID int64) (int, error)
 
-	// Wait queue - uses counter with TTL set only on creation
+	// 等待队列计数（只在首次创建时设置 TTL）
 	IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error)
 	DecrementWaitCount(ctx context.Context, userID int64) error
 REDACTED

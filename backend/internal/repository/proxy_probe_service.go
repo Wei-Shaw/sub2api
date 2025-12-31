@@ -2,18 +2,14 @@ package repository
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-
-	"golang.org/x/net/proxy"
 )
 
 func NewProxyExitInfoProber() service.ProxyExitInfoProber {
@@ -27,14 +23,14 @@ type proxyProbeService struct {
 REDACTED
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
-	transport, err := createProxyTransport(proxyURL)
+	client, err := httpclient.GetClient(httpclient.Options{
+		ProxyURL:           proxyURL,
+		Timeout:            15 * time.Second,
+		InsecureSkipVerify: true,
+		ProxyStrict:        true,
+REDACTED)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create proxy transport: %w", err)
-REDACTED
-
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   15 * time.Second,
+		return nil, 0, fmt.Errorf("failed to create proxy client: %w", err)
 REDACTED
 
 	startTime := time.Now()
@@ -77,32 +73,4 @@ REDACTED
 		Region:  ipInfo.Region,
 		Country: ipInfo.Country,
 REDACTED, latencyMs, nil
-REDACTED
-
-func createProxyTransport(proxyURL string) (*http.Transport, error) {
-	parsedURL, err := url.Parse(proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid proxy URL: %w", err)
-REDACTED
-
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: trueREDACTED,
-REDACTED
-
-	switch parsedURL.Scheme {
-	case "http", "https":
-		transport.Proxy = http.ProxyURL(parsedURL)
-	case "socks5":
-		dialer, err := proxy.FromURL(parsedURL, proxy.Direct)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create socks5 dialer: %w", err)
-	REDACTED
-		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialer.Dial(network, addr)
-	REDACTED
-	default:
-		return nil, fmt.Errorf("unsupported proxy protocol: %s", parsedURL.Scheme)
-REDACTED
-
-	return transport, nil
 REDACTED

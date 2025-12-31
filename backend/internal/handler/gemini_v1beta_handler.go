@@ -148,6 +148,10 @@ REDACTED
 
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			googleError(c, http.StatusRequestEntityTooLarge, buildBodyTooLargeMessage(maxErr.Limit))
+			return
+	REDACTED
 		googleError(c, http.StatusBadRequest, "Failed to read request body")
 		return
 REDACTED
@@ -191,7 +195,8 @@ REDACTED
 REDACTED
 
 	// 3) select account (sticky session based on request body)
-	sessionHash := h.gatewayService.GenerateSessionHash(body)
+	parsedReq, _ := service.ParseGatewayRequest(body)
+	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 	const maxAccountSwitches = 3
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)

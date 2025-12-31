@@ -18,6 +18,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
+var (
+	openAIModelDatePattern = regexp.MustCompile(`-\d{8REDACTED$`)
+	openAIModelBasePattern = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+)
+
 // LiteLLMModelPricing LiteLLM价格数据结构
 // 只保留我们需要的字段，使用指针来处理可能缺失的值
 type LiteLLMModelPricing struct {
@@ -595,11 +600,8 @@ REDACTED
 // 2. gpt-5.2-20251222 -> gpt-5.2（去掉日期版本号）
 // 3. 最终回退到 DefaultTestModel (gpt-5.1-codex)
 func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
-	// 正则匹配日期后缀 (如 -20251222)
-	datePattern := regexp.MustCompile(`-\d{8REDACTED$`)
-
 	// 尝试的回退变体
-	variants := s.generateOpenAIModelVariants(model, datePattern)
+	variants := s.generateOpenAIModelVariants(model, openAIModelDatePattern)
 
 	for _, variant := range variants {
 		if pricing, ok := s.pricingData[variant]; ok {
@@ -638,14 +640,13 @@ REDACTED
 
 	// 2. 提取基础版本号: gpt-5.2-codex -> gpt-5.2
 	// 只匹配纯数字版本号格式 gpt-X 或 gpt-X.Y，不匹配 gpt-4o 这种带字母后缀的
-	basePattern := regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
-	if matches := basePattern.FindStringSubmatch(model); len(matches) > 1 {
+	if matches := openAIModelBasePattern.FindStringSubmatch(model); len(matches) > 1 {
 		addVariant(matches[1])
 REDACTED
 
 	// 3. 同时去掉日期后再提取基础版本号
 	if withoutDate != model {
-		if matches := basePattern.FindStringSubmatch(withoutDate); len(matches) > 1 {
+		if matches := openAIModelBasePattern.FindStringSubmatch(withoutDate); len(matches) > 1 {
 			addVariant(matches[1])
 	REDACTED
 REDACTED

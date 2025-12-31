@@ -40,13 +40,13 @@ func (s *HTTPUpstreamSuite) TestCustomResponseHeaderTimeout() {
 	require.Equal(s.T(), 7*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 REDACTED
 
-func (s *HTTPUpstreamSuite) TestCreateProxyClient_InvalidURLFallsBackToDefault() {
+func (s *HTTPUpstreamSuite) TestGetOrCreateClient_InvalidURLFallsBackToDefault() {
 	s.cfg.Gateway = config.GatewayConfig{ResponseHeaderTimeout: 5REDACTED
 	up := NewHTTPUpstream(s.cfg)
 	svc, ok := up.(*httpUpstreamService)
 	require.True(s.T(), ok, "expected *httpUpstreamService")
 
-	got := svc.createProxyClient("://bad-proxy-url")
+	got := svc.getOrCreateClient("://bad-proxy-url")
 	require.Equal(s.T(), svc.defaultClient, got, "expected defaultClient fallback")
 REDACTED
 

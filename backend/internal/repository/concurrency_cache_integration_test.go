@@ -14,6 +14,12 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// 测试用 TTL 配置（15 分钟，与默认值一致）
+const testSlotTTLMinutes = 15
+
+// 测试用 TTL Duration，用于 TTL 断言
+var testSlotTTL = time.Duration(testSlotTTLMinutes) * time.Minute
+
 type ConcurrencyCacheSuite struct {
 	IntegrationRedisSuite
 	cache service.ConcurrencyCache
@@ -21,7 +27,7 @@ REDACTED
 
 func (s *ConcurrencyCacheSuite) SetupTest() {
 	s.IntegrationRedisSuite.SetupTest()
-	s.cache = NewConcurrencyCache(s.rdb)
+	s.cache = NewConcurrencyCache(s.rdb, testSlotTTLMinutes)
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
@@ -54,7 +60,7 @@ REDACTED
 func (s *ConcurrencyCacheSuite) TestAccountSlot_TTL() {
 	accountID := int64(11)
 	reqID := "req_ttl_test"
-	slotKey := fmt.Sprintf("%s%d:%s", accountSlotKeyPrefix, accountID, reqID)
+	slotKey := fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)
 
 	ok, err := s.cache.AcquireAccountSlot(s.ctx, accountID, 5, reqID)
 	require.NoError(s.T(), err, "AcquireAccountSlot")
@@ -62,7 +68,7 @@ func (s *ConcurrencyCacheSuite) TestAccountSlot_TTL() {
 
 	ttl, err := s.rdb.TTL(s.ctx, slotKey).Result()
 	require.NoError(s.T(), err, "TTL")
-	s.AssertTTLWithin(ttl, 1*time.Second, slotTTL)
+	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestAccountSlot_DuplicateReqID() {
@@ -139,7 +145,7 @@ REDACTED
 func (s *ConcurrencyCacheSuite) TestUserSlot_TTL() {
 	userID := int64(200)
 	reqID := "req_ttl_test"
-	slotKey := fmt.Sprintf("%s%d:%s", userSlotKeyPrefix, userID, reqID)
+	slotKey := fmt.Sprintf("%s%d", userSlotKeyPrefix, userID)
 
 	ok, err := s.cache.AcquireUserSlot(s.ctx, userID, 5, reqID)
 	require.NoError(s.T(), err, "AcquireUserSlot")
@@ -147,7 +153,7 @@ func (s *ConcurrencyCacheSuite) TestUserSlot_TTL() {
 
 	ttl, err := s.rdb.TTL(s.ctx, slotKey).Result()
 	require.NoError(s.T(), err, "TTL")
-	s.AssertTTLWithin(ttl, 1*time.Second, slotTTL)
+	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestWaitQueue_IncrementAndDecrement() {
@@ -168,7 +174,7 @@ func (s *ConcurrencyCacheSuite) TestWaitQueue_IncrementAndDecrement() {
 
 	ttl, err := s.rdb.TTL(s.ctx, waitKey).Result()
 	require.NoError(s.T(), err, "TTL waitKey")
-	s.AssertTTLWithin(ttl, 1*time.Second, slotTTL)
+	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
 
 	require.NoError(s.T(), s.cache.DecrementWaitCount(s.ctx, userID), "DecrementWaitCount")
 

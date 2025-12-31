@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 )
 
 type CRSSyncService struct {
@@ -193,7 +195,12 @@ REDACTED
 		return nil, errors.New("username and password are required")
 REDACTED
 
-	client := &http.Client{Timeout: 20 * time.SecondREDACTED
+	client, err := httpclient.GetClient(httpclient.Options{
+		Timeout: 20 * time.Second,
+REDACTED)
+	if err != nil {
+		client = &http.Client{Timeout: 20 * time.SecondREDACTED
+REDACTED
 
 	adminToken, err := crsLogin(ctx, client, baseURL, input.Username, input.Password)
 	if err != nil {

@@ -921,7 +921,10 @@ REDACTED
 	time.Sleep(sleepFor)
 REDACTED
 
-var sensitiveQueryParamRegex = regexp.MustCompile(`(?i)([?&](?:key|client_secret|access_token|refresh_token)=)[^&"\s]+`)
+var (
+	sensitiveQueryParamRegex = regexp.MustCompile(`(?i)([?&](?:key|client_secret|access_token|refresh_token)=)[^&"\s]+`)
+	retryInRegex             = regexp.MustCompile(`Please retry in ([0-9.]+)s`)
+)
 
 func sanitizeUpstreamErrorMessage(msg string) string {
 	if msg == "" {
@@ -1925,7 +1928,6 @@ func ParseGeminiRateLimitResetTime(body []byte) *int64 {
 REDACTED
 
 	// Match "Please retry in Xs"
-	retryInRegex := regexp.MustCompile(`Please retry in ([0-9.]+)s`)
 	matches := retryInRegex.FindStringSubmatch(string(body))
 	if len(matches) == 2 {
 		if dur, err := time.ParseDuration(matches[1] + "s"); err == nil {

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -23,20 +23,12 @@ func NewClaudeUsageFetcher() service.ClaudeUsageFetcher {
 REDACTED
 
 func (s *claudeUsageService) FetchUsage(ctx context.Context, accessToken, proxyURL string) (*service.ClaudeUsageResponse, error) {
-	transport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil, fmt.Errorf("failed to get default transport")
-REDACTED
-	transport = transport.Clone()
-	if proxyURL != "" {
-		if parsedURL, err := url.Parse(proxyURL); err == nil {
-			transport.Proxy = http.ProxyURL(parsedURL)
-	REDACTED
-REDACTED
-
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   30 * time.Second,
+	client, err := httpclient.GetClient(httpclient.Options{
+		ProxyURL: proxyURL,
+		Timeout:  30 * time.Second,
+REDACTED)
+	if err != nil {
+		client = &http.Client{Timeout: 30 * time.SecondREDACTED
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "GET", s.usageURL, nil)

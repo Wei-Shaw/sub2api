@@ -51,6 +51,7 @@ REDACTED
 	if err != nil {
 		return nil, nil, err
 REDACTED
+	applyDBPoolSettings(drv.DB(), cfg)
 
 	// 确保数据库 schema 已准备就绪。
 	// SQL 迁移文件是 schema 的权威来源（source of truth）。
