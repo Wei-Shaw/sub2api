@@ -837,3 +837,160 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+// mockConcurrencyService for testing
+type mockConcurrencyService struct {
+	accountLoads      map[int64]*AccountLoadInfo
+	accountWaitCounts map[int64]int
+	acquireResults    map[int64]bool
+REDACTED
+
+func (m *mockConcurrencyService) GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	if m.accountLoads == nil {
+		return map[int64]*AccountLoadInfo{REDACTED, nil
+REDACTED
+	result := make(map[int64]*AccountLoadInfo)
+	for _, acc := range accounts {
+		if load, ok := m.accountLoads[acc.ID]; ok {
+			result[acc.ID] = load
+	REDACTED else {
+			result[acc.ID] = &AccountLoadInfo{
+				AccountID:          acc.ID,
+				CurrentConcurrency: 0,
+				WaitingCount:       0,
+				LoadRate:           0,
+		REDACTED
+	REDACTED
+REDACTED
+	return result, nil
+REDACTED
+
+func (m *mockConcurrencyService) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	if m.accountWaitCounts == nil {
+		return 0, nil
+REDACTED
+	return m.accountWaitCounts[accountID], nil
+REDACTED
+
+// TestGatewayService_SelectAccountWithLoadAwareness tests load-aware account selection
+func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("禁用负载批量查询-降级到传统选择", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+				{ID: 2, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{REDACTED
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: nil, // No concurrency service
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(1), result.Account.ID, "应选择优先级最高的账号")
+REDACTED)
+
+	t.Run("无ConcurrencyService-降级到传统选择", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{REDACTED
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: nil,
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "应选择优先级最高的账号")
+REDACTED)
+
+	t.Run("排除账号-不选择被排除的账号", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+				{ID: 2, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{REDACTED
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: nil,
+	REDACTED
+
+		excludedIDs := map[int64]struct{REDACTED{1: {REDACTEDREDACTED
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", excludedIDs)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "不应选择被排除的账号")
+REDACTED)
+
+	t.Run("无可用账号-返回错误", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts:     []Account{REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{REDACTED
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: nil,
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil)
+	REDACTED
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), "no available accounts")
+REDACTED)
+REDACTED
