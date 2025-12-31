@@ -41,7 +41,7 @@ REDACTED
 // 1. 标准格式: { "name": "...", "description": "...", "input_schema": {...REDACTED REDACTED
 // 2. Custom 格式 (MCP): { "type": "custom", "name": "...", "custom": { "description": "...", "input_schema": {...REDACTED REDACTED REDACTED
 type ClaudeTool struct {
-	Type        string          `json:"type,omitempty"`         // "custom" 或空（标准格式）
+	Type        string          `json:"type,omitempty"` // "custom" 或空（标准格式）
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`  // 标准格式使用
 	InputSchema map[string]any  `json:"input_schema,omitempty"` // 标准格式使用
