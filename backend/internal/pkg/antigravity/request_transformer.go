@@ -3,6 +3,7 @@ package antigravity
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -205,6 +206,13 @@ REDACTED
 			// 保留原有 signature（Claude 模型需要有效的 signature）
 			if block.Signature != "" {
 				part.ThoughtSignature = block.Signature
+		REDACTED else if !allowDummyThought {
+				// Claude 模型需要有效 signature，跳过无 signature 的 thinking block
+				log.Printf("Warning: skipping thinking block without signature for Claude model")
+				continue
+		REDACTED else {
+				// Gemini 模型使用 dummy signature
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
 
@@ -379,12 +387,40 @@ REDACTED
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
 	for _, tool := range tools {
+		// 跳过无效工具名称
+		if tool.Name == "" {
+			log.Printf("Warning: skipping tool with empty name")
+			continue
+	REDACTED
+
+		var description string
+		var inputSchema map[string]any
+
+		// 检查是否为 custom 类型工具 (MCP)
+		if tool.Type == "custom" && tool.Custom != nil {
+			// Custom 格式: 从 custom 字段获取 description 和 input_schema
+			description = tool.Custom.Description
+			inputSchema = tool.Custom.InputSchema
+	REDACTED else {
+			// 标准格式: 从顶层字段获取
+			description = tool.Description
+			inputSchema = tool.InputSchema
+	REDACTED
+
 		// 清理 JSON Schema
-		params := cleanJSONSchema(tool.InputSchema)
+		params := cleanJSONSchema(inputSchema)
+
+		// 为 nil schema 提供默认值
+		if params == nil {
+			params = map[string]any{
+				"type":       "OBJECT",
+				"properties": map[string]any{REDACTED,
+		REDACTED
+	REDACTED
 
 		funcDecls = append(funcDecls, GeminiFunctionDecl{
 			Name:        tool.Name,
-			Description: tool.Description,
+			Description: description,
 			Parameters:  params,
 	REDACTED)
 REDACTED
