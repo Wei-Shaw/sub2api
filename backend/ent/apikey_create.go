@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
@@ -120,6 +121,21 @@ REDACTED
 // SetGroup sets the "group" edge to the Group entity.
 func (_c *ApiKeyCreate) SetGroup(v *Group) *ApiKeyCreate {
 	return _c.SetGroupID(v.ID)
+REDACTED
+
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_c *ApiKeyCreate) AddUsageLogIDs(ids ...int64) *ApiKeyCreate {
+	_c.mutation.AddUsageLogIDs(ids...)
+	return _c
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_c *ApiKeyCreate) AddUsageLogs(v ...*UsageLog) *ApiKeyCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _c.AddUsageLogIDs(ids...)
 REDACTED
 
 // Mutation returns the ApiKeyMutation object of the builder.
@@ -301,6 +317,22 @@ REDACTED
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 	REDACTED
 		_node.GroupID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+REDACTED
+	if nodes := _c.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.UsageLogsTable,
+			Columns: []string{apikey.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
 		_spec.Edges = append(_spec.Edges, edge)
 REDACTED
 	return _node, _spec

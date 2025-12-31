@@ -20,7 +20,6 @@ var (
 		{Name: "type", Type: field.TypeString, Size: 20REDACTED,
 		{Name: "credentials", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
 		{Name: "extra", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
-		{Name: "proxy_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "concurrency", Type: field.TypeInt, Default: 3REDACTED,
 		{Name: "priority", Type: field.TypeInt, Default: 50REDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
@@ -33,12 +32,21 @@ var (
 		{Name: "session_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "session_window_end", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "session_window_status", Type: field.TypeString, Nullable: true, Size: 20REDACTED,
+		{Name: "proxy_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 REDACTED
 	// AccountsTable holds the schema information for the "accounts" table.
 	AccountsTable = &schema.Table{
 		Name:       "accounts",
 		Columns:    AccountsColumns,
 		PrimaryKey: []*schema.Column{AccountsColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "accounts_proxies_proxy",
+				Columns:    []*schema.Column{AccountsColumns[21]REDACTED,
+				RefColumns: []*schema.Column{ProxiesColumns[0]REDACTED,
+				OnDelete:   schema.SetNull,
+		REDACTED,
+	REDACTED,
 		Indexes: []*schema.Index{
 			{
 				Name:    "account_platform",
@@ -53,42 +61,42 @@ REDACTED
 			{
 				Name:    "account_status",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[12]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[11]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[9]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[21]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_priority",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[11]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[10]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[14]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[13]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_schedulable",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[15]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[14]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_rate_limited_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[16]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[15]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_rate_limit_reset_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[17]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[16]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_overload_until",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[18]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[17]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_deleted_at",
@@ -100,7 +108,7 @@ REDACTED
 	// AccountGroupsColumns holds the columns for the "account_groups" table.
 	AccountGroupsColumns = []*schema.Column{
 		{Name: "priority", Type: field.TypeInt, Default: 50REDACTED,
-		{Name: "created_at", Type: field.TypeTimeREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "account_id", Type: field.TypeInt64REDACTED,
 		{Name: "group_id", Type: field.TypeInt64REDACTED,
 REDACTED
@@ -169,11 +177,6 @@ REDACTED
 	REDACTED,
 		Indexes: []*schema.Index{
 			{
-				Name:    "apikey_key",
-				Unique:  true,
-				Columns: []*schema.Column{APIKeysColumns[4]REDACTED,
-		REDACTED,
-			{
 				Name:    "apikey_user_id",
 				Unique:  false,
 				Columns: []*schema.Column{APIKeysColumns[8]REDACTED,
@@ -211,6 +214,7 @@ REDACTED
 		{Name: "daily_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "weekly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "monthly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "default_validity_days", Type: field.TypeInt, Default: 30REDACTED,
 REDACTED
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
@@ -218,11 +222,6 @@ REDACTED
 		Columns:    GroupsColumns,
 		PrimaryKey: []*schema.Column{GroupsColumns[0]REDACTED,
 		Indexes: []*schema.Index{
-			{
-				Name:    "group_name",
-				Unique:  true,
-				Columns: []*schema.Column{GroupsColumns[4]REDACTED,
-		REDACTED,
 			{
 				Name:    "group_status",
 				Unique:  false,
@@ -317,11 +316,6 @@ REDACTED
 	REDACTED,
 		Indexes: []*schema.Index{
 			{
-				Name:    "redeemcode_code",
-				Unique:  true,
-				Columns: []*schema.Column{RedeemCodesColumns[1]REDACTED,
-		REDACTED,
-			{
 				Name:    "redeemcode_status",
 				Unique:  false,
 				Columns: []*schema.Column{RedeemCodesColumns[4]REDACTED,
@@ -350,11 +344,123 @@ REDACTED
 		Name:       "settings",
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]REDACTED,
+REDACTED
+	// UsageLogsColumns holds the columns for the "usage_logs" table.
+	UsageLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "request_id", Type: field.TypeString, Size: 64REDACTED,
+		{Name: "model", Type: field.TypeString, Size: 100REDACTED,
+		{Name: "input_tokens", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "output_tokens", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "cache_creation_tokens", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "cache_read_tokens", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "cache_creation_5m_tokens", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "cache_creation_1h_tokens", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "input_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
+		{Name: "output_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
+		{Name: "cache_creation_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
+		{Name: "cache_read_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
+		{Name: "total_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
+		{Name: "actual_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"REDACTEDREDACTED,
+		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
+		{Name: "billing_type", Type: field.TypeInt8, Default: 0REDACTED,
+		{Name: "stream", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "duration_ms", Type: field.TypeInt, Nullable: trueREDACTED,
+		{Name: "first_token_ms", Type: field.TypeInt, Nullable: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "account_id", Type: field.TypeInt64REDACTED,
+		{Name: "api_key_id", Type: field.TypeInt64REDACTED,
+		{Name: "group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
+		{Name: "user_id", Type: field.TypeInt64REDACTED,
+		{Name: "subscription_id", Type: field.TypeInt64, Nullable: trueREDACTED,
+REDACTED
+	// UsageLogsTable holds the schema information for the "usage_logs" table.
+	UsageLogsTable = &schema.Table{
+		Name:       "usage_logs",
+		Columns:    UsageLogsColumns,
+		PrimaryKey: []*schema.Column{UsageLogsColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "usage_logs_accounts_usage_logs",
+				Columns:    []*schema.Column{UsageLogsColumns[21]REDACTED,
+				RefColumns: []*schema.Column{AccountsColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+			{
+				Symbol:     "usage_logs_api_keys_usage_logs",
+				Columns:    []*schema.Column{UsageLogsColumns[22]REDACTED,
+				RefColumns: []*schema.Column{APIKeysColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+			{
+				Symbol:     "usage_logs_groups_usage_logs",
+				Columns:    []*schema.Column{UsageLogsColumns[23]REDACTED,
+				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
+				OnDelete:   schema.SetNull,
+		REDACTED,
+			{
+				Symbol:     "usage_logs_users_usage_logs",
+				Columns:    []*schema.Column{UsageLogsColumns[24]REDACTED,
+				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+			{
+				Symbol:     "usage_logs_user_subscriptions_usage_logs",
+				Columns:    []*schema.Column{UsageLogsColumns[25]REDACTED,
+				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]REDACTED,
+				OnDelete:   schema.SetNull,
+		REDACTED,
+	REDACTED,
 		Indexes: []*schema.Index{
 			{
-				Name:    "setting_key",
-				Unique:  true,
-				Columns: []*schema.Column{SettingsColumns[1]REDACTED,
+				Name:    "usagelog_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[24]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_api_key_id",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[22]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[21]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[23]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_subscription_id",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[25]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[20]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_model",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[2]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[1]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[24], UsageLogsColumns[20]REDACTED,
+		REDACTED,
+			{
+				Name:    "usagelog_api_key_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[22], UsageLogsColumns[20]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -381,11 +487,6 @@ REDACTED
 		PrimaryKey: []*schema.Column{UsersColumns[0]REDACTED,
 		Indexes: []*schema.Index{
 			{
-				Name:    "user_email",
-				Unique:  true,
-				Columns: []*schema.Column{UsersColumns[4]REDACTED,
-		REDACTED,
-			{
 				Name:    "user_status",
 				Unique:  false,
 				Columns: []*schema.Column{UsersColumns[9]REDACTED,
@@ -399,7 +500,7 @@ REDACTED
 REDACTED
 	// UserAllowedGroupsColumns holds the columns for the "user_allowed_groups" table.
 	UserAllowedGroupsColumns = []*schema.Column{
-		{Name: "created_at", Type: field.TypeTimeREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "user_id", Type: field.TypeInt64REDACTED,
 		{Name: "group_id", Type: field.TypeInt64REDACTED,
 REDACTED
@@ -435,6 +536,7 @@ REDACTED
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "starts_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
@@ -458,19 +560,19 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "user_subscriptions_groups_subscriptions",
-				Columns:    []*schema.Column{UserSubscriptionsColumns[14]REDACTED,
+				Columns:    []*schema.Column{UserSubscriptionsColumns[15]REDACTED,
 				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "user_subscriptions_users_subscriptions",
-				Columns:    []*schema.Column{UserSubscriptionsColumns[15]REDACTED,
+				Columns:    []*schema.Column{UserSubscriptionsColumns[16]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "user_subscriptions_users_assigned_subscriptions",
-				Columns:    []*schema.Column{UserSubscriptionsColumns[16]REDACTED,
+				Columns:    []*schema.Column{UserSubscriptionsColumns[17]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -479,32 +581,37 @@ REDACTED
 			{
 				Name:    "usersubscription_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[15]REDACTED,
+				Columns: []*schema.Column{UserSubscriptionsColumns[16]REDACTED,
 		REDACTED,
 			{
 				Name:    "usersubscription_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[14]REDACTED,
+				Columns: []*schema.Column{UserSubscriptionsColumns[15]REDACTED,
 		REDACTED,
 			{
 				Name:    "usersubscription_status",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[5]REDACTED,
+				Columns: []*schema.Column{UserSubscriptionsColumns[6]REDACTED,
 		REDACTED,
 			{
 				Name:    "usersubscription_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[4]REDACTED,
+				Columns: []*schema.Column{UserSubscriptionsColumns[5]REDACTED,
 		REDACTED,
 			{
 				Name:    "usersubscription_assigned_by",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[16]REDACTED,
+				Columns: []*schema.Column{UserSubscriptionsColumns[17]REDACTED,
 		REDACTED,
 			{
 				Name:    "usersubscription_user_id_group_id",
 				Unique:  true,
-				Columns: []*schema.Column{UserSubscriptionsColumns[15], UserSubscriptionsColumns[14]REDACTED,
+				Columns: []*schema.Column{UserSubscriptionsColumns[16], UserSubscriptionsColumns[15]REDACTED,
+		REDACTED,
+			{
+				Name:    "usersubscription_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{UserSubscriptionsColumns[3]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -517,6 +624,7 @@ REDACTED
 		ProxiesTable,
 		RedeemCodesTable,
 		SettingsTable,
+		UsageLogsTable,
 		UsersTable,
 		UserAllowedGroupsTable,
 		UserSubscriptionsTable,
@@ -524,6 +632,7 @@ REDACTED
 )
 
 func init() {
+	AccountsTable.ForeignKeys[0].RefTable = ProxiesTable
 	AccountsTable.Annotation = &entsql.Annotation{
 		Table: "accounts",
 REDACTED
@@ -550,6 +659,14 @@ REDACTED
 REDACTED
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+REDACTED
+	UsageLogsTable.ForeignKeys[0].RefTable = AccountsTable
+	UsageLogsTable.ForeignKeys[1].RefTable = APIKeysTable
+	UsageLogsTable.ForeignKeys[2].RefTable = GroupsTable
+	UsageLogsTable.ForeignKeys[3].RefTable = UsersTable
+	UsageLogsTable.ForeignKeys[4].RefTable = UserSubscriptionsTable
+	UsageLogsTable.Annotation = &entsql.Annotation{
+		Table: "usage_logs",
 REDACTED
 	UsersTable.Annotation = &entsql.Annotation{
 		Table: "users",

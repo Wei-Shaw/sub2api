@@ -73,12 +73,13 @@ func (User) Edges() []ent.Edge {
 		edge.To("assigned_subscriptions", UserSubscription.Type),
 		edge.To("allowed_groups", Group.Type).
 			Through("user_allowed_groups", UserAllowedGroup.Type),
+		edge.To("usage_logs", UsageLog.Type),
 REDACTED
 REDACTED
 
 func (User) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("email").Unique(),
+		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("deleted_at"),
 REDACTED

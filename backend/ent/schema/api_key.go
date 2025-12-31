@@ -60,12 +60,13 @@ func (ApiKey) Edges() []ent.Edge {
 			Ref("api_keys").
 			Field("group_id").
 			Unique(),
+		edge.To("usage_logs", UsageLog.Type),
 REDACTED
 REDACTED
 
 func (ApiKey) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("key").Unique(),
+		// key 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("user_id"),
 		index.Fields("group_id"),
 		index.Fields("status"),

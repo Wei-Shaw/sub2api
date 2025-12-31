@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
@@ -201,6 +202,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetDefaultValidityDays sets the "default_validity_days" field.
+func (_c *GroupCreate) SetDefaultValidityDays(v int) *GroupCreate {
+	_c.mutation.SetDefaultValidityDays(v)
+	return _c
+REDACTED
+
+// SetNillableDefaultValidityDays sets the "default_validity_days" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDefaultValidityDays(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetDefaultValidityDays(*v)
+REDACTED
+	return _c
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the ApiKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -244,6 +259,21 @@ func (_c *GroupCreate) AddSubscriptions(v ...*UserSubscription) *GroupCreate {
 		ids[i] = v[i].ID
 REDACTED
 	return _c.AddSubscriptionIDs(ids...)
+REDACTED
+
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_c *GroupCreate) AddUsageLogIDs(ids ...int64) *GroupCreate {
+	_c.mutation.AddUsageLogIDs(ids...)
+	return _c
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_c *GroupCreate) AddUsageLogs(v ...*UsageLog) *GroupCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _c.AddUsageLogIDs(ids...)
 REDACTED
 
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
@@ -347,6 +377,10 @@ REDACTED
 		v := group.DefaultSubscriptionType
 		_c.mutation.SetSubscriptionType(v)
 REDACTED
+	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
+		v := group.DefaultDefaultValidityDays
+		_c.mutation.SetDefaultValidityDays(v)
+REDACTED
 	return nil
 REDACTED
 
@@ -395,6 +429,9 @@ REDACTED
 		if err := group.SubscriptionTypeValidator(v); err != nil {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)REDACTED
 	REDACTED
+REDACTED
+	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
+		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -475,6 +512,10 @@ REDACTED
 		_spec.SetField(group.FieldMonthlyLimitUsd, field.TypeFloat64, value)
 		_node.MonthlyLimitUsd = &value
 REDACTED
+	if value, ok := _c.mutation.DefaultValidityDays(); ok {
+		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
+		_node.DefaultValidityDays = value
+REDACTED
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -516,6 +557,22 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges = append(_spec.Edges, edge)
+REDACTED
+	if nodes := _c.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.UsageLogsTable,
+			Columns: []string{group.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {
@@ -813,6 +870,24 @@ func (u *GroupUpsert) ClearMonthlyLimitUsd() *GroupUpsert {
 	return u
 REDACTED
 
+// SetDefaultValidityDays sets the "default_validity_days" field.
+func (u *GroupUpsert) SetDefaultValidityDays(v int) *GroupUpsert {
+	u.Set(group.FieldDefaultValidityDays, v)
+	return u
+REDACTED
+
+// UpdateDefaultValidityDays sets the "default_validity_days" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDefaultValidityDays() *GroupUpsert {
+	u.SetExcluded(group.FieldDefaultValidityDays)
+	return u
+REDACTED
+
+// AddDefaultValidityDays adds v to the "default_validity_days" field.
+func (u *GroupUpsert) AddDefaultValidityDays(v int) *GroupUpsert {
+	u.Add(group.FieldDefaultValidityDays, v)
+	return u
+REDACTED
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1086,6 +1161,27 @@ REDACTED
 func (u *GroupUpsertOne) ClearMonthlyLimitUsd() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearMonthlyLimitUsd()
+REDACTED)
+REDACTED
+
+// SetDefaultValidityDays sets the "default_validity_days" field.
+func (u *GroupUpsertOne) SetDefaultValidityDays(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultValidityDays(v)
+REDACTED)
+REDACTED
+
+// AddDefaultValidityDays adds v to the "default_validity_days" field.
+func (u *GroupUpsertOne) AddDefaultValidityDays(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefaultValidityDays(v)
+REDACTED)
+REDACTED
+
+// UpdateDefaultValidityDays sets the "default_validity_days" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDefaultValidityDays() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultValidityDays()
 REDACTED)
 REDACTED
 
@@ -1528,6 +1624,27 @@ REDACTED
 func (u *GroupUpsertBulk) ClearMonthlyLimitUsd() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearMonthlyLimitUsd()
+REDACTED)
+REDACTED
+
+// SetDefaultValidityDays sets the "default_validity_days" field.
+func (u *GroupUpsertBulk) SetDefaultValidityDays(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultValidityDays(v)
+REDACTED)
+REDACTED
+
+// AddDefaultValidityDays adds v to the "default_validity_days" field.
+func (u *GroupUpsertBulk) AddDefaultValidityDays(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefaultValidityDays(v)
+REDACTED)
+REDACTED
+
+// UpdateDefaultValidityDays sets the "default_validity_days" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDefaultValidityDays() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultValidityDays()
 REDACTED)
 REDACTED
 

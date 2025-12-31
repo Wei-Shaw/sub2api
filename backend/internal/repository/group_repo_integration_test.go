@@ -478,3 +478,58 @@ REDACTED
 	count, _ := s.repo.GetAccountCount(s.ctx, g.ID)
 	s.Require().Zero(count)
 REDACTED
+
+// --- 软删除过滤测试 ---
+
+func (s *GroupRepoSuite) TestDelete_SoftDelete_NotVisibleInList() {
+	group := &service.Group{
+		Name:             "to-soft-delete",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	// 获取删除前的列表数量
+	listBefore, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 100REDACTED)
+	s.Require().NoError(err)
+	beforeCount := len(listBefore)
+
+	// 软删除
+	err = s.repo.Delete(s.ctx, group.ID)
+	s.Require().NoError(err, "Delete (soft delete)")
+
+	// 验证列表中不再包含软删除的 group
+	listAfter, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 100REDACTED)
+	s.Require().NoError(err)
+	s.Require().Len(listAfter, beforeCount-1, "soft deleted group should not appear in list")
+
+	// 验证 GetByID 也无法找到
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().Error(err)
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+REDACTED
+
+func (s *GroupRepoSuite) TestDelete_SoftDeletedGroup_lockForUpdate() {
+	group := &service.Group{
+		Name:             "lock-soft-delete",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+REDACTED
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	// 软删除
+	err := s.repo.Delete(s.ctx, group.ID)
+	s.Require().NoError(err)
+
+	// 验证软删除的 group 在 GetByID 时返回 ErrGroupNotFound
+	// 这证明 lockForUpdate 的 deleted_at IS NULL 过滤正在工作
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().Error(err, "should fail to get soft-deleted group")
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+REDACTED

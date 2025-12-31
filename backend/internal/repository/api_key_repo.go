@@ -318,12 +318,13 @@ REDACTED
 		RateMultiplier:   g.RateMultiplier,
 		IsExclusive:      g.IsExclusive,
 		Status:           g.Status,
-		SubscriptionType: g.SubscriptionType,
-		DailyLimitUSD:    g.DailyLimitUsd,
-		WeeklyLimitUSD:   g.WeeklyLimitUsd,
-		MonthlyLimitUSD:  g.MonthlyLimitUsd,
-		CreatedAt:        g.CreatedAt,
-		UpdatedAt:        g.UpdatedAt,
+		SubscriptionType:    g.SubscriptionType,
+		DailyLimitUSD:       g.DailyLimitUsd,
+		WeeklyLimitUSD:      g.WeeklyLimitUsd,
+		MonthlyLimitUSD:     g.MonthlyLimitUsd,
+		DefaultValidityDays: g.DefaultValidityDays,
+		CreatedAt:           g.CreatedAt,
+		UpdatedAt:           g.UpdatedAt,
 REDACTED
 REDACTED
 

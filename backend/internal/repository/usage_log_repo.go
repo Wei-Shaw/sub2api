@@ -1109,6 +1109,9 @@ REDACTED
 	if err := rows.Close(); err != nil {
 		return nil, err
 REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
 
 	today := timezone.Today()
 	todayQuery := `
@@ -1133,6 +1136,9 @@ REDACTED
 	REDACTED
 REDACTED
 	if err := rows.Close(); err != nil {
+		return nil, err
+REDACTED
+	if err := rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
@@ -1177,6 +1183,9 @@ REDACTED
 	if err := rows.Close(); err != nil {
 		return nil, err
 REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
 
 	today := timezone.Today()
 	todayQuery := `
@@ -1201,6 +1210,9 @@ REDACTED
 	REDACTED
 REDACTED
 	if err := rows.Close(); err != nil {
+		return nil, err
+REDACTED
+	if err := rows.Err(); err != nil {
 		return nil, err
 REDACTED
 

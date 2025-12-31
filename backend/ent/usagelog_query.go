@@ -4,7 +4,6 @@ package ent
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -12,61 +11,65 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
-// ApiKeyQuery is the builder for querying ApiKey entities.
-type ApiKeyQuery struct {
+// UsageLogQuery is the builder for querying UsageLog entities.
+type UsageLogQuery struct {
 	config
-	ctx           *QueryContext
-	order         []apikey.OrderOption
-	inters        []Interceptor
-	predicates    []predicate.ApiKey
-	withUser      *UserQuery
-	withGroup     *GroupQuery
-	withUsageLogs *UsageLogQuery
+	ctx              *QueryContext
+	order            []usagelog.OrderOption
+	inters           []Interceptor
+	predicates       []predicate.UsageLog
+	withUser         *UserQuery
+	withAPIKey       *ApiKeyQuery
+	withAccount      *AccountQuery
+	withGroup        *GroupQuery
+	withSubscription *UserSubscriptionQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 REDACTED
 
-// Where adds a new predicate for the ApiKeyQuery builder.
-func (_q *ApiKeyQuery) Where(ps ...predicate.ApiKey) *ApiKeyQuery {
+// Where adds a new predicate for the UsageLogQuery builder.
+func (_q *UsageLogQuery) Where(ps ...predicate.UsageLog) *UsageLogQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 REDACTED
 
 // Limit the number of records to be returned by this query.
-func (_q *ApiKeyQuery) Limit(limit int) *ApiKeyQuery {
+func (_q *UsageLogQuery) Limit(limit int) *UsageLogQuery {
 	_q.ctx.Limit = &limit
 	return _q
 REDACTED
 
 // Offset to start from.
-func (_q *ApiKeyQuery) Offset(offset int) *ApiKeyQuery {
+func (_q *UsageLogQuery) Offset(offset int) *UsageLogQuery {
 	_q.ctx.Offset = &offset
 	return _q
 REDACTED
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *ApiKeyQuery) Unique(unique bool) *ApiKeyQuery {
+func (_q *UsageLogQuery) Unique(unique bool) *UsageLogQuery {
 	_q.ctx.Unique = &unique
 	return _q
 REDACTED
 
 // Order specifies how the records should be ordered.
-func (_q *ApiKeyQuery) Order(o ...apikey.OrderOption) *ApiKeyQuery {
+func (_q *UsageLogQuery) Order(o ...usagelog.OrderOption) *UsageLogQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 REDACTED
 
 // QueryUser chains the current query on the "user" edge.
-func (_q *ApiKeyQuery) QueryUser() *UserQuery {
+func (_q *UsageLogQuery) QueryUser() *UserQuery {
 	query := (&UserClient{config: _q.configREDACTED).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -77,9 +80,53 @@ func (_q *ApiKeyQuery) QueryUser() *UserQuery {
 			return nil, err
 	REDACTED
 		step := sqlgraph.NewStep(
-			sqlgraph.From(apikey.Table, apikey.FieldID, selector),
+			sqlgraph.From(usagelog.Table, usagelog.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, apikey.UserTable, apikey.UserColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, usagelog.UserTable, usagelog.UserColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryAPIKey chains the current query on the "api_key" edge.
+func (_q *UsageLogQuery) QueryAPIKey() *ApiKeyQuery {
+	query := (&ApiKeyClient{config: _q.configREDACTED).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+	REDACTED
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+	REDACTED
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usagelog.Table, usagelog.FieldID, selector),
+			sqlgraph.To(apikey.Table, apikey.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, usagelog.APIKeyTable, usagelog.APIKeyColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryAccount chains the current query on the "account" edge.
+func (_q *UsageLogQuery) QueryAccount() *AccountQuery {
+	query := (&AccountClient{config: _q.configREDACTED).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+	REDACTED
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+	REDACTED
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usagelog.Table, usagelog.FieldID, selector),
+			sqlgraph.To(account.Table, account.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, usagelog.AccountTable, usagelog.AccountColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -88,7 +135,7 @@ REDACTED
 REDACTED
 
 // QueryGroup chains the current query on the "group" edge.
-func (_q *ApiKeyQuery) QueryGroup() *GroupQuery {
+func (_q *UsageLogQuery) QueryGroup() *GroupQuery {
 	query := (&GroupClient{config: _q.configREDACTED).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -99,9 +146,9 @@ func (_q *ApiKeyQuery) QueryGroup() *GroupQuery {
 			return nil, err
 	REDACTED
 		step := sqlgraph.NewStep(
-			sqlgraph.From(apikey.Table, apikey.FieldID, selector),
+			sqlgraph.From(usagelog.Table, usagelog.FieldID, selector),
 			sqlgraph.To(group.Table, group.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, apikey.GroupTable, apikey.GroupColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, usagelog.GroupTable, usagelog.GroupColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -109,9 +156,9 @@ REDACTED
 	return query
 REDACTED
 
-// QueryUsageLogs chains the current query on the "usage_logs" edge.
-func (_q *ApiKeyQuery) QueryUsageLogs() *UsageLogQuery {
-	query := (&UsageLogClient{config: _q.configREDACTED).Query()
+// QuerySubscription chains the current query on the "subscription" edge.
+func (_q *UsageLogQuery) QuerySubscription() *UserSubscriptionQuery {
+	query := (&UserSubscriptionClient{config: _q.configREDACTED).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -121,9 +168,9 @@ func (_q *ApiKeyQuery) QueryUsageLogs() *UsageLogQuery {
 			return nil, err
 	REDACTED
 		step := sqlgraph.NewStep(
-			sqlgraph.From(apikey.Table, apikey.FieldID, selector),
-			sqlgraph.To(usagelog.Table, usagelog.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, apikey.UsageLogsTable, apikey.UsageLogsColumn),
+			sqlgraph.From(usagelog.Table, usagelog.FieldID, selector),
+			sqlgraph.To(usersubscription.Table, usersubscription.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, usagelog.SubscriptionTable, usagelog.SubscriptionColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -131,21 +178,21 @@ REDACTED
 	return query
 REDACTED
 
-// First returns the first ApiKey entity from the query.
-// Returns a *NotFoundError when no ApiKey was found.
-func (_q *ApiKeyQuery) First(ctx context.Context) (*ApiKey, error) {
+// First returns the first UsageLog entity from the query.
+// Returns a *NotFoundError when no UsageLog was found.
+func (_q *UsageLogQuery) First(ctx context.Context) (*UsageLog, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 REDACTED
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{apikey.LabelREDACTED
+		return nil, &NotFoundError{usagelog.LabelREDACTED
 REDACTED
 	return nodes[0], nil
 REDACTED
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *ApiKeyQuery) FirstX(ctx context.Context) *ApiKey {
+func (_q *UsageLogQuery) FirstX(ctx context.Context) *UsageLog {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -153,22 +200,22 @@ REDACTED
 	return node
 REDACTED
 
-// FirstID returns the first ApiKey ID from the query.
-// Returns a *NotFoundError when no ApiKey ID was found.
-func (_q *ApiKeyQuery) FirstID(ctx context.Context) (id int64, err error) {
+// FirstID returns the first UsageLog ID from the query.
+// Returns a *NotFoundError when no UsageLog ID was found.
+func (_q *UsageLogQuery) FirstID(ctx context.Context) (id int64, err error) {
 	var ids []int64
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 REDACTED
 	if len(ids) == 0 {
-		err = &NotFoundError{apikey.LabelREDACTED
+		err = &NotFoundError{usagelog.LabelREDACTED
 		return
 REDACTED
 	return ids[0], nil
 REDACTED
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *ApiKeyQuery) FirstIDX(ctx context.Context) int64 {
+func (_q *UsageLogQuery) FirstIDX(ctx context.Context) int64 {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -176,10 +223,10 @@ REDACTED
 	return id
 REDACTED
 
-// Only returns a single ApiKey entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one ApiKey entity is found.
-// Returns a *NotFoundError when no ApiKey entities are found.
-func (_q *ApiKeyQuery) Only(ctx context.Context) (*ApiKey, error) {
+// Only returns a single UsageLog entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one UsageLog entity is found.
+// Returns a *NotFoundError when no UsageLog entities are found.
+func (_q *UsageLogQuery) Only(ctx context.Context) (*UsageLog, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -188,14 +235,14 @@ REDACTED
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{apikey.LabelREDACTED
+		return nil, &NotFoundError{usagelog.LabelREDACTED
 	default:
-		return nil, &NotSingularError{apikey.LabelREDACTED
+		return nil, &NotSingularError{usagelog.LabelREDACTED
 REDACTED
 REDACTED
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *ApiKeyQuery) OnlyX(ctx context.Context) *ApiKey {
+func (_q *UsageLogQuery) OnlyX(ctx context.Context) *UsageLog {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -203,10 +250,10 @@ REDACTED
 	return node
 REDACTED
 
-// OnlyID is like Only, but returns the only ApiKey ID in the query.
-// Returns a *NotSingularError when more than one ApiKey ID is found.
+// OnlyID is like Only, but returns the only UsageLog ID in the query.
+// Returns a *NotSingularError when more than one UsageLog ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *ApiKeyQuery) OnlyID(ctx context.Context) (id int64, err error) {
+func (_q *UsageLogQuery) OnlyID(ctx context.Context) (id int64, err error) {
 	var ids []int64
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -215,15 +262,15 @@ REDACTED
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{apikey.LabelREDACTED
+		err = &NotFoundError{usagelog.LabelREDACTED
 	default:
-		err = &NotSingularError{apikey.LabelREDACTED
+		err = &NotSingularError{usagelog.LabelREDACTED
 REDACTED
 	return
 REDACTED
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *ApiKeyQuery) OnlyIDX(ctx context.Context) int64 {
+func (_q *UsageLogQuery) OnlyIDX(ctx context.Context) int64 {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -231,18 +278,18 @@ REDACTED
 	return id
 REDACTED
 
-// All executes the query and returns a list of ApiKeys.
-func (_q *ApiKeyQuery) All(ctx context.Context) ([]*ApiKey, error) {
+// All executes the query and returns a list of UsageLogs.
+func (_q *UsageLogQuery) All(ctx context.Context) ([]*UsageLog, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 REDACTED
-	qr := querierAll[[]*ApiKey, *ApiKeyQuery]()
-	return withInterceptors[[]*ApiKey](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*UsageLog, *UsageLogQuery]()
+	return withInterceptors[[]*UsageLog](ctx, _q, qr, _q.inters)
 REDACTED
 
 // AllX is like All, but panics if an error occurs.
-func (_q *ApiKeyQuery) AllX(ctx context.Context) []*ApiKey {
+func (_q *UsageLogQuery) AllX(ctx context.Context) []*UsageLog {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -250,20 +297,20 @@ REDACTED
 	return nodes
 REDACTED
 
-// IDs executes the query and returns a list of ApiKey IDs.
-func (_q *ApiKeyQuery) IDs(ctx context.Context) (ids []int64, err error) {
+// IDs executes the query and returns a list of UsageLog IDs.
+func (_q *UsageLogQuery) IDs(ctx context.Context) (ids []int64, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 REDACTED
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(apikey.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(usagelog.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 REDACTED
 	return ids, nil
 REDACTED
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *ApiKeyQuery) IDsX(ctx context.Context) []int64 {
+func (_q *UsageLogQuery) IDsX(ctx context.Context) []int64 {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -272,16 +319,16 @@ REDACTED
 REDACTED
 
 // Count returns the count of the given query.
-func (_q *ApiKeyQuery) Count(ctx context.Context) (int, error) {
+func (_q *UsageLogQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 REDACTED
-	return withInterceptors[int](ctx, _q, querierCount[*ApiKeyQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*UsageLogQuery](), _q.inters)
 REDACTED
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *ApiKeyQuery) CountX(ctx context.Context) int {
+func (_q *UsageLogQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -290,7 +337,7 @@ REDACTED
 REDACTED
 
 // Exist returns true if the query has elements in the graph.
-func (_q *ApiKeyQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *UsageLogQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -303,7 +350,7 @@ REDACTED
 REDACTED
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *ApiKeyQuery) ExistX(ctx context.Context) bool {
+func (_q *UsageLogQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -311,21 +358,23 @@ REDACTED
 	return exist
 REDACTED
 
-// Clone returns a duplicate of the ApiKeyQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the UsageLogQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *ApiKeyQuery) Clone() *ApiKeyQuery {
+func (_q *UsageLogQuery) Clone() *UsageLogQuery {
 	if _q == nil {
 		return nil
 REDACTED
-	return &ApiKeyQuery{
-		config:        _q.config,
-		ctx:           _q.ctx.Clone(),
-		order:         append([]apikey.OrderOption{REDACTED, _q.order...),
-		inters:        append([]Interceptor{REDACTED, _q.inters...),
-		predicates:    append([]predicate.ApiKey{REDACTED, _q.predicates...),
-		withUser:      _q.withUser.Clone(),
-		withGroup:     _q.withGroup.Clone(),
-		withUsageLogs: _q.withUsageLogs.Clone(),
+	return &UsageLogQuery{
+		config:           _q.config,
+		ctx:              _q.ctx.Clone(),
+		order:            append([]usagelog.OrderOption{REDACTED, _q.order...),
+		inters:           append([]Interceptor{REDACTED, _q.inters...),
+		predicates:       append([]predicate.UsageLog{REDACTED, _q.predicates...),
+		withUser:         _q.withUser.Clone(),
+		withAPIKey:       _q.withAPIKey.Clone(),
+		withAccount:      _q.withAccount.Clone(),
+		withGroup:        _q.withGroup.Clone(),
+		withSubscription: _q.withSubscription.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -334,7 +383,7 @@ REDACTED
 
 // WithUser tells the query-builder to eager-load the nodes that are connected to
 // the "user" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ApiKeyQuery) WithUser(opts ...func(*UserQuery)) *ApiKeyQuery {
+func (_q *UsageLogQuery) WithUser(opts ...func(*UserQuery)) *UsageLogQuery {
 	query := (&UserClient{config: _q.configREDACTED).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -343,9 +392,31 @@ REDACTED
 	return _q
 REDACTED
 
+// WithAPIKey tells the query-builder to eager-load the nodes that are connected to
+// the "api_key" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UsageLogQuery) WithAPIKey(opts ...func(*ApiKeyQuery)) *UsageLogQuery {
+	query := (&ApiKeyClient{config: _q.configREDACTED).Query()
+	for _, opt := range opts {
+		opt(query)
+REDACTED
+	_q.withAPIKey = query
+	return _q
+REDACTED
+
+// WithAccount tells the query-builder to eager-load the nodes that are connected to
+// the "account" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UsageLogQuery) WithAccount(opts ...func(*AccountQuery)) *UsageLogQuery {
+	query := (&AccountClient{config: _q.configREDACTED).Query()
+	for _, opt := range opts {
+		opt(query)
+REDACTED
+	_q.withAccount = query
+	return _q
+REDACTED
+
 // WithGroup tells the query-builder to eager-load the nodes that are connected to
 // the "group" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ApiKeyQuery) WithGroup(opts ...func(*GroupQuery)) *ApiKeyQuery {
+func (_q *UsageLogQuery) WithGroup(opts ...func(*GroupQuery)) *UsageLogQuery {
 	query := (&GroupClient{config: _q.configREDACTED).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -354,14 +425,14 @@ REDACTED
 	return _q
 REDACTED
 
-// WithUsageLogs tells the query-builder to eager-load the nodes that are connected to
-// the "usage_logs" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ApiKeyQuery) WithUsageLogs(opts ...func(*UsageLogQuery)) *ApiKeyQuery {
-	query := (&UsageLogClient{config: _q.configREDACTED).Query()
+// WithSubscription tells the query-builder to eager-load the nodes that are connected to
+// the "subscription" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UsageLogQuery) WithSubscription(opts ...func(*UserSubscriptionQuery)) *UsageLogQuery {
+	query := (&UserSubscriptionClient{config: _q.configREDACTED).Query()
 	for _, opt := range opts {
 		opt(query)
 REDACTED
-	_q.withUsageLogs = query
+	_q.withSubscription = query
 	return _q
 REDACTED
 
@@ -371,19 +442,19 @@ REDACTED
 // Example:
 //
 //	var v []struct {
-//		CreatedAt time.Time `json:"created_at,omitempty"`
+//		UserID int64 `json:"user_id,omitempty"`
 //		Count int `json:"count,omitempty"`
 //REDACTED
 //
-//	client.ApiKey.Query().
-//		GroupBy(apikey.FieldCreatedAt).
+//	client.UsageLog.Query().
+//		GroupBy(usagelog.FieldUserID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *ApiKeyQuery) GroupBy(field string, fields ...string) *ApiKeyGroupBy {
+func (_q *UsageLogQuery) GroupBy(field string, fields ...string) *UsageLogGroupBy {
 	_q.ctx.Fields = append([]string{fieldREDACTED, fields...)
-	grbuild := &ApiKeyGroupBy{build: _qREDACTED
+	grbuild := &UsageLogGroupBy{build: _qREDACTED
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = apikey.Label
+	grbuild.label = usagelog.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 REDACTED
@@ -394,26 +465,26 @@ REDACTED
 // Example:
 //
 //	var v []struct {
-//		CreatedAt time.Time `json:"created_at,omitempty"`
+//		UserID int64 `json:"user_id,omitempty"`
 //REDACTED
 //
-//	client.ApiKey.Query().
-//		Select(apikey.FieldCreatedAt).
+//	client.UsageLog.Query().
+//		Select(usagelog.FieldUserID).
 //		Scan(ctx, &v)
-func (_q *ApiKeyQuery) Select(fields ...string) *ApiKeySelect {
+func (_q *UsageLogQuery) Select(fields ...string) *UsageLogSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &ApiKeySelect{ApiKeyQuery: _qREDACTED
-	sbuild.label = apikey.Label
+	sbuild := &UsageLogSelect{UsageLogQuery: _qREDACTED
+	sbuild.label = usagelog.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 REDACTED
 
-// Aggregate returns a ApiKeySelect configured with the given aggregations.
-func (_q *ApiKeyQuery) Aggregate(fns ...AggregateFunc) *ApiKeySelect {
+// Aggregate returns a UsageLogSelect configured with the given aggregations.
+func (_q *UsageLogQuery) Aggregate(fns ...AggregateFunc) *UsageLogSelect {
 	return _q.Select().Aggregate(fns...)
 REDACTED
 
-func (_q *ApiKeyQuery) prepareQuery(ctx context.Context) error {
+func (_q *UsageLogQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -425,7 +496,7 @@ func (_q *ApiKeyQuery) prepareQuery(ctx context.Context) error {
 	REDACTED
 REDACTED
 	for _, f := range _q.ctx.Fields {
-		if !apikey.ValidColumn(f) {
+		if !usagelog.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)REDACTED
 	REDACTED
 REDACTED
@@ -439,21 +510,23 @@ REDACTED
 	return nil
 REDACTED
 
-func (_q *ApiKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*ApiKey, error) {
+func (_q *UsageLogQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*UsageLog, error) {
 	var (
-		nodes       = []*ApiKey{REDACTED
+		nodes       = []*UsageLog{REDACTED
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [5]bool{
 			_q.withUser != nil,
+			_q.withAPIKey != nil,
+			_q.withAccount != nil,
 			_q.withGroup != nil,
-			_q.withUsageLogs != nil,
+			_q.withSubscription != nil,
 	REDACTED
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*ApiKey).scanValues(nil, columns)
+		return (*UsageLog).scanValues(nil, columns)
 REDACTED
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &ApiKey{config: _q.configREDACTED
+		node := &UsageLog{config: _q.configREDACTED
 		nodes = append(nodes, node)
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
@@ -469,29 +542,40 @@ REDACTED
 REDACTED
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
-			func(n *ApiKey, e *User) { n.Edges.User = e REDACTED); err != nil {
+			func(n *UsageLog, e *User) { n.Edges.User = e REDACTED); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if query := _q.withAPIKey; query != nil {
+		if err := _q.loadAPIKey(ctx, query, nodes, nil,
+			func(n *UsageLog, e *ApiKey) { n.Edges.APIKey = e REDACTED); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if query := _q.withAccount; query != nil {
+		if err := _q.loadAccount(ctx, query, nodes, nil,
+			func(n *UsageLog, e *Account) { n.Edges.Account = e REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
 	if query := _q.withGroup; query != nil {
 		if err := _q.loadGroup(ctx, query, nodes, nil,
-			func(n *ApiKey, e *Group) { n.Edges.Group = e REDACTED); err != nil {
+			func(n *UsageLog, e *Group) { n.Edges.Group = e REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
-	if query := _q.withUsageLogs; query != nil {
-		if err := _q.loadUsageLogs(ctx, query, nodes,
-			func(n *ApiKey) { n.Edges.UsageLogs = []*UsageLog{REDACTED REDACTED,
-			func(n *ApiKey, e *UsageLog) { n.Edges.UsageLogs = append(n.Edges.UsageLogs, e) REDACTED); err != nil {
+	if query := _q.withSubscription; query != nil {
+		if err := _q.loadSubscription(ctx, query, nodes, nil,
+			func(n *UsageLog, e *UserSubscription) { n.Edges.Subscription = e REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
 	return nodes, nil
 REDACTED
 
-func (_q *ApiKeyQuery) loadUser(ctx context.Context, query *UserQuery, nodes []*ApiKey, init func(*ApiKey), assign func(*ApiKey, *User)) error {
+func (_q *UsageLogQuery) loadUser(ctx context.Context, query *UserQuery, nodes []*UsageLog, init func(*UsageLog), assign func(*UsageLog, *User)) error {
 	ids := make([]int64, 0, len(nodes))
-	nodeids := make(map[int64][]*ApiKey)
+	nodeids := make(map[int64][]*UsageLog)
 	for i := range nodes {
 		fk := nodes[i].UserID
 		if _, ok := nodeids[fk]; !ok {
@@ -518,9 +602,67 @@ REDACTED
 REDACTED
 	return nil
 REDACTED
-func (_q *ApiKeyQuery) loadGroup(ctx context.Context, query *GroupQuery, nodes []*ApiKey, init func(*ApiKey), assign func(*ApiKey, *Group)) error {
+func (_q *UsageLogQuery) loadAPIKey(ctx context.Context, query *ApiKeyQuery, nodes []*UsageLog, init func(*UsageLog), assign func(*UsageLog, *ApiKey)) error {
 	ids := make([]int64, 0, len(nodes))
-	nodeids := make(map[int64][]*ApiKey)
+	nodeids := make(map[int64][]*UsageLog)
+	for i := range nodes {
+		fk := nodes[i].APIKeyID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+	REDACTED
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+REDACTED
+	if len(ids) == 0 {
+		return nil
+REDACTED
+	query.Where(apikey.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "api_key_id" returned %v`, n.ID)
+	REDACTED
+		for i := range nodes {
+			assign(nodes[i], n)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+func (_q *UsageLogQuery) loadAccount(ctx context.Context, query *AccountQuery, nodes []*UsageLog, init func(*UsageLog), assign func(*UsageLog, *Account)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*UsageLog)
+	for i := range nodes {
+		fk := nodes[i].AccountID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+	REDACTED
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+REDACTED
+	if len(ids) == 0 {
+		return nil
+REDACTED
+	query.Where(account.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "account_id" returned %v`, n.ID)
+	REDACTED
+		for i := range nodes {
+			assign(nodes[i], n)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+func (_q *UsageLogQuery) loadGroup(ctx context.Context, query *GroupQuery, nodes []*UsageLog, init func(*UsageLog), assign func(*UsageLog, *Group)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*UsageLog)
 	for i := range nodes {
 		if nodes[i].GroupID == nil {
 			continue
@@ -550,38 +692,40 @@ REDACTED
 REDACTED
 	return nil
 REDACTED
-func (_q *ApiKeyQuery) loadUsageLogs(ctx context.Context, query *UsageLogQuery, nodes []*ApiKey, init func(*ApiKey), assign func(*ApiKey, *UsageLog)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int64]*ApiKey)
+func (_q *UsageLogQuery) loadSubscription(ctx context.Context, query *UserSubscriptionQuery, nodes []*UsageLog, init func(*UsageLog), assign func(*UsageLog, *UserSubscription)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*UsageLog)
 	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
+		if nodes[i].SubscriptionID == nil {
+			continue
 	REDACTED
+		fk := *nodes[i].SubscriptionID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+	REDACTED
+		nodeids[fk] = append(nodeids[fk], nodes[i])
 REDACTED
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(usagelog.FieldAPIKeyID)
+	if len(ids) == 0 {
+		return nil
 REDACTED
-	query.Where(predicate.UsageLog(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(apikey.UsageLogsColumn), fks...))
-REDACTED))
+	query.Where(usersubscription.IDIn(ids...))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
 REDACTED
 	for _, n := range neighbors {
-		fk := n.APIKeyID
-		node, ok := nodeids[fk]
+		nodes, ok := nodeids[n.ID]
 		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "api_key_id" returned %v for node %v`, fk, n.ID)
+			return fmt.Errorf(`unexpected foreign-key "subscription_id" returned %v`, n.ID)
 	REDACTED
-		assign(node, n)
+		for i := range nodes {
+			assign(nodes[i], n)
+	REDACTED
 REDACTED
 	return nil
 REDACTED
 
-func (_q *ApiKeyQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *UsageLogQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -590,8 +734,8 @@ REDACTED
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 REDACTED
 
-func (_q *ApiKeyQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(apikey.Table, apikey.Columns, sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64))
+func (_q *UsageLogQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(usagelog.Table, usagelog.Columns, sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -600,17 +744,26 @@ REDACTED else if _q.path != nil {
 REDACTED
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, apikey.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, usagelog.FieldID)
 		for i := range fields {
-			if fields[i] != apikey.FieldID {
+			if fields[i] != usagelog.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 		REDACTED
 	REDACTED
 		if _q.withUser != nil {
-			_spec.Node.AddColumnOnce(apikey.FieldUserID)
+			_spec.Node.AddColumnOnce(usagelog.FieldUserID)
+	REDACTED
+		if _q.withAPIKey != nil {
+			_spec.Node.AddColumnOnce(usagelog.FieldAPIKeyID)
+	REDACTED
+		if _q.withAccount != nil {
+			_spec.Node.AddColumnOnce(usagelog.FieldAccountID)
 	REDACTED
 		if _q.withGroup != nil {
-			_spec.Node.AddColumnOnce(apikey.FieldGroupID)
+			_spec.Node.AddColumnOnce(usagelog.FieldGroupID)
+	REDACTED
+		if _q.withSubscription != nil {
+			_spec.Node.AddColumnOnce(usagelog.FieldSubscriptionID)
 	REDACTED
 REDACTED
 	if ps := _q.predicates; len(ps) > 0 {
@@ -636,12 +789,12 @@ REDACTED
 	return _spec
 REDACTED
 
-func (_q *ApiKeyQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *UsageLogQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(apikey.Table)
+	t1 := builder.Table(usagelog.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = apikey.Columns
+		columns = usagelog.Columns
 REDACTED
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -668,28 +821,28 @@ REDACTED
 	return selector
 REDACTED
 
-// ApiKeyGroupBy is the group-by builder for ApiKey entities.
-type ApiKeyGroupBy struct {
+// UsageLogGroupBy is the group-by builder for UsageLog entities.
+type UsageLogGroupBy struct {
 	selector
-	build *ApiKeyQuery
+	build *UsageLogQuery
 REDACTED
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *ApiKeyGroupBy) Aggregate(fns ...AggregateFunc) *ApiKeyGroupBy {
+func (_g *UsageLogGroupBy) Aggregate(fns ...AggregateFunc) *UsageLogGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 REDACTED
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *ApiKeyGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *UsageLogGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 REDACTED
-	return scanWithInterceptors[*ApiKeyQuery, *ApiKeyGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*UsageLogQuery, *UsageLogGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 REDACTED
 
-func (_g *ApiKeyGroupBy) sqlScan(ctx context.Context, root *ApiKeyQuery, v any) error {
+func (_g *UsageLogGroupBy) sqlScan(ctx context.Context, root *UsageLogQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -716,28 +869,28 @@ REDACTED
 	return sql.ScanSlice(rows, v)
 REDACTED
 
-// ApiKeySelect is the builder for selecting fields of ApiKey entities.
-type ApiKeySelect struct {
-	*ApiKeyQuery
+// UsageLogSelect is the builder for selecting fields of UsageLog entities.
+type UsageLogSelect struct {
+	*UsageLogQuery
 	selector
 REDACTED
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *ApiKeySelect) Aggregate(fns ...AggregateFunc) *ApiKeySelect {
+func (_s *UsageLogSelect) Aggregate(fns ...AggregateFunc) *UsageLogSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 REDACTED
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *ApiKeySelect) Scan(ctx context.Context, v any) error {
+func (_s *UsageLogSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 REDACTED
-	return scanWithInterceptors[*ApiKeyQuery, *ApiKeySelect](ctx, _s.ApiKeyQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*UsageLogQuery, *UsageLogSelect](ctx, _s.UsageLogQuery, _s, _s.inters, v)
 REDACTED
 
-func (_s *ApiKeySelect) sqlScan(ctx context.Context, root *ApiKeyQuery, v any) error {
+func (_s *UsageLogSelect) sqlScan(ctx context.Context, root *UsageLogQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

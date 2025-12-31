@@ -11,6 +11,7 @@ import (
 
 var (
 	ErrAccountNotFound = infraerrors.NotFound("ACCOUNT_NOT_FOUND", "account not found")
+	ErrAccountNilInput = infraerrors.BadRequest("ACCOUNT_NIL_INPUT", "account input cannot be nil")
 )
 
 type AccountRepository interface {

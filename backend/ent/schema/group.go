@@ -69,6 +69,8 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED),
+		field.Int("default_validity_days").
+			Default(30),
 REDACTED
 REDACTED
 
@@ -77,6 +79,7 @@ func (Group) Edges() []ent.Edge {
 		edge.To("api_keys", ApiKey.Type),
 		edge.To("redeem_codes", RedeemCode.Type),
 		edge.To("subscriptions", UserSubscription.Type),
+		edge.To("usage_logs", UsageLog.Type),
 		edge.From("accounts", Account.Type).
 			Ref("groups").
 			Through("account_groups", AccountGroup.Type),
@@ -88,7 +91,7 @@ REDACTED
 
 func (Group) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("name").Unique(),
+		// name 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("platform"),
 		index.Fields("subscription_type"),

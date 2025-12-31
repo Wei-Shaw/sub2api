@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
@@ -33,6 +34,26 @@ REDACTED
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *UserSubscriptionUpdate) SetUpdatedAt(v time.Time) *UserSubscriptionUpdate {
 	_u.mutation.SetUpdatedAt(v)
+	return _u
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *UserSubscriptionUpdate) SetDeletedAt(v time.Time) *UserSubscriptionUpdate {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+REDACTED
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableDeletedAt(v *time.Time) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *UserSubscriptionUpdate) ClearDeletedAt() *UserSubscriptionUpdate {
+	_u.mutation.ClearDeletedAt()
 	return _u
 REDACTED
 
@@ -312,6 +333,21 @@ func (_u *UserSubscriptionUpdate) SetAssignedByUser(v *User) *UserSubscriptionUp
 	return _u.SetAssignedByUserID(v.ID)
 REDACTED
 
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_u *UserSubscriptionUpdate) AddUsageLogIDs(ids ...int64) *UserSubscriptionUpdate {
+	_u.mutation.AddUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_u *UserSubscriptionUpdate) AddUsageLogs(v ...*UsageLog) *UserSubscriptionUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddUsageLogIDs(ids...)
+REDACTED
+
 // Mutation returns the UserSubscriptionMutation object of the builder.
 func (_u *UserSubscriptionUpdate) Mutation() *UserSubscriptionMutation {
 	return _u.mutation
@@ -335,9 +371,32 @@ func (_u *UserSubscriptionUpdate) ClearAssignedByUser() *UserSubscriptionUpdate 
 	return _u
 REDACTED
 
+// ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
+func (_u *UserSubscriptionUpdate) ClearUsageLogs() *UserSubscriptionUpdate {
+	_u.mutation.ClearUsageLogs()
+	return _u
+REDACTED
+
+// RemoveUsageLogIDs removes the "usage_logs" edge to UsageLog entities by IDs.
+func (_u *UserSubscriptionUpdate) RemoveUsageLogIDs(ids ...int64) *UserSubscriptionUpdate {
+	_u.mutation.RemoveUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveUsageLogs removes "usage_logs" edges to UsageLog entities.
+func (_u *UserSubscriptionUpdate) RemoveUsageLogs(v ...*UsageLog) *UserSubscriptionUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveUsageLogIDs(ids...)
+REDACTED
+
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *UserSubscriptionUpdate) Save(ctx context.Context) (int, error) {
-	_u.defaults()
+	if err := _u.defaults(); err != nil {
+		return 0, err
+REDACTED
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 REDACTED
 
@@ -364,11 +423,15 @@ REDACTED
 REDACTED
 
 // defaults sets the default values of the builder before save.
-func (_u *UserSubscriptionUpdate) defaults() {
+func (_u *UserSubscriptionUpdate) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		if usersubscription.UpdateDefaultUpdatedAt == nil {
+			return fmt.Errorf("ent: uninitialized usersubscription.UpdateDefaultUpdatedAt (forgotten import ent/runtime?)")
+	REDACTED
 		v := usersubscription.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 REDACTED
+	return nil
 REDACTED
 
 // check runs all checks and user-defined validators on the builder.
@@ -401,6 +464,12 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(usersubscription.FieldUpdatedAt, field.TypeTime, value)
+REDACTED
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(usersubscription.FieldDeletedAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(usersubscription.FieldDeletedAt, field.TypeTime)
 REDACTED
 	if value, ok := _u.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)
@@ -543,6 +612,51 @@ REDACTED
 	REDACTED
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 REDACTED
+	if _u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usersubscription.UsageLogsTable,
+			Columns: []string{usersubscription.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usersubscription.UsageLogsTable,
+			Columns: []string{usersubscription.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usersubscription.UsageLogsTable,
+			Columns: []string{usersubscription.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{usersubscription.LabelREDACTED
@@ -566,6 +680,26 @@ REDACTED
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *UserSubscriptionUpdateOne) SetUpdatedAt(v time.Time) *UserSubscriptionUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
+	return _u
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *UserSubscriptionUpdateOne) SetDeletedAt(v time.Time) *UserSubscriptionUpdateOne {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+REDACTED
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableDeletedAt(v *time.Time) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *UserSubscriptionUpdateOne) ClearDeletedAt() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearDeletedAt()
 	return _u
 REDACTED
 
@@ -845,6 +979,21 @@ func (_u *UserSubscriptionUpdateOne) SetAssignedByUser(v *User) *UserSubscriptio
 	return _u.SetAssignedByUserID(v.ID)
 REDACTED
 
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_u *UserSubscriptionUpdateOne) AddUsageLogIDs(ids ...int64) *UserSubscriptionUpdateOne {
+	_u.mutation.AddUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_u *UserSubscriptionUpdateOne) AddUsageLogs(v ...*UsageLog) *UserSubscriptionUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddUsageLogIDs(ids...)
+REDACTED
+
 // Mutation returns the UserSubscriptionMutation object of the builder.
 func (_u *UserSubscriptionUpdateOne) Mutation() *UserSubscriptionMutation {
 	return _u.mutation
@@ -868,6 +1017,27 @@ func (_u *UserSubscriptionUpdateOne) ClearAssignedByUser() *UserSubscriptionUpda
 	return _u
 REDACTED
 
+// ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
+func (_u *UserSubscriptionUpdateOne) ClearUsageLogs() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearUsageLogs()
+	return _u
+REDACTED
+
+// RemoveUsageLogIDs removes the "usage_logs" edge to UsageLog entities by IDs.
+func (_u *UserSubscriptionUpdateOne) RemoveUsageLogIDs(ids ...int64) *UserSubscriptionUpdateOne {
+	_u.mutation.RemoveUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveUsageLogs removes "usage_logs" edges to UsageLog entities.
+func (_u *UserSubscriptionUpdateOne) RemoveUsageLogs(v ...*UsageLog) *UserSubscriptionUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveUsageLogIDs(ids...)
+REDACTED
+
 // Where appends a list predicates to the UserSubscriptionUpdate builder.
 func (_u *UserSubscriptionUpdateOne) Where(ps ...predicate.UserSubscription) *UserSubscriptionUpdateOne {
 	_u.mutation.Where(ps...)
@@ -883,7 +1053,9 @@ REDACTED
 
 // Save executes the query and returns the updated UserSubscription entity.
 func (_u *UserSubscriptionUpdateOne) Save(ctx context.Context) (*UserSubscription, error) {
-	_u.defaults()
+	if err := _u.defaults(); err != nil {
+		return nil, err
+REDACTED
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 REDACTED
 
@@ -910,11 +1082,15 @@ REDACTED
 REDACTED
 
 // defaults sets the default values of the builder before save.
-func (_u *UserSubscriptionUpdateOne) defaults() {
+func (_u *UserSubscriptionUpdateOne) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
+		if usersubscription.UpdateDefaultUpdatedAt == nil {
+			return fmt.Errorf("ent: uninitialized usersubscription.UpdateDefaultUpdatedAt (forgotten import ent/runtime?)")
+	REDACTED
 		v := usersubscription.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 REDACTED
+	return nil
 REDACTED
 
 // check runs all checks and user-defined validators on the builder.
@@ -964,6 +1140,12 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(usersubscription.FieldUpdatedAt, field.TypeTime, value)
+REDACTED
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(usersubscription.FieldDeletedAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(usersubscription.FieldDeletedAt, field.TypeTime)
 REDACTED
 	if value, ok := _u.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)
@@ -1099,6 +1281,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usersubscription.UsageLogsTable,
+			Columns: []string{usersubscription.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usersubscription.UsageLogsTable,
+			Columns: []string{usersubscription.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usersubscription.UsageLogsTable,
+			Columns: []string{usersubscription.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {

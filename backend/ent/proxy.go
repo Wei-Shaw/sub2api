@@ -36,8 +36,29 @@ type Proxy struct {
 	// Password holds the value of the "password" field.
 	Password *string `json:"password,omitempty"`
 	// Status holds the value of the "status" field.
-	Status       string `json:"status,omitempty"`
+	Status string `json:"status,omitempty"`
+	// Edges holds the relations/edges for other nodes in the graph.
+	// The values are being populated by the ProxyQuery when eager-loading is set.
+	Edges        ProxyEdges `json:"edges"`
 	selectValues sql.SelectValues
+REDACTED
+
+// ProxyEdges holds the relations/edges for other nodes in the graph.
+type ProxyEdges struct {
+	// Accounts holds the value of the accounts edge.
+	Accounts []*Account `json:"accounts,omitempty"`
+	// loadedTypes holds the information for reporting if a
+	// type was loaded (or requested) in eager-loading or not.
+	loadedTypes [1]bool
+REDACTED
+
+// AccountsOrErr returns the Accounts value or an error if the edge
+// was not loaded in eager-loading.
+func (e ProxyEdges) AccountsOrErr() ([]*Account, error) {
+	if e.loadedTypes[0] {
+		return e.Accounts, nil
+REDACTED
+	return nil, &NotLoadedError{edge: "accounts"REDACTED
 REDACTED
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -146,6 +167,11 @@ REDACTED
 // This includes values selected through modifiers, order, etc.
 func (_m *Proxy) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
+REDACTED
+
+// QueryAccounts queries the "accounts" edge of the Proxy entity.
+func (_m *Proxy) QueryAccounts() *AccountQuery {
+	return NewProxyClient(_m.config).QueryAccounts(_m)
 REDACTED
 
 // Update returns a builder for updating this Proxy.

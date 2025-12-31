@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -13,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
@@ -27,6 +29,7 @@ type UserSubscriptionQuery struct {
 	withUser           *UserQuery
 	withGroup          *GroupQuery
 	withAssignedByUser *UserQuery
+	withUsageLogs      *UsageLogQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -122,6 +125,28 @@ func (_q *UserSubscriptionQuery) QueryAssignedByUser() *UserQuery {
 			sqlgraph.From(usersubscription.Table, usersubscription.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, usersubscription.AssignedByUserTable, usersubscription.AssignedByUserColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryUsageLogs chains the current query on the "usage_logs" edge.
+func (_q *UserSubscriptionQuery) QueryUsageLogs() *UsageLogQuery {
+	query := (&UsageLogClient{config: _q.configREDACTED).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+	REDACTED
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+	REDACTED
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usersubscription.Table, usersubscription.FieldID, selector),
+			sqlgraph.To(usagelog.Table, usagelog.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, usersubscription.UsageLogsTable, usersubscription.UsageLogsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -324,6 +349,7 @@ REDACTED
 		withUser:           _q.withUser.Clone(),
 		withGroup:          _q.withGroup.Clone(),
 		withAssignedByUser: _q.withAssignedByUser.Clone(),
+		withUsageLogs:      _q.withUsageLogs.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -360,6 +386,17 @@ func (_q *UserSubscriptionQuery) WithAssignedByUser(opts ...func(*UserQuery)) *U
 		opt(query)
 REDACTED
 	_q.withAssignedByUser = query
+	return _q
+REDACTED
+
+// WithUsageLogs tells the query-builder to eager-load the nodes that are connected to
+// the "usage_logs" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserSubscriptionQuery) WithUsageLogs(opts ...func(*UsageLogQuery)) *UserSubscriptionQuery {
+	query := (&UsageLogClient{config: _q.configREDACTED).Query()
+	for _, opt := range opts {
+		opt(query)
+REDACTED
+	_q.withUsageLogs = query
 	return _q
 REDACTED
 
@@ -441,10 +478,11 @@ func (_q *UserSubscriptionQuery) sqlAll(ctx context.Context, hooks ...queryHook)
 	var (
 		nodes       = []*UserSubscription{REDACTED
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			_q.withUser != nil,
 			_q.withGroup != nil,
 			_q.withAssignedByUser != nil,
+			_q.withUsageLogs != nil,
 	REDACTED
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -480,6 +518,13 @@ REDACTED
 	if query := _q.withAssignedByUser; query != nil {
 		if err := _q.loadAssignedByUser(ctx, query, nodes, nil,
 			func(n *UserSubscription, e *User) { n.Edges.AssignedByUser = e REDACTED); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if query := _q.withUsageLogs; query != nil {
+		if err := _q.loadUsageLogs(ctx, query, nodes,
+			func(n *UserSubscription) { n.Edges.UsageLogs = []*UsageLog{REDACTED REDACTED,
+			func(n *UserSubscription, e *UsageLog) { n.Edges.UsageLogs = append(n.Edges.UsageLogs, e) REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
@@ -573,6 +618,39 @@ REDACTED
 		for i := range nodes {
 			assign(nodes[i], n)
 	REDACTED
+REDACTED
+	return nil
+REDACTED
+func (_q *UserSubscriptionQuery) loadUsageLogs(ctx context.Context, query *UsageLogQuery, nodes []*UserSubscription, init func(*UserSubscription), assign func(*UserSubscription, *UsageLog)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*UserSubscription)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+	REDACTED
+REDACTED
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(usagelog.FieldSubscriptionID)
+REDACTED
+	query.Where(predicate.UsageLog(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(usersubscription.UsageLogsColumn), fks...))
+REDACTED))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	for _, n := range neighbors {
+		fk := n.SubscriptionID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "subscription_id" is nil for node %v`, n.ID)
+	REDACTED
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "subscription_id" returned %v for node %v`, *fk, n.ID)
+	REDACTED
+		assign(node, n)
 REDACTED
 	return nil
 REDACTED

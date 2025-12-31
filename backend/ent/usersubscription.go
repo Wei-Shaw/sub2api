@@ -23,6 +23,8 @@ type UserSubscription struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	// DeletedAt holds the value of the "deleted_at" field.
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
 	// GroupID holds the value of the "group_id" field.
@@ -65,9 +67,11 @@ type UserSubscriptionEdges struct {
 	Group *Group `json:"group,omitempty"`
 	// AssignedByUser holds the value of the assigned_by_user edge.
 	AssignedByUser *User `json:"assigned_by_user,omitempty"`
+	// UsageLogs holds the value of the usage_logs edge.
+	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 REDACTED
 
 // UserOrErr returns the User value or an error if the edge
@@ -103,6 +107,15 @@ REDACTED
 	return nil, &NotLoadedError{edge: "assigned_by_user"REDACTED
 REDACTED
 
+// UsageLogsOrErr returns the UsageLogs value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserSubscriptionEdges) UsageLogsOrErr() ([]*UsageLog, error) {
+	if e.loadedTypes[3] {
+		return e.UsageLogs, nil
+REDACTED
+	return nil, &NotLoadedError{edge: "usage_logs"REDACTED
+REDACTED
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*UserSubscription) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -114,7 +127,7 @@ func (*UserSubscription) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case usersubscription.FieldStatus, usersubscription.FieldNotes:
 			values[i] = new(sql.NullString)
-		case usersubscription.FieldCreatedAt, usersubscription.FieldUpdatedAt, usersubscription.FieldStartsAt, usersubscription.FieldExpiresAt, usersubscription.FieldDailyWindowStart, usersubscription.FieldWeeklyWindowStart, usersubscription.FieldMonthlyWindowStart, usersubscription.FieldAssignedAt:
+		case usersubscription.FieldCreatedAt, usersubscription.FieldUpdatedAt, usersubscription.FieldDeletedAt, usersubscription.FieldStartsAt, usersubscription.FieldExpiresAt, usersubscription.FieldDailyWindowStart, usersubscription.FieldWeeklyWindowStart, usersubscription.FieldMonthlyWindowStart, usersubscription.FieldAssignedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -148,6 +161,13 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 		REDACTED else if value.Valid {
 				_m.UpdatedAt = value.Time
+		REDACTED
+		case usersubscription.FieldDeletedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
+		REDACTED else if value.Valid {
+				_m.DeletedAt = new(time.Time)
+				*_m.DeletedAt = value.Time
 		REDACTED
 		case usersubscription.FieldUserID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -266,6 +286,11 @@ func (_m *UserSubscription) QueryAssignedByUser() *UserQuery {
 	return NewUserSubscriptionClient(_m.config).QueryAssignedByUser(_m)
 REDACTED
 
+// QueryUsageLogs queries the "usage_logs" edge of the UserSubscription entity.
+func (_m *UserSubscription) QueryUsageLogs() *UsageLogQuery {
+	return NewUserSubscriptionClient(_m.config).QueryUsageLogs(_m)
+REDACTED
+
 // Update returns a builder for updating this UserSubscription.
 // Note that you need to call UserSubscription.Unwrap() before calling this method if this UserSubscription
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -294,6 +319,11 @@ func (_m *UserSubscription) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("updated_at=")
 	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.DeletedAt; v != nil {
+		builder.WriteString("deleted_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))

@@ -93,6 +93,18 @@ REDACTED
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SettingMutation", m)
 REDACTED
 
+// The UsageLogFunc type is an adapter to allow the use of ordinary
+// function as UsageLog mutator.
+type UsageLogFunc func(context.Context, *ent.UsageLogMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UsageLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UsageLogMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UsageLogMutation", m)
+REDACTED
+
 // The UserFunc type is an adapter to allow the use of ordinary
 // function as User mutator.
 type UserFunc func(context.Context, *ent.UserMutation) (ent.Value, error)

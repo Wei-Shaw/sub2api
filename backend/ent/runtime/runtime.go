@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
@@ -259,6 +260,10 @@ REDACTED()
 	group.DefaultSubscriptionType = groupDescSubscriptionType.Default.(string)
 	// group.SubscriptionTypeValidator is a validator for the "subscription_type" field. It is called by the builders before save.
 	group.SubscriptionTypeValidator = groupDescSubscriptionType.Validators[0].(func(string) error)
+	// groupDescDefaultValidityDays is the schema descriptor for default_validity_days field.
+	groupDescDefaultValidityDays := groupFields[10].Descriptor()
+	// group.DefaultDefaultValidityDays holds the default value on creation for the default_validity_days field.
+	group.DefaultDefaultValidityDays = groupDescDefaultValidityDays.Default.(int)
 	proxyMixin := schema.Proxy{REDACTED.Mixin()
 	proxyMixinHooks1 := proxyMixin[1].Hooks()
 	proxy.Hooks[0] = proxyMixinHooks1[0]
@@ -420,6 +425,108 @@ REDACTED()
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	usagelogFields := schema.UsageLog{REDACTED.Fields()
+	_ = usagelogFields
+	// usagelogDescRequestID is the schema descriptor for request_id field.
+	usagelogDescRequestID := usagelogFields[3].Descriptor()
+	// usagelog.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	usagelog.RequestIDValidator = func() func(string) error {
+		validators := usagelogDescRequestID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(request_id string) error {
+			for _, fn := range fns {
+				if err := fn(request_id); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// usagelogDescModel is the schema descriptor for model field.
+	usagelogDescModel := usagelogFields[4].Descriptor()
+	// usagelog.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	usagelog.ModelValidator = func() func(string) error {
+		validators := usagelogDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// usagelogDescInputTokens is the schema descriptor for input_tokens field.
+	usagelogDescInputTokens := usagelogFields[7].Descriptor()
+	// usagelog.DefaultInputTokens holds the default value on creation for the input_tokens field.
+	usagelog.DefaultInputTokens = usagelogDescInputTokens.Default.(int)
+	// usagelogDescOutputTokens is the schema descriptor for output_tokens field.
+	usagelogDescOutputTokens := usagelogFields[8].Descriptor()
+	// usagelog.DefaultOutputTokens holds the default value on creation for the output_tokens field.
+	usagelog.DefaultOutputTokens = usagelogDescOutputTokens.Default.(int)
+	// usagelogDescCacheCreationTokens is the schema descriptor for cache_creation_tokens field.
+	usagelogDescCacheCreationTokens := usagelogFields[9].Descriptor()
+	// usagelog.DefaultCacheCreationTokens holds the default value on creation for the cache_creation_tokens field.
+	usagelog.DefaultCacheCreationTokens = usagelogDescCacheCreationTokens.Default.(int)
+	// usagelogDescCacheReadTokens is the schema descriptor for cache_read_tokens field.
+	usagelogDescCacheReadTokens := usagelogFields[10].Descriptor()
+	// usagelog.DefaultCacheReadTokens holds the default value on creation for the cache_read_tokens field.
+	usagelog.DefaultCacheReadTokens = usagelogDescCacheReadTokens.Default.(int)
+	// usagelogDescCacheCreation5mTokens is the schema descriptor for cache_creation_5m_tokens field.
+	usagelogDescCacheCreation5mTokens := usagelogFields[11].Descriptor()
+	// usagelog.DefaultCacheCreation5mTokens holds the default value on creation for the cache_creation_5m_tokens field.
+	usagelog.DefaultCacheCreation5mTokens = usagelogDescCacheCreation5mTokens.Default.(int)
+	// usagelogDescCacheCreation1hTokens is the schema descriptor for cache_creation_1h_tokens field.
+	usagelogDescCacheCreation1hTokens := usagelogFields[12].Descriptor()
+	// usagelog.DefaultCacheCreation1hTokens holds the default value on creation for the cache_creation_1h_tokens field.
+	usagelog.DefaultCacheCreation1hTokens = usagelogDescCacheCreation1hTokens.Default.(int)
+	// usagelogDescInputCost is the schema descriptor for input_cost field.
+	usagelogDescInputCost := usagelogFields[13].Descriptor()
+	// usagelog.DefaultInputCost holds the default value on creation for the input_cost field.
+	usagelog.DefaultInputCost = usagelogDescInputCost.Default.(float64)
+	// usagelogDescOutputCost is the schema descriptor for output_cost field.
+	usagelogDescOutputCost := usagelogFields[14].Descriptor()
+	// usagelog.DefaultOutputCost holds the default value on creation for the output_cost field.
+	usagelog.DefaultOutputCost = usagelogDescOutputCost.Default.(float64)
+	// usagelogDescCacheCreationCost is the schema descriptor for cache_creation_cost field.
+	usagelogDescCacheCreationCost := usagelogFields[15].Descriptor()
+	// usagelog.DefaultCacheCreationCost holds the default value on creation for the cache_creation_cost field.
+	usagelog.DefaultCacheCreationCost = usagelogDescCacheCreationCost.Default.(float64)
+	// usagelogDescCacheReadCost is the schema descriptor for cache_read_cost field.
+	usagelogDescCacheReadCost := usagelogFields[16].Descriptor()
+	// usagelog.DefaultCacheReadCost holds the default value on creation for the cache_read_cost field.
+	usagelog.DefaultCacheReadCost = usagelogDescCacheReadCost.Default.(float64)
+	// usagelogDescTotalCost is the schema descriptor for total_cost field.
+	usagelogDescTotalCost := usagelogFields[17].Descriptor()
+	// usagelog.DefaultTotalCost holds the default value on creation for the total_cost field.
+	usagelog.DefaultTotalCost = usagelogDescTotalCost.Default.(float64)
+	// usagelogDescActualCost is the schema descriptor for actual_cost field.
+	usagelogDescActualCost := usagelogFields[18].Descriptor()
+	// usagelog.DefaultActualCost holds the default value on creation for the actual_cost field.
+	usagelog.DefaultActualCost = usagelogDescActualCost.Default.(float64)
+	// usagelogDescRateMultiplier is the schema descriptor for rate_multiplier field.
+	usagelogDescRateMultiplier := usagelogFields[19].Descriptor()
+	// usagelog.DefaultRateMultiplier holds the default value on creation for the rate_multiplier field.
+	usagelog.DefaultRateMultiplier = usagelogDescRateMultiplier.Default.(float64)
+	// usagelogDescBillingType is the schema descriptor for billing_type field.
+	usagelogDescBillingType := usagelogFields[20].Descriptor()
+	// usagelog.DefaultBillingType holds the default value on creation for the billing_type field.
+	usagelog.DefaultBillingType = usagelogDescBillingType.Default.(int8)
+	// usagelogDescStream is the schema descriptor for stream field.
+	usagelogDescStream := usagelogFields[21].Descriptor()
+	// usagelog.DefaultStream holds the default value on creation for the stream field.
+	usagelog.DefaultStream = usagelogDescStream.Default.(bool)
+	// usagelogDescCreatedAt is the schema descriptor for created_at field.
+	usagelogDescCreatedAt := usagelogFields[24].Descriptor()
+	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
+	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{REDACTED.Mixin()
 	userMixinHooks1 := userMixin[1].Hooks()
 	user.Hooks[0] = userMixinHooks1[0]
@@ -518,6 +625,10 @@ REDACTED()
 	// userallowedgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	userallowedgroup.DefaultCreatedAt = userallowedgroupDescCreatedAt.Default.(func() time.Time)
 	usersubscriptionMixin := schema.UserSubscription{REDACTED.Mixin()
+	usersubscriptionMixinHooks1 := usersubscriptionMixin[1].Hooks()
+	usersubscription.Hooks[0] = usersubscriptionMixinHooks1[0]
+	usersubscriptionMixinInters1 := usersubscriptionMixin[1].Interceptors()
+	usersubscription.Interceptors[0] = usersubscriptionMixinInters1[0]
 	usersubscriptionMixinFields0 := usersubscriptionMixin[0].Fields()
 	_ = usersubscriptionMixinFields0
 	usersubscriptionFields := schema.UserSubscription{REDACTED.Fields()

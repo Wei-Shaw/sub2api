@@ -495,26 +495,6 @@ func ProxyIDNotIn(vs ...int64) predicate.Account {
 	return predicate.Account(sql.FieldNotIn(FieldProxyID, vs...))
 REDACTED
 
-// ProxyIDGT applies the GT predicate on the "proxy_id" field.
-func ProxyIDGT(v int64) predicate.Account {
-	return predicate.Account(sql.FieldGT(FieldProxyID, v))
-REDACTED
-
-// ProxyIDGTE applies the GTE predicate on the "proxy_id" field.
-func ProxyIDGTE(v int64) predicate.Account {
-	return predicate.Account(sql.FieldGTE(FieldProxyID, v))
-REDACTED
-
-// ProxyIDLT applies the LT predicate on the "proxy_id" field.
-func ProxyIDLT(v int64) predicate.Account {
-	return predicate.Account(sql.FieldLT(FieldProxyID, v))
-REDACTED
-
-// ProxyIDLTE applies the LTE predicate on the "proxy_id" field.
-func ProxyIDLTE(v int64) predicate.Account {
-	return predicate.Account(sql.FieldLTE(FieldProxyID, v))
-REDACTED
-
 // ProxyIDIsNil applies the IsNil predicate on the "proxy_id" field.
 func ProxyIDIsNil() predicate.Account {
 	return predicate.Account(sql.FieldIsNull(FieldProxyID))
@@ -1145,6 +1125,52 @@ REDACTED
 func HasGroupsWith(preds ...predicate.Group) predicate.Account {
 	return predicate.Account(func(s *sql.Selector) {
 		step := newGroupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+		REDACTED
+	REDACTED)
+REDACTED)
+REDACTED
+
+// HasProxy applies the HasEdge predicate on the "proxy" edge.
+func HasProxy() predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, ProxyTable, ProxyColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+REDACTED)
+REDACTED
+
+// HasProxyWith applies the HasEdge predicate on the "proxy" edge with a given conditions (other predicates).
+func HasProxyWith(preds ...predicate.Proxy) predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := newProxyStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+		REDACTED
+	REDACTED)
+REDACTED)
+REDACTED
+
+// HasUsageLogs applies the HasEdge predicate on the "usage_logs" edge.
+func HasUsageLogs() predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+REDACTED)
+REDACTED
+
+// HasUsageLogsWith applies the HasEdge predicate on the "usage_logs" edge with a given conditions (other predicates).
+func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := newUsageLogsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

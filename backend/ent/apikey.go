@@ -47,9 +47,11 @@ type ApiKeyEdges struct {
 	User *User `json:"user,omitempty"`
 	// Group holds the value of the group edge.
 	Group *Group `json:"group,omitempty"`
+	// UsageLogs holds the value of the usage_logs edge.
+	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 REDACTED
 
 // UserOrErr returns the User value or an error if the edge
@@ -72,6 +74,15 @@ REDACTED else if e.loadedTypes[1] {
 		return nil, &NotFoundError{label: group.LabelREDACTED
 REDACTED
 	return nil, &NotLoadedError{edge: "group"REDACTED
+REDACTED
+
+// UsageLogsOrErr returns the UsageLogs value or an error if the edge
+// was not loaded in eager-loading.
+func (e ApiKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
+	if e.loadedTypes[2] {
+		return e.UsageLogs, nil
+REDACTED
+	return nil, &NotLoadedError{edge: "usage_logs"REDACTED
 REDACTED
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -177,6 +188,11 @@ REDACTED
 // QueryGroup queries the "group" edge of the ApiKey entity.
 func (_m *ApiKey) QueryGroup() *GroupQuery {
 	return NewApiKeyClient(_m.config).QueryGroup(_m)
+REDACTED
+
+// QueryUsageLogs queries the "usage_logs" edge of the ApiKey entity.
+func (_m *ApiKey) QueryUsageLogs() *UsageLogQuery {
+	return NewApiKeyClient(_m.config).QueryUsageLogs(_m)
 REDACTED
 
 // Update returns a builder for updating this ApiKey.

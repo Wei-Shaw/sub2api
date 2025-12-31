@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 )
 
@@ -128,6 +129,21 @@ func (_c *ProxyCreate) SetNillableStatus(v *string) *ProxyCreate {
 		_c.SetStatus(*v)
 REDACTED
 	return _c
+REDACTED
+
+// AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
+func (_c *ProxyCreate) AddAccountIDs(ids ...int64) *ProxyCreate {
+	_c.mutation.AddAccountIDs(ids...)
+	return _c
+REDACTED
+
+// AddAccounts adds the "accounts" edges to the Account entity.
+func (_c *ProxyCreate) AddAccounts(v ...*Account) *ProxyCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _c.AddAccountIDs(ids...)
 REDACTED
 
 // Mutation returns the ProxyMutation object of the builder.
@@ -307,6 +323,22 @@ REDACTED
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
 		_node.Status = value
+REDACTED
+	if nodes := _c.mutation.AccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.AccountsTable,
+			Columns: []string{proxy.AccountsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges = append(_spec.Edges, edge)
 REDACTED
 	return _node, _spec
 REDACTED

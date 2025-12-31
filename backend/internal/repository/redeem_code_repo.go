@@ -168,7 +168,8 @@ REDACTED
 
 func (r *redeemCodeRepository) Use(ctx context.Context, id, userID int64) error {
 	now := time.Now()
-	affected, err := r.client.RedeemCode.Update().
+	client := clientFromContext(ctx, r.client)
+	affected, err := client.RedeemCode.Update().
 		Where(redeemcode.IDEQ(id), redeemcode.StatusEQ(service.StatusUnused)).
 		SetStatus(service.StatusUsed).
 		SetUsedBy(userID).

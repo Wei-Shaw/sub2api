@@ -168,6 +168,13 @@ func (Account) Edges() []ent.Edge {
 		// 一个账户可以属于多个分组，一个分组可以包含多个账户
 		edge.To("groups", Group.Type).
 			Through("account_groups", AccountGroup.Type),
+		// proxy: 账户使用的代理配置（可选的一对一关系）
+		// 使用已有的 proxy_id 外键字段
+		edge.To("proxy", Proxy.Type).
+			Field("proxy_id").
+			Unique(),
+		// usage_logs: 该账户的使用日志
+		edge.To("usage_logs", UsageLog.Type),
 REDACTED
 REDACTED
 

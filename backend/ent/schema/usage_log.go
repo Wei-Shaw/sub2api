@@ -1,0 +1,152 @@
+// Package schema 定义 Ent ORM 的数据库 schema。
+package schema
+
+import (
+	"time"
+
+	"entgo.io/ent"
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/entsql"
+	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
+	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
+)
+
+// UsageLog 定义使用日志实体的 schema。
+//
+// 使用日志记录每次 API 调用的详细信息，包括 token 使用量、成本计算等。
+// 这是一个只追加的表，不支持更新和删除。
+type UsageLog struct {
+	ent.Schema
+REDACTED
+
+// Annotations 返回 schema 的注解配置。
+func (UsageLog) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		entsql.Annotation{Table: "usage_logs"REDACTED,
+REDACTED
+REDACTED
+
+// Fields 定义使用日志实体的所有字段。
+func (UsageLog) Fields() []ent.Field {
+	return []ent.Field{
+		// 关联字段
+		field.Int64("user_id"),
+		field.Int64("api_key_id"),
+		field.Int64("account_id"),
+		field.String("request_id").
+			MaxLen(64).
+			NotEmpty(),
+		field.String("model").
+			MaxLen(100).
+			NotEmpty(),
+		field.Int64("group_id").
+			Optional().
+			Nillable(),
+		field.Int64("subscription_id").
+			Optional().
+			Nillable(),
+
+		// Token 计数字段
+		field.Int("input_tokens").
+			Default(0),
+		field.Int("output_tokens").
+			Default(0),
+		field.Int("cache_creation_tokens").
+			Default(0),
+		field.Int("cache_read_tokens").
+			Default(0),
+		field.Int("cache_creation_5m_tokens").
+			Default(0),
+		field.Int("cache_creation_1h_tokens").
+			Default(0),
+
+		// 成本字段
+		field.Float("input_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"REDACTED),
+		field.Float("output_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"REDACTED),
+		field.Float("cache_creation_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"REDACTED),
+		field.Float("cache_read_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"REDACTED),
+		field.Float("total_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"REDACTED),
+		field.Float("actual_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"REDACTED),
+		field.Float("rate_multiplier").
+			Default(1).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"REDACTED),
+
+		// 其他字段
+		field.Int8("billing_type").
+			Default(0),
+		field.Bool("stream").
+			Default(false),
+		field.Int("duration_ms").
+			Optional().
+			Nillable(),
+		field.Int("first_token_ms").
+			Optional().
+			Nillable(),
+
+		// 时间戳（只有 created_at，日志不可修改）
+		field.Time("created_at").
+			Default(time.Now).
+			Immutable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
+REDACTED
+REDACTED
+
+// Edges 定义使用日志实体的关联关系。
+func (UsageLog) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.From("user", User.Type).
+			Ref("usage_logs").
+			Field("user_id").
+			Required().
+			Unique(),
+		edge.From("api_key", ApiKey.Type).
+			Ref("usage_logs").
+			Field("api_key_id").
+			Required().
+			Unique(),
+		edge.From("account", Account.Type).
+			Ref("usage_logs").
+			Field("account_id").
+			Required().
+			Unique(),
+		edge.From("group", Group.Type).
+			Ref("usage_logs").
+			Field("group_id").
+			Unique(),
+		edge.From("subscription", UserSubscription.Type).
+			Ref("usage_logs").
+			Field("subscription_id").
+			Unique(),
+REDACTED
+REDACTED
+
+// Indexes 定义数据库索引，优化查询性能。
+func (UsageLog) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("user_id"),
+		index.Fields("api_key_id"),
+		index.Fields("account_id"),
+		index.Fields("group_id"),
+		index.Fields("subscription_id"),
+		index.Fields("created_at"),
+		index.Fields("model"),
+		index.Fields("request_id"),
+		// 复合索引用于时间范围查询
+		index.Fields("user_id", "created_at"),
+		index.Fields("api_key_id", "created_at"),
+REDACTED
+REDACTED

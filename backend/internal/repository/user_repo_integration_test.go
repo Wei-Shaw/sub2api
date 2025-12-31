@@ -508,3 +508,24 @@ REDACTED)
 	s.Require().Equal(user2.ID, users[0].ID, "ListWithFilters result mismatch")
 REDACTED
 
+// --- UpdateBalance/UpdateConcurrency 影响行数校验测试 ---
+
+func (s *UserRepoSuite) TestUpdateBalance_NotFound() {
+	err := s.repo.UpdateBalance(s.ctx, 999999, 10.0)
+	s.Require().Error(err, "expected error for non-existent user")
+	s.Require().ErrorIs(err, service.ErrUserNotFound)
+REDACTED
+
+func (s *UserRepoSuite) TestUpdateConcurrency_NotFound() {
+	err := s.repo.UpdateConcurrency(s.ctx, 999999, 5)
+	s.Require().Error(err, "expected error for non-existent user")
+	s.Require().ErrorIs(err, service.ErrUserNotFound)
+REDACTED
+
+func (s *UserRepoSuite) TestDeductBalance_NotFound() {
+	err := s.repo.DeductBalance(s.ctx, 999999, 5)
+	s.Require().Error(err, "expected error for non-existent user")
+	// DeductBalance 在用户不存在时返回 ErrInsufficientBalance 因为 WHERE 条件不匹配
+	s.Require().ErrorIs(err, service.ErrInsufficientBalance)
+REDACTED
+
