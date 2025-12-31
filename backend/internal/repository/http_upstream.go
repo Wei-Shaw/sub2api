@@ -572,7 +572,7 @@ REDACTED
 // trackedBody 带跟踪功能的响应体包装器
 // 在 Close 时执行回调，用于更新请求计数
 type trackedBody struct {
-	io.ReadCloser        // 原始响应体
+	io.ReadCloser // 原始响应体
 	once          sync.Once
 	onClose       func() // 关闭时的回调函数
 REDACTED

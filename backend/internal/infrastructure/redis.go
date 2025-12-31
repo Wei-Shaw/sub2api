@@ -33,7 +33,7 @@ func buildRedisOptions(cfg *config.Config) *redis.Options {
 		DialTimeout:  time.Duration(cfg.Redis.DialTimeoutSeconds) * time.Second,  // 建连超时
 		ReadTimeout:  time.Duration(cfg.Redis.ReadTimeoutSeconds) * time.Second,  // 读取超时
 		WriteTimeout: time.Duration(cfg.Redis.WriteTimeoutSeconds) * time.Second, // 写入超时
-		PoolSize:     cfg.Redis.PoolSize,                                          // 连接池大小
-		MinIdleConns: cfg.Redis.MinIdleConns,                                      // 最小空闲连接
+		PoolSize:     cfg.Redis.PoolSize,                                         // 连接池大小
+		MinIdleConns: cfg.Redis.MinIdleConns,                                     // 最小空闲连接
 REDACTED
 REDACTED

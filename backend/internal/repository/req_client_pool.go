@@ -35,7 +35,9 @@ var sharedReqClients sync.Map
 func getSharedReqClient(opts reqClientOptions) *req.Client {
 	key := buildReqClientKey(opts)
 	if cached, ok := sharedReqClients.Load(key); ok {
-		return cached.(*req.Client)
+		if c, ok := cached.(*req.Client); ok {
+			return c
+	REDACTED
 REDACTED
 
 	client := req.C().SetTimeout(opts.Timeout)
@@ -47,7 +49,10 @@ REDACTED
 REDACTED
 
 	actual, _ := sharedReqClients.LoadOrStore(key, client)
-	return actual.(*req.Client)
+	if c, ok := actual.(*req.Client); ok {
+		return c
+REDACTED
+	return client
 REDACTED
 
 func buildReqClientKey(opts reqClientOptions) string {

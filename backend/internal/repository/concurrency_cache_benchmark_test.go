@@ -22,7 +22,7 @@ func BenchmarkAccountConcurrency(b *testing.B) {
 		_ = rdb.Close()
 REDACTED()
 
-	cache := NewConcurrencyCache(rdb, benchSlotTTLMinutes).(*concurrencyCache)
+	cache, _ := NewConcurrencyCache(rdb, benchSlotTTLMinutes).(*concurrencyCache)
 	ctx := context.Background()
 
 	for _, size := range []int{10, 100, 1000REDACTED {

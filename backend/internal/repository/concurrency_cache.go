@@ -126,7 +126,7 @@ var (
 )
 
 type concurrencyCache struct {
-	rdb           *redis.Client
+	rdb            *redis.Client
 	slotTTLSeconds int // 槽位过期时间（秒）
 REDACTED
 
@@ -137,7 +137,7 @@ func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int) service.Concurre
 		slotTTLMinutes = defaultSlotTTLMinutes
 REDACTED
 	return &concurrencyCache{
-		rdb:           rdb,
+		rdb:            rdb,
 		slotTTLSeconds: slotTTLMinutes * 60,
 REDACTED
 REDACTED
