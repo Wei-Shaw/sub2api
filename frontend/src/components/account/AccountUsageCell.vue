@@ -169,6 +169,11 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
+    <!-- Gemini platform: show quota info with AccountQuotaInfo component -->
+    <template v-else-if="account.platform === 'gemini'">
+      <AccountQuotaInfo :account="account" />
+    </template>
+
     <!-- Other accounts: no usage window -->
     <template v-else>
       <div class="text-xs text-gray-400">-</div>
@@ -176,7 +181,11 @@
   </div>
 
   <!-- Non-OAuth/Setup-Token accounts -->
-  <div v-else class="text-xs text-gray-400">-</div>
+  <div v-else>
+    <!-- Gemini API Key accounts: show quota info -->
+    <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
+    <div v-else class="text-xs text-gray-400">-</div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -185,6 +194,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, AccountUsageInfo REDACTED from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
+import AccountQuotaInfo from './AccountQuotaInfo.vue'
 
 const props = defineProps<{
   account: Account

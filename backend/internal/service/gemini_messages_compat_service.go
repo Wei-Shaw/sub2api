@@ -1886,13 +1886,47 @@ REDACTED
 	if statusCode != 429 {
 		return
 REDACTED
+
+	// 获取账号的 oauth_type、tier_id 和 project_id
+	oauthType := strings.TrimSpace(account.GetCredential("oauth_type"))
+	tierID := strings.TrimSpace(account.GetCredential("tier_id"))
+	projectID := strings.TrimSpace(account.GetCredential("project_id"))
+
+	// 判断是否为 Code Assist：以 project_id 是否存在为准（更可靠）
+	isCodeAssist := projectID != ""
+	// Legacy 兼容：oauth_type 为空但 project_id 存在时视为 code_assist
+	if oauthType == "" && isCodeAssist {
+		oauthType = "code_assist"
+REDACTED
+
 	resetAt := ParseGeminiRateLimitResetTime(body)
 	if resetAt == nil {
-		ra := time.Now().Add(5 * time.Minute)
+		// 根据账号类型使用不同的默认重置时间
+		var ra time.Time
+		if isCodeAssist {
+			// Code Assist: 5 分钟滚动窗口
+			ra = time.Now().Add(5 * time.Minute)
+			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, reset in 5min", account.ID, tierID, projectID)
+	REDACTED else {
+			// API Key / AI Studio OAuth: PST 午夜
+			if ts := nextGeminiDailyResetUnix(); ts != nil {
+				ra = time.Unix(*ts, 0)
+				log.Printf("[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
+		REDACTED else {
+				// 兜底：5 分钟
+				ra = time.Now().Add(5 * time.Minute)
+				log.Printf("[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
+		REDACTED
+	REDACTED
 		_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
 		return
 REDACTED
-	_ = s.accountRepo.SetRateLimited(ctx, account.ID, time.Unix(*resetAt, 0))
+
+	// 使用解析到的重置时间
+	resetTime := time.Unix(*resetAt, 0)
+	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
+	log.Printf("[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
+		account.ID, resetTime, oauthType, tierID)
 REDACTED
 
 // ParseGeminiRateLimitResetTime 解析 Gemini 格式的 429 响应，返回重置时间的 Unix 时间戳

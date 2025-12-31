@@ -259,8 +259,15 @@ REDACTED
 	sessionProjectID := strings.TrimSpace(session.ProjectID)
 	s.sessionStore.Delete(input.SessionID)
 
-	// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
-	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
+	// 计算过期时间：减去 5 分钟安全时间窗口（考虑网络延迟和时钟偏差）
+	// 同时设置下界保护，防止 expires_in 过小导致过去时间（引发刷新风暴）
+	const safetyWindow = 300 // 5 minutes
+	const minTTL = 30        // minimum 30 seconds
+	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - safetyWindow
+	minExpiresAt := time.Now().Unix() + minTTL
+	if expiresAt < minExpiresAt {
+		expiresAt = minExpiresAt
+REDACTED
 
 	projectID := sessionProjectID
 	var tierID string
@@ -275,9 +282,21 @@ REDACTED
 				// 记录警告但不阻断流程，允许后续补充 project_id
 				fmt.Printf("[GeminiOAuth] Warning: Failed to fetch project_id during token exchange: %v\n", err)
 		REDACTED
+	REDACTED else {
+			// 用户手动填了 project_id，仍需调用 LoadCodeAssist 获取 tierID
+			_, fetchedTierID, err := s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
+			if err != nil {
+				fmt.Printf("[GeminiOAuth] Warning: Failed to fetch tierID: %v\n", err)
+		REDACTED else {
+				tierID = fetchedTierID
+		REDACTED
 	REDACTED
 		if strings.TrimSpace(projectID) == "" {
 			return nil, fmt.Errorf("missing project_id for Code Assist OAuth: please fill Project ID (optional field) and regenerate the auth URL, or ensure your Google account has an ACTIVE GCP project")
+	REDACTED
+		// tierID 缺失时使用默认值
+		if tierID == "" {
+			tierID = "LEGACY"
 	REDACTED
 REDACTED
 
@@ -308,8 +327,15 @@ func (s *GeminiOAuthService) RefreshToken(ctx context.Context, oauthType, refres
 
 		tokenResp, err := s.oauthClient.RefreshToken(ctx, oauthType, refreshToken, proxyURL)
 		if err == nil {
-			// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
-			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
+			// 计算过期时间：减去 5 分钟安全时间窗口（考虑网络延迟和时钟偏差）
+			// 同时设置下界保护，防止 expires_in 过小导致过去时间（引发刷新风暴）
+			const safetyWindow = 300 // 5 minutes
+			const minTTL = 30        // minimum 30 seconds
+			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - safetyWindow
+			minExpiresAt := time.Now().Unix() + minTTL
+			if expiresAt < minExpiresAt {
+				expiresAt = minExpiresAt
+		REDACTED
 			return &GeminiTokenInfo{
 				AccessToken:  tokenResp.AccessToken,
 				RefreshToken: tokenResp.RefreshToken,
@@ -396,19 +422,39 @@ REDACTED
 		tokenInfo.ProjectID = existingProjectID
 REDACTED
 
+	// 尝试从账号凭证获取 tierID（向后兼容）
+	existingTierID := strings.TrimSpace(account.GetCredential("tier_id"))
+
 	// For Code Assist, project_id is required. Auto-detect if missing.
 	// For AI Studio OAuth, project_id is optional and should not block refresh.
-	if oauthType == "code_assist" && strings.TrimSpace(tokenInfo.ProjectID) == "" {
-		projectID, tierID, err := s.fetchProjectID(ctx, tokenInfo.AccessToken, proxyURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to auto-detect project_id: %w", err)
+	if oauthType == "code_assist" {
+		// 先设置默认值或保留旧值，确保 tier_id 始终有值
+		if existingTierID != "" {
+			tokenInfo.TierID = existingTierID
+	REDACTED else {
+			tokenInfo.TierID = "LEGACY" // 默认值
 	REDACTED
-		projectID = strings.TrimSpace(projectID)
-		if projectID == "" {
+
+		// 尝试自动探测 project_id 和 tier_id
+		needDetect := strings.TrimSpace(tokenInfo.ProjectID) == "" || existingTierID == ""
+		if needDetect {
+			projectID, tierID, err := s.fetchProjectID(ctx, tokenInfo.AccessToken, proxyURL)
+			if err != nil {
+				fmt.Printf("[GeminiOAuth] Warning: failed to auto-detect project/tier: %v\n", err)
+		REDACTED else {
+				if strings.TrimSpace(tokenInfo.ProjectID) == "" && projectID != "" {
+					tokenInfo.ProjectID = projectID
+			REDACTED
+				// 只有当原来没有 tier_id 且探测成功时才更新
+				if existingTierID == "" && tierID != "" {
+					tokenInfo.TierID = tierID
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if strings.TrimSpace(tokenInfo.ProjectID) == "" {
 			return nil, fmt.Errorf("failed to auto-detect project_id: empty result")
 	REDACTED
-		tokenInfo.ProjectID = projectID
-		tokenInfo.TierID = tierID
 REDACTED
 
 	return tokenInfo, nil
@@ -466,9 +512,6 @@ REDACTED
 		return strings.TrimSpace(loadResp.CloudAICompanionProject), tierID, nil
 REDACTED
 
-	// Pick tier from allowedTiers; if no default tier is marked, pick the first non-empty tier ID.
-	// (tierID already extracted above, reuse it)
-
 	req := &geminicli.OnboardUserRequest{
 		TierID: tierID,
 		Metadata: geminicli.LoadCodeAssistMetadata{
@@ -487,7 +530,7 @@ REDACTED
 			if fbErr == nil && strings.TrimSpace(fallback) != "" {
 				return strings.TrimSpace(fallback), tierID, nil
 		REDACTED
-			return "", "", err
+			return "", tierID, err
 	REDACTED
 		if resp.Done {
 			if resp.Response != nil && resp.Response.CloudAICompanionProject != nil {
@@ -505,7 +548,7 @@ REDACTED
 			if fbErr == nil && strings.TrimSpace(fallback) != "" {
 				return strings.TrimSpace(fallback), tierID, nil
 		REDACTED
-			return "", "", errors.New("onboardUser completed but no project_id returned")
+			return "", tierID, errors.New("onboardUser completed but no project_id returned")
 	REDACTED
 		time.Sleep(2 * time.Second)
 REDACTED
@@ -515,9 +558,9 @@ REDACTED
 		return strings.TrimSpace(fallback), tierID, nil
 REDACTED
 	if loadErr != nil {
-		return "", "", fmt.Errorf("loadCodeAssist failed (%v) and onboardUser timeout after %d attempts", loadErr, maxAttempts)
+		return "", tierID, fmt.Errorf("loadCodeAssist failed (%v) and onboardUser timeout after %d attempts", loadErr, maxAttempts)
 REDACTED
-	return "", "", fmt.Errorf("onboardUser timeout after %d attempts", maxAttempts)
+	return "", tierID, fmt.Errorf("onboardUser timeout after %d attempts", maxAttempts)
 REDACTED
 
 type googleCloudProject struct {

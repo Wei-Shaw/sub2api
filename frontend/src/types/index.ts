@@ -315,6 +315,22 @@ export interface Proxy {
   updated_at: string
 REDACTED
 
+// Gemini credentials structure for OAuth and API Key authentication
+export interface GeminiCredentials {
+  // API Key authentication
+  api_key?: string
+
+  // OAuth authentication
+  access_token?: string
+  refresh_token?: string
+  oauth_type?: 'code_assist' | 'ai_studio' | string
+  tier_id?: 'LEGACY' | 'PRO' | 'ULTRA' | string
+  project_id?: string
+  token_type?: string
+  scope?: string
+  expires_at?: string
+REDACTED
+
 export interface Account {
   id: number
   name: string
