@@ -1,6 +1,6 @@
 // Package infrastructure 提供应用程序的基础设施层组件。
 // 包括数据库连接初始化、ORM 客户端管理、Redis 连接、数据库迁移等核心功能。
-package infrastructure
+package repository
 
 import (
 	"context"
