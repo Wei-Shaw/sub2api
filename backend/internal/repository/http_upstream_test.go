@@ -64,6 +64,31 @@ func (s *HTTPUpstreamSuite) TestGetOrCreateClient_InvalidURLFallsBackToDirect() 
 	require.Equal(s.T(), directProxyKey, entry.proxyKey, "expected direct proxy fallback")
 REDACTED
 
+// TestNormalizeProxyURL_Canonicalizes 测试代理 URL 规范化
+// 验证等价地址能够映射到同一缓存键
+func (s *HTTPUpstreamSuite) TestNormalizeProxyURL_Canonicalizes() {
+	key1, _ := normalizeProxyURL("http://proxy.local:8080")
+	key2, _ := normalizeProxyURL("http://proxy.local:8080/")
+	require.Equal(s.T(), key1, key2, "expected normalized proxy keys to match")
+REDACTED
+
+// TestAcquireClient_OverLimitReturnsError 测试连接池缓存上限保护
+// 验证超限且无可淘汰条目时返回错误
+func (s *HTTPUpstreamSuite) TestAcquireClient_OverLimitReturnsError() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ConnectionPoolIsolation: config.ConnectionPoolIsolationAccountProxy,
+		MaxUpstreamClients:      1,
+REDACTED
+	svc := s.newService()
+	entry1, err := svc.acquireClient("http://proxy-a:8080", 1, 1)
+	require.NoError(s.T(), err, "expected first acquire to succeed")
+	require.NotNil(s.T(), entry1, "expected entry")
+
+	entry2, err := svc.acquireClient("http://proxy-b:8080", 2, 1)
+	require.Error(s.T(), err, "expected error when cache limit reached")
+	require.Nil(s.T(), entry2, "expected nil entry when cache limit reached")
+REDACTED
+
 // TestDo_WithoutProxy_GoesDirect 测试无代理时直连
 // 验证空代理 URL 时请求直接发送到目标服务器
 func (s *HTTPUpstreamSuite) TestDo_WithoutProxy_GoesDirect() {
