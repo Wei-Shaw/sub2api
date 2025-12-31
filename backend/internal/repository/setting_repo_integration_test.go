@@ -124,10 +124,10 @@ func (s *SettingRepoSuite) TestSetMultiple_WithEmptyValues() {
 	settings := map[string]string{
 		"site_name":     "AICodex2API",
 		"site_subtitle": "Subscription to API",
-		"site_logo":     "",           // 用户未上传Logo
-		"api_base_url":  "",           // 用户未设置API地址
-		"contact_info":  "",           // 用户未设置联系方式
-		"doc_url":       "",           // 用户未设置文档链接
+		"site_logo":     "", // 用户未上传Logo
+		"api_base_url":  "", // 用户未设置API地址
+		"contact_info":  "", // 用户未设置联系方式
+		"doc_url":       "", // 用户未设置文档链接
 REDACTED
 
 	s.Require().NoError(s.repo.SetMultiple(s.ctx, settings), "SetMultiple with empty values should succeed")
