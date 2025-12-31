@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strconv"
 	"time"
 )
 
@@ -34,16 +33,11 @@ func (r *AntigravityTokenRefresher) NeedsRefresh(account *Account, _ time.Durati
 	if !r.CanRefresh(account) {
 		return false
 REDACTED
-	expiresAtStr := account.GetCredential("expires_at")
-	if expiresAtStr == "" {
+	expiresAt := account.GetCredentialAsTime("expires_at")
+	if expiresAt == nil {
 		return false
 REDACTED
-	expiresAt, err := strconv.ParseInt(expiresAtStr, 10, 64)
-	if err != nil {
-		return false
-REDACTED
-	expiryTime := time.Unix(expiresAt, 0)
-	return time.Until(expiryTime) < antigravityRefreshWindow
+	return time.Until(*expiresAt) < antigravityRefreshWindow
 REDACTED
 
 // Refresh 执行 token 刷新

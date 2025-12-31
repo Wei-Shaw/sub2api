@@ -34,6 +34,13 @@ REDACTED{
 			wantRefresh: true,
 	REDACTED,
 		{
+			name: "expires_at as RFC3339 - expired",
+			credentials: map[string]any{
+				"expires_at": "1970-01-01T00:00:00Z", // RFC3339 格式，已过期
+		REDACTED,
+			wantRefresh: true,
+	REDACTED,
+		{
 			name: "expires_at as string - far future",
 			credentials: map[string]any{
 				"expires_at": "9999999999", // 远未来
@@ -44,6 +51,13 @@ REDACTED{
 			name: "expires_at as float64 - far future",
 			credentials: map[string]any{
 				"expires_at": float64(9999999999), // 远未来，数字类型
+		REDACTED,
+			wantRefresh: false,
+	REDACTED,
+		{
+			name: "expires_at as RFC3339 - far future",
+			credentials: map[string]any{
+				"expires_at": "2099-12-31T23:59:59Z", // RFC3339 格式，远未来
 		REDACTED,
 			wantRefresh: false,
 	REDACTED,

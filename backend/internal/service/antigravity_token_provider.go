@@ -55,7 +55,7 @@ REDACTED
 REDACTED
 
 	// 2. 如果即将过期则刷新
-	expiresAt := parseAntigravityExpiresAt(account)
+	expiresAt := account.GetCredentialAsTime("expires_at")
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= antigravityTokenRefreshSkew
 	if needsRefresh && p.tokenCache != nil {
 		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
@@ -72,7 +72,7 @@ REDACTED
 			if err == nil && fresh != nil {
 				account = fresh
 		REDACTED
-			expiresAt = parseAntigravityExpiresAt(account)
+			expiresAt = account.GetCredentialAsTime("expires_at")
 			if expiresAt == nil || time.Until(*expiresAt) <= antigravityTokenRefreshSkew {
 				if p.antigravityOAuthService == nil {
 					return "", errors.New("antigravity oauth service not configured")
@@ -91,7 +91,7 @@ REDACTED
 				if updateErr := p.accountRepo.Update(ctx, account); updateErr != nil {
 					log.Printf("[AntigravityTokenProvider] Failed to update account credentials: %v", updateErr)
 			REDACTED
-				expiresAt = parseAntigravityExpiresAt(account)
+				expiresAt = account.GetCredentialAsTime("expires_at")
 		REDACTED
 	REDACTED
 REDACTED
@@ -127,19 +127,4 @@ func antigravityTokenCacheKey(account *Account) string {
 		return "ag:" + projectID
 REDACTED
 	return "ag:account:" + strconv.FormatInt(account.ID, 10)
-REDACTED
-
-func parseAntigravityExpiresAt(account *Account) *time.Time {
-	raw := strings.TrimSpace(account.GetCredential("expires_at"))
-	if raw == "" {
-		return nil
-REDACTED
-	if unixSec, err := strconv.ParseInt(raw, 10, 64); err == nil && unixSec > 0 {
-		t := time.Unix(unixSec, 0)
-		return &t
-REDACTED
-	if t, err := time.Parse(time.RFC3339, raw); err == nil {
-		return &t
-REDACTED
-	return nil
 REDACTED
