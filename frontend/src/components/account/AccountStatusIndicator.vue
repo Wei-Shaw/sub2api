@@ -83,6 +83,14 @@
         ></div>
       </div>
     </div>
+
+    <!-- Tier Indicator -->
+    <span
+      v-if="tierDisplay"
+      class="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+    >
+      {{ tierDisplay REDACTEDREDACTED
+    </span>
   </div>
 </template>
 
@@ -138,6 +146,25 @@ const statusText = computed(() => {
     return 'Limited'
   REDACTED
   return props.account.status
+REDACTED)
+
+// Computed: tier display
+const tierDisplay = computed(() => {
+  const credentials = props.account.credentials as Record<string, any> | undefined
+  const tierId = credentials?.tier_id
+  if (!tierId || tierId === 'unknown') return null
+
+  const tierMap: Record<string, string> = {
+    'free': 'Free',
+    'payg': 'Pay-as-you-go',
+    'pay-as-you-go': 'Pay-as-you-go',
+    'enterprise': 'Enterprise',
+    'LEGACY': 'Legacy',
+    'PRO': 'Pro',
+    'ULTRA': 'Ultra'
+  REDACTED
+
+  return tierMap[tierId] || tierId
 REDACTED)
 
 </script>
