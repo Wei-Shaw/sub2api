@@ -156,3 +156,19 @@ gemini:
     client_secret: "REDACTED"
     # Optional scopes (space-separated). Leave empty to auto-select based on oauth_type.
     scopes: ""
+  quota:
+    # Optional: local quota simulation for Gemini Code Assist (local billing).
+    # These values are used for UI progress + precheck scheduling, not official Google quotas.
+    tiers:
+      LEGACY:
+        pro_rpd: 50
+        flash_rpd: 1500
+        cooldown_minutes: 30
+      PRO:
+        pro_rpd: 1500
+        flash_rpd: 4000
+        cooldown_minutes: 5
+      ULTRA:
+        pro_rpd: 2000
+        flash_rpd: 0
+        cooldown_minutes: 5

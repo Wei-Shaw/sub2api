@@ -116,8 +116,20 @@ REDACTED
 						valid = true
 				REDACTED
 					if valid {
-						_ = s.cache.RefreshSessionTTL(ctx, cacheKey, geminiStickySessionTTL)
-						return account, nil
+						usable := true
+						if s.rateLimitService != nil && requestedModel != "" {
+							ok, err := s.rateLimitService.PreCheckUsage(ctx, account, requestedModel)
+							if err != nil {
+								log.Printf("[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
+						REDACTED
+							if !ok {
+								usable = false
+						REDACTED
+					REDACTED
+						if usable {
+							_ = s.cache.RefreshSessionTTL(ctx, cacheKey, geminiStickySessionTTL)
+							return account, nil
+					REDACTED
 				REDACTED
 			REDACTED
 		REDACTED
@@ -156,6 +168,15 @@ REDACTED
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
 			continue
+	REDACTED
+		if s.rateLimitService != nil && requestedModel != "" {
+			ok, err := s.rateLimitService.PreCheckUsage(ctx, acc, requestedModel)
+			if err != nil {
+				log.Printf("[Gemini PreCheck] Account %d precheck error: %v", acc.ID, err)
+		REDACTED
+			if !ok {
+				continue
+		REDACTED
 	REDACTED
 		if selected == nil {
 			selected = acc
@@ -1887,26 +1908,23 @@ REDACTED
 		return
 REDACTED
 
-	// 获取账号的 oauth_type、tier_id 和 project_id
-	oauthType := strings.TrimSpace(account.GetCredential("oauth_type"))
-	tierID := strings.TrimSpace(account.GetCredential("tier_id"))
+	oauthType := account.GeminiOAuthType()
+	tierID := account.GeminiTierID()
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
-
-	// 判断是否为 Code Assist：以 project_id 是否存在为准（更可靠）
-	isCodeAssist := projectID != ""
-	// Legacy 兼容：oauth_type 为空但 project_id 存在时视为 code_assist
-	if oauthType == "" && isCodeAssist {
-		oauthType = "code_assist"
-REDACTED
+	isCodeAssist := account.IsGeminiCodeAssist()
 
 	resetAt := ParseGeminiRateLimitResetTime(body)
 	if resetAt == nil {
 		// 根据账号类型使用不同的默认重置时间
 		var ra time.Time
 		if isCodeAssist {
-			// Code Assist: 5 分钟滚动窗口
-			ra = time.Now().Add(5 * time.Minute)
-			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, reset in 5min", account.ID, tierID, projectID)
+			// Code Assist: fallback cooldown by tier
+				cooldown := geminiCooldownForTier(tierID)
+				if s.rateLimitService != nil {
+					cooldown = s.rateLimitService.GeminiCooldown(ctx, account)
+			REDACTED
+			ra = time.Now().Add(cooldown)
+			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, ra.Sub(time.Now()).Truncate(time.Second))
 	REDACTED else {
 			// API Key / AI Studio OAuth: PST 午夜
 			if ts := nextGeminiDailyResetUnix(); ts != nil {
@@ -1982,16 +2000,7 @@ REDACTED
 REDACTED
 
 func nextGeminiDailyResetUnix() *int64 {
-	loc, err := time.LoadLocation("America/Los_Angeles")
-	if err != nil {
-		// Fallback: PST without DST.
-		loc = time.FixedZone("PST", -8*3600)
-REDACTED
-	now := time.Now().In(loc)
-	reset := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, loc)
-	if !reset.After(now) {
-		reset = reset.Add(24 * time.Hour)
-REDACTED
+	reset := geminiDailyResetTime(time.Now())
 	ts := reset.Unix()
 	return &ts
 REDACTED

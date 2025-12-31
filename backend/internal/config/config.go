@@ -43,12 +43,24 @@ REDACTED
 
 type GeminiConfig struct {
 	OAuth GeminiOAuthConfig `mapstructure:"oauth"`
+	Quota GeminiQuotaConfig `mapstructure:"quota"`
 REDACTED
 
 type GeminiOAuthConfig struct {
 	ClientID     string `mapstructure:"client_id"`
 	ClientSecret string `mapstructure:"client_secret"`
 	Scopes       string `mapstructure:"scopes"`
+REDACTED
+
+type GeminiQuotaConfig struct {
+	Tiers  map[string]GeminiTierQuotaConfig `mapstructure:"tiers"`
+	Policy string                           `mapstructure:"policy"`
+REDACTED
+
+type GeminiTierQuotaConfig struct {
+	ProRPD          *int64 `mapstructure:"pro_rpd" json:"pro_rpd"`
+	FlashRPD        *int64 `mapstructure:"flash_rpd" json:"flash_rpd"`
+	CooldownMinutes *int   `mapstructure:"cooldown_minutes" json:"cooldown_minutes"`
 REDACTED
 
 // TokenRefreshConfig OAuth token自动刷新配置
@@ -352,6 +364,7 @@ func setDefaults() {
 	viper.SetDefault("gemini.oauth.client_id", "")
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
+	viper.SetDefault("gemini.quota.policy", "")
 REDACTED
 
 func (c *Config) Validate() error {
