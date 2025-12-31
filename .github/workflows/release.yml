@@ -168,7 +168,7 @@ jobs:
           VERSION=${TAG_NAME#vREDACTED
           REPO="${{ github.repository REDACTEDREDACTED"
           DOCKER_IMAGE="${{ secrets.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api"
-          GHCR_IMAGE="ghcr.io/${REPOREDACTED"
+          GHCR_IMAGE="ghcr.io/${REPO,,REDACTED"  # ${,,REDACTED converts to lowercase
 
           # 获取 tag message 内容
           TAG_MESSAGE='${{ steps.tag_message.outputs.message REDACTEDREDACTED'
