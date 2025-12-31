@@ -192,9 +192,11 @@ REDACTED
 					log.Printf("Account wait queue full: account=%d", account.ID)
 					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 					return
-			REDACTED
-				accountWaitRelease = func() {
-					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+			REDACTED else {
+					// Only set release function if increment succeeded
+					accountWaitRelease = func() {
+						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+				REDACTED
 			REDACTED
 
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
@@ -314,9 +316,11 @@ REDACTED
 				log.Printf("Account wait queue full: account=%d", account.ID)
 				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 				return
-		REDACTED
-			accountWaitRelease = func() {
-				h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+		REDACTED else {
+				// Only set release function if increment succeeded
+				accountWaitRelease = func() {
+					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+			REDACTED
 		REDACTED
 
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
