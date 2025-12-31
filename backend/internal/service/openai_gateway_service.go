@@ -240,7 +240,7 @@ REDACTED
 
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 403, 429, 529:
+	case 401, 402, 403, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
@@ -454,6 +454,10 @@ REDACTED
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
 		errMsg = "Upstream authentication failed, please contact administrator"
+	case 402:
+		statusCode = http.StatusBadGateway
+		errType = "upstream_error"
+		errMsg = "Upstream payment required: insufficient balance or billing issue"
 	case 403:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
