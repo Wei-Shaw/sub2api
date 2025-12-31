@@ -78,6 +78,33 @@ dockers:
       - "--label=org.opencontainers.image.version={{ .Version REDACTEDREDACTED"
       - "--label=org.opencontainers.image.revision={{ .Commit REDACTEDREDACTED"
 
+  # GHCR images
+  - id: ghcr-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.version={{ .Version REDACTEDREDACTED"
+      - "--label=org.opencontainers.image.revision={{ .Commit REDACTEDREDACTED"
+      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/{{ .Env.GITHUB_REPO_NAME REDACTEDREDACTED"
+
+  - id: ghcr-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.version={{ .Version REDACTEDREDACTED"
+      - "--label=org.opencontainers.image.revision={{ .Commit REDACTEDREDACTED"
+      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/{{ .Env.GITHUB_REPO_NAME REDACTEDREDACTED"
+
 # Docker manifests for multi-arch support
 docker_manifests:
   - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED"
@@ -100,6 +127,27 @@ docker_manifests:
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
 
+  # GHCR manifests
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:latest"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Major REDACTEDREDACTED.{{ .Minor REDACTEDREDACTED"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Major REDACTEDREDACTED"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
+
 release:
   github:
     owner: "{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED"
@@ -118,6 +166,15 @@ release:
     ---
 
     ## 📥 Installation
+
+    **Docker:**
+    ```bash
+    # Docker Hub
+    docker pull {{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED
+
+    # GitHub Container Registry
+    docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED
+    ```
 
     **One-line install (Linux):**
     ```bash
