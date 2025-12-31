@@ -88,6 +88,12 @@ REDACTED
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
 
+	// 验证 model 必填
+	if reqModel == "" {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+REDACTED
+
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
 
@@ -514,6 +520,12 @@ REDACTED
 	parsedReq, err := service.ParseGatewayRequest(body)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+REDACTED
+
+	// 验证 model 必填
+	if parsedReq.Model == "" {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 REDACTED
 
