@@ -3,6 +3,7 @@ package antigravity
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -205,6 +206,10 @@ REDACTED
 			// 保留原有 signature（Claude 模型需要有效的 signature）
 			if block.Signature != "" {
 				part.ThoughtSignature = block.Signature
+		REDACTED else if !allowDummyThought {
+				// Claude 模型需要有效 signature，跳过无 signature 的 thinking block
+				log.Printf("Warning: skipping thinking block without signature for Claude model")
+				continue
 		REDACTED
 			parts = append(parts, part)
 
