@@ -10,15 +10,17 @@ import (
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
-	settingService *service.SettingService
-	emailService   *service.EmailService
+	settingService   *service.SettingService
+	emailService     *service.EmailService
+	turnstileService *service.TurnstileService
 REDACTED
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService) *SettingHandler {
 	return &SettingHandler{
-		settingService: settingService,
-		emailService:   emailService,
+		settingService:   settingService,
+		emailService:     emailService,
+		turnstileService: turnstileService,
 REDACTED
 REDACTED
 
@@ -106,6 +108,36 @@ REDACTED
 REDACTED
 	if req.SmtpPort <= 0 {
 		req.SmtpPort = 587
+REDACTED
+
+	// Turnstile 参数验证
+	if req.TurnstileEnabled {
+		// 检查必填字段
+		if req.TurnstileSiteKey == "" {
+			response.BadRequest(c, "Turnstile Site Key is required when enabled")
+			return
+	REDACTED
+		if req.TurnstileSecretKey == "" {
+			response.BadRequest(c, "Turnstile Secret Key is required when enabled")
+			return
+	REDACTED
+
+		// 获取当前设置，检查参数是否有变化
+		currentSettings, err := h.settingService.GetAllSettings(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+
+		// 当 site_key 或 secret_key 任一变化时验证（避免配置错误导致无法登录）
+		siteKeyChanged := currentSettings.TurnstileSiteKey != req.TurnstileSiteKey
+		secretKeyChanged := currentSettings.TurnstileSecretKey != req.TurnstileSecretKey
+		if siteKeyChanged || secretKeyChanged {
+			if err := h.turnstileService.ValidateSecretKey(c.Request.Context(), req.TurnstileSecretKey); err != nil {
+				response.ErrorFrom(c, err)
+				return
+		REDACTED
+	REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
