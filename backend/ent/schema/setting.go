@@ -36,7 +36,6 @@ func (Setting) Fields() []ent.Field {
 			NotEmpty().
 			Unique(),
 		field.String("value").
-			NotEmpty().
 			SchemaType(map[string]string{
 				dialect.Postgres: "text",
 		REDACTED),

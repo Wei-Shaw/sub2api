@@ -415,10 +415,6 @@ REDACTED()
 			return nil
 	REDACTED
 REDACTED()
-	// settingDescValue is the schema descriptor for value field.
-	settingDescValue := settingFields[1].Descriptor()
-	// setting.ValueValidator is a validator for the "value" field. It is called by the builders before save.
-	setting.ValueValidator = settingDescValue.Validators[0].(func(string) error)
 	// settingDescUpdatedAt is the schema descriptor for updated_at field.
 	settingDescUpdatedAt := settingFields[2].Descriptor()
 	// setting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
