@@ -12,6 +12,20 @@ const (
 	RunModeSimple   = "simple"
 )
 
+// 连接池隔离策略常量
+// 用于控制上游 HTTP 连接池的隔离粒度，影响连接复用和资源消耗
+const (
+	// ConnectionPoolIsolationProxy: 按代理隔离
+	// 同一代理地址共享连接池，适合代理数量少、账户数量多的场景
+	ConnectionPoolIsolationProxy = "proxy"
+	// ConnectionPoolIsolationAccount: 按账户隔离
+	// 每个账户独立连接池，适合账户数量少、需要严格隔离的场景
+	ConnectionPoolIsolationAccount = "account"
+	// ConnectionPoolIsolationAccountProxy: 按账户+代理组合隔离（默认）
+	// 同一账户+代理组合共享连接池，提供最细粒度的隔离
+	ConnectionPoolIsolationAccountProxy = "account_proxy"
+)
+
 type Config struct {
 	Server       ServerConfig       `mapstructure:"server"`
 	Database     DatabaseConfig     `mapstructure:"database"`
@@ -81,6 +95,8 @@ type GatewayConfig struct {
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
+	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
+	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -91,6 +107,15 @@ type GatewayConfig struct {
 	MaxConnsPerHost int `mapstructure:"max_conns_per_host"`
 	// IdleConnTimeoutSeconds: 空闲连接超时时间（秒）
 	IdleConnTimeoutSeconds int `mapstructure:"idle_conn_timeout_seconds"`
+	// MaxUpstreamClients: 上游连接池客户端最大缓存数量
+	// 当使用连接池隔离策略时，系统会为不同的账户/代理组合创建独立的 HTTP 客户端
+	// 此参数限制缓存的客户端数量，超出后会淘汰最久未使用的客户端
+	// 建议值：预估的活跃账户数 * 1.2（留有余量）
+	MaxUpstreamClients int `mapstructure:"max_upstream_clients"`
+	// ClientIdleTTLSeconds: 上游连接池客户端空闲回收阈值（秒）
+	// 超过此时间未使用的客户端会被标记为可回收
+	// 建议值：根据用户访问频率设置，一般 10-30 分钟
+	ClientIdleTTLSeconds int `mapstructure:"client_idle_ttl_seconds"`
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
 	ConcurrencySlotTTLMinutes int `mapstructure:"concurrency_slot_ttl_minutes"`
@@ -289,11 +314,14 @@ func setDefaults() {
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 300) // 300秒(5分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
+	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
-	viper.SetDefault("gateway.max_idle_conns", 240)          // 最大空闲连接总数（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_idle_conns_per_host", 120) // 每主机最大空闲连接（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_conns_per_host", 240)      // 每主机最大连接数（含活跃，HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_idle_conns", 240)            // 最大空闲连接总数（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_idle_conns_per_host", 120)   // 每主机最大空闲连接（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_conns_per_host", 240)        // 每主机最大连接数（含活跃，HTTP/2 场景默认）
 	viper.SetDefault("gateway.idle_conn_timeout_seconds", 300) // 空闲连接超时（秒）
+	viper.SetDefault("gateway.max_upstream_clients", 5000)
+	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 15) // 并发槽位过期时间（支持超长请求）
 
 	// TokenRefresh
@@ -354,6 +382,14 @@ REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
 REDACTED
+	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
+		switch c.Gateway.ConnectionPoolIsolation {
+		case ConnectionPoolIsolationProxy, ConnectionPoolIsolationAccount, ConnectionPoolIsolationAccountProxy:
+		default:
+			return fmt.Errorf("gateway.connection_pool_isolation must be one of: %s/%s/%s",
+				ConnectionPoolIsolationProxy, ConnectionPoolIsolationAccount, ConnectionPoolIsolationAccountProxy)
+	REDACTED
+REDACTED
 	if c.Gateway.MaxIdleConns <= 0 {
 		return fmt.Errorf("gateway.max_idle_conns must be positive")
 REDACTED
@@ -365,6 +401,12 @@ REDACTED
 REDACTED
 	if c.Gateway.IdleConnTimeoutSeconds <= 0 {
 		return fmt.Errorf("gateway.idle_conn_timeout_seconds must be positive")
+REDACTED
+	if c.Gateway.MaxUpstreamClients <= 0 {
+		return fmt.Errorf("gateway.max_upstream_clients must be positive")
+REDACTED
+	if c.Gateway.ClientIdleTTLSeconds <= 0 {
+		return fmt.Errorf("gateway.client_idle_ttl_seconds must be positive")
 REDACTED
 	if c.Gateway.ConcurrencySlotTTLMinutes <= 0 {
 		return fmt.Errorf("gateway.concurrency_slot_ttl_minutes must be positive")

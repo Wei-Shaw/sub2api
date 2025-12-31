@@ -29,11 +29,21 @@ gateway:
   response_header_timeout: 300
   # 请求体最大字节数（默认 100MB）
   max_body_size: 104857600
+  # 连接池隔离策略：
+  # - proxy: 按代理隔离，同一代理共享连接池（适合代理少、账户多）
+  # - account: 按账户隔离，同一账户共享连接池（适合账户少、需严格隔离）
+  # - account_proxy: 按账户+代理组合隔离（默认，最细粒度）
+  connection_pool_isolation: "account_proxy"
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认）
   max_idle_conns: 240
   max_idle_conns_per_host: 120
   max_conns_per_host: 240
   idle_conn_timeout_seconds: 300
+  # 上游连接池客户端缓存配置
+  # max_upstream_clients: 最大缓存客户端数量，超出后淘汰最久未使用的
+  # client_idle_ttl_seconds: 客户端空闲回收阈值（秒），超时且无活跃请求时回收
+  max_upstream_clients: 5000
+  client_idle_ttl_seconds: 900
   # 并发槽位过期时间（分钟）
   concurrency_slot_ttl_minutes: 15
 
