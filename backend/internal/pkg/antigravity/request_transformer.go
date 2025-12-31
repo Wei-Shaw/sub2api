@@ -210,6 +210,9 @@ REDACTED
 				// Claude 模型需要有效 signature，跳过无 signature 的 thinking block
 				log.Printf("Warning: skipping thinking block without signature for Claude model")
 				continue
+		REDACTED else {
+				// Gemini 模型使用 dummy signature
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
 
@@ -384,6 +387,12 @@ REDACTED
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
 	for _, tool := range tools {
+		// 跳过无效工具名称
+		if tool.Name == "" {
+			log.Printf("Warning: skipping tool with empty name")
+			continue
+	REDACTED
+
 		var description string
 		var inputSchema map[string]any
 
@@ -400,6 +409,14 @@ REDACTED
 
 		// 清理 JSON Schema
 		params := cleanJSONSchema(inputSchema)
+
+		// 为 nil schema 提供默认值
+		if params == nil {
+			params = map[string]any{
+				"type":       "OBJECT",
+				"properties": map[string]any{REDACTED,
+		REDACTED
+	REDACTED
 
 		funcDecls = append(funcDecls, GeminiFunctionDecl{
 			Name:        tool.Name,
