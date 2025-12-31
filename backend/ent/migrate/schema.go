@@ -204,7 +204,7 @@ REDACTED
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
-		{Name: "name", Type: field.TypeString, Unique: true, Size: 100REDACTED,
+		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
 		{Name: "description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
 		{Name: "is_exclusive", Type: field.TypeBool, Default: falseREDACTED,
@@ -470,7 +470,7 @@ REDACTED
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
-		{Name: "email", Type: field.TypeString, Unique: true, Size: 255REDACTED,
+		{Name: "email", Type: field.TypeString, Size: 255REDACTED,
 		{Name: "password_hash", Type: field.TypeString, Size: 255REDACTED,
 		{Name: "role", Type: field.TypeString, Size: 20, Default: "user"REDACTED,
 		{Name: "balance", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
@@ -605,7 +605,7 @@ REDACTED
 		REDACTED,
 			{
 				Name:    "usersubscription_user_id_group_id",
-				Unique:  true,
+				Unique:  false,
 				Columns: []*schema.Column{UserSubscriptionsColumns[16], UserSubscriptionsColumns[15]REDACTED,
 		REDACTED,
 			{

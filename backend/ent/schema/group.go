@@ -33,10 +33,11 @@ REDACTED
 
 func (Group) Fields() []ent.Field {
 	return []ent.Field{
+		// 唯一约束通过部分索引实现（WHERE deleted_at IS NULL），支持软删除后重用
+		// 见迁移文件 016_soft_delete_partial_unique_indexes.sql
 		field.String("name").
 			MaxLen(100).
-			NotEmpty().
-			Unique(),
+			NotEmpty(),
 		field.String("description").
 			Optional().
 			Nillable().
