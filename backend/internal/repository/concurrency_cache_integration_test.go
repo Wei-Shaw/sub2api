@@ -27,7 +27,7 @@ REDACTED
 
 func (s *ConcurrencyCacheSuite) SetupTest() {
 	s.IntegrationRedisSuite.SetupTest()
-	s.cache = NewConcurrencyCache(s.rdb, testSlotTTLMinutes)
+	s.cache = NewConcurrencyCache(s.rdb, testSlotTTLMinutes, int(testSlotTTL.Seconds()))
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
@@ -216,6 +216,48 @@ REDACTED
 		require.NoError(s.T(), err, "Get waitKey after double decrement")
 REDACTED
 	require.GreaterOrEqual(s.T(), val, 0, "expected non-negative wait count")
+REDACTED
+
+func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_IncrementAndDecrement() {
+	accountID := int64(30)
+	waitKey := fmt.Sprintf("%s%d", accountWaitKeyPrefix, accountID)
+
+	ok, err := s.cache.IncrementAccountWaitCount(s.ctx, accountID, 2)
+	require.NoError(s.T(), err, "IncrementAccountWaitCount 1")
+	require.True(s.T(), ok)
+
+	ok, err = s.cache.IncrementAccountWaitCount(s.ctx, accountID, 2)
+	require.NoError(s.T(), err, "IncrementAccountWaitCount 2")
+	require.True(s.T(), ok)
+
+	ok, err = s.cache.IncrementAccountWaitCount(s.ctx, accountID, 2)
+	require.NoError(s.T(), err, "IncrementAccountWaitCount 3")
+	require.False(s.T(), ok, "expected account wait increment over max to fail")
+
+	ttl, err := s.rdb.TTL(s.ctx, waitKey).Result()
+	require.NoError(s.T(), err, "TTL account waitKey")
+	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
+
+	require.NoError(s.T(), s.cache.DecrementAccountWaitCount(s.ctx, accountID), "DecrementAccountWaitCount")
+
+	val, err := s.rdb.Get(s.ctx, waitKey).Int()
+	if !errors.Is(err, redis.Nil) {
+		require.NoError(s.T(), err, "Get waitKey")
+REDACTED
+	require.Equal(s.T(), 1, val, "expected account wait count 1")
+REDACTED
+
+func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_DecrementNoNegative() {
+	accountID := int64(301)
+	waitKey := fmt.Sprintf("%s%d", accountWaitKeyPrefix, accountID)
+
+	require.NoError(s.T(), s.cache.DecrementAccountWaitCount(s.ctx, accountID), "DecrementAccountWaitCount on non-existent key")
+
+	val, err := s.rdb.Get(s.ctx, waitKey).Int()
+	if !errors.Is(err, redis.Nil) {
+		require.NoError(s.T(), err, "Get waitKey")
+REDACTED
+	require.GreaterOrEqual(s.T(), val, 0, "expected non-negative account wait count after decrement on empty")
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestGetAccountConcurrency_Missing() {

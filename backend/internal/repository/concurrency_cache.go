@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
@@ -27,6 +29,8 @@ const (
 	userSlotKeyPrefix = "concurrency:user:"
 	// 等待队列计数器格式: concurrency:wait:{userIDREDACTED
 	waitQueueKeyPrefix = "concurrency:wait:"
+	// 账号级等待队列计数器格式: wait:account:{accountIDREDACTED
+	accountWaitKeyPrefix = "wait:account:"
 
 	// 默认槽位过期时间（分钟），可通过配置覆盖
 	defaultSlotTTLMinutes = 15
@@ -112,33 +116,112 @@ var (
 			redis.call('EXPIRE', KEYS[1], ARGV[2])
 		end
 
-		return 1
-	`)
+			return 1
+		`)
+
+	// incrementAccountWaitScript - account-level wait queue count
+	incrementAccountWaitScript = redis.NewScript(`
+			local current = redis.call('GET', KEYS[1])
+			if current == false then
+				current = 0
+			else
+				current = tonumber(current)
+			end
+
+			if current >= tonumber(ARGV[1]) then
+				return 0
+			end
+
+			local newVal = redis.call('INCR', KEYS[1])
+
+			-- Only set TTL on first creation to avoid refreshing zombie data
+			if newVal == 1 then
+				redis.call('EXPIRE', KEYS[1], ARGV[2])
+			end
+
+			return 1
+		`)
 
 	// decrementWaitScript - same as before
 	decrementWaitScript = redis.NewScript(`
-		local current = redis.call('GET', KEYS[1])
-		if current ~= false and tonumber(current) > 0 then
-			redis.call('DECR', KEYS[1])
-		end
-		return 1
-	`)
+			local current = redis.call('GET', KEYS[1])
+			if current ~= false and tonumber(current) > 0 then
+				redis.call('DECR', KEYS[1])
+			end
+			return 1
+		`)
+
+	// getAccountsLoadBatchScript - batch load query (read-only)
+	// ARGV[1] = slot TTL (seconds, retained for compatibility)
+	// ARGV[2..n] = accountID1, maxConcurrency1, accountID2, maxConcurrency2, ...
+	getAccountsLoadBatchScript = redis.NewScript(`
+			local result = {REDACTED
+
+			local i = 2
+			while i <= #ARGV do
+				local accountID = ARGV[i]
+				local maxConcurrency = tonumber(ARGV[i + 1])
+
+				local slotKey = 'concurrency:account:' .. accountID
+				local currentConcurrency = redis.call('ZCARD', slotKey)
+
+				local waitKey = 'wait:account:' .. accountID
+				local waitingCount = redis.call('GET', waitKey)
+				if waitingCount == false then
+					waitingCount = 0
+				else
+					waitingCount = tonumber(waitingCount)
+				end
+
+				local loadRate = 0
+				if maxConcurrency > 0 then
+					loadRate = math.floor((currentConcurrency + waitingCount) * 100 / maxConcurrency)
+				end
+
+				table.insert(result, accountID)
+				table.insert(result, currentConcurrency)
+				table.insert(result, waitingCount)
+				table.insert(result, loadRate)
+
+				i = i + 2
+			end
+
+			return result
+		`)
+
+	// cleanupExpiredSlotsScript - remove expired slots
+	// KEYS[1] = concurrency:account:{accountIDREDACTED
+	// ARGV[1] = TTL (seconds)
+	cleanupExpiredSlotsScript = redis.NewScript(`
+			local key = KEYS[1]
+			local ttl = tonumber(ARGV[1])
+			local timeResult = redis.call('TIME')
+			local now = tonumber(timeResult[1])
+			local expireBefore = now - ttl
+			return redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
+		`)
 )
 
 type concurrencyCache struct {
-	rdb            *redis.Client
-	slotTTLSeconds int // 槽位过期时间（秒）
+	rdb                 *redis.Client
+	slotTTLSeconds      int // 槽位过期时间（秒）
+	waitQueueTTLSeconds int // 等待队列过期时间（秒）
 REDACTED
 
 // NewConcurrencyCache 创建并发控制缓存
 // slotTTLMinutes: 槽位过期时间（分钟），0 或负数使用默认值 15 分钟
-func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int) service.ConcurrencyCache {
+// waitQueueTTLSeconds: 等待队列过期时间（秒），0 或负数使用 slot TTL
+func NewConcurrencyCache(rdb *redis.Client, slotTTLMinutes int, waitQueueTTLSeconds int) service.ConcurrencyCache {
 	if slotTTLMinutes <= 0 {
 		slotTTLMinutes = defaultSlotTTLMinutes
 REDACTED
+	if waitQueueTTLSeconds <= 0 {
+		waitQueueTTLSeconds = slotTTLMinutes * 60
+REDACTED
 	return &concurrencyCache{
-		rdb:            rdb,
-		slotTTLSeconds: slotTTLMinutes * 60,
+		rdb:                 rdb,
+		slotTTLSeconds:      slotTTLMinutes * 60,
+		waitQueueTTLSeconds: waitQueueTTLSeconds,
 REDACTED
 REDACTED
 
@@ -153,6 +236,10 @@ REDACTED
 
 func waitQueueKey(userID int64) string {
 	return fmt.Sprintf("%s%d", waitQueueKeyPrefix, userID)
+REDACTED
+
+func accountWaitKey(accountID int64) string {
+	return fmt.Sprintf("%s%d", accountWaitKeyPrefix, accountID)
 REDACTED
 
 // Account slot operations
@@ -223,5 +310,77 @@ REDACTED
 func (c *concurrencyCache) DecrementWaitCount(ctx context.Context, userID int64) error {
 	key := waitQueueKey(userID)
 	_, err := decrementWaitScript.Run(ctx, c.rdb, []string{keyREDACTED).Result()
+	return err
+REDACTED
+
+// Account wait queue operations
+
+func (c *concurrencyCache) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+	key := accountWaitKey(accountID)
+	result, err := incrementAccountWaitScript.Run(ctx, c.rdb, []string{keyREDACTED, maxWait, c.waitQueueTTLSeconds).Int()
+	if err != nil {
+		return false, err
+REDACTED
+	return result == 1, nil
+REDACTED
+
+func (c *concurrencyCache) DecrementAccountWaitCount(ctx context.Context, accountID int64) error {
+	key := accountWaitKey(accountID)
+	_, err := decrementWaitScript.Run(ctx, c.rdb, []string{keyREDACTED).Result()
+	return err
+REDACTED
+
+func (c *concurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	key := accountWaitKey(accountID)
+	val, err := c.rdb.Get(ctx, key).Int()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return 0, err
+REDACTED
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+REDACTED
+	return val, nil
+REDACTED
+
+func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []service.AccountWithConcurrency) (map[int64]*service.AccountLoadInfo, error) {
+	if len(accounts) == 0 {
+		return map[int64]*service.AccountLoadInfo{REDACTED, nil
+REDACTED
+
+	args := []interface{REDACTED{c.slotTTLSecondsREDACTED
+	for _, acc := range accounts {
+		args = append(args, acc.ID, acc.MaxConcurrency)
+REDACTED
+
+	result, err := getAccountsLoadBatchScript.Run(ctx, c.rdb, []string{REDACTED, args...).Slice()
+	if err != nil {
+		return nil, err
+REDACTED
+
+	loadMap := make(map[int64]*service.AccountLoadInfo)
+	for i := 0; i < len(result); i += 4 {
+		if i+3 >= len(result) {
+			break
+	REDACTED
+
+		accountID, _ := strconv.ParseInt(fmt.Sprintf("%v", result[i]), 10, 64)
+		currentConcurrency, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+1]))
+		waitingCount, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+2]))
+		loadRate, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+3]))
+
+		loadMap[accountID] = &service.AccountLoadInfo{
+			AccountID:          accountID,
+			CurrentConcurrency: currentConcurrency,
+			WaitingCount:       waitingCount,
+			LoadRate:           loadRate,
+	REDACTED
+REDACTED
+
+	return loadMap, nil
+REDACTED
+
+func (c *concurrencyCache) CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error {
+	key := accountSlotKey(accountID)
+	_, err := cleanupExpiredSlotsScript.Run(ctx, c.rdb, []string{keyREDACTED, c.slotTTLSeconds).Result()
 	return err
 REDACTED
