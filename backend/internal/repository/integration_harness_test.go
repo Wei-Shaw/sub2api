@@ -330,7 +330,8 @@ REDACTED
 
 	switch strings.ToLower(cmd.Name()) {
 	case "get", "set", "setnx", "setex", "psetex", "incr", "decr", "incrby", "expire", "pexpire", "ttl", "pttl",
-		"hgetall", "hget", "hset", "hdel", "hincrbyfloat", "exists":
+		"hgetall", "hget", "hset", "hdel", "hincrbyfloat", "exists",
+		"zadd", "zcard", "zrange", "zrangebyscore", "zrem", "zremrangebyscore", "zrevrange", "zrevrangebyscore", "zscore":
 		prefixOne(1)
 	case "del", "unlink":
 		for i := 1; i < len(args); i++ {
