@@ -80,6 +80,12 @@ REDACTED
 	reqModel, _ := reqBody["model"].(string)
 	reqStream, _ := reqBody["stream"].(bool)
 
+	// 验证 model 必填
+	if reqModel == "" {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+REDACTED
+
 	// For non-Codex CLI requests, set default instructions
 	userAgent := c.GetHeader("User-Agent")
 	if !openai.IsCodexCLIRequest(userAgent) {
