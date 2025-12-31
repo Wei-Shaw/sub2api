@@ -22,7 +22,9 @@ func TestParseGatewayRequest_SystemNull(t *testing.T) {
 	body := []byte(`{"model":"claude-3","system":nullREDACTED`)
 	parsed, err := ParseGatewayRequest(body)
 REDACTED
-	require.False(t, parsed.HasSystem)
+	// 显式传入 system:null 也应视为“字段已存在”，避免默认 system 被注入。
+	require.True(t, parsed.HasSystem)
+	require.Nil(t, parsed.System)
 REDACTED
 
 func TestParseGatewayRequest_InvalidModelType(t *testing.T) {

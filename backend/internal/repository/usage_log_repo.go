@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -536,9 +537,11 @@ REDACTED
 // GetDailyStatsAggregated 使用 SQL 聚合统计用户的每日使用数据
 // 性能优化：使用 GROUP BY 在数据库层按日期分组聚合，避免应用层循环分组统计
 func (r *usageLogRepository) GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (result []map[string]any, err error) {
+	tzName := resolveUsageStatsTimezone()
 	query := `
 		SELECT
-			TO_CHAR(created_at, 'YYYY-MM-DD') as date,
+			-- 使用应用时区分组，避免数据库会话时区导致日边界偏移。
+			TO_CHAR(created_at AT TIME ZONE $4, 'YYYY-MM-DD') as date,
 			COUNT(*) as total_requests,
 			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
 			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
@@ -552,7 +555,7 @@ func (r *usageLogRepository) GetDailyStatsAggregated(ctx context.Context, userID
 		ORDER BY 1
 	`
 
-	rows, err := r.sql.QueryContext(ctx, query, userID, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, query, userID, startTime, endTime, tzName)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -605,6 +608,19 @@ REDACTED
 REDACTED
 
 	return result, nil
+REDACTED
+
+// resolveUsageStatsTimezone 获取用于 SQL 分组的时区名称。
+// 优先使用应用初始化的时区，其次尝试读取 TZ 环境变量，最后回落为 UTC。
+func resolveUsageStatsTimezone() string {
+	tzName := timezone.Name()
+	if tzName != "" && tzName != "Local" {
+		return tzName
+REDACTED
+	if envTZ := strings.TrimSpace(os.Getenv("TZ")); envTZ != "" {
+		return envTZ
+REDACTED
+	return "UTC"
 REDACTED
 
 func (r *usageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {

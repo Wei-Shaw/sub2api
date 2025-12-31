@@ -24,7 +24,7 @@ type ParsedRequest struct {
 	MetadataUserID string // metadata.user_id（用于会话亲和）
 	System         any    // system 字段内容
 	Messages       []any  // messages 数组
-	HasSystem      bool   // 是否包含 system 字段
+	HasSystem      bool   // 是否包含 system 字段（包含 null 也视为显式传入）
 REDACTED
 
 // ParseGatewayRequest 解析网关请求体并返回结构化结果
@@ -58,7 +58,9 @@ REDACTED
 			parsed.MetadataUserID = userID
 	REDACTED
 REDACTED
-	if system, ok := req["system"]; ok && system != nil {
+	// system 字段只要存在就视为显式提供（即使为 null），
+	// 以避免客户端传 null 时被默认 system 误注入。
+	if system, ok := req["system"]; ok {
 		parsed.HasSystem = true
 		parsed.System = system
 REDACTED

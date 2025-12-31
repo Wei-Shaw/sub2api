@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -49,12 +50,13 @@ const (
 // 新实现使用固定大小的工作池：
 // 1. 预创建 10 个 worker goroutine，避免频繁创建销毁
 // 2. 使用带缓冲的 channel（1000）作为任务队列，平滑写入峰值
-// 3. 非阻塞写入，队列满时丢弃任务（缓存最终一致性可接受）
+// 3. 非阻塞写入，队列满时关键任务同步回退，非关键任务丢弃并告警
 // 4. 统一超时控制，避免慢操作阻塞工作池
 const (
-	cacheWriteWorkerCount = 10              // 工作协程数量
-	cacheWriteBufferSize  = 1000            // 任务队列缓冲大小
-	cacheWriteTimeout     = 2 * time.Second // 单个写入操作超时
+	cacheWriteWorkerCount     = 10              // 工作协程数量
+	cacheWriteBufferSize      = 1000            // 任务队列缓冲大小
+	cacheWriteTimeout         = 2 * time.Second // 单个写入操作超时
+	cacheWriteDropLogInterval = 5 * time.Second // 丢弃日志节流间隔
 )
 
 // cacheWriteTask 缓存写入任务
@@ -78,6 +80,11 @@ type BillingCacheService struct {
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
 	cacheWriteStopOnce sync.Once
+	// 丢弃日志节流计数器（减少高负载下日志噪音）
+	cacheWriteDropFullCount     uint64
+	cacheWriteDropFullLastLog   int64
+	cacheWriteDropClosedCount   uint64
+	cacheWriteDropClosedLastLog int64
 REDACTED
 
 // NewBillingCacheService 创建计费缓存服务
@@ -112,16 +119,25 @@ func (s *BillingCacheService) startCacheWriteWorkers() {
 REDACTED
 REDACTED
 
-func (s *BillingCacheService) enqueueCacheWrite(task cacheWriteTask) {
+// enqueueCacheWrite 尝试将任务入队，队列满时返回 false（并记录告警）。
+func (s *BillingCacheService) enqueueCacheWrite(task cacheWriteTask) (enqueued bool) {
 	if s.cacheWriteChan == nil {
-		return
+		return false
 REDACTED
 	defer func() {
-		_ = recover()
+		if recovered := recover(); recovered != nil {
+			// 队列已关闭时可能触发 panic，记录后静默失败。
+			s.logCacheWriteDrop(task, "closed")
+			enqueued = false
+	REDACTED
 REDACTED()
 	select {
 	case s.cacheWriteChan <- task:
+		return true
 	default:
+		// 队列满时不阻塞主流程，交由调用方决定是否同步回退。
+		s.logCacheWriteDrop(task, "full")
+		return false
 REDACTED
 REDACTED
 
@@ -151,6 +167,62 @@ func (s *BillingCacheService) cacheWriteWorker() {
 REDACTED
 REDACTED
 
+// cacheWriteKindName 用于日志中的任务类型标识，便于排查丢弃原因。
+func cacheWriteKindName(kind cacheWriteKind) string {
+	switch kind {
+	case cacheWriteSetBalance:
+		return "set_balance"
+	case cacheWriteSetSubscription:
+		return "set_subscription"
+	case cacheWriteUpdateSubscriptionUsage:
+		return "update_subscription_usage"
+	case cacheWriteDeductBalance:
+		return "deduct_balance"
+	default:
+		return "unknown"
+REDACTED
+REDACTED
+
+// logCacheWriteDrop 使用节流方式记录丢弃情况，并汇总丢弃数量。
+func (s *BillingCacheService) logCacheWriteDrop(task cacheWriteTask, reason string) {
+	var (
+		countPtr *uint64
+		lastPtr  *int64
+	)
+	switch reason {
+	case "full":
+		countPtr = &s.cacheWriteDropFullCount
+		lastPtr = &s.cacheWriteDropFullLastLog
+	case "closed":
+		countPtr = &s.cacheWriteDropClosedCount
+		lastPtr = &s.cacheWriteDropClosedLastLog
+	default:
+		return
+REDACTED
+
+	atomic.AddUint64(countPtr, 1)
+	now := time.Now().UnixNano()
+	last := atomic.LoadInt64(lastPtr)
+	if now-last < int64(cacheWriteDropLogInterval) {
+		return
+REDACTED
+	if !atomic.CompareAndSwapInt64(lastPtr, last, now) {
+		return
+REDACTED
+	dropped := atomic.SwapUint64(countPtr, 0)
+	if dropped == 0 {
+		return
+REDACTED
+	log.Printf("Warning: cache write queue %s, dropped %d tasks in last %s (latest kind=%s user %d group %d)",
+		reason,
+		dropped,
+		cacheWriteDropLogInterval,
+		cacheWriteKindName(task.kind),
+		task.userID,
+		task.groupID,
+	)
+REDACTED
+
 // ============================================
 // 余额缓存方法
 // ============================================
@@ -175,7 +247,7 @@ REDACTED
 REDACTED
 
 	// 异步建立缓存
-	s.enqueueCacheWrite(cacheWriteTask{
+	_ = s.enqueueCacheWrite(cacheWriteTask{
 		kind:    cacheWriteSetBalance,
 		userID:  userID,
 		balance: balance,
@@ -213,11 +285,22 @@ REDACTED
 
 // QueueDeductBalance 异步扣减余额缓存
 func (s *BillingCacheService) QueueDeductBalance(userID int64, amount float64) {
-	s.enqueueCacheWrite(cacheWriteTask{
+	if s.cache == nil {
+		return
+REDACTED
+	// 队列满时同步回退，避免关键扣减被静默丢弃。
+	if s.enqueueCacheWrite(cacheWriteTask{
 		kind:   cacheWriteDeductBalance,
 		userID: userID,
 		amount: amount,
-REDACTED)
+REDACTED) {
+		return
+REDACTED
+	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+	defer cancel()
+	if err := s.DeductBalanceCache(ctx, userID, amount); err != nil {
+		log.Printf("Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
+REDACTED
 REDACTED
 
 // InvalidateUserBalance 失效用户余额缓存
@@ -255,7 +338,7 @@ REDACTED
 REDACTED
 
 	// 异步建立缓存
-	s.enqueueCacheWrite(cacheWriteTask{
+	_ = s.enqueueCacheWrite(cacheWriteTask{
 		kind:             cacheWriteSetSubscription,
 		userID:           userID,
 		groupID:          groupID,
@@ -324,12 +407,23 @@ REDACTED
 
 // QueueUpdateSubscriptionUsage 异步更新订阅用量缓存
 func (s *BillingCacheService) QueueUpdateSubscriptionUsage(userID, groupID int64, costUSD float64) {
-	s.enqueueCacheWrite(cacheWriteTask{
+	if s.cache == nil {
+		return
+REDACTED
+	// 队列满时同步回退，确保订阅用量及时更新。
+	if s.enqueueCacheWrite(cacheWriteTask{
 		kind:    cacheWriteUpdateSubscriptionUsage,
 		userID:  userID,
 		groupID: groupID,
 		amount:  costUSD,
-REDACTED)
+REDACTED) {
+		return
+REDACTED
+	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+	defer cancel()
+	if err := s.UpdateSubscriptionUsage(ctx, userID, groupID, costUSD); err != nil {
+		log.Printf("Warning: update subscription cache fallback failed for user %d group %d: %v", userID, groupID, err)
+REDACTED
 REDACTED
 
 // InvalidateSubscription 失效指定订阅缓存
