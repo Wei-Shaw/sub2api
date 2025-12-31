@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
 	"github.com/gin-gonic/gin"
@@ -1061,6 +1062,30 @@ REDACTED
 
 	// 处理错误响应（不可重试的错误）
 	if resp.StatusCode >= 400 {
+		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
+		if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
+			respBody, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				// ReadAll failed, fall back to normal error handling without consuming the stream
+				return s.handleErrorResponse(ctx, resp, c, account)
+		REDACTED
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			if s.shouldFailoverOn400(respBody) {
+				if s.cfg.Gateway.LogUpstreamErrorBody {
+					log.Printf(
+						"Account %d: 400 error, attempting failover: %s",
+						account.ID,
+						truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+					)
+			REDACTED else {
+					log.Printf("Account %d: 400 error, attempting failover", account.ID)
+			REDACTED
+				s.handleFailoverSideEffects(ctx, resp, account)
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		REDACTED
+	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account)
 REDACTED
 
@@ -1163,6 +1188,13 @@ REDACTED
 	// 处理anthropic-beta header（OAuth账号需要特殊处理）
 	if tokenType == "oauth" {
 		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
+REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForApiKey && req.Header.Get("anthropic-beta") == "" {
+		// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
+		if requestNeedsBetaFeatures(body) {
+			if beta := defaultApiKeyBetaHeader(body); beta != "" {
+				req.Header.Set("anthropic-beta", beta)
+		REDACTED
+	REDACTED
 REDACTED
 
 	return req, nil
@@ -1215,6 +1247,83 @@ REDACTED
 	return claude.DefaultBetaHeader
 REDACTED
 
+func requestNeedsBetaFeatures(body []byte) bool {
+	tools := gjson.GetBytes(body, "tools")
+	if tools.Exists() && tools.IsArray() && len(tools.Array()) > 0 {
+		return true
+REDACTED
+	if strings.EqualFold(gjson.GetBytes(body, "thinking.type").String(), "enabled") {
+		return true
+REDACTED
+	return false
+REDACTED
+
+func defaultApiKeyBetaHeader(body []byte) string {
+	modelID := gjson.GetBytes(body, "model").String()
+	if strings.Contains(strings.ToLower(modelID), "haiku") {
+		return claude.ApiKeyHaikuBetaHeader
+REDACTED
+	return claude.ApiKeyBetaHeader
+REDACTED
+
+func truncateForLog(b []byte, maxBytes int) string {
+	if maxBytes <= 0 {
+		maxBytes = 2048
+REDACTED
+	if len(b) > maxBytes {
+		b = b[:maxBytes]
+REDACTED
+	s := string(b)
+	// 保持一行，避免污染日志格式
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	s = strings.ReplaceAll(s, "\r", "\\r")
+	return s
+REDACTED
+
+func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
+	// 只对“可能是兼容性差异导致”的 400 允许切换，避免无意义重试。
+	// 默认保守：无法识别则不切换。
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+	if msg == "" {
+		return false
+REDACTED
+
+	// 缺少/错误的 beta header：换账号/链路可能成功（尤其是混合调度时）。
+	// 更精确匹配 beta 相关的兼容性问题，避免误触发切换。
+	if strings.Contains(msg, "anthropic-beta") ||
+		strings.Contains(msg, "beta feature") ||
+		strings.Contains(msg, "requires beta") {
+		return true
+REDACTED
+
+	// thinking/tool streaming 等兼容性约束（常见于中间转换链路）
+	if strings.Contains(msg, "thinking") || strings.Contains(msg, "thought_signature") || strings.Contains(msg, "signature") {
+		return true
+REDACTED
+	if strings.Contains(msg, "tool_use") || strings.Contains(msg, "tool_result") || strings.Contains(msg, "tools") {
+		return true
+REDACTED
+
+	return false
+REDACTED
+
+func extractUpstreamErrorMessage(body []byte) string {
+	// Claude 风格：{"type":"error","error":{"type":"...","message":"..."REDACTEDREDACTED
+	if m := gjson.GetBytes(body, "error.message").String(); strings.TrimSpace(m) != "" {
+		inner := strings.TrimSpace(m)
+		// 有些上游会把完整 JSON 作为字符串塞进 message
+		if strings.HasPrefix(inner, "{") {
+			if innerMsg := gjson.Get(inner, "error.message").String(); strings.TrimSpace(innerMsg) != "" {
+				return innerMsg
+		REDACTED
+	REDACTED
+		return m
+REDACTED
+
+	// 兜底：尝试顶层 message
+	return gjson.GetBytes(body, "message").String()
+REDACTED
+
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
 	body, _ := io.ReadAll(resp.Body)
 
@@ -1227,6 +1336,16 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
+		// 仅记录上游错误摘要（避免输出请求内容）；需要时可通过配置打开
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			log.Printf(
+				"Upstream 400 error (account=%d platform=%s type=%s): %s",
+				account.ID,
+				account.Platform,
+				account.Type,
+				truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			)
+	REDACTED
 		c.Data(http.StatusBadRequest, "application/json", body)
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 	case 401:
@@ -1706,6 +1825,18 @@ REDACTED
 		// 标记账号状态（429/529等）
 		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
+		// 记录上游错误摘要便于排障（不回显请求内容）
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			log.Printf(
+				"count_tokens upstream error %d (account=%d platform=%s type=%s): %s",
+				resp.StatusCode,
+				account.ID,
+				account.Platform,
+				account.Type,
+				truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			)
+	REDACTED
+
 		// 返回简化的错误响应
 		errMsg := "Upstream request failed"
 		switch resp.StatusCode {
@@ -1786,6 +1917,13 @@ REDACTED
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {
 		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
+REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForApiKey && req.Header.Get("anthropic-beta") == "" {
+		// API-key：与 messages 同步的按需 beta 注入（默认关闭）
+		if requestNeedsBetaFeatures(body) {
+			if beta := defaultApiKeyBetaHeader(body); beta != "" {
+				req.Header.Set("anthropic-beta", beta)
+		REDACTED
+	REDACTED
 REDACTED
 
 	return req, nil

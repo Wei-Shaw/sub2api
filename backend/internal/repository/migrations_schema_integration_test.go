@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +14,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	tx := testTx(t)
 
 	// Re-apply migrations to verify idempotency (no errors, no duplicate rows).
-	require.NoError(t, infrastructure.ApplyMigrations(context.Background(), integrationDB))
+	require.NoError(t, ApplyMigrations(context.Background(), integrationDB))
 
 	// schema_migrations should have at least the current migration set.
 	var applied int

@@ -17,7 +17,6 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
-	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -97,7 +96,7 @@ REDACTED
 		log.Printf("failed to open sql db: %v", err)
 		os.Exit(1)
 REDACTED
-	if err := infrastructure.ApplyMigrations(ctx, integrationDB); err != nil {
+	if err := ApplyMigrations(ctx, integrationDB); err != nil {
 		log.Printf("failed to apply db migrations: %v", err)
 		os.Exit(1)
 REDACTED

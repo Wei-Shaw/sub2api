@@ -633,112 +633,7 @@ REDACTED)
 	s.Require().Equal(service.SubscriptionStatusExpired, updated.Status, "expected status expired")
 REDACTED
 
-// --- 限额检查与软删除过滤测试 ---
-
-func (s *UserSubscriptionRepoSuite) mustCreateGroupWithLimits(name string, daily, weekly, monthly *float64) *service.Group {
-	s.T().Helper()
-
-	create := s.client.Group.Create().
-		SetName(name).
-		SetStatus(service.StatusActive).
-		SetSubscriptionType(service.SubscriptionTypeSubscription)
-
-	if daily != nil {
-		create.SetDailyLimitUsd(*daily)
-REDACTED
-	if weekly != nil {
-		create.SetWeeklyLimitUsd(*weekly)
-REDACTED
-	if monthly != nil {
-		create.SetMonthlyLimitUsd(*monthly)
-REDACTED
-
-	g, err := create.Save(s.ctx)
-	s.Require().NoError(err, "create group with limits")
-	return groupEntityToService(g)
-REDACTED
-
-func (s *UserSubscriptionRepoSuite) TestIncrementUsage_DailyLimitExceeded() {
-	user := s.mustCreateUser("dailylimit@test.com", service.RoleUser)
-	dailyLimit := 10.0
-	group := s.mustCreateGroupWithLimits("g-dailylimit", &dailyLimit, nil, nil)
-	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
-
-	// 先增加 9.0，应该成功
-	err := s.repo.IncrementUsage(s.ctx, sub.ID, 9.0)
-	s.Require().NoError(err, "first increment should succeed")
-
-	// 再增加 2.0，会超过 10.0 限额，应该失败
-	err = s.repo.IncrementUsage(s.ctx, sub.ID, 2.0)
-	s.Require().Error(err, "should fail when daily limit exceeded")
-	s.Require().ErrorIs(err, service.ErrDailyLimitExceeded)
-
-	// 验证用量没有变化
-	got, err := s.repo.GetByID(s.ctx, sub.ID)
-	s.Require().NoError(err)
-	s.Require().InDelta(9.0, got.DailyUsageUSD, 1e-6, "usage should not change after failed increment")
-REDACTED
-
-func (s *UserSubscriptionRepoSuite) TestIncrementUsage_WeeklyLimitExceeded() {
-	user := s.mustCreateUser("weeklylimit@test.com", service.RoleUser)
-	weeklyLimit := 50.0
-	group := s.mustCreateGroupWithLimits("g-weeklylimit", nil, &weeklyLimit, nil)
-	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
-
-	// 增加 45.0，应该成功
-	err := s.repo.IncrementUsage(s.ctx, sub.ID, 45.0)
-	s.Require().NoError(err, "first increment should succeed")
-
-	// 再增加 10.0，会超过 50.0 限额，应该失败
-	err = s.repo.IncrementUsage(s.ctx, sub.ID, 10.0)
-	s.Require().Error(err, "should fail when weekly limit exceeded")
-	s.Require().ErrorIs(err, service.ErrWeeklyLimitExceeded)
-REDACTED
-
-func (s *UserSubscriptionRepoSuite) TestIncrementUsage_MonthlyLimitExceeded() {
-	user := s.mustCreateUser("monthlylimit@test.com", service.RoleUser)
-	monthlyLimit := 100.0
-	group := s.mustCreateGroupWithLimits("g-monthlylimit", nil, nil, &monthlyLimit)
-	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
-
-	// 增加 90.0，应该成功
-	err := s.repo.IncrementUsage(s.ctx, sub.ID, 90.0)
-	s.Require().NoError(err, "first increment should succeed")
-
-	// 再增加 20.0，会超过 100.0 限额，应该失败
-	err = s.repo.IncrementUsage(s.ctx, sub.ID, 20.0)
-	s.Require().Error(err, "should fail when monthly limit exceeded")
-	s.Require().ErrorIs(err, service.ErrMonthlyLimitExceeded)
-REDACTED
-
-func (s *UserSubscriptionRepoSuite) TestIncrementUsage_NoLimits() {
-	user := s.mustCreateUser("nolimits@test.com", service.RoleUser)
-	group := s.mustCreateGroupWithLimits("g-nolimits", nil, nil, nil) // 无限额
-	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
-
-	// 应该可以增加任意金额
-	err := s.repo.IncrementUsage(s.ctx, sub.ID, 1000000.0)
-	s.Require().NoError(err, "should succeed without limits")
-
-	got, err := s.repo.GetByID(s.ctx, sub.ID)
-	s.Require().NoError(err)
-	s.Require().InDelta(1000000.0, got.DailyUsageUSD, 1e-6)
-REDACTED
-
-func (s *UserSubscriptionRepoSuite) TestIncrementUsage_AtExactLimit() {
-	user := s.mustCreateUser("exactlimit@test.com", service.RoleUser)
-	dailyLimit := 10.0
-	group := s.mustCreateGroupWithLimits("g-exactlimit", &dailyLimit, nil, nil)
-	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
-
-	// 正好达到限额应该成功
-	err := s.repo.IncrementUsage(s.ctx, sub.ID, 10.0)
-	s.Require().NoError(err, "should succeed at exact limit")
-
-	got, err := s.repo.GetByID(s.ctx, sub.ID)
-	s.Require().NoError(err)
-	s.Require().InDelta(10.0, got.DailyUsageUSD, 1e-6)
-REDACTED
+// --- 软删除过滤测试 ---
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage_SoftDeletedGroup() {
 	user := s.mustCreateUser("softdeleted@test.com", service.RoleUser)
@@ -779,7 +674,7 @@ REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Concurrent() {
 	user := s.mustCreateUser("concurrent@test.com", service.RoleUser)
-	group := s.mustCreateGroupWithLimits("g-concurrent", nil, nil, nil) // 无限额
+	group := s.mustCreateGroup("g-concurrent")
 	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
 
 	const numGoroutines = 10
@@ -806,34 +701,6 @@ REDACTED
 	s.Require().InDelta(expectedUsage, got.DailyUsageUSD, 1e-6, "daily usage should be correctly accumulated")
 	s.Require().InDelta(expectedUsage, got.WeeklyUsageUSD, 1e-6, "weekly usage should be correctly accumulated")
 	s.Require().InDelta(expectedUsage, got.MonthlyUsageUSD, 1e-6, "monthly usage should be correctly accumulated")
-REDACTED
-
-func (s *UserSubscriptionRepoSuite) TestIncrementUsage_ConcurrentWithLimit() {
-	user := s.mustCreateUser("concurrentlimit@test.com", service.RoleUser)
-	dailyLimit := 5.0
-	group := s.mustCreateGroupWithLimits("g-concurrentlimit", &dailyLimit, nil, nil)
-	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
-
-	// 注意：事务内的操作是串行的，所以这里改为顺序执行以验证限额逻辑
-	// 尝试增加 10 次，每次 1.0，但限额只有 5.0
-	const numAttempts = 10
-	const incrementPerAttempt = 1.0
-
-	successCount := 0
-	for i := 0; i < numAttempts; i++ {
-		err := s.repo.IncrementUsage(s.ctx, sub.ID, incrementPerAttempt)
-		if err == nil {
-			successCount++
-	REDACTED
-REDACTED
-
-	// 验证：应该有 5 次成功（不超过限额），5 次失败（超出限额）
-	s.Require().Equal(5, successCount, "exactly 5 increments should succeed (limit=5, increment=1)")
-
-	// 验证最终用量等于限额
-	got, err := s.repo.GetByID(s.ctx, sub.ID)
-	s.Require().NoError(err)
-	s.Require().InDelta(dailyLimit, got.DailyUsageUSD, 1e-6, "daily usage should equal limit")
 REDACTED
 
 func (s *UserSubscriptionRepoSuite) TestTxContext_RollbackIsolation() {

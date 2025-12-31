@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -28,7 +29,7 @@ func (r *AntigravityTokenRefresher) CanRefresh(account *Account) bool {
 REDACTED
 
 // NeedsRefresh 检查账户是否需要刷新
-// Antigravity 使用固定的10分钟刷新窗口，忽略全局配置
+// Antigravity 使用固定的15分钟刷新窗口，忽略全局配置
 func (r *AntigravityTokenRefresher) NeedsRefresh(account *Account, _ time.Duration) bool {
 	if !r.CanRefresh(account) {
 		return false
@@ -37,7 +38,13 @@ REDACTED
 	if expiresAt == nil {
 		return false
 REDACTED
-	return time.Until(*expiresAt) < antigravityRefreshWindow
+	timeUntilExpiry := time.Until(*expiresAt)
+	needsRefresh := timeUntilExpiry < antigravityRefreshWindow
+	if needsRefresh {
+		fmt.Printf("[AntigravityTokenRefresher] Account %d needs refresh: expires_at=%s, time_until_expiry=%v, window=%v\n",
+			account.ID, expiresAt.Format("2006-01-02 15:04:05"), timeUntilExpiry, antigravityRefreshWindow)
+REDACTED
+	return needsRefresh
 REDACTED
 
 // Refresh 执行 token 刷新
