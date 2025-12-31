@@ -1919,12 +1919,12 @@ REDACTED
 		var ra time.Time
 		if isCodeAssist {
 			// Code Assist: fallback cooldown by tier
-				cooldown := geminiCooldownForTier(tierID)
-				if s.rateLimitService != nil {
-					cooldown = s.rateLimitService.GeminiCooldown(ctx, account)
-			REDACTED
+			cooldown := geminiCooldownForTier(tierID)
+			if s.rateLimitService != nil {
+				cooldown = s.rateLimitService.GeminiCooldown(ctx, account)
+		REDACTED
 			ra = time.Now().Add(cooldown)
-			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, ra.Sub(time.Now()).Truncate(time.Second))
+			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
 	REDACTED else {
 			// API Key / AI Studio OAuth: PST 午夜
 			if ts := nextGeminiDailyResetUnix(); ts != nil {

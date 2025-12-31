@@ -93,11 +93,11 @@ REDACTED
 
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
-	UpdatedAt      *time.Time     `json:"updated_at,omitempty"`       // 更新时间
-	FiveHour       *UsageProgress `json:"five_hour"`                  // 5小时窗口
-	SevenDay       *UsageProgress `json:"seven_day,omitempty"`        // 7天窗口
-	SevenDaySonnet *UsageProgress `json:"seven_day_sonnet,omitempty"` // 7天Sonnet窗口
-	GeminiProDaily *UsageProgress `json:"gemini_pro_daily,omitempty"` // Gemini Pro 日配额
+	UpdatedAt        *time.Time     `json:"updated_at,omitempty"`         // 更新时间
+	FiveHour         *UsageProgress `json:"five_hour"`                    // 5小时窗口
+	SevenDay         *UsageProgress `json:"seven_day,omitempty"`          // 7天窗口
+	SevenDaySonnet   *UsageProgress `json:"seven_day_sonnet,omitempty"`   // 7天Sonnet窗口
+	GeminiProDaily   *UsageProgress `json:"gemini_pro_daily,omitempty"`   // Gemini Pro 日配额
 	GeminiFlashDaily *UsageProgress `json:"gemini_flash_daily,omitempty"` // Gemini Flash 日配额
 REDACTED
 
@@ -124,10 +124,10 @@ REDACTED
 
 // AccountUsageService 账号使用量查询服务
 type AccountUsageService struct {
-	accountRepo         AccountRepository
-	usageLogRepo        UsageLogRepository
-	usageFetcher        ClaudeUsageFetcher
-	geminiQuotaService  *GeminiQuotaService
+	accountRepo        AccountRepository
+	usageLogRepo       UsageLogRepository
+	usageFetcher       ClaudeUsageFetcher
+	geminiQuotaService *GeminiQuotaService
 REDACTED
 
 // NewAccountUsageService 创建AccountUsageService实例
