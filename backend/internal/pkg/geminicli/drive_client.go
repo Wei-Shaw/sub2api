@@ -94,10 +94,12 @@ REDACTED
 			resp.StatusCode == http.StatusInternalServerError ||
 			resp.StatusCode == http.StatusBadGateway ||
 			resp.StatusCode == http.StatusServiceUnavailable) && attempt < maxRetries-1 {
-			_ = resp.Body.Close()
-			backoff := time.Duration(1<<uint(attempt)) * time.Second
-			jitter := time.Duration(rng.Intn(1000)) * time.Millisecond
-			if err := sleepWithContext(backoff + jitter); err != nil {
+			if err := func() error {
+				defer func() { _ = resp.Body.Close() REDACTED()
+				backoff := time.Duration(1<<uint(attempt)) * time.Second
+				jitter := time.Duration(rng.Intn(1000)) * time.Millisecond
+				return sleepWithContext(backoff + jitter)
+		REDACTED(); err != nil {
 				return nil, fmt.Errorf("request cancelled: %w", err)
 		REDACTED
 			continue

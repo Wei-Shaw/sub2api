@@ -18,7 +18,7 @@ type RateLimitService struct {
 	usageRepo          UsageLogRepository
 	cfg                *config.Config
 	geminiQuotaService *GeminiQuotaService
-	usageCacheMu       sync.Mutex
+	usageCacheMu       sync.RWMutex
 	usageCache         map[int64]*geminiUsageCacheEntry
 REDACTED
 
@@ -138,8 +138,8 @@ REDACTED
 REDACTED
 
 func (s *RateLimitService) getGeminiUsageTotals(accountID int64, windowStart, now time.Time) (GeminiUsageTotals, bool) {
-	s.usageCacheMu.Lock()
-	defer s.usageCacheMu.Unlock()
+	s.usageCacheMu.RLock()
+	defer s.usageCacheMu.RUnlock()
 
 	if s.usageCache == nil {
 		return GeminiUsageTotals{REDACTED, false
