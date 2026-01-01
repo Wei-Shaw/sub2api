@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	TierAIPremium         = "AI_PREMIUM"
-	TierGoogleOneStandard = "GOOGLE_ONE_STANDARD"
-	TierGoogleOneBasic    = "GOOGLE_ONE_BASIC"
-	TierFree              = "FREE"
-	TierGoogleOneUnknown  = "GOOGLE_ONE_UNKNOWN"
+	TierAIPremium          = "AI_PREMIUM"
+	TierGoogleOneStandard  = "GOOGLE_ONE_STANDARD"
+	TierGoogleOneBasic     = "GOOGLE_ONE_BASIC"
+	TierFree               = "FREE"
+	TierGoogleOneUnknown   = "GOOGLE_ONE_UNKNOWN"
 	TierGoogleOneUnlimited = "GOOGLE_ONE_UNLIMITED"
 )
 
@@ -340,7 +340,8 @@ REDACTED
 	// 对于 code_assist 模式，project_id 是必需的，需要调用 Code Assist API
 	// 对于 google_one 模式，使用个人 Google 账号，不需要 project_id，配额由 Google 网关自动识别
 	// 对于 ai_studio 模式，project_id 是可选的（不影响使用 AI Studio API）
-	if oauthType == "code_assist" {
+	switch oauthType {
+	case "code_assist":
 		if projectID == "" {
 			var err error
 			projectID, tierID, err = s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
@@ -364,7 +365,7 @@ REDACTED
 		if tierID == "" {
 			tierID = "LEGACY"
 	REDACTED
-REDACTED else if oauthType == "google_one" {
+	case "google_one":
 		// Attempt to fetch Drive storage tier
 		tierID, storageInfo, err := s.FetchGoogleOneTier(ctx, tokenResp.AccessToken, proxyURL)
 		if err != nil {
@@ -523,7 +524,8 @@ REDACTED
 
 	// For Code Assist, project_id is required. Auto-detect if missing.
 	// For AI Studio OAuth, project_id is optional and should not block refresh.
-	if oauthType == "code_assist" {
+	switch oauthType {
+	case "code_assist":
 		// 先设置默认值或保留旧值，确保 tier_id 始终有值
 		if existingTierID != "" {
 			tokenInfo.TierID = existingTierID
@@ -551,7 +553,7 @@ REDACTED
 		if strings.TrimSpace(tokenInfo.ProjectID) == "" {
 			return nil, fmt.Errorf("failed to auto-detect project_id: empty result")
 	REDACTED
-REDACTED else if oauthType == "google_one" {
+	case "google_one":
 		// Check if tier cache is stale (> 24 hours)
 		needsRefresh := true
 		if account.Extra != nil {

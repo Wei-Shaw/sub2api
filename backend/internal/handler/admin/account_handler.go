@@ -1023,6 +1023,10 @@ REDACTED
 REDACTED
 
 	tierID, storageInfo, err := h.geminiOAuthService.FetchGoogleOneTier(c.Request.Context(), accessToken, proxyURL)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
@@ -1044,10 +1048,10 @@ REDACTED)
 REDACTED
 
 	response.Success(c, gin.H{
-		"tier_id":              tierID,
-		"drive_storage_limit":  account.Extra["drive_storage_limit"],
-		"drive_storage_usage":  account.Extra["drive_storage_usage"],
-		"updated_at":           account.Extra["drive_tier_updated_at"],
+		"tier_id":             tierID,
+		"drive_storage_limit": account.Extra["drive_storage_limit"],
+		"drive_storage_usage": account.Extra["drive_storage_usage"],
+		"updated_at":          account.Extra["drive_tier_updated_at"],
 REDACTED)
 REDACTED
 
