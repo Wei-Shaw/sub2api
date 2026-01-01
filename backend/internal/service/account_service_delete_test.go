@@ -40,6 +40,10 @@ func (s *accountRepoStub) GetByID(ctx context.Context, id int64) (*Account, erro
 	panic("unexpected GetByID call")
 REDACTED
 
+func (s *accountRepoStub) GetByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
+	panic("unexpected GetByIDs call")
+REDACTED
+
 // ExistsByID 返回预设的存在性检查结果。
 // 这是 Delete 方法调用的第一个仓储方法，用于验证账号是否存在。
 func (s *accountRepoStub) ExistsByID(ctx context.Context, id int64) (bool, error) {

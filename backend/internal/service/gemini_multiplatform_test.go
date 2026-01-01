@@ -25,6 +25,16 @@ REDACTED
 	return nil, errors.New("account not found")
 REDACTED
 
+func (m *mockAccountRepoForGemini) GetByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
+	var result []*Account
+	for _, id := range ids {
+		if acc, ok := m.accountsByID[id]; ok {
+			result = append(result, acc)
+	REDACTED
+REDACTED
+	return result, nil
+REDACTED
+
 func (m *mockAccountRepoForGemini) ExistsByID(ctx context.Context, id int64) (bool, error) {
 	if m.accountsByID == nil {
 		return false, nil

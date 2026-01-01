@@ -26,5 +26,5 @@ UPDATE accounts
 SET credentials = credentials - 'tier_id'
 WHERE platform = 'gemini'
   AND type = 'oauth'
-  AND credentials->>'oauth_type' = 'code_assist';
+  AND credentials ? 'tier_id';
 -- +goose StatementEnd
