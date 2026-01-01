@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
@@ -49,13 +51,38 @@ REDACTED)
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 REDACTED
 
-	// Retry logic with exponential backoff for rate limits
+	sleepWithContext := func(d time.Duration) error {
+		timer := time.NewTimer(d)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+	REDACTED
+REDACTED
+
+	// Retry logic with exponential backoff (+ jitter) for rate limits and transient failures
 	var resp *http.Response
 	maxRetries := 3
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+	REDACTED
+
 		resp, err = client.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to execute request: %w", err)
+			// Network error retry
+			if attempt < maxRetries-1 {
+				backoff := time.Duration(1<<uint(attempt)) * time.Second
+				jitter := time.Duration(rng.Intn(1000)) * time.Millisecond
+				if err := sleepWithContext(backoff + jitter); err != nil {
+					return nil, fmt.Errorf("request cancelled: %w", err)
+			REDACTED
+				continue
+		REDACTED
+			return nil, fmt.Errorf("network error after %d attempts: %w", maxRetries, err)
 	REDACTED
 
 		// Success
@@ -63,18 +90,34 @@ REDACTED
 			break
 	REDACTED
 
-		// Rate limit - retry with exponential backoff
-		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries-1 {
+		// Retry 429, 500, 502, 503 with exponential backoff + jitter
+		if (resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode == http.StatusInternalServerError ||
+			resp.StatusCode == http.StatusBadGateway ||
+			resp.StatusCode == http.StatusServiceUnavailable) && attempt < maxRetries-1 {
 			_ = resp.Body.Close()
-			backoff := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s
-			time.Sleep(backoff)
+			backoff := time.Duration(1<<uint(attempt)) * time.Second
+			jitter := time.Duration(rng.Intn(1000)) * time.Millisecond
+			if err := sleepWithContext(backoff + jitter); err != nil {
+				return nil, fmt.Errorf("request cancelled: %w", err)
+		REDACTED
 			continue
 	REDACTED
 
-		// Other errors - return immediately
+		break
+REDACTED
+
+	if resp == nil {
+		return nil, fmt.Errorf("request failed: no response received")
+REDACTED
+
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("drive API error (status %d): %s", resp.StatusCode, string(body))
+		// 记录完整错误
+		fmt.Printf("[DriveClient] API error (status %d): %s\n", resp.StatusCode, string(body))
+		// 只返回通用错误
+		return nil, fmt.Errorf("drive API error: status %d", resp.StatusCode)
 REDACTED
 
 	defer func() { _ = resp.Body.Close() REDACTED()
@@ -94,10 +137,14 @@ REDACTED
 	// Parse limit and usage (handle both string and number formats)
 	var limit, usage int64
 	if result.StorageQuota.Limit != "" {
-		_, _ = fmt.Sscanf(result.StorageQuota.Limit, "%d", &limit)
+		if val, err := strconv.ParseInt(result.StorageQuota.Limit, 10, 64); err == nil {
+			limit = val
+	REDACTED
 REDACTED
 	if result.StorageQuota.Usage != "" {
-		_, _ = fmt.Sscanf(result.StorageQuota.Usage, "%d", &usage)
+		if val, err := strconv.ParseInt(result.StorageQuota.Usage, 10, 64); err == nil {
+			usage = val
+	REDACTED
 REDACTED
 
 	return &DriveStorageInfo{

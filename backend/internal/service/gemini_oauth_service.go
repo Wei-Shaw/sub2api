@@ -26,6 +26,17 @@ const (
 	TierGoogleOneUnlimited = "GOOGLE_ONE_UNLIMITED"
 )
 
+const (
+	GB = 1024 * 1024 * 1024
+	TB = 1024 * GB
+
+	StorageTierUnlimited = 100 * TB // 100TB
+	StorageTierAIPremium = 2 * TB   // 2TB
+	StorageTierStandard  = 200 * GB // 200GB
+	StorageTierBasic     = 100 * GB // 100GB
+	StorageTierFree      = 15 * GB  // 15GB
+)
+
 type GeminiOAuthService struct {
 	sessionStore *geminicli.SessionStore
 	proxyRepo    ProxyRepository
@@ -222,31 +233,21 @@ func inferGoogleOneTier(storageBytes int64) string {
 		return TierGoogleOneUnknown
 REDACTED
 
-	// Unlimited storage (G Suite legacy)
-	if storageBytes > 100*1024*1024*1024*1024 { // > 100TB
+	if storageBytes > StorageTierUnlimited {
 		return TierGoogleOneUnlimited
 REDACTED
-
-	// AI Premium (2TB+)
-	if storageBytes >= 2*1024*1024*1024*1024 { // >= 2TB
+	if storageBytes >= StorageTierAIPremium {
 		return TierAIPremium
 REDACTED
-
-	// Google One Standard (200GB)
-	if storageBytes >= 200*1024*1024*1024 { // >= 200GB
+	if storageBytes >= StorageTierStandard {
 		return TierGoogleOneStandard
 REDACTED
-
-	// Google One Basic (100GB)
-	if storageBytes >= 100*1024*1024*1024 { // >= 100GB
+	if storageBytes >= StorageTierBasic {
 		return TierGoogleOneBasic
 REDACTED
-
-	// Free (15GB)
-	if storageBytes >= 15*1024*1024*1024 { // >= 15GB
+	if storageBytes >= StorageTierFree {
 		return TierFree
 REDACTED
-
 	return TierGoogleOneUnknown
 REDACTED
 
@@ -268,6 +269,60 @@ REDACTED
 
 	tierID := inferGoogleOneTier(storageInfo.Limit)
 	return tierID, storageInfo, nil
+REDACTED
+
+// RefreshAccountGoogleOneTier 刷新单个账号的 Google One Tier
+func (s *GeminiOAuthService) RefreshAccountGoogleOneTier(
+	ctx context.Context,
+	account *Account,
+) (tierID string, extra map[string]any, credentials map[string]any, err error) {
+	if account == nil {
+		return "", nil, nil, fmt.Errorf("account is nil")
+REDACTED
+
+	// 验证账号类型
+	oauthType, ok := account.Credentials["oauth_type"].(string)
+	if !ok || oauthType != "google_one" {
+		return "", nil, nil, fmt.Errorf("not a google_one OAuth account")
+REDACTED
+
+	// 获取 access_token
+	accessToken, ok := account.Credentials["access_token"].(string)
+	if !ok || accessToken == "" {
+		return "", nil, nil, fmt.Errorf("missing access_token")
+REDACTED
+
+	// 获取 proxy URL
+	var proxyURL string
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	// 调用 Drive API
+	tierID, storageInfo, err := s.FetchGoogleOneTier(ctx, accessToken, proxyURL)
+	if err != nil {
+		return "", nil, nil, err
+REDACTED
+
+	// 构建 extra 数据（保留原有 extra 字段）
+	extra = make(map[string]any)
+	for k, v := range account.Extra {
+		extra[k] = v
+REDACTED
+	if storageInfo != nil {
+		extra["drive_storage_limit"] = storageInfo.Limit
+		extra["drive_storage_usage"] = storageInfo.Usage
+		extra["drive_tier_updated_at"] = time.Now().Format(time.RFC3339)
+REDACTED
+
+	// 构建 credentials 数据
+	credentials = make(map[string]any)
+	for k, v := range account.Credentials {
+		credentials[k] = v
+REDACTED
+	credentials["tier_id"] = tierID
+
+	return tierID, extra, credentials, nil
 REDACTED
 
 func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExchangeCodeInput) (*GeminiTokenInfo, error) {
