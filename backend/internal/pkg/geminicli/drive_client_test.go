@@ -16,4 +16,3 @@ REDACTED
 		t.Errorf("Expected usage 50GB, got %d", info.Usage)
 REDACTED
 REDACTED
-

@@ -1099,12 +1099,8 @@ REDACTED
 	g.SetLimit(maxConcurrency)
 
 	var mu sync.Mutex
-	results := gin.H{
-		"total":   len(accounts),
-		"success": 0,
-		"failed":  0,
-		"errors":  []gin.H{REDACTED,
-REDACTED
+	var successCount, failedCount int
+	var errors []gin.H
 
 	for _, account := range accounts {
 		acc := account // 闭包捕获
@@ -1112,8 +1108,8 @@ REDACTED
 			_, extra, creds, err := h.geminiOAuthService.RefreshAccountGoogleOneTier(gctx, acc)
 			if err != nil {
 				mu.Lock()
-				results["failed"] = results["failed"].(int) + 1
-				results["errors"] = append(results["errors"].([]gin.H), gin.H{
+				failedCount++
+				errors = append(errors, gin.H{
 					"account_id": acc.ID,
 					"error":      err.Error(),
 			REDACTED)
@@ -1128,13 +1124,13 @@ REDACTED
 
 			mu.Lock()
 			if updateErr != nil {
-				results["failed"] = results["failed"].(int) + 1
-				results["errors"] = append(results["errors"].([]gin.H), gin.H{
+				failedCount++
+				errors = append(errors, gin.H{
 					"account_id": acc.ID,
 					"error":      updateErr.Error(),
 			REDACTED)
 		REDACTED else {
-				results["success"] = results["success"].(int) + 1
+				successCount++
 		REDACTED
 			mu.Unlock()
 
@@ -1145,6 +1141,13 @@ REDACTED
 	if err := g.Wait(); err != nil {
 		response.ErrorFrom(c, err)
 		return
+REDACTED
+
+	results := gin.H{
+		"total":   len(accounts),
+		"success": successCount,
+		"failed":  failedCount,
+		"errors":  errors,
 REDACTED
 
 	response.Success(c, results)

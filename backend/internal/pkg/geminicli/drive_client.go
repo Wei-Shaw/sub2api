@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -112,10 +111,12 @@ REDACTED
 REDACTED
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		// 记录完整错误
-		fmt.Printf("[DriveClient] API error (status %d): %s\n", resp.StatusCode, string(body))
+		statusText := http.StatusText(resp.StatusCode)
+		if statusText == "" {
+			statusText = resp.Status
+	REDACTED
+		fmt.Printf("[DriveClient] Drive API error: status=%d, msg=%s\n", resp.StatusCode, statusText)
 		// 只返回通用错误
 		return nil, fmt.Errorf("drive API error: status %d", resp.StatusCode)
 REDACTED
