@@ -14,6 +14,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 )
 
 // AccountUpdate is the builder for updating Account entities.
@@ -111,7 +113,6 @@ REDACTED
 
 // SetProxyID sets the "proxy_id" field.
 func (_u *AccountUpdate) SetProxyID(v int64) *AccountUpdate {
-	_u.mutation.ResetProxyID()
 	_u.mutation.SetProxyID(v)
 	return _u
 REDACTED
@@ -121,12 +122,6 @@ func (_u *AccountUpdate) SetNillableProxyID(v *int64) *AccountUpdate {
 	if v != nil {
 		_u.SetProxyID(*v)
 REDACTED
-	return _u
-REDACTED
-
-// AddProxyID adds value to the "proxy_id" field.
-func (_u *AccountUpdate) AddProxyID(v int64) *AccountUpdate {
-	_u.mutation.AddProxyID(v)
 	return _u
 REDACTED
 
@@ -381,6 +376,26 @@ REDACTED
 	return _u.AddGroupIDs(ids...)
 REDACTED
 
+// SetProxy sets the "proxy" edge to the Proxy entity.
+func (_u *AccountUpdate) SetProxy(v *Proxy) *AccountUpdate {
+	return _u.SetProxyID(v.ID)
+REDACTED
+
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_u *AccountUpdate) AddUsageLogIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.AddUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_u *AccountUpdate) AddUsageLogs(v ...*UsageLog) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddUsageLogIDs(ids...)
+REDACTED
+
 // Mutation returns the AccountMutation object of the builder.
 func (_u *AccountUpdate) Mutation() *AccountMutation {
 	return _u.mutation
@@ -405,6 +420,33 @@ func (_u *AccountUpdate) RemoveGroups(v ...*Group) *AccountUpdate {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveGroupIDs(ids...)
+REDACTED
+
+// ClearProxy clears the "proxy" edge to the Proxy entity.
+func (_u *AccountUpdate) ClearProxy() *AccountUpdate {
+	_u.mutation.ClearProxy()
+	return _u
+REDACTED
+
+// ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
+func (_u *AccountUpdate) ClearUsageLogs() *AccountUpdate {
+	_u.mutation.ClearUsageLogs()
+	return _u
+REDACTED
+
+// RemoveUsageLogIDs removes the "usage_logs" edge to UsageLog entities by IDs.
+func (_u *AccountUpdate) RemoveUsageLogIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.RemoveUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveUsageLogs removes "usage_logs" edges to UsageLog entities.
+func (_u *AccountUpdate) RemoveUsageLogs(v ...*UsageLog) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveUsageLogIDs(ids...)
 REDACTED
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -514,15 +556,6 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Extra(); ok {
 		_spec.SetField(account.FieldExtra, field.TypeJSON, value)
-REDACTED
-	if value, ok := _u.mutation.ProxyID(); ok {
-		_spec.SetField(account.FieldProxyID, field.TypeInt64, value)
-REDACTED
-	if value, ok := _u.mutation.AddedProxyID(); ok {
-		_spec.AddField(account.FieldProxyID, field.TypeInt64, value)
-REDACTED
-	if _u.mutation.ProxyIDCleared() {
-		_spec.ClearField(account.FieldProxyID, field.TypeInt64)
 REDACTED
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)
@@ -647,6 +680,80 @@ REDACTED
 		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 REDACTED
+	if _u.mutation.ProxyCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.ProxyTable,
+			Columns: []string{account.ProxyColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.ProxyIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.ProxyTable,
+			Columns: []string{account.ProxyColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.UsageLogsTable,
+			Columns: []string{account.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.UsageLogsTable,
+			Columns: []string{account.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.UsageLogsTable,
+			Columns: []string{account.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{account.LabelREDACTED
@@ -749,7 +856,6 @@ REDACTED
 
 // SetProxyID sets the "proxy_id" field.
 func (_u *AccountUpdateOne) SetProxyID(v int64) *AccountUpdateOne {
-	_u.mutation.ResetProxyID()
 	_u.mutation.SetProxyID(v)
 	return _u
 REDACTED
@@ -759,12 +865,6 @@ func (_u *AccountUpdateOne) SetNillableProxyID(v *int64) *AccountUpdateOne {
 	if v != nil {
 		_u.SetProxyID(*v)
 REDACTED
-	return _u
-REDACTED
-
-// AddProxyID adds value to the "proxy_id" field.
-func (_u *AccountUpdateOne) AddProxyID(v int64) *AccountUpdateOne {
-	_u.mutation.AddProxyID(v)
 	return _u
 REDACTED
 
@@ -1019,6 +1119,26 @@ REDACTED
 	return _u.AddGroupIDs(ids...)
 REDACTED
 
+// SetProxy sets the "proxy" edge to the Proxy entity.
+func (_u *AccountUpdateOne) SetProxy(v *Proxy) *AccountUpdateOne {
+	return _u.SetProxyID(v.ID)
+REDACTED
+
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_u *AccountUpdateOne) AddUsageLogIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.AddUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_u *AccountUpdateOne) AddUsageLogs(v ...*UsageLog) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddUsageLogIDs(ids...)
+REDACTED
+
 // Mutation returns the AccountMutation object of the builder.
 func (_u *AccountUpdateOne) Mutation() *AccountMutation {
 	return _u.mutation
@@ -1043,6 +1163,33 @@ func (_u *AccountUpdateOne) RemoveGroups(v ...*Group) *AccountUpdateOne {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveGroupIDs(ids...)
+REDACTED
+
+// ClearProxy clears the "proxy" edge to the Proxy entity.
+func (_u *AccountUpdateOne) ClearProxy() *AccountUpdateOne {
+	_u.mutation.ClearProxy()
+	return _u
+REDACTED
+
+// ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
+func (_u *AccountUpdateOne) ClearUsageLogs() *AccountUpdateOne {
+	_u.mutation.ClearUsageLogs()
+	return _u
+REDACTED
+
+// RemoveUsageLogIDs removes the "usage_logs" edge to UsageLog entities by IDs.
+func (_u *AccountUpdateOne) RemoveUsageLogIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.RemoveUsageLogIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveUsageLogs removes "usage_logs" edges to UsageLog entities.
+func (_u *AccountUpdateOne) RemoveUsageLogs(v ...*UsageLog) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveUsageLogIDs(ids...)
 REDACTED
 
 // Where appends a list predicates to the AccountUpdate builder.
@@ -1183,15 +1330,6 @@ REDACTED
 	if value, ok := _u.mutation.Extra(); ok {
 		_spec.SetField(account.FieldExtra, field.TypeJSON, value)
 REDACTED
-	if value, ok := _u.mutation.ProxyID(); ok {
-		_spec.SetField(account.FieldProxyID, field.TypeInt64, value)
-REDACTED
-	if value, ok := _u.mutation.AddedProxyID(); ok {
-		_spec.AddField(account.FieldProxyID, field.TypeInt64, value)
-REDACTED
-	if _u.mutation.ProxyIDCleared() {
-		_spec.ClearField(account.FieldProxyID, field.TypeInt64)
-REDACTED
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)
 REDACTED
@@ -1313,6 +1451,80 @@ REDACTED
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.ProxyCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.ProxyTable,
+			Columns: []string{account.ProxyColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.ProxyIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.ProxyTable,
+			Columns: []string{account.ProxyColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.UsageLogsTable,
+			Columns: []string{account.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedUsageLogsIDs(); len(nodes) > 0 && !_u.mutation.UsageLogsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.UsageLogsTable,
+			Columns: []string{account.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.UsageLogsTable,
+			Columns: []string{account.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 REDACTED
 	_node = &Account{config: _u.configREDACTED

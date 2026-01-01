@@ -121,16 +121,13 @@
                 />
               </svg>
             </div>
-            <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
-                t('admin.accounts.types.codeAssist')
-              REDACTEDREDACTED</span>
-              <span class="block text-xs font-medium text-blue-600 dark:text-blue-400">{{
-                t('admin.accounts.oauth.gemini.needsProjectId')
-              REDACTEDREDACTED</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{
-                t('admin.accounts.oauth.gemini.needsProjectIdDesc')
-              REDACTEDREDACTED</span>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.gemini.oauthType.builtInTitle') REDACTEDREDACTED
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.gemini.oauthType.builtInDesc') REDACTEDREDACTED
+              </span>
             </div>
           </button>
 
@@ -168,14 +165,13 @@
                 />
               </svg>
             </div>
-            <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">AI Studio</span>
-              <span class="block text-xs font-medium text-purple-600 dark:text-purple-400">{{
-                t('admin.accounts.oauth.gemini.noProjectIdNeeded')
-              REDACTEDREDACTED</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{
-                t('admin.accounts.oauth.gemini.noProjectIdNeededDesc')
-              REDACTEDREDACTED</span>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.gemini.oauthType.customTitle') REDACTEDREDACTED
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.gemini.oauthType.customDesc') REDACTEDREDACTED
+              </span>
               <div v-if="!geminiAIStudioOAuthEnabled" class="group relative mt-1 inline-block">
                 <span
                   class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"

@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -26,6 +26,7 @@ var (
 	ErrDailyLimitExceeded        = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
 	ErrWeeklyLimitExceeded       = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
 	ErrMonthlyLimitExceeded      = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
+	ErrSubscriptionNilInput      = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
 )
 
 // SubscriptionService 订阅服务
@@ -489,6 +490,7 @@ REDACTED
 REDACTED
 
 // CheckUsageLimits 检查使用限额（返回错误如果超限）
+// 用于中间件的快速预检查，additionalCost 通常为 0
 func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSubscription, group *Group, additionalCost float64) error {
 	if !sub.CheckDailyLimit(group, additionalCost) {
 		return ErrDailyLimitExceeded

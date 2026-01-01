@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -450,6 +451,176 @@ func (r *usageLogRepository) GetApiKeyStatsAggregated(ctx context.Context, apiKe
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
 	return &stats, nil
+REDACTED
+
+// GetAccountStatsAggregated 使用 SQL 聚合统计账号使用数据
+//
+// 性能优化说明：
+// 原实现先查询所有日志记录，再在应用层循环计算统计值：
+// 1. 需要传输大量数据到应用层
+// 2. 应用层循环计算增加 CPU 和内存开销
+//
+// 新实现使用 SQL 聚合函数：
+// 1. 在数据库层完成 COUNT/SUM/AVG 计算
+// 2. 只返回单行聚合结果，大幅减少数据传输量
+// 3. 利用数据库索引优化聚合查询性能
+func (r *usageLogRepository) GetAccountStatsAggregated(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	query := `
+		SELECT
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
+		FROM usage_logs
+		WHERE account_id = $1 AND created_at >= $2 AND created_at < $3
+	`
+
+	var stats usagestats.UsageStats
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{accountID, startTime, endTimeREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
+		return nil, err
+REDACTED
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
+	return &stats, nil
+REDACTED
+
+// GetModelStatsAggregated 使用 SQL 聚合统计模型使用数据
+// 性能优化：数据库层聚合计算，避免应用层循环统计
+func (r *usageLogRepository) GetModelStatsAggregated(ctx context.Context, modelName string, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	query := `
+		SELECT
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
+		FROM usage_logs
+		WHERE model = $1 AND created_at >= $2 AND created_at < $3
+	`
+
+	var stats usagestats.UsageStats
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		[]any{modelName, startTime, endTimeREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
+		return nil, err
+REDACTED
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
+	return &stats, nil
+REDACTED
+
+// GetDailyStatsAggregated 使用 SQL 聚合统计用户的每日使用数据
+// 性能优化：使用 GROUP BY 在数据库层按日期分组聚合，避免应用层循环分组统计
+func (r *usageLogRepository) GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (result []map[string]any, err error) {
+	tzName := resolveUsageStatsTimezone()
+	query := `
+		SELECT
+			-- 使用应用时区分组，避免数据库会话时区导致日边界偏移。
+			TO_CHAR(created_at AT TIME ZONE $4, 'YYYY-MM-DD') as date,
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
+		FROM usage_logs
+		WHERE user_id = $1 AND created_at >= $2 AND created_at < $3
+		GROUP BY 1
+		ORDER BY 1
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, userID, startTime, endTime, tzName)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+	REDACTED
+REDACTED()
+
+	result = make([]map[string]any, 0)
+	for rows.Next() {
+		var (
+			date              string
+			totalRequests     int64
+			totalInputTokens  int64
+			totalOutputTokens int64
+			totalCacheTokens  int64
+			totalCost         float64
+			totalActualCost   float64
+			avgDurationMs     float64
+		)
+		if err = rows.Scan(
+			&date,
+			&totalRequests,
+			&totalInputTokens,
+			&totalOutputTokens,
+			&totalCacheTokens,
+			&totalCost,
+			&totalActualCost,
+			&avgDurationMs,
+		); err != nil {
+			return nil, err
+	REDACTED
+		result = append(result, map[string]any{
+			"date":                date,
+			"total_requests":      totalRequests,
+			"total_input_tokens":  totalInputTokens,
+			"total_output_tokens": totalOutputTokens,
+			"total_cache_tokens":  totalCacheTokens,
+			"total_tokens":        totalInputTokens + totalOutputTokens + totalCacheTokens,
+			"total_cost":          totalCost,
+			"total_actual_cost":   totalActualCost,
+			"average_duration_ms": avgDurationMs,
+	REDACTED)
+REDACTED
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+REDACTED
+
+	return result, nil
+REDACTED
+
+// resolveUsageStatsTimezone 获取用于 SQL 分组的时区名称。
+// 优先使用应用初始化的时区，其次尝试读取 TZ 环境变量，最后回落为 UTC。
+func resolveUsageStatsTimezone() string {
+	tzName := timezone.Name()
+	if tzName != "" && tzName != "Local" {
+		return tzName
+REDACTED
+	if envTZ := strings.TrimSpace(os.Getenv("TZ")); envTZ != "" {
+		return envTZ
+REDACTED
+	return "UTC"
 REDACTED
 
 func (r *usageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -938,6 +1109,9 @@ REDACTED
 	if err := rows.Close(); err != nil {
 		return nil, err
 REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
 
 	today := timezone.Today()
 	todayQuery := `
@@ -962,6 +1136,9 @@ REDACTED
 	REDACTED
 REDACTED
 	if err := rows.Close(); err != nil {
+		return nil, err
+REDACTED
+	if err := rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
@@ -1006,6 +1183,9 @@ REDACTED
 	if err := rows.Close(); err != nil {
 		return nil, err
 REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
 
 	today := timezone.Today()
 	todayQuery := `
@@ -1030,6 +1210,9 @@ REDACTED
 	REDACTED
 REDACTED
 	if err := rows.Close(); err != nil {
+		return nil, err
+REDACTED
+	if err := rows.Err(); err != nil {
 		return nil, err
 REDACTED
 

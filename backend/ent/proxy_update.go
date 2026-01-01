@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 )
@@ -171,9 +172,45 @@ REDACTED
 	return _u
 REDACTED
 
+// AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
+func (_u *ProxyUpdate) AddAccountIDs(ids ...int64) *ProxyUpdate {
+	_u.mutation.AddAccountIDs(ids...)
+	return _u
+REDACTED
+
+// AddAccounts adds the "accounts" edges to the Account entity.
+func (_u *ProxyUpdate) AddAccounts(v ...*Account) *ProxyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddAccountIDs(ids...)
+REDACTED
+
 // Mutation returns the ProxyMutation object of the builder.
 func (_u *ProxyUpdate) Mutation() *ProxyMutation {
 	return _u.mutation
+REDACTED
+
+// ClearAccounts clears all "accounts" edges to the Account entity.
+func (_u *ProxyUpdate) ClearAccounts() *ProxyUpdate {
+	_u.mutation.ClearAccounts()
+	return _u
+REDACTED
+
+// RemoveAccountIDs removes the "accounts" edge to Account entities by IDs.
+func (_u *ProxyUpdate) RemoveAccountIDs(ids ...int64) *ProxyUpdate {
+	_u.mutation.RemoveAccountIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveAccounts removes "accounts" edges to Account entities.
+func (_u *ProxyUpdate) RemoveAccounts(v ...*Account) *ProxyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveAccountIDs(ids...)
 REDACTED
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -303,6 +340,51 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
+REDACTED
+	if _u.mutation.AccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.AccountsTable,
+			Columns: []string{proxy.AccountsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedAccountsIDs(); len(nodes) > 0 && !_u.mutation.AccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.AccountsTable,
+			Columns: []string{proxy.AccountsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.AccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.AccountsTable,
+			Columns: []string{proxy.AccountsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 REDACTED
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -467,9 +549,45 @@ REDACTED
 	return _u
 REDACTED
 
+// AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
+func (_u *ProxyUpdateOne) AddAccountIDs(ids ...int64) *ProxyUpdateOne {
+	_u.mutation.AddAccountIDs(ids...)
+	return _u
+REDACTED
+
+// AddAccounts adds the "accounts" edges to the Account entity.
+func (_u *ProxyUpdateOne) AddAccounts(v ...*Account) *ProxyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddAccountIDs(ids...)
+REDACTED
+
 // Mutation returns the ProxyMutation object of the builder.
 func (_u *ProxyUpdateOne) Mutation() *ProxyMutation {
 	return _u.mutation
+REDACTED
+
+// ClearAccounts clears all "accounts" edges to the Account entity.
+func (_u *ProxyUpdateOne) ClearAccounts() *ProxyUpdateOne {
+	_u.mutation.ClearAccounts()
+	return _u
+REDACTED
+
+// RemoveAccountIDs removes the "accounts" edge to Account entities by IDs.
+func (_u *ProxyUpdateOne) RemoveAccountIDs(ids ...int64) *ProxyUpdateOne {
+	_u.mutation.RemoveAccountIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveAccounts removes "accounts" edges to Account entities.
+func (_u *ProxyUpdateOne) RemoveAccounts(v ...*Account) *ProxyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveAccountIDs(ids...)
 REDACTED
 
 // Where appends a list predicates to the ProxyUpdate builder.
@@ -629,6 +747,51 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
+REDACTED
+	if _u.mutation.AccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.AccountsTable,
+			Columns: []string{proxy.AccountsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedAccountsIDs(); len(nodes) > 0 && !_u.mutation.AccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.AccountsTable,
+			Columns: []string{proxy.AccountsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.AccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.AccountsTable,
+			Columns: []string{proxy.AccountsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 REDACTED
 	_node = &Proxy{config: _u.configREDACTED
 	_spec.Assign = _node.assignValues

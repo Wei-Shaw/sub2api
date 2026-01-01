@@ -25,7 +25,7 @@ const (
 	antigravityRetryMaxDelay    = 16 * time.Second
 )
 
-// Antigravity 直接支持的模型
+// Antigravity 直接支持的模型（精确匹配透传）
 var antigravitySupportedModels = map[string]bool{
 	"claude-opus-4-5-thinking":   true,
 	"claude-sonnet-4-5":          true,
@@ -36,23 +36,26 @@ var antigravitySupportedModels = map[string]bool{
 	"gemini-3-flash":             true,
 	"gemini-3-pro-low":           true,
 	"gemini-3-pro-high":          true,
-	"gemini-3-pro-preview":       true,
 	"gemini-3-pro-image":         true,
 REDACTED
 
-// Antigravity 系统默认模型映射表（不支持 → 支持）
-var antigravityModelMapping = map[string]string{
-	"claude-3-5-sonnet-20241022": "claude-sonnet-4-5",
-	"claude-3-5-sonnet-20240620": "claude-sonnet-4-5",
-	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5-thinking",
-	"claude-opus-4":              "claude-opus-4-5-thinking",
-	"claude-opus-4-5-20251101":   "claude-opus-4-5-thinking",
-	"claude-haiku-4":             "gemini-3-flash",
-	"claude-haiku-4-5":           "gemini-3-flash",
-	"claude-3-haiku-20240307":    "gemini-3-flash",
-	"REDACTED":  "gemini-3-flash",
-	// 生图模型：官方名 → Antigravity 内部名
-	"gemini-3-pro-image-preview": "gemini-3-pro-image",
+// Antigravity 前缀映射表（按前缀长度降序排列，确保最长匹配优先）
+// 用于处理模型版本号变化（如 -20251111, -thinking, -preview 等后缀）
+var antigravityPrefixMapping = []struct {
+	prefix string
+	target string
+REDACTED{
+	// 长前缀优先
+	{"gemini-3-pro-image", "gemini-3-pro-image"REDACTED, // gemini-3-pro-image-preview 等
+	{"claude-3-5-sonnet", "claude-sonnet-4-5"REDACTED,   // 旧版 claude-3-5-sonnet-xxx
+	{"claude-sonnet-4-5", "claude-sonnet-4-5"REDACTED,   // claude-sonnet-4-5-xxx
+	{"claude-haiku-4-5", "gemini-3-flash"REDACTED,       // claude-haiku-4-5-xxx
+	{"claude-opus-4-5", "claude-opus-4-5-thinking"REDACTED,
+	{"claude-3-haiku", "gemini-3-flash"REDACTED, // 旧版 claude-3-haiku-xxx
+	{"claude-sonnet-4", "claude-sonnet-4-5"REDACTED,
+	{"claude-haiku-4", "gemini-3-flash"REDACTED,
+	{"claude-opus-4", "claude-opus-4-5-thinking"REDACTED,
+	{"gemini-3-pro", "gemini-3-pro-high"REDACTED, // gemini-3-pro, gemini-3-pro-preview 等
 REDACTED
 
 // AntigravityGatewayService 处理 Antigravity 平台的 API 转发
@@ -84,24 +87,27 @@ func (s *AntigravityGatewayService) GetTokenProvider() *AntigravityTokenProvider
 REDACTED
 
 // getMappedModel 获取映射后的模型名
+// 逻辑：账户映射 → 直接支持透传 → 前缀映射 → gemini透传 → 默认值
 func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedModel string) string {
-	// 1. 优先使用账户级映射（复用现有方法）
+	// 1. 账户级映射（用户自定义优先）
 	if mapped := account.GetMappedModel(requestedModel); mapped != requestedModel {
 		return mapped
 REDACTED
 
-	// 2. 系统默认映射
-	if mapped, ok := antigravityModelMapping[requestedModel]; ok {
-		return mapped
-REDACTED
-
-	// 3. Gemini 模型透传
-	if strings.HasPrefix(requestedModel, "gemini-") {
+	// 2. 直接支持的模型透传
+	if antigravitySupportedModels[requestedModel] {
 		return requestedModel
 REDACTED
 
-	// 4. Claude 前缀透传直接支持的模型
-	if antigravitySupportedModels[requestedModel] {
+	// 3. 前缀映射（处理版本号变化，如 -20251111, -thinking, -preview）
+	for _, pm := range antigravityPrefixMapping {
+		if strings.HasPrefix(requestedModel, pm.prefix) {
+			return pm.target
+	REDACTED
+REDACTED
+
+	// 4. Gemini 模型透传（未匹配到前缀的 gemini 模型）
+	if strings.HasPrefix(requestedModel, "gemini-") {
 		return requestedModel
 REDACTED
 
@@ -110,24 +116,10 @@ REDACTED
 REDACTED
 
 // IsModelSupported 检查模型是否被支持
+// 所有 claude- 和 gemini- 前缀的模型都能通过映射或透传支持
 func (s *AntigravityGatewayService) IsModelSupported(requestedModel string) bool {
-	// 直接支持的模型
-	if antigravitySupportedModels[requestedModel] {
-		return true
-REDACTED
-	// 可映射的模型
-	if _, ok := antigravityModelMapping[requestedModel]; ok {
-		return true
-REDACTED
-	// Gemini 前缀透传
-	if strings.HasPrefix(requestedModel, "gemini-") {
-		return true
-REDACTED
-	// Claude 模型支持（通过默认映射）
-	if strings.HasPrefix(requestedModel, "claude-") {
-		return true
-REDACTED
-	return false
+	return strings.HasPrefix(requestedModel, "claude-") ||
+		strings.HasPrefix(requestedModel, "gemini-")
 REDACTED
 
 // TestConnectionResult 测试连接结果
@@ -180,7 +172,7 @@ REDACTED
 REDACTED
 
 	// 发送请求
-	resp, err := s.httpUpstream.Do(req, proxyURL)
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return nil, fmt.Errorf("请求失败: %w", err)
 REDACTED
@@ -358,6 +350,15 @@ REDACTED
 		return nil, fmt.Errorf("transform request: %w", err)
 REDACTED
 
+	// 调试：记录转换后的请求体（仅记录前 2000 字符）
+	if bodyJSON, err := json.Marshal(geminiBody); err == nil {
+		truncated := string(bodyJSON)
+		if len(truncated) > 2000 {
+			truncated = truncated[:2000] + "..."
+	REDACTED
+		log.Printf("[Debug] Transformed Gemini request: %s", truncated)
+REDACTED
+
 	// 构建上游 action
 	action := "generateContent"
 	if claudeReq.Stream {
@@ -372,7 +373,7 @@ REDACTED
 			return nil, err
 	REDACTED
 
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL)
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			if attempt < antigravityMaxRetries {
 				log.Printf("Antigravity account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, antigravityMaxRetries, err)
@@ -515,7 +516,7 @@ REDACTED
 			return nil, err
 	REDACTED
 
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL)
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			if attempt < antigravityMaxRetries {
 				log.Printf("Antigravity account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, antigravityMaxRetries, err)

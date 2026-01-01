@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +14,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	tx := testTx(t)
 
 	// Re-apply migrations to verify idempotency (no errors, no duplicate rows).
-	require.NoError(t, infrastructure.ApplyMigrations(context.Background(), integrationDB))
+	require.NoError(t, ApplyMigrations(context.Background(), integrationDB))
 
 	// schema_migrations should have at least the current migration set.
 	var applied int
@@ -53,6 +52,20 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	var uagRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_allowed_groups')").Scan(&uagRegclass))
 	require.True(t, uagRegclass.Valid, "expected user_allowed_groups table to exist")
+
+	// user_subscriptions: deleted_at for soft delete support (migration 012)
+	requireColumn(t, tx, "user_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
+
+	// orphan_allowed_groups_audit table should exist (migration 013)
+	var orphanAuditRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.orphan_allowed_groups_audit')").Scan(&orphanAuditRegclass))
+	require.True(t, orphanAuditRegclass.Valid, "expected orphan_allowed_groups_audit table to exist")
+
+	// account_groups: created_at should be timestamptz
+	requireColumn(t, tx, "account_groups", "created_at", "timestamp with time zone", 0, false)
+
+	// user_allowed_groups: created_at should be timestamptz
+	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
 REDACTED
 
 func requireColumn(t *testing.T, tx *sql.Tx, table, column, dataType string, maxLen int, nullable bool) {

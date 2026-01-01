@@ -20,10 +20,11 @@ REDACTED
 
 func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.UserSubscription) error {
 	if sub == nil {
-		return nil
+		return service.ErrSubscriptionNilInput
 REDACTED
 
-	builder := r.client.UserSubscription.Create().
+	client := clientFromContext(ctx, r.client)
+	builder := client.UserSubscription.Create().
 		SetUserID(sub.UserID).
 		SetGroupID(sub.GroupID).
 		SetExpiresAt(sub.ExpiresAt).
@@ -57,7 +58,8 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
-	m, err := r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	m, err := client.UserSubscription.Query().
 		Where(usersubscription.IDEQ(id)).
 		WithUser().
 		WithGroup().
@@ -70,7 +72,8 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
-	m, err := r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	m, err := client.UserSubscription.Query().
 		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
 		WithGroup().
 		Only(ctx)
@@ -81,7 +84,8 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
-	m, err := r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	m, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.UserIDEQ(userID),
 			usersubscription.GroupIDEQ(groupID),
@@ -98,10 +102,11 @@ REDACTED
 
 func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.UserSubscription) error {
 	if sub == nil {
-		return nil
+		return service.ErrSubscriptionNilInput
 REDACTED
 
-	builder := r.client.UserSubscription.UpdateOneID(sub.ID).
+	client := clientFromContext(ctx, r.client)
+	builder := client.UserSubscription.UpdateOneID(sub.ID).
 		SetUserID(sub.UserID).
 		SetGroupID(sub.GroupID).
 		SetStartsAt(sub.StartsAt).
@@ -127,12 +132,14 @@ REDACTED
 
 func (r *userSubscriptionRepository) Delete(ctx context.Context, id int64) error {
 	// Match GORM semantics: deleting a missing row is not an error.
-	_, err := r.client.UserSubscription.Delete().Where(usersubscription.IDEQ(id)).Exec(ctx)
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.Delete().Where(usersubscription.IDEQ(id)).Exec(ctx)
 	return err
 REDACTED
 
 func (r *userSubscriptionRepository) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
-	subs, err := r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	subs, err := client.UserSubscription.Query().
 		Where(usersubscription.UserIDEQ(userID)).
 		WithGroup().
 		Order(dbent.Desc(usersubscription.FieldCreatedAt)).
@@ -144,7 +151,8 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) ListActiveByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
-	subs, err := r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	subs, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.UserIDEQ(userID),
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
@@ -160,7 +168,8 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.UserSubscription, *pagination.PaginationResult, error) {
-	q := r.client.UserSubscription.Query().Where(usersubscription.GroupIDEQ(groupID))
+	client := clientFromContext(ctx, r.client)
+	q := client.UserSubscription.Query().Where(usersubscription.GroupIDEQ(groupID))
 
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
@@ -182,7 +191,8 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
-	q := r.client.UserSubscription.Query()
+	client := clientFromContext(ctx, r.client)
+	q := client.UserSubscription.Query()
 	if userID != nil {
 		q = q.Where(usersubscription.UserIDEQ(*userID))
 REDACTED
@@ -214,34 +224,39 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
-	return r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	return client.UserSubscription.Query().
 		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
 		Exist(ctx)
 REDACTED
 
 func (r *userSubscriptionRepository) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
-	_, err := r.client.UserSubscription.UpdateOneID(subscriptionID).
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(subscriptionID).
 		SetExpiresAt(newExpiresAt).
 		Save(ctx)
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 REDACTED
 
 func (r *userSubscriptionRepository) UpdateStatus(ctx context.Context, subscriptionID int64, status string) error {
-	_, err := r.client.UserSubscription.UpdateOneID(subscriptionID).
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(subscriptionID).
 		SetStatus(status).
 		Save(ctx)
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 REDACTED
 
 func (r *userSubscriptionRepository) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
-	_, err := r.client.UserSubscription.UpdateOneID(subscriptionID).
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(subscriptionID).
 		SetNotes(notes).
 		Save(ctx)
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 REDACTED
 
 func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
-	_, err := r.client.UserSubscription.UpdateOneID(id).
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(id).
 		SetDailyWindowStart(start).
 		SetWeeklyWindowStart(start).
 		SetMonthlyWindowStart(start).
@@ -250,7 +265,8 @@ func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int
 REDACTED
 
 func (r *userSubscriptionRepository) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
-	_, err := r.client.UserSubscription.UpdateOneID(id).
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(id).
 		SetDailyUsageUsd(0).
 		SetDailyWindowStart(newWindowStart).
 		Save(ctx)
@@ -258,7 +274,8 @@ func (r *userSubscriptionRepository) ResetDailyUsage(ctx context.Context, id int
 REDACTED
 
 func (r *userSubscriptionRepository) ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
-	_, err := r.client.UserSubscription.UpdateOneID(id).
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(id).
 		SetWeeklyUsageUsd(0).
 		SetWeeklyWindowStart(newWindowStart).
 		Save(ctx)
@@ -266,24 +283,54 @@ func (r *userSubscriptionRepository) ResetWeeklyUsage(ctx context.Context, id in
 REDACTED
 
 func (r *userSubscriptionRepository) ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
-	_, err := r.client.UserSubscription.UpdateOneID(id).
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(id).
 		SetMonthlyUsageUsd(0).
 		SetMonthlyWindowStart(newWindowStart).
 		Save(ctx)
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 REDACTED
 
+// IncrementUsage 原子性地累加订阅用量。
+// 限额检查已在请求前由 BillingCacheService.CheckBillingEligibility 完成，
+// 此处仅负责记录实际消费，确保消费数据的完整性。
 func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
-	_, err := r.client.UserSubscription.UpdateOneID(id).
-		AddDailyUsageUsd(costUSD).
-		AddWeeklyUsageUsd(costUSD).
-		AddMonthlyUsageUsd(costUSD).
-		Save(ctx)
-	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+	const updateSQL = `
+		UPDATE user_subscriptions us
+		SET
+			daily_usage_usd = us.daily_usage_usd + $1,
+			weekly_usage_usd = us.weekly_usage_usd + $1,
+			monthly_usage_usd = us.monthly_usage_usd + $1,
+			updated_at = NOW()
+		FROM groups g
+		WHERE us.id = $2
+			AND us.deleted_at IS NULL
+			AND us.group_id = g.id
+			AND g.deleted_at IS NULL
+	`
+
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, costUSD, id)
+	if err != nil {
+		return err
+REDACTED
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+REDACTED
+
+	if affected > 0 {
+		return nil
+REDACTED
+
+	// affected == 0：订阅不存在或已删除
+	return service.ErrSubscriptionNotFound
 REDACTED
 
 func (r *userSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
-	n, err := r.client.UserSubscription.Update().
+	client := clientFromContext(ctx, r.client)
+	n, err := client.UserSubscription.Update().
 		Where(
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
 			usersubscription.ExpiresAtLTE(time.Now()),
@@ -296,7 +343,8 @@ REDACTED
 // Extra repository helpers (currently used only by integration tests).
 
 func (r *userSubscriptionRepository) ListExpired(ctx context.Context) ([]service.UserSubscription, error) {
-	subs, err := r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	subs, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
 			usersubscription.ExpiresAtLTE(time.Now()),
@@ -309,12 +357,14 @@ REDACTED
 REDACTED
 
 func (r *userSubscriptionRepository) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	count, err := r.client.UserSubscription.Query().Where(usersubscription.GroupIDEQ(groupID)).Count(ctx)
+	client := clientFromContext(ctx, r.client)
+	count, err := client.UserSubscription.Query().Where(usersubscription.GroupIDEQ(groupID)).Count(ctx)
 	return int64(count), err
 REDACTED
 
 func (r *userSubscriptionRepository) CountActiveByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	count, err := r.client.UserSubscription.Query().
+	client := clientFromContext(ctx, r.client)
+	count, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.GroupIDEQ(groupID),
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
@@ -325,7 +375,8 @@ func (r *userSubscriptionRepository) CountActiveByGroupID(ctx context.Context, g
 REDACTED
 
 func (r *userSubscriptionRepository) DeleteByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	n, err := r.client.UserSubscription.Delete().Where(usersubscription.GroupIDEQ(groupID)).Exec(ctx)
+	client := clientFromContext(ctx, r.client)
+	n, err := client.UserSubscription.Delete().Where(usersubscription.GroupIDEQ(groupID)).Exec(ctx)
 	return int64(n), err
 REDACTED
 

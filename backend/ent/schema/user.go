@@ -33,10 +33,11 @@ REDACTED
 
 func (User) Fields() []ent.Field {
 	return []ent.Field{
+		// 唯一约束通过部分索引实现（WHERE deleted_at IS NULL），支持软删除后重用
+		// 见迁移文件 016_soft_delete_partial_unique_indexes.sql
 		field.String("email").
 			MaxLen(255).
-			NotEmpty().
-			Unique(),
+			NotEmpty(),
 		field.String("password_hash").
 			MaxLen(255).
 			NotEmpty(),
@@ -73,12 +74,13 @@ func (User) Edges() []ent.Edge {
 		edge.To("assigned_subscriptions", UserSubscription.Type),
 		edge.To("allowed_groups", Group.Type).
 			Through("user_allowed_groups", UserAllowedGroup.Type),
+		edge.To("usage_logs", UsageLog.Type),
 REDACTED
 REDACTED
 
 func (User) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("email").Unique(),
+		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("deleted_at"),
 REDACTED

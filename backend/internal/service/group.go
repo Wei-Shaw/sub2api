@@ -11,10 +11,11 @@ type Group struct {
 	IsExclusive    bool
 	Status         string
 
-	SubscriptionType string
-	DailyLimitUSD    *float64
-	WeeklyLimitUSD   *float64
-	MonthlyLimitUSD  *float64
+	SubscriptionType    string
+	DailyLimitUSD       *float64
+	WeeklyLimitUSD      *float64
+	MonthlyLimitUSD     *float64
+	DefaultValidityDays int
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

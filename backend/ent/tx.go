@@ -28,6 +28,8 @@ type Tx struct {
 	RedeemCode *RedeemCodeClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// UsageLog is the client for interacting with the UsageLog builders.
+	UsageLog *UsageLogClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserAllowedGroup is the client for interacting with the UserAllowedGroup builders.
@@ -172,6 +174,7 @@ func (tx *Tx) init() {
 	tx.Proxy = NewProxyClient(tx.config)
 	tx.RedeemCode = NewRedeemCodeClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
+	tx.UsageLog = NewUsageLogClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserAllowedGroup = NewUserAllowedGroupClient(tx.config)
 	tx.UserSubscription = NewUserSubscriptionClient(tx.config)
@@ -238,7 +241,6 @@ REDACTED
 
 var _ dialect.Driver = (*txDriver)(nil)
 
-// ExecContext 透传到底层事务，用于在 ent 事务中执行原生 SQL（与 ent 写入保持同一事务）。
 // ExecContext allows calling the underlying ExecContext method of the transaction if it is supported by it.
 // See, database/sql#Tx.ExecContext for more information.
 func (tx *txDriver) ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error) {
@@ -251,7 +253,6 @@ REDACTED
 	return ex.ExecContext(ctx, query, args...)
 REDACTED
 
-// QueryContext 透传到底层事务，用于在 ent 事务中执行原生查询并共享锁语义。
 // QueryContext allows calling the underlying QueryContext method of the transaction if it is supported by it.
 // See, database/sql#Tx.QueryContext for more information.
 func (tx *txDriver) QueryContext(ctx context.Context, query string, args ...any) (*stdsql.Rows, error) {

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strconv"
 	"time"
 )
 
@@ -22,16 +21,11 @@ func (r *GeminiTokenRefresher) NeedsRefresh(account *Account, refreshWindow time
 	if !r.CanRefresh(account) {
 		return false
 REDACTED
-	expiresAtStr := account.GetCredential("expires_at")
-	if expiresAtStr == "" {
+	expiresAt := account.GetCredentialAsTime("expires_at")
+	if expiresAt == nil {
 		return false
 REDACTED
-	expiresAt, err := strconv.ParseInt(expiresAtStr, 10, 64)
-	if err != nil {
-		return false
-REDACTED
-	expiryTime := time.Unix(expiresAt, 0)
-	return time.Until(expiryTime) < refreshWindow
+	return time.Until(*expiresAt) < refreshWindow
 REDACTED
 
 func (r *GeminiTokenRefresher) Refresh(ctx context.Context, account *Account) (map[string]any, error) {

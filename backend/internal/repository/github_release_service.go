@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -17,10 +18,14 @@ type githubReleaseClient struct {
 REDACTED
 
 func NewGitHubReleaseClient() service.GitHubReleaseClient {
+	sharedClient, err := httpclient.GetClient(httpclient.Options{
+		Timeout: 30 * time.Second,
+REDACTED)
+	if err != nil {
+		sharedClient = &http.Client{Timeout: 30 * time.SecondREDACTED
+REDACTED
 	return &githubReleaseClient{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-	REDACTED,
+		httpClient: sharedClient,
 REDACTED
 REDACTED
 
@@ -58,8 +63,13 @@ func (c *githubReleaseClient) DownloadFile(ctx context.Context, url, dest string
 		return err
 REDACTED
 
-	client := &http.Client{Timeout: 10 * time.MinuteREDACTED
-	resp, err := client.Do(req)
+	downloadClient, err := httpclient.GetClient(httpclient.Options{
+		Timeout: 10 * time.Minute,
+REDACTED)
+	if err != nil {
+		downloadClient = &http.Client{Timeout: 10 * time.MinuteREDACTED
+REDACTED
+	resp, err := downloadClient.Do(req)
 	if err != nil {
 		return err
 REDACTED

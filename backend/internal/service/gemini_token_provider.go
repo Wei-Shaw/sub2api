@@ -50,7 +50,7 @@ REDACTED
 REDACTED
 
 	// 2) Refresh if needed (pre-expiry skew).
-	expiresAt := parseExpiresAt(account)
+	expiresAt := account.GetCredentialAsTime("expires_at")
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= geminiTokenRefreshSkew
 	if needsRefresh && p.tokenCache != nil {
 		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
@@ -66,7 +66,7 @@ REDACTED
 			if err == nil && fresh != nil {
 				account = fresh
 		REDACTED
-			expiresAt = parseExpiresAt(account)
+			expiresAt = account.GetCredentialAsTime("expires_at")
 			if expiresAt == nil || time.Until(*expiresAt) <= geminiTokenRefreshSkew {
 				if p.geminiOAuthService == nil {
 					return "", errors.New("gemini oauth service not configured")
@@ -83,7 +83,7 @@ REDACTED
 			REDACTED
 				account.Credentials = newCredentials
 				_ = p.accountRepo.Update(ctx, account)
-				expiresAt = parseExpiresAt(account)
+				expiresAt = account.GetCredentialAsTime("expires_at")
 		REDACTED
 	REDACTED
 REDACTED
@@ -112,17 +112,21 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		detected, err := p.geminiOAuthService.fetchProjectID(ctx, accessToken, proxyURL)
+		detected, tierID, err := p.geminiOAuthService.fetchProjectID(ctx, accessToken, proxyURL)
 		if err != nil {
 			log.Printf("[GeminiTokenProvider] Auto-detect project_id failed: %v, fallback to AI Studio API mode", err)
 			return accessToken, nil
 	REDACTED
 		detected = strings.TrimSpace(detected)
+		tierID = strings.TrimSpace(tierID)
 		if detected != "" {
 			if account.Credentials == nil {
 				account.Credentials = make(map[string]any)
 		REDACTED
 			account.Credentials["project_id"] = detected
+			if tierID != "" {
+				account.Credentials["tier_id"] = tierID
+		REDACTED
 			_ = p.accountRepo.Update(ctx, account)
 	REDACTED
 REDACTED
@@ -153,19 +157,4 @@ func geminiTokenCacheKey(account *Account) string {
 		return projectID
 REDACTED
 	return "account:" + strconv.FormatInt(account.ID, 10)
-REDACTED
-
-func parseExpiresAt(account *Account) *time.Time {
-	raw := strings.TrimSpace(account.GetCredential("expires_at"))
-	if raw == "" {
-		return nil
-REDACTED
-	if unixSec, err := strconv.ParseInt(raw, 10, 64); err == nil && unixSec > 0 {
-		t := time.Unix(unixSec, 0)
-		return &t
-REDACTED
-	if t, err := time.Parse(time.RFC3339, raw); err == nil {
-		return &t
-REDACTED
-	return nil
 REDACTED

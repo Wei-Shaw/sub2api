@@ -42,7 +42,8 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetSubscriptionType(groupIn.SubscriptionType).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
-		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD)
+		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetDefaultValidityDays(groupIn.DefaultValidityDays)
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -79,6 +80,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
@@ -89,7 +91,7 @@ REDACTED
 
 func (r *groupRepository) Delete(ctx context.Context, id int64) error {
 	_, err := r.client.Group.Delete().Where(group.IDEQ(id)).Exec(ctx)
-	return err
+	return translatePersistenceError(err, service.ErrGroupNotFound, nil)
 REDACTED
 
 func (r *groupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
@@ -239,8 +241,8 @@ REDACTED
 	// err 为 dbent.ErrTxStarted 时，复用当前 client 参与同一事务。
 
 	// Lock the group row to avoid concurrent writes while we cascade.
-	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分“未找到”与其他错误。
-	rows, err := exec.QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 FOR UPDATE", id)
+	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分"未找到"与其他错误。
+	rows, err := exec.QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", id)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -263,7 +265,8 @@ REDACTED
 
 	var affectedUserIDs []int64
 	if groupSvc.IsSubscriptionType() {
-		rows, err := exec.QueryContext(ctx, "SELECT user_id FROM user_subscriptions WHERE group_id = $1", id)
+		// 只查询未软删除的订阅，避免通知已取消订阅的用户
+		rows, err := exec.QueryContext(ctx, "SELECT user_id FROM user_subscriptions WHERE group_id = $1 AND deleted_at IS NULL", id)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -282,7 +285,8 @@ REDACTED
 			return nil, err
 	REDACTED
 
-		if _, err := exec.ExecContext(ctx, "DELETE FROM user_subscriptions WHERE group_id = $1", id); err != nil {
+		// 软删除订阅：设置 deleted_at 而非硬删除
+		if _, err := exec.ExecContext(ctx, "UPDATE user_subscriptions SET deleted_at = NOW() WHERE group_id = $1 AND deleted_at IS NULL", id); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
@@ -297,16 +301,9 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 3. Remove the group id from users.allowed_groups array (legacy representation).
-	// Phase 1 compatibility: also delete from user_allowed_groups join table when present.
+	// 3. Remove the group id from user_allowed_groups join table.
+	// Legacy users.allowed_groups 列已弃用，不再同步。
 	if _, err := exec.ExecContext(ctx, "DELETE FROM user_allowed_groups WHERE group_id = $1", id); err != nil {
-		return nil, err
-REDACTED
-	if _, err := exec.ExecContext(
-		ctx,
-		"UPDATE users SET allowed_groups = array_remove(allowed_groups, $1) WHERE $1 = ANY(allowed_groups)",
-		id,
-	); err != nil {
 		return nil, err
 REDACTED
 

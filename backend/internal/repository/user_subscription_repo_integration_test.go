@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -630,4 +631,117 @@ REDACTED)
 	updated, err := s.repo.GetByID(s.ctx, expiredActive.ID)
 	s.Require().NoError(err, "GetByID expired")
 	s.Require().Equal(service.SubscriptionStatusExpired, updated.Status, "expected status expired")
+REDACTED
+
+// --- 软删除过滤测试 ---
+
+func (s *UserSubscriptionRepoSuite) TestIncrementUsage_SoftDeletedGroup() {
+	user := s.mustCreateUser("softdeleted@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-softdeleted")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	// 软删除分组
+	_, err := s.client.Group.UpdateOneID(group.ID).SetDeletedAt(time.Now()).Save(s.ctx)
+	s.Require().NoError(err, "soft delete group")
+
+	// IncrementUsage 应该失败，因为分组已软删除
+	err = s.repo.IncrementUsage(s.ctx, sub.ID, 1.0)
+	s.Require().Error(err, "should fail for soft-deleted group")
+	s.Require().ErrorIs(err, service.ErrSubscriptionNotFound)
+REDACTED
+
+func (s *UserSubscriptionRepoSuite) TestIncrementUsage_NotFound() {
+	err := s.repo.IncrementUsage(s.ctx, 999999, 1.0)
+	s.Require().Error(err, "should fail for non-existent subscription")
+	s.Require().ErrorIs(err, service.ErrSubscriptionNotFound)
+REDACTED
+
+// --- nil 入参测试 ---
+
+func (s *UserSubscriptionRepoSuite) TestCreate_NilInput() {
+	err := s.repo.Create(s.ctx, nil)
+	s.Require().Error(err, "Create should fail with nil input")
+	s.Require().ErrorIs(err, service.ErrSubscriptionNilInput)
+REDACTED
+
+func (s *UserSubscriptionRepoSuite) TestUpdate_NilInput() {
+	err := s.repo.Update(s.ctx, nil)
+	s.Require().Error(err, "Update should fail with nil input")
+	s.Require().ErrorIs(err, service.ErrSubscriptionNilInput)
+REDACTED
+
+// --- 并发用量更新测试 ---
+
+func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Concurrent() {
+	user := s.mustCreateUser("concurrent@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-concurrent")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	const numGoroutines = 10
+	const incrementPerGoroutine = 1.5
+
+	// 启动多个 goroutine 并发调用 IncrementUsage
+	errCh := make(chan error, numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			errCh <- s.repo.IncrementUsage(s.ctx, sub.ID, incrementPerGoroutine)
+	REDACTED()
+REDACTED
+
+	// 等待所有 goroutine 完成
+	for i := 0; i < numGoroutines; i++ {
+		err := <-errCh
+		s.Require().NoError(err, "IncrementUsage should succeed")
+REDACTED
+
+	// 验证累加结果正确
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	expectedUsage := float64(numGoroutines) * incrementPerGoroutine
+	s.Require().InDelta(expectedUsage, got.DailyUsageUSD, 1e-6, "daily usage should be correctly accumulated")
+	s.Require().InDelta(expectedUsage, got.WeeklyUsageUSD, 1e-6, "weekly usage should be correctly accumulated")
+	s.Require().InDelta(expectedUsage, got.MonthlyUsageUSD, 1e-6, "monthly usage should be correctly accumulated")
+REDACTED
+
+func (s *UserSubscriptionRepoSuite) TestTxContext_RollbackIsolation() {
+	baseClient := testEntClient(s.T())
+	tx, err := baseClient.Tx(context.Background())
+	s.Require().NoError(err, "begin tx")
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+	REDACTED
+REDACTED()
+
+	txCtx := dbent.NewTxContext(context.Background(), tx)
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	userEnt, err := tx.Client().User.Create().
+		SetEmail("tx-user-" + suffix + "@example.com").
+		SetPasswordHash("test").
+		Save(txCtx)
+	s.Require().NoError(err, "create user in tx")
+
+	groupEnt, err := tx.Client().Group.Create().
+		SetName("tx-group-" + suffix).
+		Save(txCtx)
+	s.Require().NoError(err, "create group in tx")
+
+	repo := NewUserSubscriptionRepository(baseClient)
+	sub := &service.UserSubscription{
+		UserID:     userEnt.ID,
+		GroupID:    groupEnt.ID,
+		ExpiresAt:  time.Now().AddDate(0, 0, 30),
+		Status:     service.SubscriptionStatusActive,
+		AssignedAt: time.Now(),
+		Notes:      "tx",
+REDACTED
+	s.Require().NoError(repo.Create(txCtx, sub), "create subscription in tx")
+	s.Require().NoError(repo.UpdateNotes(txCtx, sub.ID, "tx-note"), "update subscription in tx")
+
+	s.Require().NoError(tx.Rollback(), "rollback tx")
+	tx = nil
+
+	_, err = repo.GetByID(context.Background(), sub.ID)
+	s.Require().ErrorIs(err, service.ErrSubscriptionNotFound)
 REDACTED

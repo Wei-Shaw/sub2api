@@ -129,6 +129,10 @@ jobs:
           echo "$TAG_MESSAGE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Set lowercase owner for GHCR
+        id: lowercase
+        run: echo "owner=$(echo '${{ github.repository_owner REDACTEDREDACTED' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -138,6 +142,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN REDACTEDREDACTED
           TAG_MESSAGE: ${{ steps.tag_message.outputs.message REDACTEDREDACTED
           GITHUB_REPO_OWNER: ${{ github.repository_owner REDACTEDREDACTED
+          GITHUB_REPO_OWNER_LOWER: ${{ steps.lowercase.outputs.owner REDACTEDREDACTED
           GITHUB_REPO_NAME: ${{ github.event.repository.name REDACTEDREDACTED
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME REDACTEDREDACTED
 
@@ -168,7 +173,7 @@ jobs:
           VERSION=${TAG_NAME#vREDACTED
           REPO="${{ github.repository REDACTEDREDACTED"
           DOCKER_IMAGE="${{ secrets.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api"
-          GHCR_IMAGE="ghcr.io/${REPOREDACTED"
+          GHCR_IMAGE="ghcr.io/${REPO,,REDACTED"  # ${,,REDACTED converts to lowercase
 
           # 获取 tag message 内容
           TAG_MESSAGE='${{ steps.tag_message.outputs.message REDACTEDREDACTED'

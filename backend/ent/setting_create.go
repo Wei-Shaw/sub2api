@@ -102,11 +102,6 @@ REDACTED
 	if _, ok := _c.mutation.Value(); !ok {
 		return &ValidationError{Name: "value", err: errors.New(`ent: missing required field "Setting.value"`)REDACTED
 REDACTED
-	if v, ok := _c.mutation.Value(); ok {
-		if err := setting.ValueValidator(v); err != nil {
-			return &ValidationError{Name: "value", err: fmt.Errorf(`ent: validator failed for field "Setting.value": %w`, err)REDACTED
-	REDACTED
-REDACTED
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Setting.updated_at"`)REDACTED
 REDACTED

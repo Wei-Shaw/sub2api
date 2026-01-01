@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
@@ -186,22 +186,40 @@ REDACTED
 
 // GetStatsByAccount 获取账号的使用统计
 func (s *UsageService) GetStatsByAccount(ctx context.Context, accountID int64, startTime, endTime time.Time) (*UsageStats, error) {
-	logs, _, err := s.usageRepo.ListByAccountAndTimeRange(ctx, accountID, startTime, endTime)
+	stats, err := s.usageRepo.GetAccountStatsAggregated(ctx, accountID, startTime, endTime)
 	if err != nil {
-		return nil, fmt.Errorf("list usage logs: %w", err)
+		return nil, fmt.Errorf("get account stats: %w", err)
 REDACTED
 
-	return s.calculateStats(logs), nil
+	return &UsageStats{
+		TotalRequests:     stats.TotalRequests,
+		TotalInputTokens:  stats.TotalInputTokens,
+		TotalOutputTokens: stats.TotalOutputTokens,
+		TotalCacheTokens:  stats.TotalCacheTokens,
+		TotalTokens:       stats.TotalTokens,
+		TotalCost:         stats.TotalCost,
+		TotalActualCost:   stats.TotalActualCost,
+		AverageDurationMs: stats.AverageDurationMs,
+REDACTED, nil
 REDACTED
 
 // GetStatsByModel 获取模型的使用统计
 func (s *UsageService) GetStatsByModel(ctx context.Context, modelName string, startTime, endTime time.Time) (*UsageStats, error) {
-	logs, _, err := s.usageRepo.ListByModelAndTimeRange(ctx, modelName, startTime, endTime)
+	stats, err := s.usageRepo.GetModelStatsAggregated(ctx, modelName, startTime, endTime)
 	if err != nil {
-		return nil, fmt.Errorf("list usage logs: %w", err)
+		return nil, fmt.Errorf("get model stats: %w", err)
 REDACTED
 
-	return s.calculateStats(logs), nil
+	return &UsageStats{
+		TotalRequests:     stats.TotalRequests,
+		TotalInputTokens:  stats.TotalInputTokens,
+		TotalOutputTokens: stats.TotalOutputTokens,
+		TotalCacheTokens:  stats.TotalCacheTokens,
+		TotalTokens:       stats.TotalTokens,
+		TotalCost:         stats.TotalCost,
+		TotalActualCost:   stats.TotalActualCost,
+		AverageDurationMs: stats.AverageDurationMs,
+REDACTED, nil
 REDACTED
 
 // GetDailyStats 获取每日使用统计（最近N天）
@@ -209,80 +227,12 @@ func (s *UsageService) GetDailyStats(ctx context.Context, userID int64, days int
 	endTime := time.Now()
 	startTime := endTime.AddDate(0, 0, -days)
 
-	logs, _, err := s.usageRepo.ListByUserAndTimeRange(ctx, userID, startTime, endTime)
+	stats, err := s.usageRepo.GetDailyStatsAggregated(ctx, userID, startTime, endTime)
 	if err != nil {
-		return nil, fmt.Errorf("list usage logs: %w", err)
+		return nil, fmt.Errorf("get daily stats: %w", err)
 REDACTED
 
-	// 按日期分组统计
-	dailyStats := make(map[string]*UsageStats)
-	for _, log := range logs {
-		dateKey := log.CreatedAt.Format("2006-01-02")
-		if _, exists := dailyStats[dateKey]; !exists {
-			dailyStats[dateKey] = &UsageStats{REDACTED
-	REDACTED
-
-		stats := dailyStats[dateKey]
-		stats.TotalRequests++
-		stats.TotalInputTokens += int64(log.InputTokens)
-		stats.TotalOutputTokens += int64(log.OutputTokens)
-		stats.TotalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
-		stats.TotalTokens += int64(log.TotalTokens())
-		stats.TotalCost += log.TotalCost
-		stats.TotalActualCost += log.ActualCost
-
-		if log.DurationMs != nil {
-			stats.AverageDurationMs += float64(*log.DurationMs)
-	REDACTED
-REDACTED
-
-	// 计算平均值并转换为数组
-	result := make([]map[string]any, 0, len(dailyStats))
-	for date, stats := range dailyStats {
-		if stats.TotalRequests > 0 {
-			stats.AverageDurationMs /= float64(stats.TotalRequests)
-	REDACTED
-
-		result = append(result, map[string]any{
-			"date":                date,
-			"total_requests":      stats.TotalRequests,
-			"total_input_tokens":  stats.TotalInputTokens,
-			"total_output_tokens": stats.TotalOutputTokens,
-			"total_cache_tokens":  stats.TotalCacheTokens,
-			"total_tokens":        stats.TotalTokens,
-			"total_cost":          stats.TotalCost,
-			"total_actual_cost":   stats.TotalActualCost,
-			"average_duration_ms": stats.AverageDurationMs,
-	REDACTED)
-REDACTED
-
-	return result, nil
-REDACTED
-
-// calculateStats 计算统计数据
-func (s *UsageService) calculateStats(logs []UsageLog) *UsageStats {
-	stats := &UsageStats{REDACTED
-
-	for _, log := range logs {
-		stats.TotalRequests++
-		stats.TotalInputTokens += int64(log.InputTokens)
-		stats.TotalOutputTokens += int64(log.OutputTokens)
-		stats.TotalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
-		stats.TotalTokens += int64(log.TotalTokens())
-		stats.TotalCost += log.TotalCost
-		stats.TotalActualCost += log.ActualCost
-
-		if log.DurationMs != nil {
-			stats.AverageDurationMs += float64(*log.DurationMs)
-	REDACTED
-REDACTED
-
-	// 计算平均持续时间
-	if stats.TotalRequests > 0 {
-		stats.AverageDurationMs /= float64(stats.TotalRequests)
-REDACTED
-
-	return stats
+	return stats, nil
 REDACTED
 
 // Delete 删除使用日志（管理员功能，谨慎使用）

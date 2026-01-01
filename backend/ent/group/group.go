@@ -41,12 +41,16 @@ const (
 	FieldWeeklyLimitUsd = "weekly_limit_usd"
 	// FieldMonthlyLimitUsd holds the string denoting the monthly_limit_usd field in the database.
 	FieldMonthlyLimitUsd = "monthly_limit_usd"
+	// FieldDefaultValidityDays holds the string denoting the default_validity_days field in the database.
+	FieldDefaultValidityDays = "default_validity_days"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
 	EdgeRedeemCodes = "redeem_codes"
 	// EdgeSubscriptions holds the string denoting the subscriptions edge name in mutations.
 	EdgeSubscriptions = "subscriptions"
+	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
+	EdgeUsageLogs = "usage_logs"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
 	// EdgeAllowedUsers holds the string denoting the allowed_users edge name in mutations.
@@ -78,6 +82,13 @@ const (
 	SubscriptionsInverseTable = "user_subscriptions"
 	// SubscriptionsColumn is the table column denoting the subscriptions relation/edge.
 	SubscriptionsColumn = "group_id"
+	// UsageLogsTable is the table that holds the usage_logs relation/edge.
+	UsageLogsTable = "usage_logs"
+	// UsageLogsInverseTable is the table name for the UsageLog entity.
+	// It exists in this package in order to avoid circular dependency with the "usagelog" package.
+	UsageLogsInverseTable = "usage_logs"
+	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
+	UsageLogsColumn = "group_id"
 	// AccountsTable is the table that holds the accounts relation/edge. The primary key declared below.
 	AccountsTable = "account_groups"
 	// AccountsInverseTable is the table name for the Account entity.
@@ -120,6 +131,7 @@ var Columns = []string{
 	FieldDailyLimitUsd,
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,
+	FieldDefaultValidityDays,
 REDACTED
 
 var (
@@ -173,6 +185,8 @@ var (
 	DefaultSubscriptionType string
 	// SubscriptionTypeValidator is a validator for the "subscription_type" field. It is called by the builders before save.
 	SubscriptionTypeValidator func(string) error
+	// DefaultDefaultValidityDays holds the default value on creation for the "default_validity_days" field.
+	DefaultDefaultValidityDays int
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -248,6 +262,11 @@ func ByMonthlyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyLimitUsd, opts...).ToFunc()
 REDACTED
 
+// ByDefaultValidityDays orders the results by the default_validity_days field.
+func ByDefaultValidityDays(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultValidityDays, opts...).ToFunc()
+REDACTED
+
 // ByAPIKeysCount orders the results by api_keys count.
 func ByAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -287,6 +306,20 @@ REDACTED
 func BySubscriptions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newSubscriptionsStep(), append([]sql.OrderTerm{termREDACTED, terms...)...)
+REDACTED
+REDACTED
+
+// ByUsageLogsCount orders the results by usage_logs count.
+func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsageLogsStep(), opts...)
+REDACTED
+REDACTED
+
+// ByUsageLogs orders the results by usage_logs terms.
+func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsageLogsStep(), append([]sql.OrderTerm{termREDACTED, terms...)...)
 REDACTED
 REDACTED
 
@@ -364,6 +397,13 @@ func newSubscriptionsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(SubscriptionsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, SubscriptionsTable, SubscriptionsColumn),
+	)
+REDACTED
+func newUsageLogsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsageLogsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
 	)
 REDACTED
 func newAccountsStep() *sqlgraph.Step {

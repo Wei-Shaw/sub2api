@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,7 @@ type OpenAIGatewayService struct {
 	userSubRepo         UserSubscriptionRepository
 	cache               GatewayCache
 	cfg                 *config.Config
+	concurrencyService  *ConcurrencyService
 	billingService      *BillingService
 	rateLimitService    *RateLimitService
 	billingCacheService *BillingCacheService
@@ -95,6 +97,7 @@ func NewOpenAIGatewayService(
 	userSubRepo UserSubscriptionRepository,
 	cache GatewayCache,
 	cfg *config.Config,
+	concurrencyService *ConcurrencyService,
 	billingService *BillingService,
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
@@ -108,6 +111,7 @@ func NewOpenAIGatewayService(
 		userSubRepo:         userSubRepo,
 		cache:               cache,
 		cfg:                 cfg,
+		concurrencyService:  concurrencyService,
 		billingService:      billingService,
 		rateLimitService:    rateLimitService,
 		billingCacheService: billingCacheService,
@@ -124,6 +128,14 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context) string {
 REDACTED
 	hash := sha256.Sum256([]byte(sessionID))
 	return hex.EncodeToString(hash[:])
+REDACTED
+
+// BindStickySession sets session -> account binding with standard TTL.
+func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, sessionHash string, accountID int64) error {
+	if sessionHash == "" || accountID <= 0 {
+		return nil
+REDACTED
+	return s.cache.SetSessionAccountID(ctx, "openai:"+sessionHash, accountID, openaiStickySessionTTL)
 REDACTED
 
 // SelectAccount selects an OpenAI account with sticky session support
@@ -216,6 +228,254 @@ REDACTED
 REDACTED
 
 	return selected, nil
+REDACTED
+
+// SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
+func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*AccountSelectionResult, error) {
+	cfg := s.schedulingConfig()
+	var stickyAccountID int64
+	if sessionHash != "" && s.cache != nil {
+		if accountID, err := s.cache.GetSessionAccountID(ctx, "openai:"+sessionHash); err == nil {
+			stickyAccountID = accountID
+	REDACTED
+REDACTED
+	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
+		account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+		if err != nil {
+			return nil, err
+	REDACTED
+		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+		if err == nil && result.Acquired {
+			return &AccountSelectionResult{
+				Account:     account,
+				Acquired:    true,
+				ReleaseFunc: result.ReleaseFunc,
+		REDACTED, nil
+	REDACTED
+		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
+			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+			if waitingCount < cfg.StickySessionMaxWaiting {
+				return &AccountSelectionResult{
+					Account: account,
+					WaitPlan: &AccountWaitPlan{
+						AccountID:      account.ID,
+						MaxConcurrency: account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+				REDACTED,
+			REDACTED, nil
+		REDACTED
+	REDACTED
+		return &AccountSelectionResult{
+			Account: account,
+			WaitPlan: &AccountWaitPlan{
+				AccountID:      account.ID,
+				MaxConcurrency: account.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+		REDACTED,
+	REDACTED, nil
+REDACTED
+
+	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(accounts) == 0 {
+		return nil, errors.New("no available accounts")
+REDACTED
+
+	isExcluded := func(accountID int64) bool {
+		if excludedIDs == nil {
+			return false
+	REDACTED
+		_, excluded := excludedIDs[accountID]
+		return excluded
+REDACTED
+
+	// ============ Layer 1: Sticky session ============
+	if sessionHash != "" {
+		accountID, err := s.cache.GetSessionAccountID(ctx, "openai:"+sessionHash)
+		if err == nil && accountID > 0 && !isExcluded(accountID) {
+			account, err := s.accountRepo.GetByID(ctx, accountID)
+			if err == nil && account.IsSchedulable() && account.IsOpenAI() &&
+				(requestedModel == "" || account.IsModelSupported(requestedModel)) {
+				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+				if err == nil && result.Acquired {
+					_ = s.cache.RefreshSessionTTL(ctx, "openai:"+sessionHash, openaiStickySessionTTL)
+					return &AccountSelectionResult{
+						Account:     account,
+						Acquired:    true,
+						ReleaseFunc: result.ReleaseFunc,
+				REDACTED, nil
+			REDACTED
+
+				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
+				if waitingCount < cfg.StickySessionMaxWaiting {
+					return &AccountSelectionResult{
+						Account: account,
+						WaitPlan: &AccountWaitPlan{
+							AccountID:      accountID,
+							MaxConcurrency: account.Concurrency,
+							Timeout:        cfg.StickySessionWaitTimeout,
+							MaxWaiting:     cfg.StickySessionMaxWaiting,
+					REDACTED,
+				REDACTED, nil
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// ============ Layer 2: Load-aware selection ============
+	candidates := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		acc := &accounts[i]
+		if isExcluded(acc.ID) {
+			continue
+	REDACTED
+		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+			continue
+	REDACTED
+		candidates = append(candidates, acc)
+REDACTED
+
+	if len(candidates) == 0 {
+		return nil, errors.New("no available accounts")
+REDACTED
+
+	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
+	for _, acc := range candidates {
+		accountLoads = append(accountLoads, AccountWithConcurrency{
+			ID:             acc.ID,
+			MaxConcurrency: acc.Concurrency,
+	REDACTED)
+REDACTED
+
+	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	if err != nil {
+		ordered := append([]*Account(nil), candidates...)
+		sortAccountsByPriorityAndLastUsed(ordered, false)
+		for _, acc := range ordered {
+			result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
+			if err == nil && result.Acquired {
+				if sessionHash != "" {
+					_ = s.cache.SetSessionAccountID(ctx, "openai:"+sessionHash, acc.ID, openaiStickySessionTTL)
+			REDACTED
+				return &AccountSelectionResult{
+					Account:     acc,
+					Acquired:    true,
+					ReleaseFunc: result.ReleaseFunc,
+			REDACTED, nil
+		REDACTED
+	REDACTED
+REDACTED else {
+		type accountWithLoad struct {
+			account  *Account
+			loadInfo *AccountLoadInfo
+	REDACTED
+		var available []accountWithLoad
+		for _, acc := range candidates {
+			loadInfo := loadMap[acc.ID]
+			if loadInfo == nil {
+				loadInfo = &AccountLoadInfo{AccountID: acc.IDREDACTED
+		REDACTED
+			if loadInfo.LoadRate < 100 {
+				available = append(available, accountWithLoad{
+					account:  acc,
+					loadInfo: loadInfo,
+			REDACTED)
+		REDACTED
+	REDACTED
+
+		if len(available) > 0 {
+			sort.SliceStable(available, func(i, j int) bool {
+				a, b := available[i], available[j]
+				if a.account.Priority != b.account.Priority {
+					return a.account.Priority < b.account.Priority
+			REDACTED
+				if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+					return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+			REDACTED
+				switch {
+				case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
+					return true
+				case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
+					return false
+				case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
+					return false
+				default:
+					return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
+			REDACTED
+		REDACTED)
+
+			for _, item := range available {
+				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
+				if err == nil && result.Acquired {
+					if sessionHash != "" {
+						_ = s.cache.SetSessionAccountID(ctx, "openai:"+sessionHash, item.account.ID, openaiStickySessionTTL)
+				REDACTED
+					return &AccountSelectionResult{
+						Account:     item.account,
+						Acquired:    true,
+						ReleaseFunc: result.ReleaseFunc,
+				REDACTED, nil
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// ============ Layer 3: Fallback wait ============
+	sortAccountsByPriorityAndLastUsed(candidates, false)
+	for _, acc := range candidates {
+		return &AccountSelectionResult{
+			Account: acc,
+			WaitPlan: &AccountWaitPlan{
+				AccountID:      acc.ID,
+				MaxConcurrency: acc.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+		REDACTED,
+	REDACTED, nil
+REDACTED
+
+	return nil, errors.New("no available accounts")
+REDACTED
+
+func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
+	var accounts []Account
+	var err error
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
+REDACTED else if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+REDACTED else {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
+REDACTED
+	if err != nil {
+		return nil, fmt.Errorf("query accounts failed: %w", err)
+REDACTED
+	return accounts, nil
+REDACTED
+
+func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
+	if s.concurrencyService == nil {
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {REDACTEDREDACTED, nil
+REDACTED
+	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+REDACTED
+
+func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
+	if s.cfg != nil {
+		return s.cfg.Gateway.Scheduling
+REDACTED
+	return config.GatewaySchedulingConfig{
+		StickySessionMaxWaiting:  3,
+		StickySessionWaitTimeout: 45 * time.Second,
+		FallbackWaitTimeout:      30 * time.Second,
+		FallbackMaxWaiting:       100,
+		LoadBatchEnabled:         true,
+		SlotCleanupInterval:      30 * time.Second,
+REDACTED
 REDACTED
 
 // GetAccessToken gets the access token for an OpenAI account
@@ -311,7 +571,7 @@ REDACTED
 REDACTED
 
 	// Send request
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL)
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 REDACTED
@@ -772,20 +1032,12 @@ REDACTED
 	if isSubscriptionBilling {
 		if cost.TotalCost > 0 {
 			_ = s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost)
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.UpdateSubscriptionUsage(cacheCtx, user.ID, *apiKey.GroupID, cost.TotalCost)
-		REDACTED()
+			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
 	REDACTED
 REDACTED else {
 		if cost.ActualCost > 0 {
 			_ = s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost)
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.DeductBalanceCache(cacheCtx, user.ID, cost.ActualCost)
-		REDACTED()
+			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
 	REDACTED
 REDACTED
 

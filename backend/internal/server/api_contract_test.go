@@ -385,7 +385,7 @@ REDACTED
 	authHandler := handler.NewAuthHandler(cfg, nil, userService)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
@@ -978,6 +978,18 @@ REDACTED, nil
 REDACTED
 
 func (r *stubUsageLogRepo) GetApiKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubUsageLogRepo) GetAccountStatsAggregated(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubUsageLogRepo) GetModelStatsAggregated(ctx context.Context, modelName string, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubUsageLogRepo) GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) ([]map[string]any, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 

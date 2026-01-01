@@ -37,11 +37,25 @@ type ClaudeMetadata struct {
 REDACTED
 
 // ClaudeTool Claude 工具定义
+// 支持两种格式：
+// 1. 标准格式: { "name": "...", "description": "...", "input_schema": {...REDACTED REDACTED
+// 2. Custom 格式 (MCP): { "type": "custom", "name": "...", "custom": { "description": "...", "input_schema": {...REDACTED REDACTED REDACTED
 type ClaudeTool struct {
-	Name        string         `json:"name"`
+	Type        string          `json:"type,omitempty"` // "custom" 或空（标准格式）
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`  // 标准格式使用
+	InputSchema map[string]any  `json:"input_schema,omitempty"` // 标准格式使用
+	Custom      *CustomToolSpec `json:"custom,omitempty"`       // custom 格式使用
+REDACTED
+
+// CustomToolSpec MCP custom 工具规格
+type CustomToolSpec struct {
 	Description string         `json:"description,omitempty"`
 	InputSchema map[string]any `json:"input_schema"`
 REDACTED
+
+// ClaudeCustomToolSpec 兼容旧命名（MCP custom 工具规格）
+type ClaudeCustomToolSpec = CustomToolSpec
 
 // SystemBlock system prompt 数组形式的元素
 type SystemBlock struct {

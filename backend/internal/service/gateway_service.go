@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,7 +34,10 @@ const (
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
-var sseDataRe = regexp.MustCompile(`^data:\s*`)
+var (
+	sseDataRe      = regexp.MustCompile(`^data:\s*`)
+	sessionIDRegex = regexp.MustCompile(`session_([a-f0-9-]{36REDACTED)`)
+)
 
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
@@ -62,6 +66,20 @@ type GatewayCache interface {
 	GetSessionAccountID(ctx context.Context, sessionHash string) (int64, error)
 	SetSessionAccountID(ctx context.Context, sessionHash string, accountID int64, ttl time.Duration) error
 	RefreshSessionTTL(ctx context.Context, sessionHash string, ttl time.Duration) error
+REDACTED
+
+type AccountWaitPlan struct {
+	AccountID      int64
+	MaxConcurrency int
+	Timeout        time.Duration
+	MaxWaiting     int
+REDACTED
+
+type AccountSelectionResult struct {
+	Account     *Account
+	Acquired    bool
+	ReleaseFunc func()
+	WaitPlan    *AccountWaitPlan // nil means no wait allowed
 REDACTED
 
 // ClaudeUsage 表示Claude API返回的usage信息
@@ -106,6 +124,7 @@ type GatewayService struct {
 	identityService     *IdentityService
 	httpUpstream        HTTPUpstream
 	deferredService     *DeferredService
+	concurrencyService  *ConcurrencyService
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -117,6 +136,7 @@ func NewGatewayService(
 	userSubRepo UserSubscriptionRepository,
 	cache GatewayCache,
 	cfg *config.Config,
+	concurrencyService *ConcurrencyService,
 	billingService *BillingService,
 	rateLimitService *RateLimitService,
 	billingCacheService *BillingCacheService,
@@ -132,6 +152,7 @@ func NewGatewayService(
 		userSubRepo:         userSubRepo,
 		cache:               cache,
 		cfg:                 cfg,
+		concurrencyService:  concurrencyService,
 		billingService:      billingService,
 		rateLimitService:    rateLimitService,
 		billingCacheService: billingCacheService,
@@ -141,40 +162,36 @@ func NewGatewayService(
 REDACTED
 REDACTED
 
-// GenerateSessionHash 从请求体计算粘性会话hash
-func (s *GatewayService) GenerateSessionHash(body []byte) string {
-	var req map[string]any
-	if err := json.Unmarshal(body, &req); err != nil {
+// GenerateSessionHash 从预解析请求计算粘性会话 hash
+func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
+	if parsed == nil {
 		return ""
 REDACTED
 
-	// 1. 最高优先级：从metadata.user_id提取session_xxx
-	if metadata, ok := req["metadata"].(map[string]any); ok {
-		if userID, ok := metadata["user_id"].(string); ok {
-			re := regexp.MustCompile(`session_([a-f0-9-]{36REDACTED)`)
-			if match := re.FindStringSubmatch(userID); len(match) > 1 {
-				return match[1]
-		REDACTED
+	// 1. 最高优先级：从 metadata.user_id 提取 session_xxx
+	if parsed.MetadataUserID != "" {
+		if match := sessionIDRegex.FindStringSubmatch(parsed.MetadataUserID); len(match) > 1 {
+			return match[1]
 	REDACTED
 REDACTED
 
-	// 2. 提取带cache_control: {type: "ephemeral"REDACTED的内容
-	cacheableContent := s.extractCacheableContent(req)
+	// 2. 提取带 cache_control: {type: "ephemeral"REDACTED 的内容
+	cacheableContent := s.extractCacheableContent(parsed)
 	if cacheableContent != "" {
 		return s.hashContent(cacheableContent)
 REDACTED
 
-	// 3. Fallback: 使用system内容
-	if system := req["system"]; system != nil {
-		systemText := s.extractTextFromSystem(system)
+	// 3. Fallback: 使用 system 内容
+	if parsed.System != nil {
+		systemText := s.extractTextFromSystem(parsed.System)
 		if systemText != "" {
 			return s.hashContent(systemText)
 	REDACTED
 REDACTED
 
-	// 4. 最后fallback: 使用第一条消息
-	if messages, ok := req["messages"].([]any); ok && len(messages) > 0 {
-		if firstMsg, ok := messages[0].(map[string]any); ok {
+	// 4. 最后 fallback: 使用第一条消息
+	if len(parsed.Messages) > 0 {
+		if firstMsg, ok := parsed.Messages[0].(map[string]any); ok {
 			msgText := s.extractTextFromContent(firstMsg["content"])
 			if msgText != "" {
 				return s.hashContent(msgText)
@@ -185,36 +202,46 @@ REDACTED
 	return ""
 REDACTED
 
-func (s *GatewayService) extractCacheableContent(req map[string]any) string {
-	var content string
+// BindStickySession sets session -> account binding with standard TTL.
+func (s *GatewayService) BindStickySession(ctx context.Context, sessionHash string, accountID int64) error {
+	if sessionHash == "" || accountID <= 0 {
+		return nil
+REDACTED
+	return s.cache.SetSessionAccountID(ctx, sessionHash, accountID, stickySessionTTL)
+REDACTED
 
-	// 检查system中的cacheable内容
-	if system, ok := req["system"].([]any); ok {
+func (s *GatewayService) extractCacheableContent(parsed *ParsedRequest) string {
+	if parsed == nil {
+		return ""
+REDACTED
+
+	var builder strings.Builder
+
+	// 检查 system 中的 cacheable 内容
+	if system, ok := parsed.System.([]any); ok {
 		for _, part := range system {
 			if partMap, ok := part.(map[string]any); ok {
 				if cc, ok := partMap["cache_control"].(map[string]any); ok {
 					if cc["type"] == "ephemeral" {
 						if text, ok := partMap["text"].(string); ok {
-							content += text
+							_, _ = builder.WriteString(text)
 					REDACTED
 				REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+	systemText := builder.String()
 
-	// 检查messages中的cacheable内容
-	if messages, ok := req["messages"].([]any); ok {
-		for _, msg := range messages {
-			if msgMap, ok := msg.(map[string]any); ok {
-				if msgContent, ok := msgMap["content"].([]any); ok {
-					for _, part := range msgContent {
-						if partMap, ok := part.(map[string]any); ok {
-							if cc, ok := partMap["cache_control"].(map[string]any); ok {
-								if cc["type"] == "ephemeral" {
-									// 找到cacheable内容，提取第一条消息的文本
-									return s.extractTextFromContent(msgMap["content"])
-							REDACTED
+	// 检查 messages 中的 cacheable 内容
+	for _, msg := range parsed.Messages {
+		if msgMap, ok := msg.(map[string]any); ok {
+			if msgContent, ok := msgMap["content"].([]any); ok {
+				for _, part := range msgContent {
+					if partMap, ok := part.(map[string]any); ok {
+						if cc, ok := partMap["cache_control"].(map[string]any); ok {
+							if cc["type"] == "ephemeral" {
+								return s.extractTextFromContent(msgMap["content"])
 						REDACTED
 					REDACTED
 				REDACTED
@@ -223,7 +250,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	return content
+	return systemText
 REDACTED
 
 func (s *GatewayService) extractTextFromSystem(system any) string {
@@ -332,8 +359,354 @@ REDACTED
 	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 REDACTED
 
+// SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*AccountSelectionResult, error) {
+	cfg := s.schedulingConfig()
+	var stickyAccountID int64
+	if sessionHash != "" && s.cache != nil {
+		if accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash); err == nil {
+			stickyAccountID = accountID
+	REDACTED
+REDACTED
+	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
+		account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+		if err != nil {
+			return nil, err
+	REDACTED
+		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+		if err == nil && result.Acquired {
+			return &AccountSelectionResult{
+				Account:     account,
+				Acquired:    true,
+				ReleaseFunc: result.ReleaseFunc,
+		REDACTED, nil
+	REDACTED
+		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
+			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+			if waitingCount < cfg.StickySessionMaxWaiting {
+				return &AccountSelectionResult{
+					Account: account,
+					WaitPlan: &AccountWaitPlan{
+						AccountID:      account.ID,
+						MaxConcurrency: account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+				REDACTED,
+			REDACTED, nil
+		REDACTED
+	REDACTED
+		return &AccountSelectionResult{
+			Account: account,
+			WaitPlan: &AccountWaitPlan{
+				AccountID:      account.ID,
+				MaxConcurrency: account.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+		REDACTED,
+	REDACTED, nil
+REDACTED
+
+	platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID)
+	if err != nil {
+		return nil, err
+REDACTED
+	preferOAuth := platform == PlatformGemini
+
+	accounts, useMixed, err := s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(accounts) == 0 {
+		return nil, errors.New("no available accounts")
+REDACTED
+
+	isExcluded := func(accountID int64) bool {
+		if excludedIDs == nil {
+			return false
+	REDACTED
+		_, excluded := excludedIDs[accountID]
+		return excluded
+REDACTED
+
+	// ============ Layer 1: 粘性会话优先 ============
+	if sessionHash != "" {
+		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
+		if err == nil && accountID > 0 && !isExcluded(accountID) {
+			account, err := s.accountRepo.GetByID(ctx, accountID)
+			if err == nil && s.isAccountAllowedForPlatform(account, platform, useMixed) &&
+				account.IsSchedulable() &&
+				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+				if err == nil && result.Acquired {
+					_ = s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL)
+					return &AccountSelectionResult{
+						Account:     account,
+						Acquired:    true,
+						ReleaseFunc: result.ReleaseFunc,
+				REDACTED, nil
+			REDACTED
+
+				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
+				if waitingCount < cfg.StickySessionMaxWaiting {
+					return &AccountSelectionResult{
+						Account: account,
+						WaitPlan: &AccountWaitPlan{
+							AccountID:      accountID,
+							MaxConcurrency: account.Concurrency,
+							Timeout:        cfg.StickySessionWaitTimeout,
+							MaxWaiting:     cfg.StickySessionMaxWaiting,
+					REDACTED,
+				REDACTED, nil
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// ============ Layer 2: 负载感知选择 ============
+	candidates := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		acc := &accounts[i]
+		if isExcluded(acc.ID) {
+			continue
+	REDACTED
+		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+			continue
+	REDACTED
+		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
+			continue
+	REDACTED
+		candidates = append(candidates, acc)
+REDACTED
+
+	if len(candidates) == 0 {
+		return nil, errors.New("no available accounts")
+REDACTED
+
+	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
+	for _, acc := range candidates {
+		accountLoads = append(accountLoads, AccountWithConcurrency{
+			ID:             acc.ID,
+			MaxConcurrency: acc.Concurrency,
+	REDACTED)
+REDACTED
+
+	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	if err != nil {
+		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, sessionHash, preferOAuth); ok {
+			return result, nil
+	REDACTED
+REDACTED else {
+		type accountWithLoad struct {
+			account  *Account
+			loadInfo *AccountLoadInfo
+	REDACTED
+		var available []accountWithLoad
+		for _, acc := range candidates {
+			loadInfo := loadMap[acc.ID]
+			if loadInfo == nil {
+				loadInfo = &AccountLoadInfo{AccountID: acc.IDREDACTED
+		REDACTED
+			if loadInfo.LoadRate < 100 {
+				available = append(available, accountWithLoad{
+					account:  acc,
+					loadInfo: loadInfo,
+			REDACTED)
+		REDACTED
+	REDACTED
+
+		if len(available) > 0 {
+			sort.SliceStable(available, func(i, j int) bool {
+				a, b := available[i], available[j]
+				if a.account.Priority != b.account.Priority {
+					return a.account.Priority < b.account.Priority
+			REDACTED
+				if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+					return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+			REDACTED
+				switch {
+				case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
+					return true
+				case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
+					return false
+				case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
+					if preferOAuth && a.account.Type != b.account.Type {
+						return a.account.Type == AccountTypeOAuth
+				REDACTED
+					return false
+				default:
+					return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
+			REDACTED
+		REDACTED)
+
+			for _, item := range available {
+				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
+				if err == nil && result.Acquired {
+					if sessionHash != "" {
+						_ = s.cache.SetSessionAccountID(ctx, sessionHash, item.account.ID, stickySessionTTL)
+				REDACTED
+					return &AccountSelectionResult{
+						Account:     item.account,
+						Acquired:    true,
+						ReleaseFunc: result.ReleaseFunc,
+				REDACTED, nil
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// ============ Layer 3: 兜底排队 ============
+	sortAccountsByPriorityAndLastUsed(candidates, preferOAuth)
+	for _, acc := range candidates {
+		return &AccountSelectionResult{
+			Account: acc,
+			WaitPlan: &AccountWaitPlan{
+				AccountID:      acc.ID,
+				MaxConcurrency: acc.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+		REDACTED,
+	REDACTED, nil
+REDACTED
+	return nil, errors.New("no available accounts")
+REDACTED
+
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
+	ordered := append([]*Account(nil), candidates...)
+	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+
+	for _, acc := range ordered {
+		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
+		if err == nil && result.Acquired {
+			if sessionHash != "" {
+				_ = s.cache.SetSessionAccountID(ctx, sessionHash, acc.ID, stickySessionTTL)
+		REDACTED
+			return &AccountSelectionResult{
+				Account:     acc,
+				Acquired:    true,
+				ReleaseFunc: result.ReleaseFunc,
+		REDACTED, true
+	REDACTED
+REDACTED
+
+	return nil, false
+REDACTED
+
+func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
+	if s.cfg != nil {
+		return s.cfg.Gateway.Scheduling
+REDACTED
+	return config.GatewaySchedulingConfig{
+		StickySessionMaxWaiting:  3,
+		StickySessionWaitTimeout: 45 * time.Second,
+		FallbackWaitTimeout:      30 * time.Second,
+		FallbackMaxWaiting:       100,
+		LoadBatchEnabled:         true,
+		SlotCleanupInterval:      30 * time.Second,
+REDACTED
+REDACTED
+
+func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64) (string, bool, error) {
+	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
+	if hasForcePlatform && forcePlatform != "" {
+		return forcePlatform, true, nil
+REDACTED
+	if groupID != nil {
+		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		if err != nil {
+			return "", false, fmt.Errorf("get group failed: %w", err)
+	REDACTED
+		return group.Platform, false, nil
+REDACTED
+	return PlatformAnthropic, false, nil
+REDACTED
+
+func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
+	if useMixed {
+		platforms := []string{platform, PlatformAntigravityREDACTED
+		var accounts []Account
+		var err error
+		if groupID != nil {
+			accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
+	REDACTED else {
+			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+	REDACTED
+		if err != nil {
+			return nil, useMixed, err
+	REDACTED
+		filtered := make([]Account, 0, len(accounts))
+		for _, acc := range accounts {
+			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+				continue
+		REDACTED
+			filtered = append(filtered, acc)
+	REDACTED
+		return filtered, useMixed, nil
+REDACTED
+
+	var accounts []Account
+	var err error
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
+REDACTED else if groupID != nil {
+		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
+		if err == nil && len(accounts) == 0 && hasForcePlatform {
+			accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
+	REDACTED
+REDACTED else {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
+REDACTED
+	if err != nil {
+		return nil, useMixed, err
+REDACTED
+	return accounts, useMixed, nil
+REDACTED
+
+func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform string, useMixed bool) bool {
+	if account == nil {
+		return false
+REDACTED
+	if useMixed {
+		if account.Platform == platform {
+			return true
+	REDACTED
+		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
+REDACTED
+	return account.Platform == platform
+REDACTED
+
+func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
+	if s.concurrencyService == nil {
+		return &AcquireResult{Acquired: true, ReleaseFunc: func() {REDACTEDREDACTED, nil
+REDACTED
+	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+REDACTED
+
+func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i], accounts[j]
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+	REDACTED
+		switch {
+		case a.LastUsedAt == nil && b.LastUsedAt != nil:
+			return true
+		case a.LastUsedAt != nil && b.LastUsedAt == nil:
+			return false
+		case a.LastUsedAt == nil && b.LastUsedAt == nil:
+			if preferOAuth && a.Type != b.Type {
+				return a.Type == AccountTypeOAuth
+		REDACTED
+			return false
+		default:
+			return a.LastUsedAt.Before(*b.LastUsedAt)
+	REDACTED
+REDACTED)
+REDACTED
+
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
 func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platform string) (*Account, error) {
+	preferOAuth := platform == PlatformGemini
 	// 1. 查询粘性会话
 	if sessionHash != "" {
 		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
@@ -389,7 +762,9 @@ REDACTED
 			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
 				// keep selected (never used is preferred)
 			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-				// keep selected (both never used)
+				if preferOAuth && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
+					selected = acc
+			REDACTED
 			default:
 				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
 					selected = acc
@@ -419,6 +794,7 @@ REDACTED
 // 查询原生平台账户 + 启用 mixed_scheduling 的 antigravity 账户
 func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, nativePlatform string) (*Account, error) {
 	platforms := []string{nativePlatform, PlatformAntigravityREDACTED
+	preferOAuth := nativePlatform == PlatformGemini
 
 	// 1. 查询粘性会话
 	if sessionHash != "" {
@@ -478,7 +854,9 @@ REDACTED
 			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
 				// keep selected (never used is preferred)
 			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-				// keep selected (both never used)
+				if preferOAuth && acc.Platform == PlatformGemini && selected.Platform == PlatformGemini && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
+					selected = acc
+			REDACTED
 			default:
 				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
 					selected = acc
@@ -515,24 +893,10 @@ REDACTED
 REDACTED
 
 // IsAntigravityModelSupported 检查 Antigravity 平台是否支持指定模型
+// 所有 claude- 和 gemini- 前缀的模型都能通过映射或透传支持
 func IsAntigravityModelSupported(requestedModel string) bool {
-	// 直接支持的模型
-	if antigravitySupportedModels[requestedModel] {
-		return true
-REDACTED
-	// 可映射的模型
-	if _, ok := antigravityModelMapping[requestedModel]; ok {
-		return true
-REDACTED
-	// Gemini 前缀透传
-	if strings.HasPrefix(requestedModel, "gemini-") {
-		return true
-REDACTED
-	// Claude 模型支持（通过默认映射到 claude-sonnet-4-5）
-	if strings.HasPrefix(requestedModel, "claude-") {
-		return true
-REDACTED
-	return false
+	return strings.HasPrefix(requestedModel, "claude-") ||
+		strings.HasPrefix(requestedModel, "gemini-")
 REDACTED
 
 // GetAccessToken 获取账号凭证
@@ -588,19 +952,17 @@ REDACTED
 REDACTED
 
 // Forward 转发请求到Claude API
-func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {
 	startTime := time.Now()
-
-	// 解析请求获取model和stream
-	var req struct {
-		Model  string `json:"model"`
-		Stream bool   `json:"stream"`
-REDACTED
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, fmt.Errorf("parse request: %w", err)
+	if parsed == nil {
+		return nil, fmt.Errorf("parse request: empty request")
 REDACTED
 
-	if !gjson.GetBytes(body, "system").Exists() {
+	body := parsed.Body
+	reqModel := parsed.Model
+	reqStream := parsed.Stream
+
+	if !parsed.HasSystem {
 		body, _ = sjson.SetBytes(body, "system", []any{
 			map[string]any{
 				"type": "text",
@@ -613,13 +975,13 @@ REDACTED
 REDACTED
 
 	// 应用模型映射（仅对apikey类型账号）
-	originalModel := req.Model
+	originalModel := reqModel
 	if account.Type == AccountTypeApiKey {
-		mappedModel := account.GetMappedModel(req.Model)
-		if mappedModel != req.Model {
+		mappedModel := account.GetMappedModel(reqModel)
+		if mappedModel != reqModel {
 			// 替换请求体中的模型名
 			body = s.replaceModelInBody(body, mappedModel)
-			req.Model = mappedModel
+			reqModel = mappedModel
 			log.Printf("Model mapping applied: %s -> %s (account: %s)", originalModel, mappedModel, account.Name)
 	REDACTED
 REDACTED
@@ -640,13 +1002,13 @@ REDACTED
 	var resp *http.Response
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
-		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType)
+		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel)
 		if err != nil {
 			return nil, err
 	REDACTED
 
 		// 发送请求
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL)
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			return nil, fmt.Errorf("upstream request failed: %w", err)
 	REDACTED
@@ -686,14 +1048,38 @@ REDACTED
 
 	// 处理错误响应（不可重试的错误）
 	if resp.StatusCode >= 400 {
+		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
+		if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
+			respBody, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				// ReadAll failed, fall back to normal error handling without consuming the stream
+				return s.handleErrorResponse(ctx, resp, c, account)
+		REDACTED
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			if s.shouldFailoverOn400(respBody) {
+				if s.cfg.Gateway.LogUpstreamErrorBody {
+					log.Printf(
+						"Account %d: 400 error, attempting failover: %s",
+						account.ID,
+						truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+					)
+			REDACTED else {
+					log.Printf("Account %d: 400 error, attempting failover", account.ID)
+			REDACTED
+				s.handleFailoverSideEffects(ctx, resp, account)
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		REDACTED
+	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account)
 REDACTED
 
 	// 处理正常响应
 	var usage *ClaudeUsage
 	var firstTokenMs *int
-	if req.Stream {
-		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, req.Model)
+	if reqStream {
+		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel)
 		if err != nil {
 			if err.Error() == "have error in stream" {
 				return nil, &UpstreamFailoverError{
@@ -705,7 +1091,7 @@ REDACTED
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
 REDACTED else {
-		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, req.Model)
+		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -715,13 +1101,13 @@ REDACTED
 		RequestID:    resp.Header.Get("x-request-id"),
 		Usage:        *usage,
 		Model:        originalModel, // 使用原始模型用于计费和日志
-		Stream:       req.Stream,
+		Stream:       reqStream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
 REDACTED, nil
 REDACTED
 
-func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType string) (*http.Request, error) {
+func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string) (*http.Request, error) {
 	// 确定目标URL
 	targetURL := claudeAPIURL
 	if account.Type == AccountTypeApiKey {
@@ -787,7 +1173,14 @@ REDACTED
 
 	// 处理anthropic-beta header（OAuth账号需要特殊处理）
 	if tokenType == "oauth" {
-		req.Header.Set("anthropic-beta", s.getBetaHeader(body, c.GetHeader("anthropic-beta")))
+		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
+REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForApiKey && req.Header.Get("anthropic-beta") == "" {
+		// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
+		if requestNeedsBetaFeatures(body) {
+			if beta := defaultApiKeyBetaHeader(body); beta != "" {
+				req.Header.Set("anthropic-beta", beta)
+		REDACTED
+	REDACTED
 REDACTED
 
 	return req, nil
@@ -795,7 +1188,7 @@ REDACTED
 
 // getBetaHeader 处理anthropic-beta header
 // 对于OAuth账号，需要确保包含oauth-2025-04-20
-func (s *GatewayService) getBetaHeader(body []byte, clientBetaHeader string) string {
+func (s *GatewayService) getBetaHeader(modelID string, clientBetaHeader string) string {
 	// 如果客户端传了anthropic-beta
 	if clientBetaHeader != "" {
 		// 已包含oauth beta则直接返回
@@ -832,20 +1225,89 @@ func (s *GatewayService) getBetaHeader(body []byte, clientBetaHeader string) str
 REDACTED
 
 	// 客户端没传，根据模型生成
-	var modelID string
-	var reqMap map[string]any
-	if json.Unmarshal(body, &reqMap) == nil {
-		if m, ok := reqMap["model"].(string); ok {
-			modelID = m
-	REDACTED
-REDACTED
-
-	// haiku模型不需要claude-code beta
+	// haiku 模型不需要 claude-code beta
 	if strings.Contains(strings.ToLower(modelID), "haiku") {
 		return claude.HaikuBetaHeader
 REDACTED
 
 	return claude.DefaultBetaHeader
+REDACTED
+
+func requestNeedsBetaFeatures(body []byte) bool {
+	tools := gjson.GetBytes(body, "tools")
+	if tools.Exists() && tools.IsArray() && len(tools.Array()) > 0 {
+		return true
+REDACTED
+	if strings.EqualFold(gjson.GetBytes(body, "thinking.type").String(), "enabled") {
+		return true
+REDACTED
+	return false
+REDACTED
+
+func defaultApiKeyBetaHeader(body []byte) string {
+	modelID := gjson.GetBytes(body, "model").String()
+	if strings.Contains(strings.ToLower(modelID), "haiku") {
+		return claude.ApiKeyHaikuBetaHeader
+REDACTED
+	return claude.ApiKeyBetaHeader
+REDACTED
+
+func truncateForLog(b []byte, maxBytes int) string {
+	if maxBytes <= 0 {
+		maxBytes = 2048
+REDACTED
+	if len(b) > maxBytes {
+		b = b[:maxBytes]
+REDACTED
+	s := string(b)
+	// 保持一行，避免污染日志格式
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	s = strings.ReplaceAll(s, "\r", "\\r")
+	return s
+REDACTED
+
+func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
+	// 只对“可能是兼容性差异导致”的 400 允许切换，避免无意义重试。
+	// 默认保守：无法识别则不切换。
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+	if msg == "" {
+		return false
+REDACTED
+
+	// 缺少/错误的 beta header：换账号/链路可能成功（尤其是混合调度时）。
+	// 更精确匹配 beta 相关的兼容性问题，避免误触发切换。
+	if strings.Contains(msg, "anthropic-beta") ||
+		strings.Contains(msg, "beta feature") ||
+		strings.Contains(msg, "requires beta") {
+		return true
+REDACTED
+
+	// thinking/tool streaming 等兼容性约束（常见于中间转换链路）
+	if strings.Contains(msg, "thinking") || strings.Contains(msg, "thought_signature") || strings.Contains(msg, "signature") {
+		return true
+REDACTED
+	if strings.Contains(msg, "tool_use") || strings.Contains(msg, "tool_result") || strings.Contains(msg, "tools") {
+		return true
+REDACTED
+
+	return false
+REDACTED
+
+func extractUpstreamErrorMessage(body []byte) string {
+	// Claude 风格：{"type":"error","error":{"type":"...","message":"..."REDACTEDREDACTED
+	if m := gjson.GetBytes(body, "error.message").String(); strings.TrimSpace(m) != "" {
+		inner := strings.TrimSpace(m)
+		// 有些上游会把完整 JSON 作为字符串塞进 message
+		if strings.HasPrefix(inner, "{") {
+			if innerMsg := gjson.Get(inner, "error.message").String(); strings.TrimSpace(innerMsg) != "" {
+				return innerMsg
+		REDACTED
+	REDACTED
+		return m
+REDACTED
+
+	// 兜底：尝试顶层 message
+	return gjson.GetBytes(body, "message").String()
 REDACTED
 
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
@@ -860,6 +1322,16 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
+		// 仅记录上游错误摘要（避免输出请求内容）；需要时可通过配置打开
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			log.Printf(
+				"Upstream 400 error (account=%d platform=%s type=%s): %s",
+				account.ID,
+				account.Platform,
+				account.Type,
+				truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			)
+	REDACTED
 		c.Data(http.StatusBadRequest, "application/json", body)
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 	case 401:
@@ -1248,13 +1720,7 @@ REDACTED
 				log.Printf("Increment subscription usage failed: %v", err)
 		REDACTED
 			// 异步更新订阅缓存
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := s.billingCacheService.UpdateSubscriptionUsage(cacheCtx, user.ID, *apiKey.GroupID, cost.TotalCost); err != nil {
-					log.Printf("Update subscription cache failed: %v", err)
-			REDACTED
-		REDACTED()
+			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
 	REDACTED
 REDACTED else {
 		// 余额模式：扣除用户余额（使用 ActualCost 考虑倍率后的费用）
@@ -1263,13 +1729,7 @@ REDACTED else {
 				log.Printf("Deduct balance failed: %v", err)
 		REDACTED
 			// 异步更新余额缓存
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := s.billingCacheService.DeductBalanceCache(cacheCtx, user.ID, cost.ActualCost); err != nil {
-					log.Printf("Update balance cache failed: %v", err)
-			REDACTED
-		REDACTED()
+			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
 	REDACTED
 REDACTED
 
@@ -1281,7 +1741,15 @@ REDACTED
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
 // 特点：不记录使用量、仅支持非流式响应
-func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
+func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) error {
+	if parsed == nil {
+		s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return fmt.Errorf("parse request: empty request")
+REDACTED
+
+	body := parsed.Body
+	reqModel := parsed.Model
+
 	// Antigravity 账户不支持 count_tokens 转发，返回估算值
 	// 参考 Antigravity-Manager 和 proxycast 实现
 	if account.Platform == PlatformAntigravity {
@@ -1291,14 +1759,12 @@ REDACTED
 
 	// 应用模型映射（仅对 apikey 类型账号）
 	if account.Type == AccountTypeApiKey {
-		var req struct {
-			Model string `json:"model"`
-	REDACTED
-		if err := json.Unmarshal(body, &req); err == nil && req.Model != "" {
-			mappedModel := account.GetMappedModel(req.Model)
-			if mappedModel != req.Model {
+		if reqModel != "" {
+			mappedModel := account.GetMappedModel(reqModel)
+			if mappedModel != reqModel {
 				body = s.replaceModelInBody(body, mappedModel)
-				log.Printf("CountTokens model mapping applied: %s -> %s (account: %s)", req.Model, mappedModel, account.Name)
+				reqModel = mappedModel
+				log.Printf("CountTokens model mapping applied: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
 		REDACTED
 	REDACTED
 REDACTED
@@ -1311,7 +1777,7 @@ REDACTED
 REDACTED
 
 	// 构建上游请求
-	upstreamReq, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType)
+	upstreamReq, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType, reqModel)
 	if err != nil {
 		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 		return err
@@ -1324,7 +1790,7 @@ REDACTED
 REDACTED
 
 	// 发送请求
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL)
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
@@ -1345,6 +1811,18 @@ REDACTED
 		// 标记账号状态（429/529等）
 		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
+		// 记录上游错误摘要便于排障（不回显请求内容）
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			log.Printf(
+				"count_tokens upstream error %d (account=%d platform=%s type=%s): %s",
+				resp.StatusCode,
+				account.ID,
+				account.Platform,
+				account.Type,
+				truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			)
+	REDACTED
+
 		// 返回简化的错误响应
 		errMsg := "Upstream request failed"
 		switch resp.StatusCode {
@@ -1363,7 +1841,7 @@ REDACTED
 REDACTED
 
 // buildCountTokensRequest 构建 count_tokens 上游请求
-func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType string) (*http.Request, error) {
+func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string) (*http.Request, error) {
 	// 确定目标 URL
 	targetURL := claudeAPICountTokensURL
 	if account.Type == AccountTypeApiKey {
@@ -1424,7 +1902,14 @@ REDACTED
 
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {
-		req.Header.Set("anthropic-beta", s.getBetaHeader(body, c.GetHeader("anthropic-beta")))
+		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
+REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForApiKey && req.Header.Get("anthropic-beta") == "" {
+		// API-key：与 messages 同步的按需 beta 注入（默认关闭）
+		if requestNeedsBetaFeatures(body) {
+			if beta := defaultApiKeyBetaHeader(body); beta != "" {
+				req.Header.Set("anthropic-beta", beta)
+		REDACTED
+	REDACTED
 REDACTED
 
 	return req, nil

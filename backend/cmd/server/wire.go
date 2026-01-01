@@ -12,7 +12,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/infrastructure"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -31,7 +30,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	wire.Build(
 		// Infrastructure layer ProviderSets
 		config.ProviderSet,
-		infrastructure.ProviderSet,
 
 		// Business layer ProviderSets
 		repository.ProviderSet,
@@ -67,6 +65,7 @@ func provideCleanup(
 	tokenRefresh *service.TokenRefreshService,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
+	billingCache *service.BillingCacheService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
@@ -92,6 +91,10 @@ func provideCleanup(
 	REDACTED
 			{"EmailQueueService", func() error {
 				emailQueue.Stop()
+				return nil
+	REDACTED
+			{"BillingCacheService", func() error {
+				billingCache.Stop()
 				return nil
 	REDACTED
 			{"OAuthService", func() error {

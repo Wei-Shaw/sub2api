@@ -1,4 +1,4 @@
-package infrastructure
+package repository
 
 import (
 	"context"
@@ -127,7 +127,15 @@ REDACTED
 			if existing != checksum {
 				// 校验和不匹配意味着迁移文件在应用后被修改，这是危险的。
 				// 正确的做法是创建新的迁移文件来进行变更。
-				return fmt.Errorf("migration %s checksum mismatch (db=%s file=%s)", name, existing, checksum)
+				return fmt.Errorf(
+					"migration %s checksum mismatch (db=%s file=%s)\n"+
+						"This means the migration file was modified after being applied to the database.\n"+
+						"Solutions:\n"+
+						"  1. Revert to original: git log --oneline -- migrations/%s && git checkout <commit> -- migrations/%s\n"+
+						"  2. For new changes, create a new migration file instead of modifying existing ones\n"+
+						"Note: Modifying applied migrations breaks the immutability principle and can cause inconsistencies across environments",
+					name, existing, checksum, name, name,
+				)
 		REDACTED
 			continue // 迁移已应用且校验和匹配，跳过
 	REDACTED

@@ -35,6 +35,8 @@ const (
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
+	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
+	EdgeUsageLogs = "usage_logs"
 	// Table holds the table name of the apikey in the database.
 	Table = "api_keys"
 	// UserTable is the table that holds the user relation/edge.
@@ -51,6 +53,13 @@ const (
 	GroupInverseTable = "groups"
 	// GroupColumn is the table column denoting the group relation/edge.
 	GroupColumn = "group_id"
+	// UsageLogsTable is the table that holds the usage_logs relation/edge.
+	UsageLogsTable = "usage_logs"
+	// UsageLogsInverseTable is the table name for the UsageLog entity.
+	// It exists in this package in order to avoid circular dependency with the "usagelog" package.
+	UsageLogsInverseTable = "usage_logs"
+	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
+	UsageLogsColumn = "api_key_id"
 )
 
 // Columns holds all SQL columns for apikey fields.
@@ -161,6 +170,20 @@ func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newGroupStep(), sql.OrderByField(field, opts...))
 REDACTED
 REDACTED
+
+// ByUsageLogsCount orders the results by usage_logs count.
+func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsageLogsStep(), opts...)
+REDACTED
+REDACTED
+
+// ByUsageLogs orders the results by usage_logs terms.
+func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsageLogsStep(), append([]sql.OrderTerm{termREDACTED, terms...)...)
+REDACTED
+REDACTED
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -173,5 +196,12 @@ func newGroupStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GroupInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
+	)
+REDACTED
+func newUsageLogsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsageLogsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
 	)
 REDACTED

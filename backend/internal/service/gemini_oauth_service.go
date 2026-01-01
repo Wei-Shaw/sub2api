@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 )
 
 type GeminiOAuthService struct {
@@ -163,6 +164,45 @@ type GeminiTokenInfo struct {
 	Scope        string `json:"scope,omitempty"`
 	ProjectID    string `json:"project_id,omitempty"`
 	OAuthType    string `json:"oauth_type,omitempty"` // "code_assist" 或 "ai_studio"
+	TierID       string `json:"tier_id,omitempty"`    // Gemini Code Assist tier: LEGACY/PRO/ULTRA
+REDACTED
+
+// validateTierID validates tier_id format and length
+func validateTierID(tierID string) error {
+	if tierID == "" {
+		return nil // Empty is allowed
+REDACTED
+	if len(tierID) > 64 {
+		return fmt.Errorf("tier_id exceeds maximum length of 64 characters")
+REDACTED
+	// Allow alphanumeric, underscore, hyphen, and slash (for tier paths)
+	if !regexp.MustCompile(`^[a-zA-Z0-9_/-]+$`).MatchString(tierID) {
+		return fmt.Errorf("tier_id contains invalid characters")
+REDACTED
+	return nil
+REDACTED
+
+// extractTierIDFromAllowedTiers extracts tierID from LoadCodeAssist response
+// Prioritizes IsDefault tier, falls back to first non-empty tier
+func extractTierIDFromAllowedTiers(allowedTiers []geminicli.AllowedTier) string {
+	tierID := "LEGACY"
+	// First pass: look for default tier
+	for _, tier := range allowedTiers {
+		if tier.IsDefault && strings.TrimSpace(tier.ID) != "" {
+			tierID = strings.TrimSpace(tier.ID)
+			break
+	REDACTED
+REDACTED
+	// Second pass: if still LEGACY, take first non-empty tier
+	if tierID == "LEGACY" {
+		for _, tier := range allowedTiers {
+			if strings.TrimSpace(tier.ID) != "" {
+				tierID = strings.TrimSpace(tier.ID)
+				break
+		REDACTED
+	REDACTED
+REDACTED
+	return tierID
 REDACTED
 
 func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExchangeCodeInput) (*GeminiTokenInfo, error) {
@@ -219,24 +259,44 @@ REDACTED
 	sessionProjectID := strings.TrimSpace(session.ProjectID)
 	s.sessionStore.Delete(input.SessionID)
 
-	// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
-	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
+	// 计算过期时间：减去 5 分钟安全时间窗口（考虑网络延迟和时钟偏差）
+	// 同时设置下界保护，防止 expires_in 过小导致过去时间（引发刷新风暴）
+	const safetyWindow = 300 // 5 minutes
+	const minTTL = 30        // minimum 30 seconds
+	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - safetyWindow
+	minExpiresAt := time.Now().Unix() + minTTL
+	if expiresAt < minExpiresAt {
+		expiresAt = minExpiresAt
+REDACTED
 
 	projectID := sessionProjectID
+	var tierID string
 
 	// 对于 code_assist 模式，project_id 是必需的
 	// 对于 ai_studio 模式，project_id 是可选的（不影响使用 AI Studio API）
 	if oauthType == "code_assist" {
 		if projectID == "" {
 			var err error
-			projectID, err = s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
+			projectID, tierID, err = s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
 			if err != nil {
 				// 记录警告但不阻断流程，允许后续补充 project_id
 				fmt.Printf("[GeminiOAuth] Warning: Failed to fetch project_id during token exchange: %v\n", err)
 		REDACTED
+	REDACTED else {
+			// 用户手动填了 project_id，仍需调用 LoadCodeAssist 获取 tierID
+			_, fetchedTierID, err := s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
+			if err != nil {
+				fmt.Printf("[GeminiOAuth] Warning: Failed to fetch tierID: %v\n", err)
+		REDACTED else {
+				tierID = fetchedTierID
+		REDACTED
 	REDACTED
 		if strings.TrimSpace(projectID) == "" {
 			return nil, fmt.Errorf("missing project_id for Code Assist OAuth: please fill Project ID (optional field) and regenerate the auth URL, or ensure your Google account has an ACTIVE GCP project")
+	REDACTED
+		// tierID 缺失时使用默认值
+		if tierID == "" {
+			tierID = "LEGACY"
 	REDACTED
 REDACTED
 
@@ -248,6 +308,7 @@ REDACTED
 		ExpiresAt:    expiresAt,
 		Scope:        tokenResp.Scope,
 		ProjectID:    projectID,
+		TierID:       tierID,
 		OAuthType:    oauthType,
 REDACTED, nil
 REDACTED
@@ -266,8 +327,15 @@ func (s *GeminiOAuthService) RefreshToken(ctx context.Context, oauthType, refres
 
 		tokenResp, err := s.oauthClient.RefreshToken(ctx, oauthType, refreshToken, proxyURL)
 		if err == nil {
-			// 计算过期时间时减去 5 分钟安全时间窗口,考虑网络延迟和时钟偏差
-			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - 300
+			// 计算过期时间：减去 5 分钟安全时间窗口（考虑网络延迟和时钟偏差）
+			// 同时设置下界保护，防止 expires_in 过小导致过去时间（引发刷新风暴）
+			const safetyWindow = 300 // 5 minutes
+			const minTTL = 30        // minimum 30 seconds
+			expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - safetyWindow
+			minExpiresAt := time.Now().Unix() + minTTL
+			if expiresAt < minExpiresAt {
+				expiresAt = minExpiresAt
+		REDACTED
 			return &GeminiTokenInfo{
 				AccessToken:  tokenResp.AccessToken,
 				RefreshToken: tokenResp.RefreshToken,
@@ -354,18 +422,39 @@ REDACTED
 		tokenInfo.ProjectID = existingProjectID
 REDACTED
 
+	// 尝试从账号凭证获取 tierID（向后兼容）
+	existingTierID := strings.TrimSpace(account.GetCredential("tier_id"))
+
 	// For Code Assist, project_id is required. Auto-detect if missing.
 	// For AI Studio OAuth, project_id is optional and should not block refresh.
-	if oauthType == "code_assist" && strings.TrimSpace(tokenInfo.ProjectID) == "" {
-		projectID, err := s.fetchProjectID(ctx, tokenInfo.AccessToken, proxyURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to auto-detect project_id: %w", err)
+	if oauthType == "code_assist" {
+		// 先设置默认值或保留旧值，确保 tier_id 始终有值
+		if existingTierID != "" {
+			tokenInfo.TierID = existingTierID
+	REDACTED else {
+			tokenInfo.TierID = "LEGACY" // 默认值
 	REDACTED
-		projectID = strings.TrimSpace(projectID)
-		if projectID == "" {
+
+		// 尝试自动探测 project_id 和 tier_id
+		needDetect := strings.TrimSpace(tokenInfo.ProjectID) == "" || existingTierID == ""
+		if needDetect {
+			projectID, tierID, err := s.fetchProjectID(ctx, tokenInfo.AccessToken, proxyURL)
+			if err != nil {
+				fmt.Printf("[GeminiOAuth] Warning: failed to auto-detect project/tier: %v\n", err)
+		REDACTED else {
+				if strings.TrimSpace(tokenInfo.ProjectID) == "" && projectID != "" {
+					tokenInfo.ProjectID = projectID
+			REDACTED
+				// 只有当原来没有 tier_id 且探测成功时才更新
+				if existingTierID == "" && tierID != "" {
+					tokenInfo.TierID = tierID
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if strings.TrimSpace(tokenInfo.ProjectID) == "" {
 			return nil, fmt.Errorf("failed to auto-detect project_id: empty result")
 	REDACTED
-		tokenInfo.ProjectID = projectID
 REDACTED
 
 	return tokenInfo, nil
@@ -388,6 +477,13 @@ REDACTED
 	if tokenInfo.ProjectID != "" {
 		creds["project_id"] = tokenInfo.ProjectID
 REDACTED
+	if tokenInfo.TierID != "" {
+		// Validate tier_id before storing
+		if err := validateTierID(tokenInfo.TierID); err == nil {
+			creds["tier_id"] = tokenInfo.TierID
+	REDACTED
+		// Silently skip invalid tier_id (don't block account creation)
+REDACTED
 	if tokenInfo.OAuthType != "" {
 		creds["oauth_type"] = tokenInfo.OAuthType
 REDACTED
@@ -398,33 +494,22 @@ func (s *GeminiOAuthService) Stop() {
 	s.sessionStore.Stop()
 REDACTED
 
-func (s *GeminiOAuthService) fetchProjectID(ctx context.Context, accessToken, proxyURL string) (string, error) {
+func (s *GeminiOAuthService) fetchProjectID(ctx context.Context, accessToken, proxyURL string) (string, string, error) {
 	if s.codeAssist == nil {
-		return "", errors.New("code assist client not configured")
+		return "", "", errors.New("code assist client not configured")
 REDACTED
 
 	loadResp, loadErr := s.codeAssist.LoadCodeAssist(ctx, accessToken, proxyURL, nil)
-	if loadErr == nil && loadResp != nil && strings.TrimSpace(loadResp.CloudAICompanionProject) != "" {
-		return strings.TrimSpace(loadResp.CloudAICompanionProject), nil
-REDACTED
 
-	// Pick tier from allowedTiers; if no default tier is marked, pick the first non-empty tier ID.
+	// Extract tierID from response (works whether CloudAICompanionProject is set or not)
 	tierID := "LEGACY"
 	if loadResp != nil {
-		for _, tier := range loadResp.AllowedTiers {
-			if tier.IsDefault && strings.TrimSpace(tier.ID) != "" {
-				tierID = strings.TrimSpace(tier.ID)
-				break
-		REDACTED
-	REDACTED
-		if strings.TrimSpace(tierID) == "" || tierID == "LEGACY" {
-			for _, tier := range loadResp.AllowedTiers {
-				if strings.TrimSpace(tier.ID) != "" {
-					tierID = strings.TrimSpace(tier.ID)
-					break
-			REDACTED
-		REDACTED
-	REDACTED
+		tierID = extractTierIDFromAllowedTiers(loadResp.AllowedTiers)
+REDACTED
+
+	// If LoadCodeAssist returned a project, use it
+	if loadErr == nil && loadResp != nil && strings.TrimSpace(loadResp.CloudAICompanionProject) != "" {
+		return strings.TrimSpace(loadResp.CloudAICompanionProject), tierID, nil
 REDACTED
 
 	req := &geminicli.OnboardUserRequest{
@@ -443,39 +528,39 @@ REDACTED
 			// If Code Assist onboarding fails (e.g. INVALID_ARGUMENT), fallback to Cloud Resource Manager projects.
 			fallback, fbErr := fetchProjectIDFromResourceManager(ctx, accessToken, proxyURL)
 			if fbErr == nil && strings.TrimSpace(fallback) != "" {
-				return strings.TrimSpace(fallback), nil
+				return strings.TrimSpace(fallback), tierID, nil
 		REDACTED
-			return "", err
+			return "", tierID, err
 	REDACTED
 		if resp.Done {
 			if resp.Response != nil && resp.Response.CloudAICompanionProject != nil {
 				switch v := resp.Response.CloudAICompanionProject.(type) {
 				case string:
-					return strings.TrimSpace(v), nil
+					return strings.TrimSpace(v), tierID, nil
 				case map[string]any:
 					if id, ok := v["id"].(string); ok {
-						return strings.TrimSpace(id), nil
+						return strings.TrimSpace(id), tierID, nil
 				REDACTED
 			REDACTED
 		REDACTED
 
 			fallback, fbErr := fetchProjectIDFromResourceManager(ctx, accessToken, proxyURL)
 			if fbErr == nil && strings.TrimSpace(fallback) != "" {
-				return strings.TrimSpace(fallback), nil
+				return strings.TrimSpace(fallback), tierID, nil
 		REDACTED
-			return "", errors.New("onboardUser completed but no project_id returned")
+			return "", tierID, errors.New("onboardUser completed but no project_id returned")
 	REDACTED
 		time.Sleep(2 * time.Second)
 REDACTED
 
 	fallback, fbErr := fetchProjectIDFromResourceManager(ctx, accessToken, proxyURL)
 	if fbErr == nil && strings.TrimSpace(fallback) != "" {
-		return strings.TrimSpace(fallback), nil
+		return strings.TrimSpace(fallback), tierID, nil
 REDACTED
 	if loadErr != nil {
-		return "", fmt.Errorf("loadCodeAssist failed (%v) and onboardUser timeout after %d attempts", loadErr, maxAttempts)
+		return "", tierID, fmt.Errorf("loadCodeAssist failed (%v) and onboardUser timeout after %d attempts", loadErr, maxAttempts)
 REDACTED
-	return "", fmt.Errorf("onboardUser timeout after %d attempts", maxAttempts)
+	return "", tierID, fmt.Errorf("onboardUser timeout after %d attempts", maxAttempts)
 REDACTED
 
 type googleCloudProject struct {
@@ -497,11 +582,12 @@ REDACTED
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
 
-	client := &http.Client{Timeout: 30 * time.SecondREDACTED
-	if strings.TrimSpace(proxyURL) != "" {
-		if proxyURLParsed, err := url.Parse(strings.TrimSpace(proxyURL)); err == nil {
-			client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyURLParsed)REDACTED
-	REDACTED
+	client, err := httpclient.GetClient(httpclient.Options{
+		ProxyURL: strings.TrimSpace(proxyURL),
+		Timeout:  30 * time.Second,
+REDACTED)
+	if err != nil {
+		client = &http.Client{Timeout: 30 * time.SecondREDACTED
 REDACTED
 
 	resp, err := client.Do(req)

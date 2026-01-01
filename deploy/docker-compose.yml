@@ -19,6 +19,10 @@ services:
     image: weishaw/sub2api:latest
     container_name: sub2api
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
     ports:
       - "${BIND_HOST:-0.0.0.0REDACTED:${SERVER_PORT:-8080REDACTED:8080"
     volumes:
@@ -86,6 +90,7 @@ services:
       - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-REDACTED
       - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-REDACTED
       - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-REDACTED
+      - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-REDACTED
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,6 +112,10 @@ services:
     image: postgres:18-alpine
     container_name: sub2api-postgres
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -132,6 +141,10 @@ services:
     image: redis:7-alpine
     container_name: sub2api-redis
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
     volumes:
       - redis_data:/data
     command: >

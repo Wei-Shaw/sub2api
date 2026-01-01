@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
+	errors2 "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -82,7 +82,7 @@ REDACTED{
 	REDACTED,
 		{
 			name:         "application_error",
-			err:          infraerrors.Forbidden("FORBIDDEN", "no access").WithMetadata(map[string]string{"scope": "admin"REDACTED),
+			err:          errors2.Forbidden("FORBIDDEN", "no access").WithMetadata(map[string]string{"scope": "admin"REDACTED),
 			wantWritten:  true,
 			wantHTTPCode: http.StatusForbidden,
 			wantBody: Response{
@@ -94,7 +94,7 @@ REDACTED{
 	REDACTED,
 		{
 			name:         "bad_request_error",
-			err:          infraerrors.BadRequest("INVALID_REQUEST", "invalid request"),
+			err:          errors2.BadRequest("INVALID_REQUEST", "invalid request"),
 			wantWritten:  true,
 			wantHTTPCode: http.StatusBadRequest,
 			wantBody: Response{
@@ -105,7 +105,7 @@ REDACTED{
 	REDACTED,
 		{
 			name:         "unauthorized_error",
-			err:          infraerrors.Unauthorized("UNAUTHORIZED", "unauthorized"),
+			err:          errors2.Unauthorized("UNAUTHORIZED", "unauthorized"),
 			wantWritten:  true,
 			wantHTTPCode: http.StatusUnauthorized,
 			wantBody: Response{
@@ -116,7 +116,7 @@ REDACTED{
 	REDACTED,
 		{
 			name:         "not_found_error",
-			err:          infraerrors.NotFound("NOT_FOUND", "not found"),
+			err:          errors2.NotFound("NOT_FOUND", "not found"),
 			wantWritten:  true,
 			wantHTTPCode: http.StatusNotFound,
 			wantBody: Response{
@@ -127,7 +127,7 @@ REDACTED{
 	REDACTED,
 		{
 			name:         "conflict_error",
-			err:          infraerrors.Conflict("CONFLICT", "conflict"),
+			err:          errors2.Conflict("CONFLICT", "conflict"),
 			wantWritten:  true,
 			wantHTTPCode: http.StatusConflict,
 			wantBody: Response{
@@ -143,7 +143,7 @@ REDACTED{
 			wantHTTPCode: http.StatusInternalServerError,
 			wantBody: Response{
 				Code:    http.StatusInternalServerError,
-				Message: infraerrors.UnknownMessage,
+				Message: errors2.UnknownMessage,
 		REDACTED,
 	REDACTED,
 REDACTED

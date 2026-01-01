@@ -311,19 +311,20 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		return nil
 REDACTED
 	return &service.Group{
-		ID:               g.ID,
-		Name:             g.Name,
-		Description:      derefString(g.Description),
-		Platform:         g.Platform,
-		RateMultiplier:   g.RateMultiplier,
-		IsExclusive:      g.IsExclusive,
-		Status:           g.Status,
-		SubscriptionType: g.SubscriptionType,
-		DailyLimitUSD:    g.DailyLimitUsd,
-		WeeklyLimitUSD:   g.WeeklyLimitUsd,
-		MonthlyLimitUSD:  g.MonthlyLimitUsd,
-		CreatedAt:        g.CreatedAt,
-		UpdatedAt:        g.UpdatedAt,
+		ID:                  g.ID,
+		Name:                g.Name,
+		Description:         derefString(g.Description),
+		Platform:            g.Platform,
+		RateMultiplier:      g.RateMultiplier,
+		IsExclusive:         g.IsExclusive,
+		Status:              g.Status,
+		SubscriptionType:    g.SubscriptionType,
+		DailyLimitUSD:       g.DailyLimitUsd,
+		WeeklyLimitUSD:      g.WeeklyLimitUsd,
+		MonthlyLimitUSD:     g.MonthlyLimitUsd,
+		DefaultValidityDays: g.DefaultValidityDays,
+		CreatedAt:           g.CreatedAt,
+		UpdatedAt:           g.UpdatedAt,
 REDACTED
 REDACTED
 

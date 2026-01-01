@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -78,6 +79,36 @@ func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
 REDACTED
 
+func (a *Account) GeminiOAuthType() string {
+	if a.Platform != PlatformGemini || a.Type != AccountTypeOAuth {
+		return ""
+REDACTED
+	oauthType := strings.TrimSpace(a.GetCredential("oauth_type"))
+	if oauthType == "" && strings.TrimSpace(a.GetCredential("project_id")) != "" {
+		return "code_assist"
+REDACTED
+	return oauthType
+REDACTED
+
+func (a *Account) GeminiTierID() string {
+	tierID := strings.TrimSpace(a.GetCredential("tier_id"))
+	if tierID == "" {
+		return ""
+REDACTED
+	return strings.ToUpper(tierID)
+REDACTED
+
+func (a *Account) IsGeminiCodeAssist() bool {
+	if a.Platform != PlatformGemini || a.Type != AccountTypeOAuth {
+		return false
+REDACTED
+	oauthType := a.GeminiOAuthType()
+	if oauthType == "" {
+		return strings.TrimSpace(a.GetCredential("project_id")) != ""
+REDACTED
+	return oauthType == "code_assist"
+REDACTED
+
 func (a *Account) CanGetUsage() bool {
 	return a.Type == AccountTypeOAuth
 REDACTED
@@ -108,6 +139,28 @@ REDACTED
 	default:
 		return ""
 REDACTED
+REDACTED
+
+// GetCredentialAsTime 解析凭证中的时间戳字段，支持多种格式
+// 兼容以下格式：
+//   - RFC3339 字符串: "2025-01-01T00:00:00Z"
+//   - Unix 时间戳字符串: "1735689600"
+//   - Unix 时间戳数字: 1735689600 (float64/int64/json.Number)
+func (a *Account) GetCredentialAsTime(key string) *time.Time {
+	s := a.GetCredential(key)
+	if s == "" {
+		return nil
+REDACTED
+	// 尝试 RFC3339 格式
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return &t
+REDACTED
+	// 尝试 Unix 时间戳（纯数字字符串）
+	if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
+		t := time.Unix(ts, 0)
+		return &t
+REDACTED
+	return nil
 REDACTED
 
 func (a *Account) GetModelMapping() map[string]string {
@@ -324,19 +377,7 @@ func (a *Account) GetOpenAITokenExpiresAt() *time.Time {
 	if !a.IsOpenAIOAuth() {
 		return nil
 REDACTED
-	expiresAtStr := a.GetCredential("expires_at")
-	if expiresAtStr == "" {
-		return nil
-REDACTED
-	t, err := time.Parse(time.RFC3339, expiresAtStr)
-	if err != nil {
-		if v, ok := a.Credentials["expires_at"].(float64); ok {
-			tt := time.Unix(int64(v), 0)
-			return &tt
-	REDACTED
-		return nil
-REDACTED
-	return &t
+	return a.GetCredentialAsTime("expires_at")
 REDACTED
 
 func (a *Account) IsOpenAITokenExpired() bool {

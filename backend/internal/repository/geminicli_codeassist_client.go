@@ -76,11 +76,10 @@ REDACTED
 REDACTED
 
 func createGeminiCliReqClient(proxyURL string) *req.Client {
-	client := req.C().SetTimeout(30 * time.Second)
-	if proxyURL != "" {
-		client.SetProxyURL(proxyURL)
-REDACTED
-	return client
+	return getSharedReqClient(reqClientOptions{
+		ProxyURL: proxyURL,
+		Timeout:  30 * time.Second,
+REDACTED)
 REDACTED
 
 func defaultLoadCodeAssistRequest() *geminicli.LoadCodeAssistRequest {

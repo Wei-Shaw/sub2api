@@ -12,7 +12,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -187,9 +186,8 @@ REDACTED
 
 		// Check if token needs refresh
 		needRefresh := false
-		if expiresAtStr := account.GetCredential("expires_at"); expiresAtStr != "" {
-			expiresAt, err := strconv.ParseInt(expiresAtStr, 10, 64)
-			if err == nil && time.Now().Unix()+300 > expiresAt {
+		if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
+			if time.Now().Add(5 * time.Minute).After(*expiresAt) {
 				needRefresh = true
 		REDACTED
 	REDACTED
@@ -263,7 +261,7 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	resp, err := s.httpUpstream.Do(req, proxyURL)
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 REDACTED
@@ -378,7 +376,7 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	resp, err := s.httpUpstream.Do(req, proxyURL)
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 REDACTED
@@ -449,7 +447,7 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	resp, err := s.httpUpstream.Do(req, proxyURL)
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 REDACTED

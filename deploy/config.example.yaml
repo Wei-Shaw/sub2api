@@ -22,6 +22,32 @@ server:
 run_mode: "standard"
 
 # =============================================================================
+# 网关配置
+# =============================================================================
+gateway:
+  # 等待上游响应头超时时间（秒）
+  response_header_timeout: 300
+  # 请求体最大字节数（默认 100MB）
+  max_body_size: 104857600
+  # 连接池隔离策略：
+  # - proxy: 按代理隔离，同一代理共享连接池（适合代理少、账户多）
+  # - account: 按账户隔离，同一账户共享连接池（适合账户少、需严格隔离）
+  # - account_proxy: 按账户+代理组合隔离（默认，最细粒度）
+  connection_pool_isolation: "account_proxy"
+  # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认）
+  max_idle_conns: 240
+  max_idle_conns_per_host: 120
+  max_conns_per_host: 240
+  idle_conn_timeout_seconds: 300
+  # 上游连接池客户端缓存配置
+  # max_upstream_clients: 最大缓存客户端数量，超出后淘汰最久未使用的
+  # client_idle_ttl_seconds: 客户端空闲回收阈值（秒），超时且无活跃请求时回收
+  max_upstream_clients: 5000
+  client_idle_ttl_seconds: 900
+  # 并发槽位过期时间（分钟）
+  concurrency_slot_ttl_minutes: 15
+
+# =============================================================================
 # Database Configuration (PostgreSQL)
 # =============================================================================
 database:
@@ -97,6 +123,21 @@ pricing:
   hash_check_interval_minutes: 10
 
 # =============================================================================
+# Gateway (Optional)
+# =============================================================================
+gateway:
+  # Wait time (in seconds) for upstream response headers (streaming body not affected)
+  response_header_timeout: 300
+  # Log upstream error response body summary (safe/truncated; does not log request content)
+  log_upstream_error_body: false
+  # Max bytes to log from upstream error body
+  log_upstream_error_body_max_bytes: 2048
+  # Auto inject anthropic-beta for API-key accounts when needed (default off)
+  inject_beta_for_apikey: false
+  # Allow failover on selected 400 errors (default off)
+  failover_on_400: false
+
+# =============================================================================
 # Gemini OAuth (Required for Gemini accounts)
 # =============================================================================
 # Sub2API supports TWO Gemini OAuth modes:
@@ -115,3 +156,19 @@ gemini:
     client_secret: "REDACTED"
     # Optional scopes (space-separated). Leave empty to auto-select based on oauth_type.
     scopes: ""
+  quota:
+    # Optional: local quota simulation for Gemini Code Assist (local billing).
+    # These values are used for UI progress + precheck scheduling, not official Google quotas.
+    tiers:
+      LEGACY:
+        pro_rpd: 50
+        flash_rpd: 1500
+        cooldown_minutes: 30
+      PRO:
+        pro_rpd: 1500
+        flash_rpd: 4000
+        cooldown_minutes: 5
+      ULTRA:
+        pro_rpd: 2000
+        flash_rpd: 0
+        cooldown_minutes: 5

@@ -49,6 +49,8 @@ const (
 	EdgeAssignedSubscriptions = "assigned_subscriptions"
 	// EdgeAllowedGroups holds the string denoting the allowed_groups edge name in mutations.
 	EdgeAllowedGroups = "allowed_groups"
+	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
+	EdgeUsageLogs = "usage_logs"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -86,6 +88,13 @@ const (
 	// AllowedGroupsInverseTable is the table name for the Group entity.
 	// It exists in this package in order to avoid circular dependency with the "group" package.
 	AllowedGroupsInverseTable = "groups"
+	// UsageLogsTable is the table that holds the usage_logs relation/edge.
+	UsageLogsTable = "usage_logs"
+	// UsageLogsInverseTable is the table name for the UsageLog entity.
+	// It exists in this package in order to avoid circular dependency with the "usagelog" package.
+	UsageLogsInverseTable = "usage_logs"
+	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
+	UsageLogsColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -308,6 +317,20 @@ func ByAllowedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 REDACTED
 REDACTED
 
+// ByUsageLogsCount orders the results by usage_logs count.
+func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsageLogsStep(), opts...)
+REDACTED
+REDACTED
+
+// ByUsageLogs orders the results by usage_logs terms.
+func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsageLogsStep(), append([]sql.OrderTerm{termREDACTED, terms...)...)
+REDACTED
+REDACTED
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -354,6 +377,13 @@ func newAllowedGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AllowedGroupsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, false, AllowedGroupsTable, AllowedGroupsPrimaryKey...),
+	)
+REDACTED
+func newUsageLogsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsageLogsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
 	)
 REDACTED
 func newUserAllowedGroupsStep() *sqlgraph.Step {

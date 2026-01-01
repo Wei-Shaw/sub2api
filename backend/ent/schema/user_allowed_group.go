@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
@@ -31,7 +32,8 @@ func (UserAllowedGroup) Fields() []ent.Field {
 		field.Int64("group_id"),
 		field.Time("created_at").
 			Immutable().
-			Default(time.Now),
+			Default(time.Now).
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
 REDACTED
 REDACTED
 

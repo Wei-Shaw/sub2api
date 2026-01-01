@@ -13,6 +13,8 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 )
 
 // AccountCreate is the builder for creating a Account entity.
@@ -292,6 +294,26 @@ REDACTED
 	return _c.AddGroupIDs(ids...)
 REDACTED
 
+// SetProxy sets the "proxy" edge to the Proxy entity.
+func (_c *AccountCreate) SetProxy(v *Proxy) *AccountCreate {
+	return _c.SetProxyID(v.ID)
+REDACTED
+
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_c *AccountCreate) AddUsageLogIDs(ids ...int64) *AccountCreate {
+	_c.mutation.AddUsageLogIDs(ids...)
+	return _c
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_c *AccountCreate) AddUsageLogs(v ...*UsageLog) *AccountCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _c.AddUsageLogIDs(ids...)
+REDACTED
+
 // Mutation returns the AccountMutation object of the builder.
 func (_c *AccountCreate) Mutation() *AccountMutation {
 	return _c.mutation
@@ -495,10 +517,6 @@ REDACTED
 		_spec.SetField(account.FieldExtra, field.TypeJSON, value)
 		_node.Extra = value
 REDACTED
-	if value, ok := _c.mutation.ProxyID(); ok {
-		_spec.SetField(account.FieldProxyID, field.TypeInt64, value)
-		_node.ProxyID = &value
-REDACTED
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
@@ -565,6 +583,39 @@ REDACTED
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
+		_spec.Edges = append(_spec.Edges, edge)
+REDACTED
+	if nodes := _c.mutation.ProxyIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   account.ProxyTable,
+			Columns: []string{account.ProxyColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_node.ProxyID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+REDACTED
+	if nodes := _c.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   account.UsageLogsTable,
+			Columns: []string{account.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
 		_spec.Edges = append(_spec.Edges, edge)
 REDACTED
 	return _node, _spec
@@ -718,12 +769,6 @@ REDACTED
 // UpdateProxyID sets the "proxy_id" field to the value that was provided on create.
 func (u *AccountUpsert) UpdateProxyID() *AccountUpsert {
 	u.SetExcluded(account.FieldProxyID)
-	return u
-REDACTED
-
-// AddProxyID adds v to the "proxy_id" field.
-func (u *AccountUpsert) AddProxyID(v int64) *AccountUpsert {
-	u.Add(account.FieldProxyID, v)
 	return u
 REDACTED
 
@@ -1091,13 +1136,6 @@ REDACTED
 func (u *AccountUpsertOne) SetProxyID(v int64) *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.SetProxyID(v)
-REDACTED)
-REDACTED
-
-// AddProxyID adds v to the "proxy_id" field.
-func (u *AccountUpsertOne) AddProxyID(v int64) *AccountUpsertOne {
-	return u.Update(func(s *AccountUpsert) {
-		s.AddProxyID(v)
 REDACTED)
 REDACTED
 
@@ -1673,13 +1711,6 @@ REDACTED
 func (u *AccountUpsertBulk) SetProxyID(v int64) *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.SetProxyID(v)
-REDACTED)
-REDACTED
-
-// AddProxyID adds v to the "proxy_id" field.
-func (u *AccountUpsertBulk) AddProxyID(v int64) *AccountUpsertBulk {
-	return u.Update(func(s *AccountUpsert) {
-		s.AddProxyID(v)
 REDACTED)
 REDACTED
 

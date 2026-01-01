@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
@@ -48,6 +49,20 @@ REDACTED
 func (_c *UserSubscriptionCreate) SetNillableUpdatedAt(v *time.Time) *UserSubscriptionCreate {
 	if v != nil {
 		_c.SetUpdatedAt(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (_c *UserSubscriptionCreate) SetDeletedAt(v time.Time) *UserSubscriptionCreate {
+	_c.mutation.SetDeletedAt(v)
+	return _c
+REDACTED
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableDeletedAt(v *time.Time) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetDeletedAt(*v)
 REDACTED
 	return _c
 REDACTED
@@ -245,6 +260,21 @@ func (_c *UserSubscriptionCreate) SetAssignedByUser(v *User) *UserSubscriptionCr
 	return _c.SetAssignedByUserID(v.ID)
 REDACTED
 
+// AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
+func (_c *UserSubscriptionCreate) AddUsageLogIDs(ids ...int64) *UserSubscriptionCreate {
+	_c.mutation.AddUsageLogIDs(ids...)
+	return _c
+REDACTED
+
+// AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
+func (_c *UserSubscriptionCreate) AddUsageLogs(v ...*UsageLog) *UserSubscriptionCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _c.AddUsageLogIDs(ids...)
+REDACTED
+
 // Mutation returns the UserSubscriptionMutation object of the builder.
 func (_c *UserSubscriptionCreate) Mutation() *UserSubscriptionMutation {
 	return _c.mutation
@@ -252,7 +282,9 @@ REDACTED
 
 // Save creates the UserSubscription in the database.
 func (_c *UserSubscriptionCreate) Save(ctx context.Context) (*UserSubscription, error) {
-	_c.defaults()
+	if err := _c.defaults(); err != nil {
+		return nil, err
+REDACTED
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 REDACTED
 
@@ -279,12 +311,18 @@ REDACTED
 REDACTED
 
 // defaults sets the default values of the builder before save.
-func (_c *UserSubscriptionCreate) defaults() {
+func (_c *UserSubscriptionCreate) defaults() error {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
+		if usersubscription.DefaultCreatedAt == nil {
+			return fmt.Errorf("ent: uninitialized usersubscription.DefaultCreatedAt (forgotten import ent/runtime?)")
+	REDACTED
 		v := usersubscription.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 REDACTED
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
+		if usersubscription.DefaultUpdatedAt == nil {
+			return fmt.Errorf("ent: uninitialized usersubscription.DefaultUpdatedAt (forgotten import ent/runtime?)")
+	REDACTED
 		v := usersubscription.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 REDACTED
@@ -305,9 +343,13 @@ REDACTED
 		_c.mutation.SetMonthlyUsageUsd(v)
 REDACTED
 	if _, ok := _c.mutation.AssignedAt(); !ok {
+		if usersubscription.DefaultAssignedAt == nil {
+			return fmt.Errorf("ent: uninitialized usersubscription.DefaultAssignedAt (forgotten import ent/runtime?)")
+	REDACTED
 		v := usersubscription.DefaultAssignedAt()
 		_c.mutation.SetAssignedAt(v)
 REDACTED
+	return nil
 REDACTED
 
 // check runs all checks and user-defined validators on the builder.
@@ -390,6 +432,10 @@ REDACTED
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(usersubscription.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
+REDACTED
+	if value, ok := _c.mutation.DeletedAt(); ok {
+		_spec.SetField(usersubscription.FieldDeletedAt, field.TypeTime, value)
+		_node.DeletedAt = &value
 REDACTED
 	if value, ok := _c.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)
@@ -486,6 +532,22 @@ REDACTED
 		_node.AssignedBy = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 REDACTED
+	if nodes := _c.mutation.UsageLogsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usersubscription.UsageLogsTable,
+			Columns: []string{usersubscription.UsageLogsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges = append(_spec.Edges, edge)
+REDACTED
 	return _node, _spec
 REDACTED
 
@@ -547,6 +609,24 @@ REDACTED
 // UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
 func (u *UserSubscriptionUpsert) UpdateUpdatedAt() *UserSubscriptionUpsert {
 	u.SetExcluded(usersubscription.FieldUpdatedAt)
+	return u
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *UserSubscriptionUpsert) SetDeletedAt(v time.Time) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldDeletedAt, v)
+	return u
+REDACTED
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateDeletedAt() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldDeletedAt)
+	return u
+REDACTED
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *UserSubscriptionUpsert) ClearDeletedAt() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldDeletedAt)
 	return u
 REDACTED
 
@@ -822,6 +902,27 @@ REDACTED
 func (u *UserSubscriptionUpsertOne) UpdateUpdatedAt() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateUpdatedAt()
+REDACTED)
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *UserSubscriptionUpsertOne) SetDeletedAt(v time.Time) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetDeletedAt(v)
+REDACTED)
+REDACTED
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateDeletedAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateDeletedAt()
+REDACTED)
+REDACTED
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *UserSubscriptionUpsertOne) ClearDeletedAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearDeletedAt()
 REDACTED)
 REDACTED
 
@@ -1299,6 +1400,27 @@ REDACTED
 func (u *UserSubscriptionUpsertBulk) UpdateUpdatedAt() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateUpdatedAt()
+REDACTED)
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *UserSubscriptionUpsertBulk) SetDeletedAt(v time.Time) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetDeletedAt(v)
+REDACTED)
+REDACTED
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateDeletedAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateDeletedAt()
+REDACTED)
+REDACTED
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *UserSubscriptionUpsertBulk) ClearDeletedAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearDeletedAt()
 REDACTED)
 REDACTED
 

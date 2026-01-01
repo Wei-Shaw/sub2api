@@ -29,6 +29,7 @@ REDACTED
 func (UserSubscription) Mixin() []ent.Mixin {
 	return []ent.Mixin{
 		mixins.TimeMixin{REDACTED,
+		mixins.SoftDeleteMixin{REDACTED,
 REDACTED
 REDACTED
 
@@ -97,6 +98,7 @@ func (UserSubscription) Edges() []ent.Edge {
 			Ref("assigned_subscriptions").
 			Field("assigned_by").
 			Unique(),
+		edge.To("usage_logs", UsageLog.Type),
 REDACTED
 REDACTED
 
@@ -107,6 +109,9 @@ func (UserSubscription) Indexes() []ent.Index {
 		index.Fields("status"),
 		index.Fields("expires_at"),
 		index.Fields("assigned_by"),
-		index.Fields("user_id", "group_id").Unique(),
+		// 唯一约束通过部分索引实现（WHERE deleted_at IS NULL），支持软删除后重新订阅
+		// 见迁移文件 016_soft_delete_partial_unique_indexes.sql
+		index.Fields("user_id", "group_id"),
+		index.Fields("deleted_at"),
 REDACTED
 REDACTED

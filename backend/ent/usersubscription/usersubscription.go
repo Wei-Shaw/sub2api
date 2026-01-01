@@ -5,6 +5,7 @@ package usersubscription
 import (
 	"time"
 
+	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 )
@@ -18,6 +19,8 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
+	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
+	FieldDeletedAt = "deleted_at"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
 	// FieldGroupID holds the string denoting the group_id field in the database.
@@ -52,6 +55,8 @@ const (
 	EdgeGroup = "group"
 	// EdgeAssignedByUser holds the string denoting the assigned_by_user edge name in mutations.
 	EdgeAssignedByUser = "assigned_by_user"
+	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
+	EdgeUsageLogs = "usage_logs"
 	// Table holds the table name of the usersubscription in the database.
 	Table = "user_subscriptions"
 	// UserTable is the table that holds the user relation/edge.
@@ -75,6 +80,13 @@ const (
 	AssignedByUserInverseTable = "users"
 	// AssignedByUserColumn is the table column denoting the assigned_by_user relation/edge.
 	AssignedByUserColumn = "assigned_by"
+	// UsageLogsTable is the table that holds the usage_logs relation/edge.
+	UsageLogsTable = "usage_logs"
+	// UsageLogsInverseTable is the table name for the UsageLog entity.
+	// It exists in this package in order to avoid circular dependency with the "usagelog" package.
+	UsageLogsInverseTable = "usage_logs"
+	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
+	UsageLogsColumn = "subscription_id"
 )
 
 // Columns holds all SQL columns for usersubscription fields.
@@ -82,6 +94,7 @@ var Columns = []string{
 	FieldID,
 	FieldCreatedAt,
 	FieldUpdatedAt,
+	FieldDeletedAt,
 	FieldUserID,
 	FieldGroupID,
 	FieldStartsAt,
@@ -108,7 +121,14 @@ REDACTED
 	return false
 REDACTED
 
+// Note that the variables below are initialized by the runtime
+// package on the initialization of the application. Therefore,
+// it should be imported in the main as follows:
+//
+//	import _ "github.com/Wei-Shaw/sub2api/ent/runtime"
 var (
+	Hooks        [1]ent.Hook
+	Interceptors [1]ent.Interceptor
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -145,6 +165,11 @@ REDACTED
 // ByUpdatedAt orders the results by the updated_at field.
 func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
+REDACTED
+
+// ByDeletedAt orders the results by the deleted_at field.
+func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
 REDACTED
 
 // ByUserID orders the results by the user_id field.
@@ -237,6 +262,20 @@ func ByAssignedByUserField(field string, opts ...sql.OrderTermOption) OrderOptio
 		sqlgraph.OrderByNeighborTerms(s, newAssignedByUserStep(), sql.OrderByField(field, opts...))
 REDACTED
 REDACTED
+
+// ByUsageLogsCount orders the results by usage_logs count.
+func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsageLogsStep(), opts...)
+REDACTED
+REDACTED
+
+// ByUsageLogs orders the results by usage_logs terms.
+func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsageLogsStep(), append([]sql.OrderTerm{termREDACTED, terms...)...)
+REDACTED
+REDACTED
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -256,5 +295,12 @@ func newAssignedByUserStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AssignedByUserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, AssignedByUserTable, AssignedByUserColumn),
+	)
+REDACTED
+func newUsageLogsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsageLogsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
 	)
 REDACTED

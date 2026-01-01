@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -72,6 +73,7 @@ type RedeemService struct {
 	subscriptionService *SubscriptionService
 	cache               RedeemCache
 	billingCacheService *BillingCacheService
+	entClient           *dbent.Client
 REDACTED
 
 // NewRedeemService 创建兑换码服务实例
@@ -81,6 +83,7 @@ func NewRedeemService(
 	subscriptionService *SubscriptionService,
 	cache RedeemCache,
 	billingCacheService *BillingCacheService,
+	entClient *dbent.Client,
 ) *RedeemService {
 	return &RedeemService{
 		redeemRepo:          redeemRepo,
@@ -88,6 +91,7 @@ func NewRedeemService(
 		subscriptionService: subscriptionService,
 		cache:               cache,
 		billingCacheService: billingCacheService,
+		entClient:           entClient,
 REDACTED
 REDACTED
 
@@ -248,9 +252,19 @@ REDACTED
 REDACTED
 	_ = user // 使用变量避免未使用错误
 
+	// 使用数据库事务保证兑换码标记与权益发放的原子性
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+REDACTED
+	defer func() { _ = tx.Rollback() REDACTED()
+
+	// 将事务放入 context，使 repository 方法能够使用同一事务
+	txCtx := dbent.NewTxContext(ctx, tx)
+
 	// 【关键】先标记兑换码为已使用，确保并发安全
 	// 利用数据库乐观锁（WHERE status = 'unused'）保证原子性
-	if err := s.redeemRepo.Use(ctx, redeemCode.ID, userID); err != nil {
+	if err := s.redeemRepo.Use(txCtx, redeemCode.ID, userID); err != nil {
 		if errors.Is(err, ErrRedeemCodeNotFound) || errors.Is(err, ErrRedeemCodeUsed) {
 			return nil, ErrRedeemCodeUsed
 	REDACTED
@@ -261,21 +275,13 @@ REDACTED
 	switch redeemCode.Type {
 	case RedeemTypeBalance:
 		// 增加用户余额
-		if err := s.userRepo.UpdateBalance(ctx, userID, redeemCode.Value); err != nil {
+		if err := s.userRepo.UpdateBalance(txCtx, userID, redeemCode.Value); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
-	REDACTED
-		// 失效余额缓存
-		if s.billingCacheService != nil {
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.InvalidateUserBalance(cacheCtx, userID)
-		REDACTED()
 	REDACTED
 
 	case RedeemTypeConcurrency:
 		// 增加用户并发数
-		if err := s.userRepo.UpdateConcurrency(ctx, userID, int(redeemCode.Value)); err != nil {
+		if err := s.userRepo.UpdateConcurrency(txCtx, userID, int(redeemCode.Value)); err != nil {
 			return nil, fmt.Errorf("update user concurrency: %w", err)
 	REDACTED
 
@@ -284,7 +290,7 @@ REDACTED
 		if validityDays <= 0 {
 			validityDays = 30
 	REDACTED
-		_, _, err := s.subscriptionService.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		_, _, err := s.subscriptionService.AssignOrExtendSubscription(txCtx, &AssignSubscriptionInput{
 			UserID:       userID,
 			GroupID:      *redeemCode.GroupID,
 			ValidityDays: validityDays,
@@ -294,19 +300,18 @@ REDACTED
 		if err != nil {
 			return nil, fmt.Errorf("assign or extend subscription: %w", err)
 	REDACTED
-		// 失效订阅缓存
-		if s.billingCacheService != nil {
-			groupID := *redeemCode.GroupID
-			go func() {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-		REDACTED()
-	REDACTED
 
 	default:
 		return nil, fmt.Errorf("unsupported redeem type: %s", redeemCode.Type)
 REDACTED
+
+	// 提交事务
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+REDACTED
+
+	// 事务提交成功后失效缓存
+	s.invalidateRedeemCaches(ctx, userID, redeemCode)
 
 	// 重新获取更新后的兑换码
 	redeemCode, err = s.redeemRepo.GetByID(ctx, redeemCode.ID)
@@ -315,6 +320,31 @@ REDACTED
 REDACTED
 
 	return redeemCode, nil
+REDACTED
+
+// invalidateRedeemCaches 失效兑换相关的缓存
+func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64, redeemCode *RedeemCode) {
+	if s.billingCacheService == nil {
+		return
+REDACTED
+
+	switch redeemCode.Type {
+	case RedeemTypeBalance:
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateUserBalance(cacheCtx, userID)
+	REDACTED()
+	case RedeemTypeSubscription:
+		if redeemCode.GroupID != nil {
+			groupID := *redeemCode.GroupID
+			go func() {
+				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		REDACTED()
+	REDACTED
+REDACTED
 REDACTED
 
 // GetByID 根据ID获取兑换码

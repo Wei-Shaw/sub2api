@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 var (
 	ErrAccountNotFound = infraerrors.NotFound("ACCOUNT_NOT_FOUND", "account not found")
+	ErrAccountNilInput = infraerrors.BadRequest("ACCOUNT_NIL_INPUT", "account input cannot be nil")
 )
 
 type AccountRepository interface {

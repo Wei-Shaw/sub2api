@@ -16,6 +16,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 )
 
 // AccountQuery is the builder for querying Account entities.
@@ -26,6 +28,8 @@ type AccountQuery struct {
 	inters            []Interceptor
 	predicates        []predicate.Account
 	withGroups        *GroupQuery
+	withProxy         *ProxyQuery
+	withUsageLogs     *UsageLogQuery
 	withAccountGroups *AccountGroupQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -78,6 +82,50 @@ func (_q *AccountQuery) QueryGroups() *GroupQuery {
 			sqlgraph.From(account.Table, account.FieldID, selector),
 			sqlgraph.To(group.Table, group.FieldID),
 			sqlgraph.Edge(sqlgraph.M2M, false, account.GroupsTable, account.GroupsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryProxy chains the current query on the "proxy" edge.
+func (_q *AccountQuery) QueryProxy() *ProxyQuery {
+	query := (&ProxyClient{config: _q.configREDACTED).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+	REDACTED
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+	REDACTED
+		step := sqlgraph.NewStep(
+			sqlgraph.From(account.Table, account.FieldID, selector),
+			sqlgraph.To(proxy.Table, proxy.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, account.ProxyTable, account.ProxyColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryUsageLogs chains the current query on the "usage_logs" edge.
+func (_q *AccountQuery) QueryUsageLogs() *UsageLogQuery {
+	query := (&UsageLogClient{config: _q.configREDACTED).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+	REDACTED
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+	REDACTED
+		step := sqlgraph.NewStep(
+			sqlgraph.From(account.Table, account.FieldID, selector),
+			sqlgraph.To(usagelog.Table, usagelog.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, account.UsageLogsTable, account.UsageLogsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -300,6 +348,8 @@ REDACTED
 		inters:            append([]Interceptor{REDACTED, _q.inters...),
 		predicates:        append([]predicate.Account{REDACTED, _q.predicates...),
 		withGroups:        _q.withGroups.Clone(),
+		withProxy:         _q.withProxy.Clone(),
+		withUsageLogs:     _q.withUsageLogs.Clone(),
 		withAccountGroups: _q.withAccountGroups.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -315,6 +365,28 @@ func (_q *AccountQuery) WithGroups(opts ...func(*GroupQuery)) *AccountQuery {
 		opt(query)
 REDACTED
 	_q.withGroups = query
+	return _q
+REDACTED
+
+// WithProxy tells the query-builder to eager-load the nodes that are connected to
+// the "proxy" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *AccountQuery) WithProxy(opts ...func(*ProxyQuery)) *AccountQuery {
+	query := (&ProxyClient{config: _q.configREDACTED).Query()
+	for _, opt := range opts {
+		opt(query)
+REDACTED
+	_q.withProxy = query
+	return _q
+REDACTED
+
+// WithUsageLogs tells the query-builder to eager-load the nodes that are connected to
+// the "usage_logs" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *AccountQuery) WithUsageLogs(opts ...func(*UsageLogQuery)) *AccountQuery {
+	query := (&UsageLogClient{config: _q.configREDACTED).Query()
+	for _, opt := range opts {
+		opt(query)
+REDACTED
+	_q.withUsageLogs = query
 	return _q
 REDACTED
 
@@ -407,8 +479,10 @@ func (_q *AccountQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Acco
 	var (
 		nodes       = []*Account{REDACTED
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [4]bool{
 			_q.withGroups != nil,
+			_q.withProxy != nil,
+			_q.withUsageLogs != nil,
 			_q.withAccountGroups != nil,
 	REDACTED
 	)
@@ -434,6 +508,19 @@ REDACTED
 		if err := _q.loadGroups(ctx, query, nodes,
 			func(n *Account) { n.Edges.Groups = []*Group{REDACTED REDACTED,
 			func(n *Account, e *Group) { n.Edges.Groups = append(n.Edges.Groups, e) REDACTED); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if query := _q.withProxy; query != nil {
+		if err := _q.loadProxy(ctx, query, nodes, nil,
+			func(n *Account, e *Proxy) { n.Edges.Proxy = e REDACTED); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if query := _q.withUsageLogs; query != nil {
+		if err := _q.loadUsageLogs(ctx, query, nodes,
+			func(n *Account) { n.Edges.UsageLogs = []*UsageLog{REDACTED REDACTED,
+			func(n *Account, e *UsageLog) { n.Edges.UsageLogs = append(n.Edges.UsageLogs, e) REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
@@ -508,6 +595,68 @@ REDACTED
 REDACTED
 	return nil
 REDACTED
+func (_q *AccountQuery) loadProxy(ctx context.Context, query *ProxyQuery, nodes []*Account, init func(*Account), assign func(*Account, *Proxy)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*Account)
+	for i := range nodes {
+		if nodes[i].ProxyID == nil {
+			continue
+	REDACTED
+		fk := *nodes[i].ProxyID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+	REDACTED
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+REDACTED
+	if len(ids) == 0 {
+		return nil
+REDACTED
+	query.Where(proxy.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "proxy_id" returned %v`, n.ID)
+	REDACTED
+		for i := range nodes {
+			assign(nodes[i], n)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+func (_q *AccountQuery) loadUsageLogs(ctx context.Context, query *UsageLogQuery, nodes []*Account, init func(*Account), assign func(*Account, *UsageLog)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*Account)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+	REDACTED
+REDACTED
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(usagelog.FieldAccountID)
+REDACTED
+	query.Where(predicate.UsageLog(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(account.UsageLogsColumn), fks...))
+REDACTED))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	for _, n := range neighbors {
+		fk := n.AccountID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "account_id" returned %v for node %v`, fk, n.ID)
+	REDACTED
+		assign(node, n)
+REDACTED
+	return nil
+REDACTED
 func (_q *AccountQuery) loadAccountGroups(ctx context.Context, query *AccountGroupQuery, nodes []*Account, init func(*Account), assign func(*Account, *AccountGroup)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[int64]*Account)
@@ -563,6 +712,9 @@ REDACTED
 			if fields[i] != account.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 		REDACTED
+	REDACTED
+		if _q.withProxy != nil {
+			_spec.Node.AddColumnOnce(account.FieldProxyID)
 	REDACTED
 REDACTED
 	if ps := _q.predicates; len(ps) > 0 {
