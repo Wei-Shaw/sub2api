@@ -26,10 +26,5 @@ UPDATE accounts
 SET credentials = credentials - 'tier_id'
 WHERE platform = 'gemini'
   AND type = 'oauth'
-  AND jsonb_typeof(credentials) = 'object'
-  AND credentials->>'tier_id' = 'LEGACY'
-  AND (
-    credentials->>'oauth_type' = 'code_assist'
-    OR (credentials->>'oauth_type' IS NULL AND credentials->>'project_id' IS NOT NULL)
-  );
+  AND credentials->>'oauth_type' = 'code_assist';
 -- +goose StatementEnd
