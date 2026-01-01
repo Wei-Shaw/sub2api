@@ -202,16 +202,6 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByUsername() {
 	s.Require().Equal("JohnDoe", users[0].Username)
 REDACTED
 
-func (s *UserRepoSuite) TestListWithFilters_SearchByWechat() {
-	s.mustCreateUser(&service.User{Email: "w1@test.com", Wechat: "wx_hello"REDACTED)
-	s.mustCreateUser(&service.User{Email: "w2@test.com", Wechat: "wx_world"REDACTED)
-
-	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "wx_hello")
-	s.Require().NoError(err)
-	s.Require().Len(users, 1)
-	s.Require().Equal("wx_hello", users[0].Wechat)
-REDACTED
-
 func (s *UserRepoSuite) TestListWithFilters_LoadsActiveSubscriptions() {
 	user := s.mustCreateUser(&service.User{Email: "sub@test.com", Status: service.StatusActiveREDACTED)
 	groupActive := s.mustCreateGroup("g-sub-active")
@@ -238,7 +228,6 @@ func (s *UserRepoSuite) TestListWithFilters_CombinedFilters() {
 	s.mustCreateUser(&service.User{
 		Email:    "a@example.com",
 		Username: "Alice",
-		Wechat:   "wx_a",
 		Role:     service.RoleUser,
 		Status:   service.StatusActive,
 		Balance:  10,
@@ -246,7 +235,6 @@ REDACTED)
 	target := s.mustCreateUser(&service.User{
 		Email:    "b@example.com",
 		Username: "Bob",
-		Wechat:   "wx_b",
 		Role:     service.RoleAdmin,
 		Status:   service.StatusActive,
 		Balance:  1,
@@ -448,7 +436,6 @@ func (s *UserRepoSuite) TestCRUD_And_Filters_And_AtomicUpdates() {
 	user1 := s.mustCreateUser(&service.User{
 		Email:    "a@example.com",
 		Username: "Alice",
-		Wechat:   "wx_a",
 		Role:     service.RoleUser,
 		Status:   service.StatusActive,
 		Balance:  10,
@@ -456,7 +443,6 @@ REDACTED)
 	user2 := s.mustCreateUser(&service.User{
 		Email:    "b@example.com",
 		Username: "Bob",
-		Wechat:   "wx_b",
 		Role:     service.RoleAdmin,
 		Status:   service.StatusActive,
 		Balance:  1,

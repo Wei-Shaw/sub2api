@@ -246,7 +246,7 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 REDACTED
 
 	// Limit to 30 results
-	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, "", "", keyword)
+	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{Search: keywordREDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

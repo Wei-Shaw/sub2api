@@ -18,7 +18,6 @@ func TestAdminService_CreateUser_Success(t *testing.T) {
 		Email:         "user@test.com",
 		Password:      "strong-pass",
 		Username:      "tester",
-		Wechat:        "wx",
 		Notes:         "note",
 		Balance:       12.5,
 		Concurrency:   7,
@@ -31,7 +30,6 @@ REDACTED
 	require.Equal(t, int64(10), user.ID)
 	require.Equal(t, input.Email, user.Email)
 	require.Equal(t, input.Username, user.Username)
-	require.Equal(t, input.Wechat, user.Wechat)
 	require.Equal(t, input.Notes, user.Notes)
 	require.Equal(t, input.Balance, user.Balance)
 	require.Equal(t, input.Concurrency, user.Concurrency)
