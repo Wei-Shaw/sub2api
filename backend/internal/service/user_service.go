@@ -16,10 +16,10 @@ var (
 
 // UserListFilters contains all filter options for listing users
 type UserListFilters struct {
-	Status     string            // User status filter
-	Role       string            // User role filter
-	Search     string            // Search in email, username
-	Attributes map[int64]string  // Custom attribute filters: attributeID -> value
+	Status     string           // User status filter
+	Role       string           // User role filter
+	Search     string           // Search in email, username
+	Attributes map[int64]string // Custom attribute filters: attributeID -> value
 REDACTED
 
 type UserRepository interface {

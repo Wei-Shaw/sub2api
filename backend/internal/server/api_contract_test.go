@@ -347,7 +347,6 @@ REDACTED
 				ID:            1,
 				Email:         "alice@example.com",
 				Username:      "alice",
-				Wechat:        "wx_alice",
 				Notes:         "hello",
 				Role:          service.RoleUser,
 				Balance:       12.5,
@@ -502,7 +501,7 @@ func (r *stubUserRepo) List(ctx context.Context, params pagination.PaginationPar
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubUserRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, role, search string) ([]service.User, *pagination.PaginationResult, error) {
+func (r *stubUserRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters service.UserListFilters) ([]service.User, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
