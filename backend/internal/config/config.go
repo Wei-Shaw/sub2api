@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -142,6 +143,26 @@ type GatewayConfig struct {
 
 	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
+
+	// Scheduling: 账号调度相关配置
+	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
+REDACTED
+
+// GatewaySchedulingConfig accounts scheduling configuration.
+type GatewaySchedulingConfig struct {
+	// 粘性会话排队配置
+	StickySessionMaxWaiting  int           `mapstructure:"sticky_session_max_waiting"`
+	StickySessionWaitTimeout time.Duration `mapstructure:"sticky_session_wait_timeout"`
+
+	// 兜底排队配置
+	FallbackWaitTimeout time.Duration `mapstructure:"fallback_wait_timeout"`
+	FallbackMaxWaiting  int           `mapstructure:"fallback_max_waiting"`
+
+	// 负载计算
+	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
+
+	// 过期槽位清理周期（0 表示禁用）
+	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
 REDACTED
 
 func (s *ServerConfig) Address() string {
@@ -350,6 +371,12 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 15) // 并发槽位过期时间（支持超长请求）
+	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
+	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 45*time.Second)
+	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
+	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
+	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
+	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
 
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
@@ -438,6 +465,21 @@ REDACTED
 REDACTED
 	if c.Gateway.ConcurrencySlotTTLMinutes <= 0 {
 		return fmt.Errorf("gateway.concurrency_slot_ttl_minutes must be positive")
+REDACTED
+	if c.Gateway.Scheduling.StickySessionMaxWaiting <= 0 {
+		return fmt.Errorf("gateway.scheduling.sticky_session_max_waiting must be positive")
+REDACTED
+	if c.Gateway.Scheduling.StickySessionWaitTimeout <= 0 {
+		return fmt.Errorf("gateway.scheduling.sticky_session_wait_timeout must be positive")
+REDACTED
+	if c.Gateway.Scheduling.FallbackWaitTimeout <= 0 {
+		return fmt.Errorf("gateway.scheduling.fallback_wait_timeout must be positive")
+REDACTED
+	if c.Gateway.Scheduling.FallbackMaxWaiting <= 0 {
+		return fmt.Errorf("gateway.scheduling.fallback_max_waiting must be positive")
+REDACTED
+	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
+		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")
 REDACTED
 	return nil
 REDACTED
