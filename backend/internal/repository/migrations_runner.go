@@ -133,7 +133,7 @@ REDACTED
 						"Solutions:\n"+
 						"  1. Revert to original: git log --oneline -- migrations/%s && git checkout <commit> -- migrations/%s\n"+
 						"  2. For new changes, create a new migration file instead of modifying existing ones\n"+
-						"Note: Modifying applied migrations breaks the immutability principle and can cause inconsistencies across environments.",
+						"Note: Modifying applied migrations breaks the immutability principle and can cause inconsistencies across environments",
 					name, existing, checksum, name, name,
 				)
 		REDACTED
