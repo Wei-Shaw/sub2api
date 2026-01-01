@@ -11,6 +11,7 @@
     "typecheck": "vue-tsc --noEmit"
   REDACTED,
   "dependencies": {
+    "@lobehub/icons": "^4.0.2",
     "@vueuse/core": "^10.7.0",
     "axios": "^1.6.2",
     "chart.js": "^4.4.1",
@@ -25,6 +26,7 @@
   REDACTED,
   "devDependencies": {
     "@types/file-saver": "^2.0.7",
+    "@types/mdx": "^2.0.13",
     "@types/node": "^20.10.5",
     "@vitejs/plugin-vue": "^5.2.3",
     "autoprefixer": "^10.4.16",

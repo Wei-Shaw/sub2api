@@ -17,7 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@/*": ["./src/*"]
-    REDACTED
+    REDACTED,
+    "types": ["vite/client"]
   REDACTED,
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" REDACTED]

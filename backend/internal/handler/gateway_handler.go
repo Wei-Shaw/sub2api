@@ -396,12 +396,42 @@ REDACTED
 
 // Models handles listing available models
 // GET /v1/models
-// Returns different model lists based on the API key's group platform
+// Returns models based on account configurations (model_mapping whitelist)
+// Falls back to default models if no whitelist is configured
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetApiKeyFromContext(c)
 
-	// Return OpenAI models for OpenAI platform groups
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == "openai" {
+	var groupID *int64
+	var platform string
+
+	if apiKey != nil && apiKey.Group != nil {
+		groupID = &apiKey.Group.ID
+		platform = apiKey.Group.Platform
+REDACTED
+
+	// Get available models from account configurations (without platform filter)
+	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, "")
+
+	if len(availableModels) > 0 {
+		// Build model list from whitelist
+		models := make([]claude.Model, 0, len(availableModels))
+		for _, modelID := range availableModels {
+			models = append(models, claude.Model{
+				ID:          modelID,
+				Type:        "model",
+				DisplayName: modelID,
+				CreatedAt:   "2024-01-01T00:00:00Z",
+		REDACTED)
+	REDACTED
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   models,
+	REDACTED)
+		return
+REDACTED
+
+	// Fallback to default models
+	if platform == "openai" {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
 			"data":   openai.DefaultModels,
@@ -409,7 +439,6 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 REDACTED
 
-	// Default: Claude models
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
 		"data":   claude.DefaultModels,
