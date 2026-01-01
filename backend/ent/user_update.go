@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -171,20 +172,6 @@ REDACTED
 	return _u
 REDACTED
 
-// SetWechat sets the "wechat" field.
-func (_u *UserUpdate) SetWechat(v string) *UserUpdate {
-	_u.mutation.SetWechat(v)
-	return _u
-REDACTED
-
-// SetNillableWechat sets the "wechat" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableWechat(v *string) *UserUpdate {
-	if v != nil {
-		_u.SetWechat(*v)
-REDACTED
-	return _u
-REDACTED
-
 // SetNotes sets the "notes" field.
 func (_u *UserUpdate) SetNotes(v string) *UserUpdate {
 	_u.mutation.SetNotes(v)
@@ -287,6 +274,21 @@ func (_u *UserUpdate) AddUsageLogs(v ...*UsageLog) *UserUpdate {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.AddUsageLogIDs(ids...)
+REDACTED
+
+// AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
+func (_u *UserUpdate) AddAttributeValueIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddAttributeValueIDs(ids...)
+	return _u
+REDACTED
+
+// AddAttributeValues adds the "attribute_values" edges to the UserAttributeValue entity.
+func (_u *UserUpdate) AddAttributeValues(v ...*UserAttributeValue) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddAttributeValueIDs(ids...)
 REDACTED
 
 // Mutation returns the UserMutation object of the builder.
@@ -420,6 +422,27 @@ REDACTED
 	return _u.RemoveUsageLogIDs(ids...)
 REDACTED
 
+// ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
+func (_u *UserUpdate) ClearAttributeValues() *UserUpdate {
+	_u.mutation.ClearAttributeValues()
+	return _u
+REDACTED
+
+// RemoveAttributeValueIDs removes the "attribute_values" edge to UserAttributeValue entities by IDs.
+func (_u *UserUpdate) RemoveAttributeValueIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveAttributeValueIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveAttributeValues removes "attribute_values" edges to UserAttributeValue entities.
+func (_u *UserUpdate) RemoveAttributeValues(v ...*UserAttributeValue) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveAttributeValueIDs(ids...)
+REDACTED
+
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *UserUpdate) Save(ctx context.Context) (int, error) {
 	if err := _u.defaults(); err != nil {
@@ -489,11 +512,6 @@ REDACTED
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)REDACTED
 	REDACTED
 REDACTED
-	if v, ok := _u.mutation.Wechat(); ok {
-		if err := user.WechatValidator(v); err != nil {
-			return &ValidationError{Name: "wechat", err: fmt.Errorf(`ent: validator failed for field "User.wechat": %w`, err)REDACTED
-	REDACTED
-REDACTED
 	return nil
 REDACTED
 
@@ -544,9 +562,6 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
-REDACTED
-	if value, ok := _u.mutation.Wechat(); ok {
-		_spec.SetField(user.FieldWechat, field.TypeString, value)
 REDACTED
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
@@ -826,6 +841,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.AttributeValuesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AttributeValuesTable,
+			Columns: []string{user.AttributeValuesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedAttributeValuesIDs(); len(nodes) > 0 && !_u.mutation.AttributeValuesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AttributeValuesTable,
+			Columns: []string{user.AttributeValuesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.AttributeValuesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AttributeValuesTable,
+			Columns: []string{user.AttributeValuesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {
@@ -991,20 +1051,6 @@ REDACTED
 	return _u
 REDACTED
 
-// SetWechat sets the "wechat" field.
-func (_u *UserUpdateOne) SetWechat(v string) *UserUpdateOne {
-	_u.mutation.SetWechat(v)
-	return _u
-REDACTED
-
-// SetNillableWechat sets the "wechat" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableWechat(v *string) *UserUpdateOne {
-	if v != nil {
-		_u.SetWechat(*v)
-REDACTED
-	return _u
-REDACTED
-
 // SetNotes sets the "notes" field.
 func (_u *UserUpdateOne) SetNotes(v string) *UserUpdateOne {
 	_u.mutation.SetNotes(v)
@@ -1107,6 +1153,21 @@ func (_u *UserUpdateOne) AddUsageLogs(v ...*UsageLog) *UserUpdateOne {
 		ids[i] = v[i].ID
 REDACTED
 	return _u.AddUsageLogIDs(ids...)
+REDACTED
+
+// AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
+func (_u *UserUpdateOne) AddAttributeValueIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddAttributeValueIDs(ids...)
+	return _u
+REDACTED
+
+// AddAttributeValues adds the "attribute_values" edges to the UserAttributeValue entity.
+func (_u *UserUpdateOne) AddAttributeValues(v ...*UserAttributeValue) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddAttributeValueIDs(ids...)
 REDACTED
 
 // Mutation returns the UserMutation object of the builder.
@@ -1240,6 +1301,27 @@ REDACTED
 	return _u.RemoveUsageLogIDs(ids...)
 REDACTED
 
+// ClearAttributeValues clears all "attribute_values" edges to the UserAttributeValue entity.
+func (_u *UserUpdateOne) ClearAttributeValues() *UserUpdateOne {
+	_u.mutation.ClearAttributeValues()
+	return _u
+REDACTED
+
+// RemoveAttributeValueIDs removes the "attribute_values" edge to UserAttributeValue entities by IDs.
+func (_u *UserUpdateOne) RemoveAttributeValueIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveAttributeValueIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveAttributeValues removes "attribute_values" edges to UserAttributeValue entities.
+func (_u *UserUpdateOne) RemoveAttributeValues(v ...*UserAttributeValue) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveAttributeValueIDs(ids...)
+REDACTED
+
 // Where appends a list predicates to the UserUpdate builder.
 func (_u *UserUpdateOne) Where(ps ...predicate.User) *UserUpdateOne {
 	_u.mutation.Where(ps...)
@@ -1322,11 +1404,6 @@ REDACTED
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)REDACTED
 	REDACTED
 REDACTED
-	if v, ok := _u.mutation.Wechat(); ok {
-		if err := user.WechatValidator(v); err != nil {
-			return &ValidationError{Name: "wechat", err: fmt.Errorf(`ent: validator failed for field "User.wechat": %w`, err)REDACTED
-	REDACTED
-REDACTED
 	return nil
 REDACTED
 
@@ -1394,9 +1471,6 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
-REDACTED
-	if value, ok := _u.mutation.Wechat(); ok {
-		_spec.SetField(user.FieldWechat, field.TypeString, value)
 REDACTED
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
@@ -1676,6 +1750,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.AttributeValuesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AttributeValuesTable,
+			Columns: []string{user.AttributeValuesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedAttributeValuesIDs(); len(nodes) > 0 && !_u.mutation.AttributeValuesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AttributeValuesTable,
+			Columns: []string{user.AttributeValuesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.AttributeValuesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AttributeValuesTable,
+			Columns: []string{user.AttributeValuesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {

@@ -9,6 +9,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -50,7 +51,6 @@ REDACTED
 	created, err := txClient.User.Create().
 		SetEmail(userIn.Email).
 		SetUsername(userIn.Username).
-		SetWechat(userIn.Wechat).
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
@@ -133,7 +133,6 @@ REDACTED
 	updated, err := txClient.User.UpdateOneID(userIn.ID).
 		SetEmail(userIn.Email).
 		SetUsername(userIn.Username).
-		SetWechat(userIn.Wechat).
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
@@ -171,26 +170,36 @@ REDACTED
 REDACTED
 
 func (r *userRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "")
+	return r.ListWithFilters(ctx, params, service.UserListFilters{REDACTED)
 REDACTED
 
-func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, role, search string) ([]service.User, *pagination.PaginationResult, error) {
+func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters service.UserListFilters) ([]service.User, *pagination.PaginationResult, error) {
 	q := r.client.User.Query()
 
-	if status != "" {
-		q = q.Where(dbuser.StatusEQ(status))
+	if filters.Status != "" {
+		q = q.Where(dbuser.StatusEQ(filters.Status))
 REDACTED
-	if role != "" {
-		q = q.Where(dbuser.RoleEQ(role))
+	if filters.Role != "" {
+		q = q.Where(dbuser.RoleEQ(filters.Role))
 REDACTED
-	if search != "" {
+	if filters.Search != "" {
 		q = q.Where(
 			dbuser.Or(
-				dbuser.EmailContainsFold(search),
-				dbuser.UsernameContainsFold(search),
-				dbuser.WechatContainsFold(search),
+				dbuser.EmailContainsFold(filters.Search),
+				dbuser.UsernameContainsFold(filters.Search),
 			),
 		)
+REDACTED
+
+	// If attribute filters are specified, we need to filter by user IDs first
+	var allowedUserIDs []int64
+	if len(filters.Attributes) > 0 {
+		allowedUserIDs = r.filterUsersByAttributes(ctx, filters.Attributes)
+		if len(allowedUserIDs) == 0 {
+			// No users match the attribute filters
+			return []service.User{REDACTED, paginationResultFromTotal(0, params), nil
+	REDACTED
+		q = q.Where(dbuser.IDIn(allowedUserIDs...))
 REDACTED
 
 	total, err := q.Clone().Count(ctx)
@@ -250,6 +259,59 @@ REDACTED
 REDACTED
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
+REDACTED
+
+// filterUsersByAttributes returns user IDs that match ALL the given attribute filters
+func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[int64]string) []int64 {
+	if len(attrs) == 0 {
+		return nil
+REDACTED
+
+	// For each attribute filter, get the set of matching user IDs
+	// Then intersect all sets to get users matching ALL filters
+	var resultSet map[int64]struct{REDACTED
+	first := true
+
+	for attrID, value := range attrs {
+		// Query user_attribute_values for this attribute
+		values, err := r.client.UserAttributeValue.Query().
+			Where(
+				userattributevalue.AttributeIDEQ(attrID),
+				userattributevalue.ValueContainsFold(value),
+			).
+			All(ctx)
+		if err != nil {
+			continue
+	REDACTED
+
+		currentSet := make(map[int64]struct{REDACTED, len(values))
+		for _, v := range values {
+			currentSet[v.UserID] = struct{REDACTED{REDACTED
+	REDACTED
+
+		if first {
+			resultSet = currentSet
+			first = false
+	REDACTED else {
+			// Intersect with previous results
+			for userID := range resultSet {
+				if _, ok := currentSet[userID]; !ok {
+					delete(resultSet, userID)
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// Early exit if no users match
+		if len(resultSet) == 0 {
+			return nil
+	REDACTED
+REDACTED
+
+	result := make([]int64, 0, len(resultSet))
+	for userID := range resultSet {
+		result = append(result, userID)
+REDACTED
+	return result
 REDACTED
 
 func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount float64) error {

@@ -105,11 +105,6 @@ func Username(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldUsername, v))
 REDACTED
 
-// Wechat applies equality check predicate on the "wechat" field. It's identical to WechatEQ.
-func Wechat(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldWechat, v))
-REDACTED
-
 // Notes applies equality check predicate on the "notes" field. It's identical to NotesEQ.
 func Notes(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldNotes, v))
@@ -650,71 +645,6 @@ func UsernameContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldUsername, v))
 REDACTED
 
-// WechatEQ applies the EQ predicate on the "wechat" field.
-func WechatEQ(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldWechat, v))
-REDACTED
-
-// WechatNEQ applies the NEQ predicate on the "wechat" field.
-func WechatNEQ(v string) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldWechat, v))
-REDACTED
-
-// WechatIn applies the In predicate on the "wechat" field.
-func WechatIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldIn(FieldWechat, vs...))
-REDACTED
-
-// WechatNotIn applies the NotIn predicate on the "wechat" field.
-func WechatNotIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldWechat, vs...))
-REDACTED
-
-// WechatGT applies the GT predicate on the "wechat" field.
-func WechatGT(v string) predicate.User {
-	return predicate.User(sql.FieldGT(FieldWechat, v))
-REDACTED
-
-// WechatGTE applies the GTE predicate on the "wechat" field.
-func WechatGTE(v string) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldWechat, v))
-REDACTED
-
-// WechatLT applies the LT predicate on the "wechat" field.
-func WechatLT(v string) predicate.User {
-	return predicate.User(sql.FieldLT(FieldWechat, v))
-REDACTED
-
-// WechatLTE applies the LTE predicate on the "wechat" field.
-func WechatLTE(v string) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldWechat, v))
-REDACTED
-
-// WechatContains applies the Contains predicate on the "wechat" field.
-func WechatContains(v string) predicate.User {
-	return predicate.User(sql.FieldContains(FieldWechat, v))
-REDACTED
-
-// WechatHasPrefix applies the HasPrefix predicate on the "wechat" field.
-func WechatHasPrefix(v string) predicate.User {
-	return predicate.User(sql.FieldHasPrefix(FieldWechat, v))
-REDACTED
-
-// WechatHasSuffix applies the HasSuffix predicate on the "wechat" field.
-func WechatHasSuffix(v string) predicate.User {
-	return predicate.User(sql.FieldHasSuffix(FieldWechat, v))
-REDACTED
-
-// WechatEqualFold applies the EqualFold predicate on the "wechat" field.
-func WechatEqualFold(v string) predicate.User {
-	return predicate.User(sql.FieldEqualFold(FieldWechat, v))
-REDACTED
-
-// WechatContainsFold applies the ContainsFold predicate on the "wechat" field.
-func WechatContainsFold(v string) predicate.User {
-	return predicate.User(sql.FieldContainsFold(FieldWechat, v))
-REDACTED
-
 // NotesEQ applies the EQ predicate on the "notes" field.
 func NotesEQ(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldNotes, v))
@@ -910,6 +840,29 @@ REDACTED
 func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newUsageLogsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+		REDACTED
+	REDACTED)
+REDACTED)
+REDACTED
+
+// HasAttributeValues applies the HasEdge predicate on the "attribute_values" edge.
+func HasAttributeValues() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, AttributeValuesTable, AttributeValuesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+REDACTED)
+REDACTED
+
+// HasAttributeValuesWith applies the HasEdge predicate on the "attribute_values" edge with a given conditions (other predicates).
+func HasAttributeValuesWith(preds ...predicate.UserAttributeValue) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newAttributeValuesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

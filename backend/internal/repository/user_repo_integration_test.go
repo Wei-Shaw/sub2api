@@ -166,7 +166,7 @@ func (s *UserRepoSuite) TestListWithFilters_Status() {
 	s.mustCreateUser(&service.User{Email: "active@test.com", Status: service.StatusActiveREDACTED)
 	s.mustCreateUser(&service.User{Email: "disabled@test.com", Status: service.StatusDisabledREDACTED)
 
-	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.StatusActive, "", "")
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.UserListFilters{Status: service.StatusActiveREDACTED)
 	s.Require().NoError(err)
 	s.Require().Len(users, 1)
 	s.Require().Equal(service.StatusActive, users[0].Status)
@@ -176,7 +176,7 @@ func (s *UserRepoSuite) TestListWithFilters_Role() {
 	s.mustCreateUser(&service.User{Email: "user@test.com", Role: service.RoleUserREDACTED)
 	s.mustCreateUser(&service.User{Email: "admin@test.com", Role: service.RoleAdminREDACTED)
 
-	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", service.RoleAdmin, "")
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.UserListFilters{Role: service.RoleAdminREDACTED)
 	s.Require().NoError(err)
 	s.Require().Len(users, 1)
 	s.Require().Equal(service.RoleAdmin, users[0].Role)
@@ -186,7 +186,7 @@ func (s *UserRepoSuite) TestListWithFilters_Search() {
 	s.mustCreateUser(&service.User{Email: "alice@test.com", Username: "Alice"REDACTED)
 	s.mustCreateUser(&service.User{Email: "bob@test.com", Username: "Bob"REDACTED)
 
-	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "alice")
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.UserListFilters{Search: "alice"REDACTED)
 	s.Require().NoError(err)
 	s.Require().Len(users, 1)
 	s.Require().Contains(users[0].Email, "alice")
@@ -196,20 +196,10 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByUsername() {
 	s.mustCreateUser(&service.User{Email: "u1@test.com", Username: "JohnDoe"REDACTED)
 	s.mustCreateUser(&service.User{Email: "u2@test.com", Username: "JaneSmith"REDACTED)
 
-	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "john")
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.UserListFilters{Search: "john"REDACTED)
 	s.Require().NoError(err)
 	s.Require().Len(users, 1)
 	s.Require().Equal("JohnDoe", users[0].Username)
-REDACTED
-
-func (s *UserRepoSuite) TestListWithFilters_SearchByWechat() {
-	s.mustCreateUser(&service.User{Email: "w1@test.com", Wechat: "wx_hello"REDACTED)
-	s.mustCreateUser(&service.User{Email: "w2@test.com", Wechat: "wx_world"REDACTED)
-
-	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "wx_hello")
-	s.Require().NoError(err)
-	s.Require().Len(users, 1)
-	s.Require().Equal("wx_hello", users[0].Wechat)
 REDACTED
 
 func (s *UserRepoSuite) TestListWithFilters_LoadsActiveSubscriptions() {
@@ -226,7 +216,7 @@ REDACTED)
 		c.SetExpiresAt(time.Now().Add(-1 * time.Hour))
 REDACTED)
 
-	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "sub@")
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.UserListFilters{Search: "sub@"REDACTED)
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Len(users, 1, "expected 1 user")
 	s.Require().Len(users[0].Subscriptions, 1, "expected 1 active subscription")
@@ -238,7 +228,6 @@ func (s *UserRepoSuite) TestListWithFilters_CombinedFilters() {
 	s.mustCreateUser(&service.User{
 		Email:    "a@example.com",
 		Username: "Alice",
-		Wechat:   "wx_a",
 		Role:     service.RoleUser,
 		Status:   service.StatusActive,
 		Balance:  10,
@@ -246,7 +235,6 @@ REDACTED)
 	target := s.mustCreateUser(&service.User{
 		Email:    "b@example.com",
 		Username: "Bob",
-		Wechat:   "wx_b",
 		Role:     service.RoleAdmin,
 		Status:   service.StatusActive,
 		Balance:  1,
@@ -257,7 +245,7 @@ REDACTED)
 		Status: service.StatusDisabled,
 REDACTED)
 
-	users, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.StatusActive, service.RoleAdmin, "b@")
+	users, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.UserListFilters{Status: service.StatusActive, Role: service.RoleAdmin, Search: "b@"REDACTED)
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total, "ListWithFilters total mismatch")
 	s.Require().Len(users, 1, "ListWithFilters len mismatch")
@@ -448,7 +436,6 @@ func (s *UserRepoSuite) TestCRUD_And_Filters_And_AtomicUpdates() {
 	user1 := s.mustCreateUser(&service.User{
 		Email:    "a@example.com",
 		Username: "Alice",
-		Wechat:   "wx_a",
 		Role:     service.RoleUser,
 		Status:   service.StatusActive,
 		Balance:  10,
@@ -456,7 +443,6 @@ REDACTED)
 	user2 := s.mustCreateUser(&service.User{
 		Email:    "b@example.com",
 		Username: "Bob",
-		Wechat:   "wx_b",
 		Role:     service.RoleAdmin,
 		Status:   service.StatusActive,
 		Balance:  1,
@@ -501,7 +487,7 @@ REDACTED)
 	s.Require().Equal(user1.Concurrency+3, got5.Concurrency)
 
 	params := pagination.PaginationParams{Page: 1, PageSize: 10REDACTED
-	users, page, err := s.repo.ListWithFilters(s.ctx, params, service.StatusActive, service.RoleAdmin, "b@")
+	users, page, err := s.repo.ListWithFilters(s.ctx, params, service.UserListFilters{Status: service.StatusActive, Role: service.RoleAdmin, Search: "b@"REDACTED)
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total, "ListWithFilters total mismatch")
 	s.Require().Len(users, 1, "ListWithFilters len mismatch")

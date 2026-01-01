@@ -54,6 +54,9 @@ func RegisterAdminRoutes(
 
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
+
+		// 用户属性管理
+		registerUserAttributeRoutes(admin, h)
 REDACTED
 REDACTED
 
@@ -82,6 +85,10 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
+
+		// User attribute values
+		users.GET("/:id/attributes", h.Admin.UserAttribute.GetUserAttributes)
+		users.PUT("/:id/attributes", h.Admin.UserAttribute.UpdateUserAttributes)
 REDACTED
 REDACTED
 
@@ -242,5 +249,17 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.GET("/stats", h.Admin.Usage.Stats)
 		usage.GET("/search-users", h.Admin.Usage.SearchUsers)
 		usage.GET("/search-api-keys", h.Admin.Usage.SearchApiKeys)
+REDACTED
+REDACTED
+
+func registerUserAttributeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	attrs := admin.Group("/user-attributes")
+	{
+		attrs.GET("", h.Admin.UserAttribute.ListDefinitions)
+		attrs.POST("", h.Admin.UserAttribute.CreateDefinition)
+		attrs.POST("/batch", h.Admin.UserAttribute.GetBatchUserAttributes)
+		attrs.PUT("/reorder", h.Admin.UserAttribute.ReorderDefinitions)
+		attrs.PUT("/:id", h.Admin.UserAttribute.UpdateDefinition)
+		attrs.DELETE("/:id", h.Admin.UserAttribute.DeleteDefinition)
 REDACTED
 REDACTED

@@ -7,7 +7,6 @@
 export interface User {
   id: number
   username: string
-  wechat: string
   notes: string
   email: string
   role: 'admin' | 'user' // User role for authorization
@@ -634,7 +633,6 @@ export interface UpdateUserRequest {
   email?: string
   password?: string
   username?: string
-  wechat?: string
   notes?: string
   role?: 'admin' | 'user'
   balance?: number
@@ -770,4 +768,77 @@ export interface AccountUsageStatsResponse {
   history: AccountUsageHistory[]
   summary: AccountUsageSummary
   models: ModelStat[]
+REDACTED
+
+// ==================== User Attribute Types ====================
+
+export type UserAttributeType = 'text' | 'textarea' | 'number' | 'email' | 'url' | 'date' | 'select' | 'multi_select'
+
+export interface UserAttributeOption {
+  value: string
+  label: string
+REDACTED
+
+export interface UserAttributeValidation {
+  min_length?: number
+  max_length?: number
+  min?: number
+  max?: number
+  pattern?: string
+  message?: string
+REDACTED
+
+export interface UserAttributeDefinition {
+  id: number
+  key: string
+  name: string
+  description: string
+  type: UserAttributeType
+  options: UserAttributeOption[]
+  required: boolean
+  validation: UserAttributeValidation
+  placeholder: string
+  display_order: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface UserAttributeValue {
+  id: number
+  user_id: number
+  attribute_id: number
+  value: string
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface CreateUserAttributeRequest {
+  key: string
+  name: string
+  description?: string
+  type: UserAttributeType
+  options?: UserAttributeOption[]
+  required?: boolean
+  validation?: UserAttributeValidation
+  placeholder?: string
+  display_order?: number
+  enabled?: boolean
+REDACTED
+
+export interface UpdateUserAttributeRequest {
+  key?: string
+  name?: string
+  description?: string
+  type?: UserAttributeType
+  options?: UserAttributeOption[]
+  required?: boolean
+  validation?: UserAttributeValidation
+  placeholder?: string
+  display_order?: number
+  enabled?: boolean
+REDACTED
+
+export interface UserAttributeValuesMap {
+  [attributeId: number]: string
 REDACTED

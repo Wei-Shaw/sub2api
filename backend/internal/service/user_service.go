@@ -14,6 +14,14 @@ var (
 	ErrInsufficientPerms = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 )
 
+// UserListFilters contains all filter options for listing users
+type UserListFilters struct {
+	Status     string           // User status filter
+	Role       string           // User role filter
+	Search     string           // Search in email, username
+	Attributes map[int64]string // Custom attribute filters: attributeID -> value
+REDACTED
+
 type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	GetByID(ctx context.Context, id int64) (*User, error)
@@ -23,7 +31,7 @@ type UserRepository interface {
 	Delete(ctx context.Context, id int64) error
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, role, search string) ([]User, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error)
 
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
@@ -36,7 +44,6 @@ REDACTED
 type UpdateProfileRequest struct {
 	Email       *string `json:"email"`
 	Username    *string `json:"username"`
-	Wechat      *string `json:"wechat"`
 	Concurrency *int    `json:"concurrency"`
 REDACTED
 
@@ -98,10 +105,6 @@ REDACTED
 
 	if req.Username != nil {
 		user.Username = *req.Username
-REDACTED
-
-	if req.Wechat != nil {
-		user.Wechat = *req.Wechat
 REDACTED
 
 	if req.Concurrency != nil {
