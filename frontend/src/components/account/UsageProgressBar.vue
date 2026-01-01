@@ -4,7 +4,7 @@
     <div
       v-if="windowStats"
       class="mb-0.5 flex items-center justify-between"
-      :title="t('admin.accounts.usageWindow.statsTitle')"
+      :title="statsTitle || t('admin.accounts.usageWindow.statsTitle')"
     >
       <div
         class="flex cursor-help items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400"
@@ -60,6 +60,7 @@ const props = defineProps<{
   resetsAt?: string | null
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
+  statsTitle?: string
 REDACTED>()
 
 const { t REDACTED = useI18n()
