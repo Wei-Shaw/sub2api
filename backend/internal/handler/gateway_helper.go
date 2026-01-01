@@ -83,16 +83,6 @@ func (h *ConcurrencyHelper) DecrementWaitCount(ctx context.Context, userID int64
 	h.concurrencyService.DecrementWaitCount(ctx, userID)
 REDACTED
 
-// IncrementAccountWaitCount increments the wait count for an account
-func (h *ConcurrencyHelper) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
-	return h.concurrencyService.IncrementAccountWaitCount(ctx, accountID, maxWait)
-REDACTED
-
-// DecrementAccountWaitCount decrements the wait count for an account
-func (h *ConcurrencyHelper) DecrementAccountWaitCount(ctx context.Context, accountID int64) {
-	h.concurrencyService.DecrementAccountWaitCount(ctx, accountID)
-REDACTED
-
 // AcquireUserSlotWithWait acquires a user concurrency slot, waiting if necessary.
 // For streaming requests, sends ping events during the wait.
 // streamStarted is updated if streaming response has begun.
@@ -136,12 +126,7 @@ REDACTED
 // waitForSlotWithPing waits for a concurrency slot, sending ping events for streaming requests.
 // streamStarted pointer is updated when streaming begins (for proper error handling by caller).
 func (h *ConcurrencyHelper) waitForSlotWithPing(c *gin.Context, slotType string, id int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
-	return h.waitForSlotWithPingTimeout(c, slotType, id, maxConcurrency, maxConcurrencyWait, isStream, streamStarted)
-REDACTED
-
-// waitForSlotWithPingTimeout waits for a concurrency slot with a custom timeout.
-func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType string, id int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), maxConcurrencyWait)
 	defer cancel()
 
 	// Determine if ping is needed (streaming + ping format defined)
@@ -213,11 +198,6 @@ REDACTED
 			timer.Reset(backoff)
 	REDACTED
 REDACTED
-REDACTED
-
-// AcquireAccountSlotWithWaitTimeout acquires an account slot with a custom timeout (keeps SSE ping).
-func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitTimeout(c *gin.Context, accountID int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
-	return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted)
 REDACTED
 
 // nextBackoff 计算下一次退避时间

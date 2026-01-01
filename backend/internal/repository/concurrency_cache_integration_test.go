@@ -27,7 +27,7 @@ REDACTED
 
 func (s *ConcurrencyCacheSuite) SetupTest() {
 	s.IntegrationRedisSuite.SetupTest()
-	s.cache = NewConcurrencyCache(s.rdb, testSlotTTLMinutes, int(testSlotTTL.Seconds()))
+	s.cache = NewConcurrencyCache(s.rdb, testSlotTTLMinutes)
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestAccountSlot_AcquireAndRelease() {
@@ -218,48 +218,6 @@ REDACTED
 	require.GreaterOrEqual(s.T(), val, 0, "expected non-negative wait count")
 REDACTED
 
-func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_IncrementAndDecrement() {
-	accountID := int64(30)
-	waitKey := fmt.Sprintf("%s%d", accountWaitKeyPrefix, accountID)
-
-	ok, err := s.cache.IncrementAccountWaitCount(s.ctx, accountID, 2)
-	require.NoError(s.T(), err, "IncrementAccountWaitCount 1")
-	require.True(s.T(), ok)
-
-	ok, err = s.cache.IncrementAccountWaitCount(s.ctx, accountID, 2)
-	require.NoError(s.T(), err, "IncrementAccountWaitCount 2")
-	require.True(s.T(), ok)
-
-	ok, err = s.cache.IncrementAccountWaitCount(s.ctx, accountID, 2)
-	require.NoError(s.T(), err, "IncrementAccountWaitCount 3")
-	require.False(s.T(), ok, "expected account wait increment over max to fail")
-
-	ttl, err := s.rdb.TTL(s.ctx, waitKey).Result()
-	require.NoError(s.T(), err, "TTL account waitKey")
-	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
-
-	require.NoError(s.T(), s.cache.DecrementAccountWaitCount(s.ctx, accountID), "DecrementAccountWaitCount")
-
-	val, err := s.rdb.Get(s.ctx, waitKey).Int()
-	if !errors.Is(err, redis.Nil) {
-		require.NoError(s.T(), err, "Get waitKey")
-REDACTED
-	require.Equal(s.T(), 1, val, "expected account wait count 1")
-REDACTED
-
-func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_DecrementNoNegative() {
-	accountID := int64(301)
-	waitKey := fmt.Sprintf("%s%d", accountWaitKeyPrefix, accountID)
-
-	require.NoError(s.T(), s.cache.DecrementAccountWaitCount(s.ctx, accountID), "DecrementAccountWaitCount on non-existent key")
-
-	val, err := s.rdb.Get(s.ctx, waitKey).Int()
-	if !errors.Is(err, redis.Nil) {
-		require.NoError(s.T(), err, "Get waitKey")
-REDACTED
-	require.GreaterOrEqual(s.T(), val, 0, "expected non-negative account wait count after decrement on empty")
-REDACTED
-
 func (s *ConcurrencyCacheSuite) TestGetAccountConcurrency_Missing() {
 	// When no slots exist, GetAccountConcurrency should return 0
 	cur, err := s.cache.GetAccountConcurrency(s.ctx, 999)
@@ -272,139 +230,6 @@ func (s *ConcurrencyCacheSuite) TestGetUserConcurrency_Missing() {
 	cur, err := s.cache.GetUserConcurrency(s.ctx, 999)
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), 0, cur)
-REDACTED
-
-func (s *ConcurrencyCacheSuite) TestGetAccountsLoadBatch() {
-	s.T().Skip("TODO: Fix this test - CurrentConcurrency returns 0 instead of expected value in CI")
-	// Setup: Create accounts with different load states
-	account1 := int64(100)
-	account2 := int64(101)
-	account3 := int64(102)
-
-	// Account 1: 2/3 slots used, 1 waiting
-	ok, err := s.cache.AcquireAccountSlot(s.ctx, account1, 3, "req1")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-	ok, err = s.cache.AcquireAccountSlot(s.ctx, account1, 3, "req2")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-	ok, err = s.cache.IncrementAccountWaitCount(s.ctx, account1, 5)
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-
-	// Account 2: 1/2 slots used, 0 waiting
-	ok, err = s.cache.AcquireAccountSlot(s.ctx, account2, 2, "req3")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-
-	// Account 3: 0/1 slots used, 0 waiting (idle)
-
-	// Query batch load
-	accounts := []service.AccountWithConcurrency{
-		{ID: account1, MaxConcurrency: 3REDACTED,
-		{ID: account2, MaxConcurrency: 2REDACTED,
-		{ID: account3, MaxConcurrency: 1REDACTED,
-REDACTED
-
-	loadMap, err := s.cache.GetAccountsLoadBatch(s.ctx, accounts)
-	require.NoError(s.T(), err)
-	require.Len(s.T(), loadMap, 3)
-
-	// Verify account1: (2 + 1) / 3 = 100%
-	load1 := loadMap[account1]
-	require.NotNil(s.T(), load1)
-	require.Equal(s.T(), account1, load1.AccountID)
-	require.Equal(s.T(), 2, load1.CurrentConcurrency)
-	require.Equal(s.T(), 1, load1.WaitingCount)
-	require.Equal(s.T(), 100, load1.LoadRate)
-
-	// Verify account2: (1 + 0) / 2 = 50%
-	load2 := loadMap[account2]
-	require.NotNil(s.T(), load2)
-	require.Equal(s.T(), account2, load2.AccountID)
-	require.Equal(s.T(), 1, load2.CurrentConcurrency)
-	require.Equal(s.T(), 0, load2.WaitingCount)
-	require.Equal(s.T(), 50, load2.LoadRate)
-
-	// Verify account3: (0 + 0) / 1 = 0%
-	load3 := loadMap[account3]
-	require.NotNil(s.T(), load3)
-	require.Equal(s.T(), account3, load3.AccountID)
-	require.Equal(s.T(), 0, load3.CurrentConcurrency)
-	require.Equal(s.T(), 0, load3.WaitingCount)
-	require.Equal(s.T(), 0, load3.LoadRate)
-REDACTED
-
-func (s *ConcurrencyCacheSuite) TestGetAccountsLoadBatch_Empty() {
-	// Test with empty account list
-	loadMap, err := s.cache.GetAccountsLoadBatch(s.ctx, []service.AccountWithConcurrency{REDACTED)
-	require.NoError(s.T(), err)
-	require.Empty(s.T(), loadMap)
-REDACTED
-
-func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlots() {
-	accountID := int64(200)
-	slotKey := fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)
-
-	// Acquire 3 slots
-	ok, err := s.cache.AcquireAccountSlot(s.ctx, accountID, 5, "req1")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-	ok, err = s.cache.AcquireAccountSlot(s.ctx, accountID, 5, "req2")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-	ok, err = s.cache.AcquireAccountSlot(s.ctx, accountID, 5, "req3")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-
-	// Verify 3 slots exist
-	cur, err := s.cache.GetAccountConcurrency(s.ctx, accountID)
-	require.NoError(s.T(), err)
-	require.Equal(s.T(), 3, cur)
-
-	// Manually set old timestamps for req1 and req2 (simulate expired slots)
-	now := time.Now().Unix()
-	expiredTime := now - int64(testSlotTTL.Seconds()) - 10 // 10 seconds past TTL
-	err = s.rdb.ZAdd(s.ctx, slotKey, redis.Z{Score: float64(expiredTime), Member: "req1"REDACTED).Err()
-	require.NoError(s.T(), err)
-	err = s.rdb.ZAdd(s.ctx, slotKey, redis.Z{Score: float64(expiredTime), Member: "req2"REDACTED).Err()
-	require.NoError(s.T(), err)
-
-	// Run cleanup
-	err = s.cache.CleanupExpiredAccountSlots(s.ctx, accountID)
-	require.NoError(s.T(), err)
-
-	// Verify only 1 slot remains (req3)
-	cur, err = s.cache.GetAccountConcurrency(s.ctx, accountID)
-	require.NoError(s.T(), err)
-	require.Equal(s.T(), 1, cur)
-
-	// Verify req3 still exists
-	members, err := s.rdb.ZRange(s.ctx, slotKey, 0, -1).Result()
-	require.NoError(s.T(), err)
-	require.Len(s.T(), members, 1)
-	require.Equal(s.T(), "req3", members[0])
-REDACTED
-
-func (s *ConcurrencyCacheSuite) TestCleanupExpiredAccountSlots_NoExpired() {
-	accountID := int64(201)
-
-	// Acquire 2 fresh slots
-	ok, err := s.cache.AcquireAccountSlot(s.ctx, accountID, 5, "req1")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-	ok, err = s.cache.AcquireAccountSlot(s.ctx, accountID, 5, "req2")
-	require.NoError(s.T(), err)
-	require.True(s.T(), ok)
-
-	// Run cleanup (should not remove anything)
-	err = s.cache.CleanupExpiredAccountSlots(s.ctx, accountID)
-	require.NoError(s.T(), err)
-
-	// Verify both slots still exist
-	cur, err := s.cache.GetAccountConcurrency(s.ctx, accountID)
-	require.NoError(s.T(), err)
-	require.Equal(s.T(), 2, cur)
 REDACTED
 
 func TestConcurrencyCacheSuite(t *testing.T) {

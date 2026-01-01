@@ -14,15 +14,12 @@ func TransformClaudeToGemini(claudeReq *ClaudeRequest, projectID, mappedModel st
 	// 用于存储 tool_use id -> name 映射
 	toolIDToName := make(map[string]string)
 
+	// 检测是否启用 thinking
+	isThinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
+
 	// 只有 Gemini 模型支持 dummy thought workaround
 	// Claude 模型通过 Vertex/Google API 需要有效的 thought signatures
 	allowDummyThought := strings.HasPrefix(mappedModel, "gemini-")
-
-	// 检测是否启用 thinking
-	requestedThinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
-	// 为避免 Claude 模型的 thought signature/消息块约束导致 400（上游要求 thinking 块开头等），
-	// 非 Gemini 模型默认不启用 thinking（除非未来支持完整签名链路）。
-	isThinkingEnabled := requestedThinkingEnabled && allowDummyThought
 
 	// 1. 构建 contents
 	contents, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
@@ -34,15 +31,7 @@ REDACTED
 	systemInstruction := buildSystemInstruction(claudeReq.System, claudeReq.Model)
 
 	// 3. 构建 generationConfig
-	reqForGen := claudeReq
-	if requestedThinkingEnabled && !allowDummyThought {
-		log.Printf("[Warning] Disabling thinking for non-Gemini model in antigravity transform: model=%s", mappedModel)
-		// shallow copy to avoid mutating caller's request
-		clone := *claudeReq
-		clone.Thinking = nil
-		reqForGen = &clone
-REDACTED
-	generationConfig := buildGenerationConfig(reqForGen)
+	generationConfig := buildGenerationConfig(claudeReq)
 
 	// 4. 构建 tools
 	tools := buildTools(claudeReq.Tools)
@@ -159,9 +148,8 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 			if !hasThoughtPart && len(parts) > 0 {
 				// 在开头添加 dummy thinking block
 				parts = append([]GeminiPart{{
-					Text:             "Thinking...",
-					Thought:          true,
-					ThoughtSignature: dummyThoughtSignature,
+					Text:    "Thinking...",
+					Thought: true,
 		REDACTED parts...)
 		REDACTED
 	REDACTED
@@ -182,34 +170,6 @@ REDACTED
 // dummyThoughtSignature 用于跳过 Gemini 3 thought_signature 验证
 // 参考: https://ai.google.dev/gemini-api/docs/thought-signatures
 const dummyThoughtSignature = "skip_thought_signature_validator"
-
-// isValidThoughtSignature 验证 thought signature 是否有效
-// Claude API 要求 signature 必须是 base64 编码的字符串，长度至少 32 字节
-func isValidThoughtSignature(signature string) bool {
-	// 空字符串无效
-	if signature == "" {
-		return false
-REDACTED
-
-	// signature 应该是 base64 编码，长度至少 40 个字符（约 30 字节）
-	// 参考 Claude API 文档和实际观察到的有效 signature
-	if len(signature) < 40 {
-		log.Printf("[Debug] Signature too short: len=%d", len(signature))
-		return false
-REDACTED
-
-	// 检查是否是有效的 base64 字符
-	// base64 字符集: A-Z, a-z, 0-9, +, /, =
-	for i, c := range signature {
-		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') &&
-			(c < '0' || c > '9') && c != '+' && c != '/' && c != '=' {
-			log.Printf("[Debug] Invalid base64 character at position %d: %c (code=%d)", i, c, c)
-			return false
-	REDACTED
-REDACTED
-
-	return true
-REDACTED
 
 // buildParts 构建消息的 parts
 // allowDummyThought: 只有 Gemini 模型支持 dummy thought signature
@@ -239,30 +199,22 @@ REDACTED
 		REDACTED
 
 		case "thinking":
-			if allowDummyThought {
-				// Gemini 模型可以使用 dummy signature
-				parts = append(parts, GeminiPart{
-					Text:             block.Thinking,
-					Thought:          true,
-					ThoughtSignature: dummyThoughtSignature,
-			REDACTED)
+			part := GeminiPart{
+				Text:    block.Thinking,
+				Thought: true,
+		REDACTED
+			// 保留原有 signature（Claude 模型需要有效的 signature）
+			if block.Signature != "" {
+				part.ThoughtSignature = block.Signature
+		REDACTED else if !allowDummyThought {
+				// Claude 模型需要有效 signature，跳过无 signature 的 thinking block
+				log.Printf("Warning: skipping thinking block without signature for Claude model")
 				continue
+		REDACTED else {
+				// Gemini 模型使用 dummy signature
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
-
-			// Claude 模型：仅在提供有效 signature 时保留 thinking block；否则跳过以避免上游校验失败。
-			signature := strings.TrimSpace(block.Signature)
-			if signature == "" || signature == dummyThoughtSignature {
-				log.Printf("[Warning] Skipping thinking block for Claude model (missing or dummy signature)")
-				continue
-		REDACTED
-			if !isValidThoughtSignature(signature) {
-				log.Printf("[Debug] Thinking signature may be invalid (passing through anyway): len=%d", len(signature))
-		REDACTED
-			parts = append(parts, GeminiPart{
-				Text:             block.Thinking,
-				Thought:          true,
-				ThoughtSignature: signature,
-		REDACTED)
+			parts = append(parts, part)
 
 		case "image":
 			if block.Source != nil && block.Source.Type == "base64" {
@@ -287,9 +239,10 @@ REDACTED
 					ID:   block.ID,
 			REDACTED,
 		REDACTED
-			// 只有 Gemini 模型使用 dummy signature
-			// Claude 模型不设置 signature（避免验证问题）
-			if allowDummyThought {
+			// 保留原有 signature，或对 Gemini 模型使用 dummy signature
+			if block.Signature != "" {
+				part.ThoughtSignature = block.Signature
+		REDACTED else if allowDummyThought {
 				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
@@ -433,9 +386,9 @@ REDACTED
 
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
-	for i, tool := range tools {
+	for _, tool := range tools {
 		// 跳过无效工具名称
-		if strings.TrimSpace(tool.Name) == "" {
+		if tool.Name == "" {
 			log.Printf("Warning: skipping tool with empty name")
 			continue
 	REDACTED
@@ -444,18 +397,10 @@ REDACTED
 		var inputSchema map[string]any
 
 		// 检查是否为 custom 类型工具 (MCP)
-		if tool.Type == "custom" {
-			if tool.Custom == nil || tool.Custom.InputSchema == nil {
-				log.Printf("[Warning] Skipping invalid custom tool '%s': missing custom spec or input_schema", tool.Name)
-				continue
-		REDACTED
+		if tool.Type == "custom" && tool.Custom != nil {
+			// Custom 格式: 从 custom 字段获取 description 和 input_schema
 			description = tool.Custom.Description
 			inputSchema = tool.Custom.InputSchema
-
-			// 调试日志：记录 custom 工具的 schema
-			if schemaJSON, err := json.Marshal(inputSchema); err == nil {
-				log.Printf("[Debug] Tool[%d] '%s' (custom) original schema: %s", i, tool.Name, string(schemaJSON))
-		REDACTED
 	REDACTED else {
 			// 标准格式: 从顶层字段获取
 			description = tool.Description
@@ -464,17 +409,13 @@ REDACTED
 
 		// 清理 JSON Schema
 		params := cleanJSONSchema(inputSchema)
+
 		// 为 nil schema 提供默认值
 		if params == nil {
 			params = map[string]any{
 				"type":       "OBJECT",
 				"properties": map[string]any{REDACTED,
 		REDACTED
-	REDACTED
-
-		// 调试日志：记录清理后的 schema
-		if paramsJSON, err := json.Marshal(params); err == nil {
-			log.Printf("[Debug] Tool[%d] '%s' cleaned schema: %s", i, tool.Name, string(paramsJSON))
 	REDACTED
 
 		funcDecls = append(funcDecls, GeminiFunctionDecl{
@@ -538,64 +479,31 @@ REDACTED
 REDACTED
 
 // excludedSchemaKeys 不支持的 schema 字段
-// 基于 Claude API (Vertex AI) 的实际支持情况
-// 支持: type, description, enum, properties, required, additionalProperties, items
-// 不支持: minItems, maxItems, minLength, maxLength, pattern, minimum, maximum 等验证字段
 var excludedSchemaKeys = map[string]bool{
-	// 元 schema 字段
-	"$schema": true,
-	"$id":     true,
-	"$ref":    true,
-
-	// 字符串验证（Gemini 不支持）
-	"minLength": true,
-	"maxLength": true,
-	"pattern":   true,
-
-	// 数字验证（Claude API 通过 Vertex AI 不支持这些字段）
-	"minimum":          true,
-	"maximum":          true,
-	"exclusiveMinimum": true,
-	"exclusiveMaximum": true,
-	"multipleOf":       true,
-
-	// 数组验证（Claude API 通过 Vertex AI 不支持这些字段）
-	"uniqueItems": true,
-	"minItems":    true,
-	"maxItems":    true,
-
-	// 组合 schema（Gemini 不支持）
-	"oneOf":       true,
-	"anyOf":       true,
-	"allOf":       true,
-	"not":         true,
-	"if":          true,
-	"then":        true,
-	"else":        true,
-	"$defs":       true,
-	"definitions": true,
-
-	// 对象验证（仅保留 properties/required/additionalProperties）
-	"minProperties":     true,
-	"maxProperties":     true,
-	"patternProperties": true,
-	"propertyNames":     true,
-	"dependencies":      true,
-	"dependentSchemas":  true,
-	"dependentRequired": true,
-
-	// 其他不支持的字段
-	"default":          true,
-	"const":            true,
-	"examples":         true,
-	"deprecated":       true,
-	"readOnly":         true,
-	"writeOnly":        true,
-	"contentMediaType": true,
-	"contentEncoding":  true,
-
-	// Claude 特有字段
-	"strict": true,
+	"$schema":              true,
+	"$id":                  true,
+	"$ref":                 true,
+	"additionalProperties": true,
+	"minLength":            true,
+	"maxLength":            true,
+	"minItems":             true,
+	"maxItems":             true,
+	"uniqueItems":          true,
+	"minimum":              true,
+	"maximum":              true,
+	"exclusiveMinimum":     true,
+	"exclusiveMaximum":     true,
+	"pattern":              true,
+	"format":               true,
+	"default":              true,
+	"strict":               true,
+	"const":                true,
+	"examples":             true,
+	"deprecated":           true,
+	"readOnly":             true,
+	"writeOnly":            true,
+	"contentMediaType":     true,
+	"contentEncoding":      true,
 REDACTED
 
 // cleanSchemaValue 递归清理 schema 值
@@ -612,31 +520,6 @@ func cleanSchemaValue(value any) any {
 			// 特殊处理 type 字段
 			if k == "type" {
 				result[k] = cleanTypeValue(val)
-				continue
-		REDACTED
-
-			// 特殊处理 format 字段：只保留 Gemini 支持的 format 值
-			if k == "format" {
-				if formatStr, ok := val.(string); ok {
-					// Gemini 只支持 date-time, date, time
-					if formatStr == "date-time" || formatStr == "date" || formatStr == "time" {
-						result[k] = val
-				REDACTED
-					// 其他 format 值直接跳过
-			REDACTED
-				continue
-		REDACTED
-
-			// 特殊处理 additionalProperties：Claude API 只支持布尔值，不支持 schema 对象
-			if k == "additionalProperties" {
-				if boolVal, ok := val.(bool); ok {
-					result[k] = boolVal
-					log.Printf("[Debug] additionalProperties is bool: %v", boolVal)
-			REDACTED else {
-					// 如果是 schema 对象，转换为 false（更安全的默认值）
-					result[k] = false
-					log.Printf("[Debug] additionalProperties is not bool (type: %T), converting to false", val)
-			REDACTED
 				continue
 		REDACTED
 

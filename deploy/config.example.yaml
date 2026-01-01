@@ -123,21 +123,6 @@ pricing:
   hash_check_interval_minutes: 10
 
 # =============================================================================
-# Gateway (Optional)
-# =============================================================================
-gateway:
-  # Wait time (in seconds) for upstream response headers (streaming body not affected)
-  response_header_timeout: 300
-  # Log upstream error response body summary (safe/truncated; does not log request content)
-  log_upstream_error_body: false
-  # Max bytes to log from upstream error body
-  log_upstream_error_body_max_bytes: 2048
-  # Auto inject anthropic-beta for API-key accounts when needed (default off)
-  inject_beta_for_apikey: false
-  # Allow failover on selected 400 errors (default off)
-  failover_on_400: false
-
-# =============================================================================
 # Gemini OAuth (Required for Gemini accounts)
 # =============================================================================
 # Sub2API supports TWO Gemini OAuth modes:

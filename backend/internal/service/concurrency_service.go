@@ -18,11 +18,6 @@ type ConcurrencyCache interface {
 	ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error
 	GetAccountConcurrency(ctx context.Context, accountID int64) (int, error)
 
-	// 账号等待队列（账号级）
-	IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error)
-	DecrementAccountWaitCount(ctx context.Context, accountID int64) error
-	GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error)
-
 	// 用户槽位管理
 	// 键格式: concurrency:user:{userIDREDACTED（有序集合，成员为 requestID）
 	AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error)
@@ -32,12 +27,6 @@ type ConcurrencyCache interface {
 	// 等待队列计数（只在首次创建时设置 TTL）
 	IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error)
 	DecrementWaitCount(ctx context.Context, userID int64) error
-
-	// 批量负载查询（只读）
-	GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error)
-
-	// 清理过期槽位（后台任务）
-	CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error
 REDACTED
 
 // generateRequestID generates a unique request ID for concurrency slot tracking
@@ -70,18 +59,6 @@ REDACTED
 type AcquireResult struct {
 	Acquired    bool
 	ReleaseFunc func() // Must be called when done (typically via defer)
-REDACTED
-
-type AccountWithConcurrency struct {
-	ID             int64
-	MaxConcurrency int
-REDACTED
-
-type AccountLoadInfo struct {
-	AccountID          int64
-	CurrentConcurrency int
-	WaitingCount       int
-	LoadRate           int // 0-100+ (percent)
 REDACTED
 
 // AcquireAccountSlot attempts to acquire a concurrency slot for an account.
@@ -200,42 +177,6 @@ REDACTED
 REDACTED
 REDACTED
 
-// IncrementAccountWaitCount increments the wait queue counter for an account.
-func (s *ConcurrencyService) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
-	if s.cache == nil {
-		return true, nil
-REDACTED
-
-	result, err := s.cache.IncrementAccountWaitCount(ctx, accountID, maxWait)
-	if err != nil {
-		log.Printf("Warning: increment wait count failed for account %d: %v", accountID, err)
-		return true, nil
-REDACTED
-	return result, nil
-REDACTED
-
-// DecrementAccountWaitCount decrements the wait queue counter for an account.
-func (s *ConcurrencyService) DecrementAccountWaitCount(ctx context.Context, accountID int64) {
-	if s.cache == nil {
-		return
-REDACTED
-
-	bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := s.cache.DecrementAccountWaitCount(bgCtx, accountID); err != nil {
-		log.Printf("Warning: decrement wait count failed for account %d: %v", accountID, err)
-REDACTED
-REDACTED
-
-// GetAccountWaitingCount gets current wait queue count for an account.
-func (s *ConcurrencyService) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
-	if s.cache == nil {
-		return 0, nil
-REDACTED
-	return s.cache.GetAccountWaitingCount(ctx, accountID)
-REDACTED
-
 // CalculateMaxWait calculates the maximum wait queue size for a user
 // maxWait = userConcurrency + defaultExtraWaitSlots
 func CalculateMaxWait(userConcurrency int) int {
@@ -243,57 +184,6 @@ func CalculateMaxWait(userConcurrency int) int {
 		userConcurrency = 1
 REDACTED
 	return userConcurrency + defaultExtraWaitSlots
-REDACTED
-
-// GetAccountsLoadBatch returns load info for multiple accounts.
-func (s *ConcurrencyService) GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
-	if s.cache == nil {
-		return map[int64]*AccountLoadInfo{REDACTED, nil
-REDACTED
-	return s.cache.GetAccountsLoadBatch(ctx, accounts)
-REDACTED
-
-// CleanupExpiredAccountSlots removes expired slots for one account (background task).
-func (s *ConcurrencyService) CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error {
-	if s.cache == nil {
-		return nil
-REDACTED
-	return s.cache.CleanupExpiredAccountSlots(ctx, accountID)
-REDACTED
-
-// StartSlotCleanupWorker starts a background cleanup worker for expired account slots.
-func (s *ConcurrencyService) StartSlotCleanupWorker(accountRepo AccountRepository, interval time.Duration) {
-	if s == nil || s.cache == nil || accountRepo == nil || interval <= 0 {
-		return
-REDACTED
-
-	runCleanup := func() {
-		listCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		accounts, err := accountRepo.ListSchedulable(listCtx)
-		cancel()
-		if err != nil {
-			log.Printf("Warning: list schedulable accounts failed: %v", err)
-			return
-	REDACTED
-		for _, account := range accounts {
-			accountCtx, accountCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			err := s.cache.CleanupExpiredAccountSlots(accountCtx, account.ID)
-			accountCancel()
-			if err != nil {
-				log.Printf("Warning: cleanup expired slots failed for account %d: %v", account.ID, err)
-		REDACTED
-	REDACTED
-REDACTED
-
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		runCleanup()
-		for range ticker.C {
-			runCleanup()
-	REDACTED
-REDACTED()
 REDACTED
 
 // GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts
