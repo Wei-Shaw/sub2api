@@ -1076,6 +1076,7 @@ export default {
 	          failedToGenerateUrl: 'Failed to generate Gemini auth URL',
 	          missingExchangeParams: 'Missing auth code, session ID, or state',
 	          failedToExchangeCode: 'Failed to exchange Gemini auth code',
+	          missingProjectId: 'GCP Project ID retrieval failed: Your Google account is not linked to an active GCP project. Please activate GCP and bind a credit card in Google Cloud Console, or manually enter the Project ID during authorization.',
 	          modelPassthrough: 'Gemini Model Passthrough',
 	          modelPassthroughDesc:
 	            'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
@@ -1290,7 +1291,12 @@ export default {
       tier: {
         free: 'Free',
         pro: 'Pro',
-        ultra: 'Ultra'
+        ultra: 'Ultra',
+        aiPremium: 'AI Premium',
+        standard: 'Standard',
+        basic: 'Basic',
+        personal: 'Personal',
+        unlimited: 'Unlimited'
       REDACTED,
       ineligibleWarning:
         'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.'

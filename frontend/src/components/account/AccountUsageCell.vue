@@ -568,6 +568,24 @@ REDACTED)
 // Gemini 账户类型显示标签
 const geminiTierLabel = computed(() => {
   if (!geminiTier.value) return null
+
+  const creds = props.account.credentials as GeminiCredentials | undefined
+  const isGoogleOne = creds?.oauth_type === 'google_one'
+
+  if (isGoogleOne) {
+    // Google One tier 标签
+    const tierMap: Record<string, string> = {
+      AI_PREMIUM: t('admin.accounts.tier.aiPremium'),
+      GOOGLE_ONE_STANDARD: t('admin.accounts.tier.standard'),
+      GOOGLE_ONE_BASIC: t('admin.accounts.tier.basic'),
+      FREE: t('admin.accounts.tier.free'),
+      GOOGLE_ONE_UNKNOWN: t('admin.accounts.tier.personal'),
+      GOOGLE_ONE_UNLIMITED: t('admin.accounts.tier.unlimited')
+    REDACTED
+    return tierMap[geminiTier.value] || t('admin.accounts.tier.personal')
+  REDACTED
+
+  // Code Assist tier 标签
   const tierMap: Record<string, string> = {
     LEGACY: t('admin.accounts.tier.free'),
     PRO: t('admin.accounts.tier.pro'),
@@ -578,6 +596,25 @@ REDACTED)
 
 // Gemini 账户类型徽章样式
 const geminiTierClass = computed(() => {
+  if (!geminiTier.value) return ''
+
+  const creds = props.account.credentials as GeminiCredentials | undefined
+  const isGoogleOne = creds?.oauth_type === 'google_one'
+
+  if (isGoogleOne) {
+    // Google One tier 颜色
+    const colorMap: Record<string, string> = {
+      AI_PREMIUM: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300',
+      GOOGLE_ONE_STANDARD: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
+      GOOGLE_ONE_BASIC: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300',
+      FREE: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+      GOOGLE_ONE_UNKNOWN: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+      GOOGLE_ONE_UNLIMITED: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300'
+    REDACTED
+    return colorMap[geminiTier.value] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  REDACTED
+
+  // Code Assist tier 颜色
   switch (geminiTier.value) {
     case 'LEGACY':
       return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'

@@ -996,7 +996,12 @@ export default {
       tier: {
         free: 'Free',
         pro: 'Pro',
-        ultra: 'Ultra'
+        ultra: 'Ultra',
+        aiPremium: 'AI Premium',
+        standard: '标准版',
+        basic: '基础版',
+        personal: '个人版',
+        unlimited: '无限制'
       REDACTED,
       ineligibleWarning:
         '该账号无 Antigravity 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
@@ -1215,6 +1220,7 @@ export default {
 	          failedToGenerateUrl: '生成 Gemini 授权链接失败',
 	          missingExchangeParams: '缺少 code / session_id / state',
 	          failedToExchangeCode: 'Gemini 授权码兑换失败',
+	          missingProjectId: 'GCP Project ID 获取失败：您的 Google 账号未关联有效的 GCP 项目。请前往 Google Cloud Console 激活 GCP 并绑定信用卡，或在授权时手动填写 Project ID。',
 	          modelPassthrough: 'Gemini 直接转发模型',
 	          modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
 	          stateWarningTitle: '提示',

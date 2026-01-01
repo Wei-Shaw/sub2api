@@ -455,6 +455,52 @@
         <div v-if="accountCategory === 'oauth-based'" class="mt-4">
           <label class="input-label">{{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED</label>
           <div class="mt-2 grid grid-cols-2 gap-3">
+            <!-- Google One OAuth -->
+            <button
+              type="button"
+              @click="handleSelectGeminiOAuthType('google_one')"
+              :class="[
+                'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                geminiOAuthType === 'google_one'
+                  ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                  : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+              ]"
+            >
+              <div
+                :class="[
+                  'flex h-8 w-8 items-center justify-center rounded-lg',
+                  geminiOAuthType === 'google_one'
+                    ? 'bg-purple-500 text-white'
+                    : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+                ]"
+              >
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                </svg>
+              </div>
+              <div class="min-w-0">
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                  Google One
+                </span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                  个人账号，享受 Google One 订阅配额
+                </span>
+                <div class="mt-2 flex flex-wrap gap-1">
+                  <span
+                    class="rounded bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                  >
+                    推荐个人用户
+                  </span>
+                  <span
+                    class="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                  >
+                    无需 GCP
+                  </span>
+                </div>
+              </div>
+            </button>
+
+            <!-- GCP Code Assist OAuth -->
             <button
               type="button"
               @click="handleSelectGeminiOAuthType('code_assist')"
@@ -479,13 +525,13 @@
               </div>
               <div class="min-w-0">
                 <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                  {{ t('admin.accounts.gemini.oauthType.builtInTitle') REDACTEDREDACTED
+                  GCP Code Assist
                 </span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.accounts.gemini.oauthType.builtInDesc') REDACTEDREDACTED
+                  企业级，需要 GCP 项目
                 </span>
                 <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.accounts.gemini.oauthType.builtInRequirement') REDACTEDREDACTED
+                  需要激活 GCP 项目并绑定信用卡
                   <a
                     :href="geminiHelpLinks.gcpProject"
                     class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
@@ -499,94 +545,110 @@
                   <span
                     class="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
                   >
-                    {{ t('admin.accounts.gemini.oauthType.badges.recommended') REDACTEDREDACTED
+                    企业用户
                   </span>
                   <span
                     class="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
                   >
-                    {{ t('admin.accounts.gemini.oauthType.badges.highConcurrency') REDACTEDREDACTED
-                  </span>
-                  <span
-                    class="rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                  >
-                    {{ t('admin.accounts.gemini.oauthType.badges.noAdmin') REDACTEDREDACTED
+                    高并发
                   </span>
                 </div>
               </div>
             </button>
+          </div>
 
-            <div class="group relative">
-              <button
-                type="button"
-                :disabled="!geminiAIStudioOAuthEnabled"
-                @click="handleSelectGeminiOAuthType('ai_studio')"
+          <!-- Advanced Options Toggle -->
+          <div class="mt-3">
+            <button
+              type="button"
+              @click="showAdvancedOAuth = !showAdvancedOAuth"
+              class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              <svg
+                :class="['h-4 w-4 transition-transform', showAdvancedOAuth ? 'rotate-90' : '']"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              <span>{{ showAdvancedOAuth ? '隐藏' : '显示' REDACTEDREDACTED高级选项（自建 OAuth Client）</span>
+            </button>
+          </div>
+
+          <!-- Custom OAuth Client (Advanced) -->
+          <div v-if="showAdvancedOAuth" class="mt-3 group relative">
+            <button
+              type="button"
+              :disabled="!geminiAIStudioOAuthEnabled"
+              @click="handleSelectGeminiOAuthType('ai_studio')"
+              :class="[
+                'flex w-full items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
+                geminiOAuthType === 'ai_studio'
+                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                  : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+              ]"
+            >
+              <div
                 :class="[
-                  'flex w-full items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-                  !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
+                  'flex h-8 w-8 items-center justify-center rounded-lg',
                   geminiOAuthType === 'ai_studio'
-                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                    : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
                 ]"
               >
-                <div
-                  :class="[
-                    'flex h-8 w-8 items-center justify-center rounded-lg',
-                    geminiOAuthType === 'ai_studio'
-                      ? 'bg-purple-500 text-white'
-                      : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
-                  ]"
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="1.5"
                 >
-                  <svg
-                    class="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
-                    />
-                  </svg>
-                </div>
-                <div class="min-w-0">
-                  <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                    {{ t('admin.accounts.gemini.oauthType.customTitle') REDACTEDREDACTED
-                  </span>
-                  <span class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.accounts.gemini.oauthType.customDesc') REDACTEDREDACTED
-                  </span>
-                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.accounts.gemini.oauthType.customRequirement') REDACTEDREDACTED
-                  </div>
-                  <div class="mt-2 flex flex-wrap gap-1">
-                    <span
-                      class="rounded bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
-                    >
-                      {{ t('admin.accounts.gemini.oauthType.badges.orgManaged') REDACTEDREDACTED
-                    </span>
-                    <span
-                      class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                    >
-                      {{ t('admin.accounts.gemini.oauthType.badges.adminRequired') REDACTEDREDACTED
-                    </span>
-                  </div>
-                </div>
-                <span
-                  v-if="!geminiAIStudioOAuthEnabled"
-                  class="ml-auto shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                >
-                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') REDACTEDREDACTED
-                </span>
-              </button>
-
-              <div
-                v-if="!geminiAIStudioOAuthEnabled"
-                class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-80 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
-              >
-                {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                  />
+                </svg>
               </div>
+              <div class="min-w-0">
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.oauthType.customTitle') REDACTEDREDACTED
+                </span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.oauthType.customDesc') REDACTEDREDACTED
+                </span>
+                <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.oauthType.customRequirement') REDACTEDREDACTED
+                </div>
+                <div class="mt-2 flex flex-wrap gap-1">
+                  <span
+                    class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                  >
+                    {{ t('admin.accounts.gemini.oauthType.badges.orgManaged') REDACTEDREDACTED
+                  </span>
+                  <span
+                    class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                  >
+                    {{ t('admin.accounts.gemini.oauthType.badges.adminRequired') REDACTEDREDACTED
+                  </span>
+                </div>
+              </div>
+              <span
+                v-if="!geminiAIStudioOAuthEnabled"
+                class="ml-auto shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+              >
+                {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') REDACTEDREDACTED
+              </span>
+            </button>
+
+            <div
+              v-if="!geminiAIStudioOAuthEnabled"
+              class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-80 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+            >
+              {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
             </div>
           </div>
         </div>
@@ -1610,8 +1672,9 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
-const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
+const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
+const showAdvancedOAuth = ref(false)
 
 // Common models for whitelist - Anthropic
 const anthropicModels = [
@@ -1902,7 +1965,7 @@ watch(
   { immediate: true REDACTED
 )
 
-const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'ai_studio') => {
+const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | 'ai_studio') => {
   if (oauthType === 'ai_studio' && !geminiAIStudioOAuthEnabled.value) {
     appStore.showError(t('admin.accounts.oauth.gemini.aiStudioNotConfigured'))
     return

@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -988,4 +989,168 @@ REDACTED
 REDACTED
 
 	response.Success(c, models)
+REDACTED
+
+// RefreshTier handles refreshing Google One tier for a single account
+// POST /api/v1/admin/accounts/:id/refresh-tier
+func (h *AccountHandler) RefreshTier(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+REDACTED
+
+	if account.Credentials == nil || account.Credentials["oauth_type"] != "google_one" {
+		response.BadRequest(c, "Account is not a google_one OAuth account")
+		return
+REDACTED
+
+	accessToken, ok := account.Credentials["access_token"].(string)
+	if !ok || accessToken == "" {
+		response.BadRequest(c, "Missing access_token in credentials")
+		return
+REDACTED
+
+	var proxyURL string
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	tierID, storageInfo, err := h.geminiOAuthService.FetchGoogleOneTier(c.Request.Context(), accessToken, proxyURL)
+
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+REDACTED
+	if storageInfo != nil {
+		account.Extra["drive_storage_limit"] = storageInfo.Limit
+		account.Extra["drive_storage_usage"] = storageInfo.Usage
+		account.Extra["drive_tier_updated_at"] = timezone.Now().Format(time.RFC3339)
+REDACTED
+	account.Credentials["tier_id"] = tierID
+
+	_, updateErr := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+		Credentials: account.Credentials,
+		Extra:       account.Extra,
+REDACTED)
+	if updateErr != nil {
+		response.ErrorFrom(c, updateErr)
+		return
+REDACTED
+
+	response.Success(c, gin.H{
+		"tier_id":              tierID,
+		"drive_storage_limit":  account.Extra["drive_storage_limit"],
+		"drive_storage_usage":  account.Extra["drive_storage_usage"],
+		"updated_at":           account.Extra["drive_tier_updated_at"],
+REDACTED)
+REDACTED
+
+// BatchRefreshTierRequest represents batch tier refresh request
+type BatchRefreshTierRequest struct {
+	AccountIDs []int64 `json:"account_ids"`
+REDACTED
+
+// BatchRefreshTier handles batch refreshing Google One tier
+// POST /api/v1/admin/accounts/batch-refresh-tier
+func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
+	var req BatchRefreshTierRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		req = BatchRefreshTierRequest{REDACTED
+REDACTED
+
+	ctx := c.Request.Context()
+	var accounts []service.Account
+
+	if len(req.AccountIDs) == 0 {
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "")
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+		for _, acc := range allAccounts {
+			if acc.Credentials != nil && acc.Credentials["oauth_type"] == "google_one" {
+				accounts = append(accounts, acc)
+		REDACTED
+	REDACTED
+REDACTED else {
+		for _, id := range req.AccountIDs {
+			acc, err := h.adminService.GetAccount(ctx, id)
+			if err != nil {
+				continue
+		REDACTED
+			if acc.Credentials != nil && acc.Credentials["oauth_type"] == "google_one" {
+				accounts = append(accounts, *acc)
+		REDACTED
+	REDACTED
+REDACTED
+
+	total := len(accounts)
+	success := 0
+	failed := 0
+	errors := []gin.H{REDACTED
+
+	for _, account := range accounts {
+		accessToken, ok := account.Credentials["access_token"].(string)
+		if !ok || accessToken == "" {
+			failed++
+			errors = append(errors, gin.H{
+				"account_id": account.ID,
+				"error":      "missing access_token",
+		REDACTED)
+			continue
+	REDACTED
+
+		var proxyURL string
+		if account.ProxyID != nil && account.Proxy != nil {
+			proxyURL = account.Proxy.URL()
+	REDACTED
+
+		tierID, storageInfo, err := h.geminiOAuthService.FetchGoogleOneTier(ctx, accessToken, proxyURL)
+		if err != nil {
+			failed++
+			errors = append(errors, gin.H{
+				"account_id": account.ID,
+				"error":      err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+	REDACTED
+		if storageInfo != nil {
+			account.Extra["drive_storage_limit"] = storageInfo.Limit
+			account.Extra["drive_storage_usage"] = storageInfo.Usage
+			account.Extra["drive_tier_updated_at"] = timezone.Now().Format(time.RFC3339)
+	REDACTED
+		account.Credentials["tier_id"] = tierID
+
+		_, updateErr := h.adminService.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
+			Credentials: account.Credentials,
+			Extra:       account.Extra,
+	REDACTED)
+		if updateErr != nil {
+			failed++
+			errors = append(errors, gin.H{
+				"account_id": account.ID,
+				"error":      updateErr.Error(),
+		REDACTED)
+			continue
+	REDACTED
+
+		success++
+REDACTED
+
+	response.Success(c, gin.H{
+		"total":   total,
+		"success": success,
+		"failed":  failed,
+		"errors":  errors,
+REDACTED)
 REDACTED

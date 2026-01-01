@@ -48,6 +48,12 @@ const isCodeAssist = computed(() => {
   return creds?.oauth_type === 'code_assist' || (!creds?.oauth_type && !!creds?.project_id)
 REDACTED)
 
+// 是否为 Google One OAuth
+const isGoogleOne = computed(() => {
+  const creds = props.account.credentials as GeminiCredentials | undefined
+  return creds?.oauth_type === 'google_one'
+REDACTED)
+
 // 是否应该显示配额信息
 const shouldShowQuota = computed(() => {
   return props.account.platform === 'gemini'
@@ -55,33 +61,73 @@ REDACTED)
 
 // Tier 标签文本
 const tierLabel = computed(() => {
+  const creds = props.account.credentials as GeminiCredentials | undefined
+
   if (isCodeAssist.value) {
-    const creds = props.account.credentials as GeminiCredentials | undefined
+    // GCP Code Assist: 显示 GCP tier
     const tierMap: Record<string, string> = {
       LEGACY: 'Free',
       PRO: 'Pro',
-      ULTRA: 'Ultra'
+      ULTRA: 'Ultra',
+      'standard-tier': 'Standard',
+      'pro-tier': 'Pro',
+      'ultra-tier': 'Ultra'
     REDACTED
-    return tierMap[creds?.tier_id || ''] || 'Unknown'
+    return tierMap[creds?.tier_id || ''] || (creds?.tier_id ? 'GCP' : 'Unknown')
   REDACTED
+
+  if (isGoogleOne.value) {
+    // Google One: tier 映射
+    const tierMap: Record<string, string> = {
+      AI_PREMIUM: 'AI Premium',
+      GOOGLE_ONE_STANDARD: 'Standard',
+      GOOGLE_ONE_BASIC: 'Basic',
+      FREE: 'Free',
+      GOOGLE_ONE_UNKNOWN: 'Personal',
+      GOOGLE_ONE_UNLIMITED: 'Unlimited'
+    REDACTED
+    return tierMap[creds?.tier_id || ''] || 'Personal'
+  REDACTED
+
+  // AI Studio 或其他
   return 'Gemini'
 REDACTED)
 
 // Tier Badge 样式
 const tierBadgeClass = computed(() => {
-  if (!isCodeAssist.value) {
-    return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-  REDACTED
   const creds = props.account.credentials as GeminiCredentials | undefined
-  const tierColorMap: Record<string, string> = {
-    LEGACY: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-    PRO: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    ULTRA: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+
+  if (isCodeAssist.value) {
+    // GCP Code Assist 样式
+    const tierColorMap: Record<string, string> = {
+      LEGACY: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
+      PRO: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      ULTRA: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+      'standard-tier': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      'pro-tier': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      'ultra-tier': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    REDACTED
+    return (
+      tierColorMap[creds?.tier_id || ''] ||
+      'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+    )
   REDACTED
-  return (
-    tierColorMap[creds?.tier_id || ''] ||
-    'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-  )
+
+  if (isGoogleOne.value) {
+    // Google One tier 样式
+    const tierColorMap: Record<string, string> = {
+      AI_PREMIUM: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+      GOOGLE_ONE_STANDARD: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      GOOGLE_ONE_BASIC: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      FREE: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
+      GOOGLE_ONE_UNKNOWN: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
+      GOOGLE_ONE_UNLIMITED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+    REDACTED
+    return tierColorMap[creds?.tier_id || ''] || 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+  REDACTED
+
+  // AI Studio 默认样式：蓝色
+  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
 REDACTED)
 
 // 是否限流
