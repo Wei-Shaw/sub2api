@@ -34,6 +34,10 @@ type Tx struct {
 	User *UserClient
 	// UserAllowedGroup is the client for interacting with the UserAllowedGroup builders.
 	UserAllowedGroup *UserAllowedGroupClient
+	// UserAttributeDefinition is the client for interacting with the UserAttributeDefinition builders.
+	UserAttributeDefinition *UserAttributeDefinitionClient
+	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
+	UserAttributeValue *UserAttributeValueClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
 
@@ -177,6 +181,8 @@ func (tx *Tx) init() {
 	tx.UsageLog = NewUsageLogClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserAllowedGroup = NewUserAllowedGroupClient(tx.config)
+	tx.UserAttributeDefinition = NewUserAttributeDefinitionClient(tx.config)
+	tx.UserAttributeValue = NewUserAttributeValueClient(tx.config)
 	tx.UserSubscription = NewUserSubscriptionClient(tx.config)
 REDACTED
 
