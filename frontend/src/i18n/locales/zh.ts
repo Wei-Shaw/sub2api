@@ -986,8 +986,8 @@ export default {
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',
-        geminiProDaily: 'RPD Pro',
-        geminiFlashDaily: 'RPD Flash',
+        geminiProDaily: 'Pro',
+        geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G3I',
@@ -1342,6 +1342,11 @@ export default {
               limitsPaid: 'RPD 不限；RPM 1000+（项目配额）'
             REDACTED
           REDACTED
+        REDACTED,
+        rateLimit: {
+          ok: '未限流',
+          limited: '限流 {timeREDACTED',
+          now: '现在'
         REDACTED
       REDACTED,
       // Re-Auth Modal

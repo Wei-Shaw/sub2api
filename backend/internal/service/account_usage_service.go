@@ -202,20 +202,23 @@ REDACTED
 
 func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	now := time.Now()
-	start := geminiDailyWindowStart(now)
-
-	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID)
-	if err != nil {
-		return nil, fmt.Errorf("get gemini usage stats failed: %w", err)
-REDACTED
-
 	usage := &UsageInfo{
 		UpdatedAt: &now,
+REDACTED
+
+	if s.geminiQuotaService == nil || s.usageLogRepo == nil {
+		return usage, nil
 REDACTED
 
 	quota, ok := s.geminiQuotaService.QuotaForAccount(ctx, account)
 	if !ok {
 		return usage, nil
+REDACTED
+
+	start := geminiDailyWindowStart(now)
+	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get gemini usage stats failed: %w", err)
 REDACTED
 
 	totals := geminiAggregateUsage(stats)
