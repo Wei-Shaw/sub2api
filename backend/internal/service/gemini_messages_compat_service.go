@@ -2278,11 +2278,13 @@ REDACTED
 				"properties": map[string]any{REDACTED,
 		REDACTED
 	REDACTED
+		// 清理 JSON Schema
+		cleanedParams := cleanToolSchema(params)
 
 		funcDecls = append(funcDecls, map[string]any{
 			"name":        name,
 			"description": desc,
-			"parameters":  params,
+			"parameters":  cleanedParams,
 	REDACTED)
 REDACTED
 
@@ -2293,6 +2295,41 @@ REDACTED
 		map[string]any{
 			"functionDeclarations": funcDecls,
 	REDACTED,
+REDACTED
+REDACTED
+
+// cleanToolSchema 清理工具的 JSON Schema，移除 Gemini 不支持的字段
+func cleanToolSchema(schema any) any {
+	if schema == nil {
+		return nil
+REDACTED
+
+	switch v := schema.(type) {
+	case map[string]any:
+		cleaned := make(map[string]any)
+		for key, value := range v {
+			// 跳过不支持的字段
+			if key == "$schema" || key == "$id" || key == "$ref" ||
+				key == "additionalProperties" || key == "minLength" ||
+				key == "maxLength" || key == "minItems" || key == "maxItems" {
+				continue
+		REDACTED
+			// 递归清理嵌套对象
+			cleaned[key] = cleanToolSchema(value)
+	REDACTED
+		// 规范化 type 字段为大写
+		if typeVal, ok := cleaned["type"].(string); ok {
+			cleaned["type"] = strings.ToUpper(typeVal)
+	REDACTED
+		return cleaned
+	case []any:
+		cleaned := make([]any, len(v))
+		for i, item := range v {
+			cleaned[i] = cleanToolSchema(item)
+	REDACTED
+		return cleaned
+	default:
+		return v
 REDACTED
 REDACTED
 
