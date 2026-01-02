@@ -54,6 +54,9 @@ type CustomToolSpec struct {
 	InputSchema map[string]any `json:"input_schema"`
 REDACTED
 
+// ClaudeCustomToolSpec 兼容旧命名（MCP custom 工具规格）
+type ClaudeCustomToolSpec = CustomToolSpec
+
 // SystemBlock system prompt 数组形式的元素
 type SystemBlock struct {
 	Type string `json:"type"`

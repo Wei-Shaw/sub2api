@@ -434,9 +434,7 @@ export default {
     administrator: 'Administrator',
     user: 'User',
     username: 'Username',
-    wechat: 'WeChat ID',
     enterUsername: 'Enter username',
-    enterWechat: 'Enter WeChat ID',
     editProfile: 'Edit Profile',
     updateProfile: 'Update Profile',
     updating: 'Updating...',
@@ -565,12 +563,10 @@ export default {
       email: 'Email',
       password: 'Password',
       username: 'Username',
-      wechat: 'WeChat ID',
       notes: 'Notes',
       enterEmail: 'Enter email',
       enterPassword: 'Enter password',
       enterUsername: 'Enter username (optional)',
-      enterWechat: 'Enter WeChat ID (optional)',
       enterNotes: 'Enter notes (admin only)',
       notesHint: 'This note is only visible to administrators',
       enterNewPassword: 'Enter new password (optional)',
@@ -582,7 +578,6 @@ export default {
       columns: {
         user: 'User',
         username: 'Username',
-        wechat: 'WeChat ID',
         notes: 'Notes',
         role: 'Role',
         subscriptions: 'Subscriptions',
@@ -653,7 +648,67 @@ export default {
       failedToDeposit: 'Failed to deposit',
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
-      insufficientBalance: 'Insufficient balance, balance cannot be negative after withdrawal'
+      insufficientBalance: 'Insufficient balance, balance cannot be negative after withdrawal',
+      // Settings Dropdowns
+      filterSettings: 'Filter Settings',
+      columnSettings: 'Column Settings',
+      filterValue: 'Enter value',
+      // User Attributes
+      attributes: {
+        title: 'User Attributes',
+        description: 'Configure custom user attribute fields',
+        configButton: 'Attributes',
+        addAttribute: 'Add Attribute',
+        editAttribute: 'Edit Attribute',
+        deleteAttribute: 'Delete Attribute',
+        deleteConfirm: "Are you sure you want to delete attribute '{nameREDACTED'? All user values for this attribute will be deleted.",
+        noAttributes: 'No custom attributes',
+        noAttributesHint: 'Click the button above to add custom attributes',
+        key: 'Attribute Key',
+        keyHint: 'For programmatic reference, only letters, numbers and underscores',
+        name: 'Display Name',
+        nameHint: 'Name shown in forms',
+        type: 'Attribute Type',
+        fieldDescription: 'Description',
+        fieldDescriptionHint: 'Description text for the attribute',
+        placeholder: 'Placeholder',
+        placeholderHint: 'Placeholder text for input field',
+        required: 'Required',
+        enabled: 'Enabled',
+        options: 'Options',
+        optionsHint: 'For select/multi-select types',
+        addOption: 'Add Option',
+        optionValue: 'Option Value',
+        optionLabel: 'Display Text',
+        validation: 'Validation Rules',
+        minLength: 'Min Length',
+        maxLength: 'Max Length',
+        min: 'Min Value',
+        max: 'Max Value',
+        pattern: 'Regex Pattern',
+        patternMessage: 'Validation Error Message',
+        types: {
+          text: 'Text',
+          textarea: 'Textarea',
+          number: 'Number',
+          email: 'Email',
+          url: 'URL',
+          date: 'Date',
+          select: 'Select',
+          multi_select: 'Multi-Select'
+        REDACTED,
+        created: 'Attribute created successfully',
+        updated: 'Attribute updated successfully',
+        deleted: 'Attribute deleted successfully',
+        reordered: 'Attribute order updated successfully',
+        failedToLoad: 'Failed to load attributes',
+        failedToCreate: 'Failed to create attribute',
+        failedToUpdate: 'Failed to update attribute',
+        failedToDelete: 'Failed to delete attribute',
+        failedToReorder: 'Failed to update order',
+        keyExists: 'Attribute key already exists',
+        dragToReorder: 'Drag to reorder'
+      REDACTED
     REDACTED,
 
     // Groups
@@ -945,6 +1000,15 @@ export default {
       actualModel: 'Actual model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {modelREDACTED already exists',
+      searchModels: 'Search models...',
+      noMatchingModels: 'No matching models',
+      fillRelatedModels: 'Fill related models',
+      clearAllModels: 'Clear all models',
+      customModelName: 'Custom model name',
+      enterCustomModelName: 'Enter custom model name',
+      addModel: 'Add',
+      modelExists: 'Model already exists',
+      modelCount: '{countREDACTED models',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
@@ -1076,16 +1140,17 @@ export default {
 	          failedToGenerateUrl: 'Failed to generate Gemini auth URL',
 	          missingExchangeParams: 'Missing auth code, session ID, or state',
 	          failedToExchangeCode: 'Failed to exchange Gemini auth code',
+	          missingProjectId: 'GCP Project ID retrieval failed: Your Google account is not linked to an active GCP project. Please activate GCP and bind a credit card in Google Cloud Console, or manually enter the Project ID during authorization.',
 	          modelPassthrough: 'Gemini Model Passthrough',
 	          modelPassthroughDesc:
 	            'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
 	          stateWarningTitle: 'Note',
 	          stateWarningDesc: 'Recommended: paste the full callback URL (includes code & state).',
 	          oauthTypeLabel: 'OAuth Type',
-	          needsProjectId: 'For GCP Developers',
-	          needsProjectIdDesc: 'Requires GCP project',
-	          noProjectIdNeeded: 'For Regular Users',
-	          noProjectIdNeededDesc: 'Requires admin-configured OAuth client',
+          needsProjectId: 'Built-in OAuth (Code Assist)',
+          needsProjectIdDesc: 'Requires GCP project and Project ID',
+          noProjectIdNeeded: 'Custom OAuth (AI Studio)',
+          noProjectIdNeededDesc: 'Requires admin-configured OAuth client',
 	          aiStudioNotConfiguredShort: 'Not configured',
 	          aiStudioNotConfiguredTip:
 	            'AI Studio OAuth is not configured: set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and add Redirect URI: http://localhost:1455/auth/callback (Consent screen scopes must include https://www.googleapis.com/auth/generative-language.retriever)',
@@ -1120,7 +1185,100 @@ export default {
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
-        apiKeyHint: 'Your Gemini API Key (starts with AIza)'
+        apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        accountType: {
+          oauthTitle: 'OAuth (Gemini)',
+          oauthDesc: 'Authorize with your Google account and choose an OAuth type.',
+          apiKeyTitle: 'API Key (AI Studio)',
+          apiKeyDesc: 'Fastest setup. Use an AIza API key.',
+          apiKeyNote:
+            'Best for light testing. Free tier has strict rate limits and data may be used for training.',
+          apiKeyLink: 'Get API Key',
+          quotaLink: 'Quota guide'
+        REDACTED,
+        oauthType: {
+          builtInTitle: 'Built-in OAuth (Gemini CLI / Code Assist)',
+          builtInDesc: 'Uses Google built-in client ID. No admin configuration required.',
+          builtInRequirement: 'Requires a GCP project and Project ID.',
+          gcpProjectLink: 'Create project',
+          customTitle: 'Custom OAuth (AI Studio OAuth)',
+          customDesc: 'Uses admin-configured OAuth client for org management.',
+          customRequirement: 'Admin must configure Client ID and add you as a test user.',
+          badges: {
+            recommended: 'Recommended',
+            highConcurrency: 'High concurrency',
+            noAdmin: 'No admin setup',
+            orgManaged: 'Org managed',
+            adminRequired: 'Admin required'
+          REDACTED
+        REDACTED,
+        setupGuide: {
+          title: 'Gemini Setup Checklist',
+          checklistTitle: 'Checklist',
+          checklistItems: {
+            usIp: 'Use a US IP and ensure your account country is set to US.',
+            age: 'Account must be 18+.'
+          REDACTED,
+          activationTitle: 'One-click Activation',
+          activationItems: {
+            geminiWeb: 'Activate Gemini Web to avoid User not initialized.',
+            gcpProject: 'Activate a GCP project and get the Project ID for Code Assist.'
+          REDACTED,
+          links: {
+            countryCheck: 'Check country association',
+            geminiWebActivation: 'Activate Gemini Web',
+            gcpProject: 'Open GCP Console'
+          REDACTED
+        REDACTED,
+        quotaPolicy: {
+          title: 'Gemini Quota & Limit Policy (Reference)',
+          note: 'Note: Gemini does not provide an official quota inquiry API. The "Daily Quota" shown here is an estimate simulated by the system based on account tiers for scheduling reference only. Please refer to official Google errors for actual limits.',
+          columns: {
+            channel: 'Auth Channel',
+            account: 'Account Status',
+            limits: 'Limit Policy',
+            docs: 'Official Docs'
+          REDACTED,
+          docs: {
+            codeAssist: 'Code Assist Quotas',
+            aiStudio: 'AI Studio Pricing',
+            vertex: 'Vertex AI Quotas'
+          REDACTED,
+          simulatedNote: 'Simulated quota, for reference only',
+          rows: {
+            cli: {
+              channel: 'Gemini CLI (Official Google Login / Code Assist)',
+              free: 'Free Google Account',
+              premium: 'Google One AI Premium',
+              limitsFree: 'RPD ~1000; RPM ~60 (soft)',
+              limitsPremium: 'RPD ~1500+; RPM ~60+ (priority queue)'
+            REDACTED,
+            gcloud: {
+              channel: 'GCP Code Assist (gcloud auth)',
+              account: 'No Code Assist subscription',
+              limits: 'RPD ~1000; RPM ~60 (preview)'
+            REDACTED,
+            aiStudio: {
+              channel: 'AI Studio API Key / OAuth',
+              free: 'No billing (free tier)',
+              paid: 'Billing enabled (pay-as-you-go)',
+              limitsFree: 'RPD 50; RPM 2 (Pro) / 15 (Flash)',
+              limitsPaid: 'RPD unlimited; RPM 1000+ (per model quota)'
+            REDACTED,
+            customOAuth: {
+              channel: 'Custom OAuth Client (GCP)',
+              free: 'Project not billed',
+              paid: 'Project billed',
+              limitsFree: 'RPD 50; RPM 2 (project quota)',
+              limitsPaid: 'RPD unlimited; RPM 1000+ (project quota)'
+            REDACTED
+          REDACTED
+        REDACTED,
+        rateLimit: {
+          ok: 'Not rate limited',
+          limited: 'Rate limited {timeREDACTED',
+          now: 'now'
+        REDACTED
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: 'Re-Authorize Account',
@@ -1186,6 +1344,9 @@ export default {
       REDACTED,
       usageWindow: {
         statsTitle: '5-Hour Window Usage Statistics',
+        statsTitleDaily: 'Daily Usage Statistics',
+        geminiProDaily: 'Pro',
+        geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G3I',
@@ -1194,7 +1355,12 @@ export default {
       tier: {
         free: 'Free',
         pro: 'Pro',
-        ultra: 'Ultra'
+        ultra: 'Ultra',
+        aiPremium: 'AI Premium',
+        standard: 'Standard',
+        basic: 'Basic',
+        personal: 'Personal',
+        unlimited: 'Unlimited'
       REDACTED,
       ineligibleWarning:
         'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.'

@@ -116,8 +116,20 @@ REDACTED
 						valid = true
 				REDACTED
 					if valid {
-						_ = s.cache.RefreshSessionTTL(ctx, cacheKey, geminiStickySessionTTL)
-						return account, nil
+						usable := true
+						if s.rateLimitService != nil && requestedModel != "" {
+							ok, err := s.rateLimitService.PreCheckUsage(ctx, account, requestedModel)
+							if err != nil {
+								log.Printf("[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
+						REDACTED
+							if !ok {
+								usable = false
+						REDACTED
+					REDACTED
+						if usable {
+							_ = s.cache.RefreshSessionTTL(ctx, cacheKey, geminiStickySessionTTL)
+							return account, nil
+					REDACTED
 				REDACTED
 			REDACTED
 		REDACTED
@@ -156,6 +168,15 @@ REDACTED
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
 			continue
+	REDACTED
+		if s.rateLimitService != nil && requestedModel != "" {
+			ok, err := s.rateLimitService.PreCheckUsage(ctx, acc, requestedModel)
+			if err != nil {
+				log.Printf("[Gemini PreCheck] Account %d precheck error: %v", acc.ID, err)
+		REDACTED
+			if !ok {
+				continue
+		REDACTED
 	REDACTED
 		if selected == nil {
 			selected = acc
@@ -1886,13 +1907,44 @@ REDACTED
 	if statusCode != 429 {
 		return
 REDACTED
+
+	oauthType := account.GeminiOAuthType()
+	tierID := account.GeminiTierID()
+	projectID := strings.TrimSpace(account.GetCredential("project_id"))
+	isCodeAssist := account.IsGeminiCodeAssist()
+
 	resetAt := ParseGeminiRateLimitResetTime(body)
 	if resetAt == nil {
-		ra := time.Now().Add(5 * time.Minute)
+		// 根据账号类型使用不同的默认重置时间
+		var ra time.Time
+		if isCodeAssist {
+			// Code Assist: fallback cooldown by tier
+			cooldown := geminiCooldownForTier(tierID)
+			if s.rateLimitService != nil {
+				cooldown = s.rateLimitService.GeminiCooldown(ctx, account)
+		REDACTED
+			ra = time.Now().Add(cooldown)
+			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
+	REDACTED else {
+			// API Key / AI Studio OAuth: PST 午夜
+			if ts := nextGeminiDailyResetUnix(); ts != nil {
+				ra = time.Unix(*ts, 0)
+				log.Printf("[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
+		REDACTED else {
+				// 兜底：5 分钟
+				ra = time.Now().Add(5 * time.Minute)
+				log.Printf("[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
+		REDACTED
+	REDACTED
 		_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
 		return
 REDACTED
-	_ = s.accountRepo.SetRateLimited(ctx, account.ID, time.Unix(*resetAt, 0))
+
+	// 使用解析到的重置时间
+	resetTime := time.Unix(*resetAt, 0)
+	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
+	log.Printf("[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
+		account.ID, resetTime, oauthType, tierID)
 REDACTED
 
 // ParseGeminiRateLimitResetTime 解析 Gemini 格式的 429 响应，返回重置时间的 Unix 时间戳
@@ -1948,16 +2000,7 @@ REDACTED
 REDACTED
 
 func nextGeminiDailyResetUnix() *int64 {
-	loc, err := time.LoadLocation("America/Los_Angeles")
-	if err != nil {
-		// Fallback: PST without DST.
-		loc = time.FixedZone("PST", -8*3600)
-REDACTED
-	now := time.Now().In(loc)
-	reset := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, loc)
-	if !reset.After(now) {
-		reset = reset.Add(24 * time.Hour)
-REDACTED
+	reset := geminiDailyResetTime(time.Now())
 	ts := reset.Unix()
 	return &ts
 REDACTED
@@ -2278,11 +2321,13 @@ REDACTED
 				"properties": map[string]any{REDACTED,
 		REDACTED
 	REDACTED
+		// 清理 JSON Schema
+		cleanedParams := cleanToolSchema(params)
 
 		funcDecls = append(funcDecls, map[string]any{
 			"name":        name,
 			"description": desc,
-			"parameters":  params,
+			"parameters":  cleanedParams,
 	REDACTED)
 REDACTED
 
@@ -2293,6 +2338,41 @@ REDACTED
 		map[string]any{
 			"functionDeclarations": funcDecls,
 	REDACTED,
+REDACTED
+REDACTED
+
+// cleanToolSchema 清理工具的 JSON Schema，移除 Gemini 不支持的字段
+func cleanToolSchema(schema any) any {
+	if schema == nil {
+		return nil
+REDACTED
+
+	switch v := schema.(type) {
+	case map[string]any:
+		cleaned := make(map[string]any)
+		for key, value := range v {
+			// 跳过不支持的字段
+			if key == "$schema" || key == "$id" || key == "$ref" ||
+				key == "additionalProperties" || key == "minLength" ||
+				key == "maxLength" || key == "minItems" || key == "maxItems" {
+				continue
+		REDACTED
+			// 递归清理嵌套对象
+			cleaned[key] = cleanToolSchema(value)
+	REDACTED
+		// 规范化 type 字段为大写
+		if typeVal, ok := cleaned["type"].(string); ok {
+			cleaned["type"] = strings.ToUpper(typeVal)
+	REDACTED
+		return cleaned
+	case []any:
+		cleaned := make([]any, len(v))
+		for i, item := range v {
+			cleaned[i] = cleanToolSchema(item)
+	REDACTED
+		return cleaned
+	default:
+		return v
 REDACTED
 REDACTED
 

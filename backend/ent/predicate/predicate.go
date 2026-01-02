@@ -36,5 +36,11 @@ type User func(*sql.Selector)
 // UserAllowedGroup is the predicate function for userallowedgroup builders.
 type UserAllowedGroup func(*sql.Selector)
 
+// UserAttributeDefinition is the predicate function for userattributedefinition builders.
+type UserAttributeDefinition func(*sql.Selector)
+
+// UserAttributeValue is the predicate function for userattributevalue builders.
+type UserAttributeValue func(*sql.Selector)
+
 // UserSubscription is the predicate function for usersubscription builders.
 type UserSubscription func(*sql.Selector)

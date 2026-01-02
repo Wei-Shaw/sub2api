@@ -1,0 +1,299 @@
+// =====================
+// 模型列表（硬编码，与 new-api 一致）
+// =====================
+
+// OpenAI
+const openaiModels = [
+  'gpt-3.5-turbo', 'gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106', 'gpt-3.5-turbo-16k',
+  'gpt-4', 'gpt-4-turbo', 'gpt-4-turbo-preview',
+  'gpt-4o', 'gpt-4o-2024-08-06', 'gpt-4o-2024-11-20',
+  'gpt-4o-mini', 'gpt-4o-mini-2024-07-18',
+  'gpt-4.5-preview',
+  'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
+  'o1', 'o1-preview', 'o1-mini', 'o1-pro',
+  'o3', 'o3-mini', 'o3-pro',
+  'o4-mini',
+  'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
+  'chatgpt-4o-latest',
+  'gpt-4o-audio-preview', 'gpt-4o-realtime-preview'
+]
+
+// Anthropic Claude
+export const claudeModels = [
+  'claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-20240620',
+  'claude-3-5-haiku-20241022',
+  'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307',
+  'claude-3-7-sonnet-20250219',
+  'claude-sonnet-4-20250514', 'claude-opus-4-20250514',
+  'claude-opus-4-1-20250805',
+  'claude-sonnet-4-5-20250929', 'REDACTED',
+  'claude-opus-4-5-20251101',
+  'claude-2.1', 'claude-2.0', 'claude-instant-1.2'
+]
+
+// Google Gemini
+const geminiModels = [
+  'gemini-2.0-flash', 'gemini-2.0-flash-lite-preview', 'gemini-2.0-flash-exp',
+  'gemini-2.0-pro-exp', 'gemini-2.0-flash-thinking-exp',
+  'gemini-2.5-pro-exp-03-25', 'gemini-2.5-pro-preview-03-25',
+  'gemini-3-pro-preview',
+  'gemini-1.5-pro', 'gemini-1.5-pro-latest',
+  'gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-flash-8b',
+  'gemini-exp-1206'
+]
+
+// 智谱 GLM
+const zhipuModels = [
+  'glm-4', 'glm-4v', 'glm-4-plus', 'glm-4-0520',
+  'glm-4-air', 'glm-4-airx', 'glm-4-long', 'glm-4-flash',
+  'glm-4v-plus', 'glm-4.5', 'glm-4.6',
+  'glm-3-turbo', 'glm-4-alltools',
+  'chatglm_turbo', 'chatglm_pro', 'chatglm_std', 'chatglm_lite',
+  'cogview-3', 'cogvideo'
+]
+
+// 阿里 通义千问
+const qwenModels = [
+  'qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-max-longcontext', 'qwen-long',
+  'qwen2-72b-instruct', 'qwen2-57b-a14b-instruct', 'qwen2-7b-instruct',
+  'qwen2.5-72b-instruct', 'qwen2.5-32b-instruct', 'qwen2.5-14b-instruct',
+  'qwen2.5-7b-instruct', 'qwen2.5-3b-instruct', 'qwen2.5-1.5b-instruct',
+  'qwen2.5-coder-32b-instruct', 'qwen2.5-coder-14b-instruct', 'qwen2.5-coder-7b-instruct',
+  'qwen3-235b-a22b',
+  'qwq-32b', 'qwq-32b-preview'
+]
+
+// DeepSeek
+const deepseekModels = [
+  'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner',
+  'deepseek-v3', 'deepseek-v3-0324',
+  'deepseek-r1', 'deepseek-r1-0528',
+  'deepseek-r1-distill-qwen-32b', 'deepseek-r1-distill-qwen-14b', 'deepseek-r1-distill-qwen-7b',
+  'deepseek-r1-distill-llama-70b', 'deepseek-r1-distill-llama-8b'
+]
+
+// Mistral
+const mistralModels = [
+  'mistral-small-latest', 'mistral-medium-latest', 'mistral-large-latest',
+  'open-mistral-7b', 'open-mixtral-8x7b', 'open-mixtral-8x22b',
+  'codestral-latest', 'codestral-mamba',
+  'pixtral-12b-2409', 'pixtral-large-latest'
+]
+
+// Meta Llama
+const metaModels = [
+  'llama-3.3-70b-instruct',
+  'llama-3.2-90b-vision-instruct', 'llama-3.2-11b-vision-instruct',
+  'llama-3.2-3b-instruct', 'llama-3.2-1b-instruct',
+  'llama-3.1-405b-instruct', 'llama-3.1-70b-instruct', 'llama-3.1-8b-instruct',
+  'llama-3-70b-instruct', 'llama-3-8b-instruct',
+  'codellama-70b-instruct', 'codellama-34b-instruct', 'codellama-13b-instruct'
+]
+
+// xAI Grok
+const xaiModels = [
+  'grok-4', 'grok-4-0709',
+  'grok-3-beta', 'grok-3-mini-beta', 'grok-3-fast-beta',
+  'grok-2', 'grok-2-vision', 'grok-2-image',
+  'grok-beta', 'grok-vision-beta'
+]
+
+// Cohere
+const cohereModels = [
+  'command-a-03-2025',
+  'command-r', 'command-r-plus',
+  'command-r-08-2024', 'command-r-plus-08-2024',
+  'c4ai-aya-23-35b', 'c4ai-aya-23-8b',
+  'command', 'command-light'
+]
+
+// Yi (01.AI)
+const yiModels = [
+  'yi-large', 'yi-large-turbo', 'yi-large-rag',
+  'yi-medium', 'yi-medium-200k',
+  'yi-spark', 'yi-vision',
+  'yi-1.5-34b-chat', 'yi-1.5-9b-chat', 'yi-1.5-6b-chat'
+]
+
+// Moonshot/Kimi
+const moonshotModels = [
+  'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k',
+  'kimi-latest'
+]
+
+// 字节跳动 豆包
+const doubaoModels = [
+  'doubao-pro-256k', 'doubao-pro-128k', 'doubao-pro-32k', 'doubao-pro-4k',
+  'doubao-lite-128k', 'doubao-lite-32k', 'doubao-lite-4k',
+  'doubao-vision-pro-32k', 'doubao-vision-lite-32k',
+  'doubao-1.5-pro-256k', 'doubao-1.5-pro-32k', 'doubao-1.5-lite-32k',
+  'doubao-1.5-pro-vision-32k', 'doubao-1.5-thinking-pro'
+]
+
+// MiniMax
+const minimaxModels = [
+  'abab6.5-chat', 'abab6.5s-chat', 'abab6.5s-chat-pro',
+  'abab6-chat',
+  'abab5.5-chat', 'abab5.5s-chat'
+]
+
+// 百度 文心
+const baiduModels = [
+  'ernie-4.0-8k-latest', 'ernie-4.0-8k', 'ernie-4.0-turbo-8k',
+  'ernie-3.5-8k', 'ernie-3.5-128k',
+  'ernie-speed-8k', 'ernie-speed-128k', 'ernie-speed-pro-128k',
+  'ernie-lite-8k', 'ernie-lite-pro-128k',
+  'ernie-tiny-8k'
+]
+
+// 讯飞 星火
+const sparkModels = [
+  'spark-desk', 'spark-desk-v1.1', 'spark-desk-v2.1',
+  'spark-desk-v3.1', 'spark-desk-v3.5', 'spark-desk-v4.0',
+  'spark-lite', 'spark-pro', 'spark-max', 'spark-ultra'
+]
+
+// 腾讯 混元
+const hunyuanModels = [
+  'hunyuan-lite', 'hunyuan-standard', 'hunyuan-standard-256k',
+  'hunyuan-pro', 'hunyuan-turbo', 'hunyuan-large',
+  'hunyuan-vision', 'hunyuan-code'
+]
+
+// Perplexity
+const perplexityModels = [
+  'sonar', 'sonar-pro', 'sonar-reasoning',
+  'llama-3-sonar-small-32k-online', 'llama-3-sonar-large-32k-online',
+  'llama-3-sonar-small-32k-chat', 'llama-3-sonar-large-32k-chat'
+]
+
+// 所有模型（去重）
+const allModelsList: string[] = [
+  ...openaiModels,
+  ...claudeModels,
+  ...geminiModels,
+  ...zhipuModels,
+  ...qwenModels,
+  ...deepseekModels,
+  ...mistralModels,
+  ...metaModels,
+  ...xaiModels,
+  ...cohereModels,
+  ...yiModels,
+  ...moonshotModels,
+  ...doubaoModels,
+  ...minimaxModels,
+  ...baiduModels,
+  ...sparkModels,
+  ...hunyuanModels,
+  ...perplexityModels
+]
+
+// 转换为下拉选项格式
+export const allModels = allModelsList.map(m => ({ value: m, label: m REDACTED))
+
+// =====================
+// 预设映射
+// =====================
+
+const anthropicPresetMappings = [
+  { label: 'Sonnet 4', from: 'claude-sonnet-4-20250514', to: 'claude-sonnet-4-20250514', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' REDACTED,
+  { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-5-20250929', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
+  { label: 'Opus 4.5', from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-5-20251101', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
+  { label: 'Haiku 3.5', from: 'claude-3-5-haiku-20241022', to: 'claude-3-5-haiku-20241022', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' REDACTED,
+  { label: 'Haiku 4.5', from: 'REDACTED', to: 'REDACTED', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
+  { label: 'Opus->Sonnet', from: 'claude-opus-4-5-20251101', to: 'claude-sonnet-4-5-20250929', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED
+]
+
+const openaiPresetMappings = [
+  { label: 'GPT-4o', from: 'gpt-4o', to: 'gpt-4o', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' REDACTED,
+  { label: 'GPT-4o Mini', from: 'gpt-4o-mini', to: 'gpt-4o-mini', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' REDACTED,
+  { label: 'GPT-4.1', from: 'gpt-4.1', to: 'gpt-4.1', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
+  { label: 'o1', from: 'o1', to: 'o1', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
+  { label: 'o3', from: 'o3', to: 'o3', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
+  { label: 'GPT-5', from: 'gpt-5', to: 'gpt-5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED
+]
+
+const geminiPresetMappings = [
+  { label: 'Flash 2.0', from: 'gemini-2.0-flash', to: 'gemini-2.0-flash', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' REDACTED,
+  { label: 'Flash Lite', from: 'gemini-2.0-flash-lite-preview', to: 'gemini-2.0-flash-lite-preview', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
+  { label: '1.5 Pro', from: 'gemini-1.5-pro', to: 'gemini-1.5-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
+  { label: '1.5 Flash', from: 'gemini-1.5-flash', to: 'gemini-1.5-flash', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED
+]
+
+// =====================
+// 常用错误码
+// =====================
+
+export const commonErrorCodes = [
+  { value: 401, label: 'Unauthorized' REDACTED,
+  { value: 403, label: 'Forbidden' REDACTED,
+  { value: 429, label: 'Rate Limit' REDACTED,
+  { value: 500, label: 'Server Error' REDACTED,
+  { value: 502, label: 'Bad Gateway' REDACTED,
+  { value: 503, label: 'Unavailable' REDACTED,
+  { value: 529, label: 'Overloaded' REDACTED
+]
+
+// =====================
+// 辅助函数
+// =====================
+
+// 按平台获取模型
+export function getModelsByPlatform(platform: string): string[] {
+  switch (platform) {
+    case 'openai': return openaiModels
+    case 'anthropic':
+    case 'claude': return claudeModels
+    case 'gemini': return geminiModels
+    case 'zhipu': return zhipuModels
+    case 'qwen': return qwenModels
+    case 'deepseek': return deepseekModels
+    case 'mistral': return mistralModels
+    case 'meta': return metaModels
+    case 'xai': return xaiModels
+    case 'cohere': return cohereModels
+    case 'yi': return yiModels
+    case 'moonshot': return moonshotModels
+    case 'doubao': return doubaoModels
+    case 'minimax': return minimaxModels
+    case 'baidu': return baiduModels
+    case 'spark': return sparkModels
+    case 'hunyuan': return hunyuanModels
+    case 'perplexity': return perplexityModels
+    default: return claudeModels
+  REDACTED
+REDACTED
+
+// 按平台获取预设映射
+export function getPresetMappingsByPlatform(platform: string) {
+  if (platform === 'openai') return openaiPresetMappings
+  if (platform === 'gemini') return geminiPresetMappings
+  return anthropicPresetMappings
+REDACTED
+
+// =====================
+// 构建模型映射对象（用于 API）
+// =====================
+
+export function buildModelMappingObject(
+  mode: 'whitelist' | 'mapping',
+  allowedModels: string[],
+  modelMappings: { from: string; to: string REDACTED[]
+): Record<string, string> | null {
+  const mapping: Record<string, string> = {REDACTED
+
+  if (mode === 'whitelist') {
+    for (const model of allowedModels) {
+      mapping[model] = model
+    REDACTED
+  REDACTED else {
+    for (const m of modelMappings) {
+      const from = m.from.trim()
+      const to = m.to.trim()
+      if (from && to) mapping[from] = to
+    REDACTED
+  REDACTED
+
+  return Object.keys(mapping).length > 0 ? mapping : null
+REDACTED

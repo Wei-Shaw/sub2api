@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -43,12 +44,24 @@ REDACTED
 
 type GeminiConfig struct {
 	OAuth GeminiOAuthConfig `mapstructure:"oauth"`
+	Quota GeminiQuotaConfig `mapstructure:"quota"`
 REDACTED
 
 type GeminiOAuthConfig struct {
 	ClientID     string `mapstructure:"client_id"`
 	ClientSecret string `mapstructure:"client_secret"`
 	Scopes       string `mapstructure:"scopes"`
+REDACTED
+
+type GeminiQuotaConfig struct {
+	Tiers  map[string]GeminiTierQuotaConfig `mapstructure:"tiers"`
+	Policy string                           `mapstructure:"policy"`
+REDACTED
+
+type GeminiTierQuotaConfig struct {
+	ProRPD          *int64 `mapstructure:"pro_rpd" json:"pro_rpd"`
+	FlashRPD        *int64 `mapstructure:"flash_rpd" json:"flash_rpd"`
+	CooldownMinutes *int   `mapstructure:"cooldown_minutes" json:"cooldown_minutes"`
 REDACTED
 
 // TokenRefreshConfig OAuth token自动刷新配置
@@ -119,6 +132,37 @@ type GatewayConfig struct {
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
 	ConcurrencySlotTTLMinutes int `mapstructure:"concurrency_slot_ttl_minutes"`
+
+	// 是否记录上游错误响应体摘要（避免输出请求内容）
+	LogUpstreamErrorBody bool `mapstructure:"log_upstream_error_body"`
+	// 上游错误响应体记录最大字节数（超过会截断）
+	LogUpstreamErrorBodyMaxBytes int `mapstructure:"log_upstream_error_body_max_bytes"`
+
+	// API-key 账号在客户端未提供 anthropic-beta 时，是否按需自动补齐（默认关闭以保持兼容）
+	InjectBetaForApiKey bool `mapstructure:"inject_beta_for_apikey"`
+
+	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
+	FailoverOn400 bool `mapstructure:"failover_on_400"`
+
+	// Scheduling: 账号调度相关配置
+	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
+REDACTED
+
+// GatewaySchedulingConfig accounts scheduling configuration.
+type GatewaySchedulingConfig struct {
+	// 粘性会话排队配置
+	StickySessionMaxWaiting  int           `mapstructure:"sticky_session_max_waiting"`
+	StickySessionWaitTimeout time.Duration `mapstructure:"sticky_session_wait_timeout"`
+
+	// 兜底排队配置
+	FallbackWaitTimeout time.Duration `mapstructure:"fallback_wait_timeout"`
+	FallbackMaxWaiting  int           `mapstructure:"fallback_max_waiting"`
+
+	// 负载计算
+	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
+
+	// 过期槽位清理周期（0 表示禁用）
+	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
 REDACTED
 
 func (s *ServerConfig) Address() string {
@@ -313,6 +357,10 @@ func setDefaults() {
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 300) // 300秒(5分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.log_upstream_error_body", false)
+	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
+	viper.SetDefault("gateway.inject_beta_for_apikey", false)
+	viper.SetDefault("gateway.failover_on_400", false)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
@@ -323,6 +371,12 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 15) // 并发槽位过期时间（支持超长请求）
+	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
+	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 45*time.Second)
+	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
+	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
+	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
+	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
 
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
@@ -337,6 +391,7 @@ func setDefaults() {
 	viper.SetDefault("gemini.oauth.client_id", "")
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
+	viper.SetDefault("gemini.quota.policy", "")
 REDACTED
 
 func (c *Config) Validate() error {
@@ -410,6 +465,21 @@ REDACTED
 REDACTED
 	if c.Gateway.ConcurrencySlotTTLMinutes <= 0 {
 		return fmt.Errorf("gateway.concurrency_slot_ttl_minutes must be positive")
+REDACTED
+	if c.Gateway.Scheduling.StickySessionMaxWaiting <= 0 {
+		return fmt.Errorf("gateway.scheduling.sticky_session_max_waiting must be positive")
+REDACTED
+	if c.Gateway.Scheduling.StickySessionWaitTimeout <= 0 {
+		return fmt.Errorf("gateway.scheduling.sticky_session_wait_timeout must be positive")
+REDACTED
+	if c.Gateway.Scheduling.FallbackWaitTimeout <= 0 {
+		return fmt.Errorf("gateway.scheduling.fallback_wait_timeout must be positive")
+REDACTED
+	if c.Gateway.Scheduling.FallbackMaxWaiting <= 0 {
+		return fmt.Errorf("gateway.scheduling.fallback_max_waiting must be positive")
+REDACTED
+	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
+		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")
 REDACTED
 	return nil
 REDACTED

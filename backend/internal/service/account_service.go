@@ -17,6 +17,9 @@ var (
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
 	GetByID(ctx context.Context, id int64) (*Account, error)
+	// GetByIDs fetches accounts by IDs in a single query.
+	// It should return all accounts found (missing IDs are ignored).
+	GetByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	// ExistsByID 检查账号是否存在，仅返回布尔值，用于删除前的轻量级存在性检查
 	ExistsByID(ctx context.Context, id int64) (bool, error)
 	// GetByCRSAccountID finds an account previously synced from CRS.

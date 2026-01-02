@@ -6,7 +6,6 @@ type User struct {
 	ID            int64     `json:"id"`
 	Email         string    `json:"email"`
 	Username      string    `json:"username"`
-	Wechat        string    `json:"wechat"`
 	Notes         string    `json:"notes"`
 	Role          string    `json:"role"`
 	Balance       float64   `json:"balance"`

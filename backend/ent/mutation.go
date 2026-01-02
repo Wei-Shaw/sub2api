@@ -22,6 +22,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
+	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -34,17 +36,19 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAccount          = "Account"
-	TypeAccountGroup     = "AccountGroup"
-	TypeApiKey           = "ApiKey"
-	TypeGroup            = "Group"
-	TypeProxy            = "Proxy"
-	TypeRedeemCode       = "RedeemCode"
-	TypeSetting          = "Setting"
-	TypeUsageLog         = "UsageLog"
-	TypeUser             = "User"
-	TypeUserAllowedGroup = "UserAllowedGroup"
-	TypeUserSubscription = "UserSubscription"
+	TypeAccount                 = "Account"
+	TypeAccountGroup            = "AccountGroup"
+	TypeApiKey                  = "ApiKey"
+	TypeGroup                   = "Group"
+	TypeProxy                   = "Proxy"
+	TypeRedeemCode              = "RedeemCode"
+	TypeSetting                 = "Setting"
+	TypeUsageLog                = "UsageLog"
+	TypeUser                    = "User"
+	TypeUserAllowedGroup        = "UserAllowedGroup"
+	TypeUserAttributeDefinition = "UserAttributeDefinition"
+	TypeUserAttributeValue      = "UserAttributeValue"
+	TypeUserSubscription        = "UserSubscription"
 )
 
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
@@ -10158,7 +10162,6 @@ type UserMutation struct {
 	addconcurrency                *int
 	status                        *string
 	username                      *string
-	wechat                        *string
 	notes                         *string
 	clearedFields                 map[string]struct{REDACTED
 	api_keys                      map[int64]struct{REDACTED
@@ -10179,6 +10182,9 @@ type UserMutation struct {
 	usage_logs                    map[int64]struct{REDACTED
 	removedusage_logs             map[int64]struct{REDACTED
 	clearedusage_logs             bool
+	attribute_values              map[int64]struct{REDACTED
+	removedattribute_values       map[int64]struct{REDACTED
+	clearedattribute_values       bool
 	done                          bool
 	oldValue                      func(context.Context) (*User, error)
 	predicates                    []predicate.User
@@ -10695,42 +10701,6 @@ func (m *UserMutation) ResetUsername() {
 	m.username = nil
 REDACTED
 
-// SetWechat sets the "wechat" field.
-func (m *UserMutation) SetWechat(s string) {
-	m.wechat = &s
-REDACTED
-
-// Wechat returns the value of the "wechat" field in the mutation.
-func (m *UserMutation) Wechat() (r string, exists bool) {
-	v := m.wechat
-	if v == nil {
-		return
-REDACTED
-	return *v, true
-REDACTED
-
-// OldWechat returns the old "wechat" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldWechat(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldWechat is only allowed on UpdateOne operations")
-REDACTED
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldWechat requires an ID field in the mutation")
-REDACTED
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldWechat: %w", err)
-REDACTED
-	return oldValue.Wechat, nil
-REDACTED
-
-// ResetWechat resets all changes to the "wechat" field.
-func (m *UserMutation) ResetWechat() {
-	m.wechat = nil
-REDACTED
-
 // SetNotes sets the "notes" field.
 func (m *UserMutation) SetNotes(s string) {
 	m.notes = &s
@@ -11091,6 +11061,60 @@ func (m *UserMutation) ResetUsageLogs() {
 	m.removedusage_logs = nil
 REDACTED
 
+// AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by ids.
+func (m *UserMutation) AddAttributeValueIDs(ids ...int64) {
+	if m.attribute_values == nil {
+		m.attribute_values = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		m.attribute_values[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// ClearAttributeValues clears the "attribute_values" edge to the UserAttributeValue entity.
+func (m *UserMutation) ClearAttributeValues() {
+	m.clearedattribute_values = true
+REDACTED
+
+// AttributeValuesCleared reports if the "attribute_values" edge to the UserAttributeValue entity was cleared.
+func (m *UserMutation) AttributeValuesCleared() bool {
+	return m.clearedattribute_values
+REDACTED
+
+// RemoveAttributeValueIDs removes the "attribute_values" edge to the UserAttributeValue entity by IDs.
+func (m *UserMutation) RemoveAttributeValueIDs(ids ...int64) {
+	if m.removedattribute_values == nil {
+		m.removedattribute_values = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		delete(m.attribute_values, ids[i])
+		m.removedattribute_values[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// RemovedAttributeValues returns the removed IDs of the "attribute_values" edge to the UserAttributeValue entity.
+func (m *UserMutation) RemovedAttributeValuesIDs() (ids []int64) {
+	for id := range m.removedattribute_values {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// AttributeValuesIDs returns the "attribute_values" edge IDs in the mutation.
+func (m *UserMutation) AttributeValuesIDs() (ids []int64) {
+	for id := range m.attribute_values {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// ResetAttributeValues resets all changes to the "attribute_values" edge.
+func (m *UserMutation) ResetAttributeValues() {
+	m.attribute_values = nil
+	m.clearedattribute_values = false
+	m.removedattribute_values = nil
+REDACTED
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -11125,7 +11149,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 REDACTED
@@ -11155,9 +11179,6 @@ REDACTED
 REDACTED
 	if m.username != nil {
 		fields = append(fields, user.FieldUsername)
-REDACTED
-	if m.wechat != nil {
-		fields = append(fields, user.FieldWechat)
 REDACTED
 	if m.notes != nil {
 		fields = append(fields, user.FieldNotes)
@@ -11190,8 +11211,6 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case user.FieldUsername:
 		return m.Username()
-	case user.FieldWechat:
-		return m.Wechat()
 	case user.FieldNotes:
 		return m.Notes()
 REDACTED
@@ -11223,8 +11242,6 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldStatus(ctx)
 	case user.FieldUsername:
 		return m.OldUsername(ctx)
-	case user.FieldWechat:
-		return m.OldWechat(ctx)
 	case user.FieldNotes:
 		return m.OldNotes(ctx)
 REDACTED
@@ -11305,13 +11322,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetUsername(v)
-		return nil
-	case user.FieldWechat:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-	REDACTED
-		m.SetWechat(v)
 		return nil
 	case user.FieldNotes:
 		v, ok := value.(string)
@@ -11435,9 +11445,6 @@ func (m *UserMutation) ResetField(name string) error {
 	case user.FieldUsername:
 		m.ResetUsername()
 		return nil
-	case user.FieldWechat:
-		m.ResetWechat()
-		return nil
 	case user.FieldNotes:
 		m.ResetNotes()
 		return nil
@@ -11447,7 +11454,7 @@ REDACTED
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -11465,6 +11472,9 @@ REDACTED
 REDACTED
 	if m.usage_logs != nil {
 		edges = append(edges, user.EdgeUsageLogs)
+REDACTED
+	if m.attribute_values != nil {
+		edges = append(edges, user.EdgeAttributeValues)
 REDACTED
 	return edges
 REDACTED
@@ -11509,13 +11519,19 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 	REDACTED
 		return ids
+	case user.EdgeAttributeValues:
+		ids := make([]ent.Value, 0, len(m.attribute_values))
+		for id := range m.attribute_values {
+			ids = append(ids, id)
+	REDACTED
+		return ids
 REDACTED
 	return nil
 REDACTED
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -11533,6 +11549,9 @@ REDACTED
 REDACTED
 	if m.removedusage_logs != nil {
 		edges = append(edges, user.EdgeUsageLogs)
+REDACTED
+	if m.removedattribute_values != nil {
+		edges = append(edges, user.EdgeAttributeValues)
 REDACTED
 	return edges
 REDACTED
@@ -11577,13 +11596,19 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 	REDACTED
 		return ids
+	case user.EdgeAttributeValues:
+		ids := make([]ent.Value, 0, len(m.removedattribute_values))
+		for id := range m.removedattribute_values {
+			ids = append(ids, id)
+	REDACTED
+		return ids
 REDACTED
 	return nil
 REDACTED
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -11601,6 +11626,9 @@ REDACTED
 REDACTED
 	if m.clearedusage_logs {
 		edges = append(edges, user.EdgeUsageLogs)
+REDACTED
+	if m.clearedattribute_values {
+		edges = append(edges, user.EdgeAttributeValues)
 REDACTED
 	return edges
 REDACTED
@@ -11621,6 +11649,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedallowed_groups
 	case user.EdgeUsageLogs:
 		return m.clearedusage_logs
+	case user.EdgeAttributeValues:
+		return m.clearedattribute_values
 REDACTED
 	return false
 REDACTED
@@ -11654,6 +11684,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeUsageLogs:
 		m.ResetUsageLogs()
+		return nil
+	case user.EdgeAttributeValues:
+		m.ResetAttributeValues()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User edge %s", name)
@@ -12074,6 +12107,1805 @@ func (m *UserAllowedGroupMutation) ResetEdge(name string) error {
 		return nil
 REDACTED
 	return fmt.Errorf("unknown UserAllowedGroup edge %s", name)
+REDACTED
+
+// UserAttributeDefinitionMutation represents an operation that mutates the UserAttributeDefinition nodes in the graph.
+type UserAttributeDefinitionMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int64
+	created_at       *time.Time
+	updated_at       *time.Time
+	deleted_at       *time.Time
+	key              *string
+	name             *string
+	description      *string
+	_type            *string
+	options          *[]map[string]interface{REDACTED
+	appendoptions    []map[string]interface{REDACTED
+	required         *bool
+	validation       *map[string]interface{REDACTED
+	placeholder      *string
+	display_order    *int
+	adddisplay_order *int
+	enabled          *bool
+	clearedFields    map[string]struct{REDACTED
+	values           map[int64]struct{REDACTED
+	removedvalues    map[int64]struct{REDACTED
+	clearedvalues    bool
+	done             bool
+	oldValue         func(context.Context) (*UserAttributeDefinition, error)
+	predicates       []predicate.UserAttributeDefinition
+REDACTED
+
+var _ ent.Mutation = (*UserAttributeDefinitionMutation)(nil)
+
+// userattributedefinitionOption allows management of the mutation configuration using functional options.
+type userattributedefinitionOption func(*UserAttributeDefinitionMutation)
+
+// newUserAttributeDefinitionMutation creates new mutation for the UserAttributeDefinition entity.
+func newUserAttributeDefinitionMutation(c config, op Op, opts ...userattributedefinitionOption) *UserAttributeDefinitionMutation {
+	m := &UserAttributeDefinitionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUserAttributeDefinition,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withUserAttributeDefinitionID sets the ID field of the mutation.
+func withUserAttributeDefinitionID(id int64) userattributedefinitionOption {
+	return func(m *UserAttributeDefinitionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UserAttributeDefinition
+		)
+		m.oldValue = func(ctx context.Context) (*UserAttributeDefinition, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().UserAttributeDefinition.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withUserAttributeDefinition sets the old UserAttributeDefinition of the mutation.
+func withUserAttributeDefinition(node *UserAttributeDefinition) userattributedefinitionOption {
+	return func(m *UserAttributeDefinitionMutation) {
+		m.oldValue = func(context.Context) (*UserAttributeDefinition, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UserAttributeDefinitionMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UserAttributeDefinitionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UserAttributeDefinitionMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UserAttributeDefinitionMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UserAttributeDefinition.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *UserAttributeDefinitionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *UserAttributeDefinitionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *UserAttributeDefinitionMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *UserAttributeDefinitionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *UserAttributeDefinitionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *UserAttributeDefinitionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *UserAttributeDefinitionMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+REDACTED
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *UserAttributeDefinitionMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDeletedAt returns the old "deleted_at" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+REDACTED
+	return oldValue.DeletedAt, nil
+REDACTED
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *UserAttributeDefinitionMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[userattributedefinition.FieldDeletedAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *UserAttributeDefinitionMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[userattributedefinition.FieldDeletedAt]
+	return ok
+REDACTED
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *UserAttributeDefinitionMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, userattributedefinition.FieldDeletedAt)
+REDACTED
+
+// SetKey sets the "key" field.
+func (m *UserAttributeDefinitionMutation) SetKey(s string) {
+	m.key = &s
+REDACTED
+
+// Key returns the value of the "key" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Key() (r string, exists bool) {
+	v := m.key
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldKey returns the old "key" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKey is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKey requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKey: %w", err)
+REDACTED
+	return oldValue.Key, nil
+REDACTED
+
+// ResetKey resets all changes to the "key" field.
+func (m *UserAttributeDefinitionMutation) ResetKey() {
+	m.key = nil
+REDACTED
+
+// SetName sets the "name" field.
+func (m *UserAttributeDefinitionMutation) SetName(s string) {
+	m.name = &s
+REDACTED
+
+// Name returns the value of the "name" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldName returns the old "name" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+REDACTED
+	return oldValue.Name, nil
+REDACTED
+
+// ResetName resets all changes to the "name" field.
+func (m *UserAttributeDefinitionMutation) ResetName() {
+	m.name = nil
+REDACTED
+
+// SetDescription sets the "description" field.
+func (m *UserAttributeDefinitionMutation) SetDescription(s string) {
+	m.description = &s
+REDACTED
+
+// Description returns the value of the "description" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDescription returns the old "description" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+REDACTED
+	return oldValue.Description, nil
+REDACTED
+
+// ResetDescription resets all changes to the "description" field.
+func (m *UserAttributeDefinitionMutation) ResetDescription() {
+	m.description = nil
+REDACTED
+
+// SetType sets the "type" field.
+func (m *UserAttributeDefinitionMutation) SetType(s string) {
+	m._type = &s
+REDACTED
+
+// GetType returns the value of the "type" field in the mutation.
+func (m *UserAttributeDefinitionMutation) GetType() (r string, exists bool) {
+	v := m._type
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldType returns the old "type" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldType is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldType requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldType: %w", err)
+REDACTED
+	return oldValue.Type, nil
+REDACTED
+
+// ResetType resets all changes to the "type" field.
+func (m *UserAttributeDefinitionMutation) ResetType() {
+	m._type = nil
+REDACTED
+
+// SetOptions sets the "options" field.
+func (m *UserAttributeDefinitionMutation) SetOptions(value []map[string]interface{REDACTED) {
+	m.options = &value
+	m.appendoptions = nil
+REDACTED
+
+// Options returns the value of the "options" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Options() (r []map[string]interface{REDACTED, exists bool) {
+	v := m.options
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldOptions returns the old "options" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldOptions(ctx context.Context) (v []map[string]interface{REDACTED, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOptions is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOptions requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOptions: %w", err)
+REDACTED
+	return oldValue.Options, nil
+REDACTED
+
+// AppendOptions adds value to the "options" field.
+func (m *UserAttributeDefinitionMutation) AppendOptions(value []map[string]interface{REDACTED) {
+	m.appendoptions = append(m.appendoptions, value...)
+REDACTED
+
+// AppendedOptions returns the list of values that were appended to the "options" field in this mutation.
+func (m *UserAttributeDefinitionMutation) AppendedOptions() ([]map[string]interface{REDACTED, bool) {
+	if len(m.appendoptions) == 0 {
+		return nil, false
+REDACTED
+	return m.appendoptions, true
+REDACTED
+
+// ResetOptions resets all changes to the "options" field.
+func (m *UserAttributeDefinitionMutation) ResetOptions() {
+	m.options = nil
+	m.appendoptions = nil
+REDACTED
+
+// SetRequired sets the "required" field.
+func (m *UserAttributeDefinitionMutation) SetRequired(b bool) {
+	m.required = &b
+REDACTED
+
+// Required returns the value of the "required" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Required() (r bool, exists bool) {
+	v := m.required
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldRequired returns the old "required" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldRequired(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequired is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequired requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequired: %w", err)
+REDACTED
+	return oldValue.Required, nil
+REDACTED
+
+// ResetRequired resets all changes to the "required" field.
+func (m *UserAttributeDefinitionMutation) ResetRequired() {
+	m.required = nil
+REDACTED
+
+// SetValidation sets the "validation" field.
+func (m *UserAttributeDefinitionMutation) SetValidation(value map[string]interface{REDACTED) {
+	m.validation = &value
+REDACTED
+
+// Validation returns the value of the "validation" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Validation() (r map[string]interface{REDACTED, exists bool) {
+	v := m.validation
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldValidation returns the old "validation" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldValidation(ctx context.Context) (v map[string]interface{REDACTED, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValidation is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValidation requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValidation: %w", err)
+REDACTED
+	return oldValue.Validation, nil
+REDACTED
+
+// ResetValidation resets all changes to the "validation" field.
+func (m *UserAttributeDefinitionMutation) ResetValidation() {
+	m.validation = nil
+REDACTED
+
+// SetPlaceholder sets the "placeholder" field.
+func (m *UserAttributeDefinitionMutation) SetPlaceholder(s string) {
+	m.placeholder = &s
+REDACTED
+
+// Placeholder returns the value of the "placeholder" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Placeholder() (r string, exists bool) {
+	v := m.placeholder
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldPlaceholder returns the old "placeholder" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldPlaceholder(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlaceholder is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlaceholder requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlaceholder: %w", err)
+REDACTED
+	return oldValue.Placeholder, nil
+REDACTED
+
+// ResetPlaceholder resets all changes to the "placeholder" field.
+func (m *UserAttributeDefinitionMutation) ResetPlaceholder() {
+	m.placeholder = nil
+REDACTED
+
+// SetDisplayOrder sets the "display_order" field.
+func (m *UserAttributeDefinitionMutation) SetDisplayOrder(i int) {
+	m.display_order = &i
+	m.adddisplay_order = nil
+REDACTED
+
+// DisplayOrder returns the value of the "display_order" field in the mutation.
+func (m *UserAttributeDefinitionMutation) DisplayOrder() (r int, exists bool) {
+	v := m.display_order
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDisplayOrder returns the old "display_order" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldDisplayOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisplayOrder is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisplayOrder requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisplayOrder: %w", err)
+REDACTED
+	return oldValue.DisplayOrder, nil
+REDACTED
+
+// AddDisplayOrder adds i to the "display_order" field.
+func (m *UserAttributeDefinitionMutation) AddDisplayOrder(i int) {
+	if m.adddisplay_order != nil {
+		*m.adddisplay_order += i
+REDACTED else {
+		m.adddisplay_order = &i
+REDACTED
+REDACTED
+
+// AddedDisplayOrder returns the value that was added to the "display_order" field in this mutation.
+func (m *UserAttributeDefinitionMutation) AddedDisplayOrder() (r int, exists bool) {
+	v := m.adddisplay_order
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetDisplayOrder resets all changes to the "display_order" field.
+func (m *UserAttributeDefinitionMutation) ResetDisplayOrder() {
+	m.display_order = nil
+	m.adddisplay_order = nil
+REDACTED
+
+// SetEnabled sets the "enabled" field.
+func (m *UserAttributeDefinitionMutation) SetEnabled(b bool) {
+	m.enabled = &b
+REDACTED
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *UserAttributeDefinitionMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldEnabled returns the old "enabled" field's value of the UserAttributeDefinition entity.
+// If the UserAttributeDefinition object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeDefinitionMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+REDACTED
+	return oldValue.Enabled, nil
+REDACTED
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *UserAttributeDefinitionMutation) ResetEnabled() {
+	m.enabled = nil
+REDACTED
+
+// AddValueIDs adds the "values" edge to the UserAttributeValue entity by ids.
+func (m *UserAttributeDefinitionMutation) AddValueIDs(ids ...int64) {
+	if m.values == nil {
+		m.values = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		m.values[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// ClearValues clears the "values" edge to the UserAttributeValue entity.
+func (m *UserAttributeDefinitionMutation) ClearValues() {
+	m.clearedvalues = true
+REDACTED
+
+// ValuesCleared reports if the "values" edge to the UserAttributeValue entity was cleared.
+func (m *UserAttributeDefinitionMutation) ValuesCleared() bool {
+	return m.clearedvalues
+REDACTED
+
+// RemoveValueIDs removes the "values" edge to the UserAttributeValue entity by IDs.
+func (m *UserAttributeDefinitionMutation) RemoveValueIDs(ids ...int64) {
+	if m.removedvalues == nil {
+		m.removedvalues = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		delete(m.values, ids[i])
+		m.removedvalues[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// RemovedValues returns the removed IDs of the "values" edge to the UserAttributeValue entity.
+func (m *UserAttributeDefinitionMutation) RemovedValuesIDs() (ids []int64) {
+	for id := range m.removedvalues {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// ValuesIDs returns the "values" edge IDs in the mutation.
+func (m *UserAttributeDefinitionMutation) ValuesIDs() (ids []int64) {
+	for id := range m.values {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// ResetValues resets all changes to the "values" edge.
+func (m *UserAttributeDefinitionMutation) ResetValues() {
+	m.values = nil
+	m.clearedvalues = false
+	m.removedvalues = nil
+REDACTED
+
+// Where appends a list predicates to the UserAttributeDefinitionMutation builder.
+func (m *UserAttributeDefinitionMutation) Where(ps ...predicate.UserAttributeDefinition) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the UserAttributeDefinitionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UserAttributeDefinitionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UserAttributeDefinition, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *UserAttributeDefinitionMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *UserAttributeDefinitionMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (UserAttributeDefinition).
+func (m *UserAttributeDefinitionMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UserAttributeDefinitionMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.created_at != nil {
+		fields = append(fields, userattributedefinition.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, userattributedefinition.FieldUpdatedAt)
+REDACTED
+	if m.deleted_at != nil {
+		fields = append(fields, userattributedefinition.FieldDeletedAt)
+REDACTED
+	if m.key != nil {
+		fields = append(fields, userattributedefinition.FieldKey)
+REDACTED
+	if m.name != nil {
+		fields = append(fields, userattributedefinition.FieldName)
+REDACTED
+	if m.description != nil {
+		fields = append(fields, userattributedefinition.FieldDescription)
+REDACTED
+	if m._type != nil {
+		fields = append(fields, userattributedefinition.FieldType)
+REDACTED
+	if m.options != nil {
+		fields = append(fields, userattributedefinition.FieldOptions)
+REDACTED
+	if m.required != nil {
+		fields = append(fields, userattributedefinition.FieldRequired)
+REDACTED
+	if m.validation != nil {
+		fields = append(fields, userattributedefinition.FieldValidation)
+REDACTED
+	if m.placeholder != nil {
+		fields = append(fields, userattributedefinition.FieldPlaceholder)
+REDACTED
+	if m.display_order != nil {
+		fields = append(fields, userattributedefinition.FieldDisplayOrder)
+REDACTED
+	if m.enabled != nil {
+		fields = append(fields, userattributedefinition.FieldEnabled)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UserAttributeDefinitionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case userattributedefinition.FieldCreatedAt:
+		return m.CreatedAt()
+	case userattributedefinition.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case userattributedefinition.FieldDeletedAt:
+		return m.DeletedAt()
+	case userattributedefinition.FieldKey:
+		return m.Key()
+	case userattributedefinition.FieldName:
+		return m.Name()
+	case userattributedefinition.FieldDescription:
+		return m.Description()
+	case userattributedefinition.FieldType:
+		return m.GetType()
+	case userattributedefinition.FieldOptions:
+		return m.Options()
+	case userattributedefinition.FieldRequired:
+		return m.Required()
+	case userattributedefinition.FieldValidation:
+		return m.Validation()
+	case userattributedefinition.FieldPlaceholder:
+		return m.Placeholder()
+	case userattributedefinition.FieldDisplayOrder:
+		return m.DisplayOrder()
+	case userattributedefinition.FieldEnabled:
+		return m.Enabled()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UserAttributeDefinitionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case userattributedefinition.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case userattributedefinition.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case userattributedefinition.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case userattributedefinition.FieldKey:
+		return m.OldKey(ctx)
+	case userattributedefinition.FieldName:
+		return m.OldName(ctx)
+	case userattributedefinition.FieldDescription:
+		return m.OldDescription(ctx)
+	case userattributedefinition.FieldType:
+		return m.OldType(ctx)
+	case userattributedefinition.FieldOptions:
+		return m.OldOptions(ctx)
+	case userattributedefinition.FieldRequired:
+		return m.OldRequired(ctx)
+	case userattributedefinition.FieldValidation:
+		return m.OldValidation(ctx)
+	case userattributedefinition.FieldPlaceholder:
+		return m.OldPlaceholder(ctx)
+	case userattributedefinition.FieldDisplayOrder:
+		return m.OldDisplayOrder(ctx)
+	case userattributedefinition.FieldEnabled:
+		return m.OldEnabled(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown UserAttributeDefinition field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserAttributeDefinitionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case userattributedefinition.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case userattributedefinition.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+	case userattributedefinition.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDeletedAt(v)
+		return nil
+	case userattributedefinition.FieldKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetKey(v)
+		return nil
+	case userattributedefinition.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetName(v)
+		return nil
+	case userattributedefinition.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDescription(v)
+		return nil
+	case userattributedefinition.FieldType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetType(v)
+		return nil
+	case userattributedefinition.FieldOptions:
+		v, ok := value.([]map[string]interface{REDACTED)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetOptions(v)
+		return nil
+	case userattributedefinition.FieldRequired:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetRequired(v)
+		return nil
+	case userattributedefinition.FieldValidation:
+		v, ok := value.(map[string]interface{REDACTED)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetValidation(v)
+		return nil
+	case userattributedefinition.FieldPlaceholder:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetPlaceholder(v)
+		return nil
+	case userattributedefinition.FieldDisplayOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDisplayOrder(v)
+		return nil
+	case userattributedefinition.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetEnabled(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeDefinition field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UserAttributeDefinitionMutation) AddedFields() []string {
+	var fields []string
+	if m.adddisplay_order != nil {
+		fields = append(fields, userattributedefinition.FieldDisplayOrder)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UserAttributeDefinitionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case userattributedefinition.FieldDisplayOrder:
+		return m.AddedDisplayOrder()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserAttributeDefinitionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case userattributedefinition.FieldDisplayOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddDisplayOrder(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeDefinition numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UserAttributeDefinitionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(userattributedefinition.FieldDeletedAt) {
+		fields = append(fields, userattributedefinition.FieldDeletedAt)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UserAttributeDefinitionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UserAttributeDefinitionMutation) ClearField(name string) error {
+	switch name {
+	case userattributedefinition.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeDefinition nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UserAttributeDefinitionMutation) ResetField(name string) error {
+	switch name {
+	case userattributedefinition.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case userattributedefinition.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case userattributedefinition.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case userattributedefinition.FieldKey:
+		m.ResetKey()
+		return nil
+	case userattributedefinition.FieldName:
+		m.ResetName()
+		return nil
+	case userattributedefinition.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case userattributedefinition.FieldType:
+		m.ResetType()
+		return nil
+	case userattributedefinition.FieldOptions:
+		m.ResetOptions()
+		return nil
+	case userattributedefinition.FieldRequired:
+		m.ResetRequired()
+		return nil
+	case userattributedefinition.FieldValidation:
+		m.ResetValidation()
+		return nil
+	case userattributedefinition.FieldPlaceholder:
+		m.ResetPlaceholder()
+		return nil
+	case userattributedefinition.FieldDisplayOrder:
+		m.ResetDisplayOrder()
+		return nil
+	case userattributedefinition.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeDefinition field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UserAttributeDefinitionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.values != nil {
+		edges = append(edges, userattributedefinition.EdgeValues)
+REDACTED
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UserAttributeDefinitionMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case userattributedefinition.EdgeValues:
+		ids := make([]ent.Value, 0, len(m.values))
+		for id := range m.values {
+			ids = append(ids, id)
+	REDACTED
+		return ids
+REDACTED
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UserAttributeDefinitionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedvalues != nil {
+		edges = append(edges, userattributedefinition.EdgeValues)
+REDACTED
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UserAttributeDefinitionMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case userattributedefinition.EdgeValues:
+		ids := make([]ent.Value, 0, len(m.removedvalues))
+		for id := range m.removedvalues {
+			ids = append(ids, id)
+	REDACTED
+		return ids
+REDACTED
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UserAttributeDefinitionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedvalues {
+		edges = append(edges, userattributedefinition.EdgeValues)
+REDACTED
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UserAttributeDefinitionMutation) EdgeCleared(name string) bool {
+	switch name {
+	case userattributedefinition.EdgeValues:
+		return m.clearedvalues
+REDACTED
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UserAttributeDefinitionMutation) ClearEdge(name string) error {
+	switch name {
+REDACTED
+	return fmt.Errorf("unknown UserAttributeDefinition unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UserAttributeDefinitionMutation) ResetEdge(name string) error {
+	switch name {
+	case userattributedefinition.EdgeValues:
+		m.ResetValues()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeDefinition edge %s", name)
+REDACTED
+
+// UserAttributeValueMutation represents an operation that mutates the UserAttributeValue nodes in the graph.
+type UserAttributeValueMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *int64
+	created_at        *time.Time
+	updated_at        *time.Time
+	value             *string
+	clearedFields     map[string]struct{REDACTED
+	user              *int64
+	cleareduser       bool
+	definition        *int64
+	cleareddefinition bool
+	done              bool
+	oldValue          func(context.Context) (*UserAttributeValue, error)
+	predicates        []predicate.UserAttributeValue
+REDACTED
+
+var _ ent.Mutation = (*UserAttributeValueMutation)(nil)
+
+// userattributevalueOption allows management of the mutation configuration using functional options.
+type userattributevalueOption func(*UserAttributeValueMutation)
+
+// newUserAttributeValueMutation creates new mutation for the UserAttributeValue entity.
+func newUserAttributeValueMutation(c config, op Op, opts ...userattributevalueOption) *UserAttributeValueMutation {
+	m := &UserAttributeValueMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUserAttributeValue,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withUserAttributeValueID sets the ID field of the mutation.
+func withUserAttributeValueID(id int64) userattributevalueOption {
+	return func(m *UserAttributeValueMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UserAttributeValue
+		)
+		m.oldValue = func(ctx context.Context) (*UserAttributeValue, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().UserAttributeValue.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withUserAttributeValue sets the old UserAttributeValue of the mutation.
+func withUserAttributeValue(node *UserAttributeValue) userattributevalueOption {
+	return func(m *UserAttributeValueMutation) {
+		m.oldValue = func(context.Context) (*UserAttributeValue, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UserAttributeValueMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UserAttributeValueMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UserAttributeValueMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UserAttributeValueMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UserAttributeValue.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *UserAttributeValueMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *UserAttributeValueMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the UserAttributeValue entity.
+// If the UserAttributeValue object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeValueMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *UserAttributeValueMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *UserAttributeValueMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *UserAttributeValueMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the UserAttributeValue entity.
+// If the UserAttributeValue object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeValueMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *UserAttributeValueMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// SetUserID sets the "user_id" field.
+func (m *UserAttributeValueMutation) SetUserID(i int64) {
+	m.user = &i
+REDACTED
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *UserAttributeValueMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUserID returns the old "user_id" field's value of the UserAttributeValue entity.
+// If the UserAttributeValue object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeValueMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+REDACTED
+	return oldValue.UserID, nil
+REDACTED
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *UserAttributeValueMutation) ResetUserID() {
+	m.user = nil
+REDACTED
+
+// SetAttributeID sets the "attribute_id" field.
+func (m *UserAttributeValueMutation) SetAttributeID(i int64) {
+	m.definition = &i
+REDACTED
+
+// AttributeID returns the value of the "attribute_id" field in the mutation.
+func (m *UserAttributeValueMutation) AttributeID() (r int64, exists bool) {
+	v := m.definition
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAttributeID returns the old "attribute_id" field's value of the UserAttributeValue entity.
+// If the UserAttributeValue object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeValueMutation) OldAttributeID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttributeID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttributeID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttributeID: %w", err)
+REDACTED
+	return oldValue.AttributeID, nil
+REDACTED
+
+// ResetAttributeID resets all changes to the "attribute_id" field.
+func (m *UserAttributeValueMutation) ResetAttributeID() {
+	m.definition = nil
+REDACTED
+
+// SetValue sets the "value" field.
+func (m *UserAttributeValueMutation) SetValue(s string) {
+	m.value = &s
+REDACTED
+
+// Value returns the value of the "value" field in the mutation.
+func (m *UserAttributeValueMutation) Value() (r string, exists bool) {
+	v := m.value
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldValue returns the old "value" field's value of the UserAttributeValue entity.
+// If the UserAttributeValue object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserAttributeValueMutation) OldValue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValue is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValue requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValue: %w", err)
+REDACTED
+	return oldValue.Value, nil
+REDACTED
+
+// ResetValue resets all changes to the "value" field.
+func (m *UserAttributeValueMutation) ResetValue() {
+	m.value = nil
+REDACTED
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *UserAttributeValueMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[userattributevalue.FieldUserID] = struct{REDACTED{REDACTED
+REDACTED
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *UserAttributeValueMutation) UserCleared() bool {
+	return m.cleareduser
+REDACTED
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *UserAttributeValueMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+REDACTED
+	return
+REDACTED
+
+// ResetUser resets all changes to the "user" edge.
+func (m *UserAttributeValueMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+REDACTED
+
+// SetDefinitionID sets the "definition" edge to the UserAttributeDefinition entity by id.
+func (m *UserAttributeValueMutation) SetDefinitionID(id int64) {
+	m.definition = &id
+REDACTED
+
+// ClearDefinition clears the "definition" edge to the UserAttributeDefinition entity.
+func (m *UserAttributeValueMutation) ClearDefinition() {
+	m.cleareddefinition = true
+	m.clearedFields[userattributevalue.FieldAttributeID] = struct{REDACTED{REDACTED
+REDACTED
+
+// DefinitionCleared reports if the "definition" edge to the UserAttributeDefinition entity was cleared.
+func (m *UserAttributeValueMutation) DefinitionCleared() bool {
+	return m.cleareddefinition
+REDACTED
+
+// DefinitionID returns the "definition" edge ID in the mutation.
+func (m *UserAttributeValueMutation) DefinitionID() (id int64, exists bool) {
+	if m.definition != nil {
+		return *m.definition, true
+REDACTED
+	return
+REDACTED
+
+// DefinitionIDs returns the "definition" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// DefinitionID instead. It exists only for internal usage by the builders.
+func (m *UserAttributeValueMutation) DefinitionIDs() (ids []int64) {
+	if id := m.definition; id != nil {
+		ids = append(ids, *id)
+REDACTED
+	return
+REDACTED
+
+// ResetDefinition resets all changes to the "definition" edge.
+func (m *UserAttributeValueMutation) ResetDefinition() {
+	m.definition = nil
+	m.cleareddefinition = false
+REDACTED
+
+// Where appends a list predicates to the UserAttributeValueMutation builder.
+func (m *UserAttributeValueMutation) Where(ps ...predicate.UserAttributeValue) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the UserAttributeValueMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UserAttributeValueMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UserAttributeValue, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *UserAttributeValueMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *UserAttributeValueMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (UserAttributeValue).
+func (m *UserAttributeValueMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UserAttributeValueMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.created_at != nil {
+		fields = append(fields, userattributevalue.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, userattributevalue.FieldUpdatedAt)
+REDACTED
+	if m.user != nil {
+		fields = append(fields, userattributevalue.FieldUserID)
+REDACTED
+	if m.definition != nil {
+		fields = append(fields, userattributevalue.FieldAttributeID)
+REDACTED
+	if m.value != nil {
+		fields = append(fields, userattributevalue.FieldValue)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UserAttributeValueMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case userattributevalue.FieldCreatedAt:
+		return m.CreatedAt()
+	case userattributevalue.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case userattributevalue.FieldUserID:
+		return m.UserID()
+	case userattributevalue.FieldAttributeID:
+		return m.AttributeID()
+	case userattributevalue.FieldValue:
+		return m.Value()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UserAttributeValueMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case userattributevalue.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case userattributevalue.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case userattributevalue.FieldUserID:
+		return m.OldUserID(ctx)
+	case userattributevalue.FieldAttributeID:
+		return m.OldAttributeID(ctx)
+	case userattributevalue.FieldValue:
+		return m.OldValue(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown UserAttributeValue field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserAttributeValueMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case userattributevalue.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case userattributevalue.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+	case userattributevalue.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUserID(v)
+		return nil
+	case userattributevalue.FieldAttributeID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAttributeID(v)
+		return nil
+	case userattributevalue.FieldValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetValue(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeValue field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UserAttributeValueMutation) AddedFields() []string {
+	var fields []string
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UserAttributeValueMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserAttributeValueMutation) AddField(name string, value ent.Value) error {
+	switch name {
+REDACTED
+	return fmt.Errorf("unknown UserAttributeValue numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UserAttributeValueMutation) ClearedFields() []string {
+	return nil
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UserAttributeValueMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UserAttributeValueMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown UserAttributeValue nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UserAttributeValueMutation) ResetField(name string) error {
+	switch name {
+	case userattributevalue.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case userattributevalue.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case userattributevalue.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case userattributevalue.FieldAttributeID:
+		m.ResetAttributeID()
+		return nil
+	case userattributevalue.FieldValue:
+		m.ResetValue()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeValue field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UserAttributeValueMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.user != nil {
+		edges = append(edges, userattributevalue.EdgeUser)
+REDACTED
+	if m.definition != nil {
+		edges = append(edges, userattributevalue.EdgeDefinition)
+REDACTED
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UserAttributeValueMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case userattributevalue.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*idREDACTED
+	REDACTED
+	case userattributevalue.EdgeDefinition:
+		if id := m.definition; id != nil {
+			return []ent.Value{*idREDACTED
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UserAttributeValueMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UserAttributeValueMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UserAttributeValueMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.cleareduser {
+		edges = append(edges, userattributevalue.EdgeUser)
+REDACTED
+	if m.cleareddefinition {
+		edges = append(edges, userattributevalue.EdgeDefinition)
+REDACTED
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UserAttributeValueMutation) EdgeCleared(name string) bool {
+	switch name {
+	case userattributevalue.EdgeUser:
+		return m.cleareduser
+	case userattributevalue.EdgeDefinition:
+		return m.cleareddefinition
+REDACTED
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UserAttributeValueMutation) ClearEdge(name string) error {
+	switch name {
+	case userattributevalue.EdgeUser:
+		m.ClearUser()
+		return nil
+	case userattributevalue.EdgeDefinition:
+		m.ClearDefinition()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeValue unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UserAttributeValueMutation) ResetEdge(name string) error {
+	switch name {
+	case userattributevalue.EdgeUser:
+		m.ResetUser()
+		return nil
+	case userattributevalue.EdgeDefinition:
+		m.ResetDefinition()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserAttributeValue edge %s", name)
 REDACTED
 
 // UserSubscriptionMutation represents an operation that mutates the UserSubscription nodes in the graph.

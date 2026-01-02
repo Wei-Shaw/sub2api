@@ -131,7 +131,7 @@ REDACTED{
 			name:           "系统映射 - claude-sonnet-4-5-20250929",
 			requestedModel: "claude-sonnet-4-5-20250929",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5-thinking",
+			expected:       "claude-sonnet-4-5",
 	REDACTED,
 
 		// 3. Gemini 透传
