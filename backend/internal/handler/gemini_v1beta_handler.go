@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -32,9 +33,9 @@ REDACTED
 		return
 REDACTED
 
-	// 强制 antigravity 模式：直接返回静态模型列表
+	// 强制 antigravity 模式：返回 antigravity 支持的模型列表
 	if forcePlatform == service.PlatformAntigravity {
-		c.JSON(http.StatusOK, gemini.FallbackModelsList())
+		c.JSON(http.StatusOK, antigravity.FallbackGeminiModelsList())
 		return
 REDACTED
 
@@ -84,9 +85,9 @@ REDACTED
 		return
 REDACTED
 
-	// 强制 antigravity 模式：直接返回静态模型信息
+	// 强制 antigravity 模式：返回 antigravity 模型信息
 	if forcePlatform == service.PlatformAntigravity {
-		c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
+		c.JSON(http.StatusOK, antigravity.FallbackGeminiModel(modelName))
 		return
 REDACTED
 

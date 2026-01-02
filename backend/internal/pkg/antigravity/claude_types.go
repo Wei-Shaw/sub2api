@@ -135,3 +135,91 @@ type ErrorDetail struct {
 	Type    string `json:"type"`
 	Message string `json:"message"`
 REDACTED
+
+// modelDef Antigravity 模型定义（内部使用）
+type modelDef struct {
+	ID          string
+	DisplayName string
+	CreatedAt   string // 仅 Claude API 格式使用
+REDACTED
+
+// Antigravity 支持的 Claude 模型
+var claudeModels = []modelDef{
+	{ID: "claude-opus-4-5-thinking", DisplayName: "Claude Opus 4.5 Thinking", CreatedAt: "2025-11-01T00:00:00Z"REDACTED,
+	{ID: "claude-sonnet-4-5", DisplayName: "Claude Sonnet 4.5", CreatedAt: "2025-09-29T00:00:00Z"REDACTED,
+	{ID: "claude-sonnet-4-5-thinking", DisplayName: "Claude Sonnet 4.5 Thinking", CreatedAt: "2025-09-29T00:00:00Z"REDACTED,
+REDACTED
+
+// Antigravity 支持的 Gemini 模型
+var geminiModels = []modelDef{
+	{ID: "gemini-2.5-flash", DisplayName: "Gemini 2.5 Flash", CreatedAt: "2025-01-01T00:00:00Z"REDACTED,
+	{ID: "gemini-2.5-flash-lite", DisplayName: "Gemini 2.5 Flash Lite", CreatedAt: "2025-01-01T00:00:00Z"REDACTED,
+	{ID: "gemini-2.5-flash-thinking", DisplayName: "Gemini 2.5 Flash Thinking", CreatedAt: "2025-01-01T00:00:00Z"REDACTED,
+	{ID: "gemini-3-flash", DisplayName: "Gemini 3 Flash", CreatedAt: "2025-06-01T00:00:00Z"REDACTED,
+	{ID: "gemini-3-pro-low", DisplayName: "Gemini 3 Pro Low", CreatedAt: "2025-06-01T00:00:00Z"REDACTED,
+	{ID: "gemini-3-pro-high", DisplayName: "Gemini 3 Pro High", CreatedAt: "2025-06-01T00:00:00Z"REDACTED,
+	{ID: "gemini-3-pro-preview", DisplayName: "Gemini 3 Pro Preview", CreatedAt: "2025-06-01T00:00:00Z"REDACTED,
+	{ID: "gemini-3-pro-image", DisplayName: "Gemini 3 Pro Image", CreatedAt: "2025-06-01T00:00:00Z"REDACTED,
+REDACTED
+
+// ========== Claude API 格式 (/v1/models) ==========
+
+// ClaudeModel Claude API 模型格式
+type ClaudeModel struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	DisplayName string `json:"display_name"`
+	CreatedAt   string `json:"created_at"`
+REDACTED
+
+// DefaultModels 返回 Claude API 格式的模型列表（Claude + Gemini）
+func DefaultModels() []ClaudeModel {
+	all := append(claudeModels, geminiModels...)
+	result := make([]ClaudeModel, len(all))
+	for i, m := range all {
+		result[i] = ClaudeModel{ID: m.ID, Type: "model", DisplayName: m.DisplayName, CreatedAt: m.CreatedAtREDACTED
+REDACTED
+	return result
+REDACTED
+
+// ========== Gemini v1beta 格式 (/v1beta/models) ==========
+
+// GeminiModel Gemini v1beta 模型格式
+type GeminiModel struct {
+	Name                       string   `json:"name"`
+	DisplayName                string   `json:"displayName,omitempty"`
+	SupportedGenerationMethods []string `json:"supportedGenerationMethods,omitempty"`
+REDACTED
+
+// GeminiModelsListResponse Gemini v1beta 模型列表响应
+type GeminiModelsListResponse struct {
+	Models []GeminiModel `json:"models"`
+REDACTED
+
+var defaultGeminiMethods = []string{"generateContent", "streamGenerateContent"REDACTED
+
+// DefaultGeminiModels 返回 Gemini v1beta 格式的模型列表（仅 Gemini 模型）
+func DefaultGeminiModels() []GeminiModel {
+	result := make([]GeminiModel, len(geminiModels))
+	for i, m := range geminiModels {
+		result[i] = GeminiModel{Name: "models/" + m.ID, DisplayName: m.DisplayName, SupportedGenerationMethods: defaultGeminiMethodsREDACTED
+REDACTED
+	return result
+REDACTED
+
+// FallbackGeminiModelsList 返回 Gemini v1beta 格式的模型列表响应
+func FallbackGeminiModelsList() GeminiModelsListResponse {
+	return GeminiModelsListResponse{Models: DefaultGeminiModels()REDACTED
+REDACTED
+
+// FallbackGeminiModel 返回单个模型信息（v1beta 格式）
+func FallbackGeminiModel(model string) GeminiModel {
+	if model == "" {
+		return GeminiModel{Name: "models/unknown", SupportedGenerationMethods: defaultGeminiMethodsREDACTED
+REDACTED
+	name := model
+	if len(model) < 7 || model[:7] != "models/" {
+		name = "models/" + model
+REDACTED
+	return GeminiModel{Name: name, SupportedGenerationMethods: defaultGeminiMethodsREDACTED
+REDACTED
