@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -442,6 +443,15 @@ REDACTED
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
 		"data":   claude.DefaultModels,
+REDACTED)
+REDACTED
+
+// AntigravityModels 返回 Antigravity 支持的全部模型
+// GET /antigravity/models
+func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   antigravity.DefaultModels(),
 REDACTED)
 REDACTED
 
