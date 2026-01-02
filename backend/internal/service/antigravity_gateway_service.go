@@ -49,11 +49,11 @@ REDACTED{
 	{"gemini-3-pro-image", "gemini-3-pro-image"REDACTED, // gemini-3-pro-image-preview 等
 	{"claude-3-5-sonnet", "claude-sonnet-4-5"REDACTED,   // 旧版 claude-3-5-sonnet-xxx
 	{"claude-sonnet-4-5", "claude-sonnet-4-5"REDACTED,   // claude-sonnet-4-5-xxx
-	{"claude-haiku-4-5", "gemini-3-flash"REDACTED,       // claude-haiku-4-5-xxx
+	{"claude-haiku-4-5", "claude-sonnet-4-5"REDACTED,    // claude-haiku-4-5-xxx → sonnet
 	{"claude-opus-4-5", "claude-opus-4-5-thinking"REDACTED,
-	{"claude-3-haiku", "gemini-3-flash"REDACTED, // 旧版 claude-3-haiku-xxx
+	{"claude-3-haiku", "claude-sonnet-4-5"REDACTED, // 旧版 claude-3-haiku-xxx → sonnet
 	{"claude-sonnet-4", "claude-sonnet-4-5"REDACTED,
-	{"claude-haiku-4", "gemini-3-flash"REDACTED,
+	{"claude-haiku-4", "claude-sonnet-4-5"REDACTED, // → sonnet
 	{"claude-opus-4", "claude-opus-4-5-thinking"REDACTED,
 	{"gemini-3-pro", "gemini-3-pro-high"REDACTED, // gemini-3-pro, gemini-3-pro-preview 等
 REDACTED
