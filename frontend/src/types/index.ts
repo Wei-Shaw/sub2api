@@ -376,6 +376,12 @@ export interface UsageProgress {
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
 REDACTED
 
+// Antigravity 单个模型的配额信息
+export interface AntigravityModelQuota {
+  utilization: number // 使用率 0-100
+  reset_time: string  // 重置时间 ISO8601
+REDACTED
+
 export interface AccountUsageInfo {
   updated_at: string | null
   five_hour: UsageProgress | null
@@ -383,6 +389,7 @@ export interface AccountUsageInfo {
   seven_day_sonnet: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null
+  antigravity_quota?: Record<string, AntigravityModelQuota> | null
 REDACTED
 
 // OpenAI Codex usage snapshot (from response headers)

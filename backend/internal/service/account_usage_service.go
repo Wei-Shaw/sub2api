@@ -91,6 +91,12 @@ type UsageProgress struct {
 	WindowStats      *WindowStats `json:"window_stats,omitempty"` // 窗口期统计（从窗口开始到当前的使用量）
 REDACTED
 
+// AntigravityModelQuota Antigravity 单个模型的配额信息
+type AntigravityModelQuota struct {
+	Utilization int    `json:"utilization"` // 使用率 0-100
+	ResetTime   string `json:"reset_time"`  // 重置时间 ISO8601
+REDACTED
+
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	UpdatedAt        *time.Time     `json:"updated_at,omitempty"`         // 更新时间
@@ -99,6 +105,9 @@ type UsageInfo struct {
 	SevenDaySonnet   *UsageProgress `json:"seven_day_sonnet,omitempty"`   // 7天Sonnet窗口
 	GeminiProDaily   *UsageProgress `json:"gemini_pro_daily,omitempty"`   // Gemini Pro 日配额
 	GeminiFlashDaily *UsageProgress `json:"gemini_flash_daily,omitempty"` // Gemini Flash 日配额
+
+	// Antigravity 多模型配额
+	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
 REDACTED
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
@@ -124,19 +133,27 @@ REDACTED
 
 // AccountUsageService 账号使用量查询服务
 type AccountUsageService struct {
-	accountRepo        AccountRepository
-	usageLogRepo       UsageLogRepository
-	usageFetcher       ClaudeUsageFetcher
-	geminiQuotaService *GeminiQuotaService
+	accountRepo              AccountRepository
+	usageLogRepo             UsageLogRepository
+	usageFetcher             ClaudeUsageFetcher
+	geminiQuotaService       *GeminiQuotaService
+	antigravityQuotaFetcher  *AntigravityQuotaFetcher
 REDACTED
 
 // NewAccountUsageService 创建AccountUsageService实例
-func NewAccountUsageService(accountRepo AccountRepository, usageLogRepo UsageLogRepository, usageFetcher ClaudeUsageFetcher, geminiQuotaService *GeminiQuotaService) *AccountUsageService {
+func NewAccountUsageService(
+	accountRepo AccountRepository,
+	usageLogRepo UsageLogRepository,
+	usageFetcher ClaudeUsageFetcher,
+	geminiQuotaService *GeminiQuotaService,
+	antigravityQuotaFetcher *AntigravityQuotaFetcher,
+) *AccountUsageService {
 	return &AccountUsageService{
-		accountRepo:        accountRepo,
-		usageLogRepo:       usageLogRepo,
-		usageFetcher:       usageFetcher,
-		geminiQuotaService: geminiQuotaService,
+		accountRepo:              accountRepo,
+		usageLogRepo:             usageLogRepo,
+		usageFetcher:             usageFetcher,
+		geminiQuotaService:       geminiQuotaService,
+		antigravityQuotaFetcher:  antigravityQuotaFetcher,
 REDACTED
 REDACTED
 
@@ -152,6 +169,11 @@ REDACTED
 
 	if account.Platform == PlatformGemini {
 		return s.getGeminiUsage(ctx, account)
+REDACTED
+
+	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
+	if account.Platform == PlatformAntigravity {
+		return s.getAntigravityUsage(ctx, account)
 REDACTED
 
 	// 只有oauth类型账号可以通过API获取usage（有profile scope）
@@ -228,6 +250,51 @@ REDACTED
 	usage.GeminiFlashDaily = buildGeminiUsageProgress(totals.FlashRequests, quota.FlashRPD, resetAt, totals.FlashTokens, totals.FlashCost, now)
 
 	return usage, nil
+REDACTED
+
+// antigravityUsageCache 缓存 Antigravity 额度数据
+type antigravityUsageCache struct {
+	usageInfo *UsageInfo
+	timestamp time.Time
+REDACTED
+
+var antigravityCacheMap = sync.Map{REDACTED
+
+// getAntigravityUsage 获取 Antigravity 账户额度
+func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	if s.antigravityQuotaFetcher == nil || !s.antigravityQuotaFetcher.CanFetch(account) {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &nowREDACTED, nil
+REDACTED
+
+	// 1. 检查缓存（10 分钟）
+	if cached, ok := antigravityCacheMap.Load(account.ID); ok {
+		if cache, ok := cached.(*antigravityUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
+			// 重新计算 RemainingSeconds
+			usage := cache.usageInfo
+			if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
+				usage.FiveHour.RemainingSeconds = int(time.Until(*usage.FiveHour.ResetsAt).Seconds())
+		REDACTED
+			return usage, nil
+	REDACTED
+REDACTED
+
+	// 2. 获取代理 URL
+	proxyURL := s.antigravityQuotaFetcher.GetProxyURL(ctx, account)
+
+	// 3. 调用 API 获取额度
+	result, err := s.antigravityQuotaFetcher.FetchQuota(ctx, account, proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch antigravity quota failed: %w", err)
+REDACTED
+
+	// 4. 缓存结果
+	antigravityCacheMap.Store(account.ID, &antigravityUsageCache{
+		usageInfo: result.UsageInfo,
+		timestamp: time.Now(),
+REDACTED)
+
+	return result.UsageInfo, nil
 REDACTED
 
 // addWindowStats 为 usage 数据添加窗口期统计
