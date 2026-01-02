@@ -133,11 +133,11 @@ REDACTED
 
 // AccountUsageService 账号使用量查询服务
 type AccountUsageService struct {
-	accountRepo              AccountRepository
-	usageLogRepo             UsageLogRepository
-	usageFetcher             ClaudeUsageFetcher
-	geminiQuotaService       *GeminiQuotaService
-	antigravityQuotaFetcher  *AntigravityQuotaFetcher
+	accountRepo             AccountRepository
+	usageLogRepo            UsageLogRepository
+	usageFetcher            ClaudeUsageFetcher
+	geminiQuotaService      *GeminiQuotaService
+	antigravityQuotaFetcher *AntigravityQuotaFetcher
 REDACTED
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -149,11 +149,11 @@ func NewAccountUsageService(
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 ) *AccountUsageService {
 	return &AccountUsageService{
-		accountRepo:              accountRepo,
-		usageLogRepo:             usageLogRepo,
-		usageFetcher:             usageFetcher,
-		geminiQuotaService:       geminiQuotaService,
-		antigravityQuotaFetcher:  antigravityQuotaFetcher,
+		accountRepo:             accountRepo,
+		usageLogRepo:            usageLogRepo,
+		usageFetcher:            usageFetcher,
+		geminiQuotaService:      geminiQuotaService,
+		antigravityQuotaFetcher: antigravityQuotaFetcher,
 REDACTED
 REDACTED
 
