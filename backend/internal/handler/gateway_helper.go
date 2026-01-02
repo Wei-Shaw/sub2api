@@ -144,6 +144,21 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
 
+	// Try immediate acquire first (avoid unnecessary wait)
+	var result *service.AcquireResult
+	var err error
+	if slotType == "user" {
+		result, err = h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
+REDACTED else {
+		result, err = h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
+REDACTED
+	if err != nil {
+		return nil, err
+REDACTED
+	if result.Acquired {
+		return result.ReleaseFunc, nil
+REDACTED
+
 	// Determine if ping is needed (streaming + ping format defined)
 	needPing := isStream && h.pingFormat != ""
 
