@@ -297,6 +297,16 @@ go generate ./cmd/server
 
 ---
 
+## Simple Mode
+
+Simple Mode is designed for individual developers or internal teams who want quick access without full SaaS features.
+
+- Enable: Set environment variable `RUN_MODE=simple`
+- Difference: Hides SaaS-related features and skips billing process
+- Security note: In production, you must also set `SIMPLE_MODE_CONFIRM=true` to allow startup
+
+---
+
 ## Antigravity Support
 
 Sub2API supports [Antigravity](https://antigravity.so/) accounts. After authorization, dedicated endpoints are available for Claude and Gemini models.
@@ -320,6 +330,12 @@ export ANTHROPIC_AUTH_TOKEN="sk-xxx"
 Antigravity accounts support optional **hybrid scheduling**. When enabled, the general endpoints `/v1/messages` and `/v1beta/` will also route requests to Antigravity accounts.
 
 > **⚠️ Warning**: Anthropic Claude and Antigravity Claude **cannot be mixed within the same conversation context**. Use groups to isolate them properly.
+
+### Known Issues
+
+In Claude Code, Plan Mode cannot exit automatically. (Normally when using the native Claude API, after planning is complete, Claude Code will pop up options for users to approve or reject the plan.)
+
+**Workaround**: Press `Shift + Tab` to manually exit Plan Mode, then type your response to approve or reject the plan.
 
 ---
 
