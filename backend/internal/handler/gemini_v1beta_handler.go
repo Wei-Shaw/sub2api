@@ -190,7 +190,8 @@ REDACTED
 
 	// 2) billing eligibility check (after wait)
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		googleError(c, http.StatusForbidden, err.Error())
+		status, _, message := billingErrorDetails(err)
+		googleError(c, status, message)
 		return
 REDACTED
 
@@ -329,7 +330,7 @@ func writeUpstreamResponse(c *gin.Context, res *service.UpstreamHTTPResult) {
 REDACTED
 	for k, vv := range res.Headers {
 		// Avoid overriding content-length and hop-by-hop headers.
-		if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Transfer-Encoding") || strings.EqualFold(k, "Connection") {
+		if strings.EqualFold(k, "Content-Length") || strings.EqualFold(k, "Transfer-Encoding") || strings.EqualFold(k, "Connection") || strings.EqualFold(k, "Www-Authenticate") {
 			continue
 	REDACTED
 		for _, v := range vv {

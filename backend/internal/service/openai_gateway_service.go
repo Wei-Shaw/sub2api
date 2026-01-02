@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 )
 
@@ -370,10 +372,14 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	case AccountTypeApiKey:
 		// API Key accounts use Platform API or custom base URL
 		baseURL := account.GetOpenAIBaseURL()
-		if baseURL != "" {
-			targetURL = baseURL + "/responses"
-	REDACTED else {
+		if baseURL == "" {
 			targetURL = openaiPlatformAPIURL
+	REDACTED else {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+		REDACTED
+			targetURL = validatedURL + "/responses"
 	REDACTED
 	default:
 		targetURL = openaiPlatformAPIURL
@@ -645,16 +651,23 @@ REDACTED
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 REDACTED
 
-	// Pass through headers
-	for key, values := range resp.Header {
-		for _, value := range values {
-			c.Header(key, value)
-	REDACTED
-REDACTED
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
 
 	c.Data(resp.StatusCode, "application/json", body)
 
 	return usage, nil
+REDACTED
+
+func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, error) {
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+REDACTED)
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+REDACTED
+	return normalized, nil
 REDACTED
 
 func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {

@@ -12,6 +12,8 @@ server:
   port: 8080
   # Mode: "debug" for development, "release" for production
   mode: "release"
+  # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
+  trusted_proxies: []
 
 # =============================================================================
 # Run Mode Configuration
@@ -20,6 +22,48 @@ server:
 # - standard: Full SaaS features with billing/balance checks
 # - simple: Hides SaaS features and skips billing/balance checks
 run_mode: "standard"
+
+# =============================================================================
+# CORS Configuration
+# =============================================================================
+cors:
+  # Allowed origins list. Leave empty to disable cross-origin requests.
+  allowed_origins: []
+  # Allow credentials (cookies/authorization headers). Cannot be used with "*".
+  allow_credentials: true
+
+# =============================================================================
+# Security Configuration
+# =============================================================================
+security:
+  url_allowlist:
+    # Allowed upstream hosts for API proxying
+    upstream_hosts:
+      - "api.openai.com"
+      - "api.anthropic.com"
+      - "generativelanguage.googleapis.com"
+      - "cloudcode-pa.googleapis.com"
+      - "*.openai.azure.com"
+    # Allowed hosts for pricing data download
+    pricing_hosts:
+      - "raw.githubusercontent.com"
+    # Allowed hosts for CRS sync (required when using CRS sync)
+    crs_hosts: []
+    # Allow localhost/private IPs for upstream/pricing/CRS (use only in trusted networks)
+    allow_private_hosts: false
+  response_headers:
+    # Extra allowed response headers from upstream
+    additional_allowed: []
+    # Force-remove response headers from upstream
+    force_remove: []
+  csp:
+    # Enable Content-Security-Policy header
+    enabled: true
+    # Default CSP policy (override if you host assets on other domains)
+    policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  proxy_probe:
+    # Allow skipping TLS verification for proxy probe (debug only)
+    insecure_skip_verify: false
 
 # =============================================================================
 # 网关配置
@@ -77,7 +121,7 @@ jwt:
   # IMPORTANT: Change this to a random string in production!
   # Generate with: openssl rand -hex 32
   secret: "change-this-to-a-secure-random-string"
-  # Token expiration time in hours
+  # Token expiration time in hours (max 24)
   expire_hour: 24
 
 # =============================================================================
@@ -121,6 +165,23 @@ pricing:
   update_interval_hours: 24
   # Hash check interval in minutes
   hash_check_interval_minutes: 10
+
+# =============================================================================
+# Billing Configuration
+# =============================================================================
+billing:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    reset_timeout_seconds: 30
+    half_open_requests: 3
+
+# =============================================================================
+# Turnstile Configuration
+# =============================================================================
+turnstile:
+  # Require Turnstile in release mode (when enabled, login/register will fail if not configured)
+  required: false
 
 # =============================================================================
 # Gemini OAuth (Required for Gemini accounts)

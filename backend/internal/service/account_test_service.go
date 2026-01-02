@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,9 +16,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -49,6 +52,7 @@ type AccountTestService struct {
 	geminiTokenProvider       *GeminiTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
+	cfg                       *config.Config
 REDACTED
 
 // NewAccountTestService creates a new AccountTestService
@@ -59,6 +63,7 @@ func NewAccountTestService(
 	geminiTokenProvider *GeminiTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
+	cfg *config.Config,
 ) *AccountTestService {
 	return &AccountTestService{
 		accountRepo:               accountRepo,
@@ -67,7 +72,23 @@ func NewAccountTestService(
 		geminiTokenProvider:       geminiTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
+		cfg:                       cfg,
 REDACTED
+REDACTED
+
+func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error) {
+	if s.cfg == nil {
+		return "", errors.New("config is not available")
+REDACTED
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+REDACTED)
+	if err != nil {
+		return "", err
+REDACTED
+	return normalized, nil
 REDACTED
 
 // generateSessionString generates a Claude Code style session string
@@ -207,11 +228,15 @@ REDACTED else if account.Type == "apikey" {
 			return s.sendErrorAndEnd(c, "No API key available")
 	REDACTED
 
-		apiURL = account.GetBaseURL()
-		if apiURL == "" {
-			apiURL = "https://api.anthropic.com"
+		baseURL := account.GetBaseURL()
+		if baseURL == "" {
+			baseURL = "https://api.anthropic.com"
 	REDACTED
-		apiURL = strings.TrimSuffix(apiURL, "/") + "/v1/messages"
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	REDACTED
+		apiURL = strings.TrimSuffix(normalizedBaseURL, "/") + "/v1/messages"
 REDACTED else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 REDACTED
@@ -333,7 +358,11 @@ REDACTED else if account.Type == "apikey" {
 		if baseURL == "" {
 			baseURL = "https://api.openai.com"
 	REDACTED
-		apiURL = strings.TrimSuffix(baseURL, "/") + "/responses"
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	REDACTED
+		apiURL = strings.TrimSuffix(normalizedBaseURL, "/") + "/responses"
 REDACTED else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 REDACTED
@@ -513,10 +542,14 @@ REDACTED
 	if baseURL == "" {
 		baseURL = geminicli.AIStudioBaseURL
 REDACTED
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+REDACTED
 
 	// Use streamGenerateContent for real-time feedback
 	fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse",
-		strings.TrimRight(baseURL, "/"), modelID)
+		strings.TrimRight(normalizedBaseURL, "/"), modelID)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(payload))
 	if err != nil {
@@ -548,7 +581,11 @@ REDACTED
 		if strings.TrimSpace(baseURL) == "" {
 			baseURL = geminicli.AIStudioBaseURL
 	REDACTED
-		fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse", strings.TrimRight(baseURL, "/"), modelID)
+		normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return nil, err
+	REDACTED
+		fullURL := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse", strings.TrimRight(normalizedBaseURL, "/"), modelID)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 		if err != nil {
@@ -577,7 +614,11 @@ REDACTED
 REDACTED
 	wrappedBytes, _ := json.Marshal(wrapped)
 
-	fullURL := fmt.Sprintf("%s/v1internal:streamGenerateContent?alt=sse", geminicli.GeminiCliBaseURL)
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(geminicli.GeminiCliBaseURL)
+	if err != nil {
+		return nil, err
+REDACTED
+	fullURL := fmt.Sprintf("%s/v1internal:streamGenerateContent?alt=sse", normalizedBaseURL)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, bytes.NewReader(wrappedBytes))
 	if err != nil {

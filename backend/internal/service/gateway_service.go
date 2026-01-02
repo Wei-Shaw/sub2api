@@ -19,6 +19,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/tidwall/sjson"
 
 	"github.com/gin-gonic/gin"
@@ -724,7 +726,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	targetURL := claudeAPIURL
 	if account.Type == AccountTypeApiKey {
 		baseURL := account.GetBaseURL()
-		targetURL = baseURL + "/v1/messages"
+		if baseURL != "" {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+		REDACTED
+			targetURL = validatedURL + "/v1/messages"
+	REDACTED
 REDACTED
 
 	// OAuth账号：应用统一指纹
@@ -1107,12 +1115,7 @@ REDACTED
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 REDACTED
 
-	// 透传响应头
-	for key, values := range resp.Header {
-		for _, value := range values {
-			c.Header(key, value)
-	REDACTED
-REDACTED
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
 
 	// 写入响应
 	c.Data(resp.StatusCode, "application/json", body)
@@ -1352,7 +1355,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	targetURL := claudeAPICountTokensURL
 	if account.Type == AccountTypeApiKey {
 		baseURL := account.GetBaseURL()
-		targetURL = baseURL + "/v1/messages/count_tokens"
+		if baseURL != "" {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+		REDACTED
+			targetURL = validatedURL + "/v1/messages/count_tokens"
+	REDACTED
 REDACTED
 
 	// OAuth 账号：应用统一指纹和重写 userID
@@ -1423,4 +1432,16 @@ func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, m
 			"message": message,
 	REDACTED,
 REDACTED)
+REDACTED
+
+func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+REDACTED)
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+REDACTED
+	return normalized, nil
 REDACTED

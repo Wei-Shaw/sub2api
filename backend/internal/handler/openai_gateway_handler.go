@@ -131,7 +131,8 @@ REDACTED
 	// 2. Re-check billing eligibility after wait
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		log.Printf("Billing eligibility check failed after wait: %v", err)
-		h.handleStreamingAwareError(c, http.StatusForbidden, "billing_error", err.Error(), streamStarted)
+		status, code, message := billingErrorDetails(err)
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 REDACTED
 

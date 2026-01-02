@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -127,7 +128,8 @@ REDACTED
 	// 2. 【新增】Wait后二次检查余额/订阅
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		log.Printf("Billing eligibility check failed after wait: %v", err)
-		h.handleStreamingAwareError(c, http.StatusForbidden, "billing_error", err.Error(), streamStarted)
+		status, code, message := billingErrorDetails(err)
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 REDACTED
 
@@ -535,7 +537,8 @@ REDACTED
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		h.errorResponse(c, http.StatusForbidden, "billing_error", err.Error())
+		status, code, message := billingErrorDetails(err)
+		h.errorResponse(c, status, code, message)
 		return
 REDACTED
 
@@ -641,4 +644,19 @@ func sendMockWarmupResponse(c *gin.Context, model string) {
 			"output_tokens": 2,
 	REDACTED,
 REDACTED)
+REDACTED
+
+func billingErrorDetails(err error) (status int, code, message string) {
+	if errors.Is(err, service.ErrBillingServiceUnavailable) {
+		msg := infraerrors.Message(err)
+		if msg == "" {
+			msg = "Billing service temporarily unavailable. Please retry later."
+	REDACTED
+		return http.StatusServiceUnavailable, "billing_service_error", msg
+REDACTED
+	msg := infraerrors.Message(err)
+	if msg == "" {
+		msg = err.Error()
+REDACTED
+	return http.StatusForbidden, "billing_error", msg
 REDACTED

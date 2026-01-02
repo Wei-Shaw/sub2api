@@ -22,6 +22,10 @@ REDACTED
 // It is intended for Gemini native endpoints (/v1beta) to match Gemini SDK expectations.
 func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if v := strings.TrimSpace(c.Query("api_key")); v != "" {
+			abortWithGoogleError(c, 400, "Query parameter api_key is deprecated. Use Authorization header or key instead.")
+			return
+	REDACTED
 		apiKeyString := extractAPIKeyFromRequest(c)
 		if apiKeyString == "" {
 			abortWithGoogleError(c, 401, "API key is required")
@@ -116,13 +120,16 @@ REDACTED
 	if v := strings.TrimSpace(c.GetHeader("x-goog-api-key")); v != "" {
 		return v
 REDACTED
-	if v := strings.TrimSpace(c.Query("key")); v != "" {
-		return v
-REDACTED
-	if v := strings.TrimSpace(c.Query("api_key")); v != "" {
-		return v
+	if allowGoogleQueryKey(c.Request.URL.Path) {
+		if v := strings.TrimSpace(c.Query("key")); v != "" {
+			return v
+	REDACTED
 REDACTED
 	return ""
+REDACTED
+
+func allowGoogleQueryKey(path string) bool {
+	return strings.HasPrefix(path, "/v1beta") || strings.HasPrefix(path, "/antigravity/v1beta")
 REDACTED
 
 func abortWithGoogleError(c *gin.Context, status int, message string) {

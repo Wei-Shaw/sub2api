@@ -85,7 +85,7 @@
                 </button>
               </div>
               <!-- Code Content -->
-              <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-html="file.highlighted"></code></pre>
+              <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-text="file.content"></code></pre>
             </div>
           </div>
         </div>
@@ -142,7 +142,6 @@ REDACTED
 interface FileConfig {
   path: string
   content: string
-  highlighted: string
   hint?: string  // Optional hint message for this file
 REDACTED
 
@@ -227,13 +226,6 @@ const platformNote = computed(() => {
 REDACTED)
 
 // Syntax highlighting helpers
-const keyword = (text: string) => `<span class="text-purple-400">${textREDACTED</span>`
-const variable = (text: string) => `<span class="text-cyan-400">${textREDACTED</span>`
-const string = (text: string) => `<span class="text-green-400">${textREDACTED</span>`
-const operator = (text: string) => `<span class="text-yellow-400">${textREDACTED</span>`
-const comment = (text: string) => `<span class="text-gray-500">${textREDACTED</span>`
-const key = (text: string) => `<span class="text-blue-400">${textREDACTED</span>`
-
 // Generate file configs based on platform and active tab
 const currentFiles = computed((): FileConfig[] => {
   const baseUrl = props.baseUrl || window.location.origin
@@ -249,37 +241,29 @@ REDACTED)
 function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
   let path: string
   let content: string
-  let highlighted: string
 
   switch (activeTab.value) {
     case 'unix':
       path = 'Terminal'
       content = `export ANTHROPIC_BASE_URL="${baseUrlREDACTED"
 export ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"`
-      highlighted = `${keyword('export')REDACTED ${variable('ANTHROPIC_BASE_URL')REDACTED${operator('=')REDACTED${string(`"${baseUrlREDACTED"`)REDACTED
-${keyword('export')REDACTED ${variable('ANTHROPIC_AUTH_TOKEN')REDACTED${operator('=')REDACTED${string(`"${apiKeyREDACTED"`)REDACTED`
       break
     case 'cmd':
       path = 'Command Prompt'
       content = `set ANTHROPIC_BASE_URL=${baseUrlREDACTED
 set ANTHROPIC_AUTH_TOKEN=${apiKeyREDACTED`
-      highlighted = `${keyword('set')REDACTED ${variable('ANTHROPIC_BASE_URL')REDACTED${operator('=')REDACTED${baseUrlREDACTED
-${keyword('set')REDACTED ${variable('ANTHROPIC_AUTH_TOKEN')REDACTED${operator('=')REDACTED${apiKeyREDACTED`
       break
     case 'powershell':
       path = 'PowerShell'
       content = `$env:ANTHROPIC_BASE_URL="${baseUrlREDACTED"
 $env:ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"`
-      highlighted = `${keyword('$env:')REDACTED${variable('ANTHROPIC_BASE_URL')REDACTED${operator('=')REDACTED${string(`"${baseUrlREDACTED"`)REDACTED
-${keyword('$env:')REDACTED${variable('ANTHROPIC_AUTH_TOKEN')REDACTED${operator('=')REDACTED${string(`"${apiKeyREDACTED"`)REDACTED`
       break
     default:
       path = 'Terminal'
       content = ''
-      highlighted = ''
   REDACTED
 
-  return [{ path, content, highlighted REDACTED]
+  return [{ path, content REDACTED]
 REDACTED
 
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
@@ -301,40 +285,20 @@ base_url = "${baseUrlREDACTED"
 wire_api = "responses"
 requires_openai_auth = true`
 
-  const configHighlighted = `${key('model_provider')REDACTED ${operator('=')REDACTED ${string('"sub2api"')REDACTED
-${key('model')REDACTED ${operator('=')REDACTED ${string('"gpt-5.2-codex"')REDACTED
-${key('model_reasoning_effort')REDACTED ${operator('=')REDACTED ${string('"high"')REDACTED
-${key('network_access')REDACTED ${operator('=')REDACTED ${string('"enabled"')REDACTED
-${key('disable_response_storage')REDACTED ${operator('=')REDACTED ${keyword('true')REDACTED
-${key('windows_wsl_setup_acknowledged')REDACTED ${operator('=')REDACTED ${keyword('true')REDACTED
-${key('model_verbosity')REDACTED ${operator('=')REDACTED ${string('"high"')REDACTED
-
-${comment('[model_providers.sub2api]')REDACTED
-${key('name')REDACTED ${operator('=')REDACTED ${string('"sub2api"')REDACTED
-${key('base_url')REDACTED ${operator('=')REDACTED ${string(`"${baseUrlREDACTED"`)REDACTED
-${key('wire_api')REDACTED ${operator('=')REDACTED ${string('"responses"')REDACTED
-${key('requires_openai_auth')REDACTED ${operator('=')REDACTED ${keyword('true')REDACTED`
-
   // auth.json content
   const authContent = `{
   "OPENAI_API_KEY": "${apiKeyREDACTED"
-REDACTED`
-
-  const authHighlighted = `{
-  ${key('"OPENAI_API_KEY"')REDACTED: ${string(`"${apiKeyREDACTED"`)REDACTED
 REDACTED`
 
   return [
     {
       path: `${configDirREDACTED/config.toml`,
       content: configContent,
-      highlighted: configHighlighted,
       hint: t('keys.useKeyModal.openai.configTomlHint')
     REDACTED,
     {
       path: `${configDirREDACTED/auth.json`,
-      content: authContent,
-      highlighted: authHighlighted
+      content: authContent
     REDACTED
   ]
 REDACTED

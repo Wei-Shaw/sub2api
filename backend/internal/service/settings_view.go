@@ -8,6 +8,7 @@ type SystemSettings struct {
 	SmtpPort     int
 	SmtpUsername string
 	SmtpPassword string
+	SmtpPasswordConfigured bool
 	SmtpFrom     string
 	SmtpFromName string
 	SmtpUseTLS   bool
@@ -15,6 +16,7 @@ type SystemSettings struct {
 	TurnstileEnabled   bool
 	TurnstileSiteKey   string
 	TurnstileSecretKey string
+	TurnstileSecretKeyConfigured bool
 
 	SiteName     string
 	SiteLogo     string

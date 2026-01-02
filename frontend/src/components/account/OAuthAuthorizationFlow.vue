@@ -136,16 +136,16 @@
               <ol
                 class="list-inside list-decimal space-y-1 text-xs text-amber-700 dark:text-amber-300"
               >
-                <li v-html="t('admin.accounts.oauth.step1')"></li>
-                <li v-html="t('admin.accounts.oauth.step2')"></li>
-                <li v-html="t('admin.accounts.oauth.step3')"></li>
-                <li v-html="t('admin.accounts.oauth.step4')"></li>
-                <li v-html="t('admin.accounts.oauth.step5')"></li>
-                <li v-html="t('admin.accounts.oauth.step6')"></li>
+                <li>{{ t('admin.accounts.oauth.step1') REDACTEDREDACTED</li>
+                <li>{{ t('admin.accounts.oauth.step2') REDACTEDREDACTED</li>
+                <li>{{ t('admin.accounts.oauth.step3') REDACTEDREDACTED</li>
+                <li>{{ t('admin.accounts.oauth.step4') REDACTEDREDACTED</li>
+                <li>{{ t('admin.accounts.oauth.step5') REDACTEDREDACTED</li>
+                <li>{{ t('admin.accounts.oauth.step6') REDACTEDREDACTED</li>
               </ol>
               <p
                 class="mt-2 text-xs text-amber-600 dark:text-amber-400"
-                v-html="t('admin.accounts.oauth.sessionKeyFormat')"
+                v-text="t('admin.accounts.oauth.sessionKeyFormat')"
               ></p>
             </div>
 
@@ -390,7 +390,7 @@
                 >
                   <p
                     class="text-xs text-amber-800 dark:text-amber-300"
-                    v-html="oauthImportantNotice"
+                    v-text="oauthImportantNotice"
                   ></p>
                 </div>
                 <!-- Proxy Warning (for non-OpenAI) -->
@@ -400,7 +400,7 @@
                 >
                   <p
                     class="text-xs text-yellow-800 dark:text-yellow-300"
-                    v-html="t('admin.accounts.oauth.proxyWarning')"
+                    v-text="t('admin.accounts.oauth.proxyWarning')"
                   ></p>
                 </div>
               </div>
@@ -423,7 +423,7 @@
                 </p>
                 <p
                   class="mb-3 text-sm text-blue-700 dark:text-blue-300"
-                  v-html="oauthAuthCodeDesc"
+                  v-text="oauthAuthCodeDesc"
                 ></p>
                 <div>
                   <label class="input-label">

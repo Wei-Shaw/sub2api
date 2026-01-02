@@ -221,9 +221,33 @@ REDACTED
 
 // VerifyTurnstile 验证Turnstile token
 func (s *AuthService) VerifyTurnstile(ctx context.Context, token string, remoteIP string) error {
+	required := s.cfg != nil && s.cfg.Server.Mode == "release" && s.cfg.Turnstile.Required
+
+	if required {
+		if s.settingService == nil {
+			log.Println("[Auth] Turnstile required but settings service is not configured")
+			return ErrTurnstileNotConfigured
+	REDACTED
+		enabled := s.settingService.IsTurnstileEnabled(ctx)
+		secretConfigured := s.settingService.GetTurnstileSecretKey(ctx) != ""
+		if !enabled || !secretConfigured {
+			log.Printf("[Auth] Turnstile required but not configured (enabled=%v, secret_configured=%v)", enabled, secretConfigured)
+			return ErrTurnstileNotConfigured
+	REDACTED
+REDACTED
+
 	if s.turnstileService == nil {
+		if required {
+			log.Println("[Auth] Turnstile required but service not configured")
+			return ErrTurnstileNotConfigured
+	REDACTED
 		return nil // 服务未配置则跳过验证
 REDACTED
+
+	if !required && s.settingService != nil && s.settingService.IsTurnstileEnabled(ctx) && s.settingService.GetTurnstileSecretKey(ctx) == "" {
+		log.Println("[Auth] Turnstile enabled but secret key not configured")
+REDACTED
+
 	return s.turnstileService.VerifyToken(ctx, token, remoteIP)
 REDACTED
 

@@ -215,8 +215,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SmtpFrom:            settings[SettingKeySmtpFrom],
 		SmtpFromName:        settings[SettingKeySmtpFromName],
 		SmtpUseTLS:          settings[SettingKeySmtpUseTLS] == "true",
+		SmtpPasswordConfigured: settings[SettingKeySmtpPassword] != "",
 		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured: settings[SettingKeyTurnstileSecretKey] != "",
 		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
 		SiteLogo:            settings[SettingKeySiteLogo],
 		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
@@ -244,10 +246,6 @@ REDACTED
 REDACTED else {
 		result.DefaultBalance = s.cfg.Default.UserBalance
 REDACTED
-
-	// 敏感信息直接返回，方便测试连接时使用
-	result.SmtpPassword = settings[SettingKeySmtpPassword]
-	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
 
 	return result
 REDACTED

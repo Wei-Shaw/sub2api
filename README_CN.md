@@ -268,6 +268,15 @@ default:
   rate_multiplier: 1.0
 ```
 
+`config.yaml` 还支持以下安全相关配置：
+
+- `cors.allowed_origins` 配置 CORS 白名单
+- `security.url_allowlist` 配置上游/价格数据/CRS 主机白名单
+- `security.csp` 配置 Content-Security-Policy
+- `billing.circuit_breaker` 计费异常时 fail-closed
+- `server.trusted_proxies` 启用可信代理解析 X-Forwarded-For
+- `turnstile.required` 在 release 模式强制启用 Turnstile
+
 ```bash
 # 6. 运行应用
 ./sub2api

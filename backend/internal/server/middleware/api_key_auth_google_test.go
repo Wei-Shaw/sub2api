@@ -109,6 +109,58 @@ REDACTED)
 	require.Equal(t, "UNAUTHENTICATED", resp.Error.Status)
 REDACTED
 
+func TestApiKeyAuthWithSubscriptionGoogle_QueryApiKeyRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	apiKeyService := newTestApiKeyService(fakeApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.ApiKey, error) {
+			return nil, errors.New("should not be called")
+	REDACTED,
+REDACTED)
+	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test?api_key=legacy", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	var resp googleErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, http.StatusBadRequest, resp.Error.Code)
+	require.Equal(t, "Query parameter api_key is deprecated. Use Authorization header or key instead.", resp.Error.Message)
+	require.Equal(t, "INVALID_ARGUMENT", resp.Error.Status)
+REDACTED
+
+func TestApiKeyAuthWithSubscriptionGoogle_QueryKeyAllowedOnV1Beta(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	apiKeyService := newTestApiKeyService(fakeApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.ApiKey, error) {
+			return &service.ApiKey{
+				ID:     1,
+				Key:    key,
+				Status: service.StatusActive,
+				User: &service.User{
+					ID:     123,
+					Status: service.StatusActive,
+			REDACTED,
+		REDACTED, nil
+	REDACTED,
+REDACTED)
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test?key=valid", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+REDACTED
+
 func TestApiKeyAuthWithSubscriptionGoogle_InvalidKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
