@@ -386,7 +386,7 @@ REDACTED
 
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
-	for i, tool := range tools {
+	for _, tool := range tools {
 		// 跳过无效工具名称
 		if strings.TrimSpace(tool.Name) == "" {
 			log.Printf("Warning: skipping tool with empty name")
@@ -405,10 +405,6 @@ REDACTED
 			description = tool.Custom.Description
 			inputSchema = tool.Custom.InputSchema
 
-			// 调试日志：记录 custom 工具的 schema
-			if schemaJSON, err := json.Marshal(inputSchema); err == nil {
-				log.Printf("[Debug] Tool[%d] '%s' (custom) original schema: %s", i, tool.Name, string(schemaJSON))
-		REDACTED
 	REDACTED else {
 			// 标准格式: 从顶层字段获取
 			description = tool.Description
@@ -423,11 +419,6 @@ REDACTED
 				"type":       "OBJECT",
 				"properties": map[string]any{REDACTED,
 		REDACTED
-	REDACTED
-
-		// 调试日志：记录清理后的 schema
-		if paramsJSON, err := json.Marshal(params); err == nil {
-			log.Printf("[Debug] Tool[%d] '%s' cleaned schema: %s", i, tool.Name, string(paramsJSON))
 	REDACTED
 
 		funcDecls = append(funcDecls, GeminiFunctionDecl{
@@ -584,11 +575,9 @@ func cleanSchemaValue(value any) any {
 			if k == "additionalProperties" {
 				if boolVal, ok := val.(bool); ok {
 					result[k] = boolVal
-					log.Printf("[Debug] additionalProperties is bool: %v", boolVal)
 			REDACTED else {
 					// 如果是 schema 对象，转换为 false（更安全的默认值）
 					result[k] = false
-					log.Printf("[Debug] additionalProperties is not bool (type: %T), converting to false", val)
 			REDACTED
 				continue
 		REDACTED
