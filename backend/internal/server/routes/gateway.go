@@ -58,7 +58,7 @@ REDACTED
 	{
 		antigravityV1.POST("/messages", h.Gateway.Messages)
 		antigravityV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
-		antigravityV1.GET("/models", h.Gateway.Models)
+		antigravityV1.GET("/models", h.Gateway.AntigravityModels)
 		antigravityV1.GET("/usage", h.Gateway.Usage)
 REDACTED
 
