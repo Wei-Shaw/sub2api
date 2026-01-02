@@ -26,6 +26,10 @@ const (
 	// https://www.googleapis.com/auth/generative-language.retriever (often with cloud-platform).
 	DefaultAIStudioScopes = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language.retriever"
 
+	// DefaultScopes for Google One (personal Google accounts with Gemini access)
+	// Includes generative-language for Gemini API access and drive.readonly for storage tier detection
+	DefaultGoogleOneScopes = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language.retriever https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
+
 	// GeminiCLIRedirectURI is the redirect URI used by Gemini CLI for Code Assist OAuth.
 	GeminiCLIRedirectURI = "https://codeassist.google.com/authcode"
 

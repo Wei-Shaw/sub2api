@@ -20,12 +20,18 @@ func TransformClaudeToGemini(claudeReq *ClaudeRequest, projectID, mappedModel st
 
 	// 检测是否启用 thinking
 	requestedThinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
-	// 为避免 Claude 模型的 thought signature/消息块约束导致 400（上游要求 thinking 块开头等），
-	// 非 Gemini 模型默认不启用 thinking（除非未来支持完整签名链路）。
-	isThinkingEnabled := requestedThinkingEnabled && allowDummyThought
+	// antigravity(v1internal) 下，Gemini 与 Claude 的 “thinking” 都可能涉及 thoughtSignature 链路：
+	// - Gemini：支持 dummy signature 跳过校验
+	// - Claude：需要透传上游签名（否则容易 400）
+	isThinkingEnabled := requestedThinkingEnabled
+
+	thoughtSignatureMode := thoughtSignatureModePreserve
+	if allowDummyThought {
+		thoughtSignatureMode = thoughtSignatureModeDummy
+REDACTED
 
 	// 1. 构建 contents
-	contents, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
+	contents, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, thoughtSignatureMode)
 	if err != nil {
 		return nil, fmt.Errorf("build contents: %w", err)
 REDACTED
@@ -34,15 +40,7 @@ REDACTED
 	systemInstruction := buildSystemInstruction(claudeReq.System, claudeReq.Model)
 
 	// 3. 构建 generationConfig
-	reqForGen := claudeReq
-	if requestedThinkingEnabled && !allowDummyThought {
-		log.Printf("[Warning] Disabling thinking for non-Gemini model in antigravity transform: model=%s", mappedModel)
-		// shallow copy to avoid mutating caller's request
-		clone := *claudeReq
-		clone.Thinking = nil
-		reqForGen = &clone
-REDACTED
-	generationConfig := buildGenerationConfig(reqForGen)
+	generationConfig := buildGenerationConfig(claudeReq)
 
 	// 4. 构建 tools
 	tools := buildTools(claudeReq.Tools)
@@ -131,7 +129,7 @@ REDACTED
 REDACTED
 
 // buildContents 构建 contents
-func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled, allowDummyThought bool) ([]GeminiContent, error) {
+func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled bool, thoughtSignatureMode thoughtSignatureMode) ([]GeminiContent, error) {
 	var contents []GeminiContent
 
 	for i, msg := range messages {
@@ -140,10 +138,12 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 			role = "model"
 	REDACTED
 
-		parts, err := buildParts(msg.Content, toolIDToName, allowDummyThought)
+		parts, err := buildParts(msg.Content, toolIDToName, thoughtSignatureMode)
 		if err != nil {
 			return nil, fmt.Errorf("build parts for message %d: %w", i, err)
 	REDACTED
+
+		allowDummyThought := thoughtSignatureMode == thoughtSignatureModeDummy
 
 		// 只有 Gemini 模型支持 dummy thinking block workaround
 		// 只对最后一条 assistant 消息添加（Pre-fill 场景）
@@ -183,37 +183,19 @@ REDACTED
 // 参考: https://ai.google.dev/gemini-api/docs/thought-signatures
 const dummyThoughtSignature = "skip_thought_signature_validator"
 
-// isValidThoughtSignature 验证 thought signature 是否有效
-// Claude API 要求 signature 必须是 base64 编码的字符串，长度至少 32 字节
-func isValidThoughtSignature(signature string) bool {
-	// 空字符串无效
-	if signature == "" {
-		return false
-REDACTED
+// buildParts 构建消息的 parts
+type thoughtSignatureMode int
 
-	// signature 应该是 base64 编码，长度至少 40 个字符（约 30 字节）
-	// 参考 Claude API 文档和实际观察到的有效 signature
-	if len(signature) < 40 {
-		log.Printf("[Debug] Signature too short: len=%d", len(signature))
-		return false
-REDACTED
-
-	// 检查是否是有效的 base64 字符
-	// base64 字符集: A-Z, a-z, 0-9, +, /, =
-	for i, c := range signature {
-		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') &&
-			(c < '0' || c > '9') && c != '+' && c != '/' && c != '=' {
-			log.Printf("[Debug] Invalid base64 character at position %d: %c (code=%d)", i, c, c)
-			return false
-	REDACTED
-REDACTED
-
-	return true
-REDACTED
+const (
+	thoughtSignatureModePreserve thoughtSignatureMode = iota
+	thoughtSignatureModeDummy
+)
 
 // buildParts 构建消息的 parts
-// allowDummyThought: 只有 Gemini 模型支持 dummy thought signature
-func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDummyThought bool) ([]GeminiPart, error) {
+// thoughtSignatureMode:
+// - dummy: 用 dummy signature 跳过 Gemini thoughtSignature 校验
+// - preserve: 透传输入中的 signature（主要用于 Claude via Vertex 的签名链路）
+func buildParts(content json.RawMessage, toolIDToName map[string]string, thoughtSignatureMode thoughtSignatureMode) ([]GeminiPart, error) {
 	var parts []GeminiPart
 
 	// 尝试解析为字符串
@@ -239,7 +221,9 @@ REDACTED
 		REDACTED
 
 		case "thinking":
-			if allowDummyThought {
+			signature := strings.TrimSpace(block.Signature)
+
+			if thoughtSignatureMode == thoughtSignatureModeDummy {
 				// Gemini 模型可以使用 dummy signature
 				parts = append(parts, GeminiPart{
 					Text:             block.Thinking,
@@ -249,20 +233,27 @@ REDACTED
 				continue
 		REDACTED
 
-			// Claude 模型：仅在提供有效 signature 时保留 thinking block；否则跳过以避免上游校验失败。
-			signature := strings.TrimSpace(block.Signature)
+			// Claude via Vertex：
+			// - signature 是上游返回的完整性令牌；本地不需要/无法验证，只能透传
+			// - 缺失/无效 signature（例如来自 Gemini 的 dummy signature）会导致上游 400
 			if signature == "" || signature == dummyThoughtSignature {
-				log.Printf("[Warning] Skipping thinking block for Claude model (missing or dummy signature)")
 				continue
 		REDACTED
-			if !isValidThoughtSignature(signature) {
-				log.Printf("[Debug] Thinking signature may be invalid (passing through anyway): len=%d", len(signature))
+
+			// 兼容：用 Claude 的 "thinking" 块承载两类东西
+			// 1) 真正的 thought 文本（thinking != ""）-> Gemini thought part
+			// 2) 仅承载 signature 的空 thinking 块（thinking == ""）-> Gemini signature-only part
+			if strings.TrimSpace(block.Thinking) == "" {
+				parts = append(parts, GeminiPart{
+					ThoughtSignature: signature,
+			REDACTED)
+		REDACTED else {
+				parts = append(parts, GeminiPart{
+					Text:             block.Thinking,
+					Thought:          true,
+					ThoughtSignature: signature,
+			REDACTED)
 		REDACTED
-			parts = append(parts, GeminiPart{
-				Text:             block.Thinking,
-				Thought:          true,
-				ThoughtSignature: signature,
-		REDACTED)
 
 		case "image":
 			if block.Source != nil && block.Source.Type == "base64" {
@@ -287,10 +278,15 @@ REDACTED
 					ID:   block.ID,
 			REDACTED,
 		REDACTED
-			// 只有 Gemini 模型使用 dummy signature
-			// Claude 模型不设置 signature（避免验证问题）
-			if allowDummyThought {
+			switch thoughtSignatureMode {
+			case thoughtSignatureModeDummy:
 				part.ThoughtSignature = dummyThoughtSignature
+			case thoughtSignatureModePreserve:
+				// Claude via Vertex：透传 tool_use 的 signature（如果有）
+				// 注意：跨模型混用时可能出现 dummy signature，这里直接丢弃以避免 400。
+				if sig := strings.TrimSpace(block.Signature); sig != "" && sig != dummyThoughtSignature {
+					part.ThoughtSignature = sig
+			REDACTED
 		REDACTED
 			parts = append(parts, part)
 

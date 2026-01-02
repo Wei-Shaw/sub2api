@@ -172,14 +172,19 @@ REDACTED
 
 	if effective.Scopes == "" {
 		// Use different default scopes based on OAuth type
-		if oauthType == "ai_studio" {
+		switch oauthType {
+		case "ai_studio":
 			// Built-in client can't request some AI Studio scopes (notably generative-language).
 			if isBuiltinClient {
 				effective.Scopes = DefaultCodeAssistScopes
 		REDACTED else {
 				effective.Scopes = DefaultAIStudioScopes
 		REDACTED
-	REDACTED else {
+		case "google_one":
+			// Google One accounts need generative-language scope for Gemini API access
+			// and drive.readonly scope for storage tier detection
+			effective.Scopes = DefaultGoogleOneScopes
+		default:
 			// Default to Code Assist scopes
 			effective.Scopes = DefaultCodeAssistScopes
 	REDACTED

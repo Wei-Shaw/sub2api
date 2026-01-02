@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -36,5 +37,117 @@ REDACTED
 func TestParseGatewayRequest_InvalidStreamType(t *testing.T) {
 	body := []byte(`{"stream":"true"REDACTED`)
 	_, err := ParseGatewayRequest(body)
+REDACTED
+REDACTED
+
+func TestFilterThinkingBlocks(t *testing.T) {
+	containsThinkingBlock := func(body []byte) bool {
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			return false
+	REDACTED
+		messages, ok := req["messages"].([]any)
+		if !ok {
+			return false
+	REDACTED
+		for _, msg := range messages {
+			msgMap, ok := msg.(map[string]any)
+			if !ok {
+				continue
+		REDACTED
+			content, ok := msgMap["content"].([]any)
+			if !ok {
+				continue
+		REDACTED
+			for _, block := range content {
+				blockMap, ok := block.(map[string]any)
+				if !ok {
+					continue
+			REDACTED
+				blockType, _ := blockMap["type"].(string)
+				if blockType == "thinking" {
+					return true
+			REDACTED
+				if blockType == "" {
+					if _, hasThinking := blockMap["thinking"]; hasThinking {
+						return true
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+		return false
+REDACTED
+
+	tests := []struct {
+		name         string
+		input        string
+		shouldFilter bool
+		expectError  bool
+REDACTED{
+		{
+			name:         "filters thinking blocks",
+			input:        `{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":[{"type":"text","text":"Hello"REDACTED,{"type":"thinking","thinking":"internal","signature":"invalid"REDACTED,{"type":"text","text":"World"REDACTED]REDACTED]REDACTED`,
+			shouldFilter: true,
+	REDACTED,
+		{
+			name:         "handles no thinking blocks",
+			input:        `{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":[{"type":"text","text":"Hello"REDACTED]REDACTED]REDACTED`,
+			shouldFilter: false,
+	REDACTED,
+		{
+			name:         "handles invalid JSON gracefully",
+			input:        `{invalid json`,
+			shouldFilter: false,
+			expectError:  true,
+	REDACTED,
+		{
+			name:         "handles multiple messages with thinking blocks",
+			input:        `{"messages":[{"role":"user","content":[{"type":"text","text":"A"REDACTED]REDACTED,{"role":"assistant","content":[{"type":"thinking","thinking":"think"REDACTED,{"type":"text","text":"B"REDACTED]REDACTED]REDACTED`,
+			shouldFilter: true,
+	REDACTED,
+		{
+			name:         "filters thinking blocks without type discriminator",
+			input:        `{"messages":[{"role":"assistant","content":[{"thinking":{"text":"internal"REDACTEDREDACTED,{"type":"text","text":"B"REDACTED]REDACTED]REDACTED`,
+			shouldFilter: true,
+	REDACTED,
+		{
+			name:         "does not filter tool_use input fields named thinking",
+			input:        `{"messages":[{"role":"user","content":[{"type":"tool_use","id":"t1","name":"foo","input":{"thinking":"keepme","x":1REDACTEDREDACTED,{"type":"text","text":"Hello"REDACTED]REDACTED]REDACTED`,
+			shouldFilter: false,
+	REDACTED,
+		{
+			name:         "handles empty messages array",
+			input:        `{"messages":[]REDACTED`,
+			shouldFilter: false,
+	REDACTED,
+		{
+			name:         "handles missing messages field",
+			input:        `{"model":"claude-3"REDACTED`,
+			shouldFilter: false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FilterThinkingBlocks([]byte(tt.input))
+
+			if tt.expectError {
+				// For invalid JSON, should return original
+				require.Equal(t, tt.input, string(result))
+				return
+		REDACTED
+
+			if tt.shouldFilter {
+				require.False(t, containsThinkingBlock(result))
+		REDACTED else {
+				// Ensure we don't rewrite JSON when no filtering is needed.
+				require.Equal(t, tt.input, string(result))
+		REDACTED
+
+			// Verify valid JSON returned (unless input was invalid)
+			var parsed map[string]any
+			err := json.Unmarshal(result, &parsed)
+		REDACTED
+	REDACTED)
 REDACTED
 REDACTED

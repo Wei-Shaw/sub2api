@@ -1136,6 +1136,10 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// Filter thinking blocks from request body (prevents 400 errors from missing/invalid signatures).
+	// We apply this for the main /v1/messages path as well as count_tokens.
+	body = FilterThinkingBlocks(body)
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -1861,6 +1865,9 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+
+	// Filter thinking blocks from request body (prevents 400 errors from invalid signatures)
+	body = FilterThinkingBlocks(body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
