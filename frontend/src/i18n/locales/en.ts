@@ -1047,10 +1047,10 @@ export default {
       priority: 'Priority',
       priorityHint: 'Higher priority accounts are used first',
       higherPriorityFirst: 'Higher value means higher priority',
-      mixedScheduling: 'Mixed Scheduling',
+      mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
       mixedSchedulingTooltip:
-        'When enabled, this account can be scheduled by /v1/messages and /v1beta endpoints. Otherwise, it will only be scheduled by /antigravity. Note: Anthropic Claude and Antigravity Claude cannot be mixed in the same context. Please manage groups carefully when enabled.',
+        '!! WARNING !! Antigravity Claude and Anthropic Claude cannot be used in the same context. If you have both Anthropic and Antigravity accounts, enabling this option will cause frequent 400 errors. When enabled, please use the group feature to isolate Antigravity accounts from Anthropic accounts. Make sure you understand this before enabling!!',
       creating: 'Creating...',
       updating: 'Updating...',
       accountCreated: 'Account created successfully',

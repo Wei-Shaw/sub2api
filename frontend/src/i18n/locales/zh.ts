@@ -1200,10 +1200,10 @@ export default {
       priority: '优先级',
       priorityHint: '优先级越高的账号优先使用',
       higherPriorityFirst: '数值越高优先级越高',
-      mixedScheduling: '混合调度',
+      mixedScheduling: '在 /v1/messages 中使用',
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',
       mixedSchedulingTooltip:
-        '开启后，该账户可被 /v1/messages 及 /v1beta 端点调度，否则只被 /antigravity 调度。注意：Anthropic Claude 和 Antigravity Claude 无法在同个上下文中混合使用，开启后请自行做好分组管理。',
+        '！！注意！！ Antigravity Claude 和 Anthropic Claude 无法在同个上下文中使用，如果你同时有 Anthropic 账号和 Antigravity 账号，开启此选项会导致经常 400 报错。开启后，请用分组功能做好 Antigravity 账号和 Anthropic 账号的隔离。一定要弄明白再开启！！',
       creating: '创建中...',
       updating: '更新中...',
       accountCreated: '账号创建成功',
