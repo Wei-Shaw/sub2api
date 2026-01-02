@@ -172,6 +172,31 @@ REDACTED
 // 参考: https://ai.google.dev/gemini-api/docs/thought-signatures
 const dummyThoughtSignature = "skip_thought_signature_validator"
 
+// isValidThoughtSignature 验证 thought signature 是否有效
+// Claude API 要求 signature 必须是 base64 编码的字符串，长度至少 32 字节
+func isValidThoughtSignature(signature string) bool {
+	// 空字符串无效
+	if signature == "" {
+		return false
+REDACTED
+
+	// signature 应该是 base64 编码，长度至少 40 个字符（约 30 字节）
+	// 参考 Claude API 文档和实际观察到的有效 signature
+	if len(signature) < 40 {
+		return false
+REDACTED
+
+	// 检查是否是有效的 base64 字符
+	// base64 字符集: A-Z, a-z, 0-9, +, /, =
+	for _, c := range signature {
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') &&
+			(c < '0' || c > '9') && c != '+' && c != '/' && c != '=' {
+			return false
+	REDACTED
+REDACTED
+
+	return true
+REDACTED
 // buildParts 构建消息的 parts
 // allowDummyThought: 只有 Gemini 模型支持 dummy thought signature
 func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDummyThought bool) ([]GeminiPart, error) {
@@ -200,22 +225,17 @@ REDACTED
 		REDACTED
 
 		case "thinking":
-			part := GeminiPart{
-				Text:    block.Thinking,
-				Thought: true,
-		REDACTED
-			// 保留原有 signature（Claude 模型需要有效的 signature）
-			if block.Signature != "" {
-				part.ThoughtSignature = block.Signature
-		REDACTED else if !allowDummyThought {
-				// Claude 模型需要有效 signature，跳过无 signature 的 thinking block
-				log.Printf("Warning: skipping thinking block without signature for Claude model")
+			// Claude 模型：仅在提供有效 signature 时保留 thinking block；否则跳过以避免上游校验失败。
+			signature := strings.TrimSpace(block.Signature)
+			if signature == "" || signature == dummyThoughtSignature {
+				log.Printf("[Warning] Skipping thinking block for Claude model (missing or dummy signature)")
 				continue
-		REDACTED else {
-				// Gemini 模型使用 dummy signature
-				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
-			parts = append(parts, part)
+			parts = append(parts, GeminiPart{
+				Text:             block.Thinking,
+				Thought:          true,
+				ThoughtSignature: signature,
+		REDACTED)
 
 		case "image":
 			if block.Source != nil && block.Source.Type == "base64" {
