@@ -619,7 +619,7 @@ export interface UserUsageTrendPoint {
   actual_cost: number // 实际扣除
 REDACTED
 
-export interface ApiKeyUsageTrendPoint {
+export interface APIKeyUsageTrendPoint {
   date: string
   api_key_id: number
   key_name: string

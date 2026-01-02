@@ -1,3 +1,4 @@
+// Package openai provides OpenAI API models and configuration.
 package openai
 
 import _ "embed"

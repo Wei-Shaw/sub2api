@@ -21,7 +21,7 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 
-	ApiKeys       []ApiKey
+	APIKeys       []APIKey
 	Subscriptions []UserSubscription
 REDACTED
 

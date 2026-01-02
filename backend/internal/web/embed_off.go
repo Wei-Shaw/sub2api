@@ -1,5 +1,6 @@
 //go:build !embed
 
+// Package web provides web server functionality including embedded frontend support.
 package web
 
 import (

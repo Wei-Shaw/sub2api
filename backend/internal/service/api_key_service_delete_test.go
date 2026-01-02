@@ -1,7 +1,7 @@
 //go:build unit
 
 // API Key 服务删除方法的单元测试
-// 测试 ApiKeyService.Delete 方法在各种场景下的行为，
+// 测试 APIKeyService.Delete 方法在各种场景下的行为，
 // 包括权限验证、缓存清理和错误处理
 
 package service
@@ -16,12 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// apiKeyRepoStub 是 ApiKeyRepository 接口的测试桩实现。
-// 用于隔离测试 ApiKeyService.Delete 方法，避免依赖真实数据库。
+// apiKeyRepoStub 是 APIKeyRepository 接口的测试桩实现。
+// 用于隔离测试 APIKeyService.Delete 方法，避免依赖真实数据库。
 //
 // 设计说明：
 //   - ownerID: 模拟 GetOwnerID 返回的所有者 ID
-//   - ownerErr: 模拟 GetOwnerID 返回的错误（如 ErrApiKeyNotFound）
+//   - ownerErr: 模拟 GetOwnerID 返回的错误（如 ErrAPIKeyNotFound）
 //   - deleteErr: 模拟 Delete 返回的错误
 //   - deletedIDs: 记录被调用删除的 API Key ID，用于断言验证
 type apiKeyRepoStub struct {
@@ -33,11 +33,11 @@ REDACTED
 
 // 以下方法在本测试中不应被调用，使用 panic 确保测试失败时能快速定位问题
 
-func (s *apiKeyRepoStub) Create(ctx context.Context, key *ApiKey) error {
+func (s *apiKeyRepoStub) Create(ctx context.Context, key *APIKey) error {
 	panic("unexpected Create call")
 REDACTED
 
-func (s *apiKeyRepoStub) GetByID(ctx context.Context, id int64) (*ApiKey, error) {
+func (s *apiKeyRepoStub) GetByID(ctx context.Context, id int64) (*APIKey, error) {
 	panic("unexpected GetByID call")
 REDACTED
 
@@ -47,11 +47,11 @@ func (s *apiKeyRepoStub) GetOwnerID(ctx context.Context, id int64) (int64, error
 	return s.ownerID, s.ownerErr
 REDACTED
 
-func (s *apiKeyRepoStub) GetByKey(ctx context.Context, key string) (*ApiKey, error) {
+func (s *apiKeyRepoStub) GetByKey(ctx context.Context, key string) (*APIKey, error) {
 	panic("unexpected GetByKey call")
 REDACTED
 
-func (s *apiKeyRepoStub) Update(ctx context.Context, key *ApiKey) error {
+func (s *apiKeyRepoStub) Update(ctx context.Context, key *APIKey) error {
 	panic("unexpected Update call")
 REDACTED
 
@@ -64,7 +64,7 @@ REDACTED
 
 // 以下是接口要求实现但本测试不关心的方法
 
-func (s *apiKeyRepoStub) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]ApiKey, *pagination.PaginationResult, error) {
+func (s *apiKeyRepoStub) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error) {
 	panic("unexpected ListByUserID call")
 REDACTED
 
@@ -80,12 +80,12 @@ func (s *apiKeyRepoStub) ExistsByKey(ctx context.Context, key string) (bool, err
 	panic("unexpected ExistsByKey call")
 REDACTED
 
-func (s *apiKeyRepoStub) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]ApiKey, *pagination.PaginationResult, error) {
+func (s *apiKeyRepoStub) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error) {
 	panic("unexpected ListByGroupID call")
 REDACTED
 
-func (s *apiKeyRepoStub) SearchApiKeys(ctx context.Context, userID int64, keyword string, limit int) ([]ApiKey, error) {
-	panic("unexpected SearchApiKeys call")
+func (s *apiKeyRepoStub) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {
+	panic("unexpected SearchAPIKeys call")
 REDACTED
 
 func (s *apiKeyRepoStub) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
@@ -96,7 +96,7 @@ func (s *apiKeyRepoStub) CountByGroupID(ctx context.Context, groupID int64) (int
 	panic("unexpected CountByGroupID call")
 REDACTED
 
-// apiKeyCacheStub 是 ApiKeyCache 接口的测试桩实现。
+// apiKeyCacheStub 是 APIKeyCache 接口的测试桩实现。
 // 用于验证删除操作时缓存清理逻辑是否被正确调用。
 //
 // 设计说明：
@@ -132,17 +132,17 @@ func (s *apiKeyCacheStub) SetDailyUsageExpiry(ctx context.Context, apiKey string
 	return nil
 REDACTED
 
-// TestApiKeyService_Delete_OwnerMismatch 测试非所有者尝试删除时返回权限错误。
+// TestAPIKeyService_Delete_OwnerMismatch 测试非所有者尝试删除时返回权限错误。
 // 预期行为：
 //   - GetOwnerID 返回所有者 ID 为 1
 //   - 调用者 userID 为 2（不匹配）
 //   - 返回 ErrInsufficientPerms 错误
 //   - Delete 方法不被调用
 //   - 缓存不被清除
-func TestApiKeyService_Delete_OwnerMismatch(t *testing.T) {
+func TestAPIKeyService_Delete_OwnerMismatch(t *testing.T) {
 	repo := &apiKeyRepoStub{ownerID: 1REDACTED
 	cache := &apiKeyCacheStub{REDACTED
-	svc := &ApiKeyService{apiKeyRepo: repo, cache: cacheREDACTED
+	svc := &APIKeyService{apiKeyRepo: repo, cache: cacheREDACTED
 
 	err := svc.Delete(context.Background(), 10, 2) // API Key ID=10, 调用者 userID=2
 	require.ErrorIs(t, err, ErrInsufficientPerms)
@@ -150,17 +150,17 @@ func TestApiKeyService_Delete_OwnerMismatch(t *testing.T) {
 	require.Empty(t, cache.invalidated) // 验证缓存未被清除
 REDACTED
 
-// TestApiKeyService_Delete_Success 测试所有者成功删除 API Key 的场景。
+// TestAPIKeyService_Delete_Success 测试所有者成功删除 API Key 的场景。
 // 预期行为：
 //   - GetOwnerID 返回所有者 ID 为 7
 //   - 调用者 userID 为 7（匹配）
 //   - Delete 成功执行
 //   - 缓存被正确清除（使用 ownerID）
 //   - 返回 nil 错误
-func TestApiKeyService_Delete_Success(t *testing.T) {
+func TestAPIKeyService_Delete_Success(t *testing.T) {
 	repo := &apiKeyRepoStub{ownerID: 7REDACTED
 	cache := &apiKeyCacheStub{REDACTED
-	svc := &ApiKeyService{apiKeyRepo: repo, cache: cacheREDACTED
+	svc := &APIKeyService{apiKeyRepo: repo, cache: cacheREDACTED
 
 	err := svc.Delete(context.Background(), 42, 7) // API Key ID=42, 调用者 userID=7
 REDACTED
@@ -168,37 +168,37 @@ REDACTED
 	require.Equal(t, []int64{7REDACTED, cache.invalidated) // 验证所有者的缓存被清除
 REDACTED
 
-// TestApiKeyService_Delete_NotFound 测试删除不存在的 API Key 时返回正确的错误。
+// TestAPIKeyService_Delete_NotFound 测试删除不存在的 API Key 时返回正确的错误。
 // 预期行为：
-//   - GetOwnerID 返回 ErrApiKeyNotFound 错误
-//   - 返回 ErrApiKeyNotFound 错误（被 fmt.Errorf 包装）
+//   - GetOwnerID 返回 ErrAPIKeyNotFound 错误
+//   - 返回 ErrAPIKeyNotFound 错误（被 fmt.Errorf 包装）
 //   - Delete 方法不被调用
 //   - 缓存不被清除
-func TestApiKeyService_Delete_NotFound(t *testing.T) {
-	repo := &apiKeyRepoStub{ownerErr: ErrApiKeyNotFoundREDACTED
+func TestAPIKeyService_Delete_NotFound(t *testing.T) {
+	repo := &apiKeyRepoStub{ownerErr: ErrAPIKeyNotFoundREDACTED
 	cache := &apiKeyCacheStub{REDACTED
-	svc := &ApiKeyService{apiKeyRepo: repo, cache: cacheREDACTED
+	svc := &APIKeyService{apiKeyRepo: repo, cache: cacheREDACTED
 
 	err := svc.Delete(context.Background(), 99, 1)
-	require.ErrorIs(t, err, ErrApiKeyNotFound)
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 	require.Empty(t, repo.deletedIDs)
 	require.Empty(t, cache.invalidated)
 REDACTED
 
-// TestApiKeyService_Delete_DeleteFails 测试删除操作失败时的错误处理。
+// TestAPIKeyService_Delete_DeleteFails 测试删除操作失败时的错误处理。
 // 预期行为：
 //   - GetOwnerID 返回正确的所有者 ID
 //   - 所有权验证通过
 //   - 缓存被清除（在删除之前）
 //   - Delete 被调用但返回错误
 //   - 返回包含 "delete api key" 的错误信息
-func TestApiKeyService_Delete_DeleteFails(t *testing.T) {
+func TestAPIKeyService_Delete_DeleteFails(t *testing.T) {
 	repo := &apiKeyRepoStub{
 		ownerID:   3,
 		deleteErr: errors.New("delete failed"),
 REDACTED
 	cache := &apiKeyCacheStub{REDACTED
-	svc := &ApiKeyService{apiKeyRepo: repo, cache: cacheREDACTED
+	svc := &APIKeyService{apiKeyRepo: repo, cache: cacheREDACTED
 
 	err := svc.Delete(context.Background(), 3, 3) // API Key ID=3, 调用者 userID=3
 REDACTED

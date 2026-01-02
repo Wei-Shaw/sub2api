@@ -78,6 +78,8 @@ temp/
 *.log
 *.bak
 .cache/
+.gemini-clipboard/
+migrations/
 
 # ===================
 # 构建产物

@@ -1,7 +1,7 @@
+// Package gemini provides minimal fallback model metadata for Gemini native endpoints.
 package gemini
 
-// This package provides minimal fallback model metadata for Gemini native endpoints.
-// It is used when upstream model listing is unavailable (e.g. OAuth token missing AI Studio scopes).
+// This package is used when upstream model listing is unavailable (e.g. OAuth token missing AI Studio scopes).
 
 type Model struct {
 	Name                       string   `json:"name"`

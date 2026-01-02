@@ -17,7 +17,7 @@ var (
 // CreateUsageLogRequest 创建使用日志请求
 type CreateUsageLogRequest struct {
 	UserID                int64   `json:"user_id"`
-	ApiKeyID              int64   `json:"api_key_id"`
+	APIKeyID              int64   `json:"api_key_id"`
 	AccountID             int64   `json:"account_id"`
 	RequestID             string  `json:"request_id"`
 	Model                 string  `json:"model"`
@@ -75,7 +75,7 @@ REDACTED
 	// 创建使用日志
 	usageLog := &UsageLog{
 		UserID:                req.UserID,
-		ApiKeyID:              req.ApiKeyID,
+		APIKeyID:              req.APIKeyID,
 		AccountID:             req.AccountID,
 		RequestID:             req.RequestID,
 		Model:                 req.Model,
@@ -128,9 +128,9 @@ REDACTED
 	return logs, pagination, nil
 REDACTED
 
-// ListByApiKey 获取API Key的使用日志列表
-func (s *UsageService) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error) {
-	logs, pagination, err := s.usageRepo.ListByApiKey(ctx, apiKeyID, params)
+// ListByAPIKey 获取API Key的使用日志列表
+func (s *UsageService) ListByAPIKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error) {
+	logs, pagination, err := s.usageRepo.ListByAPIKey(ctx, apiKeyID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs: %w", err)
 REDACTED
@@ -165,9 +165,9 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-// GetStatsByApiKey 获取API Key的使用统计
-func (s *UsageService) GetStatsByApiKey(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*UsageStats, error) {
-	stats, err := s.usageRepo.GetApiKeyStatsAggregated(ctx, apiKeyID, startTime, endTime)
+// GetStatsByAPIKey 获取API Key的使用统计
+func (s *UsageService) GetStatsByAPIKey(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*UsageStats, error) {
+	stats, err := s.usageRepo.GetAPIKeyStatsAggregated(ctx, apiKeyID, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("get api key stats: %w", err)
 REDACTED
@@ -270,9 +270,9 @@ REDACTED
 	return stats, nil
 REDACTED
 
-// GetBatchApiKeyUsageStats returns today/total actual_cost for given api keys.
-func (s *UsageService) GetBatchApiKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchApiKeyUsageStats, error) {
-	stats, err := s.usageRepo.GetBatchApiKeyUsageStats(ctx, apiKeyIDs)
+// GetBatchAPIKeyUsageStats returns today/total actual_cost for given api keys.
+func (s *UsageService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchAPIKeyUsageStats, error) {
+	stats, err := s.usageRepo.GetBatchAPIKeyUsageStats(ctx, apiKeyIDs)
 	if err != nil {
 		return nil, fmt.Errorf("get batch api key usage stats: %w", err)
 REDACTED

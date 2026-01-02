@@ -327,7 +327,7 @@ REDACTED
 	return &claims, nil
 REDACTED
 
-// ExtractUserInfo extracts user information from ID Token claims
+// UserInfo extracts user information from ID Token claims
 type UserInfo struct {
 	Email            string
 	ChatGPTAccountID string

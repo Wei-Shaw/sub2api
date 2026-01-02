@@ -1,3 +1,5 @@
+// Package service 提供业务逻辑层服务，封装领域模型的业务规则和操作流程。
+// 服务层协调 repository 层的数据访问，实现跨实体的业务逻辑，并为上层 API 提供统一的业务接口。
 package service
 
 import (

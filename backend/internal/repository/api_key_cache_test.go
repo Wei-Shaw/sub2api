@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestApiKeyRateLimitKey(t *testing.T) {
+func TestAPIKeyRateLimitKey(t *testing.T) {
 	tests := []struct {
 		name     string
 		userID   int64

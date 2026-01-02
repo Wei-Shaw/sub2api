@@ -55,11 +55,11 @@ REDACTED
 	userService := service.NewUserService(userRepository)
 	authHandler := handler.NewAuthHandler(configConfig, authService, userService)
 	userHandler := handler.NewUserHandler(userService)
-	apiKeyRepository := repository.NewApiKeyRepository(client)
+	apiKeyRepository := repository.NewAPIKeyRepository(client)
 	groupRepository := repository.NewGroupRepository(client, db)
 	userSubscriptionRepository := repository.NewUserSubscriptionRepository(client)
-	apiKeyCache := repository.NewApiKeyCache(redisClient)
-	apiKeyService := service.NewApiKeyService(apiKeyRepository, userRepository, groupRepository, userSubscriptionRepository, apiKeyCache, configConfig)
+	apiKeyCache := repository.NewAPIKeyCache(redisClient)
+	apiKeyService := service.NewAPIKeyService(apiKeyRepository, userRepository, groupRepository, userSubscriptionRepository, apiKeyCache, configConfig)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
 	usageService := service.NewUsageService(usageLogRepository, userRepository)
@@ -74,6 +74,9 @@ REDACTED
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	dashboardService := service.NewDashboardService(usageLogRepository)
 	dashboardHandler := admin.NewDashboardHandler(dashboardService)
+	opsRepository := repository.NewOpsRepository(client, db, redisClient)
+	opsService := service.NewOpsService(opsRepository, db)
+	opsHandler := admin.NewOpsHandler(opsService)
 	accountRepository := repository.NewAccountRepository(client, db)
 	proxyRepository := repository.NewProxyRepository(client, db)
 	proxyExitInfoProber := repository.NewProxyExitInfoProber()
@@ -121,7 +124,24 @@ REDACTED
 	userAttributeValueRepository := repository.NewUserAttributeValueRepository(client)
 	userAttributeService := service.NewUserAttributeService(userAttributeDefinitionRepository, userAttributeValueRepository)
 	userAttributeHandler := admin.NewUserAttributeHandler(userAttributeService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler)
+	adminHandlers := handler.ProvideAdminHandlers(
+		dashboardHandler,
+		opsHandler,
+		adminUserHandler,
+		groupHandler,
+		accountHandler,
+		oAuthHandler,
+		openAIOAuthHandler,
+		geminiOAuthHandler,
+		antigravityOAuthHandler,
+		proxyHandler,
+		adminRedeemHandler,
+		settingHandler,
+		systemHandler,
+		adminSubscriptionHandler,
+		adminUsageHandler,
+		userAttributeHandler,
+	)
 	pricingRemoteClient := repository.NewPricingRemoteClient()
 	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
 	if err != nil {
@@ -134,19 +154,21 @@ REDACTED
 	deferredService := service.ProvideDeferredService(accountRepository, timingWheelService)
 	gatewayService := service.NewGatewayService(accountRepository, groupRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService)
 	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService)
-	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService)
+	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, opsService)
 	openAIGatewayService := service.NewOpenAIGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService)
-	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService)
+	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, opsService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
-	apiKeyAuthMiddleware := middleware.NewApiKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
+	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig, opsService)
 	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, apiKeyService, subscriptionService)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
 	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, configConfig)
 	antigravityQuotaRefresher := service.ProvideAntigravityQuotaRefresher(accountRepository, proxyRepository, antigravityOAuthService, configConfig)
-	v := provideCleanup(client, redisClient, tokenRefreshService, pricingService, emailQueueService, billingCacheService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, antigravityQuotaRefresher)
+	opsAlertService := service.ProvideOpsAlertService(opsService, userService, emailService)
+	opsMetricsCollector := service.ProvideOpsMetricsCollector(opsService, concurrencyService)
+	v := provideCleanup(client, redisClient, tokenRefreshService, pricingService, emailQueueService, billingCacheService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, antigravityQuotaRefresher, opsMetricsCollector, opsAlertService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -180,7 +202,12 @@ func provideCleanup(
 	geminiOAuth *service.GeminiOAuthService,
 	antigravityOAuth *service.AntigravityOAuthService,
 	antigravityQuota *service.AntigravityQuotaRefresher,
+	opsMetricsCollector *service.OpsMetricsCollector,
+	opsAlertService *service.OpsAlertService,
 ) func() {
+	if opsAlertService != nil {
+		opsAlertService.Start()
+REDACTED
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -189,6 +216,14 @@ func provideCleanup(
 			name string
 			fn   func() error
 	REDACTED{
+			{"OpsMetricsCollector", func() error {
+				opsMetricsCollector.Stop()
+				return nil
+	REDACTED
+			{"OpsAlertService", func() error {
+				opsAlertService.Stop()
+				return nil
+	REDACTED
 			{"TokenRefreshService", func() error {
 				tokenRefresh.Stop()
 				return nil

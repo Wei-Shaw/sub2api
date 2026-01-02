@@ -127,6 +127,8 @@ export default {
     total: 'Total',
     balance: 'Balance',
     available: 'Available',
+    copy: 'Copy',
+    details: 'Details',
     copiedToClipboard: 'Copied to clipboard',
     copyFailed: 'Failed to copy',
     contactSupport: 'Contact Support',
@@ -147,6 +149,7 @@ export default {
   // Navigation
   nav: {
     dashboard: 'Dashboard',
+    ops: 'Ops Center',
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
@@ -545,6 +548,123 @@ export default {
       noDataAvailable: 'No data available',
       recentUsage: 'Recent Usage',
       failedToLoad: 'Failed to load dashboard statistics'
+    REDACTED,
+    ops: {
+      title: 'Ops Monitoring Center 2.0',
+      description: 'Stability metrics, error distribution, and system health',
+      status: {
+        title: 'System Health Snapshot',
+        subtitle: 'Real-time metrics and error visibility',
+        systemNormal: 'System Normal',
+        systemDegraded: 'System Degraded',
+        systemDown: 'System Down',
+        noData: 'No Data',
+        monitoring: 'Monitoring',
+        lastUpdated: 'Last Updated',
+        live: 'Live',
+        waiting: 'Waiting for data',
+        realtime: 'Connected',
+        disconnected: 'Disconnected'
+      REDACTED,
+      charts: {
+        errorTrend: 'Error Trend',
+        errorDistribution: 'Error Distribution',
+        errorRate: 'Error Rate',
+        requestCount: 'Request Count',
+        rateLimits: 'Rate Limits (429)',
+        serverErrors: 'Server Errors (5xx)',
+        clientErrors: 'Client Errors (4xx)',
+        otherErrors: 'Other',
+        latencyDist: 'Latency Distribution',
+        providerSla: 'Upstream SLA Comparison',
+        errorDist: 'Error Type Distribution',
+        systemStatus: 'System Resources'
+      REDACTED,
+      metrics: {
+        successRate: 'Success Rate',
+        errorRate: 'Error Rate',
+        p95: 'P95 Latency',
+        p99: 'P99 Latency',
+        http2Errors: 'HTTP/2 Errors',
+        activeAlerts: 'Active Alerts',
+        cpuUsage: 'CPU Usage',
+        queueDepth: 'Queue Depth',
+        healthScore: 'Health Score',
+        sla: 'Availability (SLA)',
+        qps: 'Real-time QPS',
+        tps: 'Real-time TPS',
+        errorCount: 'Error Count'
+      REDACTED,
+      errors: {
+        title: 'Recent Errors',
+        subtitle: 'Inspect failures across platforms and phases',
+        count: '{nREDACTED errors'
+      REDACTED,
+      filters: {
+        allSeverities: 'All severities',
+        allPlatforms: 'All platforms',
+        allPhases: 'All phases',
+        p0: 'P0 (Critical)',
+        p1: 'P1 (High)',
+        p2: 'P2 (Medium)',
+        p3: 'P3 (Low)'
+      REDACTED,
+      searchPlaceholder: 'Search by request ID, model, or message',
+      range: {
+        '15m': 'Last 15 minutes',
+        '1h': 'Last 1 hour',
+        '24h': 'Last 24 hours',
+        '7d': 'Last 7 days'
+      REDACTED,
+      platform: {
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
+      REDACTED,
+      phase: {
+        auth: 'Auth',
+        concurrency: 'Concurrency',
+        billing: 'Billing',
+        scheduling: 'Scheduling',
+        network: 'Network',
+        upstream: 'Upstream',
+        response: 'Response',
+        internal: 'Internal'
+      REDACTED,
+      severity: {
+        p0: 'P0',
+        p1: 'P1',
+        p2: 'P2',
+        p3: 'P3'
+      REDACTED,
+      table: {
+        time: 'Time',
+        severity: 'Severity',
+        phase: 'Phase',
+        statusCode: 'Status',
+        platform: 'Platform',
+        model: 'Model',
+        latency: 'Latency',
+        requestId: 'Request ID',
+        message: 'Message'
+      REDACTED,
+      details: {
+        title: 'Error Details',
+        requestId: 'Request ID',
+        errorMessage: 'Error Message',
+        requestPath: 'Request path',
+        clientIp: 'Client IP',
+        userId: 'User ID',
+        apiKeyId: 'API Key ID',
+        groupId: 'Group ID',
+        stream: 'Stream'
+      REDACTED,
+      empty: {
+        title: 'No ops data yet',
+        subtitle: 'Enable error logging and metrics to populate this view'
+      REDACTED,
+      failedToLoad: 'Failed to load ops data'
     REDACTED,
 
     // Users

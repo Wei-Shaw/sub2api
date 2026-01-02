@@ -80,7 +80,7 @@ REDACTED
 	require.NotContains(t, u2After.AllowedGroups, targetGroup.ID)
 REDACTED
 
-func TestGroupRepository_DeleteCascade_RemovesAllowedGroupsAndClearsApiKeys(t *testing.T) {
+func TestGroupRepository_DeleteCascade_RemovesAllowedGroupsAndClearsAPIKeys(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 	entClient := tx.Client()
@@ -98,7 +98,7 @@ REDACTED
 
 	userRepo := newUserRepositoryWithSQL(entClient, tx)
 	groupRepo := newGroupRepositoryWithSQL(entClient, tx)
-	apiKeyRepo := NewApiKeyRepository(entClient)
+	apiKeyRepo := NewAPIKeyRepository(entClient)
 
 	u := &service.User{
 		Email:         uniqueTestValue(t, "cascade-user") + "@example.com",
@@ -110,7 +110,7 @@ REDACTED
 REDACTED
 	require.NoError(t, userRepo.Create(ctx, u))
 
-	key := &service.ApiKey{
+	key := &service.APIKey{
 		UserID:  u.ID,
 		Key:     uniqueTestValue(t, "sk-test-delete-cascade"),
 		Name:    "test key",

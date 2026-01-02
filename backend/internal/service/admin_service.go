@@ -19,7 +19,7 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
-	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]ApiKey, int64, error)
+	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 
 	// Group management
@@ -30,7 +30,7 @@ type AdminService interface {
 	CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
-	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]ApiKey, int64, error)
+	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string) ([]Account, int64, error)
@@ -65,7 +65,7 @@ type AdminService interface {
 	ExpireRedeemCode(ctx context.Context, id int64) (*RedeemCode, error)
 REDACTED
 
-// Input types for admin operations
+// CreateUserInput represents the input for creating a new user
 type CreateUserInput struct {
 	Email         string
 	Password      string
@@ -220,7 +220,7 @@ type adminServiceImpl struct {
 	groupRepo           GroupRepository
 	accountRepo         AccountRepository
 	proxyRepo           ProxyRepository
-	apiKeyRepo          ApiKeyRepository
+	apiKeyRepo          APIKeyRepository
 	redeemCodeRepo      RedeemCodeRepository
 	billingCacheService *BillingCacheService
 	proxyProber         ProxyExitInfoProber
@@ -232,7 +232,7 @@ func NewAdminService(
 	groupRepo GroupRepository,
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
-	apiKeyRepo ApiKeyRepository,
+	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
@@ -430,7 +430,7 @@ REDACTED
 	return user, nil
 REDACTED
 
-func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]ApiKey, int64, error) {
+func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]APIKey, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	keys, result, err := s.apiKeyRepo.ListByUserID(ctx, userID, params)
 	if err != nil {
@@ -583,7 +583,7 @@ REDACTED
 	return nil
 REDACTED
 
-func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]ApiKey, int64, error) {
+func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	keys, result, err := s.apiKeyRepo.ListByGroupID(ctx, groupID, params)
 	if err != nil {

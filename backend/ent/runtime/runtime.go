@@ -25,6 +25,67 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	apikeyMixin := schema.APIKey{REDACTED.Mixin()
+	apikeyMixinHooks1 := apikeyMixin[1].Hooks()
+	apikey.Hooks[0] = apikeyMixinHooks1[0]
+	apikeyMixinInters1 := apikeyMixin[1].Interceptors()
+	apikey.Interceptors[0] = apikeyMixinInters1[0]
+	apikeyMixinFields0 := apikeyMixin[0].Fields()
+	_ = apikeyMixinFields0
+	apikeyFields := schema.APIKey{REDACTED.Fields()
+	_ = apikeyFields
+	// apikeyDescCreatedAt is the schema descriptor for created_at field.
+	apikeyDescCreatedAt := apikeyMixinFields0[0].Descriptor()
+	// apikey.DefaultCreatedAt holds the default value on creation for the created_at field.
+	apikey.DefaultCreatedAt = apikeyDescCreatedAt.Default.(func() time.Time)
+	// apikeyDescUpdatedAt is the schema descriptor for updated_at field.
+	apikeyDescUpdatedAt := apikeyMixinFields0[1].Descriptor()
+	// apikey.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	apikey.DefaultUpdatedAt = apikeyDescUpdatedAt.Default.(func() time.Time)
+	// apikey.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	apikey.UpdateDefaultUpdatedAt = apikeyDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// apikeyDescKey is the schema descriptor for key field.
+	apikeyDescKey := apikeyFields[1].Descriptor()
+	// apikey.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	apikey.KeyValidator = func() func(string) error {
+		validators := apikeyDescKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(key string) error {
+			for _, fn := range fns {
+				if err := fn(key); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// apikeyDescName is the schema descriptor for name field.
+	apikeyDescName := apikeyFields[2].Descriptor()
+	// apikey.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	apikey.NameValidator = func() func(string) error {
+		validators := apikeyDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// apikeyDescStatus is the schema descriptor for status field.
+	apikeyDescStatus := apikeyFields[4].Descriptor()
+	// apikey.DefaultStatus holds the default value on creation for the status field.
+	apikey.DefaultStatus = apikeyDescStatus.Default.(string)
+	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
 	accountMixin := schema.Account{REDACTED.Mixin()
 	accountMixinHooks1 := accountMixin[1].Hooks()
 	account.Hooks[0] = accountMixinHooks1[0]
@@ -138,67 +199,6 @@ REDACTED()
 	accountgroupDescCreatedAt := accountgroupFields[3].Descriptor()
 	// accountgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountgroup.DefaultCreatedAt = accountgroupDescCreatedAt.Default.(func() time.Time)
-	apikeyMixin := schema.ApiKey{REDACTED.Mixin()
-	apikeyMixinHooks1 := apikeyMixin[1].Hooks()
-	apikey.Hooks[0] = apikeyMixinHooks1[0]
-	apikeyMixinInters1 := apikeyMixin[1].Interceptors()
-	apikey.Interceptors[0] = apikeyMixinInters1[0]
-	apikeyMixinFields0 := apikeyMixin[0].Fields()
-	_ = apikeyMixinFields0
-	apikeyFields := schema.ApiKey{REDACTED.Fields()
-	_ = apikeyFields
-	// apikeyDescCreatedAt is the schema descriptor for created_at field.
-	apikeyDescCreatedAt := apikeyMixinFields0[0].Descriptor()
-	// apikey.DefaultCreatedAt holds the default value on creation for the created_at field.
-	apikey.DefaultCreatedAt = apikeyDescCreatedAt.Default.(func() time.Time)
-	// apikeyDescUpdatedAt is the schema descriptor for updated_at field.
-	apikeyDescUpdatedAt := apikeyMixinFields0[1].Descriptor()
-	// apikey.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	apikey.DefaultUpdatedAt = apikeyDescUpdatedAt.Default.(func() time.Time)
-	// apikey.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	apikey.UpdateDefaultUpdatedAt = apikeyDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// apikeyDescKey is the schema descriptor for key field.
-	apikeyDescKey := apikeyFields[1].Descriptor()
-	// apikey.KeyValidator is a validator for the "key" field. It is called by the builders before save.
-	apikey.KeyValidator = func() func(string) error {
-		validators := apikeyDescKey.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-	REDACTED
-		return func(key string) error {
-			for _, fn := range fns {
-				if err := fn(key); err != nil {
-					return err
-			REDACTED
-		REDACTED
-			return nil
-	REDACTED
-REDACTED()
-	// apikeyDescName is the schema descriptor for name field.
-	apikeyDescName := apikeyFields[2].Descriptor()
-	// apikey.NameValidator is a validator for the "name" field. It is called by the builders before save.
-	apikey.NameValidator = func() func(string) error {
-		validators := apikeyDescName.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-	REDACTED
-		return func(name string) error {
-			for _, fn := range fns {
-				if err := fn(name); err != nil {
-					return err
-			REDACTED
-		REDACTED
-			return nil
-	REDACTED
-REDACTED()
-	// apikeyDescStatus is the schema descriptor for status field.
-	apikeyDescStatus := apikeyFields[4].Descriptor()
-	// apikey.DefaultStatus holds the default value on creation for the status field.
-	apikey.DefaultStatus = apikeyDescStatus.Default.(string)
-	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
-	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
 	groupMixin := schema.Group{REDACTED.Mixin()
 	groupMixinHooks1 := groupMixin[1].Hooks()
 	group.Hooks[0] = groupMixinHooks1[0]

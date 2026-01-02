@@ -27,8 +27,14 @@ const (
 	accountSlotKeyPrefix = "concurrency:account:"
 	// 格式: concurrency:user:{userIDREDACTED
 	userSlotKeyPrefix = "concurrency:user:"
-	// 等待队列计数器格式: concurrency:wait:{userIDREDACTED
-	waitQueueKeyPrefix = "concurrency:wait:"
+
+	// Wait queue keys (global structures)
+	// - total: integer total queue depth across all users
+	// - updated: sorted set of userID -> lastUpdateUnixSec (for TTL cleanup)
+	// - counts: hash of userID -> current wait count
+	waitQueueTotalKey   = "concurrency:wait:total"
+	waitQueueUpdatedKey = "concurrency:wait:updated"
+	waitQueueCountsKey  = "concurrency:wait:counts"
 	// 账号级等待队列计数器格式: wait:account:{accountIDREDACTED
 	accountWaitKeyPrefix = "wait:account:"
 
@@ -94,27 +100,55 @@ var (
 	`)
 
 	// incrementWaitScript - only sets TTL on first creation to avoid refreshing
-	// KEYS[1] = wait queue key
-	// ARGV[1] = maxWait
-	// ARGV[2] = TTL in seconds
+	// KEYS[1] = total key
+	// KEYS[2] = updated zset key
+	// KEYS[3] = counts hash key
+	// ARGV[1] = userID
+	// ARGV[2] = maxWait
+	// ARGV[3] = TTL in seconds
+	// ARGV[4] = cleanup limit
 	incrementWaitScript = redis.NewScript(`
-		local current = redis.call('GET', KEYS[1])
-		if current == false then
-			current = 0
-		else
-			current = tonumber(current)
+		local totalKey = KEYS[1]
+		local updatedKey = KEYS[2]
+		local countsKey = KEYS[3]
+
+		local userID = ARGV[1]
+		local maxWait = tonumber(ARGV[2])
+		local ttl = tonumber(ARGV[3])
+		local cleanupLimit = tonumber(ARGV[4])
+
+		redis.call('SETNX', totalKey, 0)
+
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		local expireBefore = now - ttl
+
+		-- Cleanup expired users (bounded)
+		local expired = redis.call('ZRANGEBYSCORE', updatedKey, '-inf', expireBefore, 'LIMIT', 0, cleanupLimit)
+		for _, uid in ipairs(expired) do
+			local c = tonumber(redis.call('HGET', countsKey, uid) or '0')
+			if c > 0 then
+				redis.call('DECRBY', totalKey, c)
+			end
+			redis.call('HDEL', countsKey, uid)
+			redis.call('ZREM', updatedKey, uid)
 		end
 
-		if current >= tonumber(ARGV[1]) then
+		local current = tonumber(redis.call('HGET', countsKey, userID) or '0')
+		if current >= maxWait then
 			return 0
 		end
 
-		local newVal = redis.call('INCR', KEYS[1])
+		local newVal = current + 1
+		redis.call('HSET', countsKey, userID, newVal)
+		redis.call('ZADD', updatedKey, now, userID)
+		redis.call('INCR', totalKey)
 
-		-- Only set TTL on first creation to avoid refreshing zombie data
-		if newVal == 1 then
-			redis.call('EXPIRE', KEYS[1], ARGV[2])
-		end
+		-- Keep global structures from living forever in totally idle deployments.
+		local ttlKeep = ttl * 2
+		redis.call('EXPIRE', totalKey, ttlKeep)
+		redis.call('EXPIRE', updatedKey, ttlKeep)
+		redis.call('EXPIRE', countsKey, ttlKeep)
 
 			return 1
 		`)
@@ -144,6 +178,111 @@ var (
 
 	// decrementWaitScript - same as before
 	decrementWaitScript = redis.NewScript(`
+		local totalKey = KEYS[1]
+		local updatedKey = KEYS[2]
+		local countsKey = KEYS[3]
+
+		local userID = ARGV[1]
+		local ttl = tonumber(ARGV[2])
+		local cleanupLimit = tonumber(ARGV[3])
+
+		redis.call('SETNX', totalKey, 0)
+
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		local expireBefore = now - ttl
+
+		-- Cleanup expired users (bounded)
+		local expired = redis.call('ZRANGEBYSCORE', updatedKey, '-inf', expireBefore, 'LIMIT', 0, cleanupLimit)
+		for _, uid in ipairs(expired) do
+			local c = tonumber(redis.call('HGET', countsKey, uid) or '0')
+			if c > 0 then
+				redis.call('DECRBY', totalKey, c)
+			end
+			redis.call('HDEL', countsKey, uid)
+			redis.call('ZREM', updatedKey, uid)
+		end
+
+		local current = tonumber(redis.call('HGET', countsKey, userID) or '0')
+		if current <= 0 then
+			return 1
+		end
+
+		local newVal = current - 1
+		if newVal <= 0 then
+			redis.call('HDEL', countsKey, userID)
+			redis.call('ZREM', updatedKey, userID)
+		else
+			redis.call('HSET', countsKey, userID, newVal)
+			redis.call('ZADD', updatedKey, now, userID)
+		end
+		redis.call('DECR', totalKey)
+
+		local ttlKeep = ttl * 2
+		redis.call('EXPIRE', totalKey, ttlKeep)
+		redis.call('EXPIRE', updatedKey, ttlKeep)
+		redis.call('EXPIRE', countsKey, ttlKeep)
+
+		return 1
+	`)
+
+	// getTotalWaitScript returns the global wait depth with TTL cleanup.
+	// KEYS[1] = total key
+	// KEYS[2] = updated zset key
+	// KEYS[3] = counts hash key
+	// ARGV[1] = TTL in seconds
+	// ARGV[2] = cleanup limit
+	getTotalWaitScript = redis.NewScript(`
+		local totalKey = KEYS[1]
+		local updatedKey = KEYS[2]
+		local countsKey = KEYS[3]
+
+		local ttl = tonumber(ARGV[1])
+		local cleanupLimit = tonumber(ARGV[2])
+
+		redis.call('SETNX', totalKey, 0)
+
+		local timeResult = redis.call('TIME')
+		local now = tonumber(timeResult[1])
+		local expireBefore = now - ttl
+
+		-- Cleanup expired users (bounded)
+		local expired = redis.call('ZRANGEBYSCORE', updatedKey, '-inf', expireBefore, 'LIMIT', 0, cleanupLimit)
+		for _, uid in ipairs(expired) do
+			local c = tonumber(redis.call('HGET', countsKey, uid) or '0')
+			if c > 0 then
+				redis.call('DECRBY', totalKey, c)
+			end
+			redis.call('HDEL', countsKey, uid)
+			redis.call('ZREM', updatedKey, uid)
+		end
+
+		-- If totalKey got lost but counts exist (e.g. Redis restart), recompute once.
+		local total = redis.call('GET', totalKey)
+		if total == false then
+			total = 0
+			local vals = redis.call('HVALS', countsKey)
+			for _, v in ipairs(vals) do
+				total = total + tonumber(v)
+			end
+			redis.call('SET', totalKey, total)
+		end
+
+		local ttlKeep = ttl * 2
+		redis.call('EXPIRE', totalKey, ttlKeep)
+		redis.call('EXPIRE', updatedKey, ttlKeep)
+		redis.call('EXPIRE', countsKey, ttlKeep)
+
+		local result = tonumber(redis.call('GET', totalKey) or '0')
+		if result < 0 then
+			result = 0
+			redis.call('SET', totalKey, 0)
+		end
+		return result
+	`)
+
+	// decrementAccountWaitScript - account-level wait queue decrement
+	decrementAccountWaitScript = redis.NewScript(`
 			local current = redis.call('GET', KEYS[1])
 			if current ~= false and tonumber(current) > 0 then
 				redis.call('DECR', KEYS[1])
@@ -244,7 +383,9 @@ func userSlotKey(userID int64) string {
 REDACTED
 
 func waitQueueKey(userID int64) string {
-	return fmt.Sprintf("%s%d", waitQueueKeyPrefix, userID)
+	// Historical: per-user string keys were used.
+	// Now we use global structures keyed by userID string.
+	return strconv.FormatInt(userID, 10)
 REDACTED
 
 func accountWaitKey(accountID int64) string {
@@ -308,8 +449,16 @@ REDACTED
 // Wait queue operations
 
 func (c *concurrencyCache) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
-	key := waitQueueKey(userID)
-	result, err := incrementWaitScript.Run(ctx, c.rdb, []string{keyREDACTED, maxWait, c.slotTTLSeconds).Int()
+	userKey := waitQueueKey(userID)
+	result, err := incrementWaitScript.Run(
+		ctx,
+		c.rdb,
+		[]string{waitQueueTotalKey, waitQueueUpdatedKey, waitQueueCountsKeyREDACTED,
+		userKey,
+		maxWait,
+		c.waitQueueTTLSeconds,
+		200, // cleanup limit per call
+	).Int()
 	if err != nil {
 		return false, err
 REDACTED
@@ -317,9 +466,33 @@ REDACTED
 REDACTED
 
 func (c *concurrencyCache) DecrementWaitCount(ctx context.Context, userID int64) error {
-	key := waitQueueKey(userID)
-	_, err := decrementWaitScript.Run(ctx, c.rdb, []string{keyREDACTED).Result()
+	userKey := waitQueueKey(userID)
+	_, err := decrementWaitScript.Run(
+		ctx,
+		c.rdb,
+		[]string{waitQueueTotalKey, waitQueueUpdatedKey, waitQueueCountsKeyREDACTED,
+		userKey,
+		c.waitQueueTTLSeconds,
+		200, // cleanup limit per call
+	).Result()
 	return err
+REDACTED
+
+func (c *concurrencyCache) GetTotalWaitCount(ctx context.Context) (int, error) {
+	if c.rdb == nil {
+		return 0, nil
+REDACTED
+	total, err := getTotalWaitScript.Run(
+		ctx,
+		c.rdb,
+		[]string{waitQueueTotalKey, waitQueueUpdatedKey, waitQueueCountsKeyREDACTED,
+		c.waitQueueTTLSeconds,
+		500, // cleanup limit per query (rare)
+	).Int64()
+	if err != nil {
+		return 0, err
+REDACTED
+	return int(total), nil
 REDACTED
 
 // Account wait queue operations
@@ -335,7 +508,7 @@ REDACTED
 
 func (c *concurrencyCache) DecrementAccountWaitCount(ctx context.Context, accountID int64) error {
 	key := accountWaitKey(accountID)
-	_, err := decrementWaitScript.Run(ctx, c.rdb, []string{keyREDACTED).Result()
+	_, err := decrementAccountWaitScript.Run(ctx, c.rdb, []string{keyREDACTED).Result()
 	return err
 REDACTED
 

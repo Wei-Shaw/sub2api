@@ -124,6 +124,8 @@ export default {
     total: '总计',
     balance: '余额',
     available: '可用',
+    copy: '复制',
+    details: '详情',
     copiedToClipboard: '已复制到剪贴板',
     copyFailed: '复制失败',
     contactSupport: '联系客服',
@@ -144,6 +146,7 @@ export default {
   // Navigation
   nav: {
     dashboard: '仪表盘',
+    ops: '运维监控',
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
@@ -558,6 +561,123 @@ export default {
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
       failedToLoad: '加载仪表盘数据失败'
+    REDACTED,
+    ops: {
+      title: '运维监控中心 2.0',
+      description: '稳定性指标、错误分布与系统健康',
+      status: {
+        title: '系统健康快照',
+        subtitle: '实时指标与错误可见性',
+        systemNormal: '系统正常',
+        systemDegraded: '系统降级',
+        systemDown: '系统异常',
+        noData: '无数据',
+        monitoring: '监控中',
+        lastUpdated: '最后更新',
+        live: '实时',
+        waiting: '等待数据',
+        realtime: '实时连接中',
+        disconnected: '连接已断开'
+      REDACTED,
+      charts: {
+        errorTrend: '错误趋势',
+        errorDistribution: '错误分布',
+        errorRate: '错误率',
+        requestCount: '请求数',
+        rateLimits: '限流 (429)',
+        serverErrors: '服务端错误 (5xx)',
+        clientErrors: '客户端错误 (4xx)',
+        otherErrors: '其他',
+        latencyDist: '请求延迟分布',
+        providerSla: '上游供应商健康度 (SLA)',
+        errorDist: '错误类型分布',
+        systemStatus: '系统运行状态'
+      REDACTED,
+      metrics: {
+        successRate: '成功率',
+        errorRate: '错误率',
+        p95: 'P95 延迟',
+        p99: 'P99 延迟',
+        http2Errors: 'HTTP/2 错误',
+        activeAlerts: '活跃告警',
+        cpuUsage: 'CPU 使用率',
+        queueDepth: '排队深度',
+        healthScore: '健康评分',
+        sla: '服务可用率 (SLA)',
+        qps: '实时 QPS',
+        tps: '实时 TPS',
+        errorCount: '周期错误数'
+      REDACTED,
+      errors: {
+        title: '最近错误',
+        subtitle: '按平台与阶段定位失败原因',
+        count: '{nREDACTED 条错误'
+      REDACTED,
+      filters: {
+        allSeverities: '全部级别',
+        allPlatforms: '全部平台',
+        allPhases: '全部阶段',
+        p0: 'P0（致命）',
+        p1: 'P1（高）',
+        p2: 'P2（中）',
+        p3: 'P3（低）'
+      REDACTED,
+      searchPlaceholder: '按请求ID、模型或错误信息搜索',
+      range: {
+        '15m': '近 15 分钟',
+        '1h': '近 1 小时',
+        '24h': '近 24 小时',
+        '7d': '近 7 天'
+      REDACTED,
+      platform: {
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
+      REDACTED,
+      phase: {
+        auth: '认证',
+        concurrency: '并发',
+        billing: '计费',
+        scheduling: '调度',
+        network: '网络',
+        upstream: '上游',
+        response: '响应',
+        internal: '内部'
+      REDACTED,
+      severity: {
+        p0: 'P0',
+        p1: 'P1',
+        p2: 'P2',
+        p3: 'P3'
+      REDACTED,
+      table: {
+        time: '时间',
+        severity: '级别',
+        phase: '阶段',
+        statusCode: '状态码',
+        platform: '平台',
+        model: '模型',
+        latency: '延迟',
+        requestId: '请求ID',
+        message: '错误信息'
+      REDACTED,
+      details: {
+        title: '错误详情',
+        requestId: '请求ID',
+        errorMessage: '错误信息',
+        requestPath: '请求路径',
+        clientIp: '客户端IP',
+        userId: '用户ID',
+        apiKeyId: 'API Key ID',
+        groupId: '分组ID',
+        stream: '流式'
+      REDACTED,
+      empty: {
+        title: '暂无运维数据',
+        subtitle: '启用错误日志与指标采集后将展示在此处'
+      REDACTED,
+      failedToLoad: '加载运维数据失败'
     REDACTED,
 
     // Users Management

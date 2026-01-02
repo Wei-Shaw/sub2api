@@ -1,3 +1,5 @@
+// Package antigravity provides a client for interacting with Google's Antigravity API,
+// handling OAuth authentication, token management, and account tier information retrieval.
 package antigravity
 
 import (

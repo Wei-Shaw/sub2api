@@ -1,3 +1,4 @@
+// Package config provides application configuration management.
 package config
 
 import "github.com/google/wire"

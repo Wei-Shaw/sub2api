@@ -4,13 +4,13 @@ type SystemSettings struct {
 	RegistrationEnabled bool
 	EmailVerifyEnabled  bool
 
-	SmtpHost     string
-	SmtpPort     int
-	SmtpUsername string
-	SmtpPassword string
-	SmtpFrom     string
-	SmtpFromName string
-	SmtpUseTLS   bool
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+	SMTPFromName string
+	SMTPUseTLS   bool
 
 	TurnstileEnabled   bool
 	TurnstileSiteKey   string
@@ -19,9 +19,9 @@ type SystemSettings struct {
 	SiteName     string
 	SiteLogo     string
 	SiteSubtitle string
-	ApiBaseUrl   string
+	APIBaseURL   string
 	ContactInfo  string
-	DocUrl       string
+	DocURL       string
 
 	DefaultConcurrency int
 	DefaultBalance     float64
@@ -35,8 +35,8 @@ type PublicSettings struct {
 	SiteName            string
 	SiteLogo            string
 	SiteSubtitle        string
-	ApiBaseUrl          string
+	APIBaseURL          string
 	ContactInfo         string
-	DocUrl              string
+	DocURL              string
 	Version             string
 REDACTED

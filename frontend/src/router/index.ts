@@ -164,6 +164,18 @@ const routes: RouteRecordRaw[] = [
     REDACTED
   REDACTED,
   {
+    path: '/admin/ops',
+    name: 'AdminOps',
+    component: () => import('@/views/admin/ops/OpsDashboard.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Ops Dashboard',
+      titleKey: 'admin.ops.title',
+      descriptionKey: 'admin.ops.description'
+    REDACTED
+  REDACTED,
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UsersView.vue'),

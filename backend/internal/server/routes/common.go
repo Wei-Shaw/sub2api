@@ -1,3 +1,4 @@
+// Package routes 提供 HTTP 路由注册和处理函数
 package routes
 
 import (

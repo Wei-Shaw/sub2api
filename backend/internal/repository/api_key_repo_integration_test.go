@@ -12,30 +12,30 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type ApiKeyRepoSuite struct {
+type APIKeyRepoSuite struct {
 	suite.Suite
 	ctx    context.Context
 	client *dbent.Client
 	repo   *apiKeyRepository
 REDACTED
 
-func (s *ApiKeyRepoSuite) SetupTest() {
+func (s *APIKeyRepoSuite) SetupTest() {
 	s.ctx = context.Background()
 	tx := testEntTx(s.T())
 	s.client = tx.Client()
-	s.repo = NewApiKeyRepository(s.client).(*apiKeyRepository)
+	s.repo = NewAPIKeyRepository(s.client).(*apiKeyRepository)
 REDACTED
 
-func TestApiKeyRepoSuite(t *testing.T) {
-	suite.Run(t, new(ApiKeyRepoSuite))
+func TestAPIKeyRepoSuite(t *testing.T) {
+	suite.Run(t, new(APIKeyRepoSuite))
 REDACTED
 
 // --- Create / GetByID / GetByKey ---
 
-func (s *ApiKeyRepoSuite) TestCreate() {
+func (s *APIKeyRepoSuite) TestCreate() {
 	user := s.mustCreateUser("create@test.com")
 
-	key := &service.ApiKey{
+	key := &service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-create-test",
 		Name:   "Test Key",
@@ -51,16 +51,16 @@ REDACTED
 	s.Require().Equal("sk-create-test", got.Key)
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestGetByID_NotFound() {
+func (s *APIKeyRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestGetByKey() {
+func (s *APIKeyRepoSuite) TestGetByKey() {
 	user := s.mustCreateUser("getbykey@test.com")
 	group := s.mustCreateGroup("g-key")
 
-	key := &service.ApiKey{
+	key := &service.APIKey{
 		UserID:  user.ID,
 		Key:     "sk-getbykey",
 		Name:    "My Key",
@@ -78,16 +78,16 @@ REDACTED
 	s.Require().Equal(group.ID, got.Group.ID)
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestGetByKey_NotFound() {
+func (s *APIKeyRepoSuite) TestGetByKey_NotFound() {
 	_, err := s.repo.GetByKey(s.ctx, "non-existent-key")
 	s.Require().Error(err, "expected error for non-existent key")
 REDACTED
 
 // --- Update ---
 
-func (s *ApiKeyRepoSuite) TestUpdate() {
+func (s *APIKeyRepoSuite) TestUpdate() {
 	user := s.mustCreateUser("update@test.com")
-	key := &service.ApiKey{
+	key := &service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-update",
 		Name:   "Original",
@@ -108,10 +108,10 @@ REDACTED
 	s.Require().Equal(service.StatusDisabled, got.Status)
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestUpdate_ClearGroupID() {
+func (s *APIKeyRepoSuite) TestUpdate_ClearGroupID() {
 	user := s.mustCreateUser("cleargroup@test.com")
 	group := s.mustCreateGroup("g-clear")
-	key := &service.ApiKey{
+	key := &service.APIKey{
 		UserID:  user.ID,
 		Key:     "sk-clear-group",
 		Name:    "Group Key",
@@ -131,9 +131,9 @@ REDACTED
 
 // --- Delete ---
 
-func (s *ApiKeyRepoSuite) TestDelete() {
+func (s *APIKeyRepoSuite) TestDelete() {
 	user := s.mustCreateUser("delete@test.com")
-	key := &service.ApiKey{
+	key := &service.APIKey{
 		UserID: user.ID,
 		Key:    "sk-delete",
 		Name:   "Delete Me",
@@ -150,10 +150,10 @@ REDACTED
 
 // --- ListByUserID / CountByUserID ---
 
-func (s *ApiKeyRepoSuite) TestListByUserID() {
+func (s *APIKeyRepoSuite) TestListByUserID() {
 	user := s.mustCreateUser("listbyuser@test.com")
-	s.mustCreateApiKey(user.ID, "sk-list-1", "Key 1", nil)
-	s.mustCreateApiKey(user.ID, "sk-list-2", "Key 2", nil)
+	s.mustCreateAPIKey(user.ID, "sk-list-1", "Key 1", nil)
+	s.mustCreateAPIKey(user.ID, "sk-list-2", "Key 2", nil)
 
 	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "ListByUserID")
@@ -161,10 +161,10 @@ func (s *ApiKeyRepoSuite) TestListByUserID() {
 	s.Require().Equal(int64(2), page.Total)
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestListByUserID_Pagination() {
+func (s *APIKeyRepoSuite) TestListByUserID_Pagination() {
 	user := s.mustCreateUser("paging@test.com")
 	for i := 0; i < 5; i++ {
-		s.mustCreateApiKey(user.ID, "sk-page-"+string(rune('a'+i)), "Key", nil)
+		s.mustCreateAPIKey(user.ID, "sk-page-"+string(rune('a'+i)), "Key", nil)
 REDACTED
 
 	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 2REDACTED)
@@ -174,10 +174,10 @@ REDACTED
 	s.Require().Equal(3, page.Pages)
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestCountByUserID() {
+func (s *APIKeyRepoSuite) TestCountByUserID() {
 	user := s.mustCreateUser("count@test.com")
-	s.mustCreateApiKey(user.ID, "sk-count-1", "K1", nil)
-	s.mustCreateApiKey(user.ID, "sk-count-2", "K2", nil)
+	s.mustCreateAPIKey(user.ID, "sk-count-1", "K1", nil)
+	s.mustCreateAPIKey(user.ID, "sk-count-2", "K2", nil)
 
 	count, err := s.repo.CountByUserID(s.ctx, user.ID)
 	s.Require().NoError(err, "CountByUserID")
@@ -186,13 +186,13 @@ REDACTED
 
 // --- ListByGroupID / CountByGroupID ---
 
-func (s *ApiKeyRepoSuite) TestListByGroupID() {
+func (s *APIKeyRepoSuite) TestListByGroupID() {
 	user := s.mustCreateUser("listbygroup@test.com")
 	group := s.mustCreateGroup("g-list")
 
-	s.mustCreateApiKey(user.ID, "sk-grp-1", "K1", &group.ID)
-	s.mustCreateApiKey(user.ID, "sk-grp-2", "K2", &group.ID)
-	s.mustCreateApiKey(user.ID, "sk-grp-3", "K3", nil) // no group
+	s.mustCreateAPIKey(user.ID, "sk-grp-1", "K1", &group.ID)
+	s.mustCreateAPIKey(user.ID, "sk-grp-2", "K2", &group.ID)
+	s.mustCreateAPIKey(user.ID, "sk-grp-3", "K3", nil) // no group
 
 	keys, page, err := s.repo.ListByGroupID(s.ctx, group.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
 	s.Require().NoError(err, "ListByGroupID")
@@ -202,10 +202,10 @@ func (s *ApiKeyRepoSuite) TestListByGroupID() {
 	s.Require().NotNil(keys[0].User)
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestCountByGroupID() {
+func (s *APIKeyRepoSuite) TestCountByGroupID() {
 	user := s.mustCreateUser("countgroup@test.com")
 	group := s.mustCreateGroup("g-count")
-	s.mustCreateApiKey(user.ID, "sk-gc-1", "K1", &group.ID)
+	s.mustCreateAPIKey(user.ID, "sk-gc-1", "K1", &group.ID)
 
 	count, err := s.repo.CountByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "CountByGroupID")
@@ -214,9 +214,9 @@ REDACTED
 
 // --- ExistsByKey ---
 
-func (s *ApiKeyRepoSuite) TestExistsByKey() {
+func (s *APIKeyRepoSuite) TestExistsByKey() {
 	user := s.mustCreateUser("exists@test.com")
-	s.mustCreateApiKey(user.ID, "sk-exists", "K", nil)
+	s.mustCreateAPIKey(user.ID, "sk-exists", "K", nil)
 
 	exists, err := s.repo.ExistsByKey(s.ctx, "sk-exists")
 	s.Require().NoError(err, "ExistsByKey")
@@ -227,47 +227,47 @@ func (s *ApiKeyRepoSuite) TestExistsByKey() {
 	s.Require().False(notExists)
 REDACTED
 
-// --- SearchApiKeys ---
+// --- SearchAPIKeys ---
 
-func (s *ApiKeyRepoSuite) TestSearchApiKeys() {
+func (s *APIKeyRepoSuite) TestSearchAPIKeys() {
 	user := s.mustCreateUser("search@test.com")
-	s.mustCreateApiKey(user.ID, "sk-search-1", "Production Key", nil)
-	s.mustCreateApiKey(user.ID, "sk-search-2", "Development Key", nil)
+	s.mustCreateAPIKey(user.ID, "sk-search-1", "Production Key", nil)
+	s.mustCreateAPIKey(user.ID, "sk-search-2", "Development Key", nil)
 
-	found, err := s.repo.SearchApiKeys(s.ctx, user.ID, "prod", 10)
-	s.Require().NoError(err, "SearchApiKeys")
+	found, err := s.repo.SearchAPIKeys(s.ctx, user.ID, "prod", 10)
+	s.Require().NoError(err, "SearchAPIKeys")
 	s.Require().Len(found, 1)
 	s.Require().Contains(found[0].Name, "Production")
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestSearchApiKeys_NoKeyword() {
+func (s *APIKeyRepoSuite) TestSearchAPIKeys_NoKeyword() {
 	user := s.mustCreateUser("searchnokw@test.com")
-	s.mustCreateApiKey(user.ID, "sk-nk-1", "K1", nil)
-	s.mustCreateApiKey(user.ID, "sk-nk-2", "K2", nil)
+	s.mustCreateAPIKey(user.ID, "sk-nk-1", "K1", nil)
+	s.mustCreateAPIKey(user.ID, "sk-nk-2", "K2", nil)
 
-	found, err := s.repo.SearchApiKeys(s.ctx, user.ID, "", 10)
+	found, err := s.repo.SearchAPIKeys(s.ctx, user.ID, "", 10)
 	s.Require().NoError(err)
 	s.Require().Len(found, 2)
 REDACTED
 
-func (s *ApiKeyRepoSuite) TestSearchApiKeys_NoUserID() {
+func (s *APIKeyRepoSuite) TestSearchAPIKeys_NoUserID() {
 	user := s.mustCreateUser("searchnouid@test.com")
-	s.mustCreateApiKey(user.ID, "sk-nu-1", "TestKey", nil)
+	s.mustCreateAPIKey(user.ID, "sk-nu-1", "TestKey", nil)
 
-	found, err := s.repo.SearchApiKeys(s.ctx, 0, "testkey", 10)
+	found, err := s.repo.SearchAPIKeys(s.ctx, 0, "testkey", 10)
 	s.Require().NoError(err)
 	s.Require().Len(found, 1)
 REDACTED
 
 // --- ClearGroupIDByGroupID ---
 
-func (s *ApiKeyRepoSuite) TestClearGroupIDByGroupID() {
+func (s *APIKeyRepoSuite) TestClearGroupIDByGroupID() {
 	user := s.mustCreateUser("cleargrp@test.com")
 	group := s.mustCreateGroup("g-clear-bulk")
 
-	k1 := s.mustCreateApiKey(user.ID, "sk-clr-1", "K1", &group.ID)
-	k2 := s.mustCreateApiKey(user.ID, "sk-clr-2", "K2", &group.ID)
-	s.mustCreateApiKey(user.ID, "sk-clr-3", "K3", nil) // no group
+	k1 := s.mustCreateAPIKey(user.ID, "sk-clr-1", "K1", &group.ID)
+	k2 := s.mustCreateAPIKey(user.ID, "sk-clr-2", "K2", &group.ID)
+	s.mustCreateAPIKey(user.ID, "sk-clr-3", "K3", nil) // no group
 
 	affected, err := s.repo.ClearGroupIDByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "ClearGroupIDByGroupID")
@@ -284,10 +284,10 @@ REDACTED
 
 // --- Combined CRUD/Search/ClearGroupID (original test preserved as integration) ---
 
-func (s *ApiKeyRepoSuite) TestCRUD_Search_ClearGroupID() {
+func (s *APIKeyRepoSuite) TestCRUD_Search_ClearGroupID() {
 	user := s.mustCreateUser("k@example.com")
 	group := s.mustCreateGroup("g-k")
-	key := s.mustCreateApiKey(user.ID, "sk-test-1", "My Key", &group.ID)
+	key := s.mustCreateAPIKey(user.ID, "sk-test-1", "My Key", &group.ID)
 	key.GroupID = &group.ID
 
 	got, err := s.repo.GetByKey(s.ctx, key.Key)
@@ -320,13 +320,13 @@ func (s *ApiKeyRepoSuite) TestCRUD_Search_ClearGroupID() {
 	s.Require().NoError(err, "ExistsByKey")
 	s.Require().True(exists, "expected key to exist")
 
-	found, err := s.repo.SearchApiKeys(s.ctx, user.ID, "renam", 10)
-	s.Require().NoError(err, "SearchApiKeys")
+	found, err := s.repo.SearchAPIKeys(s.ctx, user.ID, "renam", 10)
+	s.Require().NoError(err, "SearchAPIKeys")
 	s.Require().Len(found, 1)
 	s.Require().Equal(key.ID, found[0].ID)
 
 	// ClearGroupIDByGroupID
-	k2 := s.mustCreateApiKey(user.ID, "sk-test-2", "Group Key", &group.ID)
+	k2 := s.mustCreateAPIKey(user.ID, "sk-test-2", "Group Key", &group.ID)
 	k2.GroupID = &group.ID
 
 	countBefore, err := s.repo.CountByGroupID(s.ctx, group.ID)
@@ -346,7 +346,7 @@ func (s *ApiKeyRepoSuite) TestCRUD_Search_ClearGroupID() {
 	s.Require().Equal(int64(0), countAfter, "expected 0 keys in group after clear")
 REDACTED
 
-func (s *ApiKeyRepoSuite) mustCreateUser(email string) *service.User {
+func (s *APIKeyRepoSuite) mustCreateUser(email string) *service.User {
 	s.T().Helper()
 
 	u, err := s.client.User.Create().
@@ -359,7 +359,7 @@ func (s *ApiKeyRepoSuite) mustCreateUser(email string) *service.User {
 	return userEntityToService(u)
 REDACTED
 
-func (s *ApiKeyRepoSuite) mustCreateGroup(name string) *service.Group {
+func (s *APIKeyRepoSuite) mustCreateGroup(name string) *service.Group {
 	s.T().Helper()
 
 	g, err := s.client.Group.Create().
@@ -370,10 +370,10 @@ func (s *ApiKeyRepoSuite) mustCreateGroup(name string) *service.Group {
 	return groupEntityToService(g)
 REDACTED
 
-func (s *ApiKeyRepoSuite) mustCreateApiKey(userID int64, key, name string, groupID *int64) *service.ApiKey {
+func (s *APIKeyRepoSuite) mustCreateAPIKey(userID int64, key, name string, groupID *int64) *service.APIKey {
 	s.T().Helper()
 
-	k := &service.ApiKey{
+	k := &service.APIKey{
 		UserID:  userID,
 		Key:     key,
 		Name:    name,

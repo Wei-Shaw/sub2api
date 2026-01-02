@@ -1,3 +1,4 @@
+// Package oauth provides OAuth 2.0 utilities including PKCE flow, session management, and token exchange.
 package oauth
 
 import (

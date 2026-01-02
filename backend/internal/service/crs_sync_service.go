@@ -82,7 +82,7 @@ type crsExportResponse struct {
 		OpenAIOAuthAccounts     []crsOpenAIOAuthAccount     `json:"openaiOAuthAccounts"`
 		OpenAIResponsesAccounts []crsOpenAIResponsesAccount `json:"openaiResponsesAccounts"`
 		GeminiOAuthAccounts     []crsGeminiOAuthAccount     `json:"geminiOAuthAccounts"`
-		GeminiAPIKeyAccounts    []crsGeminiAPIKeyAccount    `json:"geminiApiKeyAccounts"`
+		GeminiAPIKeyAccounts    []crsGeminiAPIKeyAccount    `json:"geminiAPIKeyAccounts"`
 REDACTED `json:"data"`
 REDACTED
 
@@ -430,7 +430,7 @@ REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformAnthropic,
-				Type:        AccountTypeApiKey,
+				Type:        AccountTypeAPIKey,
 				Credentials: credentials,
 				Extra:       extra,
 				ProxyID:     proxyID,
@@ -455,7 +455,7 @@ REDACTED
 		existing.Extra = mergeMap(existing.Extra, extra)
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformAnthropic
-		existing.Type = AccountTypeApiKey
+		existing.Type = AccountTypeAPIKey
 		existing.Credentials = mergeMap(existing.Credentials, credentials)
 		if proxyID != nil {
 			existing.ProxyID = proxyID
@@ -674,7 +674,7 @@ REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformOpenAI,
-				Type:        AccountTypeApiKey,
+				Type:        AccountTypeAPIKey,
 				Credentials: credentials,
 				Extra:       extra,
 				ProxyID:     proxyID,
@@ -699,7 +699,7 @@ REDACTED
 		existing.Extra = mergeMap(existing.Extra, extra)
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformOpenAI
-		existing.Type = AccountTypeApiKey
+		existing.Type = AccountTypeAPIKey
 		existing.Credentials = mergeMap(existing.Credentials, credentials)
 		if proxyID != nil {
 			existing.ProxyID = proxyID
@@ -893,7 +893,7 @@ REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformGemini,
-				Type:        AccountTypeApiKey,
+				Type:        AccountTypeAPIKey,
 				Credentials: credentials,
 				Extra:       extra,
 				ProxyID:     proxyID,
@@ -918,7 +918,7 @@ REDACTED
 		existing.Extra = mergeMap(existing.Extra, extra)
 		existing.Name = defaultName(src.Name, src.ID)
 		existing.Platform = PlatformGemini
-		existing.Type = AccountTypeApiKey
+		existing.Type = AccountTypeAPIKey
 		existing.Credentials = mergeMap(existing.Credentials, credentials)
 		if proxyID != nil {
 			existing.ProxyID = proxyID

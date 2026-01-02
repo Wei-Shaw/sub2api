@@ -32,6 +32,7 @@ type ConcurrencyCache interface {
 	// 等待队列计数（只在首次创建时设置 TTL）
 	IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error)
 	DecrementWaitCount(ctx context.Context, userID int64) error
+	GetTotalWaitCount(ctx context.Context) (int, error)
 
 	// 批量负载查询（只读）
 	GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error)
@@ -198,6 +199,14 @@ REDACTED
 	if err := s.cache.DecrementWaitCount(bgCtx, userID); err != nil {
 		log.Printf("Warning: decrement wait count failed for user %d: %v", userID, err)
 REDACTED
+REDACTED
+
+// GetTotalWaitCount returns the total wait queue depth across users.
+func (s *ConcurrencyService) GetTotalWaitCount(ctx context.Context) (int, error) {
+	if s.cache == nil {
+		return 0, nil
+REDACTED
+	return s.cache.GetTotalWaitCount(ctx)
 REDACTED
 
 // IncrementAccountWaitCount increments the wait queue counter for an account.

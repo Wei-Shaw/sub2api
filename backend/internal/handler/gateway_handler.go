@@ -1,3 +1,5 @@
+// Package handler provides HTTP request handlers for the API gateway.
+// It handles authentication, request routing, concurrency control, and billing validation.
 package handler
 
 import (
@@ -27,6 +29,7 @@ type GatewayHandler struct {
 	userService               *service.UserService
 	billingCacheService       *service.BillingCacheService
 	concurrencyHelper         *ConcurrencyHelper
+	opsService                *service.OpsService
 REDACTED
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -37,6 +40,7 @@ func NewGatewayHandler(
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
+	opsService *service.OpsService,
 ) *GatewayHandler {
 	return &GatewayHandler{
 		gatewayService:            gatewayService,
@@ -45,14 +49,15 @@ func NewGatewayHandler(
 		userService:               userService,
 		billingCacheService:       billingCacheService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude),
+		opsService:                opsService,
 REDACTED
 REDACTED
 
 // Messages handles Claude API compatible messages endpoint
 // POST /v1/messages
 func (h *GatewayHandler) Messages(c *gin.Context) {
-	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
-	apiKey, ok := middleware2.GetApiKeyFromContext(c)
+	// 从context获取apiKey和user（APIKeyAuth中间件已设置）
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
@@ -87,6 +92,7 @@ REDACTED
 REDACTED
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	setOpsRequestContext(c, reqModel, reqStream)
 
 	// 验证 model 必填
 	if reqModel == "" {
@@ -258,7 +264,7 @@ REDACTED
 				defer cancel()
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:       result,
-					ApiKey:       apiKey,
+					APIKey:       apiKey,
 					User:         apiKey.User,
 					Account:      usedAccount,
 					Subscription: subscription,
@@ -382,7 +388,7 @@ REDACTED
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:       result,
-				ApiKey:       apiKey,
+				APIKey:       apiKey,
 				User:         apiKey.User,
 				Account:      usedAccount,
 				Subscription: subscription,
@@ -399,7 +405,7 @@ REDACTED
 // Returns models based on account configurations (model_mapping whitelist)
 // Falls back to default models if no whitelist is configured
 func (h *GatewayHandler) Models(c *gin.Context) {
-	apiKey, _ := middleware2.GetApiKeyFromContext(c)
+	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
 	var groupID *int64
 	var platform string
@@ -448,7 +454,7 @@ REDACTED
 // Usage handles getting account balance for CC Switch integration
 // GET /v1/usage
 func (h *GatewayHandler) Usage(c *gin.Context) {
-	apiKey, ok := middleware2.GetApiKeyFromContext(c)
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
@@ -573,6 +579,7 @@ REDACTED
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
 	if streamStarted {
+		recordOpsError(c, h.opsService, status, errType, message, "")
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
@@ -604,6 +611,7 @@ REDACTED
 
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
+	recordOpsError(c, h.opsService, status, errType, message, "")
 	c.JSON(status, gin.H{
 		"type": "error",
 		"error": gin.H{
@@ -617,8 +625,8 @@ REDACTED
 // POST /v1/messages/count_tokens
 // 特点：校验订阅/余额，但不计算并发、不记录使用量
 func (h *GatewayHandler) CountTokens(c *gin.Context) {
-	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
-	apiKey, ok := middleware2.GetApiKeyFromContext(c)
+	// 从context获取apiKey和user（APIKeyAuth中间件已设置）
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return

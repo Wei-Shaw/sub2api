@@ -1,3 +1,4 @@
+// Package googleapi provides utilities for Google API interactions.
 package googleapi
 
 import "net/http"

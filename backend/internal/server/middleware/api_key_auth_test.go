@@ -35,7 +35,7 @@ REDACTED
 		Balance:     10,
 		Concurrency: 3,
 REDACTED
-	apiKey := &service.ApiKey{
+	apiKey := &service.APIKey{
 		ID:     100,
 		UserID: user.ID,
 		Key:    "test-key",
@@ -45,10 +45,10 @@ REDACTED
 REDACTED
 	apiKey.GroupID = &group.ID
 
-	apiKeyRepo := &stubApiKeyRepo{
-		getByKey: func(ctx context.Context, key string) (*service.ApiKey, error) {
+	apiKeyRepo := &stubAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
 			if key != apiKey.Key {
-				return nil, service.ErrApiKeyNotFound
+				return nil, service.ErrAPIKeyNotFound
 		REDACTED
 			clone := *apiKey
 			return &clone, nil
@@ -57,7 +57,7 @@ REDACTED
 
 	t.Run("simple_mode_bypasses_quota_check", func(t *testing.T) {
 		cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
-		apiKeyService := service.NewApiKeyService(apiKeyRepo, nil, nil, nil, nil, cfg)
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, cfg)
 		subscriptionService := service.NewSubscriptionService(nil, &stubUserSubscriptionRepo{REDACTED, nil)
 		router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
 
@@ -71,7 +71,7 @@ REDACTED)
 
 	t.Run("standard_mode_enforces_quota_check", func(t *testing.T) {
 		cfg := &config.Config{RunMode: config.RunModeStandardREDACTED
-		apiKeyService := service.NewApiKeyService(apiKeyRepo, nil, nil, nil, nil, cfg)
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, cfg)
 
 		now := time.Now()
 		sub := &service.UserSubscription{
@@ -110,75 +110,75 @@ REDACTED)
 REDACTED)
 REDACTED
 
-func newAuthTestRouter(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
+func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
 	router := gin.New()
-	router.Use(gin.HandlerFunc(NewApiKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg, nil)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": trueREDACTED)
 REDACTED)
 	return router
 REDACTED
 
-type stubApiKeyRepo struct {
-	getByKey func(ctx context.Context, key string) (*service.ApiKey, error)
+type stubAPIKeyRepo struct {
+	getByKey func(ctx context.Context, key string) (*service.APIKey, error)
 REDACTED
 
-func (r *stubApiKeyRepo) Create(ctx context.Context, key *service.ApiKey) error {
+func (r *stubAPIKeyRepo) Create(ctx context.Context, key *service.APIKey) error {
 	return errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) GetByID(ctx context.Context, id int64) (*service.ApiKey, error) {
+func (r *stubAPIKeyRepo) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) GetOwnerID(ctx context.Context, id int64) (int64, error) {
+func (r *stubAPIKeyRepo) GetOwnerID(ctx context.Context, id int64) (int64, error) {
 	return 0, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.ApiKey, error) {
+func (r *stubAPIKeyRepo) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
 	if r.getByKey != nil {
 		return r.getByKey(ctx, key)
 REDACTED
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.ApiKey) error {
+func (r *stubAPIKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
 	return errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) Delete(ctx context.Context, id int64) error {
+func (r *stubAPIKeyRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
+func (r *stubAPIKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
+func (r *stubAPIKeyRepo) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) CountByUserID(ctx context.Context, userID int64) (int64, error) {
+func (r *stubAPIKeyRepo) CountByUserID(ctx context.Context, userID int64) (int64, error) {
 	return 0, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) ExistsByKey(ctx context.Context, key string) (bool, error) {
+func (r *stubAPIKeyRepo) ExistsByKey(ctx context.Context, key string) (bool, error) {
 	return false, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
+func (r *stubAPIKeyRepo) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) SearchApiKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.ApiKey, error) {
+func (r *stubAPIKeyRepo) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
+func (r *stubAPIKeyRepo) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
+func (r *stubAPIKeyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
 REDACTED
 

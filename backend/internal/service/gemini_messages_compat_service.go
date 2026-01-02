@@ -273,7 +273,7 @@ REDACTED
 			return 999
 	REDACTED
 		switch a.Type {
-		case AccountTypeApiKey:
+		case AccountTypeAPIKey:
 			if strings.TrimSpace(a.GetCredential("api_key")) != "" {
 				return 0
 		REDACTED
@@ -351,7 +351,7 @@ REDACTED
 
 	originalModel := req.Model
 	mappedModel := req.Model
-	if account.Type == AccountTypeApiKey {
+	if account.Type == AccountTypeAPIKey {
 		mappedModel = account.GetMappedModel(req.Model)
 REDACTED
 
@@ -374,7 +374,7 @@ REDACTED
 REDACTED
 
 	switch account.Type {
-	case AccountTypeApiKey:
+	case AccountTypeAPIKey:
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			apiKey := account.GetCredential("api_key")
 			if strings.TrimSpace(apiKey) == "" {
@@ -614,7 +614,7 @@ REDACTED
 REDACTED
 
 	mappedModel := originalModel
-	if account.Type == AccountTypeApiKey {
+	if account.Type == AccountTypeAPIKey {
 		mappedModel = account.GetMappedModel(originalModel)
 REDACTED
 
@@ -636,7 +636,7 @@ REDACTED
 	var buildReq func(ctx context.Context) (*http.Request, string, error)
 
 	switch account.Type {
-	case AccountTypeApiKey:
+	case AccountTypeAPIKey:
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			apiKey := account.GetCredential("api_key")
 			if strings.TrimSpace(apiKey) == "" {
@@ -1758,7 +1758,7 @@ REDACTED
 REDACTED
 
 	switch account.Type {
-	case AccountTypeApiKey:
+	case AccountTypeAPIKey:
 		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 		if apiKey == "" {
 			return nil, errors.New("gemini api_key not configured")
