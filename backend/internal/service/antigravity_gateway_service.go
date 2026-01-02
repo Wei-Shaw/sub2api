@@ -467,8 +467,19 @@ REDACTED
 REDACTED
 
 	switch action {
-	case "generateContent", "streamGenerateContent", "countTokens":
+	case "generateContent", "streamGenerateContent":
 		// ok
+	case "countTokens":
+		// 直接返回空值，不透传上游
+		c.JSON(http.StatusOK, map[string]any{"totalTokens": 0REDACTED)
+		return &ForwardResult{
+			RequestID:    "",
+			Usage:        ClaudeUsage{REDACTED,
+			Model:        originalModel,
+			Stream:       false,
+			Duration:     time.Since(time.Now()),
+			FirstTokenMs: nil,
+	REDACTED, nil
 	default:
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
 REDACTED
@@ -523,18 +534,6 @@ REDACTED
 				sleepAntigravityBackoff(attempt)
 				continue
 		REDACTED
-			if action == "countTokens" {
-				estimated := estimateGeminiCountTokens(body)
-				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
-				return &ForwardResult{
-					RequestID:    "",
-					Usage:        ClaudeUsage{REDACTED,
-					Model:        originalModel,
-					Stream:       false,
-					Duration:     time.Since(startTime),
-					FirstTokenMs: nil,
-			REDACTED, nil
-		REDACTED
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
 	REDACTED
 
@@ -550,18 +549,6 @@ REDACTED
 			// 所有重试都失败，标记限流状态
 			if resp.StatusCode == 429 {
 				s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		REDACTED
-			if action == "countTokens" {
-				estimated := estimateGeminiCountTokens(body)
-				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
-				return &ForwardResult{
-					RequestID:    "",
-					Usage:        ClaudeUsage{REDACTED,
-					Model:        originalModel,
-					Stream:       false,
-					Duration:     time.Since(startTime),
-					FirstTokenMs: nil,
-			REDACTED, nil
 		REDACTED
 			resp = &http.Response{
 				StatusCode: resp.StatusCode,
@@ -584,19 +571,6 @@ REDACTED
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 		s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-
-		if action == "countTokens" {
-			estimated := estimateGeminiCountTokens(body)
-			c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
-			return &ForwardResult{
-				RequestID:    requestID,
-				Usage:        ClaudeUsage{REDACTED,
-				Model:        originalModel,
-				Stream:       false,
-				Duration:     time.Since(startTime),
-				FirstTokenMs: nil,
-		REDACTED, nil
-	REDACTED
 
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
