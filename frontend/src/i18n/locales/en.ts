@@ -321,6 +321,18 @@ export default {
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
       REDACTED,
+      antigravity: {
+        description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
+        claudeCode: 'Claude Code',
+        geminiCli: 'Gemini CLI',
+        claudeNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+        geminiNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+      REDACTED,
+      gemini: {
+        description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure Gemini CLI access.',
+        modelComment: 'If you have Gemini 3 access, you can use: gemini-3-pro-preview',
+        note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+      REDACTED,
     REDACTED,
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',
@@ -328,7 +340,15 @@ export default {
     customKeyTooShort: 'Custom key must be at least 16 characters',
     customKeyInvalidChars: 'Custom key can only contain letters, numbers, underscores, and hyphens',
     customKeyRequired: 'Please enter a custom key',
-    ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.'
+    ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.',
+    ccsClientSelect: {
+      title: 'Select Client',
+      description: 'Please select the client type to import to CC-Switch:',
+      claudeCode: 'Claude Code',
+      claudeCodeDesc: 'Import as Claude Code configuration',
+      geminiCli: 'Gemini CLI',
+      geminiCliDesc: 'Import as Gemini CLI configuration',
+    REDACTED,
   REDACTED,
 
   // Usage
