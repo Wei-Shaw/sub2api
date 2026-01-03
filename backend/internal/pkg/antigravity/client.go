@@ -1,5 +1,3 @@
-// Package antigravity provides a client for interacting with Google's Antigravity API,
-// handling OAuth authentication, token management, and account tier information retrieval.
 package antigravity
 
 import (
@@ -57,6 +55,29 @@ type TierInfo struct {
 	ID          string `json:"id"`          // free-tier, g1-pro-tier, g1-ultra-tier
 	Name        string `json:"name"`        // 显示名称
 	Description string `json:"description"` // 描述
+REDACTED
+
+// UnmarshalJSON supports both legacy string tiers and object tiers.
+func (t *TierInfo) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+REDACTED
+	if data[0] == '"' {
+		var id string
+		if err := json.Unmarshal(data, &id); err != nil {
+			return err
+	REDACTED
+		t.ID = id
+		return nil
+REDACTED
+	type alias TierInfo
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+REDACTED
+	*t = TierInfo(decoded)
+	return nil
 REDACTED
 
 // IneligibleTier 不符合条件的层级信息

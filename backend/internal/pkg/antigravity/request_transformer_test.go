@@ -15,15 +15,15 @@ func TestBuildParts_ThinkingBlockWithoutSignature(t *testing.T) {
 		description   string
 REDACTED{
 		{
-			name: "Claude model - skip thinking block without signature",
+			name: "Claude model - drop thinking without signature",
 			content: `[
 				{"type": "text", "text": "Hello"REDACTED,
 				{"type": "thinking", "thinking": "Let me think...", "signature": ""REDACTED,
 				{"type": "text", "text": "World"REDACTED
 			]`,
 			thoughtMode:   thoughtSignatureModePreserve,
-			expectedParts: 2, // 只有两个text block
-			description:   "Claude模型应该跳过无signature的thinking block",
+			expectedParts: 2, // thinking 内容被丢弃
+			description:   "Claude模型应丢弃无signature的thinking block内容",
 	REDACTED,
 		{
 			name: "Claude model - preserve thinking block with signature",

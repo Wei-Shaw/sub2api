@@ -150,13 +150,18 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 		// 历史 assistant 消息不能添加没有 signature 的 dummy thinking block
 		if allowDummyThought && role == "model" && isThinkingEnabled && i == len(messages)-1 {
 			hasThoughtPart := false
-			for _, p := range parts {
+			firstPartIsThought := false
+			for idx, p := range parts {
 				if p.Thought {
 					hasThoughtPart = true
+					if idx == 0 {
+						firstPartIsThought = true
+				REDACTED
 					break
 			REDACTED
 		REDACTED
-			if !hasThoughtPart && len(parts) > 0 {
+			// 如果没有thinking part，或者有thinking part但不在第一个位置，都需要在开头添加dummy thinking block
+			if len(parts) > 0 && (!hasThoughtPart || !firstPartIsThought) {
 				// 在开头添加 dummy thinking block
 				parts = append([]GeminiPart{{
 					Text:             "Thinking...",
@@ -236,6 +241,7 @@ REDACTED
 			// Claude via Vertex：
 			// - signature 是上游返回的完整性令牌；本地不需要/无法验证，只能透传
 			// - 缺失/无效 signature（例如来自 Gemini 的 dummy signature）会导致上游 400
+			// - 为避免泄露 thinking 内容，缺失/无效 signature 的 thinking 直接丢弃
 			if signature == "" || signature == dummyThoughtSignature {
 				continue
 		REDACTED
@@ -429,7 +435,7 @@ REDACTED
 
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
-	for i, tool := range tools {
+	for _, tool := range tools {
 		// 跳过无效工具名称
 		if strings.TrimSpace(tool.Name) == "" {
 			log.Printf("Warning: skipping tool with empty name")
@@ -448,10 +454,6 @@ REDACTED
 			description = tool.Custom.Description
 			inputSchema = tool.Custom.InputSchema
 
-			// 调试日志：记录 custom 工具的 schema
-			if schemaJSON, err := json.Marshal(inputSchema); err == nil {
-				log.Printf("[Debug] Tool[%d] '%s' (custom) original schema: %s", i, tool.Name, string(schemaJSON))
-		REDACTED
 	REDACTED else {
 			// 标准格式: 从顶层字段获取
 			description = tool.Description
@@ -466,11 +468,6 @@ REDACTED
 				"type":       "OBJECT",
 				"properties": map[string]any{REDACTED,
 		REDACTED
-	REDACTED
-
-		// 调试日志：记录清理后的 schema
-		if paramsJSON, err := json.Marshal(params); err == nil {
-			log.Printf("[Debug] Tool[%d] '%s' cleaned schema: %s", i, tool.Name, string(paramsJSON))
 	REDACTED
 
 		funcDecls = append(funcDecls, GeminiFunctionDecl{
@@ -627,20 +624,16 @@ func cleanSchemaValue(value any) any {
 			if k == "additionalProperties" {
 				if boolVal, ok := val.(bool); ok {
 					result[k] = boolVal
-					log.Printf("[Debug] additionalProperties is bool: %v", boolVal)
 			REDACTED else {
 					// 如果是 schema 对象，转换为 false（更安全的默认值）
 					result[k] = false
-					log.Printf("[Debug] additionalProperties is not bool (type: %T), converting to false", val)
 			REDACTED
 				continue
 		REDACTED
 
-			// 递归清理所有值
 			result[k] = cleanSchemaValue(val)
 	REDACTED
 		return result
-
 	case []any:
 		// 递归处理数组中的每个元素
 		cleaned := make([]any, 0, len(v))

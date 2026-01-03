@@ -29,8 +29,9 @@ type StreamingProcessor struct {
 	originalModel     string
 
 	// 累计 usage
-	inputTokens  int
-	outputTokens int
+	inputTokens     int
+	outputTokens    int
+	cacheReadTokens int
 REDACTED
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -76,9 +77,17 @@ REDACTED
 REDACTED
 
 	// 更新 usage
+	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
+	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
 	if geminiResp.UsageMetadata != nil {
-		p.inputTokens = geminiResp.UsageMetadata.PromptTokenCount
+		cached := geminiResp.UsageMetadata.CachedContentTokenCount
+		prompt := geminiResp.UsageMetadata.PromptTokenCount
+		if cached > prompt {
+			cached = prompt
+	REDACTED
+		p.inputTokens = prompt - cached
 		p.outputTokens = geminiResp.UsageMetadata.CandidatesTokenCount
+		p.cacheReadTokens = cached
 REDACTED
 
 	// 处理 parts
@@ -108,8 +117,9 @@ func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
 REDACTED
 
 	usage := &ClaudeUsage{
-		InputTokens:  p.inputTokens,
-		OutputTokens: p.outputTokens,
+		InputTokens:          p.inputTokens,
+		OutputTokens:         p.outputTokens,
+		CacheReadInputTokens: p.cacheReadTokens,
 REDACTED
 
 	return result.Bytes(), usage
@@ -123,8 +133,14 @@ REDACTED
 
 	usage := ClaudeUsage{REDACTED
 	if v1Resp.Response.UsageMetadata != nil {
-		usage.InputTokens = v1Resp.Response.UsageMetadata.PromptTokenCount
+		cached := v1Resp.Response.UsageMetadata.CachedContentTokenCount
+		prompt := v1Resp.Response.UsageMetadata.PromptTokenCount
+		if cached > prompt {
+			cached = prompt
+	REDACTED
+		usage.InputTokens = prompt - cached
 		usage.OutputTokens = v1Resp.Response.UsageMetadata.CandidatesTokenCount
+		usage.CacheReadInputTokens = cached
 REDACTED
 
 	responseID := v1Resp.ResponseID
@@ -418,8 +434,9 @@ REDACTED else if finishReason == "MAX_TOKENS" {
 REDACTED
 
 	usage := ClaudeUsage{
-		InputTokens:  p.inputTokens,
-		OutputTokens: p.outputTokens,
+		InputTokens:          p.inputTokens,
+		OutputTokens:         p.outputTokens,
+		CacheReadInputTokens: p.cacheReadTokens,
 REDACTED
 
 	deltaEvent := map[string]any{
