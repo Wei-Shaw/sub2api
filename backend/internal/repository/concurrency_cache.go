@@ -151,11 +151,17 @@ var (
 			return 1
 		`)
 
-	// getAccountsLoadBatchScript - batch load query (read-only)
-	// ARGV[1] = slot TTL (seconds, retained for compatibility)
+	// getAccountsLoadBatchScript - batch load query with expired slot cleanup
+	// ARGV[1] = slot TTL (seconds)
 	// ARGV[2..n] = accountID1, maxConcurrency1, accountID2, maxConcurrency2, ...
 	getAccountsLoadBatchScript = redis.NewScript(`
 			local result = {REDACTED
+			local slotTTL = tonumber(ARGV[1])
+
+			-- Get current server time
+			local timeResult = redis.call('TIME')
+			local nowSeconds = tonumber(timeResult[1])
+			local cutoffTime = nowSeconds - slotTTL
 
 			local i = 2
 			while i <= #ARGV do
@@ -163,6 +169,9 @@ var (
 				local maxConcurrency = tonumber(ARGV[i + 1])
 
 				local slotKey = 'concurrency:account:' .. accountID
+
+				-- Clean up expired slots before counting
+				redis.call('ZREMRANGEBYSCORE', slotKey, '-inf', cutoffTime)
 				local currentConcurrency = redis.call('ZCARD', slotKey)
 
 				local waitKey = 'wait:account:' .. accountID
