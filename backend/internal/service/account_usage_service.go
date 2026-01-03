@@ -69,12 +69,28 @@ type windowStatsCache struct {
 	timestamp time.Time
 REDACTED
 
-var (
-	apiCacheMap         = sync.Map{REDACTED // 缓存 API 响应
-	windowStatsCacheMap = sync.Map{REDACTED // 缓存窗口统计
+// antigravityUsageCache 缓存 Antigravity 额度数据
+type antigravityUsageCache struct {
+	usageInfo *UsageInfo
+	timestamp time.Time
+REDACTED
+
+const (
 	apiCacheTTL         = 10 * time.Minute
 	windowStatsCacheTTL = 1 * time.Minute
 )
+
+// UsageCache 封装账户使用量相关的缓存
+type UsageCache struct {
+	apiCache         sync.Map // accountID -> *apiUsageCache
+	windowStatsCache sync.Map // accountID -> *windowStatsCache
+	antigravityCache sync.Map // accountID -> *antigravityUsageCache
+REDACTED
+
+// NewUsageCache 创建 UsageCache 实例
+func NewUsageCache() *UsageCache {
+	return &UsageCache{REDACTED
+REDACTED
 
 // WindowStats 窗口期统计
 type WindowStats struct {
@@ -138,6 +154,7 @@ type AccountUsageService struct {
 	usageFetcher            ClaudeUsageFetcher
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
+	cache                   *UsageCache
 REDACTED
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -147,6 +164,7 @@ func NewAccountUsageService(
 	usageFetcher ClaudeUsageFetcher,
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
+	cache *UsageCache,
 ) *AccountUsageService {
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
@@ -154,6 +172,7 @@ func NewAccountUsageService(
 		usageFetcher:            usageFetcher,
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
+		cache:                   cache,
 REDACTED
 REDACTED
 
@@ -181,7 +200,7 @@ REDACTED
 		var apiResp *ClaudeUsageResponse
 
 		// 1. 检查 API 缓存（10 分钟）
-		if cached, ok := apiCacheMap.Load(accountID); ok {
+		if cached, ok := s.cache.apiCache.Load(accountID); ok {
 			if cache, ok := cached.(*apiUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
 				apiResp = cache.response
 		REDACTED
@@ -194,7 +213,7 @@ REDACTED
 				return nil, err
 		REDACTED
 			// 缓存 API 响应
-			apiCacheMap.Store(accountID, &apiUsageCache{
+			s.cache.apiCache.Store(accountID, &apiUsageCache{
 				response:  apiResp,
 				timestamp: time.Now(),
 		REDACTED)
@@ -252,14 +271,6 @@ REDACTED
 	return usage, nil
 REDACTED
 
-// antigravityUsageCache 缓存 Antigravity 额度数据
-type antigravityUsageCache struct {
-	usageInfo *UsageInfo
-	timestamp time.Time
-REDACTED
-
-var antigravityCacheMap = sync.Map{REDACTED
-
 // getAntigravityUsage 获取 Antigravity 账户额度
 func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	if s.antigravityQuotaFetcher == nil || !s.antigravityQuotaFetcher.CanFetch(account) {
@@ -268,7 +279,7 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 REDACTED
 
 	// 1. 检查缓存（10 分钟）
-	if cached, ok := antigravityCacheMap.Load(account.ID); ok {
+	if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
 		if cache, ok := cached.(*antigravityUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
 			// 重新计算 RemainingSeconds
 			usage := cache.usageInfo
@@ -289,7 +300,7 @@ REDACTED
 REDACTED
 
 	// 4. 缓存结果
-	antigravityCacheMap.Store(account.ID, &antigravityUsageCache{
+	s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
 		usageInfo: result.UsageInfo,
 		timestamp: time.Now(),
 REDACTED)
@@ -308,7 +319,7 @@ REDACTED
 
 	// 检查窗口统计缓存（1 分钟）
 	var windowStats *WindowStats
-	if cached, ok := windowStatsCacheMap.Load(account.ID); ok {
+	if cached, ok := s.cache.windowStatsCache.Load(account.ID); ok {
 		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
 			windowStats = cache.stats
 	REDACTED
@@ -336,7 +347,7 @@ REDACTED
 	REDACTED
 
 		// 缓存窗口统计（1 分钟）
-		windowStatsCacheMap.Store(account.ID, &windowStatsCache{
+		s.cache.windowStatsCache.Store(account.ID, &windowStatsCache{
 			stats:     windowStats,
 			timestamp: time.Now(),
 	REDACTED)
