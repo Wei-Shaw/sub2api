@@ -22,7 +22,6 @@ type OpenAIGatewayHandler struct {
 	gatewayService      *service.OpenAIGatewayService
 	billingCacheService *service.BillingCacheService
 	concurrencyHelper   *ConcurrencyHelper
-	opsService          *service.OpsService
 REDACTED
 
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
@@ -30,21 +29,19 @@ func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
-	opsService *service.OpsService,
 ) *OpenAIGatewayHandler {
 	return &OpenAIGatewayHandler{
 		gatewayService:      gatewayService,
 		billingCacheService: billingCacheService,
 		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatNone),
-		opsService:          opsService,
 REDACTED
 REDACTED
 
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
-	// Get apiKey and user from context (set by APIKeyAuth middleware)
-	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	// Get apiKey and user from context (set by ApiKeyAuth middleware)
+	apiKey, ok := middleware2.GetApiKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
@@ -82,7 +79,6 @@ REDACTED
 	// Extract model and stream
 	reqModel, _ := reqBody["model"].(string)
 	reqStream, _ := reqBody["stream"].(bool)
-	setOpsRequestContext(c, reqModel, reqStream)
 
 	// 验证 model 必填
 	if reqModel == "" {
@@ -239,7 +235,7 @@ REDACTED
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:       result,
-				APIKey:       apiKey,
+				ApiKey:       apiKey,
 				User:         apiKey.User,
 				Account:      usedAccount,
 				Subscription: subscription,
@@ -282,7 +278,6 @@ REDACTED
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
 	if streamStarted {
-		recordOpsError(c, h.opsService, status, errType, message, service.PlatformOpenAI)
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
@@ -302,7 +297,6 @@ REDACTED
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	recordOpsError(c, h.opsService, status, errType, message, service.PlatformOpenAI)
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"type":    errType,

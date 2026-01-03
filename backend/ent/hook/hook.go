@@ -9,18 +9,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 )
 
-// The APIKeyFunc type is an adapter to allow the use of ordinary
-// function as APIKey mutator.
-type APIKeyFunc func(context.Context, *ent.APIKeyMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f APIKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.APIKeyMutation); ok {
-		return f(ctx, mv)
-REDACTED
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.APIKeyMutation", m)
-REDACTED
-
 // The AccountFunc type is an adapter to allow the use of ordinary
 // function as Account mutator.
 type AccountFunc func(context.Context, *ent.AccountMutation) (ent.Value, error)
@@ -43,6 +31,18 @@ func (f AccountGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 		return f(ctx, mv)
 REDACTED
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountGroupMutation", m)
+REDACTED
+
+// The ApiKeyFunc type is an adapter to allow the use of ordinary
+// function as ApiKey mutator.
+type ApiKeyFunc func(context.Context, *ent.ApiKeyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ApiKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ApiKeyMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApiKeyMutation", m)
 REDACTED
 
 // The GroupFunc type is an adapter to allow the use of ordinary

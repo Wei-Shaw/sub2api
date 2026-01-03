@@ -324,7 +324,7 @@ REDACTED
 		chatgptAccountID = account.GetChatGPTAccountID()
 REDACTED else if account.Type == "apikey" {
 		// API Key - use Platform API
-		authToken = account.GetOpenAIAPIKey()
+		authToken = account.GetOpenAIApiKey()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No API key available")
 	REDACTED
@@ -402,7 +402,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 REDACTED
 
 	// For API Key accounts with model mapping, map the model
-	if account.Type == AccountTypeAPIKey {
+	if account.Type == AccountTypeApiKey {
 		mapping := account.GetModelMapping()
 		if len(mapping) > 0 {
 			if mappedModel, exists := mapping[testModelID]; exists {
@@ -426,7 +426,7 @@ REDACTED
 	var err error
 
 	switch account.Type {
-	case AccountTypeAPIKey:
+	case AccountTypeApiKey:
 		req, err = s.buildGeminiAPIKeyRequest(ctx, account, testModelID, payload)
 	case AccountTypeOAuth:
 		req, err = s.buildGeminiOAuthRequest(ctx, account, testModelID, payload)

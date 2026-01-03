@@ -18,33 +18,33 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
-// APIKeyUpdate is the builder for updating APIKey entities.
-type APIKeyUpdate struct {
+// ApiKeyUpdate is the builder for updating ApiKey entities.
+type ApiKeyUpdate struct {
 	config
 	hooks    []Hook
-	mutation *APIKeyMutation
+	mutation *ApiKeyMutation
 REDACTED
 
-// Where appends a list predicates to the APIKeyUpdate builder.
-func (_u *APIKeyUpdate) Where(ps ...predicate.APIKey) *APIKeyUpdate {
+// Where appends a list predicates to the ApiKeyUpdate builder.
+func (_u *ApiKeyUpdate) Where(ps ...predicate.ApiKey) *ApiKeyUpdate {
 	_u.mutation.Where(ps...)
 	return _u
 REDACTED
 
 // SetUpdatedAt sets the "updated_at" field.
-func (_u *APIKeyUpdate) SetUpdatedAt(v time.Time) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetUpdatedAt(v time.Time) *ApiKeyUpdate {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
 REDACTED
 
 // SetDeletedAt sets the "deleted_at" field.
-func (_u *APIKeyUpdate) SetDeletedAt(v time.Time) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetDeletedAt(v time.Time) *ApiKeyUpdate {
 	_u.mutation.SetDeletedAt(v)
 	return _u
 REDACTED
 
 // SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
-func (_u *APIKeyUpdate) SetNillableDeletedAt(v *time.Time) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetNillableDeletedAt(v *time.Time) *ApiKeyUpdate {
 	if v != nil {
 		_u.SetDeletedAt(*v)
 REDACTED
@@ -52,19 +52,19 @@ REDACTED
 REDACTED
 
 // ClearDeletedAt clears the value of the "deleted_at" field.
-func (_u *APIKeyUpdate) ClearDeletedAt() *APIKeyUpdate {
+func (_u *ApiKeyUpdate) ClearDeletedAt() *ApiKeyUpdate {
 	_u.mutation.ClearDeletedAt()
 	return _u
 REDACTED
 
 // SetUserID sets the "user_id" field.
-func (_u *APIKeyUpdate) SetUserID(v int64) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetUserID(v int64) *ApiKeyUpdate {
 	_u.mutation.SetUserID(v)
 	return _u
 REDACTED
 
 // SetNillableUserID sets the "user_id" field if the given value is not nil.
-func (_u *APIKeyUpdate) SetNillableUserID(v *int64) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetNillableUserID(v *int64) *ApiKeyUpdate {
 	if v != nil {
 		_u.SetUserID(*v)
 REDACTED
@@ -72,13 +72,13 @@ REDACTED
 REDACTED
 
 // SetKey sets the "key" field.
-func (_u *APIKeyUpdate) SetKey(v string) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetKey(v string) *ApiKeyUpdate {
 	_u.mutation.SetKey(v)
 	return _u
 REDACTED
 
 // SetNillableKey sets the "key" field if the given value is not nil.
-func (_u *APIKeyUpdate) SetNillableKey(v *string) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetNillableKey(v *string) *ApiKeyUpdate {
 	if v != nil {
 		_u.SetKey(*v)
 REDACTED
@@ -86,13 +86,13 @@ REDACTED
 REDACTED
 
 // SetName sets the "name" field.
-func (_u *APIKeyUpdate) SetName(v string) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetName(v string) *ApiKeyUpdate {
 	_u.mutation.SetName(v)
 	return _u
 REDACTED
 
 // SetNillableName sets the "name" field if the given value is not nil.
-func (_u *APIKeyUpdate) SetNillableName(v *string) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetNillableName(v *string) *ApiKeyUpdate {
 	if v != nil {
 		_u.SetName(*v)
 REDACTED
@@ -100,13 +100,13 @@ REDACTED
 REDACTED
 
 // SetGroupID sets the "group_id" field.
-func (_u *APIKeyUpdate) SetGroupID(v int64) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetGroupID(v int64) *ApiKeyUpdate {
 	_u.mutation.SetGroupID(v)
 	return _u
 REDACTED
 
 // SetNillableGroupID sets the "group_id" field if the given value is not nil.
-func (_u *APIKeyUpdate) SetNillableGroupID(v *int64) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetNillableGroupID(v *int64) *ApiKeyUpdate {
 	if v != nil {
 		_u.SetGroupID(*v)
 REDACTED
@@ -114,19 +114,19 @@ REDACTED
 REDACTED
 
 // ClearGroupID clears the value of the "group_id" field.
-func (_u *APIKeyUpdate) ClearGroupID() *APIKeyUpdate {
+func (_u *ApiKeyUpdate) ClearGroupID() *ApiKeyUpdate {
 	_u.mutation.ClearGroupID()
 	return _u
 REDACTED
 
 // SetStatus sets the "status" field.
-func (_u *APIKeyUpdate) SetStatus(v string) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetStatus(v string) *ApiKeyUpdate {
 	_u.mutation.SetStatus(v)
 	return _u
 REDACTED
 
 // SetNillableStatus sets the "status" field if the given value is not nil.
-func (_u *APIKeyUpdate) SetNillableStatus(v *string) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetNillableStatus(v *string) *ApiKeyUpdate {
 	if v != nil {
 		_u.SetStatus(*v)
 REDACTED
@@ -134,23 +134,23 @@ REDACTED
 REDACTED
 
 // SetUser sets the "user" edge to the User entity.
-func (_u *APIKeyUpdate) SetUser(v *User) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetUser(v *User) *ApiKeyUpdate {
 	return _u.SetUserID(v.ID)
 REDACTED
 
 // SetGroup sets the "group" edge to the Group entity.
-func (_u *APIKeyUpdate) SetGroup(v *Group) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) SetGroup(v *Group) *ApiKeyUpdate {
 	return _u.SetGroupID(v.ID)
 REDACTED
 
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
-func (_u *APIKeyUpdate) AddUsageLogIDs(ids ...int64) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) AddUsageLogIDs(ids ...int64) *ApiKeyUpdate {
 	_u.mutation.AddUsageLogIDs(ids...)
 	return _u
 REDACTED
 
 // AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
-func (_u *APIKeyUpdate) AddUsageLogs(v ...*UsageLog) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) AddUsageLogs(v ...*UsageLog) *ApiKeyUpdate {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -158,37 +158,37 @@ REDACTED
 	return _u.AddUsageLogIDs(ids...)
 REDACTED
 
-// Mutation returns the APIKeyMutation object of the builder.
-func (_u *APIKeyUpdate) Mutation() *APIKeyMutation {
+// Mutation returns the ApiKeyMutation object of the builder.
+func (_u *ApiKeyUpdate) Mutation() *ApiKeyMutation {
 	return _u.mutation
 REDACTED
 
 // ClearUser clears the "user" edge to the User entity.
-func (_u *APIKeyUpdate) ClearUser() *APIKeyUpdate {
+func (_u *ApiKeyUpdate) ClearUser() *ApiKeyUpdate {
 	_u.mutation.ClearUser()
 	return _u
 REDACTED
 
 // ClearGroup clears the "group" edge to the Group entity.
-func (_u *APIKeyUpdate) ClearGroup() *APIKeyUpdate {
+func (_u *ApiKeyUpdate) ClearGroup() *ApiKeyUpdate {
 	_u.mutation.ClearGroup()
 	return _u
 REDACTED
 
 // ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
-func (_u *APIKeyUpdate) ClearUsageLogs() *APIKeyUpdate {
+func (_u *ApiKeyUpdate) ClearUsageLogs() *ApiKeyUpdate {
 	_u.mutation.ClearUsageLogs()
 	return _u
 REDACTED
 
 // RemoveUsageLogIDs removes the "usage_logs" edge to UsageLog entities by IDs.
-func (_u *APIKeyUpdate) RemoveUsageLogIDs(ids ...int64) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) RemoveUsageLogIDs(ids ...int64) *ApiKeyUpdate {
 	_u.mutation.RemoveUsageLogIDs(ids...)
 	return _u
 REDACTED
 
 // RemoveUsageLogs removes "usage_logs" edges to UsageLog entities.
-func (_u *APIKeyUpdate) RemoveUsageLogs(v ...*UsageLog) *APIKeyUpdate {
+func (_u *ApiKeyUpdate) RemoveUsageLogs(v ...*UsageLog) *ApiKeyUpdate {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -197,7 +197,7 @@ REDACTED
 REDACTED
 
 // Save executes the query and returns the number of nodes affected by the update operation.
-func (_u *APIKeyUpdate) Save(ctx context.Context) (int, error) {
+func (_u *ApiKeyUpdate) Save(ctx context.Context) (int, error) {
 	if err := _u.defaults(); err != nil {
 		return 0, err
 REDACTED
@@ -205,7 +205,7 @@ REDACTED
 REDACTED
 
 // SaveX is like Save, but panics if an error occurs.
-func (_u *APIKeyUpdate) SaveX(ctx context.Context) int {
+func (_u *ApiKeyUpdate) SaveX(ctx context.Context) int {
 	affected, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -214,20 +214,20 @@ REDACTED
 REDACTED
 
 // Exec executes the query.
-func (_u *APIKeyUpdate) Exec(ctx context.Context) error {
+func (_u *ApiKeyUpdate) Exec(ctx context.Context) error {
 	_, err := _u.Save(ctx)
 	return err
 REDACTED
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_u *APIKeyUpdate) ExecX(ctx context.Context) {
+func (_u *ApiKeyUpdate) ExecX(ctx context.Context) {
 	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 REDACTED
 REDACTED
 
 // defaults sets the default values of the builder before save.
-func (_u *APIKeyUpdate) defaults() error {
+func (_u *ApiKeyUpdate) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
 		if apikey.UpdateDefaultUpdatedAt == nil {
 			return fmt.Errorf("ent: uninitialized apikey.UpdateDefaultUpdatedAt (forgotten import ent/runtime?)")
@@ -239,29 +239,29 @@ REDACTED
 REDACTED
 
 // check runs all checks and user-defined validators on the builder.
-func (_u *APIKeyUpdate) check() error {
+func (_u *ApiKeyUpdate) check() error {
 	if v, ok := _u.mutation.Key(); ok {
 		if err := apikey.KeyValidator(v); err != nil {
-			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "APIKey.key": %w`, err)REDACTED
+			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "ApiKey.key": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if v, ok := _u.mutation.Name(); ok {
 		if err := apikey.NameValidator(v); err != nil {
-			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "APIKey.name": %w`, err)REDACTED
+			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "ApiKey.name": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if v, ok := _u.mutation.Status(); ok {
 		if err := apikey.StatusValidator(v); err != nil {
-			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)REDACTED
+			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "ApiKey.status": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
+		return errors.New(`ent: clearing a required unique edge "ApiKey.user"`)
 REDACTED
 	return nil
 REDACTED
 
-func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+func (_u *ApiKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if err := _u.check(); err != nil {
 		return _node, err
 REDACTED
@@ -406,28 +406,28 @@ REDACTED
 	return _node, nil
 REDACTED
 
-// APIKeyUpdateOne is the builder for updating a single APIKey entity.
-type APIKeyUpdateOne struct {
+// ApiKeyUpdateOne is the builder for updating a single ApiKey entity.
+type ApiKeyUpdateOne struct {
 	config
 	fields   []string
 	hooks    []Hook
-	mutation *APIKeyMutation
+	mutation *ApiKeyMutation
 REDACTED
 
 // SetUpdatedAt sets the "updated_at" field.
-func (_u *APIKeyUpdateOne) SetUpdatedAt(v time.Time) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetUpdatedAt(v time.Time) *ApiKeyUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
 REDACTED
 
 // SetDeletedAt sets the "deleted_at" field.
-func (_u *APIKeyUpdateOne) SetDeletedAt(v time.Time) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetDeletedAt(v time.Time) *ApiKeyUpdateOne {
 	_u.mutation.SetDeletedAt(v)
 	return _u
 REDACTED
 
 // SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
-func (_u *APIKeyUpdateOne) SetNillableDeletedAt(v *time.Time) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetNillableDeletedAt(v *time.Time) *ApiKeyUpdateOne {
 	if v != nil {
 		_u.SetDeletedAt(*v)
 REDACTED
@@ -435,19 +435,19 @@ REDACTED
 REDACTED
 
 // ClearDeletedAt clears the value of the "deleted_at" field.
-func (_u *APIKeyUpdateOne) ClearDeletedAt() *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) ClearDeletedAt() *ApiKeyUpdateOne {
 	_u.mutation.ClearDeletedAt()
 	return _u
 REDACTED
 
 // SetUserID sets the "user_id" field.
-func (_u *APIKeyUpdateOne) SetUserID(v int64) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetUserID(v int64) *ApiKeyUpdateOne {
 	_u.mutation.SetUserID(v)
 	return _u
 REDACTED
 
 // SetNillableUserID sets the "user_id" field if the given value is not nil.
-func (_u *APIKeyUpdateOne) SetNillableUserID(v *int64) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetNillableUserID(v *int64) *ApiKeyUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
 REDACTED
@@ -455,13 +455,13 @@ REDACTED
 REDACTED
 
 // SetKey sets the "key" field.
-func (_u *APIKeyUpdateOne) SetKey(v string) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetKey(v string) *ApiKeyUpdateOne {
 	_u.mutation.SetKey(v)
 	return _u
 REDACTED
 
 // SetNillableKey sets the "key" field if the given value is not nil.
-func (_u *APIKeyUpdateOne) SetNillableKey(v *string) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetNillableKey(v *string) *ApiKeyUpdateOne {
 	if v != nil {
 		_u.SetKey(*v)
 REDACTED
@@ -469,13 +469,13 @@ REDACTED
 REDACTED
 
 // SetName sets the "name" field.
-func (_u *APIKeyUpdateOne) SetName(v string) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetName(v string) *ApiKeyUpdateOne {
 	_u.mutation.SetName(v)
 	return _u
 REDACTED
 
 // SetNillableName sets the "name" field if the given value is not nil.
-func (_u *APIKeyUpdateOne) SetNillableName(v *string) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetNillableName(v *string) *ApiKeyUpdateOne {
 	if v != nil {
 		_u.SetName(*v)
 REDACTED
@@ -483,13 +483,13 @@ REDACTED
 REDACTED
 
 // SetGroupID sets the "group_id" field.
-func (_u *APIKeyUpdateOne) SetGroupID(v int64) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetGroupID(v int64) *ApiKeyUpdateOne {
 	_u.mutation.SetGroupID(v)
 	return _u
 REDACTED
 
 // SetNillableGroupID sets the "group_id" field if the given value is not nil.
-func (_u *APIKeyUpdateOne) SetNillableGroupID(v *int64) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetNillableGroupID(v *int64) *ApiKeyUpdateOne {
 	if v != nil {
 		_u.SetGroupID(*v)
 REDACTED
@@ -497,19 +497,19 @@ REDACTED
 REDACTED
 
 // ClearGroupID clears the value of the "group_id" field.
-func (_u *APIKeyUpdateOne) ClearGroupID() *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) ClearGroupID() *ApiKeyUpdateOne {
 	_u.mutation.ClearGroupID()
 	return _u
 REDACTED
 
 // SetStatus sets the "status" field.
-func (_u *APIKeyUpdateOne) SetStatus(v string) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetStatus(v string) *ApiKeyUpdateOne {
 	_u.mutation.SetStatus(v)
 	return _u
 REDACTED
 
 // SetNillableStatus sets the "status" field if the given value is not nil.
-func (_u *APIKeyUpdateOne) SetNillableStatus(v *string) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetNillableStatus(v *string) *ApiKeyUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 REDACTED
@@ -517,23 +517,23 @@ REDACTED
 REDACTED
 
 // SetUser sets the "user" edge to the User entity.
-func (_u *APIKeyUpdateOne) SetUser(v *User) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetUser(v *User) *ApiKeyUpdateOne {
 	return _u.SetUserID(v.ID)
 REDACTED
 
 // SetGroup sets the "group" edge to the Group entity.
-func (_u *APIKeyUpdateOne) SetGroup(v *Group) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) SetGroup(v *Group) *ApiKeyUpdateOne {
 	return _u.SetGroupID(v.ID)
 REDACTED
 
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
-func (_u *APIKeyUpdateOne) AddUsageLogIDs(ids ...int64) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) AddUsageLogIDs(ids ...int64) *ApiKeyUpdateOne {
 	_u.mutation.AddUsageLogIDs(ids...)
 	return _u
 REDACTED
 
 // AddUsageLogs adds the "usage_logs" edges to the UsageLog entity.
-func (_u *APIKeyUpdateOne) AddUsageLogs(v ...*UsageLog) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) AddUsageLogs(v ...*UsageLog) *ApiKeyUpdateOne {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -541,37 +541,37 @@ REDACTED
 	return _u.AddUsageLogIDs(ids...)
 REDACTED
 
-// Mutation returns the APIKeyMutation object of the builder.
-func (_u *APIKeyUpdateOne) Mutation() *APIKeyMutation {
+// Mutation returns the ApiKeyMutation object of the builder.
+func (_u *ApiKeyUpdateOne) Mutation() *ApiKeyMutation {
 	return _u.mutation
 REDACTED
 
 // ClearUser clears the "user" edge to the User entity.
-func (_u *APIKeyUpdateOne) ClearUser() *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) ClearUser() *ApiKeyUpdateOne {
 	_u.mutation.ClearUser()
 	return _u
 REDACTED
 
 // ClearGroup clears the "group" edge to the Group entity.
-func (_u *APIKeyUpdateOne) ClearGroup() *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) ClearGroup() *ApiKeyUpdateOne {
 	_u.mutation.ClearGroup()
 	return _u
 REDACTED
 
 // ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
-func (_u *APIKeyUpdateOne) ClearUsageLogs() *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) ClearUsageLogs() *ApiKeyUpdateOne {
 	_u.mutation.ClearUsageLogs()
 	return _u
 REDACTED
 
 // RemoveUsageLogIDs removes the "usage_logs" edge to UsageLog entities by IDs.
-func (_u *APIKeyUpdateOne) RemoveUsageLogIDs(ids ...int64) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) RemoveUsageLogIDs(ids ...int64) *ApiKeyUpdateOne {
 	_u.mutation.RemoveUsageLogIDs(ids...)
 	return _u
 REDACTED
 
 // RemoveUsageLogs removes "usage_logs" edges to UsageLog entities.
-func (_u *APIKeyUpdateOne) RemoveUsageLogs(v ...*UsageLog) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) RemoveUsageLogs(v ...*UsageLog) *ApiKeyUpdateOne {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -579,21 +579,21 @@ REDACTED
 	return _u.RemoveUsageLogIDs(ids...)
 REDACTED
 
-// Where appends a list predicates to the APIKeyUpdate builder.
-func (_u *APIKeyUpdateOne) Where(ps ...predicate.APIKey) *APIKeyUpdateOne {
+// Where appends a list predicates to the ApiKeyUpdate builder.
+func (_u *ApiKeyUpdateOne) Where(ps ...predicate.ApiKey) *ApiKeyUpdateOne {
 	_u.mutation.Where(ps...)
 	return _u
 REDACTED
 
 // Select allows selecting one or more fields (columns) of the returned entity.
 // The default is selecting all fields defined in the entity schema.
-func (_u *APIKeyUpdateOne) Select(field string, fields ...string) *APIKeyUpdateOne {
+func (_u *ApiKeyUpdateOne) Select(field string, fields ...string) *ApiKeyUpdateOne {
 	_u.fields = append([]string{fieldREDACTED, fields...)
 	return _u
 REDACTED
 
-// Save executes the query and returns the updated APIKey entity.
-func (_u *APIKeyUpdateOne) Save(ctx context.Context) (*APIKey, error) {
+// Save executes the query and returns the updated ApiKey entity.
+func (_u *ApiKeyUpdateOne) Save(ctx context.Context) (*ApiKey, error) {
 	if err := _u.defaults(); err != nil {
 		return nil, err
 REDACTED
@@ -601,7 +601,7 @@ REDACTED
 REDACTED
 
 // SaveX is like Save, but panics if an error occurs.
-func (_u *APIKeyUpdateOne) SaveX(ctx context.Context) *APIKey {
+func (_u *ApiKeyUpdateOne) SaveX(ctx context.Context) *ApiKey {
 	node, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -610,20 +610,20 @@ REDACTED
 REDACTED
 
 // Exec executes the query on the entity.
-func (_u *APIKeyUpdateOne) Exec(ctx context.Context) error {
+func (_u *ApiKeyUpdateOne) Exec(ctx context.Context) error {
 	_, err := _u.Save(ctx)
 	return err
 REDACTED
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_u *APIKeyUpdateOne) ExecX(ctx context.Context) {
+func (_u *ApiKeyUpdateOne) ExecX(ctx context.Context) {
 	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 REDACTED
 REDACTED
 
 // defaults sets the default values of the builder before save.
-func (_u *APIKeyUpdateOne) defaults() error {
+func (_u *ApiKeyUpdateOne) defaults() error {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
 		if apikey.UpdateDefaultUpdatedAt == nil {
 			return fmt.Errorf("ent: uninitialized apikey.UpdateDefaultUpdatedAt (forgotten import ent/runtime?)")
@@ -635,36 +635,36 @@ REDACTED
 REDACTED
 
 // check runs all checks and user-defined validators on the builder.
-func (_u *APIKeyUpdateOne) check() error {
+func (_u *ApiKeyUpdateOne) check() error {
 	if v, ok := _u.mutation.Key(); ok {
 		if err := apikey.KeyValidator(v); err != nil {
-			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "APIKey.key": %w`, err)REDACTED
+			return &ValidationError{Name: "key", err: fmt.Errorf(`ent: validator failed for field "ApiKey.key": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if v, ok := _u.mutation.Name(); ok {
 		if err := apikey.NameValidator(v); err != nil {
-			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "APIKey.name": %w`, err)REDACTED
+			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "ApiKey.name": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if v, ok := _u.mutation.Status(); ok {
 		if err := apikey.StatusValidator(v); err != nil {
-			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)REDACTED
+			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "ApiKey.status": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
+		return errors.New(`ent: clearing a required unique edge "ApiKey.user"`)
 REDACTED
 	return nil
 REDACTED
 
-func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err error) {
+func (_u *ApiKeyUpdateOne) sqlSave(ctx context.Context) (_node *ApiKey, err error) {
 	if err := _u.check(); err != nil {
 		return _node, err
 REDACTED
 	_spec := sqlgraph.NewUpdateSpec(apikey.Table, apikey.Columns, sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64))
 	id, ok := _u.mutation.ID()
 	if !ok {
-		return nil, &ValidationError{Name: "id", err: errors.New(`ent: missing "APIKey.id" for update`)REDACTED
+		return nil, &ValidationError{Name: "id", err: errors.New(`ent: missing "ApiKey.id" for update`)REDACTED
 REDACTED
 	_spec.Node.ID.Value = id
 	if fields := _u.fields; len(fields) > 0 {
@@ -807,7 +807,7 @@ REDACTED
 	REDACTED
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 REDACTED
-	_node = &APIKey{config: _u.configREDACTED
+	_node = &ApiKey{config: _u.configREDACTED
 	_spec.Assign = _node.assignValues
 	_spec.ScanValues = _node.scanValues
 	if err = sqlgraph.UpdateNode(ctx, _u.driver, _spec); err != nil {

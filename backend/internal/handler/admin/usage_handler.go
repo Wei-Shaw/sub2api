@@ -17,14 +17,14 @@ import (
 // UsageHandler handles admin usage-related requests
 type UsageHandler struct {
 	usageService  *service.UsageService
-	apiKeyService *service.APIKeyService
+	apiKeyService *service.ApiKeyService
 	adminService  service.AdminService
 REDACTED
 
 // NewUsageHandler creates a new admin usage handler
 func NewUsageHandler(
 	usageService *service.UsageService,
-	apiKeyService *service.APIKeyService,
+	apiKeyService *service.ApiKeyService,
 	adminService service.AdminService,
 ) *UsageHandler {
 	return &UsageHandler{
@@ -125,7 +125,7 @@ REDACTED
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	filters := usagestats.UsageLogFilters{
 		UserID:      userID,
-		APIKeyID:    apiKeyID,
+		ApiKeyID:    apiKeyID,
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
@@ -207,7 +207,7 @@ REDACTED else {
 REDACTED
 
 	if apiKeyID > 0 {
-		stats, err := h.usageService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
+		stats, err := h.usageService.GetStatsByApiKey(c.Request.Context(), apiKeyID, startTime, endTime)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -269,9 +269,9 @@ REDACTED
 	response.Success(c, result)
 REDACTED
 
-// SearchAPIKeys handles searching API keys by user
+// SearchApiKeys handles searching API keys by user
 // GET /api/v1/admin/usage/search-api-keys
-func (h *UsageHandler) SearchAPIKeys(c *gin.Context) {
+func (h *UsageHandler) SearchApiKeys(c *gin.Context) {
 	userIDStr := c.Query("user_id")
 	keyword := c.Query("q")
 
@@ -285,22 +285,22 @@ func (h *UsageHandler) SearchAPIKeys(c *gin.Context) {
 		userID = id
 REDACTED
 
-	keys, err := h.apiKeyService.SearchAPIKeys(c.Request.Context(), userID, keyword, 30)
+	keys, err := h.apiKeyService.SearchApiKeys(c.Request.Context(), userID, keyword, 30)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
 	// Return simplified API key list (only id and name)
-	type SimpleAPIKey struct {
+	type SimpleApiKey struct {
 		ID     int64  `json:"id"`
 		Name   string `json:"name"`
 		UserID int64  `json:"user_id"`
 REDACTED
 
-	result := make([]SimpleAPIKey, len(keys))
+	result := make([]SimpleApiKey, len(keys))
 	for i, k := range keys {
-		result[i] = SimpleAPIKey{
+		result[i] = SimpleApiKey{
 			ID:     k.ID,
 			Name:   k.Name,
 			UserID: k.UserID,

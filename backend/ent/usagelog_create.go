@@ -342,8 +342,8 @@ func (_c *UsageLogCreate) SetUser(v *User) *UsageLogCreate {
 	return _c.SetUserID(v.ID)
 REDACTED
 
-// SetAPIKey sets the "api_key" edge to the APIKey entity.
-func (_c *UsageLogCreate) SetAPIKey(v *APIKey) *UsageLogCreate {
+// SetAPIKey sets the "api_key" edge to the ApiKey entity.
+func (_c *UsageLogCreate) SetAPIKey(v *ApiKey) *UsageLogCreate {
 	return _c.SetAPIKeyID(v.ID)
 REDACTED
 

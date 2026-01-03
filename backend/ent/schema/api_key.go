@@ -12,25 +12,25 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// APIKey holds the schema definition for the APIKey entity.
-type APIKey struct {
+// ApiKey holds the schema definition for the ApiKey entity.
+type ApiKey struct {
 	ent.Schema
 REDACTED
 
-func (APIKey) Annotations() []schema.Annotation {
+func (ApiKey) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entsql.Annotation{Table: "api_keys"REDACTED,
 REDACTED
 REDACTED
 
-func (APIKey) Mixin() []ent.Mixin {
+func (ApiKey) Mixin() []ent.Mixin {
 	return []ent.Mixin{
 		mixins.TimeMixin{REDACTED,
 		mixins.SoftDeleteMixin{REDACTED,
 REDACTED
 REDACTED
 
-func (APIKey) Fields() []ent.Field {
+func (ApiKey) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("user_id"),
 		field.String("key").
@@ -49,7 +49,7 @@ func (APIKey) Fields() []ent.Field {
 REDACTED
 REDACTED
 
-func (APIKey) Edges() []ent.Edge {
+func (ApiKey) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("user", User.Type).
 			Ref("api_keys").
@@ -64,7 +64,7 @@ func (APIKey) Edges() []ent.Edge {
 REDACTED
 REDACTED
 
-func (APIKey) Indexes() []ent.Index {
+func (ApiKey) Indexes() []ent.Index {
 	return []ent.Index{
 		// key 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("user_id"),

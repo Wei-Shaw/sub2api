@@ -2,13 +2,10 @@ package middleware
 
 import (
 	"log"
-	"regexp"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
-
-var sensitiveQueryParamRE = regexp.MustCompile(`(?i)([?&](?:token|api_key)=)[^&#]*`)
 
 // Logger 请求日志中间件
 func Logger() gin.HandlerFunc {
@@ -29,7 +26,7 @@ func Logger() gin.HandlerFunc {
 		method := c.Request.Method
 
 		// 请求路径
-		path := sensitiveQueryParamRE.ReplaceAllString(c.Request.URL.RequestURI(), "${1REDACTED***")
+		path := c.Request.URL.Path
 
 		// 状态码
 		statusCode := c.Writer.Status()

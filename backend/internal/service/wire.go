@@ -54,35 +54,9 @@ func ProvideTimingWheelService() *TimingWheelService {
 	return svc
 REDACTED
 
-// ProvideAntigravityQuotaRefresher creates and starts AntigravityQuotaRefresher
-func ProvideAntigravityQuotaRefresher(
-	accountRepo AccountRepository,
-	proxyRepo ProxyRepository,
-	oauthSvc *AntigravityOAuthService,
-	cfg *config.Config,
-) *AntigravityQuotaRefresher {
-	svc := NewAntigravityQuotaRefresher(accountRepo, proxyRepo, oauthSvc, cfg)
-	svc.Start()
-	return svc
-REDACTED
-
 // ProvideDeferredService creates and starts DeferredService
 func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService) *DeferredService {
 	svc := NewDeferredService(accountRepo, timingWheel, 10*time.Second)
-	svc.Start()
-	return svc
-REDACTED
-
-// ProvideOpsMetricsCollector creates and starts OpsMetricsCollector.
-func ProvideOpsMetricsCollector(opsService *OpsService, concurrencyService *ConcurrencyService) *OpsMetricsCollector {
-	svc := NewOpsMetricsCollector(opsService, concurrencyService)
-	svc.Start()
-	return svc
-REDACTED
-
-// ProvideOpsAlertService creates and starts OpsAlertService.
-func ProvideOpsAlertService(opsService *OpsService, userService *UserService, emailService *EmailService) *OpsAlertService {
-	svc := NewOpsAlertService(opsService, userService, emailService)
 	svc.Start()
 	return svc
 REDACTED
@@ -101,14 +75,13 @@ var ProviderSet = wire.NewSet(
 	// Core services
 	NewAuthService,
 	NewUserService,
-	NewAPIKeyService,
+	NewApiKeyService,
 	NewGroupService,
 	NewAccountService,
 	NewProxyService,
 	NewRedeemService,
 	NewUsageService,
 	NewDashboardService,
-	NewOpsService,
 	ProvidePricingService,
 	NewBillingService,
 	NewBillingCacheService,
@@ -139,8 +112,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenRefreshService,
 	ProvideTimingWheelService,
 	ProvideDeferredService,
-	ProvideAntigravityQuotaRefresher,
-	ProvideOpsMetricsCollector,
-	ProvideOpsAlertService,
+	NewAntigravityQuotaFetcher,
 	NewUserAttributeService,
+	NewUsageCache,
 )

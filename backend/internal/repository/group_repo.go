@@ -293,8 +293,8 @@ REDACTED
 
 	// 2. Clear group_id for api keys bound to this group.
 	// 仅更新未软删除的记录，避免修改已删除数据，保证审计与历史回溯一致性。
-	// 与 APIKeyRepository 的软删除语义保持一致，减少跨模块行为差异。
-	if _, err := txClient.APIKey.Update().
+	// 与 ApiKeyRepository 的软删除语义保持一致，减少跨模块行为差异。
+	if _, err := txClient.ApiKey.Update().
 		Where(apikey.GroupIDEQ(id), apikey.DeletedAtIsNil()).
 		ClearGroupID().
 		Save(ctx); err != nil {

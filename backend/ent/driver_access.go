@@ -1,4 +1,3 @@
-// Package ent provides database entity definitions and operations.
 package ent
 
 import "entgo.io/ent/dialect"

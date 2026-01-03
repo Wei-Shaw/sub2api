@@ -243,7 +243,7 @@ REDACTED
 	return a
 REDACTED
 
-func mustCreateAPIKey(t *testing.T, client *dbent.Client, k *service.APIKey) *service.APIKey {
+func mustCreateApiKey(t *testing.T, client *dbent.Client, k *service.ApiKey) *service.ApiKey {
 REDACTED
 	ctx := context.Background()
 
@@ -257,7 +257,7 @@ REDACTED
 		k.Name = "default"
 REDACTED
 
-	create := client.APIKey.Create().
+	create := client.ApiKey.Create().
 		SetUserID(k.UserID).
 		SetKey(k.Key).
 		SetName(k.Name).

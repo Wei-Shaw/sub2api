@@ -12,26 +12,26 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 )
 
-// APIKeyDelete is the builder for deleting a APIKey entity.
-type APIKeyDelete struct {
+// ApiKeyDelete is the builder for deleting a ApiKey entity.
+type ApiKeyDelete struct {
 	config
 	hooks    []Hook
-	mutation *APIKeyMutation
+	mutation *ApiKeyMutation
 REDACTED
 
-// Where appends a list predicates to the APIKeyDelete builder.
-func (_d *APIKeyDelete) Where(ps ...predicate.APIKey) *APIKeyDelete {
+// Where appends a list predicates to the ApiKeyDelete builder.
+func (_d *ApiKeyDelete) Where(ps ...predicate.ApiKey) *ApiKeyDelete {
 	_d.mutation.Where(ps...)
 	return _d
 REDACTED
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (_d *APIKeyDelete) Exec(ctx context.Context) (int, error) {
+func (_d *ApiKeyDelete) Exec(ctx context.Context) (int, error) {
 	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 REDACTED
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *APIKeyDelete) ExecX(ctx context.Context) int {
+func (_d *ApiKeyDelete) ExecX(ctx context.Context) int {
 	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
@@ -39,7 +39,7 @@ REDACTED
 	return n
 REDACTED
 
-func (_d *APIKeyDelete) sqlExec(ctx context.Context) (int, error) {
+func (_d *ApiKeyDelete) sqlExec(ctx context.Context) (int, error) {
 	_spec := sqlgraph.NewDeleteSpec(apikey.Table, sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64))
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -56,19 +56,19 @@ REDACTED
 	return affected, err
 REDACTED
 
-// APIKeyDeleteOne is the builder for deleting a single APIKey entity.
-type APIKeyDeleteOne struct {
-	_d *APIKeyDelete
+// ApiKeyDeleteOne is the builder for deleting a single ApiKey entity.
+type ApiKeyDeleteOne struct {
+	_d *ApiKeyDelete
 REDACTED
 
-// Where appends a list predicates to the APIKeyDelete builder.
-func (_d *APIKeyDeleteOne) Where(ps ...predicate.APIKey) *APIKeyDeleteOne {
+// Where appends a list predicates to the ApiKeyDelete builder.
+func (_d *ApiKeyDeleteOne) Where(ps ...predicate.ApiKey) *ApiKeyDeleteOne {
 	_d._d.mutation.Where(ps...)
 	return _d
 REDACTED
 
 // Exec executes the deletion query.
-func (_d *APIKeyDeleteOne) Exec(ctx context.Context) error {
+func (_d *ApiKeyDeleteOne) Exec(ctx context.Context) error {
 	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
@@ -81,7 +81,7 @@ REDACTED
 REDACTED
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *APIKeyDeleteOne) ExecX(ctx context.Context) {
+func (_d *ApiKeyDeleteOne) ExecX(ctx context.Context) {
 	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 REDACTED

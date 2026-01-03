@@ -24,7 +24,7 @@ type apiKeyCache struct {
 	rdb *redis.Client
 REDACTED
 
-func NewAPIKeyCache(rdb *redis.Client) service.APIKeyCache {
+func NewApiKeyCache(rdb *redis.Client) service.ApiKeyCache {
 	return &apiKeyCache{rdb: rdbREDACTED
 REDACTED
 

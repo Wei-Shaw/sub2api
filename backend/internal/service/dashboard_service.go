@@ -43,8 +43,8 @@ REDACTED
 	return stats, nil
 REDACTED
 
-func (s *DashboardService) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {
-	trend, err := s.usageRepo.GetAPIKeyUsageTrend(ctx, startTime, endTime, granularity, limit)
+func (s *DashboardService) GetApiKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.ApiKeyUsageTrendPoint, error) {
+	trend, err := s.usageRepo.GetApiKeyUsageTrend(ctx, startTime, endTime, granularity, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get api key usage trend: %w", err)
 REDACTED
@@ -67,8 +67,8 @@ REDACTED
 	return stats, nil
 REDACTED
 
-func (s *DashboardService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchAPIKeyUsageStats, error) {
-	stats, err := s.usageRepo.GetBatchAPIKeyUsageStats(ctx, apiKeyIDs)
+func (s *DashboardService) GetBatchApiKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchApiKeyUsageStats, error) {
+	stats, err := s.usageRepo.GetBatchApiKeyUsageStats(ctx, apiKeyIDs)
 	if err != nil {
 		return nil, fmt.Errorf("get batch api key usage stats: %w", err)
 REDACTED

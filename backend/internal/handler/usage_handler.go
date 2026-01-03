@@ -18,11 +18,11 @@ import (
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
 	usageService  *service.UsageService
-	apiKeyService *service.APIKeyService
+	apiKeyService *service.ApiKeyService
 REDACTED
 
 // NewUsageHandler creates a new UsageHandler
-func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.APIKeyService) *UsageHandler {
+func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.ApiKeyService) *UsageHandler {
 	return &UsageHandler{
 		usageService:  usageService,
 		apiKeyService: apiKeyService,
@@ -111,7 +111,7 @@ REDACTED
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	filters := usagestats.UsageLogFilters{
 		UserID:      subject.UserID, // Always filter by current user for security
-		APIKeyID:    apiKeyID,
+		ApiKeyID:    apiKeyID,
 		Model:       model,
 		Stream:      stream,
 		BillingType: billingType,
@@ -235,7 +235,7 @@ REDACTED
 	var stats *service.UsageStats
 	var err error
 	if apiKeyID > 0 {
-		stats, err = h.usageService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
+		stats, err = h.usageService.GetStatsByApiKey(c.Request.Context(), apiKeyID, startTime, endTime)
 REDACTED else {
 		stats, err = h.usageService.GetStatsByUser(c.Request.Context(), subject.UserID, startTime, endTime)
 REDACTED
@@ -346,49 +346,49 @@ REDACTED
 REDACTED)
 REDACTED
 
-// BatchAPIKeysUsageRequest represents the request for batch API keys usage
-type BatchAPIKeysUsageRequest struct {
-	APIKeyIDs []int64 `json:"api_key_ids" binding:"required"`
+// BatchApiKeysUsageRequest represents the request for batch API keys usage
+type BatchApiKeysUsageRequest struct {
+	ApiKeyIDs []int64 `json:"api_key_ids" binding:"required"`
 REDACTED
 
-// DashboardAPIKeysUsage handles getting usage stats for user's own API keys
+// DashboardApiKeysUsage handles getting usage stats for user's own API keys
 // POST /api/v1/usage/dashboard/api-keys-usage
-func (h *UsageHandler) DashboardAPIKeysUsage(c *gin.Context) {
+func (h *UsageHandler) DashboardApiKeysUsage(c *gin.Context) {
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
 		return
 REDACTED
 
-	var req BatchAPIKeysUsageRequest
+	var req BatchApiKeysUsageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 REDACTED
 
-	if len(req.APIKeyIDs) == 0 {
+	if len(req.ApiKeyIDs) == 0 {
 		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 
 	// Limit the number of API key IDs to prevent SQL parameter overflow
-	if len(req.APIKeyIDs) > 100 {
+	if len(req.ApiKeyIDs) > 100 {
 		response.BadRequest(c, "Too many API key IDs (maximum 100 allowed)")
 		return
 REDACTED
 
-	validAPIKeyIDs, err := h.apiKeyService.VerifyOwnership(c.Request.Context(), subject.UserID, req.APIKeyIDs)
+	validApiKeyIDs, err := h.apiKeyService.VerifyOwnership(c.Request.Context(), subject.UserID, req.ApiKeyIDs)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	if len(validAPIKeyIDs) == 0 {
+	if len(validApiKeyIDs) == 0 {
 		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 
-	stats, err := h.usageService.GetBatchAPIKeyUsageStats(c.Request.Context(), validAPIKeyIDs)
+	stats, err := h.usageService.GetBatchApiKeyUsageStats(c.Request.Context(), validApiKeyIDs)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

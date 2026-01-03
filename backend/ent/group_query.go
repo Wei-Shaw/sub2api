@@ -31,7 +31,7 @@ type GroupQuery struct {
 	order                 []group.OrderOption
 	inters                []Interceptor
 	predicates            []predicate.Group
-	withAPIKeys           *APIKeyQuery
+	withAPIKeys           *ApiKeyQuery
 	withRedeemCodes       *RedeemCodeQuery
 	withSubscriptions     *UserSubscriptionQuery
 	withUsageLogs         *UsageLogQuery
@@ -76,8 +76,8 @@ func (_q *GroupQuery) Order(o ...group.OrderOption) *GroupQuery {
 REDACTED
 
 // QueryAPIKeys chains the current query on the "api_keys" edge.
-func (_q *GroupQuery) QueryAPIKeys() *APIKeyQuery {
-	query := (&APIKeyClient{config: _q.configREDACTED).Query()
+func (_q *GroupQuery) QueryAPIKeys() *ApiKeyQuery {
+	query := (&ApiKeyClient{config: _q.configREDACTED).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -459,8 +459,8 @@ REDACTED
 
 // WithAPIKeys tells the query-builder to eager-load the nodes that are connected to
 // the "api_keys" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *GroupQuery) WithAPIKeys(opts ...func(*APIKeyQuery)) *GroupQuery {
-	query := (&APIKeyClient{config: _q.configREDACTED).Query()
+func (_q *GroupQuery) WithAPIKeys(opts ...func(*ApiKeyQuery)) *GroupQuery {
+	query := (&ApiKeyClient{config: _q.configREDACTED).Query()
 	for _, opt := range opts {
 		opt(query)
 REDACTED
@@ -654,8 +654,8 @@ REDACTED
 REDACTED
 	if query := _q.withAPIKeys; query != nil {
 		if err := _q.loadAPIKeys(ctx, query, nodes,
-			func(n *Group) { n.Edges.APIKeys = []*APIKey{REDACTED REDACTED,
-			func(n *Group, e *APIKey) { n.Edges.APIKeys = append(n.Edges.APIKeys, e) REDACTED); err != nil {
+			func(n *Group) { n.Edges.APIKeys = []*ApiKey{REDACTED REDACTED,
+			func(n *Group, e *ApiKey) { n.Edges.APIKeys = append(n.Edges.APIKeys, e) REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
@@ -711,7 +711,7 @@ REDACTED
 	return nodes, nil
 REDACTED
 
-func (_q *GroupQuery) loadAPIKeys(ctx context.Context, query *APIKeyQuery, nodes []*Group, init func(*Group), assign func(*Group, *APIKey)) error {
+func (_q *GroupQuery) loadAPIKeys(ctx context.Context, query *ApiKeyQuery, nodes []*Group, init func(*Group), assign func(*Group, *ApiKey)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[int64]*Group)
 	for i := range nodes {
@@ -724,7 +724,7 @@ REDACTED
 	if len(query.ctx.Fields) > 0 {
 		query.ctx.AppendFieldOnce(apikey.FieldGroupID)
 REDACTED
-	query.Where(predicate.APIKey(func(s *sql.Selector) {
+	query.Where(predicate.ApiKey(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(group.APIKeysColumn), fks...))
 REDACTED))
 	neighbors, err := query.All(ctx)

@@ -14,39 +14,39 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound     = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrApiKeyNotFound     = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
 	ErrGroupNotAllowed    = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists       = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrApiKeyExists       = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrApiKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrApiKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrApiKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
 )
 
 const (
 	apiKeyMaxErrorsPerHour = 20
 )
 
-type APIKeyRepository interface {
-	Create(ctx context.Context, key *APIKey) error
-	GetByID(ctx context.Context, id int64) (*APIKey, error)
+type ApiKeyRepository interface {
+	Create(ctx context.Context, key *ApiKey) error
+	GetByID(ctx context.Context, id int64) (*ApiKey, error)
 	// GetOwnerID 仅获取 API Key 的所有者 ID，用于删除前的轻量级权限验证
 	GetOwnerID(ctx context.Context, id int64) (int64, error)
-	GetByKey(ctx context.Context, key string) (*APIKey, error)
-	Update(ctx context.Context, key *APIKey) error
+	GetByKey(ctx context.Context, key string) (*ApiKey, error)
+	Update(ctx context.Context, key *ApiKey) error
 	Delete(ctx context.Context, id int64) error
 
-	ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error)
+	ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]ApiKey, *pagination.PaginationResult, error)
 	VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error)
 	CountByUserID(ctx context.Context, userID int64) (int64, error)
 	ExistsByKey(ctx context.Context, key string) (bool, error)
-	ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error)
-	SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error)
+	ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]ApiKey, *pagination.PaginationResult, error)
+	SearchApiKeys(ctx context.Context, userID int64, keyword string, limit int) ([]ApiKey, error)
 	ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error)
 	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
 REDACTED
 
-// APIKeyCache defines cache operations for API key service
-type APIKeyCache interface {
+// ApiKeyCache defines cache operations for API key service
+type ApiKeyCache interface {
 	GetCreateAttemptCount(ctx context.Context, userID int64) (int, error)
 	IncrementCreateAttemptCount(ctx context.Context, userID int64) error
 	DeleteCreateAttemptCount(ctx context.Context, userID int64) error
@@ -55,40 +55,40 @@ type APIKeyCache interface {
 	SetDailyUsageExpiry(ctx context.Context, apiKey string, ttl time.Duration) error
 REDACTED
 
-// CreateAPIKeyRequest 创建API Key请求
-type CreateAPIKeyRequest struct {
+// CreateApiKeyRequest 创建API Key请求
+type CreateApiKeyRequest struct {
 	Name      string  `json:"name"`
 	GroupID   *int64  `json:"group_id"`
 	CustomKey *string `json:"custom_key"` // 可选的自定义key
 REDACTED
 
-// UpdateAPIKeyRequest 更新API Key请求
-type UpdateAPIKeyRequest struct {
+// UpdateApiKeyRequest 更新API Key请求
+type UpdateApiKeyRequest struct {
 	Name    *string `json:"name"`
 	GroupID *int64  `json:"group_id"`
 	Status  *string `json:"status"`
 REDACTED
 
-// APIKeyService API Key服务
-type APIKeyService struct {
-	apiKeyRepo  APIKeyRepository
+// ApiKeyService API Key服务
+type ApiKeyService struct {
+	apiKeyRepo  ApiKeyRepository
 	userRepo    UserRepository
 	groupRepo   GroupRepository
 	userSubRepo UserSubscriptionRepository
-	cache       APIKeyCache
+	cache       ApiKeyCache
 	cfg         *config.Config
 REDACTED
 
-// NewAPIKeyService 创建API Key服务实例
-func NewAPIKeyService(
-	apiKeyRepo APIKeyRepository,
+// NewApiKeyService 创建API Key服务实例
+func NewApiKeyService(
+	apiKeyRepo ApiKeyRepository,
 	userRepo UserRepository,
 	groupRepo GroupRepository,
 	userSubRepo UserSubscriptionRepository,
-	cache APIKeyCache,
+	cache ApiKeyCache,
 	cfg *config.Config,
-) *APIKeyService {
-	return &APIKeyService{
+) *ApiKeyService {
+	return &ApiKeyService{
 		apiKeyRepo:  apiKeyRepo,
 		userRepo:    userRepo,
 		groupRepo:   groupRepo,
@@ -99,7 +99,7 @@ REDACTED
 REDACTED
 
 // GenerateKey 生成随机API Key
-func (s *APIKeyService) GenerateKey() (string, error) {
+func (s *ApiKeyService) GenerateKey() (string, error) {
 	// 生成32字节随机数据
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
@@ -107,7 +107,7 @@ func (s *APIKeyService) GenerateKey() (string, error) {
 REDACTED
 
 	// 转换为十六进制字符串并添加前缀
-	prefix := s.cfg.Default.APIKeyPrefix
+	prefix := s.cfg.Default.ApiKeyPrefix
 	if prefix == "" {
 		prefix = "sk-"
 REDACTED
@@ -117,10 +117,10 @@ REDACTED
 REDACTED
 
 // ValidateCustomKey 验证自定义API Key格式
-func (s *APIKeyService) ValidateCustomKey(key string) error {
+func (s *ApiKeyService) ValidateCustomKey(key string) error {
 	// 检查长度
 	if len(key) < 16 {
-		return ErrAPIKeyTooShort
+		return ErrApiKeyTooShort
 REDACTED
 
 	// 检查字符：只允许字母、数字、下划线、连字符
@@ -131,14 +131,14 @@ REDACTED
 			c == '_' || c == '-' {
 			continue
 	REDACTED
-		return ErrAPIKeyInvalidChars
+		return ErrApiKeyInvalidChars
 REDACTED
 
 	return nil
 REDACTED
 
-// checkAPIKeyRateLimit 检查用户创建自定义Key的错误次数是否超限
-func (s *APIKeyService) checkAPIKeyRateLimit(ctx context.Context, userID int64) error {
+// checkApiKeyRateLimit 检查用户创建自定义Key的错误次数是否超限
+func (s *ApiKeyService) checkApiKeyRateLimit(ctx context.Context, userID int64) error {
 	if s.cache == nil {
 		return nil
 REDACTED
@@ -150,14 +150,14 @@ REDACTED
 REDACTED
 
 	if count >= apiKeyMaxErrorsPerHour {
-		return ErrAPIKeyRateLimited
+		return ErrApiKeyRateLimited
 REDACTED
 
 	return nil
 REDACTED
 
-// incrementAPIKeyErrorCount 增加用户创建自定义Key的错误计数
-func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID int64) {
+// incrementApiKeyErrorCount 增加用户创建自定义Key的错误计数
+func (s *ApiKeyService) incrementApiKeyErrorCount(ctx context.Context, userID int64) {
 	if s.cache == nil {
 		return
 REDACTED
@@ -168,7 +168,7 @@ REDACTED
 // canUserBindGroup 检查用户是否可以绑定指定分组
 // 对于订阅类型分组：检查用户是否有有效订阅
 // 对于标准类型分组：使用原有的 AllowedGroups 和 IsExclusive 逻辑
-func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
+func (s *ApiKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
 	// 订阅类型分组：需要有效订阅
 	if group.IsSubscriptionType() {
 		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
@@ -179,7 +179,7 @@ REDACTED
 REDACTED
 
 // Create 创建API Key
-func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
+func (s *ApiKeyService) Create(ctx context.Context, userID int64, req CreateApiKeyRequest) (*ApiKey, error) {
 	// 验证用户存在
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -204,7 +204,7 @@ REDACTED
 	// 判断是否使用自定义Key
 	if req.CustomKey != nil && *req.CustomKey != "" {
 		// 检查限流（仅对自定义key进行限流）
-		if err := s.checkAPIKeyRateLimit(ctx, userID); err != nil {
+		if err := s.checkApiKeyRateLimit(ctx, userID); err != nil {
 			return nil, err
 	REDACTED
 
@@ -219,9 +219,9 @@ REDACTED
 			return nil, fmt.Errorf("check key exists: %w", err)
 	REDACTED
 		if exists {
-			// Key已存在,增加错误计数
-			s.incrementAPIKeyErrorCount(ctx, userID)
-			return nil, ErrAPIKeyExists
+			// Key已存在，增加错误计数
+			s.incrementApiKeyErrorCount(ctx, userID)
+			return nil, ErrApiKeyExists
 	REDACTED
 
 		key = *req.CustomKey
@@ -235,7 +235,7 @@ REDACTED else {
 REDACTED
 
 	// 创建API Key记录
-	apiKey := &APIKey{
+	apiKey := &ApiKey{
 		UserID:  userID,
 		Key:     key,
 		Name:    req.Name,
@@ -251,7 +251,7 @@ REDACTED
 REDACTED
 
 // List 获取用户的API Key列表
-func (s *APIKeyService) List(ctx context.Context, userID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error) {
+func (s *ApiKeyService) List(ctx context.Context, userID int64, params pagination.PaginationParams) ([]ApiKey, *pagination.PaginationResult, error) {
 	keys, pagination, err := s.apiKeyRepo.ListByUserID(ctx, userID, params)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
@@ -259,7 +259,7 @@ REDACTED
 	return keys, pagination, nil
 REDACTED
 
-func (s *APIKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
+func (s *ApiKeyService) VerifyOwnership(ctx context.Context, userID int64, apiKeyIDs []int64) ([]int64, error) {
 	if len(apiKeyIDs) == 0 {
 		return []int64{REDACTED, nil
 REDACTED
@@ -272,7 +272,7 @@ REDACTED
 REDACTED
 
 // GetByID 根据ID获取API Key
-func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) {
+func (s *ApiKeyService) GetByID(ctx context.Context, id int64) (*ApiKey, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
@@ -281,7 +281,7 @@ REDACTED
 REDACTED
 
 // GetByKey 根据Key字符串获取API Key（用于认证）
-func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, error) {
+func (s *ApiKeyService) GetByKey(ctx context.Context, key string) (*ApiKey, error) {
 	// 尝试从Redis缓存获取
 	cacheKey := fmt.Sprintf("apikey:%s", key)
 
@@ -301,7 +301,7 @@ REDACTED
 REDACTED
 
 // Update 更新API Key
-func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
+func (s *ApiKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateApiKeyRequest) (*ApiKey, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
@@ -353,8 +353,8 @@ REDACTED
 
 // Delete 删除API Key
 // 优化：使用 GetOwnerID 替代 GetByID 进行权限验证，
-// 避免加载完整 APIKey 对象及其关联数据（User、Group），提升删除操作的性能
-func (s *APIKeyService) Delete(ctx context.Context, id int64, userID int64) error {
+// 避免加载完整 ApiKey 对象及其关联数据（User、Group），提升删除操作的性能
+func (s *ApiKeyService) Delete(ctx context.Context, id int64, userID int64) error {
 	// 仅获取所有者 ID 用于权限验证，而非加载完整对象
 	ownerID, err := s.apiKeyRepo.GetOwnerID(ctx, id)
 	if err != nil {
@@ -379,7 +379,7 @@ REDACTED
 REDACTED
 
 // ValidateKey 验证API Key是否有效（用于认证中间件）
-func (s *APIKeyService) ValidateKey(ctx context.Context, key string) (*APIKey, *User, error) {
+func (s *ApiKeyService) ValidateKey(ctx context.Context, key string) (*ApiKey, *User, error) {
 	// 获取API Key
 	apiKey, err := s.GetByKey(ctx, key)
 	if err != nil {
@@ -406,7 +406,7 @@ REDACTED
 REDACTED
 
 // IncrementUsage 增加API Key使用次数（可选：用于统计）
-func (s *APIKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
+func (s *ApiKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 	// 使用Redis计数器
 	if s.cache != nil {
 		cacheKey := fmt.Sprintf("apikey:usage:%d:%s", keyID, timezone.Now().Format("2006-01-02"))
@@ -423,7 +423,7 @@ REDACTED
 // 返回用户可以选择的分组：
 // - 标准类型分组：公开的（非专属）或用户被明确允许的
 // - 订阅类型分组：用户有有效订阅的
-func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error) {
+func (s *ApiKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error) {
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -460,7 +460,7 @@ REDACTED
 REDACTED
 
 // canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组（使用预加载的订阅数据）
-func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
+func (s *ApiKeyService) canUserBindGroupInternal(user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
 	// 订阅类型分组：需要有效订阅
 	if group.IsSubscriptionType() {
 		return subscribedGroupIDs[group.ID]
@@ -469,8 +469,8 @@ REDACTED
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 REDACTED
 
-func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {
-	keys, err := s.apiKeyRepo.SearchAPIKeys(ctx, userID, keyword, limit)
+func (s *ApiKeyService) SearchApiKeys(ctx context.Context, userID int64, keyword string, limit int) ([]ApiKey, error) {
+	keys, err := s.apiKeyRepo.SearchApiKeys(ctx, userID, keyword, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search api keys: %w", err)
 REDACTED

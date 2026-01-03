@@ -1,4 +1,3 @@
-// Package server provides HTTP server setup and routing configuration.
 package server
 
 import (
@@ -26,8 +25,8 @@ func ProvideRouter(
 	handlers *handler.Handlers,
 	jwtAuth middleware2.JWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
-	apiKeyAuth middleware2.APIKeyAuthMiddleware,
-	apiKeyService *service.APIKeyService,
+	apiKeyAuth middleware2.ApiKeyAuthMiddleware,
+	apiKeyService *service.ApiKeyService,
 	subscriptionService *service.SubscriptionService,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {

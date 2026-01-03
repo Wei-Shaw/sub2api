@@ -19,13 +19,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
-// APIKeyQuery is the builder for querying APIKey entities.
-type APIKeyQuery struct {
+// ApiKeyQuery is the builder for querying ApiKey entities.
+type ApiKeyQuery struct {
 	config
 	ctx           *QueryContext
 	order         []apikey.OrderOption
 	inters        []Interceptor
-	predicates    []predicate.APIKey
+	predicates    []predicate.ApiKey
 	withUser      *UserQuery
 	withGroup     *GroupQuery
 	withUsageLogs *UsageLogQuery
@@ -34,39 +34,39 @@ type APIKeyQuery struct {
 	path func(context.Context) (*sql.Selector, error)
 REDACTED
 
-// Where adds a new predicate for the APIKeyQuery builder.
-func (_q *APIKeyQuery) Where(ps ...predicate.APIKey) *APIKeyQuery {
+// Where adds a new predicate for the ApiKeyQuery builder.
+func (_q *ApiKeyQuery) Where(ps ...predicate.ApiKey) *ApiKeyQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 REDACTED
 
 // Limit the number of records to be returned by this query.
-func (_q *APIKeyQuery) Limit(limit int) *APIKeyQuery {
+func (_q *ApiKeyQuery) Limit(limit int) *ApiKeyQuery {
 	_q.ctx.Limit = &limit
 	return _q
 REDACTED
 
 // Offset to start from.
-func (_q *APIKeyQuery) Offset(offset int) *APIKeyQuery {
+func (_q *ApiKeyQuery) Offset(offset int) *ApiKeyQuery {
 	_q.ctx.Offset = &offset
 	return _q
 REDACTED
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *APIKeyQuery) Unique(unique bool) *APIKeyQuery {
+func (_q *ApiKeyQuery) Unique(unique bool) *ApiKeyQuery {
 	_q.ctx.Unique = &unique
 	return _q
 REDACTED
 
 // Order specifies how the records should be ordered.
-func (_q *APIKeyQuery) Order(o ...apikey.OrderOption) *APIKeyQuery {
+func (_q *ApiKeyQuery) Order(o ...apikey.OrderOption) *ApiKeyQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 REDACTED
 
 // QueryUser chains the current query on the "user" edge.
-func (_q *APIKeyQuery) QueryUser() *UserQuery {
+func (_q *ApiKeyQuery) QueryUser() *UserQuery {
 	query := (&UserClient{config: _q.configREDACTED).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -88,7 +88,7 @@ REDACTED
 REDACTED
 
 // QueryGroup chains the current query on the "group" edge.
-func (_q *APIKeyQuery) QueryGroup() *GroupQuery {
+func (_q *ApiKeyQuery) QueryGroup() *GroupQuery {
 	query := (&GroupClient{config: _q.configREDACTED).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -110,7 +110,7 @@ REDACTED
 REDACTED
 
 // QueryUsageLogs chains the current query on the "usage_logs" edge.
-func (_q *APIKeyQuery) QueryUsageLogs() *UsageLogQuery {
+func (_q *ApiKeyQuery) QueryUsageLogs() *UsageLogQuery {
 	query := (&UsageLogClient{config: _q.configREDACTED).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -131,9 +131,9 @@ REDACTED
 	return query
 REDACTED
 
-// First returns the first APIKey entity from the query.
-// Returns a *NotFoundError when no APIKey was found.
-func (_q *APIKeyQuery) First(ctx context.Context) (*APIKey, error) {
+// First returns the first ApiKey entity from the query.
+// Returns a *NotFoundError when no ApiKey was found.
+func (_q *ApiKeyQuery) First(ctx context.Context) (*ApiKey, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ REDACTED
 REDACTED
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *APIKeyQuery) FirstX(ctx context.Context) *APIKey {
+func (_q *ApiKeyQuery) FirstX(ctx context.Context) *ApiKey {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -153,9 +153,9 @@ REDACTED
 	return node
 REDACTED
 
-// FirstID returns the first APIKey ID from the query.
-// Returns a *NotFoundError when no APIKey ID was found.
-func (_q *APIKeyQuery) FirstID(ctx context.Context) (id int64, err error) {
+// FirstID returns the first ApiKey ID from the query.
+// Returns a *NotFoundError when no ApiKey ID was found.
+func (_q *ApiKeyQuery) FirstID(ctx context.Context) (id int64, err error) {
 	var ids []int64
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
@@ -168,7 +168,7 @@ REDACTED
 REDACTED
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *APIKeyQuery) FirstIDX(ctx context.Context) int64 {
+func (_q *ApiKeyQuery) FirstIDX(ctx context.Context) int64 {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -176,10 +176,10 @@ REDACTED
 	return id
 REDACTED
 
-// Only returns a single APIKey entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one APIKey entity is found.
-// Returns a *NotFoundError when no APIKey entities are found.
-func (_q *APIKeyQuery) Only(ctx context.Context) (*APIKey, error) {
+// Only returns a single ApiKey entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one ApiKey entity is found.
+// Returns a *NotFoundError when no ApiKey entities are found.
+func (_q *ApiKeyQuery) Only(ctx context.Context) (*ApiKey, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ REDACTED
 REDACTED
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *APIKeyQuery) OnlyX(ctx context.Context) *APIKey {
+func (_q *ApiKeyQuery) OnlyX(ctx context.Context) *ApiKey {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -203,10 +203,10 @@ REDACTED
 	return node
 REDACTED
 
-// OnlyID is like Only, but returns the only APIKey ID in the query.
-// Returns a *NotSingularError when more than one APIKey ID is found.
+// OnlyID is like Only, but returns the only ApiKey ID in the query.
+// Returns a *NotSingularError when more than one ApiKey ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *APIKeyQuery) OnlyID(ctx context.Context) (id int64, err error) {
+func (_q *ApiKeyQuery) OnlyID(ctx context.Context) (id int64, err error) {
 	var ids []int64
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -223,7 +223,7 @@ REDACTED
 REDACTED
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *APIKeyQuery) OnlyIDX(ctx context.Context) int64 {
+func (_q *ApiKeyQuery) OnlyIDX(ctx context.Context) int64 {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -231,18 +231,18 @@ REDACTED
 	return id
 REDACTED
 
-// All executes the query and returns a list of APIKeys.
-func (_q *APIKeyQuery) All(ctx context.Context) ([]*APIKey, error) {
+// All executes the query and returns a list of ApiKeys.
+func (_q *ApiKeyQuery) All(ctx context.Context) ([]*ApiKey, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 REDACTED
-	qr := querierAll[[]*APIKey, *APIKeyQuery]()
-	return withInterceptors[[]*APIKey](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*ApiKey, *ApiKeyQuery]()
+	return withInterceptors[[]*ApiKey](ctx, _q, qr, _q.inters)
 REDACTED
 
 // AllX is like All, but panics if an error occurs.
-func (_q *APIKeyQuery) AllX(ctx context.Context) []*APIKey {
+func (_q *ApiKeyQuery) AllX(ctx context.Context) []*ApiKey {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -250,8 +250,8 @@ REDACTED
 	return nodes
 REDACTED
 
-// IDs executes the query and returns a list of APIKey IDs.
-func (_q *APIKeyQuery) IDs(ctx context.Context) (ids []int64, err error) {
+// IDs executes the query and returns a list of ApiKey IDs.
+func (_q *ApiKeyQuery) IDs(ctx context.Context) (ids []int64, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 REDACTED
@@ -263,7 +263,7 @@ REDACTED
 REDACTED
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *APIKeyQuery) IDsX(ctx context.Context) []int64 {
+func (_q *ApiKeyQuery) IDsX(ctx context.Context) []int64 {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -272,16 +272,16 @@ REDACTED
 REDACTED
 
 // Count returns the count of the given query.
-func (_q *APIKeyQuery) Count(ctx context.Context) (int, error) {
+func (_q *ApiKeyQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 REDACTED
-	return withInterceptors[int](ctx, _q, querierCount[*APIKeyQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*ApiKeyQuery](), _q.inters)
 REDACTED
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *APIKeyQuery) CountX(ctx context.Context) int {
+func (_q *ApiKeyQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -290,7 +290,7 @@ REDACTED
 REDACTED
 
 // Exist returns true if the query has elements in the graph.
-func (_q *APIKeyQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *ApiKeyQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -303,7 +303,7 @@ REDACTED
 REDACTED
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *APIKeyQuery) ExistX(ctx context.Context) bool {
+func (_q *ApiKeyQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -311,18 +311,18 @@ REDACTED
 	return exist
 REDACTED
 
-// Clone returns a duplicate of the APIKeyQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the ApiKeyQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *APIKeyQuery) Clone() *APIKeyQuery {
+func (_q *ApiKeyQuery) Clone() *ApiKeyQuery {
 	if _q == nil {
 		return nil
 REDACTED
-	return &APIKeyQuery{
+	return &ApiKeyQuery{
 		config:        _q.config,
 		ctx:           _q.ctx.Clone(),
 		order:         append([]apikey.OrderOption{REDACTED, _q.order...),
 		inters:        append([]Interceptor{REDACTED, _q.inters...),
-		predicates:    append([]predicate.APIKey{REDACTED, _q.predicates...),
+		predicates:    append([]predicate.ApiKey{REDACTED, _q.predicates...),
 		withUser:      _q.withUser.Clone(),
 		withGroup:     _q.withGroup.Clone(),
 		withUsageLogs: _q.withUsageLogs.Clone(),
@@ -334,7 +334,7 @@ REDACTED
 
 // WithUser tells the query-builder to eager-load the nodes that are connected to
 // the "user" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *APIKeyQuery) WithUser(opts ...func(*UserQuery)) *APIKeyQuery {
+func (_q *ApiKeyQuery) WithUser(opts ...func(*UserQuery)) *ApiKeyQuery {
 	query := (&UserClient{config: _q.configREDACTED).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -345,7 +345,7 @@ REDACTED
 
 // WithGroup tells the query-builder to eager-load the nodes that are connected to
 // the "group" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *APIKeyQuery) WithGroup(opts ...func(*GroupQuery)) *APIKeyQuery {
+func (_q *ApiKeyQuery) WithGroup(opts ...func(*GroupQuery)) *ApiKeyQuery {
 	query := (&GroupClient{config: _q.configREDACTED).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -356,7 +356,7 @@ REDACTED
 
 // WithUsageLogs tells the query-builder to eager-load the nodes that are connected to
 // the "usage_logs" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *APIKeyQuery) WithUsageLogs(opts ...func(*UsageLogQuery)) *APIKeyQuery {
+func (_q *ApiKeyQuery) WithUsageLogs(opts ...func(*UsageLogQuery)) *ApiKeyQuery {
 	query := (&UsageLogClient{config: _q.configREDACTED).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -375,13 +375,13 @@ REDACTED
 //		Count int `json:"count,omitempty"`
 //REDACTED
 //
-//	client.APIKey.Query().
+//	client.ApiKey.Query().
 //		GroupBy(apikey.FieldCreatedAt).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *APIKeyQuery) GroupBy(field string, fields ...string) *APIKeyGroupBy {
+func (_q *ApiKeyQuery) GroupBy(field string, fields ...string) *ApiKeyGroupBy {
 	_q.ctx.Fields = append([]string{fieldREDACTED, fields...)
-	grbuild := &APIKeyGroupBy{build: _qREDACTED
+	grbuild := &ApiKeyGroupBy{build: _qREDACTED
 	grbuild.flds = &_q.ctx.Fields
 	grbuild.label = apikey.Label
 	grbuild.scan = grbuild.Scan
@@ -397,23 +397,23 @@ REDACTED
 //		CreatedAt time.Time `json:"created_at,omitempty"`
 //REDACTED
 //
-//	client.APIKey.Query().
+//	client.ApiKey.Query().
 //		Select(apikey.FieldCreatedAt).
 //		Scan(ctx, &v)
-func (_q *APIKeyQuery) Select(fields ...string) *APIKeySelect {
+func (_q *ApiKeyQuery) Select(fields ...string) *ApiKeySelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &APIKeySelect{APIKeyQuery: _qREDACTED
+	sbuild := &ApiKeySelect{ApiKeyQuery: _qREDACTED
 	sbuild.label = apikey.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 REDACTED
 
-// Aggregate returns a APIKeySelect configured with the given aggregations.
-func (_q *APIKeyQuery) Aggregate(fns ...AggregateFunc) *APIKeySelect {
+// Aggregate returns a ApiKeySelect configured with the given aggregations.
+func (_q *ApiKeyQuery) Aggregate(fns ...AggregateFunc) *ApiKeySelect {
 	return _q.Select().Aggregate(fns...)
 REDACTED
 
-func (_q *APIKeyQuery) prepareQuery(ctx context.Context) error {
+func (_q *ApiKeyQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -439,9 +439,9 @@ REDACTED
 	return nil
 REDACTED
 
-func (_q *APIKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*APIKey, error) {
+func (_q *ApiKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*ApiKey, error) {
 	var (
-		nodes       = []*APIKey{REDACTED
+		nodes       = []*ApiKey{REDACTED
 		_spec       = _q.querySpec()
 		loadedTypes = [3]bool{
 			_q.withUser != nil,
@@ -450,10 +450,10 @@ func (_q *APIKeyQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*APIKe
 	REDACTED
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*APIKey).scanValues(nil, columns)
+		return (*ApiKey).scanValues(nil, columns)
 REDACTED
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &APIKey{config: _q.configREDACTED
+		node := &ApiKey{config: _q.configREDACTED
 		nodes = append(nodes, node)
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
@@ -469,29 +469,29 @@ REDACTED
 REDACTED
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
-			func(n *APIKey, e *User) { n.Edges.User = e REDACTED); err != nil {
+			func(n *ApiKey, e *User) { n.Edges.User = e REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
 	if query := _q.withGroup; query != nil {
 		if err := _q.loadGroup(ctx, query, nodes, nil,
-			func(n *APIKey, e *Group) { n.Edges.Group = e REDACTED); err != nil {
+			func(n *ApiKey, e *Group) { n.Edges.Group = e REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
 	if query := _q.withUsageLogs; query != nil {
 		if err := _q.loadUsageLogs(ctx, query, nodes,
-			func(n *APIKey) { n.Edges.UsageLogs = []*UsageLog{REDACTED REDACTED,
-			func(n *APIKey, e *UsageLog) { n.Edges.UsageLogs = append(n.Edges.UsageLogs, e) REDACTED); err != nil {
+			func(n *ApiKey) { n.Edges.UsageLogs = []*UsageLog{REDACTED REDACTED,
+			func(n *ApiKey, e *UsageLog) { n.Edges.UsageLogs = append(n.Edges.UsageLogs, e) REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
 	return nodes, nil
 REDACTED
 
-func (_q *APIKeyQuery) loadUser(ctx context.Context, query *UserQuery, nodes []*APIKey, init func(*APIKey), assign func(*APIKey, *User)) error {
+func (_q *ApiKeyQuery) loadUser(ctx context.Context, query *UserQuery, nodes []*ApiKey, init func(*ApiKey), assign func(*ApiKey, *User)) error {
 	ids := make([]int64, 0, len(nodes))
-	nodeids := make(map[int64][]*APIKey)
+	nodeids := make(map[int64][]*ApiKey)
 	for i := range nodes {
 		fk := nodes[i].UserID
 		if _, ok := nodeids[fk]; !ok {
@@ -518,9 +518,9 @@ REDACTED
 REDACTED
 	return nil
 REDACTED
-func (_q *APIKeyQuery) loadGroup(ctx context.Context, query *GroupQuery, nodes []*APIKey, init func(*APIKey), assign func(*APIKey, *Group)) error {
+func (_q *ApiKeyQuery) loadGroup(ctx context.Context, query *GroupQuery, nodes []*ApiKey, init func(*ApiKey), assign func(*ApiKey, *Group)) error {
 	ids := make([]int64, 0, len(nodes))
-	nodeids := make(map[int64][]*APIKey)
+	nodeids := make(map[int64][]*ApiKey)
 	for i := range nodes {
 		if nodes[i].GroupID == nil {
 			continue
@@ -550,9 +550,9 @@ REDACTED
 REDACTED
 	return nil
 REDACTED
-func (_q *APIKeyQuery) loadUsageLogs(ctx context.Context, query *UsageLogQuery, nodes []*APIKey, init func(*APIKey), assign func(*APIKey, *UsageLog)) error {
+func (_q *ApiKeyQuery) loadUsageLogs(ctx context.Context, query *UsageLogQuery, nodes []*ApiKey, init func(*ApiKey), assign func(*ApiKey, *UsageLog)) error {
 	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int64]*APIKey)
+	nodeids := make(map[int64]*ApiKey)
 	for i := range nodes {
 		fks = append(fks, nodes[i].ID)
 		nodeids[nodes[i].ID] = nodes[i]
@@ -581,7 +581,7 @@ REDACTED
 	return nil
 REDACTED
 
-func (_q *APIKeyQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *ApiKeyQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -590,7 +590,7 @@ REDACTED
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 REDACTED
 
-func (_q *APIKeyQuery) querySpec() *sqlgraph.QuerySpec {
+func (_q *ApiKeyQuery) querySpec() *sqlgraph.QuerySpec {
 	_spec := sqlgraph.NewQuerySpec(apikey.Table, apikey.Columns, sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
@@ -636,7 +636,7 @@ REDACTED
 	return _spec
 REDACTED
 
-func (_q *APIKeyQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *ApiKeyQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
 	t1 := builder.Table(apikey.Table)
 	columns := _q.ctx.Fields
@@ -668,28 +668,28 @@ REDACTED
 	return selector
 REDACTED
 
-// APIKeyGroupBy is the group-by builder for APIKey entities.
-type APIKeyGroupBy struct {
+// ApiKeyGroupBy is the group-by builder for ApiKey entities.
+type ApiKeyGroupBy struct {
 	selector
-	build *APIKeyQuery
+	build *ApiKeyQuery
 REDACTED
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *APIKeyGroupBy) Aggregate(fns ...AggregateFunc) *APIKeyGroupBy {
+func (_g *ApiKeyGroupBy) Aggregate(fns ...AggregateFunc) *ApiKeyGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 REDACTED
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *APIKeyGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *ApiKeyGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 REDACTED
-	return scanWithInterceptors[*APIKeyQuery, *APIKeyGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*ApiKeyQuery, *ApiKeyGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 REDACTED
 
-func (_g *APIKeyGroupBy) sqlScan(ctx context.Context, root *APIKeyQuery, v any) error {
+func (_g *ApiKeyGroupBy) sqlScan(ctx context.Context, root *ApiKeyQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -716,28 +716,28 @@ REDACTED
 	return sql.ScanSlice(rows, v)
 REDACTED
 
-// APIKeySelect is the builder for selecting fields of APIKey entities.
-type APIKeySelect struct {
-	*APIKeyQuery
+// ApiKeySelect is the builder for selecting fields of ApiKey entities.
+type ApiKeySelect struct {
+	*ApiKeyQuery
 	selector
 REDACTED
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *APIKeySelect) Aggregate(fns ...AggregateFunc) *APIKeySelect {
+func (_s *ApiKeySelect) Aggregate(fns ...AggregateFunc) *ApiKeySelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 REDACTED
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *APIKeySelect) Scan(ctx context.Context, v any) error {
+func (_s *ApiKeySelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 REDACTED
-	return scanWithInterceptors[*APIKeyQuery, *APIKeySelect](ctx, _s.APIKeyQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*ApiKeyQuery, *ApiKeySelect](ctx, _s.ApiKeyQuery, _s, _s.inters, v)
 REDACTED
 
-func (_s *APIKeySelect) sqlScan(ctx context.Context, root *APIKeyQuery, v any) error {
+func (_s *ApiKeySelect) sqlScan(ctx context.Context, root *ApiKeyQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

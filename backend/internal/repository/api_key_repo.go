@@ -16,17 +16,17 @@ type apiKeyRepository struct {
 	client *dbent.Client
 REDACTED
 
-func NewAPIKeyRepository(client *dbent.Client) service.APIKeyRepository {
+func NewApiKeyRepository(client *dbent.Client) service.ApiKeyRepository {
 	return &apiKeyRepository{client: clientREDACTED
 REDACTED
 
-func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
+func (r *apiKeyRepository) activeQuery() *dbent.ApiKeyQuery {
 	// 默认过滤已软删除记录，避免删除后仍被查询到。
-	return r.client.APIKey.Query().Where(apikey.DeletedAtIsNil())
+	return r.client.ApiKey.Query().Where(apikey.DeletedAtIsNil())
 REDACTED
 
-func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	created, err := r.client.APIKey.Create().
+func (r *apiKeyRepository) Create(ctx context.Context, key *service.ApiKey) error {
+	created, err := r.client.ApiKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
 		SetName(key.Name).
@@ -38,10 +38,10 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
 REDACTED
-	return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	return translatePersistenceError(err, nil, service.ErrApiKeyExists)
 REDACTED
 
-func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
+func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.ApiKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.IDEQ(id)).
 		WithUser().
@@ -49,7 +49,7 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrAPIKeyNotFound
+			return nil, service.ErrApiKeyNotFound
 	REDACTED
 		return nil, err
 REDACTED
@@ -59,7 +59,7 @@ REDACTED
 // GetOwnerID 根据 API Key ID 获取其所有者（用户）的 ID。
 // 相比 GetByID，此方法性能更优，因为：
 //   - 使用 Select() 只查询 user_id 字段，减少数据传输量
-//   - 不加载完整的 APIKey 实体及其关联数据（User、Group 等）
+//   - 不加载完整的 ApiKey 实体及其关联数据（User、Group 等）
 //   - 适用于权限验证等只需用户 ID 的场景（如删除前的所有权检查）
 func (r *apiKeyRepository) GetOwnerID(ctx context.Context, id int64) (int64, error) {
 	m, err := r.activeQuery().
@@ -68,14 +68,14 @@ func (r *apiKeyRepository) GetOwnerID(ctx context.Context, id int64) (int64, err
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return 0, service.ErrAPIKeyNotFound
+			return 0, service.ErrApiKeyNotFound
 	REDACTED
 		return 0, err
 REDACTED
 	return m.UserID, nil
 REDACTED
 
-func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
+func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.ApiKey, error) {
 	m, err := r.activeQuery().
 		Where(apikey.KeyEQ(key)).
 		WithUser().
@@ -83,21 +83,21 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return nil, service.ErrAPIKeyNotFound
+			return nil, service.ErrApiKeyNotFound
 	REDACTED
 		return nil, err
 REDACTED
 	return apiKeyEntityToService(m), nil
 REDACTED
 
-func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) error {
+func (r *apiKeyRepository) Update(ctx context.Context, key *service.ApiKey) error {
 	// 使用原子操作：将软删除检查与更新合并到同一语句，避免竞态条件。
 	// 之前的实现先检查 Exist 再 UpdateOneID，若在两步之间发生软删除，
 	// 则会更新已删除的记录。
 	// 这里选择 Update().Where()，确保只有未软删除记录能被更新。
 	// 同时显式设置 updated_at，避免二次查询带来的并发可见性问题。
 	now := time.Now()
-	builder := r.client.APIKey.Update().
+	builder := r.client.ApiKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetName(key.Name).
 		SetStatus(key.Status).
@@ -114,7 +114,7 @@ REDACTED
 REDACTED
 	if affected == 0 {
 		// 更新影响行数为 0，说明记录不存在或已被软删除。
-		return service.ErrAPIKeyNotFound
+		return service.ErrApiKeyNotFound
 REDACTED
 
 	// 使用同一时间戳回填，避免并发删除导致二次查询失败。
@@ -124,18 +124,18 @@ REDACTED
 
 func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	// 显式软删除：避免依赖 Hook 行为，确保 deleted_at 一定被设置。
-	affected, err := r.client.APIKey.Update().
+	affected, err := r.client.ApiKey.Update().
 		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
 		SetDeletedAt(time.Now()).
 		Save(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
-			return service.ErrAPIKeyNotFound
+			return service.ErrApiKeyNotFound
 	REDACTED
 		return err
 REDACTED
 	if affected == 0 {
-		exists, err := r.client.APIKey.Query().
+		exists, err := r.client.ApiKey.Query().
 			Where(apikey.IDEQ(id)).
 			Exist(mixins.SkipSoftDelete(ctx))
 		if err != nil {
@@ -144,12 +144,12 @@ REDACTED
 		if exists {
 			return nil
 	REDACTED
-		return service.ErrAPIKeyNotFound
+		return service.ErrApiKeyNotFound
 REDACTED
 	return nil
 REDACTED
 
-func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
+func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
 	q := r.activeQuery().Where(apikey.UserIDEQ(userID))
 
 	total, err := q.Count(ctx)
@@ -167,7 +167,7 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	outKeys := make([]service.APIKey, 0, len(keys))
+	outKeys := make([]service.ApiKey, 0, len(keys))
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 REDACTED
@@ -180,7 +180,7 @@ func (r *apiKeyRepository) VerifyOwnership(ctx context.Context, userID int64, ap
 		return []int64{REDACTED, nil
 REDACTED
 
-	ids, err := r.client.APIKey.Query().
+	ids, err := r.client.ApiKey.Query().
 		Where(apikey.UserIDEQ(userID), apikey.IDIn(apiKeyIDs...), apikey.DeletedAtIsNil()).
 		IDs(ctx)
 	if err != nil {
@@ -199,7 +199,7 @@ func (r *apiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, e
 	return count > 0, err
 REDACTED
 
-func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
+func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
 	q := r.activeQuery().Where(apikey.GroupIDEQ(groupID))
 
 	total, err := q.Count(ctx)
@@ -217,7 +217,7 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	outKeys := make([]service.APIKey, 0, len(keys))
+	outKeys := make([]service.ApiKey, 0, len(keys))
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 REDACTED
@@ -225,8 +225,8 @@ REDACTED
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 REDACTED
 
-// SearchAPIKeys searches API keys by user ID and/or keyword (name)
-func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
+// SearchApiKeys searches API keys by user ID and/or keyword (name)
+func (r *apiKeyRepository) SearchApiKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.ApiKey, error) {
 	q := r.activeQuery()
 	if userID > 0 {
 		q = q.Where(apikey.UserIDEQ(userID))
@@ -241,7 +241,7 @@ REDACTED
 		return nil, err
 REDACTED
 
-	outKeys := make([]service.APIKey, 0, len(keys))
+	outKeys := make([]service.ApiKey, 0, len(keys))
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 REDACTED
@@ -250,7 +250,7 @@ REDACTED
 
 // ClearGroupIDByGroupID 将指定分组的所有 API Key 的 group_id 设为 nil
 func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	n, err := r.client.APIKey.Update().
+	n, err := r.client.ApiKey.Update().
 		Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).
 		ClearGroupID().
 		Save(ctx)
@@ -263,11 +263,11 @@ func (r *apiKeyRepository) CountByGroupID(ctx context.Context, groupID int64) (i
 	return int64(count), err
 REDACTED
 
-func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
+func apiKeyEntityToService(m *dbent.ApiKey) *service.ApiKey {
 	if m == nil {
 		return nil
 REDACTED
-	out := &service.APIKey{
+	out := &service.ApiKey{
 		ID:        m.ID,
 		UserID:    m.UserID,
 		Key:       m.Key,

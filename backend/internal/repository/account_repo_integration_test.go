@@ -135,12 +135,12 @@ REDACTED{
 			name: "filter_by_type",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "t1", Type: service.AccountTypeOAuthREDACTED)
-				mustCreateAccount(s.T(), client, &service.Account{Name: "t2", Type: service.AccountTypeAPIKeyREDACTED)
+				mustCreateAccount(s.T(), client, &service.Account{Name: "t2", Type: service.AccountTypeApiKeyREDACTED)
 		REDACTED,
-			accType:   service.AccountTypeAPIKey,
+			accType:   service.AccountTypeApiKey,
 			wantCount: 1,
 			validate: func(accounts []service.Account) {
-				s.Require().Equal(service.AccountTypeAPIKey, accounts[0].Type)
+				s.Require().Equal(service.AccountTypeApiKey, accounts[0].Type)
 		REDACTED,
 	REDACTED,
 		{

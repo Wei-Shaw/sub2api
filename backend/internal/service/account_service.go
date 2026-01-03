@@ -1,5 +1,3 @@
-// Package service 提供业务逻辑层服务，封装领域模型的业务规则和操作流程。
-// 服务层协调 repository 层的数据访问，实现跨实体的业务逻辑，并为上层 API 提供统一的业务接口。
 package service
 
 import (
@@ -51,6 +49,8 @@ type AccountRepository interface {
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
+	SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error
+	ClearTempUnschedulable(ctx context.Context, id int64) error
 	ClearRateLimit(ctx context.Context, id int64) error
 	UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error
 	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error

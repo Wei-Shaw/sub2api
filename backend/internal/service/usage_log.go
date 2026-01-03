@@ -10,7 +10,7 @@ const (
 type UsageLog struct {
 	ID        int64
 	UserID    int64
-	APIKeyID  int64
+	ApiKeyID  int64
 	AccountID int64
 	RequestID string
 	Model     string
@@ -42,7 +42,7 @@ type UsageLog struct {
 	CreatedAt time.Time
 
 	User         *User
-	APIKey       *APIKey
+	ApiKey       *ApiKey
 	Account      *Account
 	Group        *Group
 	Subscription *UserSubscription

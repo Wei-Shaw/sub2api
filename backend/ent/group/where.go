@@ -842,7 +842,7 @@ REDACTED)
 REDACTED
 
 // HasAPIKeysWith applies the HasEdge predicate on the "api_keys" edge with a given conditions (other predicates).
-func HasAPIKeysWith(preds ...predicate.APIKey) predicate.Group {
+func HasAPIKeysWith(preds ...predicate.ApiKey) predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {
 		step := newAPIKeysStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {

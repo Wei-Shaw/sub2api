@@ -70,13 +70,7 @@ func provideCleanup(
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
 	antigravityOAuth *service.AntigravityOAuthService,
-	antigravityQuota *service.AntigravityQuotaRefresher,
-	opsMetricsCollector *service.OpsMetricsCollector,
-	opsAlertService *service.OpsAlertService,
 ) func() {
-	if opsAlertService != nil {
-		opsAlertService.Start()
-REDACTED
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -86,14 +80,6 @@ REDACTED
 			name string
 			fn   func() error
 	REDACTED{
-			{"OpsMetricsCollector", func() error {
-				opsMetricsCollector.Stop()
-				return nil
-	REDACTED
-			{"OpsAlertService", func() error {
-				opsAlertService.Stop()
-				return nil
-	REDACTED
 			{"TokenRefreshService", func() error {
 				tokenRefresh.Stop()
 				return nil
@@ -124,10 +110,6 @@ REDACTED
 	REDACTED
 			{"AntigravityOAuthService", func() error {
 				antigravityOAuth.Stop()
-				return nil
-	REDACTED
-			{"AntigravityQuotaRefresher", func() error {
-				antigravityQuota.Stop()
 				return nil
 	REDACTED
 			{"Redis", func() error {

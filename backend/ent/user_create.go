@@ -166,14 +166,14 @@ REDACTED
 	return _c
 REDACTED
 
-// AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
+// AddAPIKeyIDs adds the "api_keys" edge to the ApiKey entity by IDs.
 func (_c *UserCreate) AddAPIKeyIDs(ids ...int64) *UserCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
 	return _c
 REDACTED
 
-// AddAPIKeys adds the "api_keys" edges to the APIKey entity.
-func (_c *UserCreate) AddAPIKeys(v ...*APIKey) *UserCreate {
+// AddAPIKeys adds the "api_keys" edges to the ApiKey entity.
+func (_c *UserCreate) AddAPIKeys(v ...*ApiKey) *UserCreate {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
