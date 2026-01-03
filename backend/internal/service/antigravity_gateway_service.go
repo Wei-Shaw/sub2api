@@ -64,7 +64,6 @@ type AntigravityGatewayService struct {
 	tokenProvider    *AntigravityTokenProvider
 	rateLimitService *RateLimitService
 	httpUpstream     HTTPUpstream
-	settingService   *SettingService
 REDACTED
 
 func NewAntigravityGatewayService(
@@ -73,14 +72,12 @@ func NewAntigravityGatewayService(
 	tokenProvider *AntigravityTokenProvider,
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
-	settingService *SettingService,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
 		accountRepo:      accountRepo,
 		tokenProvider:    tokenProvider,
 		rateLimitService: rateLimitService,
 		httpUpstream:     httpUpstream,
-		settingService:   settingService,
 REDACTED
 REDACTED
 
@@ -310,106 +307,6 @@ REDACTED
 	return body, nil
 REDACTED
 
-// isSignatureRelatedError 检测是否为 signature 相关的 400 错误
-// 注意：不包含 "thinking" 关键词，避免误判消息格式错误为 signature 错误
-func isSignatureRelatedError(statusCode int, body []byte) bool {
-	if statusCode != 400 {
-		return false
-REDACTED
-
-	bodyStr := strings.ToLower(string(body))
-	keywords := []string{
-		"signature",
-		"thought_signature",
-		"thoughtsignature",
-		"invalid signature",
-		"signature validation",
-REDACTED
-
-	for _, keyword := range keywords {
-		if strings.Contains(bodyStr, keyword) {
-			return true
-	REDACTED
-REDACTED
-	return false
-REDACTED
-
-// isModelNotFoundError 检测是否为模型不存在的 404 错误
-func isModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != 404 {
-		return false
-REDACTED
-
-	bodyStr := strings.ToLower(string(body))
-	keywords := []string{
-		"model not found",
-		"model does not exist",
-		"unknown model",
-		"invalid model",
-REDACTED
-
-	for _, keyword := range keywords {
-		if strings.Contains(bodyStr, keyword) {
-			return true
-	REDACTED
-REDACTED
-	return false
-REDACTED
-
-// stripThinkingFromClaudeRequest 从 Claude 请求中移除有问题的 thinking 块
-// 策略：只移除历史消息中带 dummy signature 的 thinking 块，保留本次 thinking 配置
-// 这样可以让本次对话仍然使用 thinking 功能，只是清理历史中可能导致问题的内容
-func stripThinkingFromClaudeRequest(req *antigravity.ClaudeRequest) *antigravity.ClaudeRequest {
-	// 创建副本
-	stripped := *req
-
-	// 保留 thinking 配置，让本次对话仍然可以使用 thinking
-	// stripped.Thinking = nil  // 不再移除
-
-	// 只移除消息中带 dummy signature 的 thinking 块
-	if len(stripped.Messages) > 0 {
-		newMessages := make([]antigravity.ClaudeMessage, 0, len(stripped.Messages))
-		for _, msg := range stripped.Messages {
-			newMsg := msg
-
-			// 如果 content 是数组，过滤有问题的 thinking 块
-			var blocks []map[string]any
-			if err := json.Unmarshal(msg.Content, &blocks); err == nil {
-				filtered := make([]map[string]any, 0, len(blocks))
-				for _, block := range blocks {
-					// 跳过带 dummy signature 的 thinking 块
-					if blockType, ok := block["type"].(string); ok && blockType == "thinking" {
-						if sig, ok := block["signature"].(string); ok {
-							// 移除 dummy signature 的 thinking 块
-							if sig == "skip_thought_signature_validator" || sig == "" {
-								continue
-						REDACTED
-					REDACTED else {
-							// 没有 signature 字段的 thinking 块也移除
-							continue
-					REDACTED
-				REDACTED
-					// 跳过没有 type 但有 thinking 字段的块（untyped thinking blocks）
-					if _, hasType := block["type"]; !hasType {
-						if _, hasThinking := block["thinking"]; hasThinking {
-							continue
-					REDACTED
-				REDACTED
-					filtered = append(filtered, block)
-			REDACTED
-				if newContent, err := json.Marshal(filtered); err == nil {
-					newMsg.Content = newContent
-			REDACTED
-		REDACTED
-
-			newMessages = append(newMessages, newMsg)
-	REDACTED
-		stripped.Messages = newMessages
-REDACTED
-
-	return &stripped
-REDACTED
-
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
 	startTime := time.Now()
@@ -505,70 +402,11 @@ REDACTED
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 		s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
-		// Auto 模式：检测 signature 错误并自动降级重试
-		if isSignatureRelatedError(resp.StatusCode, respBody) && claudeReq.Thinking != nil {
-			log.Printf("[Antigravity] Detected signature-related error, retrying without thinking blocks (account: %s, model: %s)", account.Name, mappedModel)
-
-			// 关闭原始响应，释放连接（respBody 已读取到内存）
-			_ = resp.Body.Close()
-
-			// 移除 thinking 块并重试一次
-			strippedReq := stripThinkingFromClaudeRequest(&claudeReq)
-			strippedBody, err := antigravity.TransformClaudeToGemini(strippedReq, projectID, mappedModel)
-			if err != nil {
-				log.Printf("[Antigravity] Failed to transform stripped request: %v", err)
-				// 降级失败，返回原始错误
-				if s.shouldFailoverWithTempUnsched(ctx, account, resp.StatusCode, respBody) {
-					return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
-			REDACTED
-				return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
-		REDACTED
-
-			// 发送降级请求
-			retryReq, err := antigravity.NewAPIRequest(ctx, action, accessToken, strippedBody)
-			if err != nil {
-				log.Printf("[Antigravity] Failed to create retry request: %v", err)
-				if s.shouldFailoverWithTempUnsched(ctx, account, resp.StatusCode, respBody) {
-					return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
-			REDACTED
-				return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
-		REDACTED
-
-			retryResp, err := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
-			if err != nil {
-				log.Printf("[Antigravity] Retry request failed: %v", err)
-				if s.shouldFailoverWithTempUnsched(ctx, account, resp.StatusCode, respBody) {
-					return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
-			REDACTED
-				return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
-		REDACTED
-
-			// 如果重试成功，使用重试的响应（不要 return，让后面的代码处理响应）
-			if retryResp.StatusCode < 400 {
-				log.Printf("[Antigravity] Retry succeeded after stripping thinking blocks (account: %s, model: %s)", account.Name, mappedModel)
-				resp = retryResp
-		REDACTED else {
-				// 重试也失败，返回重试的错误
-				retryRespBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
-				_ = retryResp.Body.Close()
-				log.Printf("[Antigravity] Retry also failed with status %d: %s", retryResp.StatusCode, string(retryRespBody))
-				s.handleUpstreamError(ctx, account, retryResp.StatusCode, retryResp.Header, retryRespBody)
-
-				if s.shouldFailoverWithTempUnsched(ctx, account, retryResp.StatusCode, retryRespBody) {
-					return nil, &UpstreamFailoverError{StatusCode: retryResp.StatusCodeREDACTED
-			REDACTED
-				return nil, s.writeMappedClaudeError(c, retryResp.StatusCode, retryRespBody)
-		REDACTED
+		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 	REDACTED
 
-		// 不是 signature 错误，或者已经没有 thinking 块，直接返回错误
-		if resp.StatusCode >= 400 {
-			if s.shouldFailoverWithTempUnsched(ctx, account, resp.StatusCode, respBody) {
-				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
-		REDACTED
-
-			return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
-	REDACTED
+		return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
 REDACTED
 
 	requestID := resp.Header.Get("x-request-id")
@@ -620,7 +458,16 @@ REDACTED
 	case "generateContent", "streamGenerateContent":
 		// ok
 	case "countTokens":
-		return nil, s.writeGoogleError(c, http.StatusNotImplemented, "countTokens is not supported")
+		// 直接返回空值，不透传上游
+		c.JSON(http.StatusOK, map[string]any{"totalTokens": 0REDACTED)
+		return &ForwardResult{
+			RequestID:    "",
+			Usage:        ClaudeUsage{REDACTED,
+			Model:        originalModel,
+			Stream:       false,
+			Duration:     time.Since(time.Now()),
+			FirstTokenMs: nil,
+	REDACTED, nil
 	default:
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
 REDACTED
@@ -713,42 +560,7 @@ REDACTED
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 		s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
-		// Check if model fallback is enabled and this is a model not found error
-		if s.settingService != nil && s.settingService.IsModelFallbackEnabled(ctx) &&
-			isModelNotFoundError(resp.StatusCode, respBody) {
-
-			fallbackModel := s.settingService.GetFallbackModel(ctx, PlatformAntigravity)
-
-			// Only retry if fallback model is different from current model
-			if fallbackModel != "" && fallbackModel != mappedModel {
-				log.Printf("[Antigravity] Model not found (%s), retrying with fallback model %s (account: %s)",
-					mappedModel, fallbackModel, account.Name)
-
-				// Close original response
-				_ = resp.Body.Close()
-
-				// Rebuild request with fallback model
-				fallbackBody, err := s.wrapV1InternalRequest(projectID, fallbackModel, body)
-				if err == nil {
-					fallbackReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, fallbackBody)
-					if err == nil {
-						fallbackResp, err := s.httpUpstream.Do(fallbackReq, proxyURL, account.ID, account.Concurrency)
-						if err == nil && fallbackResp.StatusCode < 400 {
-							log.Printf("[Antigravity] Fallback succeeded with %s (account: %s)", fallbackModel, account.Name)
-							resp = fallbackResp
-							originalModel = fallbackModel // Update for billing
-							// Continue to normal response handling
-							goto handleSuccess
-					REDACTED else if fallbackResp != nil {
-							_ = fallbackResp.Body.Close()
-					REDACTED
-				REDACTED
-			REDACTED
-				log.Printf("[Antigravity] Fallback failed, returning original error")
-		REDACTED
-	REDACTED
-
-		if s.shouldFailoverWithTempUnsched(ctx, account, resp.StatusCode, respBody) {
+		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 	REDACTED
 
@@ -762,7 +574,6 @@ REDACTED
 		return nil, fmt.Errorf("antigravity upstream error: %d", resp.StatusCode)
 REDACTED
 
-handleSuccess:
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 
@@ -811,15 +622,6 @@ func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) 
 	default:
 		return statusCode >= 500
 REDACTED
-REDACTED
-
-func (s *AntigravityGatewayService) shouldFailoverWithTempUnsched(ctx context.Context, account *Account, statusCode int, body []byte) bool {
-	if s.rateLimitService != nil {
-		if s.rateLimitService.HandleTempUnschedulable(ctx, account, statusCode, body) {
-			return true
-	REDACTED
-REDACTED
-	return s.shouldFailoverUpstreamError(statusCode)
 REDACTED
 
 func sleepAntigravityBackoff(attempt int) {
@@ -932,10 +734,7 @@ func (s *AntigravityGatewayService) handleGeminiNonStreamingResponse(c *gin.Cont
 REDACTED
 
 	// 解包 v1internal 响应
-	unwrapped := respBody
-	if inner, unwrapErr := s.unwrapV1InternalResponse(respBody); unwrapErr == nil && inner != nil {
-		unwrapped = inner
-REDACTED
+	unwrapped, _ := s.unwrapV1InternalResponse(respBody)
 
 	var parsed map[string]any
 	if json.Unmarshal(unwrapped, &parsed) == nil {
@@ -1009,8 +808,6 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 		statusStr = "RESOURCE_EXHAUSTED"
 	case 500:
 		statusStr = "INTERNAL"
-	case 501:
-		statusStr = "UNIMPLEMENTED"
 	case 502, 503:
 		statusStr = "UNAVAILABLE"
 REDACTED

@@ -81,11 +81,7 @@ REDACTED
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
 	if geminiResp.UsageMetadata != nil {
 		cached := geminiResp.UsageMetadata.CachedContentTokenCount
-		prompt := geminiResp.UsageMetadata.PromptTokenCount
-		if cached > prompt {
-			cached = prompt
-	REDACTED
-		p.inputTokens = prompt - cached
+		p.inputTokens = geminiResp.UsageMetadata.PromptTokenCount - cached
 		p.outputTokens = geminiResp.UsageMetadata.CandidatesTokenCount
 		p.cacheReadTokens = cached
 REDACTED
@@ -134,11 +130,7 @@ REDACTED
 	usage := ClaudeUsage{REDACTED
 	if v1Resp.Response.UsageMetadata != nil {
 		cached := v1Resp.Response.UsageMetadata.CachedContentTokenCount
-		prompt := v1Resp.Response.UsageMetadata.PromptTokenCount
-		if cached > prompt {
-			cached = prompt
-	REDACTED
-		usage.InputTokens = prompt - cached
+		usage.InputTokens = v1Resp.Response.UsageMetadata.PromptTokenCount - cached
 		usage.OutputTokens = v1Resp.Response.UsageMetadata.CandidatesTokenCount
 		usage.CacheReadInputTokens = cached
 REDACTED

@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
@@ -84,18 +82,14 @@ const (
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
-	apiCache         *sync.Map // accountID -> *apiUsageCache
-	windowStatsCache *sync.Map // accountID -> *windowStatsCache
-	antigravityCache *sync.Map // accountID -> *antigravityUsageCache
+	apiCache         sync.Map // accountID -> *apiUsageCache
+	windowStatsCache sync.Map // accountID -> *windowStatsCache
+	antigravityCache sync.Map // accountID -> *antigravityUsageCache
 REDACTED
 
 // NewUsageCache 创建 UsageCache 实例
 func NewUsageCache() *UsageCache {
-	return &UsageCache{
-		apiCache:         &sync.Map{REDACTED,
-		antigravityCache: &sync.Map{REDACTED,
-		windowStatsCache: &sync.Map{REDACTED,
-REDACTED
+	return &UsageCache{REDACTED
 REDACTED
 
 // WindowStats 窗口期统计
@@ -159,7 +153,7 @@ type AccountUsageService struct {
 	usageLogRepo            UsageLogRepository
 	usageFetcher            ClaudeUsageFetcher
 	geminiQuotaService      *GeminiQuotaService
-	antigravityQuotaFetcher QuotaFetcher
+	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	cache                   *UsageCache
 REDACTED
 
@@ -172,33 +166,12 @@ func NewAccountUsageService(
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 	cache *UsageCache,
 ) *AccountUsageService {
-	if cache == nil {
-		cache = &UsageCache{
-			apiCache:         &sync.Map{REDACTED,
-			antigravityCache: &sync.Map{REDACTED,
-			windowStatsCache: &sync.Map{REDACTED,
-	REDACTED
-REDACTED
-	if cache.apiCache == nil {
-		cache.apiCache = &sync.Map{REDACTED
-REDACTED
-	if cache.antigravityCache == nil {
-		cache.antigravityCache = &sync.Map{REDACTED
-REDACTED
-	if cache.windowStatsCache == nil {
-		cache.windowStatsCache = &sync.Map{REDACTED
-REDACTED
-
-	var quotaFetcher QuotaFetcher
-	if antigravityQuotaFetcher != nil {
-		quotaFetcher = antigravityQuotaFetcher
-REDACTED
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
 		usageLogRepo:            usageLogRepo,
 		usageFetcher:            usageFetcher,
 		geminiQuotaService:      geminiQuotaService,
-		antigravityQuotaFetcher: quotaFetcher,
+		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		cache:                   cache,
 REDACTED
 REDACTED
@@ -292,8 +265,8 @@ REDACTED
 	totals := geminiAggregateUsage(stats)
 	resetAt := geminiDailyResetTime(now)
 
-	usage.GeminiProDaily = buildGeminiUsageProgress(totals.ProRequests, quota.ProRPD, resetAt, totals.ProTokens, totals.ProCost)
-	usage.GeminiFlashDaily = buildGeminiUsageProgress(totals.FlashRequests, quota.FlashRPD, resetAt, totals.FlashTokens, totals.FlashCost)
+	usage.GeminiProDaily = buildGeminiUsageProgress(totals.ProRequests, quota.ProRPD, resetAt, totals.ProTokens, totals.ProCost, now)
+	usage.GeminiFlashDaily = buildGeminiUsageProgress(totals.FlashRequests, quota.FlashRPD, resetAt, totals.FlashTokens, totals.FlashCost, now)
 
 	return usage, nil
 REDACTED
@@ -305,41 +278,20 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 		return &UsageInfo{UpdatedAt: &nowREDACTED, nil
 REDACTED
 
-	// Ensure project_id is stable for quota queries.
-	if strings.TrimSpace(account.GetCredential("project_id")) == "" {
-		projectID := antigravity.GenerateMockProjectID()
-		if account.Credentials == nil {
-			account.Credentials = map[string]any{REDACTED
-	REDACTED
-		account.Credentials["project_id"] = projectID
-		if s.accountRepo != nil {
-			_, err := s.accountRepo.BulkUpdate(ctx, []int64{account.IDREDACTED, AccountBulkUpdate{
-		REDACTED"project_id": projectIDREDACTED,
-		REDACTED)
-			if err != nil {
-				log.Printf("Failed to persist antigravity project_id for account %d: %v", account.ID, err)
-		REDACTED
-	REDACTED
-REDACTED
-
 	// 1. 检查缓存（10 分钟）
 	if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
 		if cache, ok := cached.(*antigravityUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
 			// 重新计算 RemainingSeconds
-			usage := cloneUsageInfo(cache.usageInfo)
+			usage := cache.usageInfo
 			if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
-				usage.FiveHour.RemainingSeconds = remainingSecondsUntil(*usage.FiveHour.ResetsAt)
+				usage.FiveHour.RemainingSeconds = int(time.Until(*usage.FiveHour.ResetsAt).Seconds())
 		REDACTED
 			return usage, nil
 	REDACTED
 REDACTED
 
 	// 2. 获取代理 URL
-	proxyURL, err := s.antigravityQuotaFetcher.GetProxyURL(ctx, account)
-	if err != nil {
-		log.Printf("Failed to get proxy URL for account %d: %v", account.ID, err)
-		proxyURL = ""
-REDACTED
+	proxyURL := s.antigravityQuotaFetcher.GetProxyURL(ctx, account)
 
 	// 3. 调用 API 获取额度
 	result, err := s.antigravityQuotaFetcher.FetchQuota(ctx, account, proxyURL)
@@ -468,12 +420,12 @@ REDACTED
 
 	// 5小时窗口 - 始终创建对象（即使 ResetsAt 为空）
 	info.FiveHour = &UsageProgress{
-		Utilization: clampFloat64(resp.FiveHour.Utilization, 0, 100),
+		Utilization: resp.FiveHour.Utilization,
 REDACTED
 	if resp.FiveHour.ResetsAt != "" {
 		if fiveHourReset, err := parseTime(resp.FiveHour.ResetsAt); err == nil {
 			info.FiveHour.ResetsAt = &fiveHourReset
-			info.FiveHour.RemainingSeconds = remainingSecondsUntil(fiveHourReset)
+			info.FiveHour.RemainingSeconds = int(time.Until(fiveHourReset).Seconds())
 	REDACTED else {
 			log.Printf("Failed to parse FiveHour.ResetsAt: %s, error: %v", resp.FiveHour.ResetsAt, err)
 	REDACTED
@@ -483,14 +435,14 @@ REDACTED
 	if resp.SevenDay.ResetsAt != "" {
 		if sevenDayReset, err := parseTime(resp.SevenDay.ResetsAt); err == nil {
 			info.SevenDay = &UsageProgress{
-				Utilization:      clampFloat64(resp.SevenDay.Utilization, 0, 100),
+				Utilization:      resp.SevenDay.Utilization,
 				ResetsAt:         &sevenDayReset,
-				RemainingSeconds: remainingSecondsUntil(sevenDayReset),
+				RemainingSeconds: int(time.Until(sevenDayReset).Seconds()),
 		REDACTED
 	REDACTED else {
 			log.Printf("Failed to parse SevenDay.ResetsAt: %s, error: %v", resp.SevenDay.ResetsAt, err)
 			info.SevenDay = &UsageProgress{
-				Utilization: clampFloat64(resp.SevenDay.Utilization, 0, 100),
+				Utilization: resp.SevenDay.Utilization,
 		REDACTED
 	REDACTED
 REDACTED
@@ -499,14 +451,14 @@ REDACTED
 	if resp.SevenDaySonnet.ResetsAt != "" {
 		if sonnetReset, err := parseTime(resp.SevenDaySonnet.ResetsAt); err == nil {
 			info.SevenDaySonnet = &UsageProgress{
-				Utilization:      clampFloat64(resp.SevenDaySonnet.Utilization, 0, 100),
+				Utilization:      resp.SevenDaySonnet.Utilization,
 				ResetsAt:         &sonnetReset,
-				RemainingSeconds: remainingSecondsUntil(sonnetReset),
+				RemainingSeconds: int(time.Until(sonnetReset).Seconds()),
 		REDACTED
 	REDACTED else {
 			log.Printf("Failed to parse SevenDaySonnet.ResetsAt: %s, error: %v", resp.SevenDaySonnet.ResetsAt, err)
 			info.SevenDaySonnet = &UsageProgress{
-				Utilization: clampFloat64(resp.SevenDaySonnet.Utilization, 0, 100),
+				Utilization: resp.SevenDaySonnet.Utilization,
 		REDACTED
 	REDACTED
 REDACTED
@@ -520,7 +472,10 @@ func (s *AccountUsageService) estimateSetupTokenUsage(account *Account) *UsageIn
 
 	// 如果有session_window信息
 	if account.SessionWindowEnd != nil {
-		remaining := remainingSecondsUntil(*account.SessionWindowEnd)
+		remaining := int(time.Until(*account.SessionWindowEnd).Seconds())
+		if remaining < 0 {
+			remaining = 0
+	REDACTED
 
 		// 根据状态估算使用率 (百分比形式，100 = 100%)
 		var utilization float64
@@ -532,7 +487,6 @@ func (s *AccountUsageService) estimateSetupTokenUsage(account *Account) *UsageIn
 		default:
 			utilization = 0.0
 	REDACTED
-		utilization = clampFloat64(utilization, 0, 100)
 
 		info.FiveHour = &UsageProgress{
 			Utilization:      utilization,
@@ -551,12 +505,15 @@ REDACTED
 	return info
 REDACTED
 
-func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64, cost float64) *UsageProgress {
+func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64, cost float64, now time.Time) *UsageProgress {
 	if limit <= 0 {
 		return nil
 REDACTED
-	utilization := clampFloat64((float64(used)/float64(limit))*100, 0, 100)
-	remainingSeconds := remainingSecondsUntil(resetAt)
+	utilization := (float64(used) / float64(limit)) * 100
+	remainingSeconds := int(resetAt.Sub(now).Seconds())
+	if remainingSeconds < 0 {
+		remainingSeconds = 0
+REDACTED
 	resetCopy := resetAt
 	return &UsageProgress{
 		Utilization:      utilization,
@@ -568,48 +525,4 @@ REDACTED
 			Cost:     cost,
 	REDACTED,
 REDACTED
-REDACTED
-
-func cloneUsageInfo(src *UsageInfo) *UsageInfo {
-	if src == nil {
-		return nil
-REDACTED
-	dst := *src
-	if src.UpdatedAt != nil {
-		t := *src.UpdatedAt
-		dst.UpdatedAt = &t
-REDACTED
-	dst.FiveHour = cloneUsageProgress(src.FiveHour)
-	dst.SevenDay = cloneUsageProgress(src.SevenDay)
-	dst.SevenDaySonnet = cloneUsageProgress(src.SevenDaySonnet)
-	dst.GeminiProDaily = cloneUsageProgress(src.GeminiProDaily)
-	dst.GeminiFlashDaily = cloneUsageProgress(src.GeminiFlashDaily)
-	if src.AntigravityQuota != nil {
-		dst.AntigravityQuota = make(map[string]*AntigravityModelQuota, len(src.AntigravityQuota))
-		for k, v := range src.AntigravityQuota {
-			if v == nil {
-				dst.AntigravityQuota[k] = nil
-				continue
-		REDACTED
-			copyVal := *v
-			dst.AntigravityQuota[k] = &copyVal
-	REDACTED
-REDACTED
-	return &dst
-REDACTED
-
-func cloneUsageProgress(src *UsageProgress) *UsageProgress {
-	if src == nil {
-		return nil
-REDACTED
-	dst := *src
-	if src.ResetsAt != nil {
-		t := *src.ResetsAt
-		dst.ResetsAt = &t
-REDACTED
-	if src.WindowStats != nil {
-		statsCopy := *src.WindowStats
-		dst.WindowStats = &statsCopy
-REDACTED
-	return &dst
 REDACTED

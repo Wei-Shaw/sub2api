@@ -8,8 +8,6 @@ import (
 type QuotaFetcher interface {
 	// CanFetch 检查是否可以获取此账户的额度
 	CanFetch(account *Account) bool
-	// GetProxyURL 获取账户的代理 URL（如果没有代理则返回空字符串）
-	GetProxyURL(ctx context.Context, account *Account) (string, error)
 	// FetchQuota 获取账户额度信息
 	FetchQuota(ctx context.Context, account *Account, proxyURL string) (*QuotaResult, error)
 REDACTED
