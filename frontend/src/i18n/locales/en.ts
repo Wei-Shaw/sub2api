@@ -127,8 +127,6 @@ export default {
     total: 'Total',
     balance: 'Balance',
     available: 'Available',
-    copy: 'Copy',
-    details: 'Details',
     copiedToClipboard: 'Copied to clipboard',
     copyFailed: 'Failed to copy',
     contactSupport: 'Contact Support',
@@ -137,6 +135,9 @@ export default {
     noOptionsFound: 'No options found',
     saving: 'Saving...',
     refresh: 'Refresh',
+    notAvailable: 'N/A',
+    now: 'Now',
+    unknown: 'Unknown',
     time: {
       never: 'Never',
       justNow: 'Just now',
@@ -149,7 +150,6 @@ export default {
   // Navigation
   nav: {
     dashboard: 'Dashboard',
-    ops: 'Ops Center',
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
@@ -324,6 +324,18 @@ export default {
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
       REDACTED,
+      antigravity: {
+        description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
+        claudeCode: 'Claude Code',
+        geminiCli: 'Gemini CLI',
+        claudeNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+        geminiNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+      REDACTED,
+      gemini: {
+        description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure Gemini CLI access.',
+        modelComment: 'If you have Gemini 3 access, you can use: gemini-3-pro-preview',
+        note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+      REDACTED,
     REDACTED,
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',
@@ -331,7 +343,15 @@ export default {
     customKeyTooShort: 'Custom key must be at least 16 characters',
     customKeyInvalidChars: 'Custom key can only contain letters, numbers, underscores, and hyphens',
     customKeyRequired: 'Please enter a custom key',
-    ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.'
+    ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.',
+    ccsClientSelect: {
+      title: 'Select Client',
+      description: 'Please select the client type to import to CC-Switch:',
+      claudeCode: 'Claude Code',
+      claudeCodeDesc: 'Import as Claude Code configuration',
+      geminiCli: 'Gemini CLI',
+      geminiCliDesc: 'Import as Gemini CLI configuration',
+    REDACTED,
   REDACTED,
 
   // Usage
@@ -548,123 +568,6 @@ export default {
       noDataAvailable: 'No data available',
       recentUsage: 'Recent Usage',
       failedToLoad: 'Failed to load dashboard statistics'
-    REDACTED,
-    ops: {
-      title: 'Ops Monitoring Center 2.0',
-      description: 'Stability metrics, error distribution, and system health',
-      status: {
-        title: 'System Health Snapshot',
-        subtitle: 'Real-time metrics and error visibility',
-        systemNormal: 'System Normal',
-        systemDegraded: 'System Degraded',
-        systemDown: 'System Down',
-        noData: 'No Data',
-        monitoring: 'Monitoring',
-        lastUpdated: 'Last Updated',
-        live: 'Live',
-        waiting: 'Waiting for data',
-        realtime: 'Connected',
-        disconnected: 'Disconnected'
-      REDACTED,
-      charts: {
-        errorTrend: 'Error Trend',
-        errorDistribution: 'Error Distribution',
-        errorRate: 'Error Rate',
-        requestCount: 'Request Count',
-        rateLimits: 'Rate Limits (429)',
-        serverErrors: 'Server Errors (5xx)',
-        clientErrors: 'Client Errors (4xx)',
-        otherErrors: 'Other',
-        latencyDist: 'Latency Distribution',
-        providerSla: 'Upstream SLA Comparison',
-        errorDist: 'Error Type Distribution',
-        systemStatus: 'System Resources'
-      REDACTED,
-      metrics: {
-        successRate: 'Success Rate',
-        errorRate: 'Error Rate',
-        p95: 'P95 Latency',
-        p99: 'P99 Latency',
-        http2Errors: 'HTTP/2 Errors',
-        activeAlerts: 'Active Alerts',
-        cpuUsage: 'CPU Usage',
-        queueDepth: 'Queue Depth',
-        healthScore: 'Health Score',
-        sla: 'Availability (SLA)',
-        qps: 'Real-time QPS',
-        tps: 'Real-time TPS',
-        errorCount: 'Error Count'
-      REDACTED,
-      errors: {
-        title: 'Recent Errors',
-        subtitle: 'Inspect failures across platforms and phases',
-        count: '{nREDACTED errors'
-      REDACTED,
-      filters: {
-        allSeverities: 'All severities',
-        allPlatforms: 'All platforms',
-        allPhases: 'All phases',
-        p0: 'P0 (Critical)',
-        p1: 'P1 (High)',
-        p2: 'P2 (Medium)',
-        p3: 'P3 (Low)'
-      REDACTED,
-      searchPlaceholder: 'Search by request ID, model, or message',
-      range: {
-        '15m': 'Last 15 minutes',
-        '1h': 'Last 1 hour',
-        '24h': 'Last 24 hours',
-        '7d': 'Last 7 days'
-      REDACTED,
-      platform: {
-        anthropic: 'Anthropic',
-        openai: 'OpenAI',
-        gemini: 'Gemini',
-        antigravity: 'Antigravity'
-      REDACTED,
-      phase: {
-        auth: 'Auth',
-        concurrency: 'Concurrency',
-        billing: 'Billing',
-        scheduling: 'Scheduling',
-        network: 'Network',
-        upstream: 'Upstream',
-        response: 'Response',
-        internal: 'Internal'
-      REDACTED,
-      severity: {
-        p0: 'P0',
-        p1: 'P1',
-        p2: 'P2',
-        p3: 'P3'
-      REDACTED,
-      table: {
-        time: 'Time',
-        severity: 'Severity',
-        phase: 'Phase',
-        statusCode: 'Status',
-        platform: 'Platform',
-        model: 'Model',
-        latency: 'Latency',
-        requestId: 'Request ID',
-        message: 'Message'
-      REDACTED,
-      details: {
-        title: 'Error Details',
-        requestId: 'Request ID',
-        errorMessage: 'Error Message',
-        requestPath: 'Request path',
-        clientIp: 'Client IP',
-        userId: 'User ID',
-        apiKeyId: 'API Key ID',
-        groupId: 'Group ID',
-        stream: 'Stream'
-      REDACTED,
-      empty: {
-        title: 'No ops data yet',
-        subtitle: 'Enable error logging and metrics to populate this view'
-      REDACTED,
-      failedToLoad: 'Failed to load ops data'
     REDACTED,
 
     // Users
@@ -1030,6 +933,54 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth'
       REDACTED,
+      status: {
+        paused: 'Paused',
+        limited: 'Limited',
+        tempUnschedulable: 'Temp Unschedulable'
+      REDACTED,
+      tempUnschedulable: {
+        title: 'Temp Unschedulable',
+        statusTitle: 'Temp Unschedulable Status',
+        hint: 'Disable accounts temporarily when error code and keyword both match.',
+        notice: 'Rules are evaluated in order and require both error code and keyword match.',
+        addRule: 'Add Rule',
+        ruleOrder: 'Rule Order',
+        ruleIndex: 'Rule #{indexREDACTED',
+        errorCode: 'Error Code',
+        errorCodePlaceholder: 'e.g. 429',
+        durationMinutes: 'Duration (minutes)',
+        durationPlaceholder: 'e.g. 30',
+        keywords: 'Keywords',
+        keywordsPlaceholder: 'e.g. overloaded, too many requests',
+        keywordsHint: 'Separate keywords with commas; any keyword match will trigger.',
+        description: 'Description',
+        descriptionPlaceholder: 'Optional note for this rule',
+        rulesInvalid: 'Add at least one rule with error code, keywords, and duration.',
+        viewDetails: 'View temp unschedulable details',
+        accountName: 'Account',
+        triggeredAt: 'Triggered At',
+        until: 'Until',
+        remaining: 'Remaining',
+        matchedKeyword: 'Matched Keyword',
+        errorMessage: 'Error Details',
+        reset: 'Reset Status',
+        resetSuccess: 'Temp unschedulable status reset',
+        resetFailed: 'Failed to reset temp unschedulable status',
+        failedToLoad: 'Failed to load temp unschedulable status',
+        notActive: 'This account is not temporarily unschedulable.',
+        expired: 'Expired',
+        remainingMinutes: 'About {minutesREDACTED minutes',
+        remainingHours: 'About {hoursREDACTED hours',
+        remainingHoursMinutes: 'About {hoursREDACTED hours {minutesREDACTED minutes',
+        presets: {
+          overloadLabel: '529 Overloaded',
+          overloadDesc: 'Overloaded - pause 60 minutes',
+          rateLimitLabel: '429 Rate Limit',
+          rateLimitDesc: 'Rate limited - pause 10 minutes',
+          unavailableLabel: '503 Unavailable',
+          unavailableDesc: 'Unavailable - pause 30 minutes'
+        REDACTED
+      REDACTED,
       columns: {
         name: 'Name',
         platformType: 'Platform/Type',
@@ -1147,10 +1098,10 @@ export default {
       priority: 'Priority',
       priorityHint: 'Higher priority accounts are used first',
       higherPriorityFirst: 'Higher value means higher priority',
-      mixedScheduling: 'Mixed Scheduling',
+      mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
       mixedSchedulingTooltip:
-        'When enabled, this account can be scheduled by /v1/messages and /v1beta endpoints. Otherwise, it will only be scheduled by /antigravity. Note: Anthropic Claude and Antigravity Claude cannot be mixed in the same context. Please manage groups carefully when enabled.',
+        '!! WARNING !! Antigravity Claude and Anthropic Claude cannot be used in the same context. If you have both Anthropic and Antigravity accounts, enabling this option will cause frequent 400 errors. When enabled, please use the group feature to isolate Antigravity accounts from Anthropic accounts. Make sure you understand this before enabling!!',
       creating: 'Creating...',
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
@@ -1664,6 +1615,7 @@ export default {
         siteKey: 'Site Key',
         secretKey: 'Secret Key',
         siteKeyHint: 'Get this from your Cloudflare Dashboard',
+        cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: 'Server-side verification key (keep this secret)'
       REDACTED,
       defaults: {
@@ -1814,6 +1766,7 @@ export default {
     noActiveSubscriptions: 'No Active Subscriptions',
     noActiveSubscriptionsDesc:
       "You don't have any active subscriptions. Contact administrator to get one.",
+    failedToLoad: 'Failed to load subscriptions',
     status: {
       active: 'Active',
       expired: 'Expired',

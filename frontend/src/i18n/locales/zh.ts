@@ -124,8 +124,6 @@ export default {
     total: '总计',
     balance: '余额',
     available: '可用',
-    copy: '复制',
-    details: '详情',
     copiedToClipboard: '已复制到剪贴板',
     copyFailed: '复制失败',
     contactSupport: '联系客服',
@@ -134,6 +132,9 @@ export default {
     noOptionsFound: '无匹配选项',
     saving: '保存中...',
     refresh: '刷新',
+    notAvailable: '不可用',
+    now: '现在',
+    unknown: '未知',
     time: {
       never: '从未',
       justNow: '刚刚',
@@ -146,7 +147,6 @@ export default {
   // Navigation
   nav: {
     dashboard: '仪表盘',
-    ops: '运维监控',
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
@@ -320,6 +320,18 @@ export default {
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows: '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。',
       REDACTED,
+      antigravity: {
+        description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
+        claudeCode: 'Claude Code',
+        geminiCli: 'Gemini CLI',
+        claudeNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+        geminiNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+      REDACTED,
+      gemini: {
+        description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
+        modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
+        note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+      REDACTED,
     REDACTED,
     customKeyLabel: '自定义密钥',
     customKeyPlaceholder: '输入自定义密钥（至少16个字符）',
@@ -327,7 +339,15 @@ export default {
     customKeyTooShort: '自定义密钥至少需要16个字符',
     customKeyInvalidChars: '自定义密钥只能包含字母、数字、下划线和连字符',
     customKeyRequired: '请输入自定义密钥',
-    ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。'
+    ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
+    ccsClientSelect: {
+      title: '选择客户端',
+      description: '请选择您要导入到 CC-Switch 的客户端类型：',
+      claudeCode: 'Claude Code',
+      claudeCodeDesc: '导入为 Claude Code 配置',
+      geminiCli: 'Gemini CLI',
+      geminiCliDesc: '导入为 Gemini CLI 配置',
+    REDACTED,
   REDACTED,
 
   // Usage
@@ -561,123 +581,6 @@ export default {
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
       failedToLoad: '加载仪表盘数据失败'
-    REDACTED,
-    ops: {
-      title: '运维监控中心 2.0',
-      description: '稳定性指标、错误分布与系统健康',
-      status: {
-        title: '系统健康快照',
-        subtitle: '实时指标与错误可见性',
-        systemNormal: '系统正常',
-        systemDegraded: '系统降级',
-        systemDown: '系统异常',
-        noData: '无数据',
-        monitoring: '监控中',
-        lastUpdated: '最后更新',
-        live: '实时',
-        waiting: '等待数据',
-        realtime: '实时连接中',
-        disconnected: '连接已断开'
-      REDACTED,
-      charts: {
-        errorTrend: '错误趋势',
-        errorDistribution: '错误分布',
-        errorRate: '错误率',
-        requestCount: '请求数',
-        rateLimits: '限流 (429)',
-        serverErrors: '服务端错误 (5xx)',
-        clientErrors: '客户端错误 (4xx)',
-        otherErrors: '其他',
-        latencyDist: '请求延迟分布',
-        providerSla: '上游供应商健康度 (SLA)',
-        errorDist: '错误类型分布',
-        systemStatus: '系统运行状态'
-      REDACTED,
-      metrics: {
-        successRate: '成功率',
-        errorRate: '错误率',
-        p95: 'P95 延迟',
-        p99: 'P99 延迟',
-        http2Errors: 'HTTP/2 错误',
-        activeAlerts: '活跃告警',
-        cpuUsage: 'CPU 使用率',
-        queueDepth: '排队深度',
-        healthScore: '健康评分',
-        sla: '服务可用率 (SLA)',
-        qps: '实时 QPS',
-        tps: '实时 TPS',
-        errorCount: '周期错误数'
-      REDACTED,
-      errors: {
-        title: '最近错误',
-        subtitle: '按平台与阶段定位失败原因',
-        count: '{nREDACTED 条错误'
-      REDACTED,
-      filters: {
-        allSeverities: '全部级别',
-        allPlatforms: '全部平台',
-        allPhases: '全部阶段',
-        p0: 'P0（致命）',
-        p1: 'P1（高）',
-        p2: 'P2（中）',
-        p3: 'P3（低）'
-      REDACTED,
-      searchPlaceholder: '按请求ID、模型或错误信息搜索',
-      range: {
-        '15m': '近 15 分钟',
-        '1h': '近 1 小时',
-        '24h': '近 24 小时',
-        '7d': '近 7 天'
-      REDACTED,
-      platform: {
-        anthropic: 'Anthropic',
-        openai: 'OpenAI',
-        gemini: 'Gemini',
-        antigravity: 'Antigravity'
-      REDACTED,
-      phase: {
-        auth: '认证',
-        concurrency: '并发',
-        billing: '计费',
-        scheduling: '调度',
-        network: '网络',
-        upstream: '上游',
-        response: '响应',
-        internal: '内部'
-      REDACTED,
-      severity: {
-        p0: 'P0',
-        p1: 'P1',
-        p2: 'P2',
-        p3: 'P3'
-      REDACTED,
-      table: {
-        time: '时间',
-        severity: '级别',
-        phase: '阶段',
-        statusCode: '状态码',
-        platform: '平台',
-        model: '模型',
-        latency: '延迟',
-        requestId: '请求ID',
-        message: '错误信息'
-      REDACTED,
-      details: {
-        title: '错误详情',
-        requestId: '请求ID',
-        errorMessage: '错误信息',
-        requestPath: '请求路径',
-        clientIp: '客户端IP',
-        userId: '用户ID',
-        apiKeyId: 'API Key ID',
-        groupId: '分组ID',
-        stream: '流式'
-      REDACTED,
-      empty: {
-        title: '暂无运维数据',
-        subtitle: '启用错误日志与指标采集后将展示在此处'
-      REDACTED,
-      failedToLoad: '加载运维数据失败'
     REDACTED,
 
     // Users Management
@@ -1156,6 +1059,54 @@ export default {
         error: '错误',
         cooldown: '冷却中'
       REDACTED,
+      status: {
+        paused: '已暂停',
+        limited: '受限',
+        tempUnschedulable: '临时不可调度'
+      REDACTED,
+      tempUnschedulable: {
+        title: '临时不可调度',
+        statusTitle: '临时不可调度状态',
+        hint: '当错误码与关键词同时匹配时，账号会在指定时间内被临时禁用。',
+        notice: '规则按顺序匹配，需同时满足错误码与关键词。',
+        addRule: '添加规则',
+        ruleOrder: '规则序号',
+        ruleIndex: '规则 #{indexREDACTED',
+        errorCode: '错误码',
+        errorCodePlaceholder: '例如 429',
+        durationMinutes: '持续时间（分钟）',
+        durationPlaceholder: '例如 30',
+        keywords: '关键词',
+        keywordsPlaceholder: '例如 overloaded, too many requests',
+        keywordsHint: '多个关键词用逗号分隔，匹配时必须命中其中之一。',
+        description: '描述',
+        descriptionPlaceholder: '可选，便于记忆规则用途',
+        rulesInvalid: '请至少填写一条包含错误码、关键词和时长的规则。',
+        viewDetails: '查看临时不可调度详情',
+        accountName: '账号',
+        triggeredAt: '触发时间',
+        until: '解除时间',
+        remaining: '剩余时间',
+        matchedKeyword: '匹配关键词',
+        errorMessage: '错误详情',
+        reset: '重置状态',
+        resetSuccess: '临时不可调度已重置',
+        resetFailed: '重置临时不可调度失败',
+        failedToLoad: '加载临时不可调度状态失败',
+        notActive: '当前账号未处于临时不可调度状态。',
+        expired: '已到期',
+        remainingMinutes: '约 {minutesREDACTED 分钟',
+        remainingHours: '约 {hoursREDACTED 小时',
+        remainingHoursMinutes: '约 {hoursREDACTED 小时 {minutesREDACTED 分钟',
+        presets: {
+          overloadLabel: '529 过载',
+          overloadDesc: '服务过载 - 暂停 60 分钟',
+          rateLimitLabel: '429 限流',
+          rateLimitDesc: '触发限流 - 暂停 10 分钟',
+          unavailableLabel: '503 维护',
+          unavailableDesc: '服务不可用 - 暂停 30 分钟'
+        REDACTED
+      REDACTED,
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',
@@ -1300,10 +1251,10 @@ export default {
       priority: '优先级',
       priorityHint: '优先级越高的账号优先使用',
       higherPriorityFirst: '数值越高优先级越高',
-      mixedScheduling: '混合调度',
+      mixedScheduling: '在 /v1/messages 中使用',
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',
       mixedSchedulingTooltip:
-        '开启后，该账户可被 /v1/messages 及 /v1beta 端点调度，否则只被 /antigravity 调度。注意：Anthropic Claude 和 Antigravity Claude 无法在同个上下文中混合使用，开启后请自行做好分组管理。',
+        '！！注意！！ Antigravity Claude 和 Anthropic Claude 无法在同个上下文中使用，如果你同时有 Anthropic 账号和 Antigravity 账号，开启此选项会导致经常 400 报错。开启后，请用分组功能做好 Antigravity 账号和 Anthropic 账号的隔离。一定要弄明白再开启！！',
       creating: '创建中...',
       updating: '更新中...',
       accountCreated: '账号创建成功',
@@ -1860,6 +1811,7 @@ export default {
         siteKey: '站点密钥',
         secretKey: '私密密钥',
         siteKeyHint: '从 Cloudflare Dashboard 获取',
+        cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: '服务端验证密钥（请保密）'
       REDACTED,
       defaults: {
@@ -2007,6 +1959,7 @@ export default {
     description: '查看您的订阅计划和用量',
     noActiveSubscriptions: '暂无有效订阅',
     noActiveSubscriptionsDesc: '您没有任何有效订阅。请联系管理员获取订阅。',
+    failedToLoad: '加载订阅失败',
     status: {
       active: '有效',
       expired: '已过期',
