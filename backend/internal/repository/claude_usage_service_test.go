@@ -33,7 +33,7 @@ REDACTED
 func (s *ClaudeUsageServiceSuite) TestFetchUsage_Success() {
 	var captured usageRequestCapture
 
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		captured.authorization = r.Header.Get("Authorization")
 		captured.anthropicBeta = r.Header.Get("anthropic-beta")
 
@@ -59,7 +59,7 @@ REDACTED))
 REDACTED
 
 func (s *ClaudeUsageServiceSuite) TestFetchUsage_NonOK() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = io.WriteString(w, "nope")
 REDACTED))
@@ -73,7 +73,7 @@ REDACTED))
 REDACTED
 
 func (s *ClaudeUsageServiceSuite) TestFetchUsage_BadJSON() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, "not-json")
 REDACTED))
@@ -86,7 +86,7 @@ REDACTED))
 REDACTED
 
 func (s *ClaudeUsageServiceSuite) TestFetchUsage_ContextCancel() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Never respond - simulate slow server
 		<-r.Context().Done()
 REDACTED))

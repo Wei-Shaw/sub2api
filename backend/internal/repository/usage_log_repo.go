@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -70,6 +71,9 @@ REDACTED
 		createdAt = time.Now()
 REDACTED
 
+	requestID := strings.TrimSpace(log.RequestID)
+	log.RequestID = requestID
+
 	rateMultiplier := log.RateMultiplier
 
 	query := `
@@ -107,6 +111,7 @@ REDACTED
 			$14, $15, $16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25
 		)
+		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
 	`
 
@@ -115,11 +120,16 @@ REDACTED
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
 
+	var requestIDArg any
+	if requestID != "" {
+		requestIDArg = requestID
+REDACTED
+
 	args := []any{
 		log.UserID,
-		log.APIKeyID,
+		log.ApiKeyID,
 		log.AccountID,
-		log.RequestID,
+		requestIDArg,
 		log.Model,
 		groupID,
 		subscriptionID,
@@ -143,7 +153,14 @@ REDACTED
 		createdAt,
 REDACTED
 	if err := scanSingleRow(ctx, r.sql, query, args, &log.ID, &log.CreatedAt); err != nil {
-		return err
+		if errors.Is(err, sql.ErrNoRows) && requestID != "" {
+			selectQuery := "SELECT id, created_at FROM usage_logs WHERE request_id = $1 AND api_key_id = $2"
+			if err := scanSingleRow(ctx, r.sql, selectQuery, []any{requestID, log.ApiKeyIDREDACTED, &log.ID, &log.CreatedAt); err != nil {
+				return err
+		REDACTED
+	REDACTED else {
+			return err
+	REDACTED
 REDACTED
 	log.RateMultiplier = rateMultiplier
 	return nil
@@ -183,7 +200,7 @@ func (r *usageLogRepository) ListByUser(ctx context.Context, userID int64, param
 	return r.listUsageLogsWithPagination(ctx, "WHERE user_id = $1", []any{userIDREDACTED, params)
 REDACTED
 
-func (r *usageLogRepository) ListByAPIKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	return r.listUsageLogsWithPagination(ctx, "WHERE api_key_id = $1", []any{apiKeyIDREDACTED, params)
 REDACTED
 
@@ -270,8 +287,8 @@ REDACTED
 		r.sql,
 		apiKeyStatsQuery,
 		[]any{service.StatusActiveREDACTED,
-		&stats.TotalAPIKeys,
-		&stats.ActiveAPIKeys,
+		&stats.TotalApiKeys,
+		&stats.ActiveApiKeys,
 	); err != nil {
 		return nil, err
 REDACTED
@@ -418,8 +435,8 @@ REDACTED
 	return &stats, nil
 REDACTED
 
-// GetAPIKeyStatsAggregated returns aggregated usage statistics for an API key using database-level aggregation
-func (r *usageLogRepository) GetAPIKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+// GetApiKeyStatsAggregated returns aggregated usage statistics for an API key using database-level aggregation
+func (r *usageLogRepository) GetApiKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	query := `
 		SELECT
 			COUNT(*) as total_requests,
@@ -623,7 +640,7 @@ REDACTED
 	return "UTC"
 REDACTED
 
-func (r *usageLogRepository) ListByAPIKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *usageLogRepository) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC"
 	logs, err := r.queryUsageLogs(ctx, query, apiKeyID, startTime, endTime)
 	return logs, nil, err
@@ -709,11 +726,11 @@ type ModelStat = usagestats.ModelStat
 // UserUsageTrendPoint represents user usage trend data point
 type UserUsageTrendPoint = usagestats.UserUsageTrendPoint
 
-// APIKeyUsageTrendPoint represents API key usage trend data point
-type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
+// ApiKeyUsageTrendPoint represents API key usage trend data point
+type ApiKeyUsageTrendPoint = usagestats.ApiKeyUsageTrendPoint
 
-// GetAPIKeyUsageTrend returns usage trend data grouped by API key and date
-func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []APIKeyUsageTrendPoint, err error) {
+// GetApiKeyUsageTrend returns usage trend data grouped by API key and date
+func (r *usageLogRepository) GetApiKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []ApiKeyUsageTrendPoint, err error) {
 	dateFormat := "YYYY-MM-DD"
 	if granularity == "hour" {
 		dateFormat = "YYYY-MM-DD HH24:00"
@@ -755,10 +772,10 @@ REDACTED
 	REDACTED
 REDACTED()
 
-	results = make([]APIKeyUsageTrendPoint, 0)
+	results = make([]ApiKeyUsageTrendPoint, 0)
 	for rows.Next() {
-		var row APIKeyUsageTrendPoint
-		if err = rows.Scan(&row.Date, &row.APIKeyID, &row.KeyName, &row.Requests, &row.Tokens); err != nil {
+		var row ApiKeyUsageTrendPoint
+		if err = rows.Scan(&row.Date, &row.ApiKeyID, &row.KeyName, &row.Requests, &row.Tokens); err != nil {
 			return nil, err
 	REDACTED
 		results = append(results, row)
@@ -844,7 +861,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 		r.sql,
 		"SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL",
 		[]any{userIDREDACTED,
-		&stats.TotalAPIKeys,
+		&stats.TotalApiKeys,
 	); err != nil {
 		return nil, err
 REDACTED
@@ -853,7 +870,7 @@ REDACTED
 		r.sql,
 		"SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND status = $2 AND deleted_at IS NULL",
 		[]any{userID, service.StatusActiveREDACTED,
-		&stats.ActiveAPIKeys,
+		&stats.ActiveApiKeys,
 	); err != nil {
 		return nil, err
 REDACTED
@@ -1023,9 +1040,9 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		conditions = append(conditions, fmt.Sprintf("user_id = $%d", len(args)+1))
 		args = append(args, filters.UserID)
 REDACTED
-	if filters.APIKeyID > 0 {
+	if filters.ApiKeyID > 0 {
 		conditions = append(conditions, fmt.Sprintf("api_key_id = $%d", len(args)+1))
-		args = append(args, filters.APIKeyID)
+		args = append(args, filters.ApiKeyID)
 REDACTED
 	if filters.AccountID > 0 {
 		conditions = append(conditions, fmt.Sprintf("account_id = $%d", len(args)+1))
@@ -1145,18 +1162,18 @@ REDACTED
 	return result, nil
 REDACTED
 
-// BatchAPIKeyUsageStats represents usage stats for a single API key
-type BatchAPIKeyUsageStats = usagestats.BatchAPIKeyUsageStats
+// BatchApiKeyUsageStats represents usage stats for a single API key
+type BatchApiKeyUsageStats = usagestats.BatchApiKeyUsageStats
 
-// GetBatchAPIKeyUsageStats gets today and total actual_cost for multiple API keys
-func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*BatchAPIKeyUsageStats, error) {
-	result := make(map[int64]*BatchAPIKeyUsageStats)
+// GetBatchApiKeyUsageStats gets today and total actual_cost for multiple API keys
+func (r *usageLogRepository) GetBatchApiKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*BatchApiKeyUsageStats, error) {
+	result := make(map[int64]*BatchApiKeyUsageStats)
 	if len(apiKeyIDs) == 0 {
 		return result, nil
 REDACTED
 
 	for _, id := range apiKeyIDs {
-		result[id] = &BatchAPIKeyUsageStats{APIKeyID: idREDACTED
+		result[id] = &BatchApiKeyUsageStats{ApiKeyID: idREDACTED
 REDACTED
 
 	query := `
@@ -1582,7 +1599,7 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	apiKeys, err := r.loadAPIKeys(ctx, ids.apiKeyIDs)
+	apiKeys, err := r.loadApiKeys(ctx, ids.apiKeyIDs)
 	if err != nil {
 		return err
 REDACTED
@@ -1603,8 +1620,8 @@ REDACTED
 		if user, ok := users[logs[i].UserID]; ok {
 			logs[i].User = user
 	REDACTED
-		if key, ok := apiKeys[logs[i].APIKeyID]; ok {
-			logs[i].APIKey = key
+		if key, ok := apiKeys[logs[i].ApiKeyID]; ok {
+			logs[i].ApiKey = key
 	REDACTED
 		if acc, ok := accounts[logs[i].AccountID]; ok {
 			logs[i].Account = acc
@@ -1642,7 +1659,7 @@ func collectUsageLogIDs(logs []service.UsageLog) usageLogIDs {
 
 	for i := range logs {
 		userIDs[logs[i].UserID] = struct{REDACTED{REDACTED
-		apiKeyIDs[logs[i].APIKeyID] = struct{REDACTED{REDACTED
+		apiKeyIDs[logs[i].ApiKeyID] = struct{REDACTED{REDACTED
 		accountIDs[logs[i].AccountID] = struct{REDACTED{REDACTED
 		if logs[i].GroupID != nil {
 			groupIDs[*logs[i].GroupID] = struct{REDACTED{REDACTED
@@ -1676,12 +1693,12 @@ REDACTED
 	return out, nil
 REDACTED
 
-func (r *usageLogRepository) loadAPIKeys(ctx context.Context, ids []int64) (map[int64]*service.APIKey, error) {
-	out := make(map[int64]*service.APIKey)
+func (r *usageLogRepository) loadApiKeys(ctx context.Context, ids []int64) (map[int64]*service.ApiKey, error) {
+	out := make(map[int64]*service.ApiKey)
 	if len(ids) == 0 {
 		return out, nil
 REDACTED
-	models, err := r.client.APIKey.Query().Where(dbapikey.IDIn(ids...)).All(ctx)
+	models, err := r.client.ApiKey.Query().Where(dbapikey.IDIn(ids...)).All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -1800,7 +1817,7 @@ REDACTED
 	log := &service.UsageLog{
 		ID:                    id,
 		UserID:                userID,
-		APIKeyID:              apiKeyID,
+		ApiKeyID:              apiKeyID,
 		AccountID:             accountID,
 		Model:                 model,
 		InputTokens:           inputTokens,
