@@ -273,7 +273,7 @@ REDACTED
 			return 999
 	REDACTED
 		switch a.Type {
-		case AccountTypeAPIKey:
+		case AccountTypeApiKey:
 			if strings.TrimSpace(a.GetCredential("api_key")) != "" {
 				return 0
 		REDACTED
@@ -351,7 +351,7 @@ REDACTED
 
 	originalModel := req.Model
 	mappedModel := req.Model
-	if account.Type == AccountTypeAPIKey {
+	if account.Type == AccountTypeApiKey {
 		mappedModel = account.GetMappedModel(req.Model)
 REDACTED
 
@@ -374,7 +374,7 @@ REDACTED
 REDACTED
 
 	switch account.Type {
-	case AccountTypeAPIKey:
+	case AccountTypeApiKey:
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			apiKey := account.GetCredential("api_key")
 			if strings.TrimSpace(apiKey) == "" {
@@ -539,7 +539,14 @@ REDACTED
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		tempMatched := false
+		if s.rateLimitService != nil {
+			tempMatched = s.rateLimitService.HandleTempUnschedulable(ctx, account, resp.StatusCode, respBody)
+	REDACTED
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		if tempMatched {
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 	REDACTED
@@ -614,7 +621,7 @@ REDACTED
 REDACTED
 
 	mappedModel := originalModel
-	if account.Type == AccountTypeAPIKey {
+	if account.Type == AccountTypeApiKey {
 		mappedModel = account.GetMappedModel(originalModel)
 REDACTED
 
@@ -636,7 +643,7 @@ REDACTED
 	var buildReq func(ctx context.Context) (*http.Request, string, error)
 
 	switch account.Type {
-	case AccountTypeAPIKey:
+	case AccountTypeApiKey:
 		buildReq = func(ctx context.Context) (*http.Request, string, error) {
 			apiKey := account.GetCredential("api_key")
 			if strings.TrimSpace(apiKey) == "" {
@@ -825,6 +832,10 @@ REDACTED
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		tempMatched := false
+		if s.rateLimitService != nil {
+			tempMatched = s.rateLimitService.HandleTempUnschedulable(ctx, account, resp.StatusCode, respBody)
+	REDACTED
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
 		// Best-effort fallback for OAuth tokens missing AI Studio scopes when calling countTokens.
@@ -842,6 +853,9 @@ REDACTED
 		REDACTED, nil
 	REDACTED
 
+		if tempMatched {
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 	REDACTED
@@ -1758,7 +1772,7 @@ REDACTED
 REDACTED
 
 	switch account.Type {
-	case AccountTypeAPIKey:
+	case AccountTypeApiKey:
 		apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 		if apiKey == "" {
 			return nil, errors.New("gemini api_key not configured")
@@ -2177,10 +2191,12 @@ REDACTED
 		parts := make([]any, 0)
 		switch content := mm["content"].(type) {
 		case string:
-			if strings.TrimSpace(content) != "" {
-				parts = append(parts, map[string]any{"text": contentREDACTED)
-		REDACTED
+			// 字符串形式的 content，保留所有内容（包括空白）
+			parts = append(parts, map[string]any{"text": contentREDACTED)
 		case []any:
+			// 如果只有一个 block，不过滤空白（让上游 API 报错）
+			singleBlock := len(content) == 1
+
 			for _, block := range content {
 				bm, ok := block.(map[string]any)
 				if !ok {
@@ -2189,8 +2205,12 @@ REDACTED
 				bt, _ := bm["type"].(string)
 				switch bt {
 				case "text":
-					if text, ok := bm["text"].(string); ok && strings.TrimSpace(text) != "" {
-						parts = append(parts, map[string]any{"text": textREDACTED)
+					if text, ok := bm["text"].(string); ok {
+						// 单个 block 时保留所有内容（包括空白）
+						// 多个 blocks 时过滤掉空白
+						if singleBlock || strings.TrimSpace(text) != "" {
+							parts = append(parts, map[string]any{"text": textREDACTED)
+					REDACTED
 				REDACTED
 				case "tool_use":
 					id, _ := bm["id"].(string)

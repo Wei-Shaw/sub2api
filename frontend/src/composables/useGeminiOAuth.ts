@@ -12,6 +12,8 @@ export interface GeminiTokenInfo {
   expires_at?: number | string
   project_id?: string
   oauth_type?: string
+  tier_id?: string
+  extra?: Record<string, unknown>
   [key: string]: unknown
 REDACTED
 
@@ -122,8 +124,14 @@ export function useGeminiOAuth() {
       expires_at: expiresAt,
       scope: tokenInfo.scope,
       project_id: tokenInfo.project_id,
-      oauth_type: tokenInfo.oauth_type
+      oauth_type: tokenInfo.oauth_type,
+      tier_id: tokenInfo.tier_id
     REDACTED
+  REDACTED
+
+  const buildExtraInfo = (tokenInfo: GeminiTokenInfo): Record<string, unknown> | undefined => {
+    if (!tokenInfo.extra || typeof tokenInfo.extra !== 'object') return undefined
+    return tokenInfo.extra
   REDACTED
 
   const getCapabilities = async (): Promise<GeminiOAuthCapabilities | null> => {
@@ -145,6 +153,7 @@ export function useGeminiOAuth() {
     generateAuthUrl,
     exchangeAuthCode,
     buildCredentials,
+    buildExtraInfo,
     getCapabilities
   REDACTED
 REDACTED

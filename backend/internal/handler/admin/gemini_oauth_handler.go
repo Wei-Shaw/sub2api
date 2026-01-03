@@ -18,7 +18,6 @@ func NewGeminiOAuthHandler(geminiOAuthService *service.GeminiOAuthService) *Gemi
 	return &GeminiOAuthHandler{geminiOAuthService: geminiOAuthServiceREDACTED
 REDACTED
 
-// GetCapabilities retrieves OAuth configuration capabilities.
 // GET /api/v1/admin/gemini/oauth/capabilities
 func (h *GeminiOAuthHandler) GetCapabilities(c *gin.Context) {
 	cfg := h.geminiOAuthService.GetOAuthConfig()

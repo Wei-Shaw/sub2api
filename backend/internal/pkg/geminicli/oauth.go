@@ -181,19 +181,23 @@ REDACTED
 				effective.Scopes = DefaultAIStudioScopes
 		REDACTED
 		case "google_one":
-			// Google One accounts need generative-language scope for Gemini API access
-			// and drive.readonly scope for storage tier detection
-			effective.Scopes = DefaultGoogleOneScopes
+			// Google One uses built-in Gemini CLI client (same as code_assist)
+			// Built-in client can't request restricted scopes like generative-language.retriever
+			if isBuiltinClient {
+				effective.Scopes = DefaultCodeAssistScopes
+		REDACTED else {
+				effective.Scopes = DefaultGoogleOneScopes
+		REDACTED
 		default:
 			// Default to Code Assist scopes
 			effective.Scopes = DefaultCodeAssistScopes
 	REDACTED
-REDACTED else if oauthType == "ai_studio" && isBuiltinClient {
+REDACTED else if (oauthType == "ai_studio" || oauthType == "google_one") && isBuiltinClient {
 		// If user overrides scopes while still using the built-in client, strip restricted scopes.
 		parts := strings.Fields(effective.Scopes)
 		filtered := make([]string, 0, len(parts))
 		for _, s := range parts {
-			if strings.Contains(s, "generative-language") {
+			if hasRestrictedScope(s) {
 				continue
 		REDACTED
 			filtered = append(filtered, s)
@@ -217,6 +221,11 @@ REDACTED
 REDACTED
 
 	return effective, nil
+REDACTED
+
+func hasRestrictedScope(scope string) bool {
+	return strings.HasPrefix(scope, "https://www.googleapis.com/auth/generative-language") ||
+		strings.HasPrefix(scope, "https://www.googleapis.com/auth/drive")
 REDACTED
 
 func BuildAuthorizationURL(cfg OAuthConfig, state, codeChallenge, redirectURI, projectID, oauthType string) (string, error) {
