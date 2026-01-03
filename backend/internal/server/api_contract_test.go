@@ -310,10 +310,10 @@ REDACTED{
 					"default_concurrency": 5,
 					"default_balance": 1.25,
 					"enable_model_fallback": false,
-					"fallback_model_anthropic": "",
-					"fallback_model_antigravity": "",
-					"fallback_model_gemini": "",
-					"fallback_model_openai": ""
+					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
+					"fallback_model_antigravity": "gemini-2.5-pro",
+					"fallback_model_gemini": "gemini-2.5-pro",
+					"fallback_model_openai": "gpt-4o"
 			REDACTED
 		REDACTED`,
 	REDACTED,
