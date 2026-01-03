@@ -158,7 +158,7 @@ REDACTED
 
 func (s *ConcurrencyCacheSuite) TestWaitQueue_IncrementAndDecrement() {
 	userID := int64(20)
-	userKey := waitQueueKey(userID)
+	waitKey := fmt.Sprintf("%s%d", waitQueueKeyPrefix, userID)
 
 	ok, err := s.cache.IncrementWaitCount(s.ctx, userID, 2)
 	require.NoError(s.T(), err, "IncrementWaitCount 1")
@@ -172,31 +172,31 @@ func (s *ConcurrencyCacheSuite) TestWaitQueue_IncrementAndDecrement() {
 	require.NoError(s.T(), err, "IncrementWaitCount 3")
 	require.False(s.T(), ok, "expected wait increment over max to fail")
 
-	ttl, err := s.rdb.TTL(s.ctx, waitQueueTotalKey).Result()
-	require.NoError(s.T(), err, "TTL wait total key")
-	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL*2)
+	ttl, err := s.rdb.TTL(s.ctx, waitKey).Result()
+	require.NoError(s.T(), err, "TTL waitKey")
+	s.AssertTTLWithin(ttl, 1*time.Second, testSlotTTL)
 
 	require.NoError(s.T(), s.cache.DecrementWaitCount(s.ctx, userID), "DecrementWaitCount")
 
-	val, err := s.rdb.HGet(s.ctx, waitQueueCountsKey, userKey).Int()
-	require.NoError(s.T(), err, "HGET wait queue count")
+	val, err := s.rdb.Get(s.ctx, waitKey).Int()
+	if !errors.Is(err, redis.Nil) {
+		require.NoError(s.T(), err, "Get waitKey")
+REDACTED
 	require.Equal(s.T(), 1, val, "expected wait count 1")
-
-	total, err := s.rdb.Get(s.ctx, waitQueueTotalKey).Int()
-	require.NoError(s.T(), err, "GET wait queue total")
-	require.Equal(s.T(), 1, total, "expected total wait count 1")
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestWaitQueue_DecrementNoNegative() {
 	userID := int64(300)
-	userKey := waitQueueKey(userID)
+	waitKey := fmt.Sprintf("%s%d", waitQueueKeyPrefix, userID)
 
 	// Test decrement on non-existent key - should not error and should not create negative value
 	require.NoError(s.T(), s.cache.DecrementWaitCount(s.ctx, userID), "DecrementWaitCount on non-existent key")
 
-	// Verify count remains zero / absent.
-	val, err := s.rdb.HGet(s.ctx, waitQueueCountsKey, userKey).Int()
-	require.True(s.T(), errors.Is(err, redis.Nil))
+	// Verify no key was created or it's not negative
+	val, err := s.rdb.Get(s.ctx, waitKey).Int()
+	if !errors.Is(err, redis.Nil) {
+		require.NoError(s.T(), err, "Get waitKey")
+REDACTED
 	require.GreaterOrEqual(s.T(), val, 0, "expected non-negative wait count after decrement on empty")
 
 	// Set count to 1, then decrement twice
@@ -210,15 +210,12 @@ func (s *ConcurrencyCacheSuite) TestWaitQueue_DecrementNoNegative() {
 	// Decrement again on 0 - should not go negative
 	require.NoError(s.T(), s.cache.DecrementWaitCount(s.ctx, userID), "DecrementWaitCount on zero")
 
-	// Verify per-user count is absent and total is non-negative.
-	_, err = s.rdb.HGet(s.ctx, waitQueueCountsKey, userKey).Result()
-	require.True(s.T(), errors.Is(err, redis.Nil), "expected count field removed on zero")
-
-	total, err := s.rdb.Get(s.ctx, waitQueueTotalKey).Int()
+	// Verify count is 0, not negative
+	val, err = s.rdb.Get(s.ctx, waitKey).Int()
 	if !errors.Is(err, redis.Nil) {
-		require.NoError(s.T(), err)
+		require.NoError(s.T(), err, "Get waitKey after double decrement")
 REDACTED
-	require.GreaterOrEqual(s.T(), total, 0, "expected non-negative total wait count")
+	require.GreaterOrEqual(s.T(), val, 0, "expected non-negative wait count")
 REDACTED
 
 func (s *ConcurrencyCacheSuite) TestAccountWaitQueue_IncrementAndDecrement() {

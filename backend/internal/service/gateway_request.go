@@ -75,15 +75,33 @@ REDACTED
 // FilterThinkingBlocks removes thinking blocks from request body
 // Returns filtered body or original body if filtering fails (fail-safe)
 // This prevents 400 errors from invalid thinking block signatures
+//
+// Strategy:
+//   - When thinking.type != "enabled": Remove all thinking blocks
+//   - When thinking.type == "enabled": Only remove thinking blocks without valid signatures
+//     (blocks with missing/empty/dummy signatures that would cause 400 errors)
 func FilterThinkingBlocks(body []byte) []byte {
 	// Fast path: if body doesn't contain "thinking", skip parsing
-	if !bytes.Contains(body, []byte("thinking")) {
+	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
+		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
+		!bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) &&
+		!bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) &&
+		!bytes.Contains(body, []byte(`"thinking":`)) &&
+		!bytes.Contains(body, []byte(`"thinking" :`)) {
 		return body
 REDACTED
 
 	var req map[string]any
 	if err := json.Unmarshal(body, &req); err != nil {
 		return body // Return original on parse error
+REDACTED
+
+	// Check if thinking is enabled
+	thinkingEnabled := false
+	if thinking, ok := req["thinking"].(map[string]any); ok {
+		if thinkType, ok := thinking["type"].(string); ok && thinkType == "enabled" {
+			thinkingEnabled = true
+	REDACTED
 REDACTED
 
 	messages, ok := req["messages"].([]any)
@@ -98,6 +116,7 @@ REDACTED
 			continue
 	REDACTED
 
+		role, _ := msgMap["role"].(string)
 		content, ok := msgMap["content"].([]any)
 		if !ok {
 			continue
@@ -106,6 +125,7 @@ REDACTED
 		// Filter thinking blocks from content array
 		newContent := make([]any, 0, len(content))
 		filteredThisMessage := false
+
 		for _, block := range content {
 			blockMap, ok := block.(map[string]any)
 			if !ok {
@@ -114,22 +134,34 @@ REDACTED
 		REDACTED
 
 			blockType, _ := blockMap["type"].(string)
-			// Explicit Anthropic-style thinking block: {"type":"thinking", ...REDACTED
-			if blockType == "thinking" {
+
+			// Handle thinking/redacted_thinking blocks
+			if blockType == "thinking" || blockType == "redacted_thinking" {
+				// When thinking is enabled and this is an assistant message,
+				// only keep thinking blocks with valid (non-empty, non-dummy) signatures
+				if thinkingEnabled && role == "assistant" {
+					signature, _ := blockMap["signature"].(string)
+					// Keep blocks with valid signatures, remove those without
+					if signature != "" && signature != "skip_thought_signature_validator" {
+						newContent = append(newContent, block)
+						continue
+				REDACTED
+			REDACTED
+
 				filtered = true
 				filteredThisMessage = true
-				continue // Skip thinking blocks
+				continue
 		REDACTED
 
 			// Some clients send the "thinking" object without a "type" discriminator.
-			// Vertex/Claude still expects a signature for any thinking block, so we drop it.
 			// We intentionally do not drop other typed blocks (e.g. tool_use) that might
 			// legitimately contain a "thinking" key inside their payload.
 			if blockType == "" {
-				if _, hasThinking := blockMap["thinking"]; hasThinking {
+				if thinkingContent, hasThinking := blockMap["thinking"]; hasThinking {
+					_ = thinkingContent
 					filtered = true
 					filteredThisMessage = true
-					continue // Skip thinking blocks
+					continue
 			REDACTED
 		REDACTED
 
