@@ -206,7 +206,7 @@ REDACTED
 
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, sessionHash string, accountID int64) error {
-	if sessionHash == "" || accountID <= 0 {
+	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 REDACTED
 	return s.cache.SetSessionAccountID(ctx, sessionHash, accountID, stickySessionTTL)
@@ -431,7 +431,7 @@ REDACTED
 REDACTED
 
 	// ============ Layer 1: 粘性会话优先 ============
-	if sessionHash != "" {
+	if sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
 			account, err := s.accountRepo.GetByID(ctx, accountID)

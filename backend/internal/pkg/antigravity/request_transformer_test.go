@@ -96,7 +96,7 @@ REDACTED{
 				{
 					Type: "custom",
 					Name: "mcp_tool",
-					Custom: &CustomToolSpec{
+					Custom: &ClaudeCustomToolSpec{
 						Description: "MCP tool description",
 						InputSchema: map[string]any{
 							"type": "object",
@@ -121,7 +121,7 @@ REDACTED{
 				{
 					Type: "custom",
 					Name: "custom_tool",
-					Custom: &CustomToolSpec{
+					Custom: &ClaudeCustomToolSpec{
 						Description: "Custom tool",
 						InputSchema: map[string]any{"type": "object"REDACTED,
 				REDACTED,
@@ -148,7 +148,7 @@ REDACTED{
 				{
 					Type: "custom",
 					Name: "invalid_custom",
-					Custom: &CustomToolSpec{
+					Custom: &ClaudeCustomToolSpec{
 						Description: "Invalid",
 						// InputSchema 为 nil
 				REDACTED,

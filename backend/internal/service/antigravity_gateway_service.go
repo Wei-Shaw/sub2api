@@ -322,9 +322,6 @@ REDACTED
 
 	originalModel := claudeReq.Model
 	mappedModel := s.getMappedModel(account, claudeReq.Model)
-	if mappedModel != claudeReq.Model {
-		log.Printf("Antigravity model mapping: %s -> %s (account: %s)", claudeReq.Model, mappedModel, account.Name)
-REDACTED
 
 	// 获取 access_token
 	if s.tokenProvider == nil {
@@ -348,15 +345,6 @@ REDACTED
 	geminiBody, err := antigravity.TransformClaudeToGemini(&claudeReq, projectID, mappedModel)
 	if err != nil {
 		return nil, fmt.Errorf("transform request: %w", err)
-REDACTED
-
-	// 调试：记录转换后的请求体（仅记录前 2000 字符）
-	if bodyJSON, err := json.Marshal(geminiBody); err == nil {
-		truncated := string(bodyJSON)
-		if len(truncated) > 2000 {
-			truncated = truncated[:2000] + "..."
-	REDACTED
-		log.Printf("[Debug] Transformed Gemini request: %s", truncated)
 REDACTED
 
 	// 构建上游 action
