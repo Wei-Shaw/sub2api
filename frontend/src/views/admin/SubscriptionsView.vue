@@ -202,16 +202,19 @@
                 </div>
               </div>
 
-              <!-- No Limits -->
+              <!-- No Limits - Unlimited badge -->
               <div
                 v-if="
                   !row.group?.daily_limit_usd &&
                   !row.group?.weekly_limit_usd &&
                   !row.group?.monthly_limit_usd
                 "
-                class="text-xs text-gray-500"
+                class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
               >
-                {{ t('admin.subscriptions.noLimits') REDACTEDREDACTED
+                <span class="text-lg text-emerald-600 dark:text-emerald-400">∞</span>
+                <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                  {{ t('admin.subscriptions.unlimited') REDACTEDREDACTED
+                </span>
               </div>
             </div>
           </template>

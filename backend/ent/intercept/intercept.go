@@ -19,6 +19,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
+	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -348,6 +350,60 @@ REDACTED
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserAllowedGroupQuery", q)
 REDACTED
 
+// The UserAttributeDefinitionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserAttributeDefinitionFunc func(context.Context, *ent.UserAttributeDefinitionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserAttributeDefinitionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserAttributeDefinitionQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeDefinitionQuery", q)
+REDACTED
+
+// The TraverseUserAttributeDefinition type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserAttributeDefinition func(context.Context, *ent.UserAttributeDefinitionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserAttributeDefinition) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserAttributeDefinition) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserAttributeDefinitionQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeDefinitionQuery", q)
+REDACTED
+
+// The UserAttributeValueFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserAttributeValueFunc func(context.Context, *ent.UserAttributeValueQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserAttributeValueFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserAttributeValueQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeValueQuery", q)
+REDACTED
+
+// The TraverseUserAttributeValue type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserAttributeValue func(context.Context, *ent.UserAttributeValueQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserAttributeValue) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserAttributeValue) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserAttributeValueQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeValueQuery", q)
+REDACTED
+
 // The UserSubscriptionFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserSubscriptionFunc func(context.Context, *ent.UserSubscriptionQuery) (ent.Value, error)
 
@@ -398,6 +454,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserQuery, predicate.User, user.OrderOption]{typ: ent.TypeUser, tq: qREDACTED, nil
 	case *ent.UserAllowedGroupQuery:
 		return &query[*ent.UserAllowedGroupQuery, predicate.UserAllowedGroup, userallowedgroup.OrderOption]{typ: ent.TypeUserAllowedGroup, tq: qREDACTED, nil
+	case *ent.UserAttributeDefinitionQuery:
+		return &query[*ent.UserAttributeDefinitionQuery, predicate.UserAttributeDefinition, userattributedefinition.OrderOption]{typ: ent.TypeUserAttributeDefinition, tq: qREDACTED, nil
+	case *ent.UserAttributeValueQuery:
+		return &query[*ent.UserAttributeValueQuery, predicate.UserAttributeValue, userattributevalue.OrderOption]{typ: ent.TypeUserAttributeValue, tq: qREDACTED, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: qREDACTED, nil
 	default:

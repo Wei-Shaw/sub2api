@@ -89,25 +89,6 @@
               </svg>
               <span class="truncate">{{ user.username REDACTEDREDACTED</span>
             </div>
-            <div
-              v-if="user?.wechat"
-              class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400"
-            >
-              <svg
-                class="h-4 w-4 text-gray-400 dark:text-gray-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
-                />
-              </svg>
-              <span class="truncate">{{ user.wechat REDACTEDREDACTED</span>
-            </div>
           </div>
         </div>
       </div>
@@ -167,19 +148,6 @@
                 type="text"
                 class="input"
                 :placeholder="t('profile.enterUsername')"
-              />
-            </div>
-
-            <div>
-              <label for="wechat" class="input-label">
-                {{ t('profile.wechat') REDACTEDREDACTED
-              </label>
-              <input
-                id="wechat"
-                v-model="profileForm.wechat"
-                type="text"
-                class="input"
-                :placeholder="t('profile.enterWechat')"
               />
             </div>
 
@@ -338,8 +306,7 @@ const passwordForm = ref({
 REDACTED)
 
 const profileForm = ref({
-  username: '',
-  wechat: ''
+  username: ''
 REDACTED)
 
 const changingPassword = ref(false)
@@ -354,7 +321,6 @@ onMounted(async () => {
     // Initialize profile form with current user data
     if (user.value) {
       profileForm.value.username = user.value.username || ''
-      profileForm.value.wechat = user.value.wechat || ''
     REDACTED
   REDACTED catch (error) {
     console.error('Failed to load contact info:', error)
@@ -407,8 +373,7 @@ const handleUpdateProfile = async () => {
   updatingProfile.value = true
   try {
     const updatedUser = await userAPI.updateProfile({
-      username: profileForm.value.username,
-      wechat: profileForm.value.wechat
+      username: profileForm.value.username
     REDACTED)
 
     // Update auth store with new user data

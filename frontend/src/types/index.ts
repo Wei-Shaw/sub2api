@@ -7,7 +7,6 @@
 export interface User {
   id: number
   username: string
-  wechat: string
   notes: string
   email: string
   role: 'admin' | 'user' // User role for authorization
@@ -315,6 +314,22 @@ export interface Proxy {
   updated_at: string
 REDACTED
 
+// Gemini credentials structure for OAuth and API Key authentication
+export interface GeminiCredentials {
+  // API Key authentication
+  api_key?: string
+
+  // OAuth authentication
+  access_token?: string
+  refresh_token?: string
+  oauth_type?: 'code_assist' | 'ai_studio' | string
+  tier_id?: 'LEGACY' | 'PRO' | 'ULTRA' | string
+  project_id?: string
+  token_type?: string
+  scope?: string
+  expires_at?: string
+REDACTED
+
 export interface Account {
   id: number
   name: string
@@ -366,6 +381,8 @@ export interface AccountUsageInfo {
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
+  gemini_pro_daily?: UsageProgress | null
+  gemini_flash_daily?: UsageProgress | null
 REDACTED
 
 // OpenAI Codex usage snapshot (from response headers)
@@ -616,7 +633,6 @@ export interface UpdateUserRequest {
   email?: string
   password?: string
   username?: string
-  wechat?: string
   notes?: string
   role?: 'admin' | 'user'
   balance?: number
@@ -752,4 +768,77 @@ export interface AccountUsageStatsResponse {
   history: AccountUsageHistory[]
   summary: AccountUsageSummary
   models: ModelStat[]
+REDACTED
+
+// ==================== User Attribute Types ====================
+
+export type UserAttributeType = 'text' | 'textarea' | 'number' | 'email' | 'url' | 'date' | 'select' | 'multi_select'
+
+export interface UserAttributeOption {
+  value: string
+  label: string
+REDACTED
+
+export interface UserAttributeValidation {
+  min_length?: number
+  max_length?: number
+  min?: number
+  max?: number
+  pattern?: string
+  message?: string
+REDACTED
+
+export interface UserAttributeDefinition {
+  id: number
+  key: string
+  name: string
+  description: string
+  type: UserAttributeType
+  options: UserAttributeOption[]
+  required: boolean
+  validation: UserAttributeValidation
+  placeholder: string
+  display_order: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface UserAttributeValue {
+  id: number
+  user_id: number
+  attribute_id: number
+  value: string
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface CreateUserAttributeRequest {
+  key: string
+  name: string
+  description?: string
+  type: UserAttributeType
+  options?: UserAttributeOption[]
+  required?: boolean
+  validation?: UserAttributeValidation
+  placeholder?: string
+  display_order?: number
+  enabled?: boolean
+REDACTED
+
+export interface UpdateUserAttributeRequest {
+  key?: string
+  name?: string
+  description?: string
+  type?: UserAttributeType
+  options?: UserAttributeOption[]
+  required?: boolean
+  validation?: UserAttributeValidation
+  placeholder?: string
+  display_order?: number
+  enabled?: boolean
+REDACTED
+
+export interface UserAttributeValuesMap {
+  [attributeId: number]: string
 REDACTED

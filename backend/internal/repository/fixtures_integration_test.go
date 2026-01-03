@@ -40,7 +40,6 @@ REDACTED
 		SetBalance(u.Balance).
 		SetConcurrency(u.Concurrency).
 		SetUsername(u.Username).
-		SetWechat(u.Wechat).
 		SetNotes(u.Notes)
 	if !u.CreatedAt.IsZero() {
 		create.SetCreatedAt(u.CreatedAt)

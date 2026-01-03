@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"log"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/infrastructure/errors"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 var (
 	ErrTurnstileVerificationFailed = infraerrors.BadRequest("TURNSTILE_VERIFICATION_FAILED", "turnstile verification failed")
 	ErrTurnstileNotConfigured      = infraerrors.ServiceUnavailable("TURNSTILE_NOT_CONFIGURED", "turnstile not configured")
+	ErrTurnstileInvalidSecretKey   = infraerrors.BadRequest("TURNSTILE_INVALID_SECRET_KEY", "invalid turnstile secret key")
 )
 
 // TurnstileVerifier 验证 Turnstile token 的接口
@@ -82,4 +83,23 @@ REDACTED
 // IsEnabled 检查 Turnstile 是否启用
 func (s *TurnstileService) IsEnabled(ctx context.Context) bool {
 	return s.settingService.IsTurnstileEnabled(ctx)
+REDACTED
+
+// ValidateSecretKey 验证 Turnstile Secret Key 是否有效
+func (s *TurnstileService) ValidateSecretKey(ctx context.Context, secretKey string) error {
+	// 发送一个测试token的验证请求来检查secret_key是否有效
+	result, err := s.verifier.VerifyToken(ctx, secretKey, "test-validation", "")
+	if err != nil {
+		return fmt.Errorf("validate secret key: %w", err)
+REDACTED
+
+	// 检查是否有 invalid-input-secret 错误
+	for _, code := range result.ErrorCodes {
+		if code == "invalid-input-secret" {
+			return ErrTurnstileInvalidSecretKey
+	REDACTED
+REDACTED
+
+	// 其他错误（如 invalid-input-response）说明 secret key 是有效的
+	return nil
 REDACTED

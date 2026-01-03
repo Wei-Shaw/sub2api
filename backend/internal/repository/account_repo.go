@@ -124,6 +124,90 @@ REDACTED
 	return &accounts[0], nil
 REDACTED
 
+func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {
+	if len(ids) == 0 {
+		return []*service.Account{REDACTED, nil
+REDACTED
+
+	// De-duplicate while preserving order of first occurrence.
+	uniqueIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{REDACTED, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		uniqueIDs = append(uniqueIDs, id)
+REDACTED
+	if len(uniqueIDs) == 0 {
+		return []*service.Account{REDACTED, nil
+REDACTED
+
+	entAccounts, err := r.client.Account.
+		Query().
+		Where(dbaccount.IDIn(uniqueIDs...)).
+		WithProxy().
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(entAccounts) == 0 {
+		return []*service.Account{REDACTED, nil
+REDACTED
+
+	accountIDs := make([]int64, 0, len(entAccounts))
+	entByID := make(map[int64]*dbent.Account, len(entAccounts))
+	for _, acc := range entAccounts {
+		entByID[acc.ID] = acc
+		accountIDs = append(accountIDs, acc.ID)
+REDACTED
+
+	groupsByAccount, groupIDsByAccount, accountGroupsByAccount, err := r.loadAccountGroups(ctx, accountIDs)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	outByID := make(map[int64]*service.Account, len(entAccounts))
+	for _, entAcc := range entAccounts {
+		out := accountEntityToService(entAcc)
+		if out == nil {
+			continue
+	REDACTED
+
+		// Prefer the preloaded proxy edge when available.
+		if entAcc.Edges.Proxy != nil {
+			out.Proxy = proxyEntityToService(entAcc.Edges.Proxy)
+	REDACTED
+
+		if groups, ok := groupsByAccount[entAcc.ID]; ok {
+			out.Groups = groups
+	REDACTED
+		if groupIDs, ok := groupIDsByAccount[entAcc.ID]; ok {
+			out.GroupIDs = groupIDs
+	REDACTED
+		if ags, ok := accountGroupsByAccount[entAcc.ID]; ok {
+			out.AccountGroups = ags
+	REDACTED
+		outByID[entAcc.ID] = out
+REDACTED
+
+	// Preserve input order (first occurrence), and ignore missing IDs.
+	out := make([]*service.Account, 0, len(uniqueIDs))
+	for _, id := range uniqueIDs {
+		if _, ok := entByID[id]; !ok {
+			continue
+	REDACTED
+		if acc, ok := outByID[id]; ok && acc != nil {
+			out = append(out, acc)
+	REDACTED
+REDACTED
+
+	return out, nil
+REDACTED
+
 // ExistsByID 检查指定 ID 的账号是否存在。
 // 相比 GetByID，此方法性能更优，因为：
 //   - 使用 Exist() 方法生成 SELECT EXISTS 查询，只返回布尔值

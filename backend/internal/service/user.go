@@ -10,7 +10,6 @@ type User struct {
 	ID            int64
 	Email         string
 	Username      string
-	Wechat        string
 	Notes         string
 	PasswordHash  string
 	Role          string

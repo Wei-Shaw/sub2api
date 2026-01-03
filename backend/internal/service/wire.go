@@ -73,6 +73,15 @@ func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWh
 	return svc
 REDACTED
 
+// ProvideConcurrencyService creates ConcurrencyService and starts slot cleanup worker.
+func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config) *ConcurrencyService {
+	svc := NewConcurrencyService(cache)
+	if cfg != nil {
+		svc.StartSlotCleanupWorker(accountRepo, cfg.Gateway.Scheduling.SlotCleanupInterval)
+REDACTED
+	return svc
+REDACTED
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -94,6 +103,7 @@ var ProviderSet = wire.NewSet(
 	NewOAuthService,
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
+	NewGeminiQuotaService,
 	NewAntigravityOAuthService,
 	NewGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
@@ -107,7 +117,7 @@ var ProviderSet = wire.NewSet(
 	ProvideEmailQueueService,
 	NewTurnstileService,
 	NewSubscriptionService,
-	NewConcurrencyService,
+	ProvideConcurrencyService,
 	NewIdentityService,
 	NewCRSSyncService,
 	ProvideUpdateService,
@@ -115,4 +125,5 @@ var ProviderSet = wire.NewSet(
 	ProvideTimingWheelService,
 	ProvideDeferredService,
 	ProvideAntigravityQuotaRefresher,
+	NewUserAttributeService,
 )

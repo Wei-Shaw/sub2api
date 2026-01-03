@@ -147,7 +147,7 @@ REDACTED
 	for {
 		// Select account supporting the requested model
 		log.Printf("[OpenAI Handler] Selecting account: groupID=%v model=%s", apiKey.GroupID, reqModel)
-		account, err := h.gatewayService.SelectAccountForModelWithExclusions(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs)
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs)
 		if err != nil {
 			log.Printf("[OpenAI Handler] SelectAccount failed: %v", err)
 			if len(failedAccountIDs) == 0 {
@@ -157,20 +157,59 @@ REDACTED
 			h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
 			return
 	REDACTED
+		account := selection.Account
 		log.Printf("[OpenAI Handler] Selected account: id=%d name=%s", account.ID, account.Name)
 
 		// 3. Acquire account concurrency slot
-		accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWait(c, account.ID, account.Concurrency, reqStream, &streamStarted)
-		if err != nil {
-			log.Printf("Account concurrency acquire failed: %v", err)
-			h.handleConcurrencyError(c, err, "account", streamStarted)
-			return
+		accountReleaseFunc := selection.ReleaseFunc
+		var accountWaitRelease func()
+		if !selection.Acquired {
+			if selection.WaitPlan == nil {
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+				return
+		REDACTED
+			canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+			if err != nil {
+				log.Printf("Increment account wait count failed: %v", err)
+		REDACTED else if !canWait {
+				log.Printf("Account wait queue full: account=%d", account.ID)
+				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
+				return
+		REDACTED else {
+				// Only set release function if increment succeeded
+				accountWaitRelease = func() {
+					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+			REDACTED
+		REDACTED
+
+			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
+				c,
+				account.ID,
+				selection.WaitPlan.MaxConcurrency,
+				selection.WaitPlan.Timeout,
+				reqStream,
+				&streamStarted,
+			)
+			if err != nil {
+				if accountWaitRelease != nil {
+					accountWaitRelease()
+			REDACTED
+				log.Printf("Account concurrency acquire failed: %v", err)
+				h.handleConcurrencyError(c, err, "account", streamStarted)
+				return
+		REDACTED
+			if err := h.gatewayService.BindStickySession(c.Request.Context(), sessionHash, account.ID); err != nil {
+				log.Printf("Bind sticky session failed: %v", err)
+		REDACTED
 	REDACTED
 
 		// Forward request
 		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, body)
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
+	REDACTED
+		if accountWaitRelease != nil {
+			accountWaitRelease()
 	REDACTED
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError

@@ -318,6 +318,18 @@ export default {
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows: '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。',
       REDACTED,
+      antigravity: {
+        description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
+        claudeCode: 'Claude Code',
+        geminiCli: 'Gemini CLI',
+        claudeNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+        geminiNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+      REDACTED,
+      gemini: {
+        description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
+        modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
+        note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+      REDACTED,
     REDACTED,
     customKeyLabel: '自定义密钥',
     customKeyPlaceholder: '输入自定义密钥（至少16个字符）',
@@ -325,7 +337,15 @@ export default {
     customKeyTooShort: '自定义密钥至少需要16个字符',
     customKeyInvalidChars: '自定义密钥只能包含字母、数字、下划线和连字符',
     customKeyRequired: '请输入自定义密钥',
-    ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。'
+    ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
+    ccsClientSelect: {
+      title: '选择客户端',
+      description: '请选择您要导入到 CC-Switch 的客户端类型：',
+      claudeCode: 'Claude Code',
+      claudeCodeDesc: '导入为 Claude Code 配置',
+      geminiCli: 'Gemini CLI',
+      geminiCliDesc: '导入为 Gemini CLI 配置',
+    REDACTED,
   REDACTED,
 
   // Usage
@@ -431,9 +451,7 @@ export default {
     administrator: '管理员',
     user: '用户',
     username: '用户名',
-    wechat: '微信号',
     enterUsername: '输入用户名',
-    enterWechat: '输入微信号',
     editProfile: '编辑个人资料',
     updateProfile: '更新资料',
     updating: '更新中...',
@@ -584,12 +602,10 @@ export default {
       email: '邮箱',
       password: '密码',
       username: '用户名',
-      wechat: '微信号',
       notes: '备注',
       enterEmail: '请输入邮箱',
       enterPassword: '请输入密码',
       enterUsername: '请输入用户名（选填）',
-      enterWechat: '请输入微信号（选填）',
       enterNotes: '请输入备注（仅管理员可见）',
       notesHint: '此备注仅对管理员可见',
       enterNewPassword: '请输入新密码（选填）',
@@ -602,7 +618,6 @@ export default {
         user: '用户',
         email: '邮箱',
         username: '用户名',
-        wechat: '微信号',
         notes: '备注',
         role: '角色',
         subscriptions: '订阅分组',
@@ -656,8 +671,6 @@ export default {
         emailPlaceholder: '请输入邮箱',
         usernameLabel: '用户名',
         usernamePlaceholder: '请输入用户名（选填）',
-        wechatLabel: '微信号',
-        wechatPlaceholder: '请输入微信号（选填）',
         notesLabel: '备注',
         notesPlaceholder: '请输入备注（仅管理员可见）',
         notesHint: '此备注仅对管理员可见',
@@ -712,7 +725,67 @@ export default {
       failedToDeposit: '充值失败',
       failedToWithdraw: '退款失败',
       useDepositWithdrawButtons: '请使用充值/退款按钮调整余额',
-      insufficientBalance: '余额不足，退款后余额不能为负数'
+      insufficientBalance: '余额不足，退款后余额不能为负数',
+      // Settings Dropdowns
+      filterSettings: '筛选设置',
+      columnSettings: '列设置',
+      filterValue: '输入值',
+      // User Attributes
+      attributes: {
+        title: '用户属性配置',
+        description: '配置用户的自定义属性字段',
+        configButton: '属性配置',
+        addAttribute: '添加属性',
+        editAttribute: '编辑属性',
+        deleteAttribute: '删除属性',
+        deleteConfirm: "确定要删除属性 '{nameREDACTED' 吗？所有用户的该属性值将被删除。",
+        noAttributes: '暂无自定义属性',
+        noAttributesHint: '点击上方按钮添加自定义属性',
+        key: '属性键',
+        keyHint: '用于程序引用，只能包含字母、数字和下划线',
+        name: '显示名称',
+        nameHint: '在表单中显示的名称',
+        type: '属性类型',
+        fieldDescription: '描述',
+        fieldDescriptionHint: '属性的说明文字',
+        placeholder: '占位符',
+        placeholderHint: '输入框的提示文字',
+        required: '必填',
+        enabled: '启用',
+        options: '选项配置',
+        optionsHint: '用于单选/多选类型',
+        addOption: '添加选项',
+        optionValue: '选项值',
+        optionLabel: '显示文本',
+        validation: '验证规则',
+        minLength: '最小长度',
+        maxLength: '最大长度',
+        min: '最小值',
+        max: '最大值',
+        pattern: '正则表达式',
+        patternMessage: '验证失败提示',
+        types: {
+          text: '单行文本',
+          textarea: '多行文本',
+          number: '数字',
+          email: '邮箱',
+          url: '链接',
+          date: '日期',
+          select: '单选',
+          multi_select: '多选'
+        REDACTED,
+        created: '属性创建成功',
+        updated: '属性更新成功',
+        deleted: '属性删除成功',
+        reordered: '属性排序更新成功',
+        failedToLoad: '加载属性列表失败',
+        failedToCreate: '创建属性失败',
+        failedToUpdate: '更新属性失败',
+        failedToDelete: '删除属性失败',
+        failedToReorder: '更新排序失败',
+        keyExists: '属性键已存在',
+        dragToReorder: '拖拽排序'
+      REDACTED
     REDACTED,
 
     // Groups Management
@@ -841,6 +914,7 @@ export default {
       weekly: '每周',
       monthly: '每月',
       noLimits: '未配置限额',
+      unlimited: '无限制',
       resetNow: '即将重置',
       windowNotActive: '窗口未激活',
       resetInMinutes: '{minutesREDACTED 分钟后重置',
@@ -985,6 +1059,9 @@ export default {
       REDACTED,
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
+        statsTitleDaily: '每日用量统计',
+        geminiProDaily: 'Pro',
+        geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G3I',
@@ -993,7 +1070,12 @@ export default {
       tier: {
         free: 'Free',
         pro: 'Pro',
-        ultra: 'Ultra'
+        ultra: 'Ultra',
+        aiPremium: 'AI Premium',
+        standard: '标准版',
+        basic: '基础版',
+        personal: '个人版',
+        unlimited: '无限制'
       REDACTED,
       ineligibleWarning:
         '该账号无 Antigravity 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
@@ -1094,6 +1176,15 @@ export default {
       actualModel: '实际模型',
       addMapping: '添加映射',
       mappingExists: '模型 {modelREDACTED 的映射已存在',
+      searchModels: '搜索模型...',
+      noMatchingModels: '没有匹配的模型',
+      fillRelatedModels: '填入相关模型',
+      clearAllModels: '清除所有模型',
+      customModelName: '自定义模型名称',
+      enterCustomModelName: '输入自定义模型名称',
+      addModel: '填入',
+      modelExists: '该模型已存在',
+      modelCount: '{countREDACTED 个模型',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',
@@ -1212,15 +1303,16 @@ export default {
 	          failedToGenerateUrl: '生成 Gemini 授权链接失败',
 	          missingExchangeParams: '缺少 code / session_id / state',
 	          failedToExchangeCode: 'Gemini 授权码兑换失败',
+	          missingProjectId: 'GCP Project ID 获取失败：您的 Google 账号未关联有效的 GCP 项目。请前往 Google Cloud Console 激活 GCP 并绑定信用卡，或在授权时手动填写 Project ID。',
 	          modelPassthrough: 'Gemini 直接转发模型',
 	          modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
 	          stateWarningTitle: '提示',
 	          stateWarningDesc: '建议粘贴完整回调链接（包含 code 和 state）。',
 	          oauthTypeLabel: 'OAuth 类型',
-	          needsProjectId: '适合 GCP 开发者',
-	          needsProjectIdDesc: '需 GCP 项目',
-	          noProjectIdNeeded: '适合普通用户',
-	          noProjectIdNeededDesc: '需管理员配置 OAuth Client',
+          needsProjectId: '内置授权（Code Assist）',
+          needsProjectIdDesc: '需要 GCP 项目与 Project ID',
+          noProjectIdNeeded: '自定义授权（AI Studio）',
+          noProjectIdNeededDesc: '需管理员配置 OAuth Client',
 	          aiStudioNotConfiguredShort: '未配置',
 	          aiStudioNotConfiguredTip: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback（Consent Screen scopes 需包含 https://www.googleapis.com/auth/generative-language.retriever）',
 	          aiStudioNotConfigured: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback'
@@ -1252,7 +1344,99 @@ export default {
         modelPassthrough: 'Gemini 直接转发模型',
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
-        apiKeyHint: '您的 Gemini API Key（以 AIza 开头）'
+        apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        accountType: {
+          oauthTitle: 'OAuth 授权（Gemini）',
+          oauthDesc: '使用 Google 账号授权，并选择 OAuth 子类型。',
+          apiKeyTitle: 'API 密钥（AI Studio）',
+          apiKeyDesc: '最快接入方式，使用 AIza API Key。',
+          apiKeyNote: '适合轻量测试。免费层限流严格，数据可能用于训练。',
+          apiKeyLink: '获取 API Key',
+          quotaLink: '配额说明'
+        REDACTED,
+        oauthType: {
+          builtInTitle: '内置授权（Gemini CLI / Code Assist）',
+          builtInDesc: '使用 Google 内置客户端 ID，无需管理员配置。',
+          builtInRequirement: '需要 GCP 项目并填写 Project ID。',
+          gcpProjectLink: '创建项目',
+          customTitle: '自定义授权（AI Studio OAuth）',
+          customDesc: '使用管理员预设的 OAuth 客户端，适合组织管理。',
+          customRequirement: '需管理员配置 Client ID 并加入测试用户白名单。',
+          badges: {
+            recommended: '推荐',
+            highConcurrency: '高并发',
+            noAdmin: '无需管理员配置',
+            orgManaged: '组织管理',
+            adminRequired: '需要管理员'
+          REDACTED
+        REDACTED,
+        setupGuide: {
+          title: 'Gemini 使用准备',
+          checklistTitle: '准备工作',
+          checklistItems: {
+            usIp: '使用美国 IP，并确保账号归属地为美国。',
+            age: '账号需满 18 岁。'
+          REDACTED,
+          activationTitle: '服务激活',
+          activationItems: {
+            geminiWeb: '激活 Gemini Web，避免 User not initialized。',
+            gcpProject: '激活 GCP 项目，获取 Code Assist 所需 Project ID。'
+          REDACTED,
+          links: {
+            countryCheck: '检查归属地',
+            geminiWebActivation: '激活 Gemini Web',
+            gcpProject: '打开 GCP 控制台'
+          REDACTED
+        REDACTED,
+        quotaPolicy: {
+          title: 'Gemini 配额与限流政策（参考）',
+          note: '注意：Gemini 官方未提供用量查询接口。此处显示的“每日配额”是由系统根据账号等级模拟计算的估算值，仅供调度参考，请以 Google 官方实际报错为准。',
+          columns: {
+            channel: '授权通道',
+            account: '账号状态',
+            limits: '限流政策',
+            docs: '官方文档'
+          REDACTED,
+          docs: {
+            codeAssist: 'Code Assist 配额',
+            aiStudio: 'AI Studio 定价',
+            vertex: 'Vertex AI 配额'
+          REDACTED,
+          simulatedNote: '本地模拟配额，仅供参考',
+          rows: {
+            cli: {
+              channel: 'Gemini CLI（官方 Google 登录 / Code Assist）',
+              free: '免费 Google 账号',
+              premium: 'Google One AI Premium',
+              limitsFree: 'RPD ~1000；RPM ~60（软限制）',
+              limitsPremium: 'RPD ~1500+；RPM ~60+（优先队列）'
+            REDACTED,
+            gcloud: {
+              channel: 'GCP Code Assist（gcloud 登录）',
+              account: '未购买 Code Assist 订阅',
+              limits: 'RPD ~1000；RPM ~60（预览期）'
+            REDACTED,
+            aiStudio: {
+              channel: 'AI Studio API Key / OAuth',
+              free: '未绑卡（免费层）',
+              paid: '已绑卡（按量付费）',
+              limitsFree: 'RPD 50；RPM 2（Pro）/ 15（Flash）',
+              limitsPaid: 'RPD 不限；RPM 1000+（按模型配额）'
+            REDACTED,
+            customOAuth: {
+              channel: 'Custom OAuth Client（GCP）',
+              free: '项目未绑卡',
+              paid: '项目已绑卡',
+              limitsFree: 'RPD 50；RPM 2（项目配额）',
+              limitsPaid: 'RPD 不限；RPM 1000+（项目配额）'
+            REDACTED
+          REDACTED
+        REDACTED,
+        rateLimit: {
+          ok: '未限流',
+          limited: '限流 {timeREDACTED',
+          now: '现在'
+        REDACTED
       REDACTED,
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
@@ -1693,7 +1877,8 @@ export default {
     expiresToday: '今天到期',
     expiresTomorrow: '明天到期',
     viewAll: '查看全部订阅',
-    noSubscriptions: '暂无有效订阅'
+    noSubscriptions: '暂无有效订阅',
+    unlimited: '无限制'
   REDACTED,
 
   // Version Badge
@@ -1735,6 +1920,7 @@ export default {
     expires: '到期时间',
     noExpiration: '无到期时间',
     unlimited: '无限制',
+    unlimitedDesc: '该订阅无用量限制',
     daily: '每日',
     weekly: '每周',
     monthly: '每月',

@@ -27,7 +27,6 @@ type CreateUserRequest struct {
 	Email         string  `json:"email" binding:"required,email"`
 	Password      string  `json:"password" binding:"required,min=6"`
 	Username      string  `json:"username"`
-	Wechat        string  `json:"wechat"`
 	Notes         string  `json:"notes"`
 	Balance       float64 `json:"balance"`
 	Concurrency   int     `json:"concurrency"`
@@ -40,7 +39,6 @@ type UpdateUserRequest struct {
 	Email         string   `json:"email" binding:"omitempty,email"`
 	Password      string   `json:"password" binding:"omitempty,min=6"`
 	Username      *string  `json:"username"`
-	Wechat        *string  `json:"wechat"`
 	Notes         *string  `json:"notes"`
 	Balance       *float64 `json:"balance"`
 	Concurrency   *int     `json:"concurrency"`
@@ -57,13 +55,22 @@ REDACTED
 
 // List handles listing all users with pagination
 // GET /api/v1/admin/users
+// Query params:
+//   - status: filter by user status
+//   - role: filter by user role
+//   - search: search in email, username
+//   - attr[{idREDACTED]: filter by custom attribute value, e.g. attr[1]=company
 func (h *UserHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
-	status := c.Query("status")
-	role := c.Query("role")
-	search := c.Query("search")
 
-	users, total, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, status, role, search)
+	filters := service.UserListFilters{
+		Status:     c.Query("status"),
+		Role:       c.Query("role"),
+		Search:     c.Query("search"),
+		Attributes: parseAttributeFilters(c),
+REDACTED
+
+	users, total, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -74,6 +81,29 @@ REDACTED
 		out = append(out, *dto.UserFromService(&users[i]))
 REDACTED
 	response.Paginated(c, out, total, page, pageSize)
+REDACTED
+
+// parseAttributeFilters extracts attribute filters from query params
+// Format: attr[{attributeIDREDACTED]=value, e.g. attr[1]=company&attr[2]=developer
+func parseAttributeFilters(c *gin.Context) map[int64]string {
+	result := make(map[int64]string)
+
+	// Get all query params and look for attr[*] pattern
+	for key, values := range c.Request.URL.Query() {
+		if len(values) == 0 || values[0] == "" {
+			continue
+	REDACTED
+		// Check if key matches pattern attr[{idREDACTED]
+		if len(key) > 5 && key[:5] == "attr[" && key[len(key)-1] == ']' {
+			idStr := key[5 : len(key)-1]
+			id, err := strconv.ParseInt(idStr, 10, 64)
+			if err == nil && id > 0 {
+				result[id] = values[0]
+		REDACTED
+	REDACTED
+REDACTED
+
+	return result
 REDACTED
 
 // GetByID handles getting a user by ID
@@ -107,7 +137,6 @@ REDACTED
 		Email:         req.Email,
 		Password:      req.Password,
 		Username:      req.Username,
-		Wechat:        req.Wechat,
 		Notes:         req.Notes,
 		Balance:       req.Balance,
 		Concurrency:   req.Concurrency,
@@ -141,7 +170,6 @@ REDACTED
 		Email:         req.Email,
 		Password:      req.Password,
 		Username:      req.Username,
-		Wechat:        req.Wechat,
 		Notes:         req.Notes,
 		Balance:       req.Balance,
 		Concurrency:   req.Concurrency,

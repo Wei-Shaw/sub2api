@@ -90,6 +90,14 @@ gateway:
   client_idle_ttl_seconds: 900
   # 并发槽位过期时间（分钟）
   concurrency_slot_ttl_minutes: 15
+  # Log upstream error response body summary (safe/truncated; does not log request content)
+  log_upstream_error_body: false
+  # Max bytes to log from upstream error body
+  log_upstream_error_body_max_bytes: 2048
+  # Auto inject anthropic-beta for API-key accounts when needed (default off)
+  inject_beta_for_apikey: false
+  # Allow failover on selected 400 errors (default off)
+  failover_on_400: false
 
 # =============================================================================
 # Database Configuration (PostgreSQL)
@@ -202,3 +210,19 @@ gemini:
     client_secret: "REDACTED"
     # Optional scopes (space-separated). Leave empty to auto-select based on oauth_type.
     scopes: ""
+  quota:
+    # Optional: local quota simulation for Gemini Code Assist (local billing).
+    # These values are used for UI progress + precheck scheduling, not official Google quotas.
+    tiers:
+      LEGACY:
+        pro_rpd: 50
+        flash_rpd: 1500
+        cooldown_minutes: 30
+      PRO:
+        pro_rpd: 1500
+        flash_rpd: 4000
+        cooldown_minutes: 5
+      ULTRA:
+        pro_rpd: 2000
+        flash_rpd: 0
+        cooldown_minutes: 5

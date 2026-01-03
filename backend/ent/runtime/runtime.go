@@ -16,6 +16,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
+	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -604,14 +606,8 @@ REDACTED()
 	user.DefaultUsername = userDescUsername.Default.(string)
 	// user.UsernameValidator is a validator for the "username" field. It is called by the builders before save.
 	user.UsernameValidator = userDescUsername.Validators[0].(func(string) error)
-	// userDescWechat is the schema descriptor for wechat field.
-	userDescWechat := userFields[7].Descriptor()
-	// user.DefaultWechat holds the default value on creation for the wechat field.
-	user.DefaultWechat = userDescWechat.Default.(string)
-	// user.WechatValidator is a validator for the "wechat" field. It is called by the builders before save.
-	user.WechatValidator = userDescWechat.Validators[0].(func(string) error)
 	// userDescNotes is the schema descriptor for notes field.
-	userDescNotes := userFields[8].Descriptor()
+	userDescNotes := userFields[7].Descriptor()
 	// user.DefaultNotes holds the default value on creation for the notes field.
 	user.DefaultNotes = userDescNotes.Default.(string)
 	userallowedgroupFields := schema.UserAllowedGroup{REDACTED.Fields()
@@ -620,6 +616,128 @@ REDACTED()
 	userallowedgroupDescCreatedAt := userallowedgroupFields[2].Descriptor()
 	// userallowedgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	userallowedgroup.DefaultCreatedAt = userallowedgroupDescCreatedAt.Default.(func() time.Time)
+	userattributedefinitionMixin := schema.UserAttributeDefinition{REDACTED.Mixin()
+	userattributedefinitionMixinHooks1 := userattributedefinitionMixin[1].Hooks()
+	userattributedefinition.Hooks[0] = userattributedefinitionMixinHooks1[0]
+	userattributedefinitionMixinInters1 := userattributedefinitionMixin[1].Interceptors()
+	userattributedefinition.Interceptors[0] = userattributedefinitionMixinInters1[0]
+	userattributedefinitionMixinFields0 := userattributedefinitionMixin[0].Fields()
+	_ = userattributedefinitionMixinFields0
+	userattributedefinitionFields := schema.UserAttributeDefinition{REDACTED.Fields()
+	_ = userattributedefinitionFields
+	// userattributedefinitionDescCreatedAt is the schema descriptor for created_at field.
+	userattributedefinitionDescCreatedAt := userattributedefinitionMixinFields0[0].Descriptor()
+	// userattributedefinition.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userattributedefinition.DefaultCreatedAt = userattributedefinitionDescCreatedAt.Default.(func() time.Time)
+	// userattributedefinitionDescUpdatedAt is the schema descriptor for updated_at field.
+	userattributedefinitionDescUpdatedAt := userattributedefinitionMixinFields0[1].Descriptor()
+	// userattributedefinition.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userattributedefinition.DefaultUpdatedAt = userattributedefinitionDescUpdatedAt.Default.(func() time.Time)
+	// userattributedefinition.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userattributedefinition.UpdateDefaultUpdatedAt = userattributedefinitionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// userattributedefinitionDescKey is the schema descriptor for key field.
+	userattributedefinitionDescKey := userattributedefinitionFields[0].Descriptor()
+	// userattributedefinition.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	userattributedefinition.KeyValidator = func() func(string) error {
+		validators := userattributedefinitionDescKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(key string) error {
+			for _, fn := range fns {
+				if err := fn(key); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// userattributedefinitionDescName is the schema descriptor for name field.
+	userattributedefinitionDescName := userattributedefinitionFields[1].Descriptor()
+	// userattributedefinition.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	userattributedefinition.NameValidator = func() func(string) error {
+		validators := userattributedefinitionDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// userattributedefinitionDescDescription is the schema descriptor for description field.
+	userattributedefinitionDescDescription := userattributedefinitionFields[2].Descriptor()
+	// userattributedefinition.DefaultDescription holds the default value on creation for the description field.
+	userattributedefinition.DefaultDescription = userattributedefinitionDescDescription.Default.(string)
+	// userattributedefinitionDescType is the schema descriptor for type field.
+	userattributedefinitionDescType := userattributedefinitionFields[3].Descriptor()
+	// userattributedefinition.TypeValidator is a validator for the "type" field. It is called by the builders before save.
+	userattributedefinition.TypeValidator = func() func(string) error {
+		validators := userattributedefinitionDescType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(_type string) error {
+			for _, fn := range fns {
+				if err := fn(_type); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// userattributedefinitionDescOptions is the schema descriptor for options field.
+	userattributedefinitionDescOptions := userattributedefinitionFields[4].Descriptor()
+	// userattributedefinition.DefaultOptions holds the default value on creation for the options field.
+	userattributedefinition.DefaultOptions = userattributedefinitionDescOptions.Default.([]map[string]interface{REDACTED)
+	// userattributedefinitionDescRequired is the schema descriptor for required field.
+	userattributedefinitionDescRequired := userattributedefinitionFields[5].Descriptor()
+	// userattributedefinition.DefaultRequired holds the default value on creation for the required field.
+	userattributedefinition.DefaultRequired = userattributedefinitionDescRequired.Default.(bool)
+	// userattributedefinitionDescValidation is the schema descriptor for validation field.
+	userattributedefinitionDescValidation := userattributedefinitionFields[6].Descriptor()
+	// userattributedefinition.DefaultValidation holds the default value on creation for the validation field.
+	userattributedefinition.DefaultValidation = userattributedefinitionDescValidation.Default.(map[string]interface{REDACTED)
+	// userattributedefinitionDescPlaceholder is the schema descriptor for placeholder field.
+	userattributedefinitionDescPlaceholder := userattributedefinitionFields[7].Descriptor()
+	// userattributedefinition.DefaultPlaceholder holds the default value on creation for the placeholder field.
+	userattributedefinition.DefaultPlaceholder = userattributedefinitionDescPlaceholder.Default.(string)
+	// userattributedefinition.PlaceholderValidator is a validator for the "placeholder" field. It is called by the builders before save.
+	userattributedefinition.PlaceholderValidator = userattributedefinitionDescPlaceholder.Validators[0].(func(string) error)
+	// userattributedefinitionDescDisplayOrder is the schema descriptor for display_order field.
+	userattributedefinitionDescDisplayOrder := userattributedefinitionFields[8].Descriptor()
+	// userattributedefinition.DefaultDisplayOrder holds the default value on creation for the display_order field.
+	userattributedefinition.DefaultDisplayOrder = userattributedefinitionDescDisplayOrder.Default.(int)
+	// userattributedefinitionDescEnabled is the schema descriptor for enabled field.
+	userattributedefinitionDescEnabled := userattributedefinitionFields[9].Descriptor()
+	// userattributedefinition.DefaultEnabled holds the default value on creation for the enabled field.
+	userattributedefinition.DefaultEnabled = userattributedefinitionDescEnabled.Default.(bool)
+	userattributevalueMixin := schema.UserAttributeValue{REDACTED.Mixin()
+	userattributevalueMixinFields0 := userattributevalueMixin[0].Fields()
+	_ = userattributevalueMixinFields0
+	userattributevalueFields := schema.UserAttributeValue{REDACTED.Fields()
+	_ = userattributevalueFields
+	// userattributevalueDescCreatedAt is the schema descriptor for created_at field.
+	userattributevalueDescCreatedAt := userattributevalueMixinFields0[0].Descriptor()
+	// userattributevalue.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userattributevalue.DefaultCreatedAt = userattributevalueDescCreatedAt.Default.(func() time.Time)
+	// userattributevalueDescUpdatedAt is the schema descriptor for updated_at field.
+	userattributevalueDescUpdatedAt := userattributevalueMixinFields0[1].Descriptor()
+	// userattributevalue.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userattributevalue.DefaultUpdatedAt = userattributevalueDescUpdatedAt.Default.(func() time.Time)
+	// userattributevalue.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userattributevalue.UpdateDefaultUpdatedAt = userattributevalueDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// userattributevalueDescValue is the schema descriptor for value field.
+	userattributevalueDescValue := userattributevalueFields[2].Descriptor()
+	// userattributevalue.DefaultValue holds the default value on creation for the value field.
+	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
 	usersubscriptionMixin := schema.UserSubscription{REDACTED.Mixin()
 	usersubscriptionMixinHooks1 := usersubscriptionMixin[1].Hooks()
 	usersubscription.Hooks[0] = usersubscriptionMixinHooks1[0]
