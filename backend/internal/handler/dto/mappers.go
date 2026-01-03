@@ -1,4 +1,3 @@
-// Package dto provides mapping utilities for converting between service layer and HTTP handler DTOs.
 package dto
 
 import "github.com/Wei-Shaw/sub2api/internal/service"
@@ -27,11 +26,11 @@ func UserFromService(u *service.User) *User {
 		return nil
 REDACTED
 	out := UserFromServiceShallow(u)
-	if len(u.APIKeys) > 0 {
-		out.APIKeys = make([]APIKey, 0, len(u.APIKeys))
-		for i := range u.APIKeys {
-			k := u.APIKeys[i]
-			out.APIKeys = append(out.APIKeys, *APIKeyFromService(&k))
+	if len(u.ApiKeys) > 0 {
+		out.ApiKeys = make([]ApiKey, 0, len(u.ApiKeys))
+		for i := range u.ApiKeys {
+			k := u.ApiKeys[i]
+			out.ApiKeys = append(out.ApiKeys, *ApiKeyFromService(&k))
 	REDACTED
 REDACTED
 	if len(u.Subscriptions) > 0 {
@@ -44,11 +43,11 @@ REDACTED
 	return out
 REDACTED
 
-func APIKeyFromService(k *service.APIKey) *APIKey {
+func ApiKeyFromService(k *service.ApiKey) *ApiKey {
 	if k == nil {
 		return nil
 REDACTED
-	return &APIKey{
+	return &ApiKey{
 		ID:        k.ID,
 		UserID:    k.UserID,
 		Key:       k.Key,
@@ -104,28 +103,30 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		return nil
 REDACTED
 REDACTED
-		ID:                  a.ID,
-		Name:                a.Name,
-		Platform:            a.Platform,
-		Type:                a.Type,
-		Credentials:         a.Credentials,
-		Extra:               a.Extra,
-		ProxyID:             a.ProxyID,
-		Concurrency:         a.Concurrency,
-		Priority:            a.Priority,
-		Status:              a.Status,
-		ErrorMessage:        a.ErrorMessage,
-		LastUsedAt:          a.LastUsedAt,
-		CreatedAt:           a.CreatedAt,
-		UpdatedAt:           a.UpdatedAt,
-		Schedulable:         a.Schedulable,
-		RateLimitedAt:       a.RateLimitedAt,
-		RateLimitResetAt:    a.RateLimitResetAt,
-		OverloadUntil:       a.OverloadUntil,
-		SessionWindowStart:  a.SessionWindowStart,
-		SessionWindowEnd:    a.SessionWindowEnd,
-		SessionWindowStatus: a.SessionWindowStatus,
-		GroupIDs:            a.GroupIDs,
+		ID:                      a.ID,
+		Name:                    a.Name,
+		Platform:                a.Platform,
+		Type:                    a.Type,
+		Credentials:             a.Credentials,
+		Extra:                   a.Extra,
+		ProxyID:                 a.ProxyID,
+		Concurrency:             a.Concurrency,
+		Priority:                a.Priority,
+		Status:                  a.Status,
+		ErrorMessage:            a.ErrorMessage,
+		LastUsedAt:              a.LastUsedAt,
+		CreatedAt:               a.CreatedAt,
+		UpdatedAt:               a.UpdatedAt,
+		Schedulable:             a.Schedulable,
+		RateLimitedAt:           a.RateLimitedAt,
+		RateLimitResetAt:        a.RateLimitResetAt,
+		OverloadUntil:           a.OverloadUntil,
+		TempUnschedulableUntil:  a.TempUnschedulableUntil,
+		TempUnschedulableReason: a.TempUnschedulableReason,
+		SessionWindowStart:      a.SessionWindowStart,
+		SessionWindowEnd:        a.SessionWindowEnd,
+		SessionWindowStatus:     a.SessionWindowStatus,
+		GroupIDs:                a.GroupIDs,
 REDACTED
 REDACTED
 
@@ -221,7 +222,7 @@ REDACTED
 	return &UsageLog{
 		ID:                    l.ID,
 		UserID:                l.UserID,
-		APIKeyID:              l.APIKeyID,
+		ApiKeyID:              l.ApiKeyID,
 		AccountID:             l.AccountID,
 		RequestID:             l.RequestID,
 		Model:                 l.Model,
@@ -246,7 +247,7 @@ REDACTED
 		FirstTokenMs:          l.FirstTokenMs,
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
-		APIKey:                APIKeyFromService(l.APIKey),
+		ApiKey:                ApiKeyFromService(l.ApiKey),
 		Account:               AccountFromService(l.Account),
 		Group:                 GroupFromServiceShallow(l.Group),
 		Subscription:          UserSubscriptionFromService(l.Subscription),

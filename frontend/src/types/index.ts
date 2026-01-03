@@ -330,6 +330,27 @@ export interface GeminiCredentials {
   expires_at?: string
 REDACTED
 
+export interface TempUnschedulableRule {
+  error_code: number
+  keywords: string[]
+  duration_minutes: number
+  description: string
+REDACTED
+
+export interface TempUnschedulableState {
+  until_unix: number
+  triggered_at_unix: number
+  status_code: number
+  matched_keyword: string
+  rule_index: number
+  error_message: string
+REDACTED
+
+export interface TempUnschedulableStatus {
+  active: boolean
+  state?: TempUnschedulableState
+REDACTED
+
 export interface Account {
   id: number
   name: string
@@ -355,6 +376,8 @@ export interface Account {
   rate_limited_at: string | null
   rate_limit_reset_at: string | null
   overload_until: string | null
+  temp_unschedulable_until: string | null
+  temp_unschedulable_reason: string | null
 
   // Session window fields (5-hour window)
   session_window_start: string | null
@@ -376,6 +399,12 @@ export interface UsageProgress {
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
 REDACTED
 
+// Antigravity 单个模型的配额信息
+export interface AntigravityModelQuota {
+  utilization: number // 使用率 0-100
+  reset_time: string  // 重置时间 ISO8601
+REDACTED
+
 export interface AccountUsageInfo {
   updated_at: string | null
   five_hour: UsageProgress | null
@@ -383,6 +412,7 @@ export interface AccountUsageInfo {
   seven_day_sonnet: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null
+  antigravity_quota?: Record<string, AntigravityModelQuota> | null
 REDACTED
 
 // OpenAI Codex usage snapshot (from response headers)
@@ -418,6 +448,7 @@ export interface CreateAccountRequest {
   concurrency?: number
   priority?: number
   group_ids?: number[]
+  confirm_mixed_channel_risk?: boolean
 REDACTED
 
 export interface UpdateAccountRequest {
@@ -430,6 +461,7 @@ export interface UpdateAccountRequest {
   priority?: number
   status?: 'active' | 'inactive'
   group_ids?: number[]
+  confirm_mixed_channel_risk?: boolean
 REDACTED
 
 export interface CreateProxyRequest {
@@ -619,7 +651,7 @@ export interface UserUsageTrendPoint {
   actual_cost: number // 实际扣除
 REDACTED
 
-export interface APIKeyUsageTrendPoint {
+export interface ApiKeyUsageTrendPoint {
   date: string
   api_key_id: number
   key_name: string

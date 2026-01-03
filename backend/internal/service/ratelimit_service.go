@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -18,6 +19,7 @@ type RateLimitService struct {
 	usageRepo          UsageLogRepository
 	cfg                *config.Config
 	geminiQuotaService *GeminiQuotaService
+	tempUnschedCache   TempUnschedCache
 	usageCacheMu       sync.RWMutex
 	usageCache         map[int64]*geminiUsageCacheEntry
 REDACTED
@@ -31,12 +33,13 @@ REDACTED
 const geminiPrecheckCacheTTL = time.Minute
 
 // NewRateLimitService 创建RateLimitService实例
-func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService) *RateLimitService {
+func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
 		accountRepo:        accountRepo,
 		usageRepo:          usageRepo,
 		cfg:                cfg,
 		geminiQuotaService: geminiQuotaService,
+		tempUnschedCache:   tempUnschedCache,
 		usageCache:         make(map[int64]*geminiUsageCacheEntry),
 REDACTED
 REDACTED
@@ -51,32 +54,39 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		return false
 REDACTED
 
+	tempMatched := s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
+
 	switch statusCode {
 	case 401:
 		// 认证失败：停止调度，记录错误
 		s.handleAuthError(ctx, account, "Authentication failed (401): invalid or expired credentials")
-		return true
+		shouldDisable = true
 	case 402:
 		// 支付要求：余额不足或计费问题，停止调度
 		s.handleAuthError(ctx, account, "Payment required (402): insufficient balance or billing issue")
-		return true
+		shouldDisable = true
 	case 403:
 		// 禁止访问：停止调度，记录错误
 		s.handleAuthError(ctx, account, "Access forbidden (403): account may be suspended or lack permissions")
-		return true
+		shouldDisable = true
 	case 429:
 		s.handle429(ctx, account, headers)
-		return false
+		shouldDisable = false
 	case 529:
 		s.handle529(ctx, account)
-		return false
+		shouldDisable = false
 	default:
 		// 其他5xx错误：记录但不停止调度
 		if statusCode >= 500 {
 			log.Printf("Account %d received upstream error %d", account.ID, statusCode)
 	REDACTED
-		return false
+		shouldDisable = false
 REDACTED
+
+	if tempMatched {
+		return true
+REDACTED
+	return shouldDisable
 REDACTED
 
 // PreCheckUsage proactively checks local quota before dispatching a request.
@@ -286,4 +296,184 @@ REDACTED
 // ClearRateLimit 清除账号的限流状态
 func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) error {
 	return s.accountRepo.ClearRateLimit(ctx, accountID)
+REDACTED
+
+func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
+	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
+		return err
+REDACTED
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
+			log.Printf("DeleteTempUnsched failed for account %d: %v", accountID, err)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func (s *RateLimitService) GetTempUnschedStatus(ctx context.Context, accountID int64) (*TempUnschedState, error) {
+	now := time.Now().Unix()
+	if s.tempUnschedCache != nil {
+		state, err := s.tempUnschedCache.GetTempUnsched(ctx, accountID)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if state != nil && state.UntilUnix > now {
+			return state, nil
+	REDACTED
+REDACTED
+
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if account.TempUnschedulableUntil == nil {
+		return nil, nil
+REDACTED
+	if account.TempUnschedulableUntil.Unix() <= now {
+		return nil, nil
+REDACTED
+
+	state := &TempUnschedState{
+		UntilUnix: account.TempUnschedulableUntil.Unix(),
+REDACTED
+
+	if account.TempUnschedulableReason != "" {
+		var parsed TempUnschedState
+		if err := json.Unmarshal([]byte(account.TempUnschedulableReason), &parsed); err == nil {
+			if parsed.UntilUnix == 0 {
+				parsed.UntilUnix = state.UntilUnix
+		REDACTED
+			state = &parsed
+	REDACTED else {
+			state.ErrorMessage = account.TempUnschedulableReason
+	REDACTED
+REDACTED
+
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, accountID, state); err != nil {
+			log.Printf("SetTempUnsched failed for account %d: %v", accountID, err)
+	REDACTED
+REDACTED
+
+	return state, nil
+REDACTED
+
+func (s *RateLimitService) HandleTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+	if account == nil {
+		return false
+REDACTED
+	if !account.ShouldHandleErrorCode(statusCode) {
+		return false
+REDACTED
+	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
+REDACTED
+
+const tempUnschedBodyMaxBytes = 64 << 10
+const tempUnschedMessageMaxBytes = 2048
+
+func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+	if account == nil {
+		return false
+REDACTED
+	if !account.IsTempUnschedulableEnabled() {
+		return false
+REDACTED
+	rules := account.GetTempUnschedulableRules()
+	if len(rules) == 0 {
+		return false
+REDACTED
+	if statusCode <= 0 || len(responseBody) == 0 {
+		return false
+REDACTED
+
+	body := responseBody
+	if len(body) > tempUnschedBodyMaxBytes {
+		body = body[:tempUnschedBodyMaxBytes]
+REDACTED
+	bodyLower := strings.ToLower(string(body))
+
+	for idx, rule := range rules {
+		if rule.ErrorCode != statusCode || len(rule.Keywords) == 0 {
+			continue
+	REDACTED
+		matchedKeyword := matchTempUnschedKeyword(bodyLower, rule.Keywords)
+		if matchedKeyword == "" {
+			continue
+	REDACTED
+
+		if s.triggerTempUnschedulable(ctx, account, rule, idx, statusCode, matchedKeyword, responseBody) {
+			return true
+	REDACTED
+REDACTED
+
+	return false
+REDACTED
+
+func matchTempUnschedKeyword(bodyLower string, keywords []string) string {
+	if bodyLower == "" {
+		return ""
+REDACTED
+	for _, keyword := range keywords {
+		k := strings.TrimSpace(keyword)
+		if k == "" {
+			continue
+	REDACTED
+		if strings.Contains(bodyLower, strings.ToLower(k)) {
+			return k
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
+func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte) bool {
+	if account == nil {
+		return false
+REDACTED
+	if rule.DurationMinutes <= 0 {
+		return false
+REDACTED
+
+	now := time.Now()
+	until := now.Add(time.Duration(rule.DurationMinutes) * time.Minute)
+
+	state := &TempUnschedState{
+		UntilUnix:       until.Unix(),
+		TriggeredAtUnix: now.Unix(),
+		StatusCode:      statusCode,
+		MatchedKeyword:  matchedKeyword,
+		RuleIndex:       ruleIndex,
+		ErrorMessage:    truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes),
+REDACTED
+
+	reason := ""
+	if raw, err := json.Marshal(state); err == nil {
+		reason = string(raw)
+REDACTED
+	if reason == "" {
+		reason = strings.TrimSpace(state.ErrorMessage)
+REDACTED
+
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+		log.Printf("SetTempUnschedulable failed for account %d: %v", account.ID, err)
+		return false
+REDACTED
+
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+			log.Printf("SetTempUnsched cache failed for account %d: %v", account.ID, err)
+	REDACTED
+REDACTED
+
+	log.Printf("Account %d temp unschedulable until %v (rule %d, code %d)", account.ID, until, ruleIndex, statusCode)
+	return true
+REDACTED
+
+func truncateTempUnschedMessage(body []byte, maxBytes int) string {
+	if maxBytes <= 0 || len(body) == 0 {
+		return ""
+REDACTED
+	if len(body) > maxBytes {
+		body = body[:maxBytes]
+REDACTED
+	return strings.TrimSpace(string(body))
 REDACTED

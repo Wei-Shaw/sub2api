@@ -15,11 +15,11 @@ type User struct {
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
-	APIKeys       []APIKey           `json:"api_keys,omitempty"`
+	ApiKeys       []ApiKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
 REDACTED
 
-type APIKey struct {
+type ApiKey struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
 	Key       string    `json:"key"`
@@ -75,6 +75,9 @@ type Account struct {
 	RateLimitedAt    *time.Time `json:"rate_limited_at"`
 	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`
 	OverloadUntil    *time.Time `json:"overload_until"`
+
+	TempUnschedulableUntil  *time.Time `json:"temp_unschedulable_until"`
+	TempUnschedulableReason string     `json:"temp_unschedulable_reason"`
 
 	SessionWindowStart  *time.Time `json:"session_window_start"`
 	SessionWindowEnd    *time.Time `json:"session_window_end"`
@@ -136,7 +139,7 @@ REDACTED
 type UsageLog struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
-	APIKeyID  int64  `json:"api_key_id"`
+	ApiKeyID  int64  `json:"api_key_id"`
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
@@ -168,7 +171,7 @@ type UsageLog struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`
-	APIKey       *APIKey           `json:"api_key,omitempty"`
+	ApiKey       *ApiKey           `json:"api_key,omitempty"`
 	Account      *Account          `json:"account,omitempty"`
 	Group        *Group            `json:"group,omitempty"`
 	Subscription *UserSubscription `json:"subscription,omitempty"`

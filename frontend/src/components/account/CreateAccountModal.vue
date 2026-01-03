@@ -1065,7 +1065,7 @@
             <!-- Manual input -->
             <div class="flex items-center gap-2">
               <input
-                v-model="customErrorCodeInput"
+                v-model.number="customErrorCodeInput"
                 type="number"
                 min="100"
                 max="599"
@@ -1301,6 +1301,175 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Temp Unschedulable Rules -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.tempUnschedulable.title') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.tempUnschedulable.hint') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="tempUnschedEnabled = !tempUnschedEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              tempUnschedEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                tempUnschedEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+
+        <div v-if="tempUnschedEnabled" class="space-y-3">
+          <div class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <p class="text-xs text-blue-700 dark:text-blue-400">
+              <svg
+                class="mr-1 inline h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              {{ t('admin.accounts.tempUnschedulable.notice') REDACTEDREDACTED
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in tempUnschedPresets"
+              :key="preset.label"
+              type="button"
+              @click="addTempUnschedRule(preset.rule)"
+              class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
+            >
+              + {{ preset.label REDACTEDREDACTED
+            </button>
+          </div>
+
+          <div v-if="tempUnschedRules.length > 0" class="space-y-3">
+            <div
+              v-for="(rule, index) in tempUnschedRules"
+              :key="index"
+              class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
+            >
+              <div class="mb-2 flex items-center justify-between">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.accounts.tempUnschedulable.ruleIndex', { index: index + 1 REDACTED) REDACTEDREDACTED
+                </span>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    :disabled="index === 0"
+                    @click="moveTempUnschedRule(index, -1)"
+                    class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-gray-200"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="index === tempUnschedRules.length - 1"
+                    @click="moveTempUnschedRule(index, 1)"
+                    class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-gray-200"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    @click="removeTempUnschedRule(index)"
+                    class="rounded p-1 text-red-500 transition-colors hover:text-red-600"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.errorCode') REDACTEDREDACTED</label>
+                  <input
+                    v-model.number="rule.error_code"
+                    type="number"
+                    min="100"
+                    max="599"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.errorCodePlaceholder')"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.durationMinutes') REDACTEDREDACTED</label>
+                  <input
+                    v-model.number="rule.duration_minutes"
+                    type="number"
+                    min="1"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.durationPlaceholder')"
+                  />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.keywords') REDACTEDREDACTED</label>
+                  <input
+                    v-model="rule.keywords"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.keywordsPlaceholder')"
+                  />
+                  <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.keywordsHint') REDACTEDREDACTED</p>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.description') REDACTEDREDACTED</label>
+                  <input
+                    v-model="rule.description"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.descriptionPlaceholder')"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            @click="addTempUnschedRule()"
+            class="w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+          >
+            <svg
+              class="mr-1 inline h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            {{ t('admin.accounts.tempUnschedulable.addRule') REDACTEDREDACTED
+          </button>
         </div>
       </div>
 
@@ -1619,6 +1788,13 @@ interface ModelMapping {
   to: string
 REDACTED
 
+interface TempUnschedRuleForm {
+  error_code: number | null
+  keywords: string
+  duration_minutes: number | null
+  description: string
+REDACTED
+
 // State
 const step = ref(1)
 const submitting = ref(false)
@@ -1634,6 +1810,8 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
+const tempUnschedEnabled = ref(false)
+const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
 const showAdvancedOAuth = ref(false)
@@ -1654,6 +1832,35 @@ REDACTED
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(form.platform))
+const tempUnschedPresets = computed(() => [
+  {
+    label: t('admin.accounts.tempUnschedulable.presets.overloadLabel'),
+    rule: {
+      error_code: 529,
+      keywords: 'overloaded, too many',
+      duration_minutes: 60,
+      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc')
+    REDACTED
+  REDACTED,
+  {
+    label: t('admin.accounts.tempUnschedulable.presets.rateLimitLabel'),
+    rule: {
+      error_code: 429,
+      keywords: 'rate limit, too many requests',
+      duration_minutes: 10,
+      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc')
+    REDACTED
+  REDACTED,
+  {
+    label: t('admin.accounts.tempUnschedulable.presets.unavailableLabel'),
+    rule: {
+      error_code: 503,
+      keywords: 'unavailable, maintenance',
+      duration_minutes: 30,
+      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc')
+    REDACTED
+  REDACTED
+])
 
 const form = reactive({
   name: '',
@@ -1828,6 +2035,89 @@ const removeErrorCode = (code: number) => {
   REDACTED
 REDACTED
 
+const addTempUnschedRule = (preset?: TempUnschedRuleForm) => {
+  if (preset) {
+    tempUnschedRules.value.push({ ...preset REDACTED)
+    return
+  REDACTED
+  tempUnschedRules.value.push({
+    error_code: null,
+    keywords: '',
+    duration_minutes: 30,
+    description: ''
+  REDACTED)
+REDACTED
+
+const removeTempUnschedRule = (index: number) => {
+  tempUnschedRules.value.splice(index, 1)
+REDACTED
+
+const moveTempUnschedRule = (index: number, direction: number) => {
+  const target = index + direction
+  if (target < 0 || target >= tempUnschedRules.value.length) return
+  const rules = tempUnschedRules.value
+  const current = rules[index]
+  rules[index] = rules[target]
+  rules[target] = current
+REDACTED
+
+const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
+  const out: Array<{
+    error_code: number
+    keywords: string[]
+    duration_minutes: number
+    description: string
+  REDACTED> = []
+
+  for (const rule of rules) {
+    const errorCode = Number(rule.error_code)
+    const duration = Number(rule.duration_minutes)
+    const keywords = splitTempUnschedKeywords(rule.keywords)
+    if (!Number.isFinite(errorCode) || errorCode < 100 || errorCode > 599) {
+      continue
+    REDACTED
+    if (!Number.isFinite(duration) || duration <= 0) {
+      continue
+    REDACTED
+    if (keywords.length === 0) {
+      continue
+    REDACTED
+    out.push({
+      error_code: Math.trunc(errorCode),
+      keywords,
+      duration_minutes: Math.trunc(duration),
+      description: rule.description.trim()
+    REDACTED)
+  REDACTED
+
+  return out
+REDACTED
+
+const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
+  if (!tempUnschedEnabled.value) {
+    delete credentials.temp_unschedulable_enabled
+    delete credentials.temp_unschedulable_rules
+    return true
+  REDACTED
+
+  const rules = buildTempUnschedRules(tempUnschedRules.value)
+  if (rules.length === 0) {
+    appStore.showError(t('admin.accounts.tempUnschedulable.rulesInvalid'))
+    return false
+  REDACTED
+
+  credentials.temp_unschedulable_enabled = true
+  credentials.temp_unschedulable_rules = rules
+  return true
+REDACTED
+
+const splitTempUnschedKeywords = (value: string) => {
+  return value
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+REDACTED
+
 // Methods
 const resetForm = () => {
   step.value = 1
@@ -1850,6 +2140,8 @@ const resetForm = () => {
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
+  tempUnschedEnabled.value = false
+  tempUnschedRules.value = []
   geminiOAuthType.value = 'code_assist'
   oauth.resetState()
   openaiOAuth.resetState()
@@ -1910,6 +2202,10 @@ const handleSubmit = async () => {
     credentials.intercept_warmup_requests = true
   REDACTED
 
+  if (!applyTempUnschedConfig(credentials)) {
+    return
+  REDACTED
+
   form.credentials = credentials
 
   submitting.value = true
@@ -1956,6 +2252,9 @@ const createAccountAndFinish = async (
   credentials: Record<string, unknown>,
   extra?: Record<string, unknown>
 ) => {
+  if (!applyTempUnschedConfig(credentials)) {
+    return
+  REDACTED
   await adminAPI.accounts.create({
     name: form.name,
     platform,
@@ -2024,7 +2323,8 @@ const handleGeminiExchange = async (authCode: string) => {
     if (!tokenInfo) return
 
     const credentials = geminiOAuth.buildCredentials(tokenInfo)
-    await createAccountAndFinish('gemini', 'oauth', credentials)
+    const extra = geminiOAuth.buildExtraInfo(tokenInfo)
+    await createAccountAndFinish('gemini', 'oauth', credentials, extra)
   REDACTED catch (error: any) {
     geminiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(geminiOAuth.error.value)
@@ -2131,6 +2431,14 @@ const handleCookieAuth = async (sessionKey: string) => {
       return
     REDACTED
 
+    const tempUnschedPayload = tempUnschedEnabled.value
+      ? buildTempUnschedRules(tempUnschedRules.value)
+      : []
+    if (tempUnschedEnabled.value && tempUnschedPayload.length === 0) {
+      appStore.showError(t('admin.accounts.tempUnschedulable.rulesInvalid'))
+      return
+    REDACTED
+
     const endpoint =
       addMethod.value === 'oauth'
         ? '/admin/accounts/cookie-auth'
@@ -2155,6 +2463,10 @@ const handleCookieAuth = async (sessionKey: string) => {
         const credentials = {
           ...tokenInfo,
           ...(interceptWarmupRequests.value ? { intercept_warmup_requests: true REDACTED : {REDACTED)
+        REDACTED
+        if (tempUnschedEnabled.value) {
+          credentials.temp_unschedulable_enabled = true
+          credentials.temp_unschedulable_rules = tempUnschedPayload
         REDACTED
 
         await adminAPI.accounts.create({
