@@ -14,7 +14,7 @@ export function sanitizeUrl(value: string, options: SanitizeOptions = {REDACTED)
     return ''
   REDACTED
 
-  if (options.allowRelative && trimmed.startsWith('/')) {
+  if (options.allowRelative && trimmed.startsWith('/') && !trimmed.startsWith('//')) {
     return trimmed
   REDACTED
 

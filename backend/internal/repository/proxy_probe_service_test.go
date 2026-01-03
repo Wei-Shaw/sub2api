@@ -20,7 +20,10 @@ REDACTED
 
 func (s *ProxyProbeServiceSuite) SetupTest() {
 	s.ctx = context.Background()
-	s.prober = &proxyProbeService{ipInfoURL: "http://ipinfo.test/json"REDACTED
+	s.prober = &proxyProbeService{
+		ipInfoURL:         "http://ipinfo.test/json",
+		allowPrivateHosts: true,
+REDACTED
 REDACTED
 
 func (s *ProxyProbeServiceSuite) TearDownTest() {

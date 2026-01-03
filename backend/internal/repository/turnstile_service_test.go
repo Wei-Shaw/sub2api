@@ -41,6 +41,7 @@ REDACTED
 func (s *TurnstileServiceSuite) setupServer(handler http.HandlerFunc) {
 	s.srv = httptest.NewServer(handler)
 	s.verifier.verifyURL = s.srv.URL
+	s.verifier.httpClient = s.srv.Client()
 REDACTED
 
 func (s *TurnstileServiceSuite) TestVerifyToken_SendsFormAndDecodesJSON() {

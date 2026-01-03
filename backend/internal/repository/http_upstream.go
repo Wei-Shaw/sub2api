@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
 // 默认配置常量
@@ -119,6 +120,10 @@ REDACTED
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	if err := s.validateRequestHost(req); err != nil {
+		return nil, err
+REDACTED
+
 	// 获取或创建对应的客户端，并标记请求占用
 	entry, err := s.acquireClient(proxyURL, accountID, accountConcurrency)
 	if err != nil {
@@ -142,6 +147,37 @@ REDACTED
 REDACTED)
 
 	return resp, nil
+REDACTED
+
+func (s *httpUpstreamService) shouldValidateResolvedIP() bool {
+	if s.cfg == nil {
+		return false
+REDACTED
+	return !s.cfg.Security.URLAllowlist.AllowPrivateHosts
+REDACTED
+
+func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
+	if !s.shouldValidateResolvedIP() {
+		return nil
+REDACTED
+	if req == nil || req.URL == nil {
+		return errors.New("request url is nil")
+REDACTED
+	host := strings.TrimSpace(req.URL.Hostname())
+	if host == "" {
+		return errors.New("request host is empty")
+REDACTED
+	if err := urlvalidator.ValidateResolvedIP(host); err != nil {
+		return err
+REDACTED
+	return nil
+REDACTED
+
+func (s *httpUpstreamService) redirectChecker(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+REDACTED
+	return s.validateRequestHost(req)
 REDACTED
 
 // acquireClient 获取或创建客户端，并标记为进行中请求
@@ -226,6 +262,9 @@ REDACTED
 	// 缓存未命中或需要重建，创建新客户端
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	client := &http.Client{Transport: buildUpstreamTransport(settings, parsedProxy)REDACTED
+	if s.shouldValidateResolvedIP() {
+		client.CheckRedirect = s.redirectChecker
+REDACTED
 	entry := &upstreamClientEntry{
 		client:   client,
 		proxyKey: proxyKey,

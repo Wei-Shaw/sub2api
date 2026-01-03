@@ -498,8 +498,9 @@ REDACTED
 	req.Header.Set("User-Agent", geminicli.GeminiCLIUserAgent)
 
 	client, err := httpclient.GetClient(httpclient.Options{
-		ProxyURL: strings.TrimSpace(proxyURL),
-		Timeout:  30 * time.Second,
+		ProxyURL:           strings.TrimSpace(proxyURL),
+		Timeout:            30 * time.Second,
+		ValidateResolvedIP: true,
 REDACTED)
 	if err != nil {
 		client = &http.Client{Timeout: 30 * time.SecondREDACTED

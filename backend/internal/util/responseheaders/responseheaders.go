@@ -31,6 +31,7 @@ var defaultAllowed = map[string]struct{REDACTED{
 	"x-ratelimit-reset-tokens":       {REDACTED,
 	"retry-after":                    {REDACTED,
 	"location":                       {REDACTED,
+	"www-authenticate":               {REDACTED,
 REDACTED
 
 // hopByHopHeaders 是跳过的 hop-by-hop 头部，这些头部由 HTTP 库自动处理

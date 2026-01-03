@@ -15,7 +15,8 @@ import (
 const defaultClaudeUsageURL = "https://api.anthropic.com/api/oauth/usage"
 
 type claudeUsageService struct {
-	usageURL string
+	usageURL          string
+	allowPrivateHosts bool
 REDACTED
 
 func NewClaudeUsageFetcher() service.ClaudeUsageFetcher {
@@ -24,8 +25,10 @@ REDACTED
 
 func (s *claudeUsageService) FetchUsage(ctx context.Context, accessToken, proxyURL string) (*service.ClaudeUsageResponse, error) {
 	client, err := httpclient.GetClient(httpclient.Options{
-		ProxyURL: proxyURL,
-		Timeout:  30 * time.Second,
+		ProxyURL:           proxyURL,
+		Timeout:            30 * time.Second,
+		ValidateResolvedIP: true,
+		AllowPrivateHosts:  s.allowPrivateHosts,
 REDACTED)
 	if err != nil {
 		client = &http.Client{Timeout: 30 * time.SecondREDACTED
