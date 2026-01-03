@@ -8,11 +8,11 @@ import (
 // TestBuildParts_ThinkingBlockWithoutSignature 测试thinking block无signature时的处理
 func TestBuildParts_ThinkingBlockWithoutSignature(t *testing.T) {
 	tests := []struct {
-		name             string
-		content          string
+		name              string
+		content           string
 		allowDummyThought bool
-		expectedParts    int
-		description      string
+		expectedParts     int
+		description       string
 REDACTED{
 		{
 			name: "Claude model - drop thinking without signature",

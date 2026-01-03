@@ -1076,13 +1076,13 @@ REDACTED
 REDACTED
 
 	// 处理错误响应（不可重试的错误）
-		if resp.StatusCode >= 400 {
-			// 可选：对部分 400 触发 failover（默认关闭以保持语义）
-			if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
-				respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-				if readErr != nil {
-					// ReadAll failed, fall back to normal error handling without consuming the stream
-					return s.handleErrorResponse(ctx, resp, c, account)
+	if resp.StatusCode >= 400 {
+		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
+		if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			if readErr != nil {
+				// ReadAll failed, fall back to normal error handling without consuming the stream
+				return s.handleErrorResponse(ctx, resp, c, account)
 		REDACTED
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))

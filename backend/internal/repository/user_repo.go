@@ -301,7 +301,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	result := make([]int64, 0)
 	for rows.Next() {
