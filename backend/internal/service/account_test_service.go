@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -31,7 +30,6 @@ var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 
 const (
 	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages"
-	testOpenAIAPIURL   = "https://api.openai.com/v1/responses"
 	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
 )
 
@@ -47,8 +45,6 @@ REDACTED
 // AccountTestService handles account testing operations
 type AccountTestService struct {
 	accountRepo               AccountRepository
-	oauthService              *OAuthService
-	openaiOAuthService        *OpenAIOAuthService
 	geminiTokenProvider       *GeminiTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
@@ -58,8 +54,6 @@ REDACTED
 // NewAccountTestService creates a new AccountTestService
 func NewAccountTestService(
 	accountRepo AccountRepository,
-	oauthService *OAuthService,
-	openaiOAuthService *OpenAIOAuthService,
 	geminiTokenProvider *GeminiTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
@@ -67,8 +61,6 @@ func NewAccountTestService(
 ) *AccountTestService {
 	return &AccountTestService{
 		accountRepo:               accountRepo,
-		oauthService:              oauthService,
-		openaiOAuthService:        openaiOAuthService,
 		geminiTokenProvider:       geminiTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
@@ -204,22 +196,6 @@ REDACTED
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No access token available")
 	REDACTED
-
-		// Check if token needs refresh
-		needRefresh := false
-		if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
-			if time.Now().Add(5 * time.Minute).After(*expiresAt) {
-				needRefresh = true
-		REDACTED
-	REDACTED
-
-		if needRefresh && s.oauthService != nil {
-			tokenInfo, err := s.oauthService.RefreshAccountToken(ctx, account)
-			if err != nil {
-				return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to refresh token: %s", err.Error()))
-		REDACTED
-			authToken = tokenInfo.AccessToken
-	REDACTED
 REDACTED else if account.Type == "apikey" {
 		// API Key - use x-api-key header
 		useBearer = false
@@ -333,15 +309,6 @@ REDACTED
 		authToken = account.GetOpenAIAccessToken()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No access token available")
-	REDACTED
-
-		// Check if token is expired and refresh if needed
-		if account.IsOpenAITokenExpired() && s.openaiOAuthService != nil {
-			tokenInfo, err := s.openaiOAuthService.RefreshAccountToken(ctx, account)
-			if err != nil {
-				return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to refresh token: %s", err.Error()))
-		REDACTED
-			authToken = tokenInfo.AccessToken
 	REDACTED
 
 		// OAuth uses ChatGPT internal API

@@ -34,13 +34,15 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 10 * 1024 * 1024
+	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
 )
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var (
-	sseDataRe      = regexp.MustCompile(`^data:\s*`)
-	sessionIDRegex = regexp.MustCompile(`session_([a-f0-9-]{36REDACTED)`)
+	sseDataRe            = regexp.MustCompile(`^data:\s*`)
+	sessionIDRegex       = regexp.MustCompile(`session_([a-f0-9-]{36REDACTED)`)
+	claudeCliUserAgentRe = regexp.MustCompile(`^claude-cli/\d+\.\d+\.\d+`)
 )
 
 // allowedHeaders 白名单headers（参考CRS项目）
@@ -955,6 +957,76 @@ func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 REDACTED
 REDACTED
 
+// isClaudeCodeClient 判断请求是否来自 Claude Code 客户端
+// 简化判断：User-Agent 匹配 + metadata.user_id 存在
+func isClaudeCodeClient(userAgent string, metadataUserID string) bool {
+	if metadataUserID == "" {
+		return false
+REDACTED
+	return claudeCliUserAgentRe.MatchString(userAgent)
+REDACTED
+
+// systemIncludesClaudeCodePrompt 检查 system 中是否已包含 Claude Code 提示词
+// 支持 string 和 []any 两种格式
+func systemIncludesClaudeCodePrompt(system any) bool {
+	switch v := system.(type) {
+	case string:
+		return v == claudeCodeSystemPrompt
+	case []any:
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				if text, ok := m["text"].(string); ok && text == claudeCodeSystemPrompt {
+					return true
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// injectClaudeCodePrompt 在 system 开头注入 Claude Code 提示词
+// 处理 null、字符串、数组三种格式
+func injectClaudeCodePrompt(body []byte, system any) []byte {
+	claudeCodeBlock := map[string]any{
+		"type":          "text",
+		"text":          claudeCodeSystemPrompt,
+		"cache_control": map[string]string{"type": "ephemeral"REDACTED,
+REDACTED
+
+	var newSystem []any
+
+	switch v := system.(type) {
+	case nil:
+		newSystem = []any{claudeCodeBlockREDACTED
+	case string:
+		if v == "" || v == claudeCodeSystemPrompt {
+			newSystem = []any{claudeCodeBlockREDACTED
+	REDACTED else {
+			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": vREDACTEDREDACTED
+	REDACTED
+	case []any:
+		newSystem = make([]any, 0, len(v)+1)
+		newSystem = append(newSystem, claudeCodeBlock)
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				if text, ok := m["text"].(string); ok && text == claudeCodeSystemPrompt {
+					continue
+			REDACTED
+		REDACTED
+			newSystem = append(newSystem, item)
+	REDACTED
+	default:
+		newSystem = []any{claudeCodeBlockREDACTED
+REDACTED
+
+	result, err := sjson.SetBytes(body, "system", newSystem)
+	if err != nil {
+		log.Printf("Warning: failed to inject Claude Code prompt: %v", err)
+		return body
+REDACTED
+	return result
+REDACTED
+
 // Forward 转发请求到Claude API
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {
 	startTime := time.Now()
@@ -966,16 +1038,13 @@ REDACTED
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
 
-	if !parsed.HasSystem {
-		body, _ = sjson.SetBytes(body, "system", []any{
-			map[string]any{
-				"type": "text",
-				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
-				"cache_control": map[string]string{
-					"type": "ephemeral",
-			REDACTED,
-		REDACTED,
-	REDACTED)
+	// 智能注入 Claude Code 系统提示词（仅 OAuth/SetupToken 账号需要）
+	// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
+	if account.IsOAuth() &&
+		!isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID) &&
+		!strings.Contains(strings.ToLower(reqModel), "haiku") &&
+		!systemIncludesClaudeCodePrompt(parsed.System) {
+		body = injectClaudeCodePrompt(body, parsed.System)
 REDACTED
 
 	// 应用模型映射（仅对apikey类型账号）

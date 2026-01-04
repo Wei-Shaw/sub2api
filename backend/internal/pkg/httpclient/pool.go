@@ -11,23 +11,21 @@
 // 新实现使用统一的客户端池：
 // 1. 相同配置复用同一 http.Client 实例
 // 2. 复用 Transport 连接池，减少 TCP/TLS 握手开销
-// 3. 支持 HTTP/HTTPS/SOCKS5 代理
-// 4. 支持严格代理模式（代理失败则返回错误）
+// 3. 支持 HTTP/HTTPS/SOCKS5/SOCKS5H 代理
+// 4. 代理配置失败时直接返回错误，不会回退到直连（避免 IP 关联风险）
 package httpclient
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
-	"golang.org/x/net/proxy"
 )
 
 // Transport 连接池默认配置
@@ -39,7 +37,7 @@ const (
 
 // Options 定义共享 HTTP 客户端的构建参数
 type Options struct {
-	ProxyURL              string        // 代理 URL（支持 http/https/socks5）
+	ProxyURL              string        // 代理 URL（支持 http/https/socks5/socks5h）
 	Timeout               time.Duration // 请求总超时时间
 	ResponseHeaderTimeout time.Duration // 等待响应头超时时间
 	InsecureSkipVerify    bool          // 是否跳过 TLS 证书验证
@@ -58,6 +56,7 @@ var sharedClients sync.Map
 
 // GetClient 返回共享的 HTTP 客户端实例
 // 性能优化：相同配置复用同一客户端，避免重复创建 Transport
+// 安全说明：代理配置失败时直接返回错误，不会回退到直连，避免 IP 关联风险
 func GetClient(opts Options) (*http.Client, error) {
 	key := buildClientKey(opts)
 	if cached, ok := sharedClients.Load(key); ok {
@@ -68,12 +67,7 @@ REDACTED
 
 	client, err := buildClient(opts)
 	if err != nil {
-		if opts.ProxyStrict {
-			return nil, err
-	REDACTED
-		fallback := opts
-		fallback.ProxyURL = ""
-		client, _ = buildClient(fallback)
+		return nil, err
 REDACTED
 
 	actual, _ := sharedClients.LoadOrStore(key, client)
@@ -132,19 +126,8 @@ REDACTED
 		return nil, err
 REDACTED
 
-	switch strings.ToLower(parsed.Scheme) {
-	case "http", "https":
-		transport.Proxy = http.ProxyURL(parsed)
-	case "socks5", "socks5h":
-		dialer, err := proxy.FromURL(parsed, proxy.Direct)
-		if err != nil {
-			return nil, err
-	REDACTED
-		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialer.Dial(network, addr)
-	REDACTED
-	default:
-		return nil, fmt.Errorf("unsupported proxy protocol: %s", parsed.Scheme)
+	if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
+		return nil, err
 REDACTED
 
 	return transport, nil

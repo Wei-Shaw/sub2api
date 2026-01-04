@@ -54,9 +54,11 @@ changelog:
 
 # Docker images
 dockers:
+  # DockerHub images (skipped if DOCKERHUB_USERNAME is 'skip')
   - id: amd64
     goos: linux
     goarch: amd64
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" REDACTEDREDACTEDtrue{{ else REDACTEDREDACTEDfalse{{ end REDACTEDREDACTED'
     image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
     dockerfile: Dockerfile.goreleaser
@@ -69,6 +71,7 @@ dockers:
   - id: arm64
     goos: linux
     goarch: arm64
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" REDACTEDREDACTEDtrue{{ else REDACTEDREDACTEDfalse{{ end REDACTEDREDACTED'
     image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
     dockerfile: Dockerfile.goreleaser
@@ -107,22 +110,27 @@ dockers:
 
 # Docker manifests for multi-arch support
 docker_manifests:
+  # DockerHub manifests (skipped if DOCKERHUB_USERNAME is 'skip')
   - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" REDACTEDREDACTEDtrue{{ else REDACTEDREDACTEDfalse{{ end REDACTEDREDACTED'
     image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
 
   - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:latest"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" REDACTEDREDACTEDtrue{{ else REDACTEDREDACTEDfalse{{ end REDACTEDREDACTED'
     image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
 
   - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Major REDACTEDREDACTED.{{ .Minor REDACTEDREDACTED"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" REDACTEDREDACTEDtrue{{ else REDACTEDREDACTEDfalse{{ end REDACTEDREDACTED'
     image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
 
   - name_template: "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Major REDACTEDREDACTED"
+    skip_push: '{{ if eq .Env.DOCKERHUB_USERNAME "skip" REDACTEDREDACTEDtrue{{ else REDACTEDREDACTEDfalse{{ end REDACTEDREDACTED'
     image_templates:
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-amd64"
       - "{{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED-arm64"
@@ -169,9 +177,11 @@ release:
 
     **Docker:**
     ```bash
+    {{ if ne .Env.DOCKERHUB_USERNAME "skip" -REDACTEDREDACTED
     # Docker Hub
     docker pull {{ .Env.DOCKERHUB_USERNAME REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED
 
+    {{ end -REDACTEDREDACTED
     # GitHub Container Registry
     docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER REDACTEDREDACTED/sub2api:{{ .Version REDACTEDREDACTED
     ```
