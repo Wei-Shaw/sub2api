@@ -255,6 +255,16 @@ REDACTED
 	return antigravity.TransformClaudeToGemini(claudeReq, projectID, mappedModel)
 REDACTED
 
+func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Context) antigravity.TransformOptions {
+	opts := antigravity.DefaultTransformOptions()
+	if s.settingService == nil {
+		return opts
+REDACTED
+	opts.EnableIdentityPatch = s.settingService.IsIdentityPatchEnabled(ctx)
+	opts.IdentityPatch = s.settingService.GetIdentityPatchPrompt(ctx)
+	return opts
+REDACTED
+
 // extractGeminiResponseText 从 Gemini 响应中提取文本
 func extractGeminiResponseText(respBody []byte) string {
 	var resp map[string]any
@@ -380,7 +390,7 @@ REDACTED
 REDACTED
 
 	// 转换 Claude 请求为 Gemini 格式
-	geminiBody, err := antigravity.TransformClaudeToGemini(&claudeReq, projectID, mappedModel)
+	geminiBody, err := antigravity.TransformClaudeToGeminiWithOptions(&claudeReq, projectID, mappedModel, s.getClaudeTransformOptions(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("transform request: %w", err)
 REDACTED
@@ -466,7 +476,7 @@ REDACTED
 
 				log.Printf("Antigravity account %d: detected signature-related 400, retrying once (%s)", account.ID, stage.name)
 
-				retryGeminiBody, txErr := antigravity.TransformClaudeToGemini(&retryClaudeReq, projectID, mappedModel)
+				retryGeminiBody, txErr := antigravity.TransformClaudeToGeminiWithOptions(&retryClaudeReq, projectID, mappedModel, s.getClaudeTransformOptions(ctx))
 				if txErr != nil {
 					continue
 			REDACTED

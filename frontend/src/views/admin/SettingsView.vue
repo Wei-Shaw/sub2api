@@ -756,7 +756,10 @@ const form = reactive<SystemSettings>({
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: '',
-  turnstile_secret_key: ''
+  turnstile_secret_key: '',
+  // Identity patch (Claude -> Gemini)
+  enable_identity_patch: true,
+  identity_patch_prompt: ''
 REDACTED)
 
 function handleLogoUpload(event: Event) {

@@ -130,6 +130,10 @@ REDACTED
 	updates[SettingKeyFallbackModelGemini] = settings.FallbackModelGemini
 	updates[SettingKeyFallbackModelAntigravity] = settings.FallbackModelAntigravity
 
+	// Identity patch configuration (Claude -> Gemini)
+	updates[SettingKeyEnableIdentityPatch] = strconv.FormatBool(settings.EnableIdentityPatch)
+	updates[SettingKeyIdentityPatchPrompt] = settings.IdentityPatchPrompt
+
 	return s.settingRepo.SetMultiple(ctx, updates)
 REDACTED
 
@@ -213,6 +217,9 @@ REDACTED
 		SettingKeyFallbackModelOpenAI:      "gpt-4o",
 		SettingKeyFallbackModelGemini:      "gemini-2.5-pro",
 		SettingKeyFallbackModelAntigravity: "gemini-2.5-pro",
+		// Identity patch defaults
+		SettingKeyEnableIdentityPatch: "true",
+		SettingKeyIdentityPatchPrompt: "",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -269,6 +276,14 @@ REDACTED
 	result.FallbackModelGemini = s.getStringOrDefault(settings, SettingKeyFallbackModelGemini, "gemini-2.5-pro")
 	result.FallbackModelAntigravity = s.getStringOrDefault(settings, SettingKeyFallbackModelAntigravity, "gemini-2.5-pro")
 
+	// Identity patch settings (default: enabled, to preserve existing behavior)
+	if v, ok := settings[SettingKeyEnableIdentityPatch]; ok && v != "" {
+		result.EnableIdentityPatch = v == "true"
+REDACTED else {
+		result.EnableIdentityPatch = true
+REDACTED
+	result.IdentityPatchPrompt = settings[SettingKeyIdentityPatchPrompt]
+
 	return result
 REDACTED
 
@@ -292,6 +307,25 @@ REDACTED
 // GetTurnstileSecretKey 获取 Turnstile Secret Key
 func (s *SettingService) GetTurnstileSecretKey(ctx context.Context) string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyTurnstileSecretKey)
+	if err != nil {
+		return ""
+REDACTED
+	return value
+REDACTED
+
+// IsIdentityPatchEnabled 检查是否启用身份补丁（Claude -> Gemini systemInstruction 注入）
+func (s *SettingService) IsIdentityPatchEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyEnableIdentityPatch)
+	if err != nil {
+		// 默认开启，保持兼容
+		return true
+REDACTED
+	return value == "true"
+REDACTED
+
+// GetIdentityPatchPrompt 获取自定义身份补丁提示词（为空表示使用内置默认模板）
+func (s *SettingService) GetIdentityPatchPrompt(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyIdentityPatchPrompt)
 	if err != nil {
 		return ""
 REDACTED
