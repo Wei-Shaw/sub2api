@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
+	"sync"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -462,7 +465,7 @@ func cleanJSONSchema(schema map[string]any) map[string]any {
 	if schema == nil {
 		return nil
 REDACTED
-	cleaned := cleanSchemaValue(schema)
+	cleaned := cleanSchemaValue(schema, "$")
 	result, ok := cleaned.(map[string]any)
 	if !ok {
 		return nil
@@ -498,6 +501,56 @@ REDACTED
 REDACTED
 
 	return result
+REDACTED
+
+var schemaValidationKeys = map[string]bool{
+	"minLength":         true,
+	"maxLength":         true,
+	"pattern":           true,
+	"minimum":           true,
+	"maximum":           true,
+	"exclusiveMinimum":  true,
+	"exclusiveMaximum":  true,
+	"multipleOf":        true,
+	"uniqueItems":       true,
+	"minItems":          true,
+	"maxItems":          true,
+	"minProperties":     true,
+	"maxProperties":     true,
+	"patternProperties": true,
+	"propertyNames":     true,
+	"dependencies":      true,
+	"dependentSchemas":  true,
+	"dependentRequired": true,
+REDACTED
+
+var warnedSchemaKeys sync.Map
+
+func schemaCleaningWarningsEnabled() bool {
+	// 可通过环境变量强制开关，方便排查：SUB2API_SCHEMA_CLEAN_WARN=true/false
+	if v := strings.TrimSpace(os.Getenv("SUB2API_SCHEMA_CLEAN_WARN")); v != "" {
+		switch strings.ToLower(v) {
+		case "1", "true", "yes", "on":
+			return true
+		case "0", "false", "no", "off":
+			return false
+	REDACTED
+REDACTED
+	// 默认：非 release 模式下输出（debug/test）
+	return gin.Mode() != gin.ReleaseMode
+REDACTED
+
+func warnSchemaKeyRemovedOnce(key, path string) {
+	if !schemaCleaningWarningsEnabled() {
+		return
+REDACTED
+	if !schemaValidationKeys[key] {
+		return
+REDACTED
+	if _, loaded := warnedSchemaKeys.LoadOrStore(key, struct{REDACTED{REDACTED); loaded {
+		return
+REDACTED
+	log.Printf("[SchemaClean] removed unsupported JSON Schema validation field key=%q path=%q", key, path)
 REDACTED
 
 // excludedSchemaKeys 不支持的 schema 字段
@@ -562,13 +615,14 @@ var excludedSchemaKeys = map[string]bool{
 REDACTED
 
 // cleanSchemaValue 递归清理 schema 值
-func cleanSchemaValue(value any) any {
+func cleanSchemaValue(value any, path string) any {
 	switch v := value.(type) {
 	case map[string]any:
 		result := make(map[string]any)
 		for k, val := range v {
 			// 跳过不支持的字段
 			if excludedSchemaKeys[k] {
+				warnSchemaKeyRemovedOnce(k, path)
 				continue
 		REDACTED
 
@@ -602,15 +656,15 @@ func cleanSchemaValue(value any) any {
 		REDACTED
 
 			// 递归清理所有值
-			result[k] = cleanSchemaValue(val)
+			result[k] = cleanSchemaValue(val, path+"."+k)
 	REDACTED
 		return result
 
 	case []any:
 		// 递归处理数组中的每个元素
 		cleaned := make([]any, 0, len(v))
-		for _, item := range v {
-			cleaned = append(cleaned, cleanSchemaValue(item))
+		for i, item := range v {
+			cleaned = append(cleaned, cleanSchemaValue(item, fmt.Sprintf("%s[%d]", path, i)))
 	REDACTED
 		return cleaned
 
