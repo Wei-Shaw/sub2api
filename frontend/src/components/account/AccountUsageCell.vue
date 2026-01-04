@@ -241,8 +241,8 @@
         <div v-else-if="error" class="text-xs text-red-500">
           {{ error REDACTEDREDACTED
         </div>
-        <!-- Code Assist: show model usage bars -->
-        <div v-else-if="isGeminiCodeAssist && geminiUsageAvailable" class="space-y-1">
+        <!-- GCP & Google One: show model usage bars when available -->
+        <div v-else-if="geminiUsageAvailable" class="space-y-1">
           <UsageProgressBar
             v-if="usageInfo?.gemini_pro_daily"
             label="Pro"
@@ -263,7 +263,7 @@
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' REDACTEDREDACTED
           </p>
         </div>
-        <!-- AI Studio & Google One: show unlimited flow -->
+        <!-- AI Studio Client OAuth: show unlimited flow (no usage tracking) -->
         <div v-else class="text-xs text-gray-400">
           {{ t('admin.accounts.gemini.rateLimit.unlimited') REDACTEDREDACTED
         </div>
@@ -613,14 +613,14 @@ const geminiAuthTypeLabel = computed(() => {
   return null
 REDACTED)
 
-// Gemini 账户类型徽章样式
+// Gemini 账户类型徽章样式（统一样式）
 const geminiTierClass = computed(() => {
   const creds = props.account.credentials as GeminiCredentials | undefined
   const oauthType = creds?.oauth_type
 
-  // AI Studio: use neutral gray color (no tier)
+  // Client (自定义 OAuth): 使用蓝色（与 AI Studio 一致）
   if (oauthType === 'ai_studio') {
-    return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+    return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
   REDACTED
 
   if (!geminiTier.value) return ''

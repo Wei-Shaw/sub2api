@@ -94,41 +94,41 @@ const tierLabel = computed(() => {
   return 'AI Studio'
 REDACTED)
 
-// Tier Badge 样式
+// Tier Badge 样式（统一样式）
 const tierBadgeClass = computed(() => {
   const creds = props.account.credentials as GeminiCredentials | undefined
 
   if (isCodeAssist.value) {
     // GCP Code Assist 样式
     const tierColorMap: Record<string, string> = {
-      LEGACY: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-      PRO: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-      ULTRA: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-      'standard-tier': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      'pro-tier': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-      'ultra-tier': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+      LEGACY: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+      PRO: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
+      ULTRA: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300',
+      'standard-tier': 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300',
+      'pro-tier': 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
+      'ultra-tier': 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
     REDACTED
     return (
       tierColorMap[creds?.tier_id || ''] ||
-      'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+      'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
     )
   REDACTED
 
   if (isGoogleOne.value) {
     // Google One tier 样式
     const tierColorMap: Record<string, string> = {
-      AI_PREMIUM: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-      GOOGLE_ONE_STANDARD: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-      GOOGLE_ONE_BASIC: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      FREE: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-      GOOGLE_ONE_UNKNOWN: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-      GOOGLE_ONE_UNLIMITED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+      AI_PREMIUM: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300',
+      GOOGLE_ONE_STANDARD: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
+      GOOGLE_ONE_BASIC: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300',
+      FREE: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+      GOOGLE_ONE_UNKNOWN: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+      GOOGLE_ONE_UNLIMITED: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300'
     REDACTED
-    return tierColorMap[creds?.tier_id || ''] || 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+    return tierColorMap[creds?.tier_id || ''] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
   REDACTED
 
   // AI Studio 默认样式：蓝色
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+  return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
 REDACTED)
 
 // 是否限流
