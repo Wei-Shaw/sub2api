@@ -2,6 +2,26 @@
  * Core Type Definitions for Sub2API Frontend
  */
 
+// ==================== Common Types ====================
+
+export interface SelectOption {
+  value: string | number | boolean | null
+  label: string
+  [key: string]: any // Support extra properties for custom templates
+REDACTED
+
+export interface BasePaginationResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+REDACTED
+
+export interface FetchOptions {
+  signal?: AbortSignal
+REDACTED
+
 // ==================== User & Auth Types ====================
 
 export interface User {
