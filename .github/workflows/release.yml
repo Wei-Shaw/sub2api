@@ -48,7 +48,6 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.simple_release != 'true' REDACTEDREDACTED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,8 +76,6 @@ jobs:
 
   release:
     needs: [update-version, build-frontend]
-    # 等待 build-frontend 完成（除非是 simple_release 则跳过检查）
-    if: ${{ always() && needs.update-version.result == 'success' && (github.event.inputs.simple_release == 'true' || needs.build-frontend.result == 'success') REDACTEDREDACTED
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -94,7 +91,6 @@ jobs:
           path: backend/cmd/server/
 
       - name: Download frontend artifact
-        if: ${{ github.event.inputs.simple_release != 'true' REDACTEDREDACTED
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist

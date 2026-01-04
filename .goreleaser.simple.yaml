@@ -12,9 +12,8 @@ builds:
     dir: backend
     main: ./cmd/server
     binary: sub2api
-    # 不嵌入前端，使用独立部署模式
-    # flags:
-    #   - -tags=embed
+    flags:
+      - -tags=embed
     env:
       - CGO_ENABLED=0
     goos:
