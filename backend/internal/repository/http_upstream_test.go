@@ -3,7 +3,6 @@ package repository
 import (
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -93,7 +92,7 @@ REDACTED
 // 验证空代理 URL 时请求直接发送到目标服务器
 func (s *HTTPUpstreamSuite) TestDo_WithoutProxy_GoesDirect() {
 	// 创建模拟上游服务器
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "direct")
 REDACTED))
 	s.T().Cleanup(upstream.Close)
@@ -115,7 +114,7 @@ func (s *HTTPUpstreamSuite) TestDo_WithHTTPProxy_UsesProxy() {
 	// 用于接收代理请求的通道
 	seen := make(chan string, 1)
 	// 创建模拟代理服务器
-	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	proxySrv := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen <- r.RequestURI // 记录请求 URI
 		_, _ = io.WriteString(w, "proxied")
 REDACTED))
@@ -145,7 +144,7 @@ REDACTED
 // TestDo_EmptyProxy_UsesDirect 测试空代理字符串
 // 验证空字符串代理等同于直连
 func (s *HTTPUpstreamSuite) TestDo_EmptyProxy_UsesDirect() {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "direct-empty")
 REDACTED))
 	s.T().Cleanup(upstream.Close)

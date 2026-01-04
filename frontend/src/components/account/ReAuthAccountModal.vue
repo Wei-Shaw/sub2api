@@ -88,7 +88,35 @@
       <!-- Gemini OAuth Type Selection -->
       <fieldset v-if="isGemini" class="border-0 p-0">
         <legend class="input-label">{{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED</legend>
-        <div class="mt-2 grid grid-cols-2 gap-3">
+        <div class="mt-2 grid grid-cols-3 gap-3">
+          <button
+            type="button"
+            @click="handleSelectGeminiOAuthType('google_one')"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              geminiOAuthType === 'google_one'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 items-center justify-center rounded-lg',
+                geminiOAuthType === 'google_one'
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+            </div>
+            <div class="min-w-0">
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">Google One</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">个人账号</span>
+            </div>
+          </button>
+
           <button
             type="button"
             @click="handleSelectGeminiOAuthType('code_assist')"
@@ -305,7 +333,7 @@ const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 
 // State
 const addMethod = ref<AddMethod>('oauth')
-const geminiOAuthType = ref<'code_assist' | 'ai_studio'>('code_assist')
+const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_assist')
 const geminiAIStudioOAuthEnabled = ref(false)
 
 // Computed - check platform
@@ -367,7 +395,12 @@ watch(
       REDACTED
       if (isGemini.value) {
         const creds = (props.account.credentials || {REDACTED) as Record<string, unknown>
-        geminiOAuthType.value = creds.oauth_type === 'ai_studio' ? 'ai_studio' : 'code_assist'
+        geminiOAuthType.value =
+          creds.oauth_type === 'google_one'
+            ? 'google_one'
+            : creds.oauth_type === 'ai_studio'
+              ? 'ai_studio'
+              : 'code_assist'
       REDACTED
       if (isGemini.value) {
         geminiOAuth.getCapabilities().then((caps) => {
@@ -395,7 +428,7 @@ const resetState = () => {
   oauthFlowRef.value?.reset()
 REDACTED
 
-const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'ai_studio') => {
+const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | 'ai_studio') => {
   if (oauthType === 'ai_studio' && !geminiAIStudioOAuthEnabled.value) {
     appStore.showError(t('admin.accounts.oauth.gemini.aiStudioNotConfigured'))
     return
@@ -413,8 +446,10 @@ const handleGenerateUrl = async () => {
   if (isOpenAI.value) {
     await openaiOAuth.generateAuthUrl(props.account.proxy_id)
   REDACTED else if (isGemini.value) {
+    const creds = (props.account.credentials || {REDACTED) as Record<string, unknown>
+    const tierId = typeof creds.tier_id === 'string' ? creds.tier_id : undefined
     const projectId = geminiOAuthType.value === 'code_assist' ? oauthFlowRef.value?.projectId : undefined
-    await geminiOAuth.generateAuthUrl(props.account.proxy_id, projectId, geminiOAuthType.value)
+    await geminiOAuth.generateAuthUrl(props.account.proxy_id, projectId, geminiOAuthType.value, tierId)
   REDACTED else if (isAntigravity.value) {
     await antigravityOAuth.generateAuthUrl(props.account.proxy_id)
   REDACTED else {
@@ -475,7 +510,8 @@ const handleExchangeCode = async () => {
       sessionId,
       state: stateToUse,
       proxyId: props.account.proxy_id,
-      oauthType: geminiOAuthType.value
+      oauthType: geminiOAuthType.value,
+      tierId: typeof (props.account.credentials as any)?.tier_id === 'string' ? ((props.account.credentials as any).tier_id as string) : undefined
     REDACTED)
     if (!tokenInfo) return
 

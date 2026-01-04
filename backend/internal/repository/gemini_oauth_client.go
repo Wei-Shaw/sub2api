@@ -30,6 +30,7 @@ func (c *geminiOAuthClient) ExchangeCode(ctx context.Context, oauthType, code, c
 
 	// Use different OAuth clients based on oauthType:
 	// - code_assist: always use built-in Gemini CLI OAuth client (public)
+	// - google_one: uses configured OAuth client when provided; otherwise falls back to built-in client
 	// - ai_studio: requires a user-provided OAuth client
 	oauthCfgInput := geminicli.OAuthConfig{
 		ClientID:     c.cfg.Gemini.OAuth.ClientID,

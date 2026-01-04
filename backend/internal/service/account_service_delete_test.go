@@ -139,6 +139,14 @@ func (s *accountRepoStub) SetOverloaded(ctx context.Context, id int64, until tim
 	panic("unexpected SetOverloaded call")
 REDACTED
 
+func (s *accountRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
+	panic("unexpected SetTempUnschedulable call")
+REDACTED
+
+func (s *accountRepoStub) ClearTempUnschedulable(ctx context.Context, id int64) error {
+	panic("unexpected ClearTempUnschedulable call")
+REDACTED
+
 func (s *accountRepoStub) ClearRateLimit(ctx context.Context, id int64) error {
 	panic("unexpected ClearRateLimit call")
 REDACTED

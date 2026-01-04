@@ -338,7 +338,19 @@
 
       <!-- Account Type Selection (Gemini) -->
       <div v-if="form.platform === 'gemini'">
-        <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
+        <div class="flex items-center justify-between">
+          <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
+          <button
+            type="button"
+            @click="showGeminiHelpDialog = true"
+            class="flex items-center gap-1 rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+          >
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+            </svg>
+            {{ t('admin.accounts.gemini.helpButton') REDACTEDREDACTED
+          </button>
+        </div>
         <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
             type="button"
@@ -438,15 +450,6 @@
               rel="noreferrer"
             >
               {{ t('admin.accounts.gemini.accountType.apiKeyLink') REDACTEDREDACTED
-            </a>
-            <span class="text-purple-400">·</span>
-            <a
-              :href="geminiHelpLinks.aiStudioPricing"
-              class="font-medium text-blue-600 hover:underline dark:text-blue-400"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {{ t('admin.accounts.gemini.accountType.quotaLink') REDACTEDREDACTED
             </a>
           </div>
         </div>
@@ -653,77 +656,39 @@
           </div>
         </div>
 
-        <div class="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-200">
-          <div class="flex items-start gap-3">
-            <svg
-              class="h-5 w-5 flex-shrink-0 text-blue-600 dark:text-blue-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+        <!-- Tier selection (used as fallback when auto-detection is unavailable/fails) -->
+        <div class="mt-4">
+          <label class="input-label">{{ t('admin.accounts.gemini.tier.label') REDACTEDREDACTED</label>
+          <div class="mt-2">
+            <select
+              v-if="geminiOAuthType === 'google_one'"
+              v-model="geminiTierGoogleOne"
+              class="input"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-blue-800 dark:text-blue-300">
-                {{ t('admin.accounts.gemini.setupGuide.title') REDACTEDREDACTED
-              </p>
-              <div class="mt-2 space-y-2">
-                <div>
-                  <p class="font-semibold text-blue-800 dark:text-blue-300">
-                    {{ t('admin.accounts.gemini.setupGuide.checklistTitle') REDACTEDREDACTED
-                  </p>
-                  <ul class="mt-1 list-disc space-y-1 pl-4">
-                    <li>
-                      {{ t('admin.accounts.gemini.setupGuide.checklistItems.usIp') REDACTEDREDACTED
-                      <a
-                        :href="geminiHelpLinks.countryCheck"
-                        class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ t('admin.accounts.gemini.setupGuide.links.countryCheck') REDACTEDREDACTED
-                      </a>
-                    </li>
-                    <li>{{ t('admin.accounts.gemini.setupGuide.checklistItems.age') REDACTEDREDACTED</li>
-                  </ul>
-                </div>
-                <div>
-                  <p class="font-semibold text-blue-800 dark:text-blue-300">
-                    {{ t('admin.accounts.gemini.setupGuide.activationTitle') REDACTEDREDACTED
-                  </p>
-                  <ul class="mt-1 list-disc space-y-1 pl-4">
-                    <li>
-                      {{ t('admin.accounts.gemini.setupGuide.activationItems.geminiWeb') REDACTEDREDACTED
-                      <a
-                        :href="geminiHelpLinks.geminiWebActivation"
-                        class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ t('admin.accounts.gemini.setupGuide.links.geminiWebActivation') REDACTEDREDACTED
-                      </a>
-                    </li>
-                    <li>
-                      {{ t('admin.accounts.gemini.setupGuide.activationItems.gcpProject') REDACTEDREDACTED
-                      <a
-                        :href="geminiHelpLinks.gcpProject"
-                        class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ t('admin.accounts.gemini.setupGuide.links.gcpProject') REDACTEDREDACTED
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+              <option value="google_one_free">{{ t('admin.accounts.gemini.tier.googleOne.free') REDACTEDREDACTED</option>
+              <option value="google_ai_pro">{{ t('admin.accounts.gemini.tier.googleOne.pro') REDACTEDREDACTED</option>
+              <option value="google_ai_ultra">{{ t('admin.accounts.gemini.tier.googleOne.ultra') REDACTEDREDACTED</option>
+            </select>
+
+            <select
+              v-else-if="geminiOAuthType === 'code_assist'"
+              v-model="geminiTierGcp"
+              class="input"
+            >
+              <option value="gcp_standard">{{ t('admin.accounts.gemini.tier.gcp.standard') REDACTEDREDACTED</option>
+              <option value="gcp_enterprise">{{ t('admin.accounts.gemini.tier.gcp.enterprise') REDACTEDREDACTED</option>
+            </select>
+
+            <select
+              v-else
+              v-model="geminiTierAIStudio"
+              class="input"
+            >
+              <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') REDACTEDREDACTED</option>
+              <option value="aistudio_paid">{{ t('admin.accounts.gemini.tier.aiStudio.paid') REDACTEDREDACTED</option>
+            </select>
           </div>
+          <p class="input-hint">{{ t('admin.accounts.gemini.tier.hint') REDACTEDREDACTED</p>
         </div>
       </div>
 
@@ -818,6 +783,16 @@
             "
           />
           <p class="input-hint">{{ apiKeyHint REDACTEDREDACTED</p>
+        </div>
+
+        <!-- Gemini API Key tier selection -->
+        <div v-if="form.platform === 'gemini'">
+          <label class="input-label">{{ t('admin.accounts.gemini.tier.label') REDACTEDREDACTED</label>
+          <select v-model="geminiTierAIStudio" class="input">
+            <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') REDACTEDREDACTED</option>
+            <option value="aistudio_paid">{{ t('admin.accounts.gemini.tier.aiStudio.paid') REDACTEDREDACTED</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.gemini.tier.aiStudioHint') REDACTEDREDACTED</p>
         </div>
 
         <!-- Model Restriction Section (不适用于 Gemini) -->
@@ -1065,7 +1040,7 @@
             <!-- Manual input -->
             <div class="flex items-center gap-2">
               <input
-                v-model="customErrorCodeInput"
+                v-model.number="customErrorCodeInput"
                 type="number"
                 min="100"
                 max="599"
@@ -1143,13 +1118,39 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Gemini 配额与限流政策说明 -->
-        <div v-if="form.platform === 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/40">
-            <div class="flex items-start gap-3">
+      <!-- Temp Unschedulable Rules -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.tempUnschedulable.title') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.tempUnschedulable.hint') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="tempUnschedEnabled = !tempUnschedEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              tempUnschedEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                tempUnschedEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+
+        <div v-if="tempUnschedEnabled" class="space-y-3">
+          <div class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <p class="text-xs text-blue-700 dark:text-blue-400">
               <svg
-                class="h-5 w-5 flex-shrink-0 text-gray-500 dark:text-gray-400"
+                class="mr-1 inline h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -1158,149 +1159,133 @@
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
-                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                 />
               </svg>
-              <div class="min-w-0">
-                <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
-                  {{ t('admin.accounts.gemini.quotaPolicy.title') REDACTEDREDACTED
-                </p>
-                <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                  {{ t('admin.accounts.gemini.quotaPolicy.note') REDACTEDREDACTED
-                </p>
-                <div class="mt-3 overflow-x-auto">
-                  <table class="min-w-full text-xs text-gray-700 dark:text-gray-300">
-                    <thead>
-                      <tr class="border-b border-gray-200 dark:border-gray-700">
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.channel') REDACTEDREDACTED
-                        </th>
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.account') REDACTEDREDACTED
-                        </th>
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.limits') REDACTEDREDACTED
-                        </th>
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.docs') REDACTEDREDACTED
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.free') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.limitsFree') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          <a
-                            :href="geminiQuotaDocs.codeAssist"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.codeAssist') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.premium') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.limitsPremium') REDACTEDREDACTED
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5 align-top">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.gcloud.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.gcloud.account') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.gcloud.limits') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top">
-                          <a
-                            :href="geminiQuotaDocs.codeAssist"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.codeAssist') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.free') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsFree') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          <a
-                            :href="geminiQuotaDocs.aiStudio"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.aiStudio') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.paid') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsPaid') REDACTEDREDACTED
-                        </td>
-                      </tr>
-                      <tr>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.free') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.limitsFree') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          <a
-                            :href="geminiQuotaDocs.vertex"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.vertex') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.paid') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.limitsPaid') REDACTEDREDACTED
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+              {{ t('admin.accounts.tempUnschedulable.notice') REDACTEDREDACTED
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in tempUnschedPresets"
+              :key="preset.label"
+              type="button"
+              @click="addTempUnschedRule(preset.rule)"
+              class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
+            >
+              + {{ preset.label REDACTEDREDACTED
+            </button>
+          </div>
+
+          <div v-if="tempUnschedRules.length > 0" class="space-y-3">
+            <div
+              v-for="(rule, index) in tempUnschedRules"
+              :key="index"
+              class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
+            >
+              <div class="mb-2 flex items-center justify-between">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.accounts.tempUnschedulable.ruleIndex', { index: index + 1 REDACTED) REDACTEDREDACTED
+                </span>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    :disabled="index === 0"
+                    @click="moveTempUnschedRule(index, -1)"
+                    class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-gray-200"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    :disabled="index === tempUnschedRules.length - 1"
+                    @click="moveTempUnschedRule(index, 1)"
+                    class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-gray-200"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    @click="removeTempUnschedRule(index)"
+                    class="rounded p-1 text-red-500 transition-colors hover:text-red-600"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.errorCode') REDACTEDREDACTED</label>
+                  <input
+                    v-model.number="rule.error_code"
+                    type="number"
+                    min="100"
+                    max="599"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.errorCodePlaceholder')"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.durationMinutes') REDACTEDREDACTED</label>
+                  <input
+                    v-model.number="rule.duration_minutes"
+                    type="number"
+                    min="1"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.durationPlaceholder')"
+                  />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.keywords') REDACTEDREDACTED</label>
+                  <input
+                    v-model="rule.keywords"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.keywordsPlaceholder')"
+                  />
+                  <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.keywordsHint') REDACTEDREDACTED</p>
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.description') REDACTEDREDACTED</label>
+                  <input
+                    v-model="rule.description"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.descriptionPlaceholder')"
+                  />
                 </div>
               </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            @click="addTempUnschedRule()"
+            class="w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+          >
+            <svg
+              class="mr-1 inline h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            {{ t('admin.accounts.tempUnschedulable.addRule') REDACTEDREDACTED
+          </button>
         </div>
       </div>
 
@@ -1503,6 +1488,214 @@
       </div>
     </template>
   </BaseDialog>
+
+  <!-- Gemini Help Dialog -->
+  <BaseDialog
+    :show="showGeminiHelpDialog"
+    :title="t('admin.accounts.gemini.helpDialog.title')"
+    @close="showGeminiHelpDialog = false"
+    max-width="max-w-3xl"
+  >
+    <div class="space-y-6">
+      <!-- Setup Guide Section -->
+      <div>
+        <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('admin.accounts.gemini.setupGuide.title') REDACTEDREDACTED
+        </h3>
+        <div class="space-y-4">
+          <div>
+            <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.gemini.setupGuide.checklistTitle') REDACTEDREDACTED
+            </p>
+            <ul class="list-inside list-disc space-y-1 text-sm text-gray-600 dark:text-gray-400">
+              <li>{{ t('admin.accounts.gemini.setupGuide.checklistItems.usIp') REDACTEDREDACTED</li>
+              <li>{{ t('admin.accounts.gemini.setupGuide.checklistItems.age') REDACTEDREDACTED</li>
+            </ul>
+          </div>
+          <div>
+            <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.gemini.setupGuide.activationTitle') REDACTEDREDACTED
+            </p>
+            <ul class="list-inside list-disc space-y-1 text-sm text-gray-600 dark:text-gray-400">
+              <li>{{ t('admin.accounts.gemini.setupGuide.activationItems.geminiWeb') REDACTEDREDACTED</li>
+              <li>{{ t('admin.accounts.gemini.setupGuide.activationItems.gcpProject') REDACTEDREDACTED</li>
+            </ul>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <a
+                href="https://gemini.google.com/faq#location"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {{ t('admin.accounts.gemini.setupGuide.links.countryCheck') REDACTEDREDACTED
+              </a>
+              <span class="text-gray-400">·</span>
+              <a
+                href="https://gemini.google.com"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {{ t('admin.accounts.gemini.setupGuide.links.geminiWebActivation') REDACTEDREDACTED
+              </a>
+              <span class="text-gray-400">·</span>
+              <a
+                href="https://console.cloud.google.com"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {{ t('admin.accounts.gemini.setupGuide.links.gcpProject') REDACTEDREDACTED
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quota Policy Section -->
+      <div class="border-t border-gray-200 pt-6 dark:border-dark-600">
+        <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('admin.accounts.gemini.quotaPolicy.title') REDACTEDREDACTED
+        </h3>
+        <p class="mb-4 text-xs text-amber-600 dark:text-amber-400">
+          {{ t('admin.accounts.gemini.quotaPolicy.note') REDACTEDREDACTED
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 dark:bg-dark-600">
+              <tr>
+                <th class="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.accounts.gemini.quotaPolicy.columns.channel') REDACTEDREDACTED
+                </th>
+                <th class="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.accounts.gemini.quotaPolicy.columns.account') REDACTEDREDACTED
+                </th>
+                <th class="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.accounts.gemini.quotaPolicy.columns.limits') REDACTEDREDACTED
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-dark-600">
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.channel') REDACTEDREDACTED
+                </td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Free</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsFree') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Pro</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsPro') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Ultra</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsUltra') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.gcp.channel') REDACTEDREDACTED
+                </td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Standard</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.gcp.limitsStandard') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Enterprise</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.gcp.limitsEnterprise') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.channel') REDACTEDREDACTED
+                </td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Free</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsFree') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Paid</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsPaid') REDACTEDREDACTED
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <a
+            :href="geminiQuotaDocs.codeAssist"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.quotaPolicy.docs.codeAssist') REDACTEDREDACTED
+          </a>
+          <a
+            :href="geminiQuotaDocs.aiStudio"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.quotaPolicy.docs.aiStudio') REDACTEDREDACTED
+          </a>
+          <a
+            :href="geminiQuotaDocs.vertex"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.quotaPolicy.docs.vertex') REDACTEDREDACTED
+          </a>
+        </div>
+      </div>
+
+      <!-- API Key Links Section -->
+      <div class="border-t border-gray-200 pt-6 dark:border-dark-600">
+        <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('admin.accounts.gemini.helpDialog.apiKeySection') REDACTEDREDACTED
+        </h3>
+        <div class="flex flex-wrap gap-3">
+          <a
+            :href="geminiHelpLinks.apiKey"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.accountType.apiKeyLink') REDACTEDREDACTED
+          </a>
+          <a
+            :href="geminiHelpLinks.aiStudioPricing"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.accountType.quotaLink') REDACTEDREDACTED
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="flex justify-end">
+        <button @click="showGeminiHelpDialog = false" type="button" class="btn btn-primary">
+          {{ t('common.close') REDACTEDREDACTED
+        </button>
+      </div>
+    </template>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
@@ -1619,6 +1812,13 @@ interface ModelMapping {
   to: string
 REDACTED
 
+interface TempUnschedRuleForm {
+  error_code: number | null
+  keywords: string
+  duration_minutes: number | null
+  description: string
+REDACTED
+
 // State
 const step = ref(1)
 const submitting = ref(false)
@@ -1634,9 +1834,30 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
+const tempUnschedEnabled = ref(false)
+const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
 const showAdvancedOAuth = ref(false)
+const showGeminiHelpDialog = ref(false)
+
+// Gemini tier selection (used as fallback when auto-detection is unavailable/fails)
+const geminiTierGoogleOne = ref<'google_one_free' | 'google_ai_pro' | 'google_ai_ultra'>('google_one_free')
+const geminiTierGcp = ref<'gcp_standard' | 'gcp_enterprise'>('gcp_standard')
+const geminiTierAIStudio = ref<'aistudio_free' | 'aistudio_paid'>('aistudio_free')
+
+const geminiSelectedTier = computed(() => {
+  if (form.platform !== 'gemini') return ''
+  if (accountCategory.value === 'apikey') return geminiTierAIStudio.value
+  switch (geminiOAuthType.value) {
+    case 'google_one':
+      return geminiTierGoogleOne.value
+    case 'code_assist':
+      return geminiTierGcp.value
+    default:
+      return geminiTierAIStudio.value
+  REDACTED
+REDACTED)
 
 const geminiQuotaDocs = {
   codeAssist: 'https://developers.google.com/gemini-code-assist/resources/quotas',
@@ -1654,6 +1875,35 @@ REDACTED
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(form.platform))
+const tempUnschedPresets = computed(() => [
+  {
+    label: t('admin.accounts.tempUnschedulable.presets.overloadLabel'),
+    rule: {
+      error_code: 529,
+      keywords: 'overloaded, too many',
+      duration_minutes: 60,
+      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc')
+    REDACTED
+  REDACTED,
+  {
+    label: t('admin.accounts.tempUnschedulable.presets.rateLimitLabel'),
+    rule: {
+      error_code: 429,
+      keywords: 'rate limit, too many requests',
+      duration_minutes: 10,
+      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc')
+    REDACTED
+  REDACTED,
+  {
+    label: t('admin.accounts.tempUnschedulable.presets.unavailableLabel'),
+    rule: {
+      error_code: 503,
+      keywords: 'unavailable, maintenance',
+      duration_minutes: 30,
+      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc')
+    REDACTED
+  REDACTED
+])
 
 const form = reactive({
   name: '',
@@ -1828,6 +2078,89 @@ const removeErrorCode = (code: number) => {
   REDACTED
 REDACTED
 
+const addTempUnschedRule = (preset?: TempUnschedRuleForm) => {
+  if (preset) {
+    tempUnschedRules.value.push({ ...preset REDACTED)
+    return
+  REDACTED
+  tempUnschedRules.value.push({
+    error_code: null,
+    keywords: '',
+    duration_minutes: 30,
+    description: ''
+  REDACTED)
+REDACTED
+
+const removeTempUnschedRule = (index: number) => {
+  tempUnschedRules.value.splice(index, 1)
+REDACTED
+
+const moveTempUnschedRule = (index: number, direction: number) => {
+  const target = index + direction
+  if (target < 0 || target >= tempUnschedRules.value.length) return
+  const rules = tempUnschedRules.value
+  const current = rules[index]
+  rules[index] = rules[target]
+  rules[target] = current
+REDACTED
+
+const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
+  const out: Array<{
+    error_code: number
+    keywords: string[]
+    duration_minutes: number
+    description: string
+  REDACTED> = []
+
+  for (const rule of rules) {
+    const errorCode = Number(rule.error_code)
+    const duration = Number(rule.duration_minutes)
+    const keywords = splitTempUnschedKeywords(rule.keywords)
+    if (!Number.isFinite(errorCode) || errorCode < 100 || errorCode > 599) {
+      continue
+    REDACTED
+    if (!Number.isFinite(duration) || duration <= 0) {
+      continue
+    REDACTED
+    if (keywords.length === 0) {
+      continue
+    REDACTED
+    out.push({
+      error_code: Math.trunc(errorCode),
+      keywords,
+      duration_minutes: Math.trunc(duration),
+      description: rule.description.trim()
+    REDACTED)
+  REDACTED
+
+  return out
+REDACTED
+
+const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
+  if (!tempUnschedEnabled.value) {
+    delete credentials.temp_unschedulable_enabled
+    delete credentials.temp_unschedulable_rules
+    return true
+  REDACTED
+
+  const rules = buildTempUnschedRules(tempUnschedRules.value)
+  if (rules.length === 0) {
+    appStore.showError(t('admin.accounts.tempUnschedulable.rulesInvalid'))
+    return false
+  REDACTED
+
+  credentials.temp_unschedulable_enabled = true
+  credentials.temp_unschedulable_rules = rules
+  return true
+REDACTED
+
+const splitTempUnschedKeywords = (value: string) => {
+  return value
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+REDACTED
+
 // Methods
 const resetForm = () => {
   step.value = 1
@@ -1850,7 +2183,12 @@ const resetForm = () => {
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
+  tempUnschedEnabled.value = false
+  tempUnschedRules.value = []
   geminiOAuthType.value = 'code_assist'
+  geminiTierGoogleOne.value = 'google_one_free'
+  geminiTierGcp.value = 'gcp_standard'
+  geminiTierAIStudio.value = 'aistudio_free'
   oauth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
@@ -1892,6 +2230,9 @@ const handleSubmit = async () => {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   REDACTED
+  if (form.platform === 'gemini') {
+    credentials.tier_id = geminiTierAIStudio.value
+  REDACTED
 
   // Add model mapping if configured
   const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
@@ -1908,6 +2249,10 @@ const handleSubmit = async () => {
   // Add intercept warmup requests setting
   if (interceptWarmupRequests.value) {
     credentials.intercept_warmup_requests = true
+  REDACTED
+
+  if (!applyTempUnschedConfig(credentials)) {
+    return
   REDACTED
 
   form.credentials = credentials
@@ -1941,7 +2286,12 @@ const handleGenerateUrl = async () => {
   if (form.platform === 'openai') {
     await openaiOAuth.generateAuthUrl(form.proxy_id)
   REDACTED else if (form.platform === 'gemini') {
-    await geminiOAuth.generateAuthUrl(form.proxy_id, oauthFlowRef.value?.projectId, geminiOAuthType.value)
+    await geminiOAuth.generateAuthUrl(
+      form.proxy_id,
+      oauthFlowRef.value?.projectId,
+      geminiOAuthType.value,
+      geminiSelectedTier.value
+    )
   REDACTED else if (form.platform === 'antigravity') {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   REDACTED else {
@@ -1956,6 +2306,9 @@ const createAccountAndFinish = async (
   credentials: Record<string, unknown>,
   extra?: Record<string, unknown>
 ) => {
+  if (!applyTempUnschedConfig(credentials)) {
+    return
+  REDACTED
   await adminAPI.accounts.create({
     name: form.name,
     platform,
@@ -2019,12 +2372,14 @@ const handleGeminiExchange = async (authCode: string) => {
       sessionId: geminiOAuth.sessionId.value,
       state: stateToUse,
       proxyId: form.proxy_id,
-      oauthType: geminiOAuthType.value
+      oauthType: geminiOAuthType.value,
+      tierId: geminiSelectedTier.value
     REDACTED)
     if (!tokenInfo) return
 
     const credentials = geminiOAuth.buildCredentials(tokenInfo)
-    await createAccountAndFinish('gemini', 'oauth', credentials)
+    const extra = geminiOAuth.buildExtraInfo(tokenInfo)
+    await createAccountAndFinish('gemini', 'oauth', credentials, extra)
   REDACTED catch (error: any) {
     geminiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(geminiOAuth.error.value)
@@ -2131,6 +2486,14 @@ const handleCookieAuth = async (sessionKey: string) => {
       return
     REDACTED
 
+    const tempUnschedPayload = tempUnschedEnabled.value
+      ? buildTempUnschedRules(tempUnschedRules.value)
+      : []
+    if (tempUnschedEnabled.value && tempUnschedPayload.length === 0) {
+      appStore.showError(t('admin.accounts.tempUnschedulable.rulesInvalid'))
+      return
+    REDACTED
+
     const endpoint =
       addMethod.value === 'oauth'
         ? '/admin/accounts/cookie-auth'
@@ -2152,9 +2515,13 @@ const handleCookieAuth = async (sessionKey: string) => {
         const accountName = keys.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
 
         // Merge interceptWarmupRequests into credentials
-        const credentials = {
+        const credentials: Record<string, unknown> = {
           ...tokenInfo,
           ...(interceptWarmupRequests.value ? { intercept_warmup_requests: true REDACTED : {REDACTED)
+        REDACTED
+        if (tempUnschedEnabled.value) {
+          credentials.temp_unschedulable_enabled = true
+          credentials.temp_unschedulable_rules = tempUnschedPayload
         REDACTED
 
         await adminAPI.accounts.create({

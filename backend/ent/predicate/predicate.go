@@ -6,14 +6,14 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// APIKey is the predicate function for apikey builders.
+type APIKey func(*sql.Selector)
+
 // Account is the predicate function for account builders.
 type Account func(*sql.Selector)
 
 // AccountGroup is the predicate function for accountgroup builders.
 type AccountGroup func(*sql.Selector)
-
-// ApiKey is the predicate function for apikey builders.
-type ApiKey func(*sql.Selector)
 
 // Group is the predicate function for group builders.
 type Group func(*sql.Selector)

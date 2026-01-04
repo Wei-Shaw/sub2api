@@ -197,7 +197,7 @@ REDACTED{
 		{
 			name:     "anthropic api-key - cannot refresh",
 			platform: PlatformAnthropic,
-			accType:  AccountTypeApiKey,
+			accType:  AccountTypeAPIKey,
 			want:     false,
 	REDACTED,
 		{

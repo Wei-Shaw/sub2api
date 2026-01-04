@@ -85,7 +85,7 @@ const (
 	UserColumn = "user_id"
 	// APIKeyTable is the table that holds the api_key relation/edge.
 	APIKeyTable = "usage_logs"
-	// APIKeyInverseTable is the table name for the ApiKey entity.
+	// APIKeyInverseTable is the table name for the APIKey entity.
 	// It exists in this package in order to avoid circular dependency with the "apikey" package.
 	APIKeyInverseTable = "api_keys"
 	// APIKeyColumn is the table column denoting the api_key relation/edge.

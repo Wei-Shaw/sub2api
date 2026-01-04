@@ -34,26 +34,31 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled: settings.RegistrationEnabled,
-		EmailVerifyEnabled:  settings.EmailVerifyEnabled,
-		SmtpHost:            settings.SmtpHost,
-		SmtpPort:            settings.SmtpPort,
-		SmtpUsername:        settings.SmtpUsername,
-		SmtpPassword:        settings.SmtpPassword,
-		SmtpFrom:            settings.SmtpFrom,
-		SmtpFromName:        settings.SmtpFromName,
-		SmtpUseTLS:          settings.SmtpUseTLS,
-		TurnstileEnabled:    settings.TurnstileEnabled,
-		TurnstileSiteKey:    settings.TurnstileSiteKey,
-		TurnstileSecretKey:  settings.TurnstileSecretKey,
-		SiteName:            settings.SiteName,
-		SiteLogo:            settings.SiteLogo,
-		SiteSubtitle:        settings.SiteSubtitle,
-		ApiBaseUrl:          settings.ApiBaseUrl,
-		ContactInfo:         settings.ContactInfo,
-		DocUrl:              settings.DocUrl,
-		DefaultConcurrency:  settings.DefaultConcurrency,
-		DefaultBalance:      settings.DefaultBalance,
+		RegistrationEnabled:      settings.RegistrationEnabled,
+		EmailVerifyEnabled:       settings.EmailVerifyEnabled,
+		SMTPHost:                 settings.SMTPHost,
+		SMTPPort:                 settings.SMTPPort,
+		SMTPUsername:             settings.SMTPUsername,
+		SMTPPassword:             settings.SMTPPassword,
+		SMTPFrom:                 settings.SMTPFrom,
+		SMTPFromName:             settings.SMTPFromName,
+		SMTPUseTLS:               settings.SMTPUseTLS,
+		TurnstileEnabled:         settings.TurnstileEnabled,
+		TurnstileSiteKey:         settings.TurnstileSiteKey,
+		TurnstileSecretKey:       settings.TurnstileSecretKey,
+		SiteName:                 settings.SiteName,
+		SiteLogo:                 settings.SiteLogo,
+		SiteSubtitle:             settings.SiteSubtitle,
+		APIBaseURL:               settings.APIBaseURL,
+		ContactInfo:              settings.ContactInfo,
+		DocURL:                   settings.DocURL,
+		DefaultConcurrency:       settings.DefaultConcurrency,
+		DefaultBalance:           settings.DefaultBalance,
+		EnableModelFallback:      settings.EnableModelFallback,
+		FallbackModelAnthropic:   settings.FallbackModelAnthropic,
+		FallbackModelOpenAI:      settings.FallbackModelOpenAI,
+		FallbackModelGemini:      settings.FallbackModelGemini,
+		FallbackModelAntigravity: settings.FallbackModelAntigravity,
 REDACTED)
 REDACTED
 
@@ -64,13 +69,13 @@ type UpdateSettingsRequest struct {
 	EmailVerifyEnabled  bool `json:"email_verify_enabled"`
 
 	// 邮件服务设置
-	SmtpHost     string `json:"smtp_host"`
-	SmtpPort     int    `json:"smtp_port"`
-	SmtpUsername string `json:"smtp_username"`
-	SmtpPassword string `json:"smtp_password"`
-	SmtpFrom     string `json:"smtp_from_email"`
-	SmtpFromName string `json:"smtp_from_name"`
-	SmtpUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost     string `json:"smtp_host"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPUsername string `json:"smtp_username"`
+	SMTPPassword string `json:"smtp_password"`
+	SMTPFrom     string `json:"smtp_from_email"`
+	SMTPFromName string `json:"smtp_from_name"`
+	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
@@ -81,13 +86,20 @@ type UpdateSettingsRequest struct {
 	SiteName     string `json:"site_name"`
 	SiteLogo     string `json:"site_logo"`
 	SiteSubtitle string `json:"site_subtitle"`
-	ApiBaseUrl   string `json:"api_base_url"`
+	APIBaseURL   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
-	DocUrl       string `json:"doc_url"`
+	DocURL       string `json:"doc_url"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
 	DefaultBalance     float64 `json:"default_balance"`
+
+	// Model fallback configuration
+	EnableModelFallback      bool   `json:"enable_model_fallback"`
+	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`
+	FallbackModelOpenAI      string `json:"fallback_model_openai"`
+	FallbackModelGemini      string `json:"fallback_model_gemini"`
+	FallbackModelAntigravity string `json:"fallback_model_antigravity"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -106,8 +118,8 @@ REDACTED
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
 REDACTED
-	if req.SmtpPort <= 0 {
-		req.SmtpPort = 587
+	if req.SMTPPort <= 0 {
+		req.SMTPPort = 587
 REDACTED
 
 	// Turnstile 参数验证
@@ -141,26 +153,31 @@ REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled: req.RegistrationEnabled,
-		EmailVerifyEnabled:  req.EmailVerifyEnabled,
-		SmtpHost:            req.SmtpHost,
-		SmtpPort:            req.SmtpPort,
-		SmtpUsername:        req.SmtpUsername,
-		SmtpPassword:        req.SmtpPassword,
-		SmtpFrom:            req.SmtpFrom,
-		SmtpFromName:        req.SmtpFromName,
-		SmtpUseTLS:          req.SmtpUseTLS,
-		TurnstileEnabled:    req.TurnstileEnabled,
-		TurnstileSiteKey:    req.TurnstileSiteKey,
-		TurnstileSecretKey:  req.TurnstileSecretKey,
-		SiteName:            req.SiteName,
-		SiteLogo:            req.SiteLogo,
-		SiteSubtitle:        req.SiteSubtitle,
-		ApiBaseUrl:          req.ApiBaseUrl,
-		ContactInfo:         req.ContactInfo,
-		DocUrl:              req.DocUrl,
-		DefaultConcurrency:  req.DefaultConcurrency,
-		DefaultBalance:      req.DefaultBalance,
+		RegistrationEnabled:      req.RegistrationEnabled,
+		EmailVerifyEnabled:       req.EmailVerifyEnabled,
+		SMTPHost:                 req.SMTPHost,
+		SMTPPort:                 req.SMTPPort,
+		SMTPUsername:             req.SMTPUsername,
+		SMTPPassword:             req.SMTPPassword,
+		SMTPFrom:                 req.SMTPFrom,
+		SMTPFromName:             req.SMTPFromName,
+		SMTPUseTLS:               req.SMTPUseTLS,
+		TurnstileEnabled:         req.TurnstileEnabled,
+		TurnstileSiteKey:         req.TurnstileSiteKey,
+		TurnstileSecretKey:       req.TurnstileSecretKey,
+		SiteName:                 req.SiteName,
+		SiteLogo:                 req.SiteLogo,
+		SiteSubtitle:             req.SiteSubtitle,
+		APIBaseURL:               req.APIBaseURL,
+		ContactInfo:              req.ContactInfo,
+		DocURL:                   req.DocURL,
+		DefaultConcurrency:       req.DefaultConcurrency,
+		DefaultBalance:           req.DefaultBalance,
+		EnableModelFallback:      req.EnableModelFallback,
+		FallbackModelAnthropic:   req.FallbackModelAnthropic,
+		FallbackModelOpenAI:      req.FallbackModelOpenAI,
+		FallbackModelGemini:      req.FallbackModelGemini,
+		FallbackModelAntigravity: req.FallbackModelAntigravity,
 REDACTED
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -176,69 +193,74 @@ REDACTED
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled: updatedSettings.RegistrationEnabled,
-		EmailVerifyEnabled:  updatedSettings.EmailVerifyEnabled,
-		SmtpHost:            updatedSettings.SmtpHost,
-		SmtpPort:            updatedSettings.SmtpPort,
-		SmtpUsername:        updatedSettings.SmtpUsername,
-		SmtpPassword:        updatedSettings.SmtpPassword,
-		SmtpFrom:            updatedSettings.SmtpFrom,
-		SmtpFromName:        updatedSettings.SmtpFromName,
-		SmtpUseTLS:          updatedSettings.SmtpUseTLS,
-		TurnstileEnabled:    updatedSettings.TurnstileEnabled,
-		TurnstileSiteKey:    updatedSettings.TurnstileSiteKey,
-		TurnstileSecretKey:  updatedSettings.TurnstileSecretKey,
-		SiteName:            updatedSettings.SiteName,
-		SiteLogo:            updatedSettings.SiteLogo,
-		SiteSubtitle:        updatedSettings.SiteSubtitle,
-		ApiBaseUrl:          updatedSettings.ApiBaseUrl,
-		ContactInfo:         updatedSettings.ContactInfo,
-		DocUrl:              updatedSettings.DocUrl,
-		DefaultConcurrency:  updatedSettings.DefaultConcurrency,
-		DefaultBalance:      updatedSettings.DefaultBalance,
+		RegistrationEnabled:      updatedSettings.RegistrationEnabled,
+		EmailVerifyEnabled:       updatedSettings.EmailVerifyEnabled,
+		SMTPHost:                 updatedSettings.SMTPHost,
+		SMTPPort:                 updatedSettings.SMTPPort,
+		SMTPUsername:             updatedSettings.SMTPUsername,
+		SMTPPassword:             updatedSettings.SMTPPassword,
+		SMTPFrom:                 updatedSettings.SMTPFrom,
+		SMTPFromName:             updatedSettings.SMTPFromName,
+		SMTPUseTLS:               updatedSettings.SMTPUseTLS,
+		TurnstileEnabled:         updatedSettings.TurnstileEnabled,
+		TurnstileSiteKey:         updatedSettings.TurnstileSiteKey,
+		TurnstileSecretKey:       updatedSettings.TurnstileSecretKey,
+		SiteName:                 updatedSettings.SiteName,
+		SiteLogo:                 updatedSettings.SiteLogo,
+		SiteSubtitle:             updatedSettings.SiteSubtitle,
+		APIBaseURL:               updatedSettings.APIBaseURL,
+		ContactInfo:              updatedSettings.ContactInfo,
+		DocURL:                   updatedSettings.DocURL,
+		DefaultConcurrency:       updatedSettings.DefaultConcurrency,
+		DefaultBalance:           updatedSettings.DefaultBalance,
+		EnableModelFallback:      updatedSettings.EnableModelFallback,
+		FallbackModelAnthropic:   updatedSettings.FallbackModelAnthropic,
+		FallbackModelOpenAI:      updatedSettings.FallbackModelOpenAI,
+		FallbackModelGemini:      updatedSettings.FallbackModelGemini,
+		FallbackModelAntigravity: updatedSettings.FallbackModelAntigravity,
 REDACTED)
 REDACTED
 
-// TestSmtpRequest 测试SMTP连接请求
-type TestSmtpRequest struct {
-	SmtpHost     string `json:"smtp_host" binding:"required"`
-	SmtpPort     int    `json:"smtp_port"`
-	SmtpUsername string `json:"smtp_username"`
-	SmtpPassword string `json:"smtp_password"`
-	SmtpUseTLS   bool   `json:"smtp_use_tls"`
+// TestSMTPRequest 测试SMTP连接请求
+type TestSMTPRequest struct {
+	SMTPHost     string `json:"smtp_host" binding:"required"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPUsername string `json:"smtp_username"`
+	SMTPPassword string `json:"smtp_password"`
+	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 REDACTED
 
-// TestSmtpConnection 测试SMTP连接
+// TestSMTPConnection 测试SMTP连接
 // POST /api/v1/admin/settings/test-smtp
-func (h *SettingHandler) TestSmtpConnection(c *gin.Context) {
-	var req TestSmtpRequest
+func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
+	var req TestSMTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 REDACTED
 
-	if req.SmtpPort <= 0 {
-		req.SmtpPort = 587
+	if req.SMTPPort <= 0 {
+		req.SMTPPort = 587
 REDACTED
 
 	// 如果未提供密码，从数据库获取已保存的密码
-	password := req.SmtpPassword
+	password := req.SMTPPassword
 	if password == "" {
-		savedConfig, err := h.emailService.GetSmtpConfig(c.Request.Context())
+		savedConfig, err := h.emailService.GetSMTPConfig(c.Request.Context())
 		if err == nil && savedConfig != nil {
 			password = savedConfig.Password
 	REDACTED
 REDACTED
 
-	config := &service.SmtpConfig{
-		Host:     req.SmtpHost,
-		Port:     req.SmtpPort,
-		Username: req.SmtpUsername,
+	config := &service.SMTPConfig{
+		Host:     req.SMTPHost,
+		Port:     req.SMTPPort,
+		Username: req.SMTPUsername,
 		Password: password,
-		UseTLS:   req.SmtpUseTLS,
+		UseTLS:   req.SMTPUseTLS,
 REDACTED
 
-	err := h.emailService.TestSmtpConnectionWithConfig(config)
+	err := h.emailService.TestSMTPConnectionWithConfig(config)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -250,13 +272,13 @@ REDACTED
 // SendTestEmailRequest 发送测试邮件请求
 type SendTestEmailRequest struct {
 	Email        string `json:"email" binding:"required,email"`
-	SmtpHost     string `json:"smtp_host" binding:"required"`
-	SmtpPort     int    `json:"smtp_port"`
-	SmtpUsername string `json:"smtp_username"`
-	SmtpPassword string `json:"smtp_password"`
-	SmtpFrom     string `json:"smtp_from_email"`
-	SmtpFromName string `json:"smtp_from_name"`
-	SmtpUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost     string `json:"smtp_host" binding:"required"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPUsername string `json:"smtp_username"`
+	SMTPPassword string `json:"smtp_password"`
+	SMTPFrom     string `json:"smtp_from_email"`
+	SMTPFromName string `json:"smtp_from_name"`
+	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 REDACTED
 
 // SendTestEmail 发送测试邮件
@@ -268,27 +290,27 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 		return
 REDACTED
 
-	if req.SmtpPort <= 0 {
-		req.SmtpPort = 587
+	if req.SMTPPort <= 0 {
+		req.SMTPPort = 587
 REDACTED
 
 	// 如果未提供密码，从数据库获取已保存的密码
-	password := req.SmtpPassword
+	password := req.SMTPPassword
 	if password == "" {
-		savedConfig, err := h.emailService.GetSmtpConfig(c.Request.Context())
+		savedConfig, err := h.emailService.GetSMTPConfig(c.Request.Context())
 		if err == nil && savedConfig != nil {
 			password = savedConfig.Password
 	REDACTED
 REDACTED
 
-	config := &service.SmtpConfig{
-		Host:     req.SmtpHost,
-		Port:     req.SmtpPort,
-		Username: req.SmtpUsername,
+	config := &service.SMTPConfig{
+		Host:     req.SMTPHost,
+		Port:     req.SMTPPort,
+		Username: req.SMTPUsername,
 		Password: password,
-		From:     req.SmtpFrom,
-		FromName: req.SmtpFromName,
-		UseTLS:   req.SmtpUseTLS,
+		From:     req.SMTPFrom,
+		FromName: req.SMTPFromName,
+		UseTLS:   req.SMTPUseTLS,
 REDACTED
 
 	siteName := h.settingService.GetSiteName(c.Request.Context())
@@ -333,10 +355,10 @@ REDACTED
 	response.Success(c, gin.H{"message": "Test email sent successfully"REDACTED)
 REDACTED
 
-// GetAdminApiKey 获取管理员 API Key 状态
+// GetAdminAPIKey 获取管理员 API Key 状态
 // GET /api/v1/admin/settings/admin-api-key
-func (h *SettingHandler) GetAdminApiKey(c *gin.Context) {
-	maskedKey, exists, err := h.settingService.GetAdminApiKeyStatus(c.Request.Context())
+func (h *SettingHandler) GetAdminAPIKey(c *gin.Context) {
+	maskedKey, exists, err := h.settingService.GetAdminAPIKeyStatus(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -348,10 +370,10 @@ REDACTED
 REDACTED)
 REDACTED
 
-// RegenerateAdminApiKey 生成/重新生成管理员 API Key
+// RegenerateAdminAPIKey 生成/重新生成管理员 API Key
 // POST /api/v1/admin/settings/admin-api-key/regenerate
-func (h *SettingHandler) RegenerateAdminApiKey(c *gin.Context) {
-	key, err := h.settingService.GenerateAdminApiKey(c.Request.Context())
+func (h *SettingHandler) RegenerateAdminAPIKey(c *gin.Context) {
+	key, err := h.settingService.GenerateAdminAPIKey(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -362,10 +384,10 @@ REDACTED
 REDACTED)
 REDACTED
 
-// DeleteAdminApiKey 删除管理员 API Key
+// DeleteAdminAPIKey 删除管理员 API Key
 // DELETE /api/v1/admin/settings/admin-api-key
-func (h *SettingHandler) DeleteAdminApiKey(c *gin.Context) {
-	if err := h.settingService.DeleteAdminApiKey(c.Request.Context()); err != nil {
+func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
+	if err := h.settingService.DeleteAdminAPIKey(c.Request.Context()); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -19,7 +20,7 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
-	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]ApiKey, int64, error)
+	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 
 	// Group management
@@ -30,7 +31,7 @@ type AdminService interface {
 	CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
-	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]ApiKey, int64, error)
+	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string) ([]Account, int64, error)
@@ -65,7 +66,7 @@ type AdminService interface {
 	ExpireRedeemCode(ctx context.Context, id int64) (*RedeemCode, error)
 REDACTED
 
-// Input types for admin operations
+// CreateUserInput represents input for creating a new user via admin operations.
 type CreateUserInput struct {
 	Email         string
 	Password      string
@@ -122,18 +123,22 @@ type CreateAccountInput struct {
 	Concurrency int
 	Priority    int
 	GroupIDs    []int64
+	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
+	// This should only be set when the caller has explicitly confirmed the risk.
+	SkipMixedChannelCheck bool
 REDACTED
 
 type UpdateAccountInput struct {
-	Name        string
-	Type        string // Account type: oauth, setup-token, apikey
-	Credentials map[string]any
-	Extra       map[string]any
-	ProxyID     *int64
-	Concurrency *int // 使用指针区分"未提供"和"设置为0"
-	Priority    *int // 使用指针区分"未提供"和"设置为0"
-	Status      string
-	GroupIDs    *[]int64
+	Name                  string
+	Type                  string // Account type: oauth, setup-token, apikey
+	Credentials           map[string]any
+	Extra                 map[string]any
+	ProxyID               *int64
+	Concurrency           *int // 使用指针区分"未提供"和"设置为0"
+	Priority              *int // 使用指针区分"未提供"和"设置为0"
+	Status                string
+	GroupIDs              *[]int64
+	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
 REDACTED
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
@@ -147,6 +152,9 @@ type BulkUpdateAccountsInput struct {
 	GroupIDs    *[]int64
 	Credentials map[string]any
 	Extra       map[string]any
+	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
+	// This should only be set when the caller has explicitly confirmed the risk.
+	SkipMixedChannelCheck bool
 REDACTED
 
 // BulkUpdateAccountResult captures the result for a single account update.
@@ -220,7 +228,7 @@ type adminServiceImpl struct {
 	groupRepo           GroupRepository
 	accountRepo         AccountRepository
 	proxyRepo           ProxyRepository
-	apiKeyRepo          ApiKeyRepository
+	apiKeyRepo          APIKeyRepository
 	redeemCodeRepo      RedeemCodeRepository
 	billingCacheService *BillingCacheService
 	proxyProber         ProxyExitInfoProber
@@ -232,7 +240,7 @@ func NewAdminService(
 	groupRepo GroupRepository,
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
-	apiKeyRepo ApiKeyRepository,
+	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
@@ -430,7 +438,7 @@ REDACTED
 	return user, nil
 REDACTED
 
-func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]ApiKey, int64, error) {
+func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]APIKey, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	keys, result, err := s.apiKeyRepo.ListByUserID(ctx, userID, params)
 	if err != nil {
@@ -583,7 +591,7 @@ REDACTED
 	return nil
 REDACTED
 
-func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]ApiKey, int64, error) {
+func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	keys, result, err := s.apiKeyRepo.ListByGroupID(ctx, groupID, params)
 	if err != nil {
@@ -620,6 +628,29 @@ REDACTED
 REDACTED
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	// 绑定分组
+	groupIDs := input.GroupIDs
+	// 如果没有指定分组,自动绑定对应平台的默认分组
+	if len(groupIDs) == 0 {
+		defaultGroupName := input.Platform + "-default"
+		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
+		if err == nil {
+			for _, g := range groups {
+				if g.Name == defaultGroupName {
+					groupIDs = []int64{g.IDREDACTED
+					break
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 检查混合渠道风险（除非用户已确认）
+	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
+		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
 	account := &Account{
 		Name:        input.Name,
 		Platform:    input.Platform,
@@ -637,22 +668,6 @@ REDACTED
 REDACTED
 
 	// 绑定分组
-	groupIDs := input.GroupIDs
-	// 如果没有指定分组,自动绑定对应平台的默认分组
-	if len(groupIDs) == 0 {
-		defaultGroupName := input.Platform + "-default"
-		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
-		if err == nil {
-			for _, g := range groups {
-				if g.Name == defaultGroupName {
-					groupIDs = []int64{g.IDREDACTED
-					log.Printf("[CreateAccount] Auto-binding account %d to default group %s (ID: %d)", account.ID, defaultGroupName, g.ID)
-					break
-			REDACTED
-		REDACTED
-	REDACTED
-REDACTED
-
 	if len(groupIDs) > 0 {
 		if err := s.accountRepo.BindGroups(ctx, account.ID, groupIDs); err != nil {
 			return nil, err
@@ -703,6 +718,13 @@ REDACTED
 				return nil, fmt.Errorf("get group: %w", err)
 		REDACTED
 	REDACTED
+
+		// 检查混合渠道风险（除非用户已确认）
+		if !input.SkipMixedChannelCheck {
+			if err := s.checkMixedChannelRisk(ctx, account.ID, account.Platform, *input.GroupIDs); err != nil {
+				return nil, err
+		REDACTED
+	REDACTED
 REDACTED
 
 	if err := s.accountRepo.Update(ctx, account); err != nil {
@@ -729,6 +751,20 @@ REDACTED
 
 	if len(input.AccountIDs) == 0 {
 		return result, nil
+REDACTED
+
+	// Preload account platforms for mixed channel risk checks if group bindings are requested.
+	platformByID := map[int64]string{REDACTED
+	if input.GroupIDs != nil && !input.SkipMixedChannelCheck {
+		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
+		if err != nil {
+			return nil, err
+	REDACTED
+		for _, account := range accounts {
+			if account != nil {
+				platformByID[account.ID] = account.Platform
+		REDACTED
+	REDACTED
 REDACTED
 
 	// Prepare bulk updates for columns and JSONB fields.
@@ -762,6 +798,29 @@ REDACTED
 		entry := BulkUpdateAccountResult{AccountID: accountIDREDACTED
 
 		if input.GroupIDs != nil {
+			// 检查混合渠道风险（除非用户已确认）
+			if !input.SkipMixedChannelCheck {
+				platform := platformByID[accountID]
+				if platform == "" {
+					account, err := s.accountRepo.GetByID(ctx, accountID)
+					if err != nil {
+						entry.Success = false
+						entry.Error = err.Error()
+						result.Failed++
+						result.Results = append(result.Results, entry)
+						continue
+				REDACTED
+					platform = account.Platform
+			REDACTED
+				if err := s.checkMixedChannelRisk(ctx, accountID, platform, *input.GroupIDs); err != nil {
+					entry.Success = false
+					entry.Error = err.Error()
+					result.Failed++
+					result.Results = append(result.Results, entry)
+					continue
+			REDACTED
+		REDACTED
+
 			if err := s.accountRepo.BindGroups(ctx, accountID, *input.GroupIDs); err != nil {
 				entry.Success = false
 				entry.Error = err.Error()
@@ -1005,4 +1064,78 @@ REDACTED
 		Region:    exitInfo.Region,
 		Country:   exitInfo.Country,
 REDACTED, nil
+REDACTED
+
+// checkMixedChannelRisk 检查分组中是否存在混合渠道（Antigravity + Anthropic）
+// 如果存在混合，返回错误提示用户确认
+func (s *adminServiceImpl) checkMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error {
+	// 判断当前账号的渠道类型（基于 platform 字段，而不是 type 字段）
+	currentPlatform := getAccountPlatform(currentAccountPlatform)
+	if currentPlatform == "" {
+		// 不是 Antigravity 或 Anthropic，无需检查
+		return nil
+REDACTED
+
+	// 检查每个分组中的其他账号
+	for _, groupID := range groupIDs {
+		accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+		if err != nil {
+			return fmt.Errorf("get accounts in group %d: %w", groupID, err)
+	REDACTED
+
+		// 检查是否存在不同渠道的账号
+		for _, account := range accounts {
+			if currentAccountID > 0 && account.ID == currentAccountID {
+				continue // 跳过当前账号
+		REDACTED
+
+			otherPlatform := getAccountPlatform(account.Platform)
+			if otherPlatform == "" {
+				continue // 不是 Antigravity 或 Anthropic，跳过
+		REDACTED
+
+			// 检测混合渠道
+			if currentPlatform != otherPlatform {
+				group, _ := s.groupRepo.GetByID(ctx, groupID)
+				groupName := fmt.Sprintf("Group %d", groupID)
+				if group != nil {
+					groupName = group.Name
+			REDACTED
+
+				return &MixedChannelError{
+					GroupID:         groupID,
+					GroupName:       groupName,
+					CurrentPlatform: currentPlatform,
+					OtherPlatform:   otherPlatform,
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	return nil
+REDACTED
+
+// getAccountPlatform 根据账号 platform 判断混合渠道检查用的平台标识
+func getAccountPlatform(accountPlatform string) string {
+	switch strings.ToLower(strings.TrimSpace(accountPlatform)) {
+	case PlatformAntigravity:
+		return "Antigravity"
+	case PlatformAnthropic, "claude":
+		return "Anthropic"
+	default:
+		return ""
+REDACTED
+REDACTED
+
+// MixedChannelError 混合渠道错误
+type MixedChannelError struct {
+	GroupID         int64
+	GroupName       string
+	CurrentPlatform string
+	OtherPlatform   string
+REDACTED
+
+func (e *MixedChannelError) Error() string {
+	return fmt.Sprintf("mixed_channel_warning: Group '%s' contains both %s and %s accounts. Using mixed channels in the same context may cause thinking block signature validation issues, which will fallback to non-thinking mode for historical messages.",
+		e.GroupName, e.CurrentPlatform, e.OtherPlatform)
 REDACTED

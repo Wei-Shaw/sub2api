@@ -19,13 +19,17 @@ type OAuthConfig struct {
 REDACTED
 
 type OAuthSession struct {
-	State        string    `json:"state"`
-	CodeVerifier string    `json:"code_verifier"`
-	ProxyURL     string    `json:"proxy_url,omitempty"`
-	RedirectURI  string    `json:"redirect_uri"`
-	ProjectID    string    `json:"project_id,omitempty"`
-	OAuthType    string    `json:"oauth_type"` // "code_assist" 或 "ai_studio"
-	CreatedAt    time.Time `json:"created_at"`
+	State        string `json:"state"`
+	CodeVerifier string `json:"code_verifier"`
+	ProxyURL     string `json:"proxy_url,omitempty"`
+	RedirectURI  string `json:"redirect_uri"`
+	ProjectID    string `json:"project_id,omitempty"`
+	// TierID is a user-selected fallback tier.
+	// For oauth types that support auto detection (google_one/code_assist), the server will prefer
+	// the detected tier and fall back to TierID when detection fails.
+	TierID    string    `json:"tier_id,omitempty"`
+	OAuthType string    `json:"oauth_type"` // "code_assist" 或 "ai_studio"
+	CreatedAt time.Time `json:"created_at"`
 REDACTED
 
 type SessionStore struct {
@@ -172,23 +176,32 @@ REDACTED
 
 	if effective.Scopes == "" {
 		// Use different default scopes based on OAuth type
-		if oauthType == "ai_studio" {
+		switch oauthType {
+		case "ai_studio":
 			// Built-in client can't request some AI Studio scopes (notably generative-language).
 			if isBuiltinClient {
 				effective.Scopes = DefaultCodeAssistScopes
 		REDACTED else {
 				effective.Scopes = DefaultAIStudioScopes
 		REDACTED
-	REDACTED else {
+		case "google_one":
+			// Google One uses built-in Gemini CLI client (same as code_assist)
+			// Built-in client can't request restricted scopes like generative-language.retriever
+			if isBuiltinClient {
+				effective.Scopes = DefaultCodeAssistScopes
+		REDACTED else {
+				effective.Scopes = DefaultGoogleOneScopes
+		REDACTED
+		default:
 			// Default to Code Assist scopes
 			effective.Scopes = DefaultCodeAssistScopes
 	REDACTED
-REDACTED else if oauthType == "ai_studio" && isBuiltinClient {
+REDACTED else if (oauthType == "ai_studio" || oauthType == "google_one") && isBuiltinClient {
 		// If user overrides scopes while still using the built-in client, strip restricted scopes.
 		parts := strings.Fields(effective.Scopes)
 		filtered := make([]string, 0, len(parts))
 		for _, s := range parts {
-			if strings.Contains(s, "generative-language") {
+			if hasRestrictedScope(s) {
 				continue
 		REDACTED
 			filtered = append(filtered, s)
@@ -212,6 +225,11 @@ REDACTED
 REDACTED
 
 	return effective, nil
+REDACTED
+
+func hasRestrictedScope(scope string) bool {
+	return strings.HasPrefix(scope, "https://www.googleapis.com/auth/generative-language") ||
+		strings.HasPrefix(scope, "https://www.googleapis.com/auth/drive")
 REDACTED
 
 func BuildAuthorizationURL(cfg OAuthConfig, state, codeChallenge, redirectURI, projectID, oauthType string) (string, error) {

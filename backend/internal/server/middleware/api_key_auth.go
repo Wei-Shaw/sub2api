@@ -11,13 +11,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// NewApiKeyAuthMiddleware 创建 API Key 认证中间件
-func NewApiKeyAuthMiddleware(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) ApiKeyAuthMiddleware {
-	return ApiKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
+// NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
+func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
+	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
 REDACTED
 
 // apiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）
-func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
+func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 尝试从Authorization header中提取API key (Bearer scheme)
 		authHeader := c.GetHeader("Authorization")
@@ -60,7 +60,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 		// 从数据库验证API key
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
-			if errors.Is(err, service.ErrApiKeyNotFound) {
+			if errors.Is(err, service.ErrAPIKeyNotFound) {
 				AbortWithError(c, 401, "INVALID_API_KEY", "Invalid API key")
 				return
 		REDACTED
@@ -88,7 +88,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 
 		if cfg.RunMode == config.RunModeSimple {
 			// 简易模式：跳过余额和订阅检查，但仍需设置必要的上下文
-			c.Set(string(ContextKeyApiKey), apiKey)
+			c.Set(string(ContextKeyAPIKey), apiKey)
 			c.Set(string(ContextKeyUser), AuthSubject{
 				UserID:      apiKey.User.ID,
 				Concurrency: apiKey.User.Concurrency,
@@ -146,7 +146,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 	REDACTED
 
 		// 将API key和用户信息存入上下文
-		c.Set(string(ContextKeyApiKey), apiKey)
+		c.Set(string(ContextKeyAPIKey), apiKey)
 		c.Set(string(ContextKeyUser), AuthSubject{
 			UserID:      apiKey.User.ID,
 			Concurrency: apiKey.User.Concurrency,
@@ -157,13 +157,13 @@ func apiKeyAuthWithSubscription(apiKeyService *service.ApiKeyService, subscripti
 REDACTED
 REDACTED
 
-// GetApiKeyFromContext 从上下文中获取API key
-func GetApiKeyFromContext(c *gin.Context) (*service.ApiKey, bool) {
-	value, exists := c.Get(string(ContextKeyApiKey))
+// GetAPIKeyFromContext 从上下文中获取API key
+func GetAPIKeyFromContext(c *gin.Context) (*service.APIKey, bool) {
+	value, exists := c.Get(string(ContextKeyAPIKey))
 	if !exists {
 		return nil, false
 REDACTED
-	apiKey, ok := value.(*service.ApiKey)
+	apiKey, ok := value.(*service.APIKey)
 	return apiKey, ok
 REDACTED
 

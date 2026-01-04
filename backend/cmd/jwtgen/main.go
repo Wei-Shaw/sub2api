@@ -1,0 +1,57 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"time"
+
+	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+)
+
+func main() {
+	email := flag.String("email", "", "Admin email to issue a JWT for (defaults to first active admin)")
+	flag.Parse()
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+REDACTED
+
+	client, sqlDB, err := repository.InitEnt(cfg)
+	if err != nil {
+		log.Fatalf("failed to init db: %v", err)
+REDACTED
+	defer func() {
+		if err := client.Close(); err != nil {
+			log.Printf("failed to close db: %v", err)
+	REDACTED
+REDACTED()
+
+	userRepo := repository.NewUserRepository(client, sqlDB)
+	authService := service.NewAuthService(userRepo, cfg, nil, nil, nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var user *service.User
+	if *email != "" {
+		user, err = userRepo.GetByEmail(ctx, *email)
+REDACTED else {
+		user, err = userRepo.GetFirstAdmin(ctx)
+REDACTED
+	if err != nil {
+		log.Fatalf("failed to resolve admin user: %v", err)
+REDACTED
+
+	token, err := authService.GenerateToken(user)
+	if err != nil {
+		log.Fatalf("failed to generate token: %v", err)
+REDACTED
+
+	fmt.Printf("ADMIN_EMAIL=%s\nADMIN_USER_ID=%d\nJWT=%s\n", user.Email, user.ID, token)
+REDACTED

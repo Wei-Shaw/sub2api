@@ -83,7 +83,7 @@ type UsageLogEdges struct {
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
 	// APIKey holds the value of the api_key edge.
-	APIKey *ApiKey `json:"api_key,omitempty"`
+	APIKey *APIKey `json:"api_key,omitempty"`
 	// Account holds the value of the account edge.
 	Account *Account `json:"account,omitempty"`
 	// Group holds the value of the group edge.
@@ -108,7 +108,7 @@ REDACTED
 
 // APIKeyOrErr returns the APIKey value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e UsageLogEdges) APIKeyOrErr() (*ApiKey, error) {
+func (e UsageLogEdges) APIKeyOrErr() (*APIKey, error) {
 	if e.APIKey != nil {
 		return e.APIKey, nil
 REDACTED else if e.loadedTypes[1] {
@@ -359,7 +359,7 @@ func (_m *UsageLog) QueryUser() *UserQuery {
 REDACTED
 
 // QueryAPIKey queries the "api_key" edge of the UsageLog entity.
-func (_m *UsageLog) QueryAPIKey() *ApiKeyQuery {
+func (_m *UsageLog) QueryAPIKey() *APIKeyQuery {
 	return NewUsageLogClient(_m.config).QueryAPIKey(_m)
 REDACTED
 

@@ -111,12 +111,12 @@ REDACTED)
 
 // Format reset time
 const formatResetTime = computed(() => {
-  if (!props.resetsAt) return 'N/A'
+  if (!props.resetsAt) return t('common.notAvailable')
   const date = new Date(props.resetsAt)
   const now = new Date()
   const diffMs = date.getTime() - now.getTime()
 
-  if (diffMs <= 0) return 'Now'
+  if (diffMs <= 0) return t('common.now')
 
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))

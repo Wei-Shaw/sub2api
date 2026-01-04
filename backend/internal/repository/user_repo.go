@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
-	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -17,14 +18,15 @@ import (
 
 type userRepository struct {
 	client *dbent.Client
+	sql    sqlExecutor
 REDACTED
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
 REDACTED
 
-func newUserRepositoryWithSQL(client *dbent.Client, _ sqlExecutor) *userRepository {
-	return &userRepository{client: clientREDACTED
+func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepository {
+	return &userRepository{client: client, sql: sqlqREDACTED
 REDACTED
 
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
@@ -194,7 +196,11 @@ REDACTED
 	// If attribute filters are specified, we need to filter by user IDs first
 	var allowedUserIDs []int64
 	if len(filters.Attributes) > 0 {
-		allowedUserIDs = r.filterUsersByAttributes(ctx, filters.Attributes)
+		var attrErr error
+		allowedUserIDs, attrErr = r.filterUsersByAttributes(ctx, filters.Attributes)
+		if attrErr != nil {
+			return nil, nil, attrErr
+	REDACTED
 		if len(allowedUserIDs) == 0 {
 			// No users match the attribute filters
 			return []service.User{REDACTED, paginationResultFromTotal(0, params), nil
@@ -262,56 +268,53 @@ REDACTED
 REDACTED
 
 // filterUsersByAttributes returns user IDs that match ALL the given attribute filters
-func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[int64]string) []int64 {
+func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[int64]string) ([]int64, error) {
 	if len(attrs) == 0 {
-		return nil
+		return nil, nil
 REDACTED
 
-	// For each attribute filter, get the set of matching user IDs
-	// Then intersect all sets to get users matching ALL filters
-	var resultSet map[int64]struct{REDACTED
-	first := true
+	if r.sql == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+REDACTED
 
+	clauses := make([]string, 0, len(attrs))
+	args := make([]any, 0, len(attrs)*2+1)
+	argIndex := 1
 	for attrID, value := range attrs {
-		// Query user_attribute_values for this attribute
-		values, err := r.client.UserAttributeValue.Query().
-			Where(
-				userattributevalue.AttributeIDEQ(attrID),
-				userattributevalue.ValueContainsFold(value),
-			).
-			All(ctx)
-		if err != nil {
-			continue
-	REDACTED
-
-		currentSet := make(map[int64]struct{REDACTED, len(values))
-		for _, v := range values {
-			currentSet[v.UserID] = struct{REDACTED{REDACTED
-	REDACTED
-
-		if first {
-			resultSet = currentSet
-			first = false
-	REDACTED else {
-			// Intersect with previous results
-			for userID := range resultSet {
-				if _, ok := currentSet[userID]; !ok {
-					delete(resultSet, userID)
-			REDACTED
-		REDACTED
-	REDACTED
-
-		// Early exit if no users match
-		if len(resultSet) == 0 {
-			return nil
-	REDACTED
+		clauses = append(clauses, fmt.Sprintf("(attribute_id = $%d AND value ILIKE $%d)", argIndex, argIndex+1))
+		args = append(args, attrID, "%"+value+"%")
+		argIndex += 2
 REDACTED
 
-	result := make([]int64, 0, len(resultSet))
-	for userID := range resultSet {
+	query := fmt.Sprintf(
+		`SELECT user_id
+		 FROM user_attribute_values
+		 WHERE %s
+		 GROUP BY user_id
+		 HAVING COUNT(DISTINCT attribute_id) = $%d`,
+		strings.Join(clauses, " OR "),
+		argIndex,
+	)
+	args = append(args, len(attrs))
+
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	result := make([]int64, 0)
+	for rows.Next() {
+		var userID int64
+		if scanErr := rows.Scan(&userID); scanErr != nil {
+			return nil, scanErr
+	REDACTED
 		result = append(result, userID)
 REDACTED
-	return result
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return result, nil
 REDACTED
 
 func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount float64) error {

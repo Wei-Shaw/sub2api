@@ -1,3 +1,4 @@
+// Package pagination provides types and helpers for paginated responses.
 package pagination
 
 // PaginationParams 分页参数
