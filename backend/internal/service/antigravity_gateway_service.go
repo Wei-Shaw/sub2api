@@ -438,6 +438,7 @@ REDACTED
 	if claudeReq.Stream {
 		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
+			log.Printf("%s status=stream_error error=%v", prefix, err)
 			return nil, err
 	REDACTED
 		usage = streamRes.usage
@@ -602,6 +603,7 @@ REDACTED
 	if stream || upstreamAction == "streamGenerateContent" {
 		streamRes, err := s.handleGeminiStreamingResponse(c, resp, startTime)
 		if err != nil {
+			log.Printf("%s status=stream_error error=%v", prefix, err)
 			return nil, err
 	REDACTED
 		usage = streamRes.usage
