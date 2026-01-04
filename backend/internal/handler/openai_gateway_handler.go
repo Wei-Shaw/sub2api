@@ -225,7 +225,7 @@ REDACTED
 				continue
 		REDACTED
 			// Error response already handled in Forward, just log
-			log.Printf("Forward request failed: %v", err)
+			log.Printf("Account %d: Forward request failed: %v", account.ID, err)
 			return
 	REDACTED
 
