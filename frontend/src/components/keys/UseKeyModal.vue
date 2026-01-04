@@ -107,7 +107,10 @@
                 </button>
               </div>
               <!-- Code Content -->
-              <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-text="file.content"></code></pre>
+              <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto">
+                <code v-if="file.highlighted" v-html="file.highlighted"></code>
+                <code v-else v-text="file.content"></code>
+              </pre>
             </div>
           </div>
         </div>
@@ -165,6 +168,7 @@ interface FileConfig {
   path: string
   content: string
   hint?: string  // Optional hint message for this file
+  highlighted?: string
 REDACTED
 
 const props = defineProps<Props>()
@@ -310,6 +314,22 @@ const platformNote = computed(() => {
   REDACTED
 REDACTED)
 
+const escapeHtml = (value: string) => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const wrapToken = (className: string, value: string) =>
+  `<span class="${classNameREDACTED">${escapeHtml(value)REDACTED</span>`
+
+const keyword = (value: string) => wrapToken('text-emerald-300', value)
+const variable = (value: string) => wrapToken('text-sky-200', value)
+const operator = (value: string) => wrapToken('text-slate-400', value)
+const string = (value: string) => wrapToken('text-amber-200', value)
+const comment = (value: string) => wrapToken('text-slate-500', value)
+
 // Syntax highlighting helpers
 // Generate file configs based on platform and active tab
 const currentFiles = computed((): FileConfig[] => {
@@ -382,9 +402,9 @@ ${keyword('export')REDACTED ${variable('GEMINI_MODEL')REDACTED${operator('=')RED
       content = `set GOOGLE_GEMINI_BASE_URL=${baseUrlREDACTED
 set GEMINI_API_KEY=${apiKeyREDACTED
 set GEMINI_MODEL=${modelREDACTED`
-      highlighted = `${keyword('set')REDACTED ${variable('GOOGLE_GEMINI_BASE_URL')REDACTED${operator('=')REDACTED${baseUrlREDACTED
-${keyword('set')REDACTED ${variable('GEMINI_API_KEY')REDACTED${operator('=')REDACTED${apiKeyREDACTED
-${keyword('set')REDACTED ${variable('GEMINI_MODEL')REDACTED${operator('=')REDACTED${modelREDACTED
+      highlighted = `${keyword('set')REDACTED ${variable('GOOGLE_GEMINI_BASE_URL')REDACTED${operator('=')REDACTED${string(baseUrl)REDACTED
+${keyword('set')REDACTED ${variable('GEMINI_API_KEY')REDACTED${operator('=')REDACTED${string(apiKey)REDACTED
+${keyword('set')REDACTED ${variable('GEMINI_MODEL')REDACTED${operator('=')REDACTED${string(model)REDACTED
 ${comment(`REM ${modelCommentREDACTED`)REDACTED`
       break
     case 'powershell':
