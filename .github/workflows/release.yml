@@ -16,6 +16,11 @@ on:
         type: boolean
         default: false
 
+# 环境变量：合并 workflow_dispatch 输入和 repository variable
+# tag push 触发时读取 vars.SIMPLE_RELEASE，workflow_dispatch 时使用输入参数
+env:
+  SIMPLE_RELEASE: ${{ github.event.inputs.simple_release == 'true' || vars.SIMPLE_RELEASE == 'true' REDACTEDREDACTED
+
 permissions:
   contents: write
   packages: write
@@ -161,7 +166,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --clean --skip=validate ${{ github.event.inputs.simple_release == 'true' && '--config=.goreleaser.simple.yaml' || '' REDACTEDREDACTED
+          args: release --clean --skip=validate ${{ env.SIMPLE_RELEASE == 'true' && '--config=.goreleaser.simple.yaml' || '' REDACTEDREDACTED
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN REDACTEDREDACTED
           TAG_MESSAGE: ${{ steps.tag_message.outputs.message REDACTEDREDACTED
@@ -172,7 +177,7 @@ jobs:
 
       # Update DockerHub description
       - name: Update DockerHub description
-        if: ${{ github.event.inputs.simple_release != 'true' && env.DOCKERHUB_USERNAME != '' REDACTEDREDACTED
+        if: ${{ env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' REDACTEDREDACTED
         uses: peter-evans/dockerhub-description@v4
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME REDACTEDREDACTED
@@ -185,7 +190,7 @@ jobs:
 
       # Send Telegram notification
       - name: Send Telegram Notification
-        if: ${{ github.event.inputs.simple_release != 'true' REDACTEDREDACTED
+        if: ${{ env.SIMPLE_RELEASE != 'true' REDACTEDREDACTED
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN REDACTEDREDACTED
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID REDACTEDREDACTED
