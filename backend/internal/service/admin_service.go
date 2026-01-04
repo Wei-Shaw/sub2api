@@ -661,6 +661,7 @@ REDACTED
 		Concurrency: input.Concurrency,
 		Priority:    input.Priority,
 		Status:      StatusActive,
+		Schedulable: true,
 REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -225,7 +226,12 @@ REDACTED
 
 	// 缓存未命中或需要重建，创建新客户端
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
-	client := &http.Client{Transport: buildUpstreamTransport(settings, parsedProxy)REDACTED
+	transport, err := buildUpstreamTransport(settings, parsedProxy)
+	if err != nil {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("build transport: %w", err)
+REDACTED
+	client := &http.Client{Transport: transportREDACTED
 	entry := &upstreamClientEntry{
 		client:   client,
 		proxyKey: proxyKey,
@@ -548,6 +554,7 @@ REDACTED
 //
 // 返回:
 //   - *http.Transport: 配置好的 Transport 实例
+//   - error: 代理配置错误
 //
 // Transport 参数说明:
 //   - MaxIdleConns: 所有主机的最大空闲连接总数
@@ -555,7 +562,7 @@ REDACTED
 //   - MaxConnsPerHost: 每主机最大连接数（达到后新请求等待）
 //   - IdleConnTimeout: 空闲连接超时（超时后关闭）
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
-func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) *http.Transport {
+func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) (*http.Transport, error) {
 	transport := &http.Transport{
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
@@ -563,10 +570,10 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL) *http.Tran
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
 REDACTED
-	if proxyURL != nil {
-		transport.Proxy = http.ProxyURL(proxyURL)
+	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+		return nil, err
 REDACTED
-	return transport
+	return transport, nil
 REDACTED
 
 // trackedBody 带跟踪功能的响应体包装器

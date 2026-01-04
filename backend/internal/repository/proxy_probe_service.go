@@ -27,7 +27,6 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 		ProxyURL:           proxyURL,
 		Timeout:            15 * time.Second,
 		InsecureSkipVerify: true,
-		ProxyStrict:        true,
 REDACTED)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create proxy client: %w", err)

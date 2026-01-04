@@ -45,8 +45,12 @@ REDACTED
 		settings := defaultPoolSettings(cfg)
 		for i := 0; i < b.N; i++ {
 			// 每次迭代都创建新客户端，包含 Transport 分配
+			transport, err := buildUpstreamTransport(settings, parsedProxy)
+			if err != nil {
+				b.Fatalf("创建 Transport 失败: %v", err)
+		REDACTED
 			httpClientSink = &http.Client{
-				Transport: buildUpstreamTransport(settings, parsedProxy),
+				Transport: transport,
 		REDACTED
 	REDACTED
 REDACTED)
