@@ -107,6 +107,8 @@ type UsageProgress struct {
 	ResetsAt         *time.Time   `json:"resets_at"`              // 重置时间
 	RemainingSeconds int          `json:"remaining_seconds"`      // 距重置剩余秒数
 	WindowStats      *WindowStats `json:"window_stats,omitempty"` // 窗口期统计（从窗口开始到当前的使用量）
+	UsedRequests     int64        `json:"used_requests,omitempty"`
+	LimitRequests    int64        `json:"limit_requests,omitempty"`
 REDACTED
 
 // AntigravityModelQuota Antigravity 单个模型的配额信息
@@ -117,12 +119,16 @@ REDACTED
 
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
-	UpdatedAt        *time.Time     `json:"updated_at,omitempty"`         // 更新时间
-	FiveHour         *UsageProgress `json:"five_hour"`                    // 5小时窗口
-	SevenDay         *UsageProgress `json:"seven_day,omitempty"`          // 7天窗口
-	SevenDaySonnet   *UsageProgress `json:"seven_day_sonnet,omitempty"`   // 7天Sonnet窗口
-	GeminiProDaily   *UsageProgress `json:"gemini_pro_daily,omitempty"`   // Gemini Pro 日配额
-	GeminiFlashDaily *UsageProgress `json:"gemini_flash_daily,omitempty"` // Gemini Flash 日配额
+	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
+	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
+	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
+	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
+	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
+	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
+	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
+	GeminiSharedMinute *UsageProgress `json:"gemini_shared_minute,omitempty"` // Gemini shared pool RPM (Google One / Code Assist)
+	GeminiProMinute    *UsageProgress `json:"gemini_pro_minute,omitempty"`    // Gemini Pro RPM
+	GeminiFlashMinute  *UsageProgress `json:"gemini_flash_minute,omitempty"`  // Gemini Flash RPM
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
@@ -258,17 +264,44 @@ REDACTED
 		return usage, nil
 REDACTED
 
-	start := geminiDailyWindowStart(now)
-	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID)
+	dayStart := geminiDailyWindowStart(now)
+	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, dayStart, now, 0, 0, account.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get gemini usage stats failed: %w", err)
 REDACTED
 
-	totals := geminiAggregateUsage(stats)
-	resetAt := geminiDailyResetTime(now)
+	dayTotals := geminiAggregateUsage(stats)
+	dailyResetAt := geminiDailyResetTime(now)
 
-	usage.GeminiProDaily = buildGeminiUsageProgress(totals.ProRequests, quota.ProRPD, resetAt, totals.ProTokens, totals.ProCost, now)
-	usage.GeminiFlashDaily = buildGeminiUsageProgress(totals.FlashRequests, quota.FlashRPD, resetAt, totals.FlashTokens, totals.FlashCost, now)
+	// Daily window (RPD)
+	if quota.SharedRPD > 0 {
+		totalReq := dayTotals.ProRequests + dayTotals.FlashRequests
+		totalTokens := dayTotals.ProTokens + dayTotals.FlashTokens
+		totalCost := dayTotals.ProCost + dayTotals.FlashCost
+		usage.GeminiSharedDaily = buildGeminiUsageProgress(totalReq, quota.SharedRPD, dailyResetAt, totalTokens, totalCost, now)
+REDACTED else {
+		usage.GeminiProDaily = buildGeminiUsageProgress(dayTotals.ProRequests, quota.ProRPD, dailyResetAt, dayTotals.ProTokens, dayTotals.ProCost, now)
+		usage.GeminiFlashDaily = buildGeminiUsageProgress(dayTotals.FlashRequests, quota.FlashRPD, dailyResetAt, dayTotals.FlashTokens, dayTotals.FlashCost, now)
+REDACTED
+
+	// Minute window (RPM) - fixed-window approximation: current minute [truncate(now), truncate(now)+1m)
+	minuteStart := now.Truncate(time.Minute)
+	minuteResetAt := minuteStart.Add(time.Minute)
+	minuteStats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, minuteStart, now, 0, 0, account.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get gemini minute usage stats failed: %w", err)
+REDACTED
+	minuteTotals := geminiAggregateUsage(minuteStats)
+
+	if quota.SharedRPM > 0 {
+		totalReq := minuteTotals.ProRequests + minuteTotals.FlashRequests
+		totalTokens := minuteTotals.ProTokens + minuteTotals.FlashTokens
+		totalCost := minuteTotals.ProCost + minuteTotals.FlashCost
+		usage.GeminiSharedMinute = buildGeminiUsageProgress(totalReq, quota.SharedRPM, minuteResetAt, totalTokens, totalCost, now)
+REDACTED else {
+		usage.GeminiProMinute = buildGeminiUsageProgress(minuteTotals.ProRequests, quota.ProRPM, minuteResetAt, minuteTotals.ProTokens, minuteTotals.ProCost, now)
+		usage.GeminiFlashMinute = buildGeminiUsageProgress(minuteTotals.FlashRequests, quota.FlashRPM, minuteResetAt, minuteTotals.FlashTokens, minuteTotals.FlashCost, now)
+REDACTED
 
 	return usage, nil
 REDACTED
@@ -508,6 +541,7 @@ REDACTED
 REDACTED
 
 func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64, cost float64, now time.Time) *UsageProgress {
+	// limit <= 0 means "no local quota window" (unknown or unlimited).
 	if limit <= 0 {
 		return nil
 REDACTED
@@ -521,6 +555,8 @@ REDACTED
 		Utilization:      utilization,
 		ResetsAt:         &resetCopy,
 		RemainingSeconds: remainingSeconds,
+		UsedRequests:     used,
+		LimitRequests:    limit,
 		WindowStats: &WindowStats{
 			Requests: used,
 			Tokens:   tokens,

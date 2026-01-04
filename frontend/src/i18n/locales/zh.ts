@@ -1395,6 +1395,24 @@ export default {
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        tier: {
+          label: 'Tier（配额等级）',
+          hint: '提示：系统会优先尝试自动识别 Tier；若自动识别不可用或失败，则使用你选择的 Tier 作为回退（本地模拟配额）。',
+          aiStudioHint: 'AI Studio 的配额是按模型分别限流（Pro/Flash 独立）。若已绑卡（按量付费），请选 Pay-as-you-go。',
+          googleOne: {
+            free: 'Google One Free（1000 RPD / 60 RPM，共享池）',
+            pro: 'Google AI Pro（1500 RPD / 120 RPM，共享池）',
+            ultra: 'Google AI Ultra（2000 RPD / 120 RPM，共享池）'
+          REDACTED,
+          gcp: {
+            standard: 'GCP Standard（1500 RPD / 120 RPM，共享池）',
+            enterprise: 'GCP Enterprise（2000 RPD / 120 RPM，共享池）'
+          REDACTED,
+          aiStudio: {
+            free: 'AI Studio Free Tier（Pro: 50 RPD / 2 RPM；Flash: 1500 RPD / 15 RPM）',
+            paid: 'AI Studio Pay-as-you-go（Pro: ∞ RPD / 1000 RPM；Flash: ∞ RPD / 2000 RPM）'
+          REDACTED
+        REDACTED,
         accountType: {
           oauthTitle: 'OAuth 授权（Gemini）',
           oauthDesc: '使用 Google 账号授权，并选择 OAuth 子类型。',
@@ -1454,6 +1472,17 @@ export default {
           REDACTED,
           simulatedNote: '本地模拟配额，仅供参考',
           rows: {
+            googleOne: {
+              channel: 'Google One OAuth（个人版 / Code Assist for Individuals）',
+              limitsFree: '共享池：1000 RPD / 60 RPM（不分模型）',
+              limitsPro: '共享池：1500 RPD / 120 RPM（不分模型）',
+              limitsUltra: '共享池：2000 RPD / 120 RPM（不分模型）'
+            REDACTED,
+            gcp: {
+              channel: 'GCP Code Assist OAuth（企业版）',
+              limitsStandard: '共享池：1500 RPD / 120 RPM（不分模型）',
+              limitsEnterprise: '共享池：2000 RPD / 120 RPM（不分模型）'
+            REDACTED,
             cli: {
               channel: 'Gemini CLI（官方 Google 登录 / Code Assist）',
               free: '免费 Google 账号',
@@ -1471,7 +1500,7 @@ export default {
               free: '未绑卡（免费层）',
               paid: '已绑卡（按量付费）',
               limitsFree: 'RPD 50；RPM 2（Pro）/ 15（Flash）',
-              limitsPaid: 'RPD 不限；RPM 1000+（按模型配额）'
+              limitsPaid: 'RPD 不限；RPM 1000（Pro）/ 2000（Flash）（按模型配额）'
             REDACTED,
             customOAuth: {
               channel: 'Custom OAuth Client（GCP）',

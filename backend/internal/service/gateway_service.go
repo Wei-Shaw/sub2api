@@ -1064,6 +1064,13 @@ REDACTED
 	REDACTED
 
 		// 不需要重试（成功或不可重试的错误），跳出循环
+		// DEBUG: 输出响应 headers（用于检测 rate limit 信息）
+		if account.Platform == PlatformGemini && resp.StatusCode < 400 {
+			log.Printf("[DEBUG] Gemini API Response Headers for account %d:", account.ID)
+			for k, v := range resp.Header {
+				log.Printf("[DEBUG]   %s: %v", k, v)
+		REDACTED
+	REDACTED
 		break
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()

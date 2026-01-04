@@ -241,23 +241,16 @@
         <div v-else-if="error" class="text-xs text-red-500">
           {{ error REDACTEDREDACTED
         </div>
-        <!-- GCP & Google One: show model usage bars when available -->
+        <!-- Gemini: show daily usage bars when available -->
         <div v-else-if="geminiUsageAvailable" class="space-y-1">
           <UsageProgressBar
-            v-if="usageInfo?.gemini_pro_daily"
-            label="Pro"
-            :utilization="usageInfo.gemini_pro_daily.utilization"
-            :resets-at="usageInfo.gemini_pro_daily.resets_at"
-            :window-stats="usageInfo.gemini_pro_daily.window_stats"
-            color="indigo"
-          />
-          <UsageProgressBar
-            v-if="usageInfo?.gemini_flash_daily"
-            label="Flash"
-            :utilization="usageInfo.gemini_flash_daily.utilization"
-            :resets-at="usageInfo.gemini_flash_daily.resets_at"
-            :window-stats="usageInfo.gemini_flash_daily.window_stats"
-            color="emerald"
+            v-for="bar in geminiUsageBars"
+            :key="bar.key"
+            :label="bar.label"
+            :utilization="bar.utilization"
+            :resets-at="bar.resetsAt"
+            :window-stats="bar.windowStats"
+            :color="bar.color"
           />
           <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' REDACTEDREDACTED
@@ -288,7 +281,7 @@
 import { ref, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Account, AccountUsageInfo, GeminiCredentials REDACTED from '@/types'
+import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats REDACTED from '@/types'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 
@@ -303,16 +296,18 @@ const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
 
 // Show usage windows for OAuth and Setup Token accounts
-const showUsageWindows = computed(
-  () => props.account.type === 'oauth' || props.account.type === 'setup-token'
-)
+const showUsageWindows = computed(() => {
+  // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
+  if (props.account.platform === 'gemini') return true
+  return props.account.type === 'oauth' || props.account.type === 'setup-token'
+REDACTED)
 
 const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'anthropic') {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   REDACTED
   if (props.account.platform === 'gemini') {
-    return props.account.type === 'oauth'
+    return true
   REDACTED
   if (props.account.platform === 'antigravity') {
     return props.account.type === 'oauth'
@@ -322,8 +317,12 @@ REDACTED)
 
 const geminiUsageAvailable = computed(() => {
   return (
+    !!usageInfo.value?.gemini_shared_daily ||
     !!usageInfo.value?.gemini_pro_daily ||
-    !!usageInfo.value?.gemini_flash_daily
+    !!usageInfo.value?.gemini_flash_daily ||
+    !!usageInfo.value?.gemini_shared_minute ||
+    !!usageInfo.value?.gemini_pro_minute ||
+    !!usageInfo.value?.gemini_flash_minute
   )
 REDACTED)
 
@@ -569,6 +568,12 @@ const geminiTier = computed(() => {
   return creds?.tier_id || null
 REDACTED)
 
+const geminiOAuthType = computed(() => {
+  if (props.account.platform !== 'gemini') return null
+  const creds = props.account.credentials as GeminiCredentials | undefined
+  return (creds?.oauth_type || '').trim() || null
+REDACTED)
+
 // Gemini 是否为 Code Assist OAuth
 const isGeminiCodeAssist = computed(() => {
   if (props.account.platform !== 'gemini') return false
@@ -576,107 +581,206 @@ const isGeminiCodeAssist = computed(() => {
   return creds?.oauth_type === 'code_assist' || (!creds?.oauth_type && !!creds?.project_id)
 REDACTED)
 
-// Gemini 认证类型 + Tier 组合标签（简洁版）
-const geminiAuthTypeLabel = computed(() => {
-  const creds = props.account.credentials as GeminiCredentials | undefined
-  const oauthType = creds?.oauth_type
+const geminiChannelShort = computed((): 'ai studio' | 'gcp' | 'google one' | 'client' | null => {
+  if (props.account.platform !== 'gemini') return null
 
-  // For API Key accounts, don't show auth type label
-  if (props.account.type !== 'oauth') return null
+  // API Key accounts are AI Studio.
+  if (props.account.type === 'apikey') return 'ai studio'
 
-  if (oauthType === 'google_one') {
-    // Google One: show "Google One" + tier
-    const tierMap: Record<string, string> = {
-      AI_PREMIUM: 'AI Premium',
-      GOOGLE_ONE_STANDARD: 'Standard',
-      GOOGLE_ONE_BASIC: 'Basic',
-      FREE: 'Free',
-      GOOGLE_ONE_UNKNOWN: 'Personal',
-      GOOGLE_ONE_UNLIMITED: 'Unlimited'
-    REDACTED
-    const tierLabel = geminiTier.value ? tierMap[geminiTier.value] || 'Personal' : 'Personal'
-    return `Google One ${tierLabelREDACTED`
-  REDACTED else if (oauthType === 'code_assist' || (!oauthType && isGeminiCodeAssist.value)) {
-    // Code Assist: show "GCP" + tier
-    const tierMap: Record<string, string> = {
-      LEGACY: 'Free',
-      PRO: 'Pro',
-      ULTRA: 'Ultra'
-    REDACTED
-    const tierLabel = geminiTier.value ? tierMap[geminiTier.value] || 'Free' : 'Free'
-    return `GCP ${tierLabelREDACTED`
-  REDACTED else if (oauthType === 'ai_studio') {
-    // 自定义 OAuth Client: show "Client" (no tier)
-    return 'Client'
+  if (geminiOAuthType.value === 'google_one') return 'google one'
+  if (isGeminiCodeAssist.value) return 'gcp'
+  if (geminiOAuthType.value === 'ai_studio') return 'client'
+
+  // Fallback (unknown legacy data): treat as AI Studio.
+  return 'ai studio'
+REDACTED)
+
+const geminiUserLevel = computed((): string | null => {
+  if (props.account.platform !== 'gemini') return null
+
+  const tier = (geminiTier.value || '').toString().trim()
+  const tierLower = tier.toLowerCase()
+  const tierUpper = tier.toUpperCase()
+
+  // Google One: free / pro / ultra
+  if (geminiOAuthType.value === 'google_one') {
+    if (tierLower === 'google_one_free') return 'free'
+    if (tierLower === 'google_ai_pro') return 'pro'
+    if (tierLower === 'google_ai_ultra') return 'ultra'
+
+    // Backward compatibility (legacy tier markers)
+    if (tierUpper === 'AI_PREMIUM' || tierUpper === 'GOOGLE_ONE_STANDARD') return 'pro'
+    if (tierUpper === 'GOOGLE_ONE_UNLIMITED') return 'ultra'
+    if (tierUpper === 'FREE' || tierUpper === 'GOOGLE_ONE_BASIC' || tierUpper === 'GOOGLE_ONE_UNKNOWN' || tierUpper === '') return 'free'
+
+    return null
+  REDACTED
+
+  // GCP Code Assist: standard / enterprise
+  if (isGeminiCodeAssist.value) {
+    if (tierLower === 'gcp_enterprise') return 'enterprise'
+    if (tierLower === 'gcp_standard') return 'standard'
+
+    // Backward compatibility
+    if (tierUpper.includes('ULTRA') || tierUpper.includes('ENTERPRISE')) return 'enterprise'
+    return 'standard'
+  REDACTED
+
+  // AI Studio (API Key) and Client OAuth: free / paid
+  if (props.account.type === 'apikey' || geminiOAuthType.value === 'ai_studio') {
+    if (tierLower === 'aistudio_paid') return 'paid'
+    if (tierLower === 'aistudio_free') return 'free'
+
+    // Backward compatibility
+    if (tierUpper.includes('PAID') || tierUpper.includes('PAYG') || tierUpper.includes('PAY')) return 'paid'
+    if (tierUpper.includes('FREE')) return 'free'
+    if (props.account.type === 'apikey') return 'free'
+    return null
   REDACTED
 
   return null
 REDACTED)
 
+// Gemini 认证类型（按要求：授权方式简称 + 用户等级）
+const geminiAuthTypeLabel = computed(() => {
+  if (props.account.platform !== 'gemini') return null
+  if (!geminiChannelShort.value) return null
+  return geminiUserLevel.value ? `${geminiChannelShort.valueREDACTED ${geminiUserLevel.valueREDACTED` : geminiChannelShort.value
+REDACTED)
+
 // Gemini 账户类型徽章样式（统一样式）
 const geminiTierClass = computed(() => {
-  const creds = props.account.credentials as GeminiCredentials | undefined
-  const oauthType = creds?.oauth_type
+  // Use channel+level to choose a stable color without depending on raw tier_id variants.
+  const channel = geminiChannelShort.value
+  const level = geminiUserLevel.value
 
-  // Client (自定义 OAuth): 使用蓝色（与 AI Studio 一致）
-  if (oauthType === 'ai_studio') {
+  if (channel === 'client' || channel === 'ai studio') {
     return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
   REDACTED
 
-  if (!geminiTier.value) return ''
-
-  const isGoogleOne = creds?.oauth_type === 'google_one'
-
-  if (isGoogleOne) {
-    // Google One tier 颜色
-    const colorMap: Record<string, string> = {
-      AI_PREMIUM: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300',
-      GOOGLE_ONE_STANDARD: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
-      GOOGLE_ONE_BASIC: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300',
-      FREE: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
-      GOOGLE_ONE_UNKNOWN: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
-      GOOGLE_ONE_UNLIMITED: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300'
-    REDACTED
-    return colorMap[geminiTier.value] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  if (channel === 'google one') {
+    if (level === 'ultra') return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
+    if (level === 'pro') return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
+    return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
   REDACTED
 
-  // Code Assist tier 颜色
-  switch (geminiTier.value) {
-    case 'LEGACY':
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-    case 'PRO':
-      return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
-    case 'ULTRA':
-      return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
-    default:
-      return ''
+  if (channel === 'gcp') {
+    if (level === 'enterprise') return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
+    return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
   REDACTED
+
+  return ''
 REDACTED)
 
 // Gemini 配额政策信息
 const geminiQuotaPolicyChannel = computed(() => {
+  if (geminiOAuthType.value === 'google_one') {
+    return t('admin.accounts.gemini.quotaPolicy.rows.googleOne.channel')
+  REDACTED
   if (isGeminiCodeAssist.value) {
-    return t('admin.accounts.gemini.quotaPolicy.rows.cli.channel')
+    return t('admin.accounts.gemini.quotaPolicy.rows.gcp.channel')
   REDACTED
   return t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.channel')
 REDACTED)
 
 const geminiQuotaPolicyLimits = computed(() => {
-  if (isGeminiCodeAssist.value) {
-    if (geminiTier.value === 'PRO' || geminiTier.value === 'ULTRA') {
-      return t('admin.accounts.gemini.quotaPolicy.rows.cli.limitsPremium')
+  const tierLower = (geminiTier.value || '').toString().trim().toLowerCase()
+
+  if (geminiOAuthType.value === 'google_one') {
+    if (tierLower === 'google_ai_ultra' || geminiUserLevel.value === 'ultra') {
+      return t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsUltra')
     REDACTED
-    return t('admin.accounts.gemini.quotaPolicy.rows.cli.limitsFree')
+    if (tierLower === 'google_ai_pro' || geminiUserLevel.value === 'pro') {
+      return t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsPro')
+    REDACTED
+    return t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsFree')
   REDACTED
-  // AI Studio - 默认显示免费层限制
+
+  if (isGeminiCodeAssist.value) {
+    if (tierLower === 'gcp_enterprise' || geminiUserLevel.value === 'enterprise') {
+      return t('admin.accounts.gemini.quotaPolicy.rows.gcp.limitsEnterprise')
+    REDACTED
+    return t('admin.accounts.gemini.quotaPolicy.rows.gcp.limitsStandard')
+  REDACTED
+
+  // AI Studio (API Key / custom OAuth)
+  if (tierLower === 'aistudio_paid' || geminiUserLevel.value === 'paid') {
+    return t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsPaid')
+  REDACTED
   return t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsFree')
 REDACTED)
 
 const geminiQuotaPolicyDocsUrl = computed(() => {
-  if (isGeminiCodeAssist.value) {
-    return 'https://cloud.google.com/products/gemini/code-assist#pricing'
+  if (geminiOAuthType.value === 'google_one' || isGeminiCodeAssist.value) {
+    return 'https://developers.google.com/gemini-code-assist/resources/quotas'
   REDACTED
   return 'https://ai.google.dev/pricing'
+REDACTED)
+
+const geminiUsesSharedDaily = computed(() => {
+  if (props.account.platform !== 'gemini') return false
+  // Per requirement: Google One & GCP are shared RPD pools (no per-model breakdown).
+  return (
+    !!usageInfo.value?.gemini_shared_daily ||
+    !!usageInfo.value?.gemini_shared_minute ||
+    geminiOAuthType.value === 'google_one' ||
+    isGeminiCodeAssist.value
+  )
+REDACTED)
+
+const geminiUsageBars = computed(() => {
+  if (props.account.platform !== 'gemini') return []
+  if (!usageInfo.value) return []
+
+  const bars: Array<{
+    key: string
+    label: string
+    utilization: number
+    resetsAt: string | null
+    windowStats?: WindowStats | null
+    color: 'indigo' | 'emerald'
+  REDACTED> = []
+
+  if (geminiUsesSharedDaily.value) {
+    const sharedDaily = usageInfo.value.gemini_shared_daily
+    if (sharedDaily) {
+      bars.push({
+        key: 'shared_daily',
+        label: '1d',
+        utilization: sharedDaily.utilization,
+        resetsAt: sharedDaily.resets_at,
+        windowStats: sharedDaily.window_stats,
+        color: 'indigo'
+      REDACTED)
+    REDACTED
+    return bars
+  REDACTED
+
+  const pro = usageInfo.value.gemini_pro_daily
+  if (pro) {
+    bars.push({
+      key: 'pro_daily',
+      label: 'pro',
+      utilization: pro.utilization,
+      resetsAt: pro.resets_at,
+      windowStats: pro.window_stats,
+      color: 'indigo'
+      REDACTED)
+  REDACTED
+
+  const flash = usageInfo.value.gemini_flash_daily
+  if (flash) {
+    bars.push({
+      key: 'flash_daily',
+      label: 'flash',
+      utilization: flash.utilization,
+      resetsAt: flash.resets_at,
+      windowStats: flash.window_stats,
+      color: 'emerald'
+    REDACTED)
+  REDACTED
+
+  return bars
 REDACTED)
 
 // 账户类型显示标签

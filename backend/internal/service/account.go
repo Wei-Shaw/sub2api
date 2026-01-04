@@ -105,10 +105,7 @@ REDACTED
 
 func (a *Account) GeminiTierID() string {
 	tierID := strings.TrimSpace(a.GetCredential("tier_id"))
-	if tierID == "" {
-		return ""
-REDACTED
-	return strings.ToUpper(tierID)
+	return tierID
 REDACTED
 
 func (a *Account) IsGeminiCodeAssist() bool {

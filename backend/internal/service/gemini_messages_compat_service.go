@@ -1628,6 +1628,15 @@ type UpstreamHTTPResult struct {
 REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
+	// Log response headers for debugging
+	log.Printf("[GeminiAPI] ========== Response Headers ==========")
+	for key, values := range resp.Header {
+		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
+			log.Printf("[GeminiAPI] %s: %v", key, values)
+	REDACTED
+REDACTED
+	log.Printf("[GeminiAPI] ========================================")
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
@@ -1658,6 +1667,15 @@ REDACTED
 REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
+	// Log response headers for debugging
+	log.Printf("[GeminiAPI] ========== Streaming Response Headers ==========")
+	for key, values := range resp.Header {
+		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
+			log.Printf("[GeminiAPI] %s: %v", key, values)
+	REDACTED
+REDACTED
+	log.Printf("[GeminiAPI] ====================================================")
+
 	c.Status(resp.StatusCode)
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")

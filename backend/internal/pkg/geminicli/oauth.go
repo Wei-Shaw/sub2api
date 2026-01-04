@@ -19,13 +19,17 @@ type OAuthConfig struct {
 REDACTED
 
 type OAuthSession struct {
-	State        string    `json:"state"`
-	CodeVerifier string    `json:"code_verifier"`
-	ProxyURL     string    `json:"proxy_url,omitempty"`
-	RedirectURI  string    `json:"redirect_uri"`
-	ProjectID    string    `json:"project_id,omitempty"`
-	OAuthType    string    `json:"oauth_type"` // "code_assist" 或 "ai_studio"
-	CreatedAt    time.Time `json:"created_at"`
+	State        string `json:"state"`
+	CodeVerifier string `json:"code_verifier"`
+	ProxyURL     string `json:"proxy_url,omitempty"`
+	RedirectURI  string `json:"redirect_uri"`
+	ProjectID    string `json:"project_id,omitempty"`
+	// TierID is a user-selected fallback tier.
+	// For oauth types that support auto detection (google_one/code_assist), the server will prefer
+	// the detected tier and fall back to TierID when detection fails.
+	TierID    string    `json:"tier_id,omitempty"`
+	OAuthType string    `json:"oauth_type"` // "code_assist" 或 "ai_studio"
+	CreatedAt time.Time `json:"created_at"`
 REDACTED
 
 type SessionStore struct {

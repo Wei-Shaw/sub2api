@@ -38,7 +38,8 @@ export function useGeminiOAuth() {
   const generateAuthUrl = async (
     proxyId: number | null | undefined,
     projectId?: string | null,
-    oauthType?: string
+    oauthType?: string,
+    tierId?: string
   ): Promise<boolean> => {
     loading.value = true
     authUrl.value = ''
@@ -52,6 +53,8 @@ export function useGeminiOAuth() {
       const trimmedProjectID = projectId?.trim()
       if (trimmedProjectID) payload.project_id = trimmedProjectID
       if (oauthType) payload.oauth_type = oauthType
+      const trimmedTierID = tierId?.trim()
+      if (trimmedTierID) payload.tier_id = trimmedTierID
 
       const response = await adminAPI.gemini.generateAuthUrl(payload as any)
       authUrl.value = response.auth_url
@@ -73,6 +76,7 @@ export function useGeminiOAuth() {
     state: string
     proxyId?: number | null
     oauthType?: string
+    tierId?: string
   REDACTED): Promise<GeminiTokenInfo | null> => {
     const code = params.code?.trim()
     if (!code || !params.sessionId || !params.state) {
@@ -91,6 +95,8 @@ export function useGeminiOAuth() {
       REDACTED
       if (params.proxyId) payload.proxy_id = params.proxyId
       if (params.oauthType) payload.oauth_type = params.oauthType
+      const trimmedTierID = params.tierId?.trim()
+      if (trimmedTierID) payload.tier_id = trimmedTierID
 
       const tokenInfo = await adminAPI.gemini.exchangeCode(payload as any)
       return tokenInfo as GeminiTokenInfo

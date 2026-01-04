@@ -322,8 +322,19 @@ export interface GeminiCredentials {
   // OAuth authentication
   access_token?: string
   refresh_token?: string
-  oauth_type?: 'code_assist' | 'ai_studio' | string
-  tier_id?: 'LEGACY' | 'PRO' | 'ULTRA' | string
+  oauth_type?: 'code_assist' | 'google_one' | 'ai_studio' | string
+  tier_id?:
+    | 'google_one_free'
+    | 'google_ai_pro'
+    | 'google_ai_ultra'
+    | 'gcp_standard'
+    | 'gcp_enterprise'
+    | 'aistudio_free'
+    | 'aistudio_paid'
+    | 'LEGACY'
+    | 'PRO'
+    | 'ULTRA'
+    | string
   project_id?: string
   token_type?: string
   scope?: string
@@ -397,6 +408,8 @@ export interface UsageProgress {
   resets_at: string | null
   remaining_seconds: number
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
+  used_requests?: number
+  limit_requests?: number
 REDACTED
 
 // Antigravity 单个模型的配额信息
@@ -410,8 +423,12 @@ export interface AccountUsageInfo {
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
+  gemini_shared_daily?: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null
+  gemini_shared_minute?: UsageProgress | null
+  gemini_pro_minute?: UsageProgress | null
+  gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
 REDACTED
 

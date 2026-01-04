@@ -1257,6 +1257,25 @@ export default {
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        tier: {
+          label: 'Tier (Quota Level)',
+          hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
+          aiStudioHint:
+            'AI Studio quotas are per-model (Pro/Flash are limited independently). If billing is enabled, choose Pay-as-you-go.',
+          googleOne: {
+            free: 'Google One Free (1000 RPD / 60 RPM, shared pool)',
+            pro: 'Google AI Pro (1500 RPD / 120 RPM, shared pool)',
+            ultra: 'Google AI Ultra (2000 RPD / 120 RPM, shared pool)'
+          REDACTED,
+          gcp: {
+            standard: 'GCP Standard (1500 RPD / 120 RPM, shared pool)',
+            enterprise: 'GCP Enterprise (2000 RPD / 120 RPM, shared pool)'
+          REDACTED,
+          aiStudio: {
+            free: 'AI Studio Free Tier (Pro: 50 RPD / 2 RPM; Flash: 1500 RPD / 15 RPM)',
+            paid: 'AI Studio Pay-as-you-go (Pro: ∞ RPD / 1000 RPM; Flash: ∞ RPD / 2000 RPM)'
+          REDACTED
+        REDACTED,
         accountType: {
           oauthTitle: 'OAuth (Gemini)',
           oauthDesc: 'Authorize with your Google account and choose an OAuth type.',
@@ -1317,6 +1336,17 @@ export default {
           REDACTED,
           simulatedNote: 'Simulated quota, for reference only',
           rows: {
+            googleOne: {
+              channel: 'Google One OAuth (Individuals / Code Assist for Individuals)',
+              limitsFree: 'Shared pool: 1000 RPD / 60 RPM',
+              limitsPro: 'Shared pool: 1500 RPD / 120 RPM',
+              limitsUltra: 'Shared pool: 2000 RPD / 120 RPM'
+            REDACTED,
+            gcp: {
+              channel: 'GCP Code Assist OAuth (Enterprise)',
+              limitsStandard: 'Shared pool: 1500 RPD / 120 RPM',
+              limitsEnterprise: 'Shared pool: 2000 RPD / 120 RPM'
+            REDACTED,
             cli: {
               channel: 'Gemini CLI (Official Google Login / Code Assist)',
               free: 'Free Google Account',
@@ -1334,7 +1364,7 @@ export default {
               free: 'No billing (free tier)',
               paid: 'Billing enabled (pay-as-you-go)',
               limitsFree: 'RPD 50; RPM 2 (Pro) / 15 (Flash)',
-              limitsPaid: 'RPD unlimited; RPM 1000+ (per model quota)'
+              limitsPaid: 'RPD unlimited; RPM 1000 (Pro) / 2000 (Flash) (per model)'
             REDACTED,
             customOAuth: {
               channel: 'Custom OAuth Client (GCP)',

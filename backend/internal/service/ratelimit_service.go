@@ -92,7 +92,7 @@ REDACTED
 // PreCheckUsage proactively checks local quota before dispatching a request.
 // Returns false when the account should be skipped.
 func (s *RateLimitService) PreCheckUsage(ctx context.Context, account *Account, requestedModel string) (bool, error) {
-	if account == nil || !account.IsGeminiCodeAssist() || strings.TrimSpace(requestedModel) == "" {
+	if account == nil || account.Platform != PlatformGemini {
 		return true, nil
 REDACTED
 	if s.usageRepo == nil || s.geminiQuotaService == nil {
@@ -104,44 +104,99 @@ REDACTED
 		return true, nil
 REDACTED
 
-	var limit int64
-	switch geminiModelClassFromName(requestedModel) {
-	case geminiModelFlash:
-		limit = quota.FlashRPD
-	default:
-		limit = quota.ProRPD
-REDACTED
-	if limit <= 0 {
-		return true, nil
-REDACTED
-
 	now := time.Now()
-	start := geminiDailyWindowStart(now)
-	totals, ok := s.getGeminiUsageTotals(account.ID, start, now)
-	if !ok {
-		stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID)
-		if err != nil {
-			return true, err
+	modelClass := geminiModelClassFromName(requestedModel)
+
+	// 1) Daily quota precheck (RPD; resets at PST midnight)
+	{
+		var limit int64
+		if quota.SharedRPD > 0 {
+			limit = quota.SharedRPD
+	REDACTED else {
+			switch modelClass {
+			case geminiModelFlash:
+				limit = quota.FlashRPD
+			default:
+				limit = quota.ProRPD
+		REDACTED
 	REDACTED
-		totals = geminiAggregateUsage(stats)
-		s.setGeminiUsageTotals(account.ID, start, now, totals)
+
+		if limit > 0 {
+			start := geminiDailyWindowStart(now)
+			totals, ok := s.getGeminiUsageTotals(account.ID, start, now)
+			if !ok {
+				stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID)
+				if err != nil {
+					return true, err
+			REDACTED
+				totals = geminiAggregateUsage(stats)
+				s.setGeminiUsageTotals(account.ID, start, now, totals)
+		REDACTED
+
+			var used int64
+			if quota.SharedRPD > 0 {
+				used = totals.ProRequests + totals.FlashRequests
+		REDACTED else {
+				switch modelClass {
+				case geminiModelFlash:
+					used = totals.FlashRequests
+				default:
+					used = totals.ProRequests
+			REDACTED
+		REDACTED
+
+			if used >= limit {
+				resetAt := geminiDailyResetTime(now)
+				// NOTE:
+				// - This is a local precheck to reduce upstream 429s.
+				// - Do NOT mark the account as rate-limited here; rate_limit_reset_at should reflect real upstream 429s.
+				log.Printf("[Gemini PreCheck] Account %d reached daily quota (%d/%d), skip until %v", account.ID, used, limit, resetAt)
+				return false, nil
+		REDACTED
+	REDACTED
 REDACTED
 
-	var used int64
-	switch geminiModelClassFromName(requestedModel) {
-	case geminiModelFlash:
-		used = totals.FlashRequests
-	default:
-		used = totals.ProRequests
-REDACTED
-
-	if used >= limit {
-		resetAt := geminiDailyResetTime(now)
-		if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
-			log.Printf("SetRateLimited failed for account %d: %v", account.ID, err)
+	// 2) Minute quota precheck (RPM; fixed window current minute)
+	{
+		var limit int64
+		if quota.SharedRPM > 0 {
+			limit = quota.SharedRPM
+	REDACTED else {
+			switch modelClass {
+			case geminiModelFlash:
+				limit = quota.FlashRPM
+			default:
+				limit = quota.ProRPM
+		REDACTED
 	REDACTED
-		log.Printf("[Gemini PreCheck] Account %d reached daily quota (%d/%d), rate limited until %v", account.ID, used, limit, resetAt)
-		return false, nil
+
+		if limit > 0 {
+			start := now.Truncate(time.Minute)
+			stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID)
+			if err != nil {
+				return true, err
+		REDACTED
+			totals := geminiAggregateUsage(stats)
+
+			var used int64
+			if quota.SharedRPM > 0 {
+				used = totals.ProRequests + totals.FlashRequests
+		REDACTED else {
+				switch modelClass {
+				case geminiModelFlash:
+					used = totals.FlashRequests
+				default:
+					used = totals.ProRequests
+			REDACTED
+		REDACTED
+
+			if used >= limit {
+				resetAt := start.Add(time.Minute)
+				// Do not persist "rate limited" status from local precheck. See note above.
+				log.Printf("[Gemini PreCheck] Account %d reached minute quota (%d/%d), skip until %v", account.ID, used, limit, resetAt)
+				return false, nil
+		REDACTED
+	REDACTED
 REDACTED
 
 	return true, nil
@@ -186,7 +241,10 @@ func (s *RateLimitService) GeminiCooldown(ctx context.Context, account *Account)
 	if account == nil {
 		return 5 * time.Minute
 REDACTED
-	return s.geminiQuotaService.CooldownForTier(ctx, account.GeminiTierID())
+	if s.geminiQuotaService == nil {
+		return 5 * time.Minute
+REDACTED
+	return s.geminiQuotaService.CooldownForAccount(ctx, account)
 REDACTED
 
 // handleAuthError 处理认证类错误(401/403)，停止账号调度
