@@ -36,22 +36,22 @@ REDACTED
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:      settings.RegistrationEnabled,
 		EmailVerifyEnabled:       settings.EmailVerifyEnabled,
-		SmtpHost:                 settings.SmtpHost,
-		SmtpPort:                 settings.SmtpPort,
-		SmtpUsername:             settings.SmtpUsername,
-		SmtpPassword:             settings.SmtpPassword,
-		SmtpFrom:                 settings.SmtpFrom,
-		SmtpFromName:             settings.SmtpFromName,
-		SmtpUseTLS:               settings.SmtpUseTLS,
+		SMTPHost:                 settings.SMTPHost,
+		SMTPPort:                 settings.SMTPPort,
+		SMTPUsername:             settings.SMTPUsername,
+		SMTPPassword:             settings.SMTPPassword,
+		SMTPFrom:                 settings.SMTPFrom,
+		SMTPFromName:             settings.SMTPFromName,
+		SMTPUseTLS:               settings.SMTPUseTLS,
 		TurnstileEnabled:         settings.TurnstileEnabled,
 		TurnstileSiteKey:         settings.TurnstileSiteKey,
 		TurnstileSecretKey:       settings.TurnstileSecretKey,
 		SiteName:                 settings.SiteName,
 		SiteLogo:                 settings.SiteLogo,
 		SiteSubtitle:             settings.SiteSubtitle,
-		ApiBaseUrl:               settings.ApiBaseUrl,
+		APIBaseURL:               settings.APIBaseURL,
 		ContactInfo:              settings.ContactInfo,
-		DocUrl:                   settings.DocUrl,
+		DocURL:                   settings.DocURL,
 		DefaultConcurrency:       settings.DefaultConcurrency,
 		DefaultBalance:           settings.DefaultBalance,
 		EnableModelFallback:      settings.EnableModelFallback,
@@ -69,13 +69,13 @@ type UpdateSettingsRequest struct {
 	EmailVerifyEnabled  bool `json:"email_verify_enabled"`
 
 	// 邮件服务设置
-	SmtpHost     string `json:"smtp_host"`
-	SmtpPort     int    `json:"smtp_port"`
-	SmtpUsername string `json:"smtp_username"`
-	SmtpPassword string `json:"smtp_password"`
-	SmtpFrom     string `json:"smtp_from_email"`
-	SmtpFromName string `json:"smtp_from_name"`
-	SmtpUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost     string `json:"smtp_host"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPUsername string `json:"smtp_username"`
+	SMTPPassword string `json:"smtp_password"`
+	SMTPFrom     string `json:"smtp_from_email"`
+	SMTPFromName string `json:"smtp_from_name"`
+	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 
 	// Cloudflare Turnstile 设置
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
@@ -86,9 +86,9 @@ type UpdateSettingsRequest struct {
 	SiteName     string `json:"site_name"`
 	SiteLogo     string `json:"site_logo"`
 	SiteSubtitle string `json:"site_subtitle"`
-	ApiBaseUrl   string `json:"api_base_url"`
+	APIBaseURL   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
-	DocUrl       string `json:"doc_url"`
+	DocURL       string `json:"doc_url"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
@@ -118,8 +118,8 @@ REDACTED
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
 REDACTED
-	if req.SmtpPort <= 0 {
-		req.SmtpPort = 587
+	if req.SMTPPort <= 0 {
+		req.SMTPPort = 587
 REDACTED
 
 	// Turnstile 参数验证
@@ -155,22 +155,22 @@ REDACTED
 	settings := &service.SystemSettings{
 		RegistrationEnabled:      req.RegistrationEnabled,
 		EmailVerifyEnabled:       req.EmailVerifyEnabled,
-		SmtpHost:                 req.SmtpHost,
-		SmtpPort:                 req.SmtpPort,
-		SmtpUsername:             req.SmtpUsername,
-		SmtpPassword:             req.SmtpPassword,
-		SmtpFrom:                 req.SmtpFrom,
-		SmtpFromName:             req.SmtpFromName,
-		SmtpUseTLS:               req.SmtpUseTLS,
+		SMTPHost:                 req.SMTPHost,
+		SMTPPort:                 req.SMTPPort,
+		SMTPUsername:             req.SMTPUsername,
+		SMTPPassword:             req.SMTPPassword,
+		SMTPFrom:                 req.SMTPFrom,
+		SMTPFromName:             req.SMTPFromName,
+		SMTPUseTLS:               req.SMTPUseTLS,
 		TurnstileEnabled:         req.TurnstileEnabled,
 		TurnstileSiteKey:         req.TurnstileSiteKey,
 		TurnstileSecretKey:       req.TurnstileSecretKey,
 		SiteName:                 req.SiteName,
 		SiteLogo:                 req.SiteLogo,
 		SiteSubtitle:             req.SiteSubtitle,
-		ApiBaseUrl:               req.ApiBaseUrl,
+		APIBaseURL:               req.APIBaseURL,
 		ContactInfo:              req.ContactInfo,
-		DocUrl:                   req.DocUrl,
+		DocURL:                   req.DocURL,
 		DefaultConcurrency:       req.DefaultConcurrency,
 		DefaultBalance:           req.DefaultBalance,
 		EnableModelFallback:      req.EnableModelFallback,
@@ -195,22 +195,22 @@ REDACTED
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:      updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:       updatedSettings.EmailVerifyEnabled,
-		SmtpHost:                 updatedSettings.SmtpHost,
-		SmtpPort:                 updatedSettings.SmtpPort,
-		SmtpUsername:             updatedSettings.SmtpUsername,
-		SmtpPassword:             updatedSettings.SmtpPassword,
-		SmtpFrom:                 updatedSettings.SmtpFrom,
-		SmtpFromName:             updatedSettings.SmtpFromName,
-		SmtpUseTLS:               updatedSettings.SmtpUseTLS,
+		SMTPHost:                 updatedSettings.SMTPHost,
+		SMTPPort:                 updatedSettings.SMTPPort,
+		SMTPUsername:             updatedSettings.SMTPUsername,
+		SMTPPassword:             updatedSettings.SMTPPassword,
+		SMTPFrom:                 updatedSettings.SMTPFrom,
+		SMTPFromName:             updatedSettings.SMTPFromName,
+		SMTPUseTLS:               updatedSettings.SMTPUseTLS,
 		TurnstileEnabled:         updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:         updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKey:       updatedSettings.TurnstileSecretKey,
 		SiteName:                 updatedSettings.SiteName,
 		SiteLogo:                 updatedSettings.SiteLogo,
 		SiteSubtitle:             updatedSettings.SiteSubtitle,
-		ApiBaseUrl:               updatedSettings.ApiBaseUrl,
+		APIBaseURL:               updatedSettings.APIBaseURL,
 		ContactInfo:              updatedSettings.ContactInfo,
-		DocUrl:                   updatedSettings.DocUrl,
+		DocURL:                   updatedSettings.DocURL,
 		DefaultConcurrency:       updatedSettings.DefaultConcurrency,
 		DefaultBalance:           updatedSettings.DefaultBalance,
 		EnableModelFallback:      updatedSettings.EnableModelFallback,
@@ -221,30 +221,30 @@ REDACTED
 REDACTED)
 REDACTED
 
-// TestSmtpRequest 测试SMTP连接请求
-type TestSmtpRequest struct {
-	SmtpHost     string `json:"smtp_host" binding:"required"`
-	SmtpPort     int    `json:"smtp_port"`
-	SmtpUsername string `json:"smtp_username"`
-	SmtpPassword string `json:"smtp_password"`
-	SmtpUseTLS   bool   `json:"smtp_use_tls"`
+// TestSMTPRequest 测试SMTP连接请求
+type TestSMTPRequest struct {
+	SMTPHost     string `json:"smtp_host" binding:"required"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPUsername string `json:"smtp_username"`
+	SMTPPassword string `json:"smtp_password"`
+	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 REDACTED
 
 // TestSmtpConnection 测试SMTP连接
 // POST /api/v1/admin/settings/test-smtp
 func (h *SettingHandler) TestSmtpConnection(c *gin.Context) {
-	var req TestSmtpRequest
+	var req TestSMTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 REDACTED
 
-	if req.SmtpPort <= 0 {
-		req.SmtpPort = 587
+	if req.SMTPPort <= 0 {
+		req.SMTPPort = 587
 REDACTED
 
 	// 如果未提供密码，从数据库获取已保存的密码
-	password := req.SmtpPassword
+	password := req.SMTPPassword
 	if password == "" {
 		savedConfig, err := h.emailService.GetSmtpConfig(c.Request.Context())
 		if err == nil && savedConfig != nil {
@@ -253,11 +253,11 @@ REDACTED
 REDACTED
 
 	config := &service.SmtpConfig{
-		Host:     req.SmtpHost,
-		Port:     req.SmtpPort,
-		Username: req.SmtpUsername,
+		Host:     req.SMTPHost,
+		Port:     req.SMTPPort,
+		Username: req.SMTPUsername,
 		Password: password,
-		UseTLS:   req.SmtpUseTLS,
+		UseTLS:   req.SMTPUseTLS,
 REDACTED
 
 	err := h.emailService.TestSmtpConnectionWithConfig(config)
@@ -272,13 +272,13 @@ REDACTED
 // SendTestEmailRequest 发送测试邮件请求
 type SendTestEmailRequest struct {
 	Email        string `json:"email" binding:"required,email"`
-	SmtpHost     string `json:"smtp_host" binding:"required"`
-	SmtpPort     int    `json:"smtp_port"`
-	SmtpUsername string `json:"smtp_username"`
-	SmtpPassword string `json:"smtp_password"`
-	SmtpFrom     string `json:"smtp_from_email"`
-	SmtpFromName string `json:"smtp_from_name"`
-	SmtpUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost     string `json:"smtp_host" binding:"required"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPUsername string `json:"smtp_username"`
+	SMTPPassword string `json:"smtp_password"`
+	SMTPFrom     string `json:"smtp_from_email"`
+	SMTPFromName string `json:"smtp_from_name"`
+	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 REDACTED
 
 // SendTestEmail 发送测试邮件
@@ -290,12 +290,12 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 		return
 REDACTED
 
-	if req.SmtpPort <= 0 {
-		req.SmtpPort = 587
+	if req.SMTPPort <= 0 {
+		req.SMTPPort = 587
 REDACTED
 
 	// 如果未提供密码，从数据库获取已保存的密码
-	password := req.SmtpPassword
+	password := req.SMTPPassword
 	if password == "" {
 		savedConfig, err := h.emailService.GetSmtpConfig(c.Request.Context())
 		if err == nil && savedConfig != nil {
@@ -304,13 +304,13 @@ REDACTED
 REDACTED
 
 	config := &service.SmtpConfig{
-		Host:     req.SmtpHost,
-		Port:     req.SmtpPort,
-		Username: req.SmtpUsername,
+		Host:     req.SMTPHost,
+		Port:     req.SMTPPort,
+		Username: req.SMTPUsername,
 		Password: password,
-		From:     req.SmtpFrom,
-		FromName: req.SmtpFromName,
-		UseTLS:   req.SmtpUseTLS,
+		From:     req.SMTPFrom,
+		FromName: req.SMTPFromName,
+		UseTLS:   req.SMTPUseTLS,
 REDACTED
 
 	siteName := h.settingService.GetSiteName(c.Request.Context())

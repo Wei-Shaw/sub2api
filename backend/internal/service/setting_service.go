@@ -79,9 +79,9 @@ REDACTED
 		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
 		SiteLogo:            settings[SettingKeySiteLogo],
 		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		ApiBaseUrl:          settings[SettingKeyApiBaseUrl],
+		APIBaseURL:          settings[SettingKeyApiBaseUrl],
 		ContactInfo:         settings[SettingKeyContactInfo],
-		DocUrl:              settings[SettingKeyDocUrl],
+		DocURL:              settings[SettingKeyDocUrl],
 REDACTED, nil
 REDACTED
 
@@ -94,15 +94,15 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
 
 	// 邮件服务设置（只有非空才更新密码）
-	updates[SettingKeySmtpHost] = settings.SmtpHost
-	updates[SettingKeySmtpPort] = strconv.Itoa(settings.SmtpPort)
-	updates[SettingKeySmtpUsername] = settings.SmtpUsername
-	if settings.SmtpPassword != "" {
-		updates[SettingKeySmtpPassword] = settings.SmtpPassword
+	updates[SettingKeySmtpHost] = settings.SMTPHost
+	updates[SettingKeySmtpPort] = strconv.Itoa(settings.SMTPPort)
+	updates[SettingKeySmtpUsername] = settings.SMTPUsername
+	if settings.SMTPPassword != "" {
+		updates[SettingKeySmtpPassword] = settings.SMTPPassword
 REDACTED
-	updates[SettingKeySmtpFrom] = settings.SmtpFrom
-	updates[SettingKeySmtpFromName] = settings.SmtpFromName
-	updates[SettingKeySmtpUseTLS] = strconv.FormatBool(settings.SmtpUseTLS)
+	updates[SettingKeySmtpFrom] = settings.SMTPFrom
+	updates[SettingKeySmtpFromName] = settings.SMTPFromName
+	updates[SettingKeySmtpUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
@@ -115,9 +115,9 @@ REDACTED
 	updates[SettingKeySiteName] = settings.SiteName
 	updates[SettingKeySiteLogo] = settings.SiteLogo
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
-	updates[SettingKeyApiBaseUrl] = settings.ApiBaseUrl
+	updates[SettingKeyApiBaseUrl] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
-	updates[SettingKeyDocUrl] = settings.DocUrl
+	updates[SettingKeyDocUrl] = settings.DocURL
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -223,26 +223,26 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result := &SystemSettings{
 		RegistrationEnabled: settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:  settings[SettingKeyEmailVerifyEnabled] == "true",
-		SmtpHost:            settings[SettingKeySmtpHost],
-		SmtpUsername:        settings[SettingKeySmtpUsername],
-		SmtpFrom:            settings[SettingKeySmtpFrom],
-		SmtpFromName:        settings[SettingKeySmtpFromName],
-		SmtpUseTLS:          settings[SettingKeySmtpUseTLS] == "true",
+		SMTPHost:            settings[SettingKeySmtpHost],
+		SMTPUsername:        settings[SettingKeySmtpUsername],
+		SMTPFrom:            settings[SettingKeySmtpFrom],
+		SMTPFromName:        settings[SettingKeySmtpFromName],
+		SMTPUseTLS:          settings[SettingKeySmtpUseTLS] == "true",
 		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
 		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
 		SiteLogo:            settings[SettingKeySiteLogo],
 		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		ApiBaseUrl:          settings[SettingKeyApiBaseUrl],
+		APIBaseURL:          settings[SettingKeyApiBaseUrl],
 		ContactInfo:         settings[SettingKeyContactInfo],
-		DocUrl:              settings[SettingKeyDocUrl],
+		DocURL:              settings[SettingKeyDocUrl],
 REDACTED
 
 	// 解析整数类型
 	if port, err := strconv.Atoi(settings[SettingKeySmtpPort]); err == nil {
-		result.SmtpPort = port
+		result.SMTPPort = port
 REDACTED else {
-		result.SmtpPort = 587
+		result.SMTPPort = 587
 REDACTED
 
 	if concurrency, err := strconv.Atoi(settings[SettingKeyDefaultConcurrency]); err == nil {
@@ -259,7 +259,7 @@ REDACTED else {
 REDACTED
 
 	// 敏感信息直接返回，方便测试连接时使用
-	result.SmtpPassword = settings[SettingKeySmtpPassword]
+	result.SMTPPassword = settings[SettingKeySmtpPassword]
 	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
 
 	// Model fallback settings

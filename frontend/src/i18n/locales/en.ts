@@ -1252,28 +1252,33 @@ export default {
 	      REDACTED,
       // Gemini specific (platform-wide)
       gemini: {
+        helpButton: 'Help',
+        helpDialog: {
+          title: 'Gemini Usage Guide',
+          apiKeySection: 'API Key Links'
+        REDACTED,
         modelPassthrough: 'Gemini Model Passthrough',
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
         tier: {
-          label: 'Tier (Quota Level)',
+          label: 'Account Tier',
           hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
           aiStudioHint:
             'AI Studio quotas are per-model (Pro/Flash are limited independently). If billing is enabled, choose Pay-as-you-go.',
           googleOne: {
-            free: 'Google One Free (1000 RPD / 60 RPM, shared pool)',
-            pro: 'Google AI Pro (1500 RPD / 120 RPM, shared pool)',
-            ultra: 'Google AI Ultra (2000 RPD / 120 RPM, shared pool)'
+            free: 'Google One Free',
+            pro: 'Google One Pro',
+            ultra: 'Google One Ultra'
           REDACTED,
           gcp: {
-            standard: 'GCP Standard (1500 RPD / 120 RPM, shared pool)',
-            enterprise: 'GCP Enterprise (2000 RPD / 120 RPM, shared pool)'
+            standard: 'GCP Standard',
+            enterprise: 'GCP Enterprise'
           REDACTED,
           aiStudio: {
-            free: 'AI Studio Free Tier (Pro: 50 RPD / 2 RPM; Flash: 1500 RPD / 15 RPM)',
-            paid: 'AI Studio Pay-as-you-go (Pro: ∞ RPD / 1000 RPM; Flash: ∞ RPD / 2000 RPM)'
+            free: 'Google AI Free',
+            paid: 'Google AI Pay-as-you-go'
           REDACTED
         REDACTED,
         accountType: {

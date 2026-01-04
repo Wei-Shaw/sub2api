@@ -1391,26 +1391,31 @@ export default {
 	      REDACTED,
       // Gemini specific (platform-wide)
       gemini: {
+        helpButton: '使用帮助',
+        helpDialog: {
+          title: 'Gemini 使用指南',
+          apiKeySection: 'API Key 相关链接'
+        REDACTED,
         modelPassthrough: 'Gemini 直接转发模型',
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
         tier: {
-          label: 'Tier（配额等级）',
-          hint: '提示：系统会优先尝试自动识别 Tier；若自动识别不可用或失败，则使用你选择的 Tier 作为回退（本地模拟配额）。',
+          label: '账号等级',
+          hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
           aiStudioHint: 'AI Studio 的配额是按模型分别限流（Pro/Flash 独立）。若已绑卡（按量付费），请选 Pay-as-you-go。',
           googleOne: {
-            free: 'Google One Free（1000 RPD / 60 RPM，共享池）',
-            pro: 'Google AI Pro（1500 RPD / 120 RPM，共享池）',
-            ultra: 'Google AI Ultra（2000 RPD / 120 RPM，共享池）'
+            free: 'Google One Free',
+            pro: 'Google One Pro',
+            ultra: 'Google One Ultra'
           REDACTED,
           gcp: {
-            standard: 'GCP Standard（1500 RPD / 120 RPM，共享池）',
-            enterprise: 'GCP Enterprise（2000 RPD / 120 RPM，共享池）'
+            standard: 'GCP Standard',
+            enterprise: 'GCP Enterprise'
           REDACTED,
           aiStudio: {
-            free: 'AI Studio Free Tier（Pro: 50 RPD / 2 RPM；Flash: 1500 RPD / 15 RPM）',
-            paid: 'AI Studio Pay-as-you-go（Pro: ∞ RPD / 1000 RPM；Flash: ∞ RPD / 2000 RPM）'
+            free: 'Google AI Free',
+            paid: 'Google AI Pay-as-you-go'
           REDACTED
         REDACTED,
         accountType: {

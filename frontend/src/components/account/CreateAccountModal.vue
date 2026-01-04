@@ -338,7 +338,19 @@
 
       <!-- Account Type Selection (Gemini) -->
       <div v-if="form.platform === 'gemini'">
-        <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
+        <div class="flex items-center justify-between">
+          <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
+          <button
+            type="button"
+            @click="showGeminiHelpDialog = true"
+            class="flex items-center gap-1 rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+          >
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+            </svg>
+            {{ t('admin.accounts.gemini.helpButton') REDACTEDREDACTED
+          </button>
+        </div>
         <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
             type="button"
@@ -438,15 +450,6 @@
               rel="noreferrer"
             >
               {{ t('admin.accounts.gemini.accountType.apiKeyLink') REDACTEDREDACTED
-            </a>
-            <span class="text-purple-400">·</span>
-            <a
-              :href="geminiHelpLinks.aiStudioPricing"
-              class="font-medium text-blue-600 hover:underline dark:text-blue-400"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {{ t('admin.accounts.gemini.accountType.quotaLink') REDACTEDREDACTED
             </a>
           </div>
         </div>
@@ -686,79 +689,6 @@
             </select>
           </div>
           <p class="input-hint">{{ t('admin.accounts.gemini.tier.hint') REDACTEDREDACTED</p>
-        </div>
-
-        <div class="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-200">
-          <div class="flex items-start gap-3">
-            <svg
-              class="h-5 w-5 flex-shrink-0 text-blue-600 dark:text-blue-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-blue-800 dark:text-blue-300">
-                {{ t('admin.accounts.gemini.setupGuide.title') REDACTEDREDACTED
-              </p>
-              <div class="mt-2 space-y-2">
-                <div>
-                  <p class="font-semibold text-blue-800 dark:text-blue-300">
-                    {{ t('admin.accounts.gemini.setupGuide.checklistTitle') REDACTEDREDACTED
-                  </p>
-                  <ul class="mt-1 list-disc space-y-1 pl-4">
-                    <li>
-                      {{ t('admin.accounts.gemini.setupGuide.checklistItems.usIp') REDACTEDREDACTED
-                      <a
-                        :href="geminiHelpLinks.countryCheck"
-                        class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ t('admin.accounts.gemini.setupGuide.links.countryCheck') REDACTEDREDACTED
-                      </a>
-                    </li>
-                    <li>{{ t('admin.accounts.gemini.setupGuide.checklistItems.age') REDACTEDREDACTED</li>
-                  </ul>
-                </div>
-                <div>
-                  <p class="font-semibold text-blue-800 dark:text-blue-300">
-                    {{ t('admin.accounts.gemini.setupGuide.activationTitle') REDACTEDREDACTED
-                  </p>
-                  <ul class="mt-1 list-disc space-y-1 pl-4">
-                    <li>
-                      {{ t('admin.accounts.gemini.setupGuide.activationItems.geminiWeb') REDACTEDREDACTED
-                      <a
-                        :href="geminiHelpLinks.geminiWebActivation"
-                        class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ t('admin.accounts.gemini.setupGuide.links.geminiWebActivation') REDACTEDREDACTED
-                      </a>
-                    </li>
-                    <li>
-                      {{ t('admin.accounts.gemini.setupGuide.activationItems.gcpProject') REDACTEDREDACTED
-                      <a
-                        :href="geminiHelpLinks.gcpProject"
-                        class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {{ t('admin.accounts.gemini.setupGuide.links.gcpProject') REDACTEDREDACTED
-                      </a>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1188,165 +1118,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Gemini 配额与限流政策说明 -->
-        <div v-if="form.platform === 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/40">
-            <div class="flex items-start gap-3">
-              <svg
-                class="h-5 w-5 flex-shrink-0 text-gray-500 dark:text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                />
-              </svg>
-              <div class="min-w-0">
-                <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
-                  {{ t('admin.accounts.gemini.quotaPolicy.title') REDACTEDREDACTED
-                </p>
-                <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                  {{ t('admin.accounts.gemini.quotaPolicy.note') REDACTEDREDACTED
-                </p>
-                <div class="mt-3 overflow-x-auto">
-                  <table class="min-w-full text-xs text-gray-700 dark:text-gray-300">
-                    <thead>
-                      <tr class="border-b border-gray-200 dark:border-gray-700">
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.channel') REDACTEDREDACTED
-                        </th>
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.account') REDACTEDREDACTED
-                        </th>
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.limits') REDACTEDREDACTED
-                        </th>
-                        <th class="px-2 py-1.5 text-left font-semibold">
-                          {{ t('admin.accounts.gemini.quotaPolicy.columns.docs') REDACTEDREDACTED
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.free') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.limitsFree') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          <a
-                            :href="geminiQuotaDocs.codeAssist"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.codeAssist') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.premium') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.cli.limitsPremium') REDACTEDREDACTED
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5 align-top">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.gcloud.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.gcloud.account') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.gcloud.limits') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top">
-                          <a
-                            :href="geminiQuotaDocs.codeAssist"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.codeAssist') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.free') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsFree') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          <a
-                            :href="geminiQuotaDocs.aiStudio"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.aiStudio') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr class="border-b border-gray-100 dark:border-gray-800">
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.paid') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsPaid') REDACTEDREDACTED
-                        </td>
-                      </tr>
-                      <tr>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.channel') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.free') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.limitsFree') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5 align-top" rowspan="2">
-                          <a
-                            :href="geminiQuotaDocs.vertex"
-                            class="text-blue-600 hover:underline dark:text-blue-400"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {{ t('admin.accounts.gemini.quotaPolicy.docs.vertex') REDACTEDREDACTED
-                          </a>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.paid') REDACTEDREDACTED
-                        </td>
-                        <td class="px-2 py-1.5">
-                          {{ t('admin.accounts.gemini.quotaPolicy.rows.customOAuth.limitsPaid') REDACTEDREDACTED
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- Temp Unschedulable Rules -->
@@ -1717,6 +1488,214 @@
       </div>
     </template>
   </BaseDialog>
+
+  <!-- Gemini Help Dialog -->
+  <BaseDialog
+    :show="showGeminiHelpDialog"
+    :title="t('admin.accounts.gemini.helpDialog.title')"
+    @close="showGeminiHelpDialog = false"
+    max-width="max-w-3xl"
+  >
+    <div class="space-y-6">
+      <!-- Setup Guide Section -->
+      <div>
+        <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('admin.accounts.gemini.setupGuide.title') REDACTEDREDACTED
+        </h3>
+        <div class="space-y-4">
+          <div>
+            <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.gemini.setupGuide.checklistTitle') REDACTEDREDACTED
+            </p>
+            <ul class="list-inside list-disc space-y-1 text-sm text-gray-600 dark:text-gray-400">
+              <li>{{ t('admin.accounts.gemini.setupGuide.checklistItems.usIp') REDACTEDREDACTED</li>
+              <li>{{ t('admin.accounts.gemini.setupGuide.checklistItems.age') REDACTEDREDACTED</li>
+            </ul>
+          </div>
+          <div>
+            <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.gemini.setupGuide.activationTitle') REDACTEDREDACTED
+            </p>
+            <ul class="list-inside list-disc space-y-1 text-sm text-gray-600 dark:text-gray-400">
+              <li>{{ t('admin.accounts.gemini.setupGuide.activationItems.geminiWeb') REDACTEDREDACTED</li>
+              <li>{{ t('admin.accounts.gemini.setupGuide.activationItems.gcpProject') REDACTEDREDACTED</li>
+            </ul>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <a
+                href="https://gemini.google.com/faq#location"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {{ t('admin.accounts.gemini.setupGuide.links.countryCheck') REDACTEDREDACTED
+              </a>
+              <span class="text-gray-400">·</span>
+              <a
+                href="https://gemini.google.com"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {{ t('admin.accounts.gemini.setupGuide.links.geminiWebActivation') REDACTEDREDACTED
+              </a>
+              <span class="text-gray-400">·</span>
+              <a
+                href="https://console.cloud.google.com"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {{ t('admin.accounts.gemini.setupGuide.links.gcpProject') REDACTEDREDACTED
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quota Policy Section -->
+      <div class="border-t border-gray-200 pt-6 dark:border-dark-600">
+        <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('admin.accounts.gemini.quotaPolicy.title') REDACTEDREDACTED
+        </h3>
+        <p class="mb-4 text-xs text-amber-600 dark:text-amber-400">
+          {{ t('admin.accounts.gemini.quotaPolicy.note') REDACTEDREDACTED
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 dark:bg-dark-600">
+              <tr>
+                <th class="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.accounts.gemini.quotaPolicy.columns.channel') REDACTEDREDACTED
+                </th>
+                <th class="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.accounts.gemini.quotaPolicy.columns.account') REDACTEDREDACTED
+                </th>
+                <th class="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.accounts.gemini.quotaPolicy.columns.limits') REDACTEDREDACTED
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-dark-600">
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.channel') REDACTEDREDACTED
+                </td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Free</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsFree') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Pro</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsPro') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Ultra</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.googleOne.limitsUltra') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.gcp.channel') REDACTEDREDACTED
+                </td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Standard</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.gcp.limitsStandard') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Enterprise</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.gcp.limitsEnterprise') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.channel') REDACTEDREDACTED
+                </td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Free</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsFree') REDACTEDREDACTED
+                </td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 text-gray-900 dark:text-white"></td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Paid</td>
+                <td class="px-3 py-2 text-gray-600 dark:text-gray-400">
+                  {{ t('admin.accounts.gemini.quotaPolicy.rows.aiStudio.limitsPaid') REDACTEDREDACTED
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <a
+            :href="geminiQuotaDocs.codeAssist"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.quotaPolicy.docs.codeAssist') REDACTEDREDACTED
+          </a>
+          <a
+            :href="geminiQuotaDocs.aiStudio"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.quotaPolicy.docs.aiStudio') REDACTEDREDACTED
+          </a>
+          <a
+            :href="geminiQuotaDocs.vertex"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.quotaPolicy.docs.vertex') REDACTEDREDACTED
+          </a>
+        </div>
+      </div>
+
+      <!-- API Key Links Section -->
+      <div class="border-t border-gray-200 pt-6 dark:border-dark-600">
+        <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('admin.accounts.gemini.helpDialog.apiKeySection') REDACTEDREDACTED
+        </h3>
+        <div class="flex flex-wrap gap-3">
+          <a
+            :href="geminiHelpLinks.apiKey"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.accountType.apiKeyLink') REDACTEDREDACTED
+          </a>
+          <a
+            :href="geminiHelpLinks.aiStudioPricing"
+            target="_blank"
+            rel="noreferrer"
+            class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          >
+            {{ t('admin.accounts.gemini.accountType.quotaLink') REDACTEDREDACTED
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <template #footer>
+      <div class="flex justify-end">
+        <button @click="showGeminiHelpDialog = false" type="button" class="btn btn-primary">
+          {{ t('common.close') REDACTEDREDACTED
+        </button>
+      </div>
+    </template>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
@@ -1860,6 +1839,7 @@ const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
 const showAdvancedOAuth = ref(false)
+const showGeminiHelpDialog = ref(false)
 
 // Gemini tier selection (used as fallback when auto-detection is unavailable/fails)
 const geminiTierGoogleOne = ref<'google_one_free' | 'google_ai_pro' | 'google_ai_ultra'>('google_one_free')
