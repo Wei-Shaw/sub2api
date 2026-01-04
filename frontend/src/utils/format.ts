@@ -153,3 +153,31 @@ export function formatTime(date: string | Date | null | undefined): string {
     hour12: false
   REDACTED)
 REDACTED
+
+/**
+ * 格式化数字（千分位分隔，不使用紧凑单位）
+ * @param num 数字
+ * @returns 格式化后的字符串，如 "12,345"
+ */
+export function formatNumberLocaleString(num: number): string {
+  return num.toLocaleString()
+REDACTED
+
+/**
+ * 格式化金额（固定小数位，不带货币符号）
+ * @param amount 金额
+ * @param fractionDigits 小数位数，默认 4
+ * @returns 格式化后的字符串，如 "1.2345"
+ */
+export function formatCostFixed(amount: number, fractionDigits: number = 4): string {
+  return amount.toFixed(fractionDigits)
+REDACTED
+
+/**
+ * 格式化 token 数量（>=1000 显示为 K，保留 1 位小数）
+ * @param tokens token 数量
+ * @returns 格式化后的字符串，如 "950", "1.2K"
+ */
+export function formatTokensK(tokens: number): string {
+  return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)REDACTEDK` : tokens.toString()
+REDACTED

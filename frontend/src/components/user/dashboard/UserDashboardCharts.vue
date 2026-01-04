@@ -1,31 +1,151 @@
 <template>
   <div class="space-y-6">
-    <div class="card p-4 flex flex-wrap items-center gap-4">
-      <DateRangePicker :start-date="startDate" :end-date="endDate" @update:startDate="$emit('update:startDate', $event)" @update:endDate="$emit('update:endDate', $event)" @change="$emit('dateRangeChange', $event)" />
-      <div class="ml-auto w-28"><Select :model-value="granularity" :options="[{value:'day', label:t('dashboard.day')REDACTED, {value:'hour', label:t('dashboard.hour')REDACTED]" @update:model-value="$emit('update:granularity', $event)" @change="$emit('granularityChange')" /></div>
-    </div>
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <div class="card p-4 min-h-[300px] relative"><div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/50"><LoadingSpinner /></div>
-        <h3 class="mb-4 font-semibold">{{ t('dashboard.modelDistribution') REDACTEDREDACTED</h3>
-        <div class="h-48"><Doughnut v-if="modelData" :data="modelData" :options="{maintainAspectRatio:falseREDACTED" /></div>
+    <!-- Date Range Filter -->
+    <div class="card p-4">
+      <div class="flex flex-wrap items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.timeRange') REDACTEDREDACTED:</span>
+          <DateRangePicker :start-date="startDate" :end-date="endDate" @update:startDate="$emit('update:startDate', $event)" @update:endDate="$emit('update:endDate', $event)" @change="$emit('dateRangeChange', $event)" />
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('dashboard.granularity') REDACTEDREDACTED:</span>
+          <div class="w-28">
+            <Select :model-value="granularity" :options="[{value:'day', label:t('dashboard.day')REDACTED, {value:'hour', label:t('dashboard.hour')REDACTED]" @update:model-value="$emit('update:granularity', $event)" @change="$emit('granularityChange')" />
+          </div>
+        </div>
       </div>
-      <div class="card p-4 min-h-[300px] relative"><div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/50"><LoadingSpinner /></div>
-        <h3 class="mb-4 font-semibold">{{ t('dashboard.tokenUsageTrend') REDACTEDREDACTED</h3>
-        <div class="h-48"><Line v-if="trendData" :data="trendData" :options="{maintainAspectRatio:falseREDACTED" /></div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <!-- Model Distribution Chart -->
+      <div class="card relative overflow-hidden p-4">
+        <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm dark:bg-dark-800/50">
+          <LoadingSpinner size="md" />
+        </div>
+        <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('dashboard.modelDistribution') REDACTEDREDACTED</h3>
+        <div class="flex items-center gap-6">
+          <div class="h-48 w-48">
+            <Doughnut v-if="modelData" :data="modelData" :options="doughnutOptions" />
+            <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('dashboard.noDataAvailable') REDACTEDREDACTED</div>
+          </div>
+          <div class="max-h-48 flex-1 overflow-y-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-gray-500 dark:text-gray-400">
+                  <th class="pb-2 text-left">{{ t('dashboard.model') REDACTEDREDACTED</th>
+                  <th class="pb-2 text-right">{{ t('dashboard.requests') REDACTEDREDACTED</th>
+                  <th class="pb-2 text-right">{{ t('dashboard.tokens') REDACTEDREDACTED</th>
+                  <th class="pb-2 text-right">{{ t('dashboard.actual') REDACTEDREDACTED</th>
+                  <th class="pb-2 text-right">{{ t('dashboard.standard') REDACTEDREDACTED</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="model in models" :key="model.model" class="border-t border-gray-100 dark:border-gray-700">
+                  <td class="max-w-[100px] truncate py-1.5 font-medium text-gray-900 dark:text-white" :title="model.model">{{ model.model REDACTEDREDACTED</td>
+                  <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">{{ formatNumber(model.requests) REDACTEDREDACTED</td>
+                  <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">{{ formatTokens(model.total_tokens) REDACTEDREDACTED</td>
+                  <td class="py-1.5 text-right text-green-600 dark:text-green-400">${{ formatCost(model.actual_cost) REDACTEDREDACTED</td>
+                  <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">${{ formatCost(model.cost) REDACTEDREDACTED</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Token Usage Trend Chart -->
+      <div class="card relative overflow-hidden p-4">
+        <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm dark:bg-dark-800/50">
+          <LoadingSpinner size="md" />
+        </div>
+        <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('dashboard.tokenUsageTrend') REDACTEDREDACTED</h3>
+        <div class="h-48">
+          <Line v-if="trendData" :data="trendData" :options="lineOptions" />
+          <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('dashboard.noDataAvailable') REDACTEDREDACTED</div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed REDACTED from 'vue'; import { useI18n REDACTED from 'vue-i18n'; import LoadingSpinner from '@/components/common/LoadingSpinner.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'; import Select from '@/components/common/Select.vue'; import { Line, Doughnut REDACTED from 'vue-chartjs'
+import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
+import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import Select from '@/components/common/Select.vue'
+import { Line, Doughnut REDACTED from 'vue-chartjs'
 import type { TrendDataPoint, ModelStat REDACTED from '@/types'
+import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens REDACTED from '@/utils/format'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler REDACTED from 'chart.js'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
 
 const props = defineProps<{ loading: boolean, startDate: string, endDate: string, granularity: string, trend: TrendDataPoint[], models: ModelStat[] REDACTED>()
 defineEmits(['update:startDate', 'update:endDate', 'update:granularity', 'dateRangeChange', 'granularityChange'])
 const { t REDACTED = useI18n()
-const modelData = computed(() => !props.models?.length ? null : { labels: props.models.map((m:ModelStat) => m.model), datasets: [{ data: props.models.map((m:ModelStat) => m.total_tokens), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'] REDACTED] REDACTED)
-const trendData = computed(() => !props.trend?.length ? null : { labels: props.trend.map((d:TrendDataPoint) => d.date), datasets: [{ label: 'Input', data: props.trend.map((d:TrendDataPoint) => d.input_tokens), borderColor: '#3b82f6', tension: 0.3 REDACTED] REDACTED)
+
+const modelData = computed(() => !props.models?.length ? null : {
+  labels: props.models.map((m: ModelStat) => m.model),
+  datasets: [{
+    data: props.models.map((m: ModelStat) => m.total_tokens),
+    backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
+  REDACTED]
+REDACTED)
+
+const trendData = computed(() => !props.trend?.length ? null : {
+  labels: props.trend.map((d: TrendDataPoint) => d.date),
+  datasets: [
+    {
+      label: t('dashboard.input'),
+      data: props.trend.map((d: TrendDataPoint) => d.input_tokens),
+      borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      tension: 0.3,
+      fill: true
+    REDACTED,
+    {
+      label: t('dashboard.output'),
+      data: props.trend.map((d: TrendDataPoint) => d.output_tokens),
+      borderColor: '#10b981',
+      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+      tension: 0.3,
+      fill: true
+    REDACTED
+  ]
+REDACTED)
+
+const doughnutOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false REDACTED,
+    tooltip: {
+      callbacks: {
+        label: (context: any) => `${context.labelREDACTED: ${formatTokens(context.parsed)REDACTED tokens`
+      REDACTED
+    REDACTED
+  REDACTED
+REDACTED
+
+const lineOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: true, position: 'top' as const REDACTED,
+    tooltip: {
+      callbacks: {
+        label: (context: any) => `${context.dataset.labelREDACTED: ${formatTokens(context.parsed.y)REDACTED tokens`
+      REDACTED
+    REDACTED
+  REDACTED,
+  scales: {
+    y: {
+      beginAtZero: true,
+      ticks: {
+        callback: (value: any) => formatTokens(value)
+      REDACTED
+    REDACTED
+  REDACTED
+REDACTED
 </script>
