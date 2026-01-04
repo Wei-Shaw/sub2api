@@ -78,7 +78,7 @@ REDACTED
 
 	txCtx := ctx
 	if err == nil {
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() REDACTED()
 		txCtx = dbent.NewTxContext(ctx, tx)
 REDACTED
 
