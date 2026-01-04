@@ -2,7 +2,7 @@ package service
 
 import "time"
 
-type ApiKey struct {
+type APIKey struct {
 	ID        int64
 	UserID    int64
 	Key       string
@@ -15,6 +15,6 @@ type ApiKey struct {
 	Group     *Group
 REDACTED
 
-func (k *ApiKey) IsActive() bool {
+func (k *APIKey) IsActive() bool {
 	return k.Status == StatusActive
 REDACTED

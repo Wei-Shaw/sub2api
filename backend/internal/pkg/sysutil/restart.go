@@ -1,3 +1,4 @@
+// Package sysutil provides system-level utilities for process management.
 package sysutil
 
 import (

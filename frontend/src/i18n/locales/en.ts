@@ -150,6 +150,9 @@ export default {
     noOptionsFound: 'No options found',
     saving: 'Saving...',
     refresh: 'Refresh',
+    notAvailable: 'N/A',
+    now: 'Now',
+    unknown: 'Unknown',
     time: {
       never: 'Never',
       justNow: 'Just now',
@@ -812,11 +815,6 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity'
       REDACTED,
-      statuses: {
-        active: 'Active',
-        inactive: 'Inactive',
-        error: 'Error'
-      REDACTED,
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
       deleteConfirmSubscription:
@@ -957,6 +955,61 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth'
       REDACTED,
+      status: {
+        active: 'Active',
+        inactive: 'Inactive',
+        error: 'Error',
+        cooldown: 'Cooldown',
+        paused: 'Paused',
+        limited: 'Limited',
+        tempUnschedulable: 'Temp Unschedulable',
+        rateLimitedUntil: 'Rate limited until {timeREDACTED',
+        overloadedUntil: 'Overloaded until {timeREDACTED',
+        viewTempUnschedDetails: 'View temp unschedulable details'
+      REDACTED,
+      tempUnschedulable: {
+        title: 'Temp Unschedulable',
+        statusTitle: 'Temp Unschedulable Status',
+        hint: 'Disable accounts temporarily when error code and keyword both match.',
+        notice: 'Rules are evaluated in order and require both error code and keyword match.',
+        addRule: 'Add Rule',
+        ruleOrder: 'Rule Order',
+        ruleIndex: 'Rule #{indexREDACTED',
+        errorCode: 'Error Code',
+        errorCodePlaceholder: 'e.g. 429',
+        durationMinutes: 'Duration (minutes)',
+        durationPlaceholder: 'e.g. 30',
+        keywords: 'Keywords',
+        keywordsPlaceholder: 'e.g. overloaded, too many requests',
+        keywordsHint: 'Separate keywords with commas; any keyword match will trigger.',
+        description: 'Description',
+        descriptionPlaceholder: 'Optional note for this rule',
+        rulesInvalid: 'Add at least one rule with error code, keywords, and duration.',
+        viewDetails: 'View temp unschedulable details',
+        accountName: 'Account',
+        triggeredAt: 'Triggered At',
+        until: 'Until',
+        remaining: 'Remaining',
+        matchedKeyword: 'Matched Keyword',
+        errorMessage: 'Error Details',
+        reset: 'Reset Status',
+        resetSuccess: 'Temp unschedulable status reset',
+        resetFailed: 'Failed to reset temp unschedulable status',
+        failedToLoad: 'Failed to load temp unschedulable status',
+        notActive: 'This account is not temporarily unschedulable.',
+        expired: 'Expired',
+        remainingMinutes: 'About {minutesREDACTED minutes',
+        remainingHours: 'About {hoursREDACTED hours',
+        remainingHoursMinutes: 'About {hoursREDACTED hours {minutesREDACTED minutes',
+        presets: {
+          overloadLabel: '529 Overloaded',
+          overloadDesc: 'Overloaded - pause 60 minutes',
+          rateLimitLabel: '429 Rate Limit',
+          rateLimitDesc: 'Rate limited - pause 10 minutes',
+          unavailableLabel: '503 Unavailable',
+          unavailableDesc: 'Unavailable - pause 30 minutes'
+        REDACTED
+      REDACTED,
       columns: {
         name: 'Name',
         platformType: 'Platform/Type',
@@ -981,16 +1034,6 @@ export default {
       tokenRefreshed: 'Token refreshed successfully',
       accountDeleted: 'Account deleted successfully',
       rateLimitCleared: 'Rate limit cleared successfully',
-      statuses: {
-        active: 'Active',
-        inactive: 'Inactive',
-        error: 'Error',
-        cooldown: 'Cooldown',
-        paused: 'Paused',
-        limited: 'Limited',
-        rateLimitedUntil: 'Rate limited until {timeREDACTED',
-        overloadedUntil: 'Overloaded until {timeREDACTED'
-      REDACTED,
       bulkActions: {
         selected: '{countREDACTED account(s) selected',
         selectCurrentPage: 'Select this page',
@@ -1238,11 +1281,35 @@ export default {
 	      REDACTED,
       // Gemini specific (platform-wide)
       gemini: {
+        helpButton: 'Help',
+        helpDialog: {
+          title: 'Gemini Usage Guide',
+          apiKeySection: 'API Key Links'
+        REDACTED,
         modelPassthrough: 'Gemini Model Passthrough',
         modelPassthroughDesc:
           'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
+        tier: {
+          label: 'Account Tier',
+          hint: 'Tip: The system will try to auto-detect the tier first; if auto-detection is unavailable or fails, your selected tier is used as a fallback (simulated quota).',
+          aiStudioHint:
+            'AI Studio quotas are per-model (Pro/Flash are limited independently). If billing is enabled, choose Pay-as-you-go.',
+          googleOne: {
+            free: 'Google One Free',
+            pro: 'Google One Pro',
+            ultra: 'Google One Ultra'
+          REDACTED,
+          gcp: {
+            standard: 'GCP Standard',
+            enterprise: 'GCP Enterprise'
+          REDACTED,
+          aiStudio: {
+            free: 'Google AI Free',
+            paid: 'Google AI Pay-as-you-go'
+          REDACTED
+        REDACTED,
         accountType: {
           oauthTitle: 'OAuth (Gemini)',
           oauthDesc: 'Authorize with your Google account and choose an OAuth type.',
@@ -1303,6 +1370,17 @@ export default {
           REDACTED,
           simulatedNote: 'Simulated quota, for reference only',
           rows: {
+            googleOne: {
+              channel: 'Google One OAuth (Individuals / Code Assist for Individuals)',
+              limitsFree: 'Shared pool: 1000 RPD / 60 RPM',
+              limitsPro: 'Shared pool: 1500 RPD / 120 RPM',
+              limitsUltra: 'Shared pool: 2000 RPD / 120 RPM'
+            REDACTED,
+            gcp: {
+              channel: 'GCP Code Assist OAuth (Enterprise)',
+              limitsStandard: 'Shared pool: 1500 RPD / 120 RPM',
+              limitsEnterprise: 'Shared pool: 2000 RPD / 120 RPM'
+            REDACTED,
             cli: {
               channel: 'Gemini CLI (Official Google Login / Code Assist)',
               free: 'Free Google Account',
@@ -1320,7 +1398,7 @@ export default {
               free: 'No billing (free tier)',
               paid: 'Billing enabled (pay-as-you-go)',
               limitsFree: 'RPD 50; RPM 2 (Pro) / 15 (Flash)',
-              limitsPaid: 'RPD unlimited; RPM 1000+ (per model quota)'
+              limitsPaid: 'RPD unlimited; RPM 1000 (Pro) / 2000 (Flash) (per model)'
             REDACTED,
             customOAuth: {
               channel: 'Custom OAuth Client (GCP)',
@@ -1333,6 +1411,7 @@ export default {
         REDACTED,
         rateLimit: {
           ok: 'Not rate limited',
+          unlimited: 'Unlimited',
           limited: 'Rate limited {timeREDACTED',
           now: 'now'
         REDACTED
@@ -1438,11 +1517,6 @@ export default {
         https: 'HTTPS',
         socks5: 'SOCKS5',
         socks5h: 'SOCKS5H (Remote DNS)'
-      REDACTED,
-      statuses: {
-        active: 'Active',
-        inactive: 'Inactive',
-        error: 'Error'
       REDACTED,
       columns: {
         name: 'Name',
@@ -1561,7 +1635,13 @@ export default {
       selectGroupPlaceholder: 'Choose a subscription group',
       validityDays: 'Validity Days',
       groupRequired: 'Please select a subscription group',
-      days: ' days'
+      days: ' days',
+      status: {
+        unused: 'Unused',
+        used: 'Used',
+        expired: 'Expired',
+        disabled: 'Disabled'
+      REDACTED
     REDACTED,
 
     // Usage Records
@@ -1612,6 +1692,7 @@ export default {
         siteKey: 'Site Key',
         secretKey: 'Secret Key',
         siteKeyHint: 'Get this from your Cloudflare Dashboard',
+        cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: 'Server-side verification key (keep this secret)'
       REDACTED,
       defaults: {
@@ -1762,6 +1843,7 @@ export default {
     noActiveSubscriptions: 'No Active Subscriptions',
     noActiveSubscriptionsDesc:
       "You don't have any active subscriptions. Contact administrator to get one.",
+    failedToLoad: 'Failed to load subscriptions',
     status: {
       active: 'Active',
       expired: 'Expired',

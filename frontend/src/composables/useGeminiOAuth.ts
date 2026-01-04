@@ -12,6 +12,8 @@ export interface GeminiTokenInfo {
   expires_at?: number | string
   project_id?: string
   oauth_type?: string
+  tier_id?: string
+  extra?: Record<string, unknown>
   [key: string]: unknown
 REDACTED
 
@@ -36,7 +38,8 @@ export function useGeminiOAuth() {
   const generateAuthUrl = async (
     proxyId: number | null | undefined,
     projectId?: string | null,
-    oauthType?: string
+    oauthType?: string,
+    tierId?: string
   ): Promise<boolean> => {
     loading.value = true
     authUrl.value = ''
@@ -50,6 +53,8 @@ export function useGeminiOAuth() {
       const trimmedProjectID = projectId?.trim()
       if (trimmedProjectID) payload.project_id = trimmedProjectID
       if (oauthType) payload.oauth_type = oauthType
+      const trimmedTierID = tierId?.trim()
+      if (trimmedTierID) payload.tier_id = trimmedTierID
 
       const response = await adminAPI.gemini.generateAuthUrl(payload as any)
       authUrl.value = response.auth_url
@@ -71,6 +76,7 @@ export function useGeminiOAuth() {
     state: string
     proxyId?: number | null
     oauthType?: string
+    tierId?: string
   REDACTED): Promise<GeminiTokenInfo | null> => {
     const code = params.code?.trim()
     if (!code || !params.sessionId || !params.state) {
@@ -89,6 +95,8 @@ export function useGeminiOAuth() {
       REDACTED
       if (params.proxyId) payload.proxy_id = params.proxyId
       if (params.oauthType) payload.oauth_type = params.oauthType
+      const trimmedTierID = params.tierId?.trim()
+      if (trimmedTierID) payload.tier_id = trimmedTierID
 
       const tokenInfo = await adminAPI.gemini.exchangeCode(payload as any)
       return tokenInfo as GeminiTokenInfo
@@ -122,8 +130,14 @@ export function useGeminiOAuth() {
       expires_at: expiresAt,
       scope: tokenInfo.scope,
       project_id: tokenInfo.project_id,
-      oauth_type: tokenInfo.oauth_type
+      oauth_type: tokenInfo.oauth_type,
+      tier_id: tokenInfo.tier_id
     REDACTED
+  REDACTED
+
+  const buildExtraInfo = (tokenInfo: GeminiTokenInfo): Record<string, unknown> | undefined => {
+    if (!tokenInfo.extra || typeof tokenInfo.extra !== 'object') return undefined
+    return tokenInfo.extra
   REDACTED
 
   const getCapabilities = async (): Promise<GeminiOAuthCapabilities | null> => {
@@ -145,6 +159,7 @@ export function useGeminiOAuth() {
     generateAuthUrl,
     exchangeAuthCode,
     buildCredentials,
+    buildExtraInfo,
     getCapabilities
   REDACTED
 REDACTED

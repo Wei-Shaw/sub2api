@@ -37,12 +37,12 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// APIKey is the client for interacting with the APIKey builders.
+	APIKey *APIKeyClient
 	// Account is the client for interacting with the Account builders.
 	Account *AccountClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
 	AccountGroup *AccountGroupClient
-	// ApiKey is the client for interacting with the ApiKey builders.
-	ApiKey *ApiKeyClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
 	// Proxy is the client for interacting with the Proxy builders.
@@ -74,9 +74,9 @@ REDACTED
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.APIKey = NewAPIKeyClient(c.config)
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
-	c.ApiKey = NewApiKeyClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
@@ -179,9 +179,9 @@ REDACTED
 	return &Tx{
 		ctx:                     ctx,
 		config:                  cfg,
+		APIKey:                  NewAPIKeyClient(cfg),
 		Account:                 NewAccountClient(cfg),
 		AccountGroup:            NewAccountGroupClient(cfg),
-		ApiKey:                  NewApiKeyClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
@@ -211,9 +211,9 @@ REDACTED
 	return &Tx{
 		ctx:                     ctx,
 		config:                  cfg,
+		APIKey:                  NewAPIKeyClient(cfg),
 		Account:                 NewAccountClient(cfg),
 		AccountGroup:            NewAccountGroupClient(cfg),
-		ApiKey:                  NewApiKeyClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
@@ -230,7 +230,7 @@ REDACTED
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Account.
+//		APIKey.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -253,7 +253,7 @@ REDACTED
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) REDACTED{
-		c.Account, c.AccountGroup, c.ApiKey, c.Group, c.Proxy, c.RedeemCode, c.Setting,
+		c.APIKey, c.Account, c.AccountGroup, c.Group, c.Proxy, c.RedeemCode, c.Setting,
 		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
 		c.UserAttributeValue, c.UserSubscription,
 REDACTED {
@@ -265,7 +265,7 @@ REDACTED
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) REDACTED{
-		c.Account, c.AccountGroup, c.ApiKey, c.Group, c.Proxy, c.RedeemCode, c.Setting,
+		c.APIKey, c.Account, c.AccountGroup, c.Group, c.Proxy, c.RedeemCode, c.Setting,
 		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
 		c.UserAttributeValue, c.UserSubscription,
 REDACTED {
@@ -276,12 +276,12 @@ REDACTED
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *APIKeyMutation:
+		return c.APIKey.mutate(ctx, m)
 	case *AccountMutation:
 		return c.Account.mutate(ctx, m)
 	case *AccountGroupMutation:
 		return c.AccountGroup.mutate(ctx, m)
-	case *ApiKeyMutation:
-		return c.ApiKey.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
 	case *ProxyMutation:
@@ -304,6 +304,189 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserSubscription.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+REDACTED
+REDACTED
+
+// APIKeyClient is a client for the APIKey schema.
+type APIKeyClient struct {
+	config
+REDACTED
+
+// NewAPIKeyClient returns a client for the APIKey from the given config.
+func NewAPIKeyClient(c config) *APIKeyClient {
+	return &APIKeyClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `apikey.Hooks(f(g(h())))`.
+func (c *APIKeyClient) Use(hooks ...Hook) {
+	c.hooks.APIKey = append(c.hooks.APIKey, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `apikey.Intercept(f(g(h())))`.
+func (c *APIKeyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.APIKey = append(c.inters.APIKey, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a APIKey entity.
+func (c *APIKeyClient) Create() *APIKeyCreate {
+	mutation := newAPIKeyMutation(c.config, OpCreate)
+	return &APIKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of APIKey entities.
+func (c *APIKeyClient) CreateBulk(builders ...*APIKeyCreate) *APIKeyCreateBulk {
+	return &APIKeyCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *APIKeyClient) MapCreateBulk(slice any, setFunc func(*APIKeyCreate, int)) *APIKeyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &APIKeyCreateBulk{err: fmt.Errorf("calling to APIKeyClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*APIKeyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &APIKeyCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for APIKey.
+func (c *APIKeyClient) Update() *APIKeyUpdate {
+	mutation := newAPIKeyMutation(c.config, OpUpdate)
+	return &APIKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *APIKeyClient) UpdateOne(_m *APIKey) *APIKeyUpdateOne {
+	mutation := newAPIKeyMutation(c.config, OpUpdateOne, withAPIKey(_m))
+	return &APIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *APIKeyClient) UpdateOneID(id int64) *APIKeyUpdateOne {
+	mutation := newAPIKeyMutation(c.config, OpUpdateOne, withAPIKeyID(id))
+	return &APIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for APIKey.
+func (c *APIKeyClient) Delete() *APIKeyDelete {
+	mutation := newAPIKeyMutation(c.config, OpDelete)
+	return &APIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *APIKeyClient) DeleteOne(_m *APIKey) *APIKeyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *APIKeyClient) DeleteOneID(id int64) *APIKeyDeleteOne {
+	builder := c.Delete().Where(apikey.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &APIKeyDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for APIKey.
+func (c *APIKeyClient) Query() *APIKeyQuery {
+	return &APIKeyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAPIKeyREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a APIKey entity by its id.
+func (c *APIKeyClient) Get(ctx context.Context, id int64) (*APIKey, error) {
+	return c.Query().Where(apikey.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *APIKeyClient) GetX(ctx context.Context, id int64) *APIKey {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// QueryUser queries the user edge of a APIKey.
+func (c *APIKeyClient) QueryUser(_m *APIKey) *UserQuery {
+	query := (&UserClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, apikey.UserTable, apikey.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryGroup queries the group edge of a APIKey.
+func (c *APIKeyClient) QueryGroup(_m *APIKey) *GroupQuery {
+	query := (&GroupClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, apikey.GroupTable, apikey.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryUsageLogs queries the usage_logs edge of a APIKey.
+func (c *APIKeyClient) QueryUsageLogs(_m *APIKey) *UsageLogQuery {
+	query := (&UsageLogClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(usagelog.Table, usagelog.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, apikey.UsageLogsTable, apikey.UsageLogsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *APIKeyClient) Hooks() []Hook {
+	hooks := c.hooks.APIKey
+	return append(hooks[:len(hooks):len(hooks)], apikey.Hooks[:]...)
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *APIKeyClient) Interceptors() []Interceptor {
+	inters := c.inters.APIKey
+	return append(inters[:len(inters):len(inters)], apikey.Interceptors[:]...)
+REDACTED
+
+func (c *APIKeyClient) mutate(ctx context.Context, m *APIKeyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&APIKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&APIKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&APIKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&APIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown APIKey mutation op: %q", m.Op())
 REDACTED
 REDACTED
 
@@ -622,189 +805,6 @@ func (c *AccountGroupClient) mutate(ctx context.Context, m *AccountGroupMutation
 REDACTED
 REDACTED
 
-// ApiKeyClient is a client for the ApiKey schema.
-type ApiKeyClient struct {
-	config
-REDACTED
-
-// NewApiKeyClient returns a client for the ApiKey from the given config.
-func NewApiKeyClient(c config) *ApiKeyClient {
-	return &ApiKeyClient{config: cREDACTED
-REDACTED
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `apikey.Hooks(f(g(h())))`.
-func (c *ApiKeyClient) Use(hooks ...Hook) {
-	c.hooks.ApiKey = append(c.hooks.ApiKey, hooks...)
-REDACTED
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `apikey.Intercept(f(g(h())))`.
-func (c *ApiKeyClient) Intercept(interceptors ...Interceptor) {
-	c.inters.ApiKey = append(c.inters.ApiKey, interceptors...)
-REDACTED
-
-// Create returns a builder for creating a ApiKey entity.
-func (c *ApiKeyClient) Create() *ApiKeyCreate {
-	mutation := newApiKeyMutation(c.config, OpCreate)
-	return &ApiKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
-REDACTED
-
-// CreateBulk returns a builder for creating a bulk of ApiKey entities.
-func (c *ApiKeyClient) CreateBulk(builders ...*ApiKeyCreate) *ApiKeyCreateBulk {
-	return &ApiKeyCreateBulk{config: c.config, builders: buildersREDACTED
-REDACTED
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *ApiKeyClient) MapCreateBulk(slice any, setFunc func(*ApiKeyCreate, int)) *ApiKeyCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &ApiKeyCreateBulk{err: fmt.Errorf("calling to ApiKeyClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
-REDACTED
-	builders := make([]*ApiKeyCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-REDACTED
-	return &ApiKeyCreateBulk{config: c.config, builders: buildersREDACTED
-REDACTED
-
-// Update returns an update builder for ApiKey.
-func (c *ApiKeyClient) Update() *ApiKeyUpdate {
-	mutation := newApiKeyMutation(c.config, OpUpdate)
-	return &ApiKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
-REDACTED
-
-// UpdateOne returns an update builder for the given entity.
-func (c *ApiKeyClient) UpdateOne(_m *ApiKey) *ApiKeyUpdateOne {
-	mutation := newApiKeyMutation(c.config, OpUpdateOne, withApiKey(_m))
-	return &ApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
-REDACTED
-
-// UpdateOneID returns an update builder for the given id.
-func (c *ApiKeyClient) UpdateOneID(id int64) *ApiKeyUpdateOne {
-	mutation := newApiKeyMutation(c.config, OpUpdateOne, withApiKeyID(id))
-	return &ApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
-REDACTED
-
-// Delete returns a delete builder for ApiKey.
-func (c *ApiKeyClient) Delete() *ApiKeyDelete {
-	mutation := newApiKeyMutation(c.config, OpDelete)
-	return &ApiKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
-REDACTED
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *ApiKeyClient) DeleteOne(_m *ApiKey) *ApiKeyDeleteOne {
-	return c.DeleteOneID(_m.ID)
-REDACTED
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ApiKeyClient) DeleteOneID(id int64) *ApiKeyDeleteOne {
-	builder := c.Delete().Where(apikey.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &ApiKeyDeleteOne{builderREDACTED
-REDACTED
-
-// Query returns a query builder for ApiKey.
-func (c *ApiKeyClient) Query() *ApiKeyQuery {
-	return &ApiKeyQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeApiKeyREDACTED,
-		inters: c.Interceptors(),
-REDACTED
-REDACTED
-
-// Get returns a ApiKey entity by its id.
-func (c *ApiKeyClient) Get(ctx context.Context, id int64) (*ApiKey, error) {
-	return c.Query().Where(apikey.ID(id)).Only(ctx)
-REDACTED
-
-// GetX is like Get, but panics if an error occurs.
-func (c *ApiKeyClient) GetX(ctx context.Context, id int64) *ApiKey {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-REDACTED
-	return obj
-REDACTED
-
-// QueryUser queries the user edge of a ApiKey.
-func (c *ApiKeyClient) QueryUser(_m *ApiKey) *UserQuery {
-	query := (&UserClient{config: c.configREDACTED).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(apikey.Table, apikey.FieldID, id),
-			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, apikey.UserTable, apikey.UserColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-REDACTED
-	return query
-REDACTED
-
-// QueryGroup queries the group edge of a ApiKey.
-func (c *ApiKeyClient) QueryGroup(_m *ApiKey) *GroupQuery {
-	query := (&GroupClient{config: c.configREDACTED).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(apikey.Table, apikey.FieldID, id),
-			sqlgraph.To(group.Table, group.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, apikey.GroupTable, apikey.GroupColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-REDACTED
-	return query
-REDACTED
-
-// QueryUsageLogs queries the usage_logs edge of a ApiKey.
-func (c *ApiKeyClient) QueryUsageLogs(_m *ApiKey) *UsageLogQuery {
-	query := (&UsageLogClient{config: c.configREDACTED).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(apikey.Table, apikey.FieldID, id),
-			sqlgraph.To(usagelog.Table, usagelog.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, apikey.UsageLogsTable, apikey.UsageLogsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-REDACTED
-	return query
-REDACTED
-
-// Hooks returns the client hooks.
-func (c *ApiKeyClient) Hooks() []Hook {
-	hooks := c.hooks.ApiKey
-	return append(hooks[:len(hooks):len(hooks)], apikey.Hooks[:]...)
-REDACTED
-
-// Interceptors returns the client interceptors.
-func (c *ApiKeyClient) Interceptors() []Interceptor {
-	inters := c.inters.ApiKey
-	return append(inters[:len(inters):len(inters)], apikey.Interceptors[:]...)
-REDACTED
-
-func (c *ApiKeyClient) mutate(ctx context.Context, m *ApiKeyMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&ApiKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
-	case OpUpdate:
-		return (&ApiKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
-	case OpUpdateOne:
-		return (&ApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&ApiKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown ApiKey mutation op: %q", m.Op())
-REDACTED
-REDACTED
-
 // GroupClient is a client for the Group schema.
 type GroupClient struct {
 	config
@@ -914,8 +914,8 @@ REDACTED
 REDACTED
 
 // QueryAPIKeys queries the api_keys edge of a Group.
-func (c *GroupClient) QueryAPIKeys(_m *Group) *ApiKeyQuery {
-	query := (&ApiKeyClient{config: c.configREDACTED).Query()
+func (c *GroupClient) QueryAPIKeys(_m *Group) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.configREDACTED).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
@@ -1642,8 +1642,8 @@ REDACTED
 REDACTED
 
 // QueryAPIKey queries the api_key edge of a UsageLog.
-func (c *UsageLogClient) QueryAPIKey(_m *UsageLog) *ApiKeyQuery {
-	query := (&ApiKeyClient{config: c.configREDACTED).Query()
+func (c *UsageLogClient) QueryAPIKey(_m *UsageLog) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.configREDACTED).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
@@ -1839,8 +1839,8 @@ REDACTED
 REDACTED
 
 // QueryAPIKeys queries the api_keys edge of a User.
-func (c *UserClient) QueryAPIKeys(_m *User) *ApiKeyQuery {
-	query := (&ApiKeyClient{config: c.configREDACTED).Query()
+func (c *UserClient) QueryAPIKeys(_m *User) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.configREDACTED).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
@@ -2627,12 +2627,12 @@ REDACTED
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Account, AccountGroup, ApiKey, Group, Proxy, RedeemCode, Setting, UsageLog,
+		APIKey, Account, AccountGroup, Group, Proxy, RedeemCode, Setting, UsageLog,
 		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
 		UserSubscription []ent.Hook
 REDACTED
 	inters struct {
-		Account, AccountGroup, ApiKey, Group, Proxy, RedeemCode, Setting, UsageLog,
+		APIKey, Account, AccountGroup, Group, Proxy, RedeemCode, Setting, UsageLog,
 		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
 		UserSubscription []ent.Interceptor
 REDACTED

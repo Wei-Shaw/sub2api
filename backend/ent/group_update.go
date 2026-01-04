@@ -273,14 +273,14 @@ func (_u *GroupUpdate) AddDefaultValidityDays(v int) *GroupUpdate {
 	return _u
 REDACTED
 
-// AddAPIKeyIDs adds the "api_keys" edge to the ApiKey entity by IDs.
+// AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// AddAPIKeys adds the "api_keys" edges to the ApiKey entity.
-func (_u *GroupUpdate) AddAPIKeys(v ...*ApiKey) *GroupUpdate {
+// AddAPIKeys adds the "api_keys" edges to the APIKey entity.
+func (_u *GroupUpdate) AddAPIKeys(v ...*APIKey) *GroupUpdate {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -368,20 +368,20 @@ func (_u *GroupUpdate) Mutation() *GroupMutation {
 	return _u.mutation
 REDACTED
 
-// ClearAPIKeys clears all "api_keys" edges to the ApiKey entity.
+// ClearAPIKeys clears all "api_keys" edges to the APIKey entity.
 func (_u *GroupUpdate) ClearAPIKeys() *GroupUpdate {
 	_u.mutation.ClearAPIKeys()
 	return _u
 REDACTED
 
-// RemoveAPIKeyIDs removes the "api_keys" edge to ApiKey entities by IDs.
+// RemoveAPIKeyIDs removes the "api_keys" edge to APIKey entities by IDs.
 func (_u *GroupUpdate) RemoveAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.RemoveAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// RemoveAPIKeys removes "api_keys" edges to ApiKey entities.
-func (_u *GroupUpdate) RemoveAPIKeys(v ...*ApiKey) *GroupUpdate {
+// RemoveAPIKeys removes "api_keys" edges to APIKey entities.
+func (_u *GroupUpdate) RemoveAPIKeys(v ...*APIKey) *GroupUpdate {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -1195,14 +1195,14 @@ func (_u *GroupUpdateOne) AddDefaultValidityDays(v int) *GroupUpdateOne {
 	return _u
 REDACTED
 
-// AddAPIKeyIDs adds the "api_keys" edge to the ApiKey entity by IDs.
+// AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// AddAPIKeys adds the "api_keys" edges to the ApiKey entity.
-func (_u *GroupUpdateOne) AddAPIKeys(v ...*ApiKey) *GroupUpdateOne {
+// AddAPIKeys adds the "api_keys" edges to the APIKey entity.
+func (_u *GroupUpdateOne) AddAPIKeys(v ...*APIKey) *GroupUpdateOne {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -1290,20 +1290,20 @@ func (_u *GroupUpdateOne) Mutation() *GroupMutation {
 	return _u.mutation
 REDACTED
 
-// ClearAPIKeys clears all "api_keys" edges to the ApiKey entity.
+// ClearAPIKeys clears all "api_keys" edges to the APIKey entity.
 func (_u *GroupUpdateOne) ClearAPIKeys() *GroupUpdateOne {
 	_u.mutation.ClearAPIKeys()
 	return _u
 REDACTED
 
-// RemoveAPIKeyIDs removes the "api_keys" edge to ApiKey entities by IDs.
+// RemoveAPIKeyIDs removes the "api_keys" edge to APIKey entities by IDs.
 func (_u *GroupUpdateOne) RemoveAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.RemoveAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// RemoveAPIKeys removes "api_keys" edges to ApiKey entities.
-func (_u *GroupUpdateOne) RemoveAPIKeys(v ...*ApiKey) *GroupUpdateOne {
+// RemoveAPIKeys removes "api_keys" edges to APIKey entities.
+func (_u *GroupUpdateOne) RemoveAPIKeys(v ...*APIKey) *GroupUpdateOne {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID

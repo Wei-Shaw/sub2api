@@ -48,6 +48,7 @@ pnpm-debug.log*
 .env.*.local
 *.env
 !.env.example
+docker-compose.override.yml
 
 # ===================
 # IDE / 编辑器
@@ -118,3 +119,5 @@ docs/
 code-reviews/
 AGENTS.md
 backend/cmd/server/server
+deploy/docker-compose.override.yml
+.gocache/

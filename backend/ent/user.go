@@ -48,7 +48,7 @@ REDACTED
 // UserEdges holds the relations/edges for other nodes in the graph.
 type UserEdges struct {
 	// APIKeys holds the value of the api_keys edge.
-	APIKeys []*ApiKey `json:"api_keys,omitempty"`
+	APIKeys []*APIKey `json:"api_keys,omitempty"`
 	// RedeemCodes holds the value of the redeem_codes edge.
 	RedeemCodes []*RedeemCode `json:"redeem_codes,omitempty"`
 	// Subscriptions holds the value of the subscriptions edge.
@@ -70,7 +70,7 @@ REDACTED
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
 // was not loaded in eager-loading.
-func (e UserEdges) APIKeysOrErr() ([]*ApiKey, error) {
+func (e UserEdges) APIKeysOrErr() ([]*APIKey, error) {
 	if e.loadedTypes[0] {
 		return e.APIKeys, nil
 REDACTED
@@ -255,7 +255,7 @@ func (_m *User) Value(name string) (ent.Value, error) {
 REDACTED
 
 // QueryAPIKeys queries the "api_keys" edge of the User entity.
-func (_m *User) QueryAPIKeys() *ApiKeyQuery {
+func (_m *User) QueryAPIKeys() *APIKeyQuery {
 	return NewUserClient(_m.config).QueryAPIKeys(_m)
 REDACTED
 

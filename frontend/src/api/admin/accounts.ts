@@ -12,7 +12,8 @@ import type {
   AccountUsageInfo,
   WindowStats,
   ClaudeModel,
-  AccountUsageStatsResponse
+  AccountUsageStatsResponse,
+  TempUnschedulableStatus
 REDACTED from '@/types'
 
 /**
@@ -166,6 +167,30 @@ REDACTED
 export async function clearRateLimit(id: number): Promise<{ message: string REDACTED> {
   const { data REDACTED = await apiClient.post<{ message: string REDACTED>(
     `/admin/accounts/${idREDACTED/clear-rate-limit`
+  )
+  return data
+REDACTED
+
+/**
+ * Get temporary unschedulable status
+ * @param id - Account ID
+ * @returns Status with detail state if active
+ */
+export async function getTempUnschedulableStatus(id: number): Promise<TempUnschedulableStatus> {
+  const { data REDACTED = await apiClient.get<TempUnschedulableStatus>(
+    `/admin/accounts/${idREDACTED/temp-unschedulable`
+  )
+  return data
+REDACTED
+
+/**
+ * Reset temporary unschedulable status
+ * @param id - Account ID
+ * @returns Success confirmation
+ */
+export async function resetTempUnschedulable(id: number): Promise<{ message: string REDACTED> {
+  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(
+    `/admin/accounts/${idREDACTED/temp-unschedulable`
   )
   return data
 REDACTED
@@ -332,6 +357,8 @@ export const accountsAPI = {
   getUsage,
   getTodayStats,
   clearRateLimit,
+  getTempUnschedulableStatus,
+  resetTempUnschedulable,
   setSchedulable,
   getAvailableModels,
   generateAuthUrl,

@@ -186,14 +186,14 @@ REDACTED
 	return _u
 REDACTED
 
-// AddAPIKeyIDs adds the "api_keys" edge to the ApiKey entity by IDs.
+// AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// AddAPIKeys adds the "api_keys" edges to the ApiKey entity.
-func (_u *UserUpdate) AddAPIKeys(v ...*ApiKey) *UserUpdate {
+// AddAPIKeys adds the "api_keys" edges to the APIKey entity.
+func (_u *UserUpdate) AddAPIKeys(v ...*APIKey) *UserUpdate {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -296,20 +296,20 @@ func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
 REDACTED
 
-// ClearAPIKeys clears all "api_keys" edges to the ApiKey entity.
+// ClearAPIKeys clears all "api_keys" edges to the APIKey entity.
 func (_u *UserUpdate) ClearAPIKeys() *UserUpdate {
 	_u.mutation.ClearAPIKeys()
 	return _u
 REDACTED
 
-// RemoveAPIKeyIDs removes the "api_keys" edge to ApiKey entities by IDs.
+// RemoveAPIKeyIDs removes the "api_keys" edge to APIKey entities by IDs.
 func (_u *UserUpdate) RemoveAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.RemoveAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// RemoveAPIKeys removes "api_keys" edges to ApiKey entities.
-func (_u *UserUpdate) RemoveAPIKeys(v ...*ApiKey) *UserUpdate {
+// RemoveAPIKeys removes "api_keys" edges to APIKey entities.
+func (_u *UserUpdate) RemoveAPIKeys(v ...*APIKey) *UserUpdate {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -1065,14 +1065,14 @@ REDACTED
 	return _u
 REDACTED
 
-// AddAPIKeyIDs adds the "api_keys" edge to the ApiKey entity by IDs.
+// AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// AddAPIKeys adds the "api_keys" edges to the ApiKey entity.
-func (_u *UserUpdateOne) AddAPIKeys(v ...*ApiKey) *UserUpdateOne {
+// AddAPIKeys adds the "api_keys" edges to the APIKey entity.
+func (_u *UserUpdateOne) AddAPIKeys(v ...*APIKey) *UserUpdateOne {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -1175,20 +1175,20 @@ func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
 REDACTED
 
-// ClearAPIKeys clears all "api_keys" edges to the ApiKey entity.
+// ClearAPIKeys clears all "api_keys" edges to the APIKey entity.
 func (_u *UserUpdateOne) ClearAPIKeys() *UserUpdateOne {
 	_u.mutation.ClearAPIKeys()
 	return _u
 REDACTED
 
-// RemoveAPIKeyIDs removes the "api_keys" edge to ApiKey entities by IDs.
+// RemoveAPIKeyIDs removes the "api_keys" edge to APIKey entities by IDs.
 func (_u *UserUpdateOne) RemoveAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.RemoveAPIKeyIDs(ids...)
 	return _u
 REDACTED
 
-// RemoveAPIKeys removes "api_keys" edges to ApiKey entities.
-func (_u *UserUpdateOne) RemoveAPIKeys(v ...*ApiKey) *UserUpdateOne {
+// RemoveAPIKeys removes "api_keys" edges to APIKey entities.
+func (_u *UserUpdateOne) RemoveAPIKeys(v ...*APIKey) *UserUpdateOne {
 	ids := make([]int64, len(v))
 	for i := range v {
 		ids[i] = v[i].ID

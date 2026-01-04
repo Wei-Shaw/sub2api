@@ -1,9 +1,12 @@
+// Package admin provides HTTP handlers for administrative operations.
 package admin
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -69,42 +72,45 @@ REDACTED
 
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
-	Name        string         `json:"name" binding:"required"`
-	Platform    string         `json:"platform" binding:"required"`
-	Type        string         `json:"type" binding:"required,oneof=oauth setup-token apikey"`
-	Credentials map[string]any `json:"credentials" binding:"required"`
-	Extra       map[string]any `json:"extra"`
-	ProxyID     *int64         `json:"proxy_id"`
-	Concurrency int            `json:"concurrency"`
-	Priority    int            `json:"priority"`
-	GroupIDs    []int64        `json:"group_ids"`
+	Name                    string         `json:"name" binding:"required"`
+	Platform                string         `json:"platform" binding:"required"`
+	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey"`
+	Credentials             map[string]any `json:"credentials" binding:"required"`
+	Extra                   map[string]any `json:"extra"`
+	ProxyID                 *int64         `json:"proxy_id"`
+	Concurrency             int            `json:"concurrency"`
+	Priority                int            `json:"priority"`
+	GroupIDs                []int64        `json:"group_ids"`
+	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 REDACTED
 
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name        string         `json:"name"`
-	Type        string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey"`
-	Credentials map[string]any `json:"credentials"`
-	Extra       map[string]any `json:"extra"`
-	ProxyID     *int64         `json:"proxy_id"`
-	Concurrency *int           `json:"concurrency"`
-	Priority    *int           `json:"priority"`
-	Status      string         `json:"status" binding:"omitempty,oneof=active inactive"`
-	GroupIDs    *[]int64       `json:"group_ids"`
+	Name                    string         `json:"name"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey"`
+	Credentials             map[string]any `json:"credentials"`
+	Extra                   map[string]any `json:"extra"`
+	ProxyID                 *int64         `json:"proxy_id"`
+	Concurrency             *int           `json:"concurrency"`
+	Priority                *int           `json:"priority"`
+	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive"`
+	GroupIDs                *[]int64       `json:"group_ids"`
+	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 REDACTED
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
-	AccountIDs  []int64        `json:"account_ids" binding:"required,min=1"`
-	Name        string         `json:"name"`
-	ProxyID     *int64         `json:"proxy_id"`
-	Concurrency *int           `json:"concurrency"`
-	Priority    *int           `json:"priority"`
-	Status      string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	GroupIDs    *[]int64       `json:"group_ids"`
-	Credentials map[string]any `json:"credentials"`
-	Extra       map[string]any `json:"extra"`
+	AccountIDs              []int64        `json:"account_ids" binding:"required,min=1"`
+	Name                    string         `json:"name"`
+	ProxyID                 *int64         `json:"proxy_id"`
+	Concurrency             *int           `json:"concurrency"`
+	Priority                *int           `json:"priority"`
+	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs                *[]int64       `json:"group_ids"`
+	Credentials             map[string]any `json:"credentials"`
+	Extra                   map[string]any `json:"extra"`
+	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 REDACTED
 
 // AccountWithConcurrency extends Account with real-time concurrency info
@@ -179,18 +185,40 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		return
 REDACTED
 
+	// 确定是否跳过混合渠道检查
+	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
+
 	account, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
-		Name:        req.Name,
-		Platform:    req.Platform,
-		Type:        req.Type,
-		Credentials: req.Credentials,
-		Extra:       req.Extra,
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
-		Priority:    req.Priority,
-		GroupIDs:    req.GroupIDs,
+		Name:                  req.Name,
+		Platform:              req.Platform,
+		Type:                  req.Type,
+		Credentials:           req.Credentials,
+		Extra:                 req.Extra,
+		ProxyID:               req.ProxyID,
+		Concurrency:           req.Concurrency,
+		Priority:              req.Priority,
+		GroupIDs:              req.GroupIDs,
+		SkipMixedChannelCheck: skipCheck,
 REDACTED)
 	if err != nil {
+		// 检查是否为混合渠道错误
+		var mixedErr *service.MixedChannelError
+		if errors.As(err, &mixedErr) {
+			// 返回特殊错误码要求确认
+			c.JSON(409, gin.H{
+				"error":   "mixed_channel_warning",
+				"message": mixedErr.Error(),
+				"details": gin.H{
+					"group_id":         mixedErr.GroupID,
+					"group_name":       mixedErr.GroupName,
+					"current_platform": mixedErr.CurrentPlatform,
+					"other_platform":   mixedErr.OtherPlatform,
+			REDACTED,
+				"require_confirmation": true,
+		REDACTED)
+			return
+	REDACTED
+
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -213,18 +241,40 @@ REDACTED
 		return
 REDACTED
 
+	// 确定是否跳过混合渠道检查
+	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
+
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
-		Name:        req.Name,
-		Type:        req.Type,
-		Credentials: req.Credentials,
-		Extra:       req.Extra,
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency, // 指针类型，nil 表示未提供
-		Priority:    req.Priority,    // 指针类型，nil 表示未提供
-		Status:      req.Status,
-		GroupIDs:    req.GroupIDs,
+		Name:                  req.Name,
+		Type:                  req.Type,
+		Credentials:           req.Credentials,
+		Extra:                 req.Extra,
+		ProxyID:               req.ProxyID,
+		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
+		Priority:              req.Priority,    // 指针类型，nil 表示未提供
+		Status:                req.Status,
+		GroupIDs:              req.GroupIDs,
+		SkipMixedChannelCheck: skipCheck,
 REDACTED)
 	if err != nil {
+		// 检查是否为混合渠道错误
+		var mixedErr *service.MixedChannelError
+		if errors.As(err, &mixedErr) {
+			// 返回特殊错误码要求确认
+			c.JSON(409, gin.H{
+				"error":   "mixed_channel_warning",
+				"message": mixedErr.Error(),
+				"details": gin.H{
+					"group_id":         mixedErr.GroupID,
+					"group_name":       mixedErr.GroupName,
+					"current_platform": mixedErr.CurrentPlatform,
+					"other_platform":   mixedErr.OtherPlatform,
+			REDACTED,
+				"require_confirmation": true,
+		REDACTED)
+			return
+	REDACTED
+
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -568,6 +618,9 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 REDACTED
 
+	// 确定是否跳过混合渠道检查
+	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
+
 	hasUpdates := req.Name != "" ||
 		req.ProxyID != nil ||
 		req.Concurrency != nil ||
@@ -583,15 +636,16 @@ REDACTED
 REDACTED
 
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
-		AccountIDs:  req.AccountIDs,
-		Name:        req.Name,
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
-		Priority:    req.Priority,
-		Status:      req.Status,
-		GroupIDs:    req.GroupIDs,
-		Credentials: req.Credentials,
-		Extra:       req.Extra,
+		AccountIDs:            req.AccountIDs,
+		Name:                  req.Name,
+		ProxyID:               req.ProxyID,
+		Concurrency:           req.Concurrency,
+		Priority:              req.Priority,
+		Status:                req.Status,
+		GroupIDs:              req.GroupIDs,
+		Credentials:           req.Credentials,
+		Extra:                 req.Extra,
+		SkipMixedChannelCheck: skipCheck,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -779,6 +833,49 @@ REDACTED
 REDACTED
 
 	response.Success(c, gin.H{"message": "Rate limit cleared successfully"REDACTED)
+REDACTED
+
+// GetTempUnschedulable handles getting temporary unschedulable status
+// GET /api/v1/admin/accounts/:id/temp-unschedulable
+func (h *AccountHandler) GetTempUnschedulable(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+
+	state, err := h.rateLimitService.GetTempUnschedStatus(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	if state == nil || state.UntilUnix <= time.Now().Unix() {
+		response.Success(c, gin.H{"active": falseREDACTED)
+		return
+REDACTED
+
+	response.Success(c, gin.H{
+		"active": true,
+		"state":  state,
+REDACTED)
+REDACTED
+
+// ClearTempUnschedulable handles clearing temporary unschedulable status
+// DELETE /api/v1/admin/accounts/:id/temp-unschedulable
+func (h *AccountHandler) ClearTempUnschedulable(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+
+	if err := h.rateLimitService.ClearTempUnschedulable(c.Request.Context(), accountID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, gin.H{"message": "Temp unschedulable cleared successfully"REDACTED)
 REDACTED
 
 // GetTodayStats handles getting account today statistics

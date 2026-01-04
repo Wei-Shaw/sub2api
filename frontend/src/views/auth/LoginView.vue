@@ -295,12 +295,12 @@ REDACTED
 
 function onTurnstileExpire(): void {
   turnstileToken.value = ''
-  errors.turnstile = 'Verification expired, please try again'
+  errors.turnstile = t('auth.turnstileExpired')
 REDACTED
 
 function onTurnstileError(): void {
   turnstileToken.value = ''
-  errors.turnstile = 'Verification failed, please try again'
+  errors.turnstile = t('auth.turnstileFailed')
 REDACTED
 
 // ==================== Validation ====================
@@ -315,25 +315,25 @@ function validateForm(): boolean {
 
   // Email validation
   if (!formData.email.trim()) {
-    errors.email = 'Email is required'
+    errors.email = t('auth.emailRequired')
     isValid = false
   REDACTED else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-    errors.email = 'Please enter a valid email address'
+    errors.email = t('auth.invalidEmail')
     isValid = false
   REDACTED
 
   // Password validation
   if (!formData.password) {
-    errors.password = 'Password is required'
+    errors.password = t('auth.passwordRequired')
     isValid = false
   REDACTED else if (formData.password.length < 6) {
-    errors.password = 'Password must be at least 6 characters'
+    errors.password = t('auth.passwordMinLength')
     isValid = false
   REDACTED
 
   // Turnstile validation
   if (turnstileEnabled.value && !turnstileToken.value) {
-    errors.turnstile = 'Please complete the verification'
+    errors.turnstile = t('auth.completeVerification')
     isValid = false
   REDACTED
 
@@ -362,7 +362,7 @@ async function handleLogin(): Promise<void> {
     REDACTED)
 
     // Show success toast
-    appStore.showSuccess('Login successful! Welcome back.')
+    appStore.showSuccess(t('auth.loginSuccess'))
 
     // Redirect to dashboard or intended route
     const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
@@ -382,7 +382,7 @@ async function handleLogin(): Promise<void> {
     REDACTED else if (err.message) {
       errorMessage.value = err.message
     REDACTED else {
-      errorMessage.value = 'Login failed. Please check your credentials and try again.'
+      errorMessage.value = t('auth.loginFailed')
     REDACTED
 
     // Also show error toast
