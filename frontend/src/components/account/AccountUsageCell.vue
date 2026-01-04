@@ -245,20 +245,18 @@
         <div v-else-if="isGeminiCodeAssist && geminiUsageAvailable" class="space-y-1">
           <UsageProgressBar
             v-if="usageInfo?.gemini_pro_daily"
-            :label="t('admin.accounts.usageWindow.geminiProDaily')"
+            label="Pro"
             :utilization="usageInfo.gemini_pro_daily.utilization"
             :resets-at="usageInfo.gemini_pro_daily.resets_at"
             :window-stats="usageInfo.gemini_pro_daily.window_stats"
-            :stats-title="t('admin.accounts.usageWindow.statsTitleDaily')"
             color="indigo"
           />
           <UsageProgressBar
             v-if="usageInfo?.gemini_flash_daily"
-            :label="t('admin.accounts.usageWindow.geminiFlashDaily')"
+            label="Flash"
             :utilization="usageInfo.gemini_flash_daily.utilization"
             :resets-at="usageInfo.gemini_flash_daily.resets_at"
             :window-stats="usageInfo.gemini_flash_daily.window_stats"
-            :stats-title="t('admin.accounts.usageWindow.statsTitleDaily')"
             color="emerald"
           />
           <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
@@ -587,7 +585,7 @@ const geminiAuthTypeLabel = computed(() => {
   if (props.account.type !== 'oauth') return null
 
   if (oauthType === 'google_one') {
-    // Google One: show "G1" + tier
+    // Google One: show "Google One" + tier
     const tierMap: Record<string, string> = {
       AI_PREMIUM: 'AI Premium',
       GOOGLE_ONE_STANDARD: 'Standard',
@@ -597,16 +595,16 @@ const geminiAuthTypeLabel = computed(() => {
       GOOGLE_ONE_UNLIMITED: 'Unlimited'
     REDACTED
     const tierLabel = geminiTier.value ? tierMap[geminiTier.value] || 'Personal' : 'Personal'
-    return `G1 ${tierLabelREDACTED`
+    return `Google One ${tierLabelREDACTED`
   REDACTED else if (oauthType === 'code_assist' || (!oauthType && isGeminiCodeAssist.value)) {
-    // Code Assist: show "CLI" + tier
+    // Code Assist: show "GCP" + tier
     const tierMap: Record<string, string> = {
       LEGACY: 'Free',
       PRO: 'Pro',
       ULTRA: 'Ultra'
     REDACTED
     const tierLabel = geminiTier.value ? tierMap[geminiTier.value] || 'Free' : 'Free'
-    return `CLI ${tierLabelREDACTED`
+    return `GCP ${tierLabelREDACTED`
   REDACTED else if (oauthType === 'ai_studio') {
     // AI Studio: just show "AI Studio" (no tier)
     return 'AI Studio'
