@@ -373,7 +373,7 @@ REDACTED
 				continue
 		REDACTED
 			// 错误响应已在Forward中处理，这里只记录日志
-			log.Printf("Forward request failed: %v", err)
+			log.Printf("Account %d: Forward request failed: %v", account.ID, err)
 			return
 	REDACTED
 
