@@ -44,6 +44,7 @@ export default {
     description: '配置您的 Sub2API 实例',
     database: {
       title: '数据库配置',
+      description: '连接到您的 PostgreSQL 数据库',
       host: '主机',
       port: '端口',
       username: '用户名',
@@ -60,6 +61,7 @@ export default {
     REDACTED,
     redis: {
       title: 'Redis 配置',
+      description: '连接到您的 Redis 服务器',
       host: '主机',
       port: '端口',
       password: '密码（可选）',
@@ -68,6 +70,7 @@ export default {
     REDACTED,
     admin: {
       title: '管理员账户',
+      description: '创建您的管理员账户',
       email: '邮箱',
       password: '密码',
       confirmPassword: '确认密码',
@@ -77,9 +80,21 @@ export default {
     REDACTED,
     ready: {
       title: '准备安装',
+      description: '检查您的配置并完成安装',
       database: '数据库',
       redis: 'Redis',
       adminEmail: '管理员邮箱'
+    REDACTED,
+    status: {
+      testing: '测试中...',
+      success: '连接成功',
+      testConnection: '测试连接',
+      installing: '安装中...',
+      completeInstallation: '完成安装',
+      completed: '安装完成！',
+      redirecting: '正在跳转到登录页面...',
+      restarting: '服务正在重启，请稍候...',
+      timeout: '服务重启时间超出预期，请手动刷新页面。'
     REDACTED
   REDACTED,
 
@@ -848,8 +863,15 @@ export default {
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
       platforms: {
         all: '全部平台',
-        claude: 'Claude',
-        openai: 'OpenAI'
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
+      REDACTED,
+      statuses: {
+        active: '正常',
+        inactive: '停用',
+        error: '错误'
       REDACTED,
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -1054,7 +1076,11 @@ export default {
         active: '正常',
         inactive: '停用',
         error: '错误',
-        cooldown: '冷却中'
+        cooldown: '冷却中',
+        paused: '暂停',
+        limited: '限流',
+        rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
+        overloadedUntil: '负载过重，重置时间：{timeREDACTED'
       REDACTED,
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
@@ -1520,7 +1546,8 @@ export default {
       protocols: {
         http: 'HTTP',
         https: 'HTTPS',
-        socks5: 'SOCKS5'
+        socks5: 'SOCKS5',
+        socks5h: 'SOCKS5H (服务端解析 DNS)'
       REDACTED,
       statuses: {
         active: '正常',

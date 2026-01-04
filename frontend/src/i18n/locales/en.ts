@@ -47,6 +47,7 @@ export default {
     description: 'Configure your Sub2API instance',
     database: {
       title: 'Database Configuration',
+      description: 'Connect to your PostgreSQL database',
       host: 'Host',
       port: 'Port',
       username: 'Username',
@@ -63,6 +64,7 @@ export default {
     REDACTED,
     redis: {
       title: 'Redis Configuration',
+      description: 'Connect to your Redis server',
       host: 'Host',
       port: 'Port',
       password: 'Password (optional)',
@@ -71,6 +73,7 @@ export default {
     REDACTED,
     admin: {
       title: 'Admin Account',
+      description: 'Create your administrator account',
       email: 'Email',
       password: 'Password',
       confirmPassword: 'Confirm Password',
@@ -80,9 +83,21 @@ export default {
     REDACTED,
     ready: {
       title: 'Ready to Install',
+      description: 'Review your configuration and complete setup',
       database: 'Database',
       redis: 'Redis',
       adminEmail: 'Admin Email'
+    REDACTED,
+    status: {
+      testing: 'Testing...',
+      success: 'Connection Successful',
+      testConnection: 'Test Connection',
+      installing: 'Installing...',
+      completeInstallation: 'Complete Installation',
+      completed: 'Installation completed!',
+      redirecting: 'Redirecting to login page...',
+      restarting: 'Service is restarting, please wait...',
+      timeout: 'Service restart is taking longer than expected. Please refresh the page manually.'
     REDACTED
   REDACTED,
 
@@ -790,6 +805,18 @@ export default {
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
+      platforms: {
+        all: 'All Platforms',
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
+      REDACTED,
+      statuses: {
+        active: 'Active',
+        inactive: 'Inactive',
+        error: 'Error'
+      REDACTED,
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
       deleteConfirmSubscription:
@@ -954,6 +981,16 @@ export default {
       tokenRefreshed: 'Token refreshed successfully',
       accountDeleted: 'Account deleted successfully',
       rateLimitCleared: 'Rate limit cleared successfully',
+      statuses: {
+        active: 'Active',
+        inactive: 'Inactive',
+        error: 'Error',
+        cooldown: 'Cooldown',
+        paused: 'Paused',
+        limited: 'Limited',
+        rateLimitedUntil: 'Rate limited until {timeREDACTED',
+        overloadedUntil: 'Overloaded until {timeREDACTED'
+      REDACTED,
       bulkActions: {
         selected: '{countREDACTED account(s) selected',
         selectCurrentPage: 'Select this page',
@@ -1396,6 +1433,17 @@ export default {
       searchProxies: 'Search proxies...',
       allProtocols: 'All Protocols',
       allStatus: 'All Status',
+      protocols: {
+        http: 'HTTP',
+        https: 'HTTPS',
+        socks5: 'SOCKS5',
+        socks5h: 'SOCKS5H (Remote DNS)'
+      REDACTED,
+      statuses: {
+        active: 'Active',
+        inactive: 'Inactive',
+        error: 'Error'
+      REDACTED,
       columns: {
         name: 'Name',
         protocol: 'Protocol',

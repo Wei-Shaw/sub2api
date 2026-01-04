@@ -48,21 +48,18 @@
         </span>
       </div>
 
-      <!-- Model Selection -->
       <div class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.selectTestModel') REDACTEDREDACTED
         </label>
-        <select
+        <Select
           v-model="selectedModelId"
+          :options="availableModels"
           :disabled="loadingModels || status === 'connecting'"
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-100"
-        >
-          <option v-if="loadingModels" value="">{{ t('common.loading') REDACTEDREDACTED...</option>
-          <option v-for="model in availableModels" :key="model.id" :value="model.id">
-            {{ model.display_name REDACTEDREDACTED ({{ model.id REDACTEDREDACTED)
-          </option>
-        </select>
+          value-key="id"
+          label-key="display_name"
+          :placeholder="loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel')"
+        />
       </div>
 
       <!-- Terminal Output -->
@@ -280,6 +277,7 @@
 import { ref, watch, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, ClaudeModel REDACTED from '@/types'

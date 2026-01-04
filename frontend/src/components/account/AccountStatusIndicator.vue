@@ -52,7 +52,7 @@
       <div
         class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
       >
-        Rate limited until {{ formatTime(account.rate_limit_reset_at) REDACTEDREDACTED
+        {{ t('admin.accounts.statuses.rateLimitedUntil', { time: formatTime(account.rate_limit_reset_at) REDACTED) REDACTEDREDACTED
         <div
           class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
         ></div>
@@ -77,7 +77,7 @@
       <div
         class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
       >
-        Overloaded until {{ formatTime(account.overload_until) REDACTEDREDACTED
+        {{ t('admin.accounts.statuses.overloadedUntil', { time: formatTime(account.overload_until) REDACTED) REDACTEDREDACTED
         <div
           class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
         ></div>
@@ -96,8 +96,11 @@
 
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import type { Account REDACTED from '@/types'
 import { formatTime REDACTED from '@/utils/format'
+
+const { t REDACTED = useI18n()
 
 const props = defineProps<{
   account: Account
@@ -140,12 +143,12 @@ REDACTED)
 // Computed: status text
 const statusText = computed(() => {
   if (!props.account.schedulable) {
-    return 'Paused'
+    return t('admin.accounts.statuses.paused')
   REDACTED
   if (isRateLimited.value || isOverloaded.value) {
-    return 'Limited'
+    return t('admin.accounts.statuses.limited')
   REDACTED
-  return props.account.status
+  return t(`admin.accounts.statuses.${props.account.statusREDACTED`)
 REDACTED)
 
 // Computed: tier display

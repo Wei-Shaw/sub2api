@@ -31,47 +31,29 @@
             </div>
 
             <!-- Role Filter (visible when enabled) -->
-            <div v-if="visibleFilters.has('role')" class="relative">
-              <select
+            <div v-if="visibleFilters.has('role')" class="w-32">
+              <Select
                 v-model="filters.role"
+                :options="[
+                  { value: '', label: t('admin.users.allRoles') REDACTED,
+                  { value: 'admin', label: t('admin.users.admin') REDACTED,
+                  { value: 'user', label: t('admin.users.user') REDACTED
+                ]"
                 @change="applyFilter"
-                class="input w-32 cursor-pointer appearance-none pr-8"
-              >
-                <option value="">{{ t('admin.users.allRoles') REDACTEDREDACTED</option>
-                <option value="admin">{{ t('admin.users.admin') REDACTEDREDACTED</option>
-                <option value="user">{{ t('admin.users.user') REDACTEDREDACTED</option>
-              </select>
-              <svg
-                class="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
+              />
             </div>
 
             <!-- Status Filter (visible when enabled) -->
-            <div v-if="visibleFilters.has('status')" class="relative">
-              <select
+            <div v-if="visibleFilters.has('status')" class="w-32">
+              <Select
                 v-model="filters.status"
+                :options="[
+                  { value: '', label: t('admin.users.allStatus') REDACTED,
+                  { value: 'active', label: t('common.active') REDACTED,
+                  { value: 'disabled', label: t('admin.users.disabled') REDACTED
+                ]"
                 @change="applyFilter"
-                class="input w-32 cursor-pointer appearance-none pr-8"
-              >
-                <option value="">{{ t('admin.users.allStatus') REDACTEDREDACTED</option>
-                <option value="active">{{ t('common.active') REDACTEDREDACTED</option>
-                <option value="disabled">{{ t('admin.users.disabled') REDACTEDREDACTED</option>
-              </select>
-              <svg
-                class="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
+              />
             </div>
 
             <!-- Dynamic Attribute Filters -->
@@ -98,29 +80,16 @@
                 />
                 <!-- Select/Multi-select type -->
                 <template v-else-if="['select', 'multi_select'].includes(getAttributeDefinition(Number(attrId))?.type || '')">
-                  <select
-                    :value="value"
-                    @change="(e) => { updateAttributeFilter(Number(attrId), (e.target as HTMLSelectElement).value); applyFilter() REDACTED"
-                    class="input w-36 cursor-pointer appearance-none pr-8"
-                  >
-                    <option value="">{{ getAttributeDefinitionName(Number(attrId)) REDACTEDREDACTED</option>
-                    <option
-                      v-for="opt in getAttributeDefinition(Number(attrId))?.options || []"
-                      :key="opt.value"
-                      :value="opt.value"
-                    >
-                      {{ opt.label REDACTEDREDACTED
-                    </option>
-                  </select>
-                  <svg
-                    class="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                  </svg>
+                  <div class="w-36">
+                    <Select
+                      :model-value="value"
+                      :options="[
+                        { value: '', label: getAttributeDefinitionName(Number(attrId)) REDACTED,
+                        ...(getAttributeDefinition(Number(attrId))?.options || [])
+                      ]"
+                      @update:model-value="(val) => { updateAttributeFilter(Number(attrId), String(val ?? '')); applyFilter() REDACTED"
+                    />
+                  </div>
                 </template>
                 <!-- Fallback -->
                 <input
@@ -337,7 +306,7 @@
 
           <template #cell-role="{ value REDACTED">
             <span :class="['badge', value === 'admin' ? 'badge-purple' : 'badge-gray']">
-              {{ value REDACTEDREDACTED
+              {{ t('admin.users.roles.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -1419,6 +1388,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
+import Select from '@/components/common/Select.vue'
 import UserAttributesConfigModal from '@/components/user/UserAttributesConfigModal.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 

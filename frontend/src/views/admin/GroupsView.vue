@@ -88,15 +88,7 @@
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
-              {{
-                value === 'anthropic'
-                  ? 'Anthropic'
-                  : value === 'openai'
-                    ? 'OpenAI'
-                    : value === 'antigravity'
-                      ? 'Antigravity'
-                      : 'Gemini'
-              REDACTEDREDACTED
+              {{ t('admin.groups.platforms.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -172,7 +164,7 @@
 
           <template #cell-status="{ value REDACTED">
             <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-danger']">
-              {{ value REDACTEDREDACTED
+              {{ t('admin.groups.statuses.' + value) REDACTEDREDACTED
             </span>
           </template>
 

@@ -112,7 +112,7 @@
                     : 'badge-primary'
               ]"
             >
-              {{ value REDACTEDREDACTED
+              {{ t('admin.redeem.types.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -120,7 +120,7 @@
             <span class="text-sm font-medium text-gray-900 dark:text-white">
               <template v-if="row.type === 'balance'">${{ value.toFixed(2) REDACTEDREDACTED</template>
               <template v-else-if="row.type === 'subscription'">
-                {{ row.validity_days || 30 REDACTEDREDACTED{{ t('admin.redeem.days') REDACTEDREDACTED
+                {{ row.validity_days || 30 REDACTEDREDACTED {{ t('admin.redeem.days') REDACTEDREDACTED
                 <span v-if="row.group" class="ml-1 text-xs text-gray-500 dark:text-gray-400"
                   >({{ row.group.name REDACTEDREDACTED)</span
                 >
@@ -140,7 +140,7 @@
                     : 'badge-danger'
               ]"
             >
-              {{ value REDACTEDREDACTED
+              {{ t('admin.redeem.statuses.' + value) REDACTEDREDACTED
             </span>
           </template>
 

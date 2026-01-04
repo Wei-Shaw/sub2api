@@ -142,11 +142,10 @@
       <!-- Type -->
       <div>
         <label class="input-label">{{ t('admin.users.attributes.type') REDACTEDREDACTED</label>
-        <select v-model="form.type" class="input" required>
-          <option v-for="type in attributeTypes" :key="type" :value="type">
-            {{ t(`admin.users.attributes.types.${typeREDACTED`) REDACTEDREDACTED
-          </option>
-        </select>
+        <Select
+          v-model="form.type"
+          :options="attributeTypes.map(type => ({ value: type, label: t(`admin.users.attributes.types.${typeREDACTED`) REDACTED))"
+        />
       </div>
 
       <!-- Options (for select/multi_select) -->
@@ -257,6 +256,7 @@ import { adminAPI REDACTED from '@/api/admin'
 import type { UserAttributeDefinition, UserAttributeType, UserAttributeOption REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import Select from '@/components/common/Select.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
