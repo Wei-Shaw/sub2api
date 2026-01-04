@@ -888,13 +888,17 @@ const formatLocalDate = (date: Date): string => {
 REDACTED
 
 // Initialize date range immediately
+// Use tomorrow as end date to handle timezone differences between client and server
+// e.g., when server is in Asia/Shanghai and client is in America/Chicago
 const now = new Date()
+const tomorrow = new Date(now)
+tomorrow.setDate(tomorrow.getDate() + 1)
 const weekAgo = new Date(now)
 weekAgo.setDate(weekAgo.getDate() - 6)
 
 // Date range state
 const startDate = ref(formatLocalDate(weekAgo))
-const endDate = ref(formatLocalDate(now))
+const endDate = ref(formatLocalDate(tomorrow))
 
 const filters = ref<AdminUsageQueryParams>({
   user_id: undefined,
@@ -1215,12 +1219,14 @@ const resetFilters = () => {
     end_date: undefined
   REDACTED
   granularity.value = 'day'
-  // Reset date range to default (last 7 days)
+  // Reset date range to default (last 7 days, with tomorrow as end to handle timezone differences)
   const now = new Date()
+  const tomorrowDate = new Date(now)
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1)
   const weekAgo = new Date(now)
   weekAgo.setDate(weekAgo.getDate() - 6)
   startDate.value = formatLocalDate(weekAgo)
-  endDate.value = formatLocalDate(now)
+  endDate.value = formatLocalDate(tomorrowDate)
   filters.value.start_date = startDate.value
   filters.value.end_date = endDate.value
   pagination.value.page = 1
