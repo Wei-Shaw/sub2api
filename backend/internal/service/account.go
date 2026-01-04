@@ -1,3 +1,4 @@
+// Package service provides business logic and domain services for the application.
 package service
 
 import (
@@ -29,6 +30,9 @@ type Account struct {
 	RateLimitResetAt *time.Time
 	OverloadUntil    *time.Time
 
+	TempUnschedulableUntil  *time.Time
+	TempUnschedulableReason string
+
 	SessionWindowStart  *time.Time
 	SessionWindowEnd    *time.Time
 	SessionWindowStatus string
@@ -37,6 +41,13 @@ type Account struct {
 	AccountGroups []AccountGroup
 	GroupIDs      []int64
 	Groups        []*Group
+REDACTED
+
+type TempUnschedulableRule struct {
+	ErrorCode       int      `json:"error_code"`
+	Keywords        []string `json:"keywords"`
+	DurationMinutes int      `json:"duration_minutes"`
+	Description     string   `json:"description"`
 REDACTED
 
 func (a *Account) IsActive() bool {
@@ -52,6 +63,9 @@ REDACTED
 		return false
 REDACTED
 	if a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {
+		return false
+REDACTED
+	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
 		return false
 REDACTED
 	return true
@@ -92,10 +106,7 @@ REDACTED
 
 func (a *Account) GeminiTierID() string {
 	tierID := strings.TrimSpace(a.GetCredential("tier_id"))
-	if tierID == "" {
-		return ""
-REDACTED
-	return strings.ToUpper(tierID)
+	return tierID
 REDACTED
 
 func (a *Account) IsGeminiCodeAssist() bool {
@@ -163,6 +174,114 @@ REDACTED
 	return nil
 REDACTED
 
+func (a *Account) IsTempUnschedulableEnabled() bool {
+	if a.Credentials == nil {
+		return false
+REDACTED
+	raw, ok := a.Credentials["temp_unschedulable_enabled"]
+	if !ok || raw == nil {
+		return false
+REDACTED
+	enabled, ok := raw.(bool)
+	return ok && enabled
+REDACTED
+
+func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
+	if a.Credentials == nil {
+		return nil
+REDACTED
+	raw, ok := a.Credentials["temp_unschedulable_rules"]
+	if !ok || raw == nil {
+		return nil
+REDACTED
+
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil
+REDACTED
+
+	rules := make([]TempUnschedulableRule, 0, len(arr))
+	for _, item := range arr {
+		entry, ok := item.(map[string]any)
+		if !ok || entry == nil {
+			continue
+	REDACTED
+
+		rule := TempUnschedulableRule{
+			ErrorCode:       parseTempUnschedInt(entry["error_code"]),
+			Keywords:        parseTempUnschedStrings(entry["keywords"]),
+			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
+			Description:     parseTempUnschedString(entry["description"]),
+	REDACTED
+
+		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {
+			continue
+	REDACTED
+
+		rules = append(rules, rule)
+REDACTED
+
+	return rules
+REDACTED
+
+func parseTempUnschedString(value any) string {
+	s, ok := value.(string)
+	if !ok {
+		return ""
+REDACTED
+	return strings.TrimSpace(s)
+REDACTED
+
+func parseTempUnschedStrings(value any) []string {
+	if value == nil {
+		return nil
+REDACTED
+
+	var raw []string
+	switch v := value.(type) {
+	case []string:
+		raw = v
+	case []any:
+		raw = make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				raw = append(raw, s)
+		REDACTED
+	REDACTED
+	default:
+		return nil
+REDACTED
+
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		s := strings.TrimSpace(item)
+		if s != "" {
+			out = append(out, s)
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func parseTempUnschedInt(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i)
+	REDACTED
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return i
+	REDACTED
+REDACTED
+	return 0
+REDACTED
+
 func (a *Account) GetModelMapping() map[string]string {
 	if a.Credentials == nil {
 		return nil
@@ -206,7 +325,7 @@ REDACTED
 REDACTED
 
 func (a *Account) GetBaseURL() string {
-	if a.Type != AccountTypeApiKey {
+	if a.Type != AccountTypeAPIKey {
 		return ""
 REDACTED
 	baseURL := a.GetCredential("base_url")
@@ -229,7 +348,7 @@ REDACTED
 REDACTED
 
 func (a *Account) IsCustomErrorCodesEnabled() bool {
-	if a.Type != AccountTypeApiKey || a.Credentials == nil {
+	if a.Type != AccountTypeAPIKey || a.Credentials == nil {
 		return false
 REDACTED
 	if v, ok := a.Credentials["custom_error_codes_enabled"]; ok {
@@ -301,14 +420,14 @@ func (a *Account) IsOpenAIOAuth() bool {
 REDACTED
 
 func (a *Account) IsOpenAIApiKey() bool {
-	return a.IsOpenAI() && a.Type == AccountTypeApiKey
+	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
 REDACTED
 
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAI() {
 		return ""
 REDACTED
-	if a.Type == AccountTypeApiKey {
+	if a.Type == AccountTypeAPIKey {
 		baseURL := a.GetCredential("base_url")
 		if baseURL != "" {
 			return baseURL

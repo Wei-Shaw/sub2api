@@ -18,6 +18,7 @@ func NewGeminiOAuthHandler(geminiOAuthService *service.GeminiOAuthService) *Gemi
 	return &GeminiOAuthHandler{geminiOAuthService: geminiOAuthServiceREDACTED
 REDACTED
 
+// GetCapabilities returns the Gemini OAuth configuration capabilities.
 // GET /api/v1/admin/gemini/oauth/capabilities
 func (h *GeminiOAuthHandler) GetCapabilities(c *gin.Context) {
 	cfg := h.geminiOAuthService.GetOAuthConfig()
@@ -30,6 +31,8 @@ type GeminiGenerateAuthURLRequest struct {
 	// OAuth 类型: "code_assist" (需要 project_id) 或 "ai_studio" (不需要 project_id)
 	// 默认为 "code_assist" 以保持向后兼容
 	OAuthType string `json:"oauth_type"`
+	// TierID is a user-selected tier to be used when auto detection is unavailable or fails.
+	TierID string `json:"tier_id"`
 REDACTED
 
 // GenerateAuthURL generates Google OAuth authorization URL for Gemini.
@@ -54,7 +57,7 @@ REDACTED
 	// Always pass the "hosted" callback URI; the OAuth service may override it depending on
 	// oauth_type and whether the built-in Gemini CLI OAuth client is used.
 	redirectURI := deriveGeminiRedirectURI(c)
-	result, err := h.geminiOAuthService.GenerateAuthURL(c.Request.Context(), req.ProxyID, redirectURI, req.ProjectID, oauthType)
+	result, err := h.geminiOAuthService.GenerateAuthURL(c.Request.Context(), req.ProxyID, redirectURI, req.ProjectID, oauthType, req.TierID)
 	if err != nil {
 		msg := err.Error()
 		// Treat missing/invalid OAuth client configuration as a user/config error.
@@ -76,6 +79,9 @@ type GeminiExchangeCodeRequest struct {
 	ProxyID   *int64 `json:"proxy_id"`
 	// OAuth 类型: "code_assist" 或 "ai_studio"，需要与 GenerateAuthURL 时的类型一致
 	OAuthType string `json:"oauth_type"`
+	// TierID is a user-selected tier to be used when auto detection is unavailable or fails.
+	// This field is optional; when omitted, the server uses the tier stored in the OAuth session.
+	TierID string `json:"tier_id"`
 REDACTED
 
 // ExchangeCode exchanges authorization code for tokens.
@@ -103,6 +109,7 @@ REDACTED
 		Code:      req.Code,
 		ProxyID:   req.ProxyID,
 		OAuthType: oauthType,
+		TierID:    req.TierID,
 REDACTED)
 	if err != nil {
 		response.BadRequest(c, "Failed to exchange code: "+err.Error())

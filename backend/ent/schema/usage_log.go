@@ -113,7 +113,7 @@ func (UsageLog) Edges() []ent.Edge {
 			Field("user_id").
 			Required().
 			Unique(),
-		edge.From("api_key", ApiKey.Type).
+		edge.From("api_key", APIKey.Type).
 			Ref("usage_logs").
 			Field("api_key_id").
 			Required().

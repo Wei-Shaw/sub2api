@@ -47,7 +47,7 @@ REDACTED
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Get apiKey and user from context (set by ApiKeyAuth middleware)
-	apiKey, ok := middleware2.GetApiKeyFromContext(c)
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
 		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
@@ -247,7 +247,7 @@ REDACTED
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:       result,
-				ApiKey:       apiKey,
+				APIKey:       apiKey,
 				User:         apiKey.User,
 				Account:      usedAccount,
 				Subscription: subscription,

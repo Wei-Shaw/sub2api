@@ -4,29 +4,36 @@ type SystemSettings struct {
 	RegistrationEnabled bool
 	EmailVerifyEnabled  bool
 
-	SmtpHost     string
-	SmtpPort     int
-	SmtpUsername string
-	SmtpPassword string
-	SmtpPasswordConfigured bool
-	SmtpFrom     string
-	SmtpFromName string
-	SmtpUseTLS   bool
+	SMTPHost               string
+	SMTPPort               int
+	SMTPUsername           string
+	SMTPPassword           string
+	SMTPPasswordConfigured bool
+	SMTPFrom               string
+	SMTPFromName           string
+	SMTPUseTLS             bool
 
-	TurnstileEnabled   bool
-	TurnstileSiteKey   string
-	TurnstileSecretKey string
+	TurnstileEnabled             bool
+	TurnstileSiteKey             string
+	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
 
 	SiteName     string
 	SiteLogo     string
 	SiteSubtitle string
-	ApiBaseUrl   string
+	APIBaseURL   string
 	ContactInfo  string
-	DocUrl       string
+	DocURL       string
 
 	DefaultConcurrency int
 	DefaultBalance     float64
+
+	// Model fallback configuration
+	EnableModelFallback      bool   `json:"enable_model_fallback"`
+	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`
+	FallbackModelOpenAI      string `json:"fallback_model_openai"`
+	FallbackModelGemini      string `json:"fallback_model_gemini"`
+	FallbackModelAntigravity string `json:"fallback_model_antigravity"`
 REDACTED
 
 type PublicSettings struct {
@@ -37,8 +44,8 @@ type PublicSettings struct {
 	SiteName            string
 	SiteLogo            string
 	SiteSubtitle        string
-	ApiBaseUrl          string
+	APIBaseURL          string
 	ContactInfo         string
-	DocUrl              string
+	DocURL              string
 	Version             string
 REDACTED

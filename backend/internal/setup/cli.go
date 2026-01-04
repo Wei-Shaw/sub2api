@@ -1,3 +1,4 @@
+// Package setup provides CLI commands and application initialization helpers.
 package setup
 
 import (

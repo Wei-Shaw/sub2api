@@ -39,7 +39,7 @@ REDACTED
 REDACTED
 
 func (s *PricingServiceSuite) setupServer(handler http.HandlerFunc) {
-	s.srv = httptest.NewServer(handler)
+	s.srv = newLocalTestServer(s.T(), handler)
 REDACTED
 
 func (s *PricingServiceSuite) TestFetchPricingJSON_Success() {

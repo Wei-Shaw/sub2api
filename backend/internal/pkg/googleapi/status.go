@@ -1,3 +1,4 @@
+// Package googleapi provides helpers for Google-style API responses.
 package googleapi
 
 import "net/http"

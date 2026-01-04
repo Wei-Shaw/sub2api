@@ -132,6 +132,9 @@ export default {
     noOptionsFound: '无匹配选项',
     saving: '保存中...',
     refresh: '刷新',
+    notAvailable: '不可用',
+    now: '现在',
+    unknown: '未知',
     time: {
       never: '从未',
       justNow: '刚刚',
@@ -1057,6 +1060,54 @@ export default {
         error: '错误',
         cooldown: '冷却中'
       REDACTED,
+      status: {
+        paused: '已暂停',
+        limited: '受限',
+        tempUnschedulable: '临时不可调度'
+      REDACTED,
+      tempUnschedulable: {
+        title: '临时不可调度',
+        statusTitle: '临时不可调度状态',
+        hint: '当错误码与关键词同时匹配时，账号会在指定时间内被临时禁用。',
+        notice: '规则按顺序匹配，需同时满足错误码与关键词。',
+        addRule: '添加规则',
+        ruleOrder: '规则序号',
+        ruleIndex: '规则 #{indexREDACTED',
+        errorCode: '错误码',
+        errorCodePlaceholder: '例如 429',
+        durationMinutes: '持续时间（分钟）',
+        durationPlaceholder: '例如 30',
+        keywords: '关键词',
+        keywordsPlaceholder: '例如 overloaded, too many requests',
+        keywordsHint: '多个关键词用逗号分隔，匹配时必须命中其中之一。',
+        description: '描述',
+        descriptionPlaceholder: '可选，便于记忆规则用途',
+        rulesInvalid: '请至少填写一条包含错误码、关键词和时长的规则。',
+        viewDetails: '查看临时不可调度详情',
+        accountName: '账号',
+        triggeredAt: '触发时间',
+        until: '解除时间',
+        remaining: '剩余时间',
+        matchedKeyword: '匹配关键词',
+        errorMessage: '错误详情',
+        reset: '重置状态',
+        resetSuccess: '临时不可调度已重置',
+        resetFailed: '重置临时不可调度失败',
+        failedToLoad: '加载临时不可调度状态失败',
+        notActive: '当前账号未处于临时不可调度状态。',
+        expired: '已到期',
+        remainingMinutes: '约 {minutesREDACTED 分钟',
+        remainingHours: '约 {hoursREDACTED 小时',
+        remainingHoursMinutes: '约 {hoursREDACTED 小时 {minutesREDACTED 分钟',
+        presets: {
+          overloadLabel: '529 过载',
+          overloadDesc: '服务过载 - 暂停 60 分钟',
+          rateLimitLabel: '429 限流',
+          rateLimitDesc: '触发限流 - 暂停 10 分钟',
+          unavailableLabel: '503 维护',
+          unavailableDesc: '服务不可用 - 暂停 30 分钟'
+        REDACTED
+      REDACTED,
       usageWindow: {
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',
@@ -1341,10 +1392,33 @@ export default {
 	      REDACTED,
       // Gemini specific (platform-wide)
       gemini: {
+        helpButton: '使用帮助',
+        helpDialog: {
+          title: 'Gemini 使用指南',
+          apiKeySection: 'API Key 相关链接'
+        REDACTED,
         modelPassthrough: 'Gemini 直接转发模型',
         modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
+        tier: {
+          label: '账号等级',
+          hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
+          aiStudioHint: 'AI Studio 的配额是按模型分别限流（Pro/Flash 独立）。若已绑卡（按量付费），请选 Pay-as-you-go。',
+          googleOne: {
+            free: 'Google One Free',
+            pro: 'Google One Pro',
+            ultra: 'Google One Ultra'
+          REDACTED,
+          gcp: {
+            standard: 'GCP Standard',
+            enterprise: 'GCP Enterprise'
+          REDACTED,
+          aiStudio: {
+            free: 'Google AI Free',
+            paid: 'Google AI Pay-as-you-go'
+          REDACTED
+        REDACTED,
         accountType: {
           oauthTitle: 'OAuth 授权（Gemini）',
           oauthDesc: '使用 Google 账号授权，并选择 OAuth 子类型。',
@@ -1404,6 +1478,17 @@ export default {
           REDACTED,
           simulatedNote: '本地模拟配额，仅供参考',
           rows: {
+            googleOne: {
+              channel: 'Google One OAuth（个人版 / Code Assist for Individuals）',
+              limitsFree: '共享池：1000 RPD / 60 RPM（不分模型）',
+              limitsPro: '共享池：1500 RPD / 120 RPM（不分模型）',
+              limitsUltra: '共享池：2000 RPD / 120 RPM（不分模型）'
+            REDACTED,
+            gcp: {
+              channel: 'GCP Code Assist OAuth（企业版）',
+              limitsStandard: '共享池：1500 RPD / 120 RPM（不分模型）',
+              limitsEnterprise: '共享池：2000 RPD / 120 RPM（不分模型）'
+            REDACTED,
             cli: {
               channel: 'Gemini CLI（官方 Google 登录 / Code Assist）',
               free: '免费 Google 账号',
@@ -1421,7 +1506,7 @@ export default {
               free: '未绑卡（免费层）',
               paid: '已绑卡（按量付费）',
               limitsFree: 'RPD 50；RPM 2（Pro）/ 15（Flash）',
-              limitsPaid: 'RPD 不限；RPM 1000+（按模型配额）'
+              limitsPaid: 'RPD 不限；RPM 1000（Pro）/ 2000（Flash）（按模型配额）'
             REDACTED,
             customOAuth: {
               channel: 'Custom OAuth Client（GCP）',
@@ -1434,6 +1519,7 @@ export default {
         REDACTED,
         rateLimit: {
           ok: '未限流',
+          unlimited: '无限流',
           limited: '限流 {timeREDACTED',
           now: '现在'
         REDACTED
@@ -1761,9 +1847,9 @@ export default {
         siteKey: '站点密钥',
         secretKey: '私密密钥',
         siteKeyHint: '从 Cloudflare Dashboard 获取',
+        cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: '服务端验证密钥（请保密）',
-        secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'
-      REDACTED,
+        secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'      REDACTED,
       defaults: {
         title: '用户默认设置',
         description: '新用户的默认值',
@@ -1911,6 +1997,7 @@ export default {
     description: '查看您的订阅计划和用量',
     noActiveSubscriptions: '暂无有效订阅',
     noActiveSubscriptionsDesc: '您没有任何有效订阅。请联系管理员获取订阅。',
+    failedToLoad: '加载订阅失败',
     status: {
       active: '有效',
       expired: '已过期',

@@ -1,3 +1,4 @@
+// Package errors provides application error types and helpers.
 // nolint:mnd
 package errors
 

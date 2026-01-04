@@ -216,7 +216,7 @@
           </template>
 
           <template #cell-status="{ row REDACTED">
-            <AccountStatusIndicator :account="row" />
+            <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
           </template>
 
           <template #cell-schedulable="{ row REDACTED">
@@ -400,6 +400,14 @@
     <!-- Account Stats Modal -->
     <AccountStatsModal :show="showStatsModal" :account="statsAccount" @close="closeStatsModal" />
 
+    <!-- Temp Unschedulable Status Modal -->
+    <TempUnschedStatusModal
+      :show="showTempUnschedModal"
+      :account="tempUnschedAccount"
+      @close="closeTempUnschedModal"
+      @reset="handleTempUnschedReset"
+    />
+
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
       :show="showDeleteDialog"
@@ -512,6 +520,7 @@ import {
   BulkEditAccountModal,
   ReAuthAccountModal,
   AccountStatsModal,
+  TempUnschedStatusModal,
   SyncFromCrsModal
 REDACTED from '@/components/account'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
@@ -604,6 +613,7 @@ const showDeleteDialog = ref(false)
 const showBulkDeleteDialog = ref(false)
 const showTestModal = ref(false)
 const showStatsModal = ref(false)
+const showTempUnschedModal = ref(false)
 const showCrsSyncModal = ref(false)
 const showBulkEditModal = ref(false)
 const editingAccount = ref<Account | null>(null)
@@ -611,6 +621,7 @@ const reAuthAccount = ref<Account | null>(null)
 const deletingAccount = ref<Account | null>(null)
 const testingAccount = ref<Account | null>(null)
 const statsAccount = ref<Account | null>(null)
+const tempUnschedAccount = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const bulkDeleting = ref(false)
 
@@ -773,6 +784,21 @@ REDACTED
 const closeReAuthModal = () => {
   showReAuthModal.value = false
   reAuthAccount.value = null
+REDACTED
+
+// Temp unschedulable modal
+const handleShowTempUnsched = (account: Account) => {
+  tempUnschedAccount.value = account
+  showTempUnschedModal.value = true
+REDACTED
+
+const closeTempUnschedModal = () => {
+  showTempUnschedModal.value = false
+  tempUnschedAccount.value = null
+REDACTED
+
+const handleTempUnschedReset = () => {
+  loadAccounts()
 REDACTED
 
 // Token refresh

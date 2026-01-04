@@ -56,7 +56,7 @@ REDACTED
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_EnforcesMaxSize_ContentLength() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "100")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(bytes.Repeat([]byte("a"), 100))
@@ -73,7 +73,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_EnforcesMaxSize_Chunked() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Force chunked encoding (unknown Content-Length) by flushing headers before writing.
 		w.WriteHeader(http.StatusOK)
 		if fl, ok := w.(http.Flusher); ok {
@@ -98,7 +98,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_Success() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if fl, ok := w.(http.Flusher); ok {
 			fl.Flush()
@@ -124,7 +124,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_404() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 REDACTED))
 
@@ -139,7 +139,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_Success() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("sum"))
 REDACTED))
@@ -152,7 +152,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_Non200() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 REDACTED))
 
@@ -163,7 +163,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_ContextCancel() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 REDACTED))
 
@@ -186,7 +186,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_InvalidURL() {
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_InvalidDestPath() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("content"))
 REDACTED))
@@ -220,7 +220,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Success() {
 		]
 REDACTED`
 
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(s.T(), "/repos/test/repo/releases/latest", r.URL.Path)
 		require.Equal(s.T(), "application/vnd.github.v3+json", r.Header.Get("Accept"))
 		require.Equal(s.T(), "Sub2API-Updater", r.Header.Get("User-Agent"))
@@ -246,7 +246,7 @@ REDACTED
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Non200() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 REDACTED))
 
@@ -263,7 +263,7 @@ REDACTED
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_InvalidJSON() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("not valid json"))
 REDACTED))
@@ -280,7 +280,7 @@ REDACTED
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_ContextCancel() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 REDACTED))
 
@@ -299,7 +299,7 @@ REDACTED
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_ContextCancel() {
-	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.srv = newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 REDACTED))
 

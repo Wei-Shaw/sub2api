@@ -28,7 +28,7 @@ const (
 const (
 	AccountTypeOAuth      = "oauth"       // OAuth类型账号（full scope: profile + inference）
 	AccountTypeSetupToken = "setup-token" // Setup Token类型账号（inference only scope）
-	AccountTypeApiKey     = "apikey"      // API Key类型账号
+	AccountTypeAPIKey     = "apikey"      // API Key类型账号
 )
 
 // Redeem type constants
@@ -64,13 +64,13 @@ const (
 	SettingKeyEmailVerifyEnabled  = "email_verify_enabled" // 是否开启邮件验证
 
 	// 邮件服务设置
-	SettingKeySmtpHost     = "smtp_host"      // SMTP服务器地址
-	SettingKeySmtpPort     = "smtp_port"      // SMTP端口
-	SettingKeySmtpUsername = "smtp_username"  // SMTP用户名
-	SettingKeySmtpPassword = "smtp_password"  // SMTP密码（加密存储）
-	SettingKeySmtpFrom     = "smtp_from"      // 发件人地址
-	SettingKeySmtpFromName = "smtp_from_name" // 发件人名称
-	SettingKeySmtpUseTLS   = "smtp_use_tls"   // 是否使用TLS
+	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址
+	SettingKeySMTPPort     = "smtp_port"      // SMTP端口
+	SettingKeySMTPUsername = "smtp_username"  // SMTP用户名
+	SettingKeySMTPPassword = "smtp_password"  // SMTP密码（加密存储）
+	SettingKeySMTPFrom     = "smtp_from"      // 发件人地址
+	SettingKeySMTPFromName = "smtp_from_name" // 发件人名称
+	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
 
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证
@@ -81,20 +81,27 @@ const (
 	SettingKeySiteName     = "site_name"     // 网站名称
 	SettingKeySiteLogo     = "site_logo"     // 网站Logo (base64)
 	SettingKeySiteSubtitle = "site_subtitle" // 网站副标题
-	SettingKeyApiBaseUrl   = "api_base_url"  // API端点地址（用于客户端配置和导入）
+	SettingKeyAPIBaseURL   = "api_base_url"  // API端点地址（用于客户端配置和导入）
 	SettingKeyContactInfo  = "contact_info"  // 客服联系方式
-	SettingKeyDocUrl       = "doc_url"       // 文档链接
+	SettingKeyDocURL       = "doc_url"       // 文档链接
 
 	// 默认配置
 	SettingKeyDefaultConcurrency = "default_concurrency" // 新用户默认并发量
 	SettingKeyDefaultBalance     = "default_balance"     // 新用户默认余额
 
 	// 管理员 API Key
-	SettingKeyAdminApiKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
+	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
 
 	// Gemini 配额策略（JSON）
 	SettingKeyGeminiQuotaPolicy = "gemini_quota_policy"
+
+	// Model fallback settings
+	SettingKeyEnableModelFallback      = "enable_model_fallback"
+	SettingKeyFallbackModelAnthropic   = "fallback_model_anthropic"
+	SettingKeyFallbackModelOpenAI      = "fallback_model_openai"
+	SettingKeyFallbackModelGemini      = "fallback_model_gemini"
+	SettingKeyFallbackModelAntigravity = "fallback_model_antigravity"
 )
 
-// Admin API Key prefix (distinct from user "sk-" keys)
-const AdminApiKeyPrefix = "admin-"
+// AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
+const AdminAPIKeyPrefix = "admin-"

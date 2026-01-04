@@ -500,7 +500,7 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
   REDACTED else if (item.type === 'subscription') {
     return t('redeem.subscriptionAssigned')
   REDACTED
-  return 'Unknown'
+  return t('common.unknown')
 REDACTED
 
 const formatHistoryValue = (item: RedeemHistoryItem) => {

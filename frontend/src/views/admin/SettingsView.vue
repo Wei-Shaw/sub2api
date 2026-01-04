@@ -240,7 +240,7 @@
                       href="https://dash.cloudflare.com/"
                       target="_blank"
                       class="text-primary-600 hover:text-primary-500"
-                      >Cloudflare Dashboard</a
+                      >{{ t('admin.settings.turnstile.cloudflareDashboard') REDACTEDREDACTED</a
                     >
                   </p>
                 </div>

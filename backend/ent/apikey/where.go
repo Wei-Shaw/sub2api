@@ -11,468 +11,468 @@ import (
 )
 
 // ID filters vertices based on their ID field.
-func ID(id int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldID, id))
+func ID(id int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldID, id))
 REDACTED
 
 // IDEQ applies the EQ predicate on the ID field.
-func IDEQ(id int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldID, id))
+func IDEQ(id int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldID, id))
 REDACTED
 
 // IDNEQ applies the NEQ predicate on the ID field.
-func IDNEQ(id int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldID, id))
+func IDNEQ(id int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldID, id))
 REDACTED
 
 // IDIn applies the In predicate on the ID field.
-func IDIn(ids ...int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldID, ids...))
+func IDIn(ids ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldID, ids...))
 REDACTED
 
 // IDNotIn applies the NotIn predicate on the ID field.
-func IDNotIn(ids ...int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldID, ids...))
+func IDNotIn(ids ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldID, ids...))
 REDACTED
 
 // IDGT applies the GT predicate on the ID field.
-func IDGT(id int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGT(FieldID, id))
+func IDGT(id int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldID, id))
 REDACTED
 
 // IDGTE applies the GTE predicate on the ID field.
-func IDGTE(id int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGTE(FieldID, id))
+func IDGTE(id int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldID, id))
 REDACTED
 
 // IDLT applies the LT predicate on the ID field.
-func IDLT(id int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLT(FieldID, id))
+func IDLT(id int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldID, id))
 REDACTED
 
 // IDLTE applies the LTE predicate on the ID field.
-func IDLTE(id int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLTE(FieldID, id))
+func IDLTE(id int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldID, id))
 REDACTED
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
-func CreatedAt(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldCreatedAt, v))
+func CreatedAt(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldCreatedAt, v))
 REDACTED
 
 // UpdatedAt applies equality check predicate on the "updated_at" field. It's identical to UpdatedAtEQ.
-func UpdatedAt(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldUpdatedAt, v))
+func UpdatedAt(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldUpdatedAt, v))
 REDACTED
 
 // DeletedAt applies equality check predicate on the "deleted_at" field. It's identical to DeletedAtEQ.
-func DeletedAt(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldDeletedAt, v))
+func DeletedAt(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldDeletedAt, v))
 REDACTED
 
 // UserID applies equality check predicate on the "user_id" field. It's identical to UserIDEQ.
-func UserID(v int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldUserID, v))
+func UserID(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldUserID, v))
 REDACTED
 
 // Key applies equality check predicate on the "key" field. It's identical to KeyEQ.
-func Key(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldKey, v))
+func Key(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldKey, v))
 REDACTED
 
 // Name applies equality check predicate on the "name" field. It's identical to NameEQ.
-func Name(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldName, v))
+func Name(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldName, v))
 REDACTED
 
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
-func GroupID(v int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldGroupID, v))
+func GroupID(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldGroupID, v))
 REDACTED
 
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
-func Status(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldStatus, v))
+func Status(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 REDACTED
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
-func CreatedAtEQ(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldCreatedAt, v))
+func CreatedAtEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldCreatedAt, v))
 REDACTED
 
 // CreatedAtNEQ applies the NEQ predicate on the "created_at" field.
-func CreatedAtNEQ(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldCreatedAt, v))
+func CreatedAtNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldCreatedAt, v))
 REDACTED
 
 // CreatedAtIn applies the In predicate on the "created_at" field.
-func CreatedAtIn(vs ...time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldCreatedAt, vs...))
+func CreatedAtIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldCreatedAt, vs...))
 REDACTED
 
 // CreatedAtNotIn applies the NotIn predicate on the "created_at" field.
-func CreatedAtNotIn(vs ...time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldCreatedAt, vs...))
+func CreatedAtNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldCreatedAt, vs...))
 REDACTED
 
 // CreatedAtGT applies the GT predicate on the "created_at" field.
-func CreatedAtGT(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGT(FieldCreatedAt, v))
+func CreatedAtGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldCreatedAt, v))
 REDACTED
 
 // CreatedAtGTE applies the GTE predicate on the "created_at" field.
-func CreatedAtGTE(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGTE(FieldCreatedAt, v))
+func CreatedAtGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldCreatedAt, v))
 REDACTED
 
 // CreatedAtLT applies the LT predicate on the "created_at" field.
-func CreatedAtLT(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLT(FieldCreatedAt, v))
+func CreatedAtLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldCreatedAt, v))
 REDACTED
 
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
-func CreatedAtLTE(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLTE(FieldCreatedAt, v))
+func CreatedAtLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldCreatedAt, v))
 REDACTED
 
 // UpdatedAtEQ applies the EQ predicate on the "updated_at" field.
-func UpdatedAtEQ(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldUpdatedAt, v))
+func UpdatedAtEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldUpdatedAt, v))
 REDACTED
 
 // UpdatedAtNEQ applies the NEQ predicate on the "updated_at" field.
-func UpdatedAtNEQ(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldUpdatedAt, v))
+func UpdatedAtNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldUpdatedAt, v))
 REDACTED
 
 // UpdatedAtIn applies the In predicate on the "updated_at" field.
-func UpdatedAtIn(vs ...time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldUpdatedAt, vs...))
+func UpdatedAtIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldUpdatedAt, vs...))
 REDACTED
 
 // UpdatedAtNotIn applies the NotIn predicate on the "updated_at" field.
-func UpdatedAtNotIn(vs ...time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldUpdatedAt, vs...))
+func UpdatedAtNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldUpdatedAt, vs...))
 REDACTED
 
 // UpdatedAtGT applies the GT predicate on the "updated_at" field.
-func UpdatedAtGT(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGT(FieldUpdatedAt, v))
+func UpdatedAtGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldUpdatedAt, v))
 REDACTED
 
 // UpdatedAtGTE applies the GTE predicate on the "updated_at" field.
-func UpdatedAtGTE(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGTE(FieldUpdatedAt, v))
+func UpdatedAtGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldUpdatedAt, v))
 REDACTED
 
 // UpdatedAtLT applies the LT predicate on the "updated_at" field.
-func UpdatedAtLT(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLT(FieldUpdatedAt, v))
+func UpdatedAtLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldUpdatedAt, v))
 REDACTED
 
 // UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
-func UpdatedAtLTE(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLTE(FieldUpdatedAt, v))
+func UpdatedAtLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldUpdatedAt, v))
 REDACTED
 
 // DeletedAtEQ applies the EQ predicate on the "deleted_at" field.
-func DeletedAtEQ(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldDeletedAt, v))
+func DeletedAtEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldDeletedAt, v))
 REDACTED
 
 // DeletedAtNEQ applies the NEQ predicate on the "deleted_at" field.
-func DeletedAtNEQ(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldDeletedAt, v))
+func DeletedAtNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldDeletedAt, v))
 REDACTED
 
 // DeletedAtIn applies the In predicate on the "deleted_at" field.
-func DeletedAtIn(vs ...time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldDeletedAt, vs...))
+func DeletedAtIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldDeletedAt, vs...))
 REDACTED
 
 // DeletedAtNotIn applies the NotIn predicate on the "deleted_at" field.
-func DeletedAtNotIn(vs ...time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldDeletedAt, vs...))
+func DeletedAtNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldDeletedAt, vs...))
 REDACTED
 
 // DeletedAtGT applies the GT predicate on the "deleted_at" field.
-func DeletedAtGT(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGT(FieldDeletedAt, v))
+func DeletedAtGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldDeletedAt, v))
 REDACTED
 
 // DeletedAtGTE applies the GTE predicate on the "deleted_at" field.
-func DeletedAtGTE(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGTE(FieldDeletedAt, v))
+func DeletedAtGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldDeletedAt, v))
 REDACTED
 
 // DeletedAtLT applies the LT predicate on the "deleted_at" field.
-func DeletedAtLT(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLT(FieldDeletedAt, v))
+func DeletedAtLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldDeletedAt, v))
 REDACTED
 
 // DeletedAtLTE applies the LTE predicate on the "deleted_at" field.
-func DeletedAtLTE(v time.Time) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLTE(FieldDeletedAt, v))
+func DeletedAtLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldDeletedAt, v))
 REDACTED
 
 // DeletedAtIsNil applies the IsNil predicate on the "deleted_at" field.
-func DeletedAtIsNil() predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIsNull(FieldDeletedAt))
+func DeletedAtIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldDeletedAt))
 REDACTED
 
 // DeletedAtNotNil applies the NotNil predicate on the "deleted_at" field.
-func DeletedAtNotNil() predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotNull(FieldDeletedAt))
+func DeletedAtNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldDeletedAt))
 REDACTED
 
 // UserIDEQ applies the EQ predicate on the "user_id" field.
-func UserIDEQ(v int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldUserID, v))
+func UserIDEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldUserID, v))
 REDACTED
 
 // UserIDNEQ applies the NEQ predicate on the "user_id" field.
-func UserIDNEQ(v int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldUserID, v))
+func UserIDNEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldUserID, v))
 REDACTED
 
 // UserIDIn applies the In predicate on the "user_id" field.
-func UserIDIn(vs ...int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldUserID, vs...))
+func UserIDIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldUserID, vs...))
 REDACTED
 
 // UserIDNotIn applies the NotIn predicate on the "user_id" field.
-func UserIDNotIn(vs ...int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldUserID, vs...))
+func UserIDNotIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldUserID, vs...))
 REDACTED
 
 // KeyEQ applies the EQ predicate on the "key" field.
-func KeyEQ(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldKey, v))
+func KeyEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldKey, v))
 REDACTED
 
 // KeyNEQ applies the NEQ predicate on the "key" field.
-func KeyNEQ(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldKey, v))
+func KeyNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldKey, v))
 REDACTED
 
 // KeyIn applies the In predicate on the "key" field.
-func KeyIn(vs ...string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldKey, vs...))
+func KeyIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldKey, vs...))
 REDACTED
 
 // KeyNotIn applies the NotIn predicate on the "key" field.
-func KeyNotIn(vs ...string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldKey, vs...))
+func KeyNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldKey, vs...))
 REDACTED
 
 // KeyGT applies the GT predicate on the "key" field.
-func KeyGT(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGT(FieldKey, v))
+func KeyGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldKey, v))
 REDACTED
 
 // KeyGTE applies the GTE predicate on the "key" field.
-func KeyGTE(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGTE(FieldKey, v))
+func KeyGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldKey, v))
 REDACTED
 
 // KeyLT applies the LT predicate on the "key" field.
-func KeyLT(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLT(FieldKey, v))
+func KeyLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldKey, v))
 REDACTED
 
 // KeyLTE applies the LTE predicate on the "key" field.
-func KeyLTE(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLTE(FieldKey, v))
+func KeyLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldKey, v))
 REDACTED
 
 // KeyContains applies the Contains predicate on the "key" field.
-func KeyContains(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldContains(FieldKey, v))
+func KeyContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldKey, v))
 REDACTED
 
 // KeyHasPrefix applies the HasPrefix predicate on the "key" field.
-func KeyHasPrefix(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldHasPrefix(FieldKey, v))
+func KeyHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldKey, v))
 REDACTED
 
 // KeyHasSuffix applies the HasSuffix predicate on the "key" field.
-func KeyHasSuffix(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldHasSuffix(FieldKey, v))
+func KeyHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldKey, v))
 REDACTED
 
 // KeyEqualFold applies the EqualFold predicate on the "key" field.
-func KeyEqualFold(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEqualFold(FieldKey, v))
+func KeyEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldKey, v))
 REDACTED
 
 // KeyContainsFold applies the ContainsFold predicate on the "key" field.
-func KeyContainsFold(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldContainsFold(FieldKey, v))
+func KeyContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldKey, v))
 REDACTED
 
 // NameEQ applies the EQ predicate on the "name" field.
-func NameEQ(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldName, v))
+func NameEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldName, v))
 REDACTED
 
 // NameNEQ applies the NEQ predicate on the "name" field.
-func NameNEQ(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldName, v))
+func NameNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldName, v))
 REDACTED
 
 // NameIn applies the In predicate on the "name" field.
-func NameIn(vs ...string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldName, vs...))
+func NameIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldName, vs...))
 REDACTED
 
 // NameNotIn applies the NotIn predicate on the "name" field.
-func NameNotIn(vs ...string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldName, vs...))
+func NameNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldName, vs...))
 REDACTED
 
 // NameGT applies the GT predicate on the "name" field.
-func NameGT(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGT(FieldName, v))
+func NameGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldName, v))
 REDACTED
 
 // NameGTE applies the GTE predicate on the "name" field.
-func NameGTE(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGTE(FieldName, v))
+func NameGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldName, v))
 REDACTED
 
 // NameLT applies the LT predicate on the "name" field.
-func NameLT(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLT(FieldName, v))
+func NameLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldName, v))
 REDACTED
 
 // NameLTE applies the LTE predicate on the "name" field.
-func NameLTE(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLTE(FieldName, v))
+func NameLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldName, v))
 REDACTED
 
 // NameContains applies the Contains predicate on the "name" field.
-func NameContains(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldContains(FieldName, v))
+func NameContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldName, v))
 REDACTED
 
 // NameHasPrefix applies the HasPrefix predicate on the "name" field.
-func NameHasPrefix(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldHasPrefix(FieldName, v))
+func NameHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldName, v))
 REDACTED
 
 // NameHasSuffix applies the HasSuffix predicate on the "name" field.
-func NameHasSuffix(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldHasSuffix(FieldName, v))
+func NameHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldName, v))
 REDACTED
 
 // NameEqualFold applies the EqualFold predicate on the "name" field.
-func NameEqualFold(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEqualFold(FieldName, v))
+func NameEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldName, v))
 REDACTED
 
 // NameContainsFold applies the ContainsFold predicate on the "name" field.
-func NameContainsFold(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldContainsFold(FieldName, v))
+func NameContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldName, v))
 REDACTED
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.
-func GroupIDEQ(v int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldGroupID, v))
+func GroupIDEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldGroupID, v))
 REDACTED
 
 // GroupIDNEQ applies the NEQ predicate on the "group_id" field.
-func GroupIDNEQ(v int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldGroupID, v))
+func GroupIDNEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldGroupID, v))
 REDACTED
 
 // GroupIDIn applies the In predicate on the "group_id" field.
-func GroupIDIn(vs ...int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldGroupID, vs...))
+func GroupIDIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldGroupID, vs...))
 REDACTED
 
 // GroupIDNotIn applies the NotIn predicate on the "group_id" field.
-func GroupIDNotIn(vs ...int64) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldGroupID, vs...))
+func GroupIDNotIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldGroupID, vs...))
 REDACTED
 
 // GroupIDIsNil applies the IsNil predicate on the "group_id" field.
-func GroupIDIsNil() predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIsNull(FieldGroupID))
+func GroupIDIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldGroupID))
 REDACTED
 
 // GroupIDNotNil applies the NotNil predicate on the "group_id" field.
-func GroupIDNotNil() predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotNull(FieldGroupID))
+func GroupIDNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldGroupID))
 REDACTED
 
 // StatusEQ applies the EQ predicate on the "status" field.
-func StatusEQ(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEQ(FieldStatus, v))
+func StatusEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 REDACTED
 
 // StatusNEQ applies the NEQ predicate on the "status" field.
-func StatusNEQ(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNEQ(FieldStatus, v))
+func StatusNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldStatus, v))
 REDACTED
 
 // StatusIn applies the In predicate on the "status" field.
-func StatusIn(vs ...string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldIn(FieldStatus, vs...))
+func StatusIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldStatus, vs...))
 REDACTED
 
 // StatusNotIn applies the NotIn predicate on the "status" field.
-func StatusNotIn(vs ...string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldNotIn(FieldStatus, vs...))
+func StatusNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldStatus, vs...))
 REDACTED
 
 // StatusGT applies the GT predicate on the "status" field.
-func StatusGT(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGT(FieldStatus, v))
+func StatusGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldStatus, v))
 REDACTED
 
 // StatusGTE applies the GTE predicate on the "status" field.
-func StatusGTE(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldGTE(FieldStatus, v))
+func StatusGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldStatus, v))
 REDACTED
 
 // StatusLT applies the LT predicate on the "status" field.
-func StatusLT(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLT(FieldStatus, v))
+func StatusLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldStatus, v))
 REDACTED
 
 // StatusLTE applies the LTE predicate on the "status" field.
-func StatusLTE(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldLTE(FieldStatus, v))
+func StatusLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldStatus, v))
 REDACTED
 
 // StatusContains applies the Contains predicate on the "status" field.
-func StatusContains(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldContains(FieldStatus, v))
+func StatusContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldStatus, v))
 REDACTED
 
 // StatusHasPrefix applies the HasPrefix predicate on the "status" field.
-func StatusHasPrefix(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldHasPrefix(FieldStatus, v))
+func StatusHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldStatus, v))
 REDACTED
 
 // StatusHasSuffix applies the HasSuffix predicate on the "status" field.
-func StatusHasSuffix(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldHasSuffix(FieldStatus, v))
+func StatusHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldStatus, v))
 REDACTED
 
 // StatusEqualFold applies the EqualFold predicate on the "status" field.
-func StatusEqualFold(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldEqualFold(FieldStatus, v))
+func StatusEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldStatus, v))
 REDACTED
 
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
-func StatusContainsFold(v string) predicate.ApiKey {
-	return predicate.ApiKey(sql.FieldContainsFold(FieldStatus, v))
+func StatusContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
 REDACTED
 
 // HasUser applies the HasEdge predicate on the "user" edge.
-func HasUser() predicate.ApiKey {
-	return predicate.ApiKey(func(s *sql.Selector) {
+func HasUser() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
@@ -482,8 +482,8 @@ REDACTED)
 REDACTED
 
 // HasUserWith applies the HasEdge predicate on the "user" edge with a given conditions (other predicates).
-func HasUserWith(preds ...predicate.User) predicate.ApiKey {
-	return predicate.ApiKey(func(s *sql.Selector) {
+func HasUserWith(preds ...predicate.User) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
 		step := newUserStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
@@ -494,8 +494,8 @@ REDACTED)
 REDACTED
 
 // HasGroup applies the HasEdge predicate on the "group" edge.
-func HasGroup() predicate.ApiKey {
-	return predicate.ApiKey(func(s *sql.Selector) {
+func HasGroup() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
@@ -505,8 +505,8 @@ REDACTED)
 REDACTED
 
 // HasGroupWith applies the HasEdge predicate on the "group" edge with a given conditions (other predicates).
-func HasGroupWith(preds ...predicate.Group) predicate.ApiKey {
-	return predicate.ApiKey(func(s *sql.Selector) {
+func HasGroupWith(preds ...predicate.Group) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
 		step := newGroupStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
@@ -517,8 +517,8 @@ REDACTED)
 REDACTED
 
 // HasUsageLogs applies the HasEdge predicate on the "usage_logs" edge.
-func HasUsageLogs() predicate.ApiKey {
-	return predicate.ApiKey(func(s *sql.Selector) {
+func HasUsageLogs() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
@@ -528,8 +528,8 @@ REDACTED)
 REDACTED
 
 // HasUsageLogsWith applies the HasEdge predicate on the "usage_logs" edge with a given conditions (other predicates).
-func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.ApiKey {
-	return predicate.ApiKey(func(s *sql.Selector) {
+func HasUsageLogsWith(preds ...predicate.UsageLog) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
 		step := newUsageLogsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
@@ -540,16 +540,16 @@ REDACTED)
 REDACTED
 
 // And groups predicates with the AND operator between them.
-func And(predicates ...predicate.ApiKey) predicate.ApiKey {
-	return predicate.ApiKey(sql.AndPredicates(predicates...))
+func And(predicates ...predicate.APIKey) predicate.APIKey {
+	return predicate.APIKey(sql.AndPredicates(predicates...))
 REDACTED
 
 // Or groups predicates with the OR operator between them.
-func Or(predicates ...predicate.ApiKey) predicate.ApiKey {
-	return predicate.ApiKey(sql.OrPredicates(predicates...))
+func Or(predicates ...predicate.APIKey) predicate.APIKey {
+	return predicate.APIKey(sql.OrPredicates(predicates...))
 REDACTED
 
 // Not applies the not operator on the given predicate.
-func Not(p predicate.ApiKey) predicate.ApiKey {
-	return predicate.ApiKey(sql.NotPredicates(p))
+func Not(p predicate.APIKey) predicate.APIKey {
+	return predicate.APIKey(sql.NotPredicates(p))
 REDACTED

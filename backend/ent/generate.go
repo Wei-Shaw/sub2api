@@ -1,3 +1,4 @@
+// Package ent provides the generated ORM code for database entities.
 package ent
 
 // 启用 sql/execquery 以生成 ExecContext/QueryContext 的透传接口，便于事务内执行原生 SQL。

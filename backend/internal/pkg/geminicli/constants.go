@@ -1,3 +1,4 @@
+// Package geminicli provides helpers for interacting with Gemini CLI tools.
 package geminicli
 
 import "time"
@@ -25,6 +26,12 @@ const (
 	// Note: Google Auth platform currently documents the OAuth scope as
 	// https://www.googleapis.com/auth/generative-language.retriever (often with cloud-platform).
 	DefaultAIStudioScopes = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language.retriever"
+
+	// DefaultScopes for Google One (personal Google accounts with Gemini access)
+	// Only used when a custom OAuth client is configured. When using the built-in Gemini CLI client,
+	// Google One uses DefaultCodeAssistScopes (same as code_assist) because the built-in client
+	// cannot request restricted scopes like generative-language.retriever or drive.readonly.
+	DefaultGoogleOneScopes = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language.retriever https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
 
 	// GeminiCLIRedirectURI is the redirect URI used by Gemini CLI for Code Assist OAuth.
 	GeminiCLIRedirectURI = "https://codeassist.google.com/authcode"

@@ -11,16 +11,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ApiKeyAuthGoogle is a Google-style error wrapper for API key auth.
-func ApiKeyAuthGoogle(apiKeyService *service.ApiKeyService, cfg *config.Config) gin.HandlerFunc {
-	return ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg)
+// APIKeyAuthGoogle is a Google-style error wrapper for API key auth.
+func APIKeyAuthGoogle(apiKeyService *service.APIKeyService, cfg *config.Config) gin.HandlerFunc {
+	return APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg)
 REDACTED
 
-// ApiKeyAuthWithSubscriptionGoogle behaves like ApiKeyAuthWithSubscription but returns Google-style errors:
+// APIKeyAuthWithSubscriptionGoogle behaves like ApiKeyAuthWithSubscription but returns Google-style errors:
 // {"error":{"code":401,"message":"...","status":"UNAUTHENTICATED"REDACTEDREDACTED
 //
 // It is intended for Gemini native endpoints (/v1beta) to match Gemini SDK expectations.
-func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
+func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if v := strings.TrimSpace(c.Query("api_key")); v != "" {
 			abortWithGoogleError(c, 400, "Query parameter api_key is deprecated. Use Authorization header or key instead.")
@@ -34,7 +34,7 @@ func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subs
 
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
-			if errors.Is(err, service.ErrApiKeyNotFound) {
+			if errors.Is(err, service.ErrAPIKeyNotFound) {
 				abortWithGoogleError(c, 401, "Invalid API key")
 				return
 		REDACTED
@@ -57,7 +57,7 @@ func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subs
 
 		// 简易模式：跳过余额和订阅检查
 		if cfg.RunMode == config.RunModeSimple {
-			c.Set(string(ContextKeyApiKey), apiKey)
+			c.Set(string(ContextKeyAPIKey), apiKey)
 			c.Set(string(ContextKeyUser), AuthSubject{
 				UserID:      apiKey.User.ID,
 				Concurrency: apiKey.User.Concurrency,
@@ -96,7 +96,7 @@ func ApiKeyAuthWithSubscriptionGoogle(apiKeyService *service.ApiKeyService, subs
 		REDACTED
 	REDACTED
 
-		c.Set(string(ContextKeyApiKey), apiKey)
+		c.Set(string(ContextKeyAPIKey), apiKey)
 		c.Set(string(ContextKeyUser), AuthSubject{
 			UserID:      apiKey.User.ID,
 			Concurrency: apiKey.User.Concurrency,

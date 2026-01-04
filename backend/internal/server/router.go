@@ -17,8 +17,8 @@ func SetupRouter(
 	handlers *handler.Handlers,
 	jwtAuth middleware2.JWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
-	apiKeyAuth middleware2.ApiKeyAuthMiddleware,
-	apiKeyService *service.ApiKeyService,
+	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+	apiKeyService *service.APIKeyService,
 	subscriptionService *service.SubscriptionService,
 	cfg *config.Config,
 ) *gin.Engine {
@@ -44,8 +44,8 @@ func registerRoutes(
 	h *handler.Handlers,
 	jwtAuth middleware2.JWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
-	apiKeyAuth middleware2.ApiKeyAuthMiddleware,
-	apiKeyService *service.ApiKeyService,
+	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+	apiKeyService *service.APIKeyService,
 	subscriptionService *service.SubscriptionService,
 	cfg *config.Config,
 ) {

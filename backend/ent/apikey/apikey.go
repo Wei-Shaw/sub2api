@@ -109,7 +109,7 @@ var (
 	StatusValidator func(string) error
 )
 
-// OrderOption defines the ordering options for the ApiKey queries.
+// OrderOption defines the ordering options for the APIKey queries.
 type OrderOption func(*sql.Selector)
 
 // ByID orders the results by the id field.
