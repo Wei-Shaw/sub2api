@@ -1347,6 +1347,7 @@ export default {
         REDACTED,
         rateLimit: {
           ok: 'Not rate limited',
+          unlimited: 'Unlimited',
           limited: 'Rate limited {timeREDACTED',
           now: 'now'
         REDACTED

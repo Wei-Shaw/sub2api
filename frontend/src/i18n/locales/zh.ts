@@ -1484,6 +1484,7 @@ export default {
         REDACTED,
         rateLimit: {
           ok: '未限流',
+          unlimited: '无限流',
           limited: '限流 {timeREDACTED',
           now: '现在'
         REDACTED

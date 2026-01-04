@@ -229,6 +229,7 @@
         </span>
       </div>
 
+      <!-- Usage data or unlimited flow -->
       <div class="space-y-1">
         <div v-if="loading" class="space-y-1">
           <div class="flex items-center gap-1">
@@ -240,7 +241,8 @@
         <div v-else-if="error" class="text-xs text-red-500">
           {{ error REDACTEDREDACTED
         </div>
-        <div v-else-if="geminiUsageAvailable" class="space-y-1">
+        <!-- Code Assist: show model usage bars -->
+        <div v-else-if="isGeminiCodeAssist && geminiUsageAvailable" class="space-y-1">
           <UsageProgressBar
             v-if="usageInfo?.gemini_pro_daily"
             :label="t('admin.accounts.usageWindow.geminiProDaily')"
@@ -262,6 +264,10 @@
           <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' REDACTEDREDACTED
           </p>
+        </div>
+        <!-- AI Studio & Google One: show unlimited flow -->
+        <div v-else class="text-xs text-gray-400">
+          {{ t('admin.accounts.gemini.rateLimit.unlimited') REDACTEDREDACTED
         </div>
       </div>
     </template>
