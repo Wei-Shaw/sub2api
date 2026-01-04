@@ -652,16 +652,4 @@ REDACTED)
 </script>
 
 <style scoped>
-/* Compact Select styling for dashboard */
-:deep(.select-trigger) {
-  @apply rounded-lg px-3 py-1.5 text-sm;
-REDACTED
-
-:deep(.select-dropdown) {
-  @apply rounded-lg;
-REDACTED
-
-:deep(.select-option) {
-  @apply px-3 py-2 text-sm;
-REDACTED
 </style>

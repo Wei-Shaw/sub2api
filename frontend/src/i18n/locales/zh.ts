@@ -145,7 +145,10 @@ export default {
     selectOption: '请选择',
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
+    noGroupsAvailable: '无可用分组',
+    unknownError: '发生未知错误',
     saving: '保存中...',
+    selectedCount: '（已选 {countREDACTED 个）',
     refresh: '刷新',
     notAvailable: '不可用',
     now: '现在',
@@ -678,10 +681,6 @@ export default {
       roles: {
         admin: '管理员',
         user: '用户'
-      REDACTED,
-      statuses: {
-        active: '正常',
-        banned: '禁用'
       REDACTED,
       form: {
         emailLabel: '邮箱',

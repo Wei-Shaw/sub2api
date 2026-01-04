@@ -128,7 +128,7 @@ REDACTED
 	// 2. 【新增】Wait后二次检查余额/订阅
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		log.Printf("Billing eligibility check failed after wait: %v", err)
-		h.handleStreamingAwareError(c, http.StatusForbidden, "billing_error", err.Error(), streamStarted)
+		h.handleStreamingAwareError(c, http.StatusForbidden, "permission_error", "Insufficient balance or active subscription required", streamStarted)
 		return
 REDACTED
 
@@ -156,8 +156,9 @@ REDACTED
 		for {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, failedAccountIDs)
 			if err != nil {
+				log.Printf("Select account failed: %v", err)
 				if len(failedAccountIDs) == 0 {
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts for requested model", streamStarted)
 					return
 			REDACTED
 				h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
@@ -280,8 +281,9 @@ REDACTED
 		// 选择支持该模型的账号
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, failedAccountIDs)
 		if err != nil {
+			log.Printf("Select account failed: %v", err)
 			if len(failedAccountIDs) == 0 {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts for requested model", streamStarted)
 				return
 		REDACTED
 			h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
@@ -566,32 +568,68 @@ REDACTED
 func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) {
 	switch statusCode {
 	case 401:
-		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"
+		return http.StatusBadGateway, "api_error", "Upstream authentication failed, please contact administrator"
 	case 403:
-		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"
+		return http.StatusBadGateway, "api_error", "Upstream access forbidden, please contact administrator"
 	case 429:
 		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"
 	case 529:
 		return http.StatusServiceUnavailable, "overloaded_error", "Upstream service overloaded, please retry later"
 	case 500, 502, 503, 504:
-		return http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable"
+		return http.StatusBadGateway, "api_error", "Upstream service temporarily unavailable"
 	default:
-		return http.StatusBadGateway, "upstream_error", "Upstream request failed"
+		return http.StatusBadGateway, "api_error", "Upstream request failed"
 REDACTED
+REDACTED
+
+func normalizeAnthropicErrorType(errType string) string {
+	switch errType {
+	case "invalid_request_error",
+		"authentication_error",
+		"permission_error",
+		"not_found_error",
+		"rate_limit_error",
+		"api_error",
+		"overloaded_error":
+		return errType
+	case "billing_error":
+		// Not an Anthropic-standard error type; map to the closest equivalent.
+		return "permission_error"
+	case "upstream_error":
+		// Not an Anthropic-standard error type; keep clients compatible.
+		return "api_error"
+	default:
+		return "api_error"
+REDACTED
+REDACTED
+
+const maxPublicErrorMessageLen = 512
+
+func sanitizePublicErrorMessage(message string) string {
+	cleaned := strings.TrimSpace(message)
+	cleaned = strings.ReplaceAll(cleaned, "\r", " ")
+	cleaned = strings.ReplaceAll(cleaned, "\n", " ")
+	if len(cleaned) > maxPublicErrorMessageLen {
+		cleaned = cleaned[:maxPublicErrorMessageLen] + "..."
+REDACTED
+	return cleaned
 REDACTED
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	normalizedType := normalizeAnthropicErrorType(errType)
+	publicMessage := sanitizePublicErrorMessage(message)
+
 	if streamStarted {
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			// Send error event in SSE format with proper JSON marshaling
+			// Anthropic streaming spec: send `event: error` with JSON `data`.
 			errorData := map[string]any{
 				"type": "error",
 				"error": map[string]string{
-					"type":    errType,
-					"message": message,
+					"type":    normalizedType,
+					"message": publicMessage,
 			REDACTED,
 		REDACTED
 			jsonBytes, err := json.Marshal(errorData)
@@ -599,8 +637,11 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 				_ = c.Error(err)
 				return
 		REDACTED
-			errorEvent := fmt.Sprintf("data: %s\n\n", string(jsonBytes))
-			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
+			if _, err := fmt.Fprintf(c.Writer, "event: error\n"); err != nil {
+				_ = c.Error(err)
+				return
+		REDACTED
+			if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", string(jsonBytes)); err != nil {
 				_ = c.Error(err)
 		REDACTED
 			flusher.Flush()
@@ -609,16 +650,19 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 REDACTED
 
 	// Normal case: return JSON response with proper status code
-	h.errorResponse(c, status, errType, message)
+	h.errorResponse(c, status, normalizedType, publicMessage)
 REDACTED
 
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
+	normalizedType := normalizeAnthropicErrorType(errType)
+	publicMessage := sanitizePublicErrorMessage(message)
+
 	c.JSON(status, gin.H{
 		"type": "error",
 		"error": gin.H{
-			"type":    errType,
-			"message": message,
+			"type":    normalizedType,
+			"message": publicMessage,
 	REDACTED,
 REDACTED)
 REDACTED
@@ -674,7 +718,8 @@ REDACTED
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		h.errorResponse(c, http.StatusForbidden, "billing_error", err.Error())
+		log.Printf("Billing eligibility check failed: %v", err)
+		h.errorResponse(c, http.StatusForbidden, "permission_error", "Insufficient balance or active subscription required")
 		return
 REDACTED
 
@@ -684,7 +729,8 @@ REDACTED
 	// 选择支持该模型的账号
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
+		log.Printf("Select account failed: %v", err)
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts for requested model")
 		return
 REDACTED
 

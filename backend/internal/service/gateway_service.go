@@ -929,8 +929,16 @@ REDACTED
 
 // 重试相关常量
 const (
-	maxRetries = 10              // 最大重试次数
-	retryDelay = 3 * time.Second // 重试等待时间
+	// 最大尝试次数（包含首次请求）。过多重试会导致请求堆积与资源耗尽。
+	maxRetryAttempts = 5
+
+	// 指数退避：第 N 次失败后的等待 = retryBaseDelay * 2^(N-1)，并且上限为 retryMaxDelay。
+	retryBaseDelay = 300 * time.Millisecond
+	retryMaxDelay  = 3 * time.Second
+
+	// 最大重试耗时（包含请求本身耗时 + 退避等待时间）。
+	// 用于防止极端情况下 goroutine 长时间堆积导致资源耗尽。
+	maxRetryElapsed = 10 * time.Second
 )
 
 func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
@@ -950,6 +958,40 @@ func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 		return true
 	default:
 		return statusCode >= 500
+REDACTED
+REDACTED
+
+func retryBackoffDelay(attempt int) time.Duration {
+	// attempt 从 1 开始，表示第 attempt 次请求刚失败，需要等待后进行第 attempt+1 次请求。
+	if attempt <= 0 {
+		return retryBaseDelay
+REDACTED
+	delay := retryBaseDelay * time.Duration(1<<(attempt-1))
+	if delay > retryMaxDelay {
+		return retryMaxDelay
+REDACTED
+	return delay
+REDACTED
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+REDACTED
+	timer := time.NewTimer(d)
+	defer func() {
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+		REDACTED
+	REDACTED
+REDACTED()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 REDACTED
 REDACTED
 
@@ -1069,7 +1111,8 @@ REDACTED
 
 	// 重试循环
 	var resp *http.Response
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	retryStart := time.Now()
+	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel)
 		if err != nil {
@@ -1079,6 +1122,9 @@ REDACTED
 		// 发送请求
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+		REDACTED
 			return nil, fmt.Errorf("upstream request failed: %w", err)
 	REDACTED
 
@@ -1089,6 +1135,11 @@ REDACTED
 				_ = resp.Body.Close()
 
 				if s.isThinkingBlockSignatureError(respBody) {
+					// 避免在重试预算已耗尽时再发起额外请求
+					if time.Since(retryStart) >= maxRetryElapsed {
+						resp.Body = io.NopCloser(bytes.NewReader(respBody))
+						break
+				REDACTED
 					log.Printf("Account %d: detected thinking block signature error, retrying with filtered thinking blocks", account.ID)
 
 					// 过滤thinking blocks并重试（使用更激进的过滤）
@@ -1121,11 +1172,27 @@ REDACTED
 
 		// 检查是否需要通用重试（排除400，因为400已经在上面特殊处理过了）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
-			if attempt < maxRetries {
-				log.Printf("Account %d: upstream error %d, retry %d/%d after %v",
-					account.ID, resp.StatusCode, attempt, maxRetries, retryDelay)
+			if attempt < maxRetryAttempts {
+				elapsed := time.Since(retryStart)
+				if elapsed >= maxRetryElapsed {
+					break
+			REDACTED
+
+				delay := retryBackoffDelay(attempt)
+				remaining := maxRetryElapsed - elapsed
+				if delay > remaining {
+					delay = remaining
+			REDACTED
+				if delay <= 0 {
+					break
+			REDACTED
+
+				log.Printf("Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
+					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
 				_ = resp.Body.Close()
-				time.Sleep(retryDelay)
+				if err := sleepWithContext(ctx, delay); err != nil {
+					return nil, err
+			REDACTED
 				continue
 		REDACTED
 			// 最后一次尝试也失败，跳出循环处理重试耗尽
@@ -1141,6 +1208,9 @@ REDACTED
 		REDACTED
 	REDACTED
 		break
+REDACTED
+	if resp == nil || resp.Body == nil {
+		return nil, errors.New("upstream request failed: empty response")
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
