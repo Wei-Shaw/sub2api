@@ -19,6 +19,13 @@ REDACTED
 // apiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		queryKey := strings.TrimSpace(c.Query("key"))
+		queryApiKey := strings.TrimSpace(c.Query("api_key"))
+		if queryKey != "" || queryApiKey != "" {
+			AbortWithError(c, 400, "api_key_in_query_deprecated", "API key in query parameter is deprecated. Please use Authorization header instead.")
+			return
+	REDACTED
+
 		// 尝试从Authorization header中提取API key (Bearer scheme)
 		authHeader := c.GetHeader("Authorization")
 		var apiKeyString string
@@ -41,19 +48,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			apiKeyString = c.GetHeader("x-goog-api-key")
 	REDACTED
 
-		// 如果header中没有，尝试从query参数中提取（Google API key风格）
-		if apiKeyString == "" {
-			apiKeyString = c.Query("key")
-	REDACTED
-
-		// 兼容常见别名
-		if apiKeyString == "" {
-			apiKeyString = c.Query("api_key")
-	REDACTED
-
 		// 如果所有header都没有API key
 		if apiKeyString == "" {
-			AbortWithError(c, 401, "API_KEY_REQUIRED", "API key is required in Authorization header (Bearer scheme), x-api-key header, x-goog-api-key header, or key/api_key query parameter")
+			AbortWithError(c, 401, "API_KEY_REQUIRED", "API key is required in Authorization header (Bearer scheme), x-api-key header, or x-goog-api-key header")
 			return
 	REDACTED
 

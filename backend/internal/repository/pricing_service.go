@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -16,9 +17,15 @@ type pricingRemoteClient struct {
 	httpClient *http.Client
 REDACTED
 
-func NewPricingRemoteClient() service.PricingRemoteClient {
+func NewPricingRemoteClient(cfg *config.Config) service.PricingRemoteClient {
+	allowPrivate := false
+	if cfg != nil {
+		allowPrivate = cfg.Security.URLAllowlist.AllowPrivateHosts
+REDACTED
 	sharedClient, err := httpclient.GetClient(httpclient.Options{
-		Timeout: 30 * time.Second,
+		Timeout:            30 * time.Second,
+		ValidateResolvedIP: true,
+		AllowPrivateHosts:  allowPrivate,
 REDACTED)
 	if err != nil {
 		sharedClient = &http.Client{Timeout: 30 * time.SecondREDACTED

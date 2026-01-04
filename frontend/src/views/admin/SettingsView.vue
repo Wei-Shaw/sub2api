@@ -255,7 +255,11 @@
                     placeholder="0x4AAAAAAA..."
                   />
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.turnstile.secretKeyHint') REDACTEDREDACTED
+                    {{
+                      form.turnstile_secret_key_configured
+                        ? t('admin.settings.turnstile.secretKeyConfiguredHint')
+                        : t('admin.settings.turnstile.secretKeyHint')
+                    REDACTEDREDACTED
                   </p>
                 </div>
               </div>
@@ -577,10 +581,18 @@
                   v-model="form.smtp_password"
                   type="password"
                   class="input"
-                  :placeholder="t('admin.settings.smtp.passwordPlaceholder')"
+                  :placeholder="
+                    form.smtp_password_configured
+                      ? t('admin.settings.smtp.passwordConfiguredPlaceholder')
+                      : t('admin.settings.smtp.passwordPlaceholder')
+                  "
                 />
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.smtp.passwordHint') REDACTEDREDACTED
+                  {{
+                    form.smtp_password_configured
+                      ? t('admin.settings.smtp.passwordConfiguredHint')
+                      : t('admin.settings.smtp.passwordHint')
+                  REDACTEDREDACTED
                 </p>
               </div>
               <div>
@@ -713,7 +725,7 @@
 import { ref, reactive, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api'
-import type { SystemSettings REDACTED from '@/api/admin/settings'
+import type { SystemSettings, UpdateSettingsRequest REDACTED from '@/api/admin/settings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore REDACTED from '@/stores'
@@ -735,7 +747,12 @@ const adminApiKeyMasked = ref('')
 const adminApiKeyOperating = ref(false)
 const newAdminApiKey = ref('')
 
-const form = reactive<SystemSettings>({
+type SettingsForm = SystemSettings & {
+  smtp_password: string
+  turnstile_secret_key: string
+REDACTED
+
+const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
   default_balance: 0,
@@ -750,6 +767,7 @@ const form = reactive<SystemSettings>({
   smtp_port: 587,
   smtp_username: '',
   smtp_password: '',
+  smtp_password_configured: false,
   smtp_from_email: '',
   smtp_from_name: '',
   smtp_use_tls: true,
@@ -757,6 +775,7 @@ const form = reactive<SystemSettings>({
   turnstile_enabled: false,
   turnstile_site_key: '',
   turnstile_secret_key: '',
+  turnstile_secret_key_configured: false,
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: ''
@@ -805,6 +824,8 @@ async function loadSettings() {
   try {
     const settings = await adminAPI.settings.getSettings()
     Object.assign(form, settings)
+    form.smtp_password = ''
+    form.turnstile_secret_key = ''
   REDACTED catch (error: any) {
     appStore.showError(
       t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError'))
@@ -817,7 +838,32 @@ REDACTED
 async function saveSettings() {
   saving.value = true
   try {
-    await adminAPI.settings.updateSettings(form)
+    const payload: UpdateSettingsRequest = {
+      registration_enabled: form.registration_enabled,
+      email_verify_enabled: form.email_verify_enabled,
+      default_balance: form.default_balance,
+      default_concurrency: form.default_concurrency,
+      site_name: form.site_name,
+      site_logo: form.site_logo,
+      site_subtitle: form.site_subtitle,
+      api_base_url: form.api_base_url,
+      contact_info: form.contact_info,
+      doc_url: form.doc_url,
+      smtp_host: form.smtp_host,
+      smtp_port: form.smtp_port,
+      smtp_username: form.smtp_username,
+      smtp_password: form.smtp_password || undefined,
+      smtp_from_email: form.smtp_from_email,
+      smtp_from_name: form.smtp_from_name,
+      smtp_use_tls: form.smtp_use_tls,
+      turnstile_enabled: form.turnstile_enabled,
+      turnstile_site_key: form.turnstile_site_key,
+      turnstile_secret_key: form.turnstile_secret_key || undefined
+    REDACTED
+    const updated = await adminAPI.settings.updateSettings(payload)
+    Object.assign(form, updated)
+    form.smtp_password = ''
+    form.turnstile_secret_key = ''
     // Refresh cached public settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))

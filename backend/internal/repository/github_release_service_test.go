@@ -37,6 +37,13 @@ REDACTED
 	return http.DefaultTransport.RoundTrip(newReq)
 REDACTED
 
+func newTestGitHubReleaseClient() *githubReleaseClient {
+	return &githubReleaseClient{
+		httpClient:        &http.Client{REDACTED,
+		allowPrivateHosts: true,
+REDACTED
+REDACTED
+
 func (s *GitHubReleaseServiceSuite) SetupTest() {
 	s.tempDir = s.T().TempDir()
 REDACTED
@@ -55,9 +62,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_EnforcesMaxSize_ContentLeng
 		_, _ = w.Write(bytes.Repeat([]byte("a"), 100))
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	dest := filepath.Join(s.tempDir, "file1.bin")
 	err := s.client.DownloadFile(context.Background(), s.srv.URL, dest, 10)
@@ -82,9 +87,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_EnforcesMaxSize_Chunked() {
 	REDACTED
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	dest := filepath.Join(s.tempDir, "file2.bin")
 	err := s.client.DownloadFile(context.Background(), s.srv.URL, dest, 10)
@@ -108,9 +111,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_Success() {
 	REDACTED
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	dest := filepath.Join(s.tempDir, "file3.bin")
 	err := s.client.DownloadFile(context.Background(), s.srv.URL, dest, 200)
@@ -127,9 +128,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_404() {
 		w.WriteHeader(http.StatusNotFound)
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	dest := filepath.Join(s.tempDir, "notfound.bin")
 	err := s.client.DownloadFile(context.Background(), s.srv.URL, dest, 100)
@@ -145,9 +144,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_Success() {
 		_, _ = w.Write([]byte("sum"))
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	body, err := s.client.FetchChecksumFile(context.Background(), s.srv.URL)
 	require.NoError(s.T(), err, "FetchChecksumFile")
@@ -159,9 +156,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_Non200() {
 		w.WriteHeader(http.StatusInternalServerError)
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	_, err := s.client.FetchChecksumFile(context.Background(), s.srv.URL)
 	require.Error(s.T(), err, "expected error for non-200")
@@ -172,9 +167,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_ContextCancel() {
 		<-r.Context().Done()
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -185,9 +178,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestDownloadFile_InvalidURL() {
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	dest := filepath.Join(s.tempDir, "invalid.bin")
 	err := s.client.DownloadFile(context.Background(), "://invalid-url", dest, 100)
@@ -200,9 +191,7 @@ func (s *GitHubReleaseServiceSuite) TestDownloadFile_InvalidDestPath() {
 		_, _ = w.Write([]byte("content"))
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	// Use a path that cannot be created (directory doesn't exist)
 	dest := filepath.Join(s.tempDir, "nonexistent", "subdir", "file.bin")
@@ -211,9 +200,7 @@ REDACTED))
 REDACTED
 
 func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_InvalidURL() {
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	_, err := s.client.FetchChecksumFile(context.Background(), "://invalid-url")
 	require.Error(s.T(), err, "expected error for invalid URL")
@@ -247,6 +234,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
+		allowPrivateHosts: true,
 REDACTED
 
 	release, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -266,6 +254,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
+		allowPrivateHosts: true,
 REDACTED
 
 	_, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -283,6 +272,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
+		allowPrivateHosts: true,
 REDACTED
 
 	_, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -298,6 +288,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
+		allowPrivateHosts: true,
 REDACTED
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -312,9 +303,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchChecksumFile_ContextCancel() {
 		<-r.Context().Done()
 REDACTED))
 
-	client, ok := NewGitHubReleaseClient().(*githubReleaseClient)
-	require.True(s.T(), ok, "type assertion failed")
-	s.client = client
+	s.client = newTestGitHubReleaseClient()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

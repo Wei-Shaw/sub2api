@@ -2,7 +2,10 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -13,6 +16,8 @@ const (
 	RunModeStandard = "standard"
 	RunModeSimple   = "simple"
 )
+
+const DefaultCSPPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // 连接池隔离策略常量
 // 用于控制上游 HTTP 连接池的隔离粒度，影响连接复用和资源消耗
@@ -30,6 +35,10 @@ const (
 
 type Config struct {
 	Server       ServerConfig       `mapstructure:"server"`
+	CORS         CORSConfig         `mapstructure:"cors"`
+	Security     SecurityConfig     `mapstructure:"security"`
+	Billing      BillingConfig      `mapstructure:"billing"`
+	Turnstile    TurnstileConfig    `mapstructure:"turnstile"`
 	Database     DatabaseConfig     `mapstructure:"database"`
 	Redis        RedisConfig        `mapstructure:"redis"`
 	JWT          JWTConfig          `mapstructure:"jwt"`
@@ -37,6 +46,7 @@ type Config struct {
 	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
 	Pricing      PricingConfig      `mapstructure:"pricing"`
 	Gateway      GatewayConfig      `mapstructure:"gateway"`
+	Concurrency  ConcurrencyConfig  `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig `mapstructure:"token_refresh"`
 	RunMode      string             `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
@@ -95,11 +105,61 @@ type PricingConfig struct {
 REDACTED
 
 type ServerConfig struct {
-	Host              string `mapstructure:"host"`
-	Port              int    `mapstructure:"port"`
-	Mode              string `mapstructure:"mode"`                // debug/release
-	ReadHeaderTimeout int    `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
-	IdleTimeout       int    `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
+	Host              string   `mapstructure:"host"`
+	Port              int      `mapstructure:"port"`
+	Mode              string   `mapstructure:"mode"`                // debug/release
+	ReadHeaderTimeout int      `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
+	IdleTimeout       int      `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
+	TrustedProxies    []string `mapstructure:"trusted_proxies"`     // 可信代理列表（CIDR/IP）
+REDACTED
+
+type CORSConfig struct {
+	AllowedOrigins   []string `mapstructure:"allowed_origins"`
+	AllowCredentials bool     `mapstructure:"allow_credentials"`
+REDACTED
+
+type SecurityConfig struct {
+	URLAllowlist    URLAllowlistConfig   `mapstructure:"url_allowlist"`
+	ResponseHeaders ResponseHeaderConfig `mapstructure:"response_headers"`
+	CSP             CSPConfig            `mapstructure:"csp"`
+	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
+REDACTED
+
+type URLAllowlistConfig struct {
+	UpstreamHosts     []string `mapstructure:"upstream_hosts"`
+	PricingHosts      []string `mapstructure:"pricing_hosts"`
+	CRSHosts          []string `mapstructure:"crs_hosts"`
+	AllowPrivateHosts bool     `mapstructure:"allow_private_hosts"`
+REDACTED
+
+type ResponseHeaderConfig struct {
+	AdditionalAllowed []string `mapstructure:"additional_allowed"`
+	ForceRemove       []string `mapstructure:"force_remove"`
+REDACTED
+
+type CSPConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Policy  string `mapstructure:"policy"`
+REDACTED
+
+type ProxyProbeConfig struct {
+	InsecureSkipVerify bool `mapstructure:"insecure_skip_verify"`
+REDACTED
+
+type BillingConfig struct {
+	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+REDACTED
+
+type CircuitBreakerConfig struct {
+	Enabled             bool `mapstructure:"enabled"`
+	FailureThreshold    int  `mapstructure:"failure_threshold"`
+	ResetTimeoutSeconds int  `mapstructure:"reset_timeout_seconds"`
+	HalfOpenRequests    int  `mapstructure:"half_open_requests"`
+REDACTED
+
+type ConcurrencyConfig struct {
+	// PingInterval: 并发等待期间的 SSE ping 间隔（秒）
+	PingInterval int `mapstructure:"ping_interval"`
 REDACTED
 
 // GatewayConfig API网关相关配置
@@ -133,6 +193,13 @@ type GatewayConfig struct {
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
 	ConcurrencySlotTTLMinutes int `mapstructure:"concurrency_slot_ttl_minutes"`
+
+	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
+	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`
+	// StreamKeepaliveInterval: 流式 keepalive 间隔（秒），0表示禁用
+	StreamKeepaliveInterval int `mapstructure:"stream_keepalive_interval"`
+	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
+	MaxLineSize int `mapstructure:"max_line_size"`
 
 	// 是否记录上游错误响应体摘要（避免输出请求内容）
 	LogUpstreamErrorBody bool `mapstructure:"log_upstream_error_body"`
@@ -237,6 +304,10 @@ type JWTConfig struct {
 	ExpireHour int    `mapstructure:"expire_hour"`
 REDACTED
 
+type TurnstileConfig struct {
+	Required bool `mapstructure:"required"`
+REDACTED
+
 type DefaultConfig struct {
 	AdminEmail      string  `mapstructure:"admin_email"`
 	AdminPassword   string  `mapstructure:"admin_password"`
@@ -287,9 +358,37 @@ REDACTED
 REDACTED
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
+	if cfg.Server.Mode == "" {
+		cfg.Server.Mode = "debug"
+REDACTED
+	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
+	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
+	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
+	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
+	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
+
+	if cfg.Server.Mode != "release" && cfg.JWT.Secret == "" {
+		secret, err := generateJWTSecret(64)
+		if err != nil {
+			return nil, fmt.Errorf("generate jwt secret error: %w", err)
+	REDACTED
+		cfg.JWT.Secret = secret
+		log.Println("Warning: JWT secret auto-generated for non-release mode. Do not use in production.")
+REDACTED
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config error: %w", err)
+REDACTED
+
+	if cfg.Server.Mode != "release" && cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
+		log.Println("Warning: JWT secret appears weak; use a 32+ character random secret in production.")
+REDACTED
+	if len(cfg.Security.ResponseHeaders.AdditionalAllowed) > 0 || len(cfg.Security.ResponseHeaders.ForceRemove) > 0 {
+		log.Printf("AUDIT: response header policy configured additional_allowed=%v force_remove=%v",
+			cfg.Security.ResponseHeaders.AdditionalAllowed,
+			cfg.Security.ResponseHeaders.ForceRemove,
+		)
 REDACTED
 
 	return &cfg, nil
@@ -304,6 +403,39 @@ func setDefaults() {
 	viper.SetDefault("server.mode", "debug")
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
+	viper.SetDefault("server.trusted_proxies", []string{REDACTED)
+
+	// CORS
+	viper.SetDefault("cors.allowed_origins", []string{REDACTED)
+	viper.SetDefault("cors.allow_credentials", true)
+
+	// Security
+	viper.SetDefault("security.url_allowlist.upstream_hosts", []string{
+		"api.openai.com",
+		"api.anthropic.com",
+		"generativelanguage.googleapis.com",
+		"cloudcode-pa.googleapis.com",
+		"*.openai.azure.com",
+REDACTED)
+	viper.SetDefault("security.url_allowlist.pricing_hosts", []string{
+		"raw.githubusercontent.com",
+REDACTED)
+	viper.SetDefault("security.url_allowlist.crs_hosts", []string{REDACTED)
+	viper.SetDefault("security.url_allowlist.allow_private_hosts", false)
+	viper.SetDefault("security.response_headers.additional_allowed", []string{REDACTED)
+	viper.SetDefault("security.response_headers.force_remove", []string{REDACTED)
+	viper.SetDefault("security.csp.enabled", true)
+	viper.SetDefault("security.csp.policy", DefaultCSPPolicy)
+	viper.SetDefault("security.proxy_probe.insecure_skip_verify", false)
+
+	// Billing
+	viper.SetDefault("billing.circuit_breaker.enabled", true)
+	viper.SetDefault("billing.circuit_breaker.failure_threshold", 5)
+	viper.SetDefault("billing.circuit_breaker.reset_timeout_seconds", 30)
+	viper.SetDefault("billing.circuit_breaker.half_open_requests", 3)
+
+	// Turnstile
+	viper.SetDefault("turnstile.required", false)
 
 	// Database
 	viper.SetDefault("database.host", "localhost")
@@ -329,7 +461,7 @@ func setDefaults() {
 	viper.SetDefault("redis.min_idle_conns", 10)
 
 	// JWT
-	viper.SetDefault("jwt.secret", "change-me-in-production")
+	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
 
 	// Default
@@ -357,7 +489,7 @@ func setDefaults() {
 	viper.SetDefault("timezone", "Asia/Shanghai")
 
 	// Gateway
-	viper.SetDefault("gateway.response_header_timeout", 300) // 300秒(5分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", false)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -365,19 +497,23 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
-	viper.SetDefault("gateway.max_idle_conns", 240)            // 最大空闲连接总数（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_idle_conns_per_host", 120)   // 每主机最大空闲连接（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_conns_per_host", 240)        // 每主机最大连接数（含活跃，HTTP/2 场景默认）
-	viper.SetDefault("gateway.idle_conn_timeout_seconds", 300) // 空闲连接超时（秒）
+	viper.SetDefault("gateway.max_idle_conns", 240)           // 最大空闲连接总数（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_conns_per_host", 240)       // 每主机最大连接数（含活跃，HTTP/2 场景默认）
+	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90) // 空闲连接超时（秒）
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
-	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 15) // 并发槽位过期时间（支持超长请求）
+	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
+	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
+	viper.SetDefault("gateway.stream_keepalive_interval", 10)
+	viper.SetDefault("gateway.max_line_size", 10*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 45*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
+	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
@@ -396,11 +532,39 @@ func setDefaults() {
 REDACTED
 
 func (c *Config) Validate() error {
-	if c.JWT.Secret == "" {
-		return fmt.Errorf("jwt.secret is required")
+	if c.Server.Mode == "release" {
+		if c.JWT.Secret == "" {
+			return fmt.Errorf("jwt.secret is required in release mode")
+	REDACTED
+		if len(c.JWT.Secret) < 32 {
+			return fmt.Errorf("jwt.secret must be at least 32 characters")
+	REDACTED
+		if isWeakJWTSecret(c.JWT.Secret) {
+			return fmt.Errorf("jwt.secret is too weak")
+	REDACTED
 REDACTED
-	if c.JWT.Secret == "change-me-in-production" && c.Server.Mode == "release" {
-		return fmt.Errorf("jwt.secret must be changed in production")
+	if c.JWT.ExpireHour <= 0 {
+		return fmt.Errorf("jwt.expire_hour must be positive")
+REDACTED
+	if c.JWT.ExpireHour > 168 {
+		return fmt.Errorf("jwt.expire_hour must be <= 168 (7 days)")
+REDACTED
+	if c.JWT.ExpireHour > 24 {
+		log.Printf("Warning: jwt.expire_hour is %d hours (> 24). Consider shorter expiration for security.", c.JWT.ExpireHour)
+REDACTED
+	if c.Security.CSP.Enabled && strings.TrimSpace(c.Security.CSP.Policy) == "" {
+		return fmt.Errorf("security.csp.policy is required when CSP is enabled")
+REDACTED
+	if c.Billing.CircuitBreaker.Enabled {
+		if c.Billing.CircuitBreaker.FailureThreshold <= 0 {
+			return fmt.Errorf("billing.circuit_breaker.failure_threshold must be positive")
+	REDACTED
+		if c.Billing.CircuitBreaker.ResetTimeoutSeconds <= 0 {
+			return fmt.Errorf("billing.circuit_breaker.reset_timeout_seconds must be positive")
+	REDACTED
+		if c.Billing.CircuitBreaker.HalfOpenRequests <= 0 {
+			return fmt.Errorf("billing.circuit_breaker.half_open_requests must be positive")
+	REDACTED
 REDACTED
 	if c.Database.MaxOpenConns <= 0 {
 		return fmt.Errorf("database.max_open_conns must be positive")
@@ -458,6 +622,9 @@ REDACTED
 	if c.Gateway.IdleConnTimeoutSeconds <= 0 {
 		return fmt.Errorf("gateway.idle_conn_timeout_seconds must be positive")
 REDACTED
+	if c.Gateway.IdleConnTimeoutSeconds > 180 {
+		log.Printf("Warning: gateway.idle_conn_timeout_seconds is %d (> 180). Consider 60-120 seconds for better connection reuse.", c.Gateway.IdleConnTimeoutSeconds)
+REDACTED
 	if c.Gateway.MaxUpstreamClients <= 0 {
 		return fmt.Errorf("gateway.max_upstream_clients must be positive")
 REDACTED
@@ -466,6 +633,26 @@ REDACTED
 REDACTED
 	if c.Gateway.ConcurrencySlotTTLMinutes <= 0 {
 		return fmt.Errorf("gateway.concurrency_slot_ttl_minutes must be positive")
+REDACTED
+	if c.Gateway.StreamDataIntervalTimeout < 0 {
+		return fmt.Errorf("gateway.stream_data_interval_timeout must be non-negative")
+REDACTED
+	if c.Gateway.StreamDataIntervalTimeout != 0 &&
+		(c.Gateway.StreamDataIntervalTimeout < 30 || c.Gateway.StreamDataIntervalTimeout > 300) {
+		return fmt.Errorf("gateway.stream_data_interval_timeout must be 0 or between 30-300 seconds")
+REDACTED
+	if c.Gateway.StreamKeepaliveInterval < 0 {
+		return fmt.Errorf("gateway.stream_keepalive_interval must be non-negative")
+REDACTED
+	if c.Gateway.StreamKeepaliveInterval != 0 &&
+		(c.Gateway.StreamKeepaliveInterval < 5 || c.Gateway.StreamKeepaliveInterval > 30) {
+		return fmt.Errorf("gateway.stream_keepalive_interval must be 0 or between 5-30 seconds")
+REDACTED
+	if c.Gateway.MaxLineSize < 0 {
+		return fmt.Errorf("gateway.max_line_size must be non-negative")
+REDACTED
+	if c.Gateway.MaxLineSize != 0 && c.Gateway.MaxLineSize < 1024*1024 {
+		return fmt.Errorf("gateway.max_line_size must be at least 1MB")
 REDACTED
 	if c.Gateway.Scheduling.StickySessionMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.sticky_session_max_waiting must be positive")
@@ -482,7 +669,55 @@ REDACTED
 	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
 		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")
 REDACTED
+	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
+		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")
+REDACTED
 	return nil
+REDACTED
+
+func normalizeStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return values
+REDACTED
+	normalized := make([]string, 0, len(values))
+	for _, v := range values {
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			continue
+	REDACTED
+		normalized = append(normalized, trimmed)
+REDACTED
+	return normalized
+REDACTED
+
+func isWeakJWTSecret(secret string) bool {
+	lower := strings.ToLower(strings.TrimSpace(secret))
+	if lower == "" {
+		return true
+REDACTED
+	weak := map[string]struct{REDACTED{
+		"change-me-in-production": {REDACTED,
+		"changeme":                {REDACTED,
+		"secret":                  {REDACTED,
+		"password":                {REDACTED,
+		"123456":                  {REDACTED,
+		"12345678":                {REDACTED,
+		"admin":                   {REDACTED,
+		"jwt-secret":              {REDACTED,
+REDACTED
+	_, exists := weak[lower]
+	return exists
+REDACTED
+
+func generateJWTSecret(byteLength int) (string, error) {
+	if byteLength <= 0 {
+		byteLength = 32
+REDACTED
+	buf := make([]byte, byteLength)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+REDACTED
+	return hex.EncodeToString(buf), nil
 REDACTED
 
 // GetServerAddress returns the server address (host:port) from config file or environment variable.

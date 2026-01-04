@@ -228,21 +228,23 @@ REDACTED
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	result := &SystemSettings{
-		RegistrationEnabled: settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:  settings[SettingKeyEmailVerifyEnabled] == "true",
-		SMTPHost:            settings[SettingKeySMTPHost],
-		SMTPUsername:        settings[SettingKeySMTPUsername],
-		SMTPFrom:            settings[SettingKeySMTPFrom],
-		SMTPFromName:        settings[SettingKeySMTPFromName],
-		SMTPUseTLS:          settings[SettingKeySMTPUseTLS] == "true",
-		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
-		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
-		SiteLogo:            settings[SettingKeySiteLogo],
-		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:          settings[SettingKeyAPIBaseURL],
-		ContactInfo:         settings[SettingKeyContactInfo],
-		DocURL:              settings[SettingKeyDocURL],
+		RegistrationEnabled:          settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:           settings[SettingKeyEmailVerifyEnabled] == "true",
+		SMTPHost:                     settings[SettingKeySMTPHost],
+		SMTPUsername:                 settings[SettingKeySMTPUsername],
+		SMTPFrom:                     settings[SettingKeySMTPFrom],
+		SMTPFromName:                 settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                   settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:       settings[SettingKeySMTPPassword] != "",
+		TurnstileEnabled:             settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:             settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured: settings[SettingKeyTurnstileSecretKey] != "",
+		SiteName:                     s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:                     settings[SettingKeySiteLogo],
+		SiteSubtitle:                 s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                   settings[SettingKeyAPIBaseURL],
+		ContactInfo:                  settings[SettingKeyContactInfo],
+		DocURL:                       settings[SettingKeyDocURL],
 REDACTED
 
 	// 解析整数类型

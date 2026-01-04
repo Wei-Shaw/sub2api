@@ -4,17 +4,19 @@ type SystemSettings struct {
 	RegistrationEnabled bool
 	EmailVerifyEnabled  bool
 
-	SMTPHost     string
-	SMTPPort     int
-	SMTPUsername string
-	SMTPPassword string
-	SMTPFrom     string
-	SMTPFromName string
-	SMTPUseTLS   bool
+	SMTPHost               string
+	SMTPPort               int
+	SMTPUsername           string
+	SMTPPassword           string
+	SMTPPasswordConfigured bool
+	SMTPFrom               string
+	SMTPFromName           string
+	SMTPUseTLS             bool
 
-	TurnstileEnabled   bool
-	TurnstileSiteKey   string
-	TurnstileSecretKey string
+	TurnstileEnabled             bool
+	TurnstileSiteKey             string
+	TurnstileSecretKey           string
+	TurnstileSecretKeyConfigured bool
 
 	SiteName     string
 	SiteLogo     string
