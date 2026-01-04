@@ -59,7 +59,7 @@
             <input
               type="date"
               v-model="localStartDate"
-              :max="localEndDate || today"
+              :max="localEndDate || tomorrow"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -85,7 +85,7 @@
               type="date"
               v-model="localEndDate"
               :min="localStartDate"
-              :max="today"
+              :max="tomorrow"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -142,6 +142,14 @@ const today = computed(() => {
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
   return `${yearREDACTED-${monthREDACTED-${dayREDACTED`
+REDACTED)
+
+// Tomorrow's date - used for max date to handle timezone differences
+// When user is in a timezone behind the server, "today" on server might be "tomorrow" locally
+const tomorrow = computed(() => {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return formatDateToString(d)
 REDACTED)
 
 // Helper function to format date to YYYY-MM-DD using local timezone
