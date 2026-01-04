@@ -2460,7 +2460,7 @@ const handleCookieAuth = async (sessionKey: string) => {
         const accountName = keys.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
 
         // Merge interceptWarmupRequests into credentials
-        const credentials = {
+        const credentials: Record<string, unknown> = {
           ...tokenInfo,
           ...(interceptWarmupRequests.value ? { intercept_warmup_requests: true REDACTED : {REDACTED)
         REDACTED
