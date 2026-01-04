@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.0.0)'
+        required: true
+        type: string
+      simple_release:
+        description: 'Simple release: only x86_64 GHCR image, skip other artifacts'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -19,7 +30,12 @@ jobs:
 
       - name: Update VERSION file
         run: |
-          VERSION=${GITHUB_REF#refs/tags/vREDACTED
+          if [ "${{ github.event_name REDACTEDREDACTED" = "workflow_dispatch" ]; then
+            VERSION=${{ github.event.inputs.tag REDACTEDREDACTED
+            VERSION=${VERSION#vREDACTED
+          else
+            VERSION=${GITHUB_REF#refs/tags/vREDACTED
+          fi
           echo "$VERSION" > backend/cmd/server/VERSION
           echo "Updated VERSION file to: $VERSION"
 
@@ -32,6 +48,7 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.simple_release != 'true' REDACTEDREDACTED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,12 +77,15 @@ jobs:
 
   release:
     needs: [update-version, build-frontend]
+    # 等待 build-frontend 完成（除非是 simple_release 则跳过检查）
+    if: ${{ always() && needs.update-version.result == 'success' && (github.event.inputs.simple_release == 'true' || needs.build-frontend.result == 'success') REDACTEDREDACTED
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref REDACTEDREDACTED
 
       - name: Download VERSION artifact
         uses: actions/download-artifact@v4
@@ -74,6 +94,7 @@ jobs:
           path: backend/cmd/server/
 
       - name: Download frontend artifact
+        if: ${{ github.event.inputs.simple_release != 'true' REDACTEDREDACTED
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
@@ -116,7 +137,11 @@ jobs:
       - name: Get tag message
         id: tag_message
         run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/REDACTED
+          if [ "${{ github.event_name REDACTEDREDACTED" = "workflow_dispatch" ]; then
+            TAG_NAME=${{ github.event.inputs.tag REDACTEDREDACTED
+          else
+            TAG_NAME=${GITHUB_REF#refs/tags/REDACTED
+          fi
           echo "Processing tag: $TAG_NAME"
 
           # 获取完整的 tag message（跳过第一行标题）
@@ -140,7 +165,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --clean --skip=validate
+          args: release --clean --skip=validate ${{ github.event.inputs.simple_release == 'true' && '--config=.goreleaser.simple.yaml' || '' REDACTEDREDACTED
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN REDACTEDREDACTED
           TAG_MESSAGE: ${{ steps.tag_message.outputs.message REDACTEDREDACTED
@@ -151,7 +176,7 @@ jobs:
 
       # Update DockerHub description
       - name: Update DockerHub description
-        if: ${{ env.DOCKERHUB_USERNAME != '' REDACTEDREDACTED
+        if: ${{ github.event.inputs.simple_release != 'true' && env.DOCKERHUB_USERNAME != '' REDACTEDREDACTED
         uses: peter-evans/dockerhub-description@v4
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME REDACTEDREDACTED
@@ -164,6 +189,7 @@ jobs:
 
       # Send Telegram notification
       - name: Send Telegram Notification
+        if: ${{ github.event.inputs.simple_release != 'true' REDACTEDREDACTED
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN REDACTEDREDACTED
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID REDACTEDREDACTED
@@ -176,7 +202,11 @@ jobs:
             exit 0
           fi
 
-          TAG_NAME=${GITHUB_REF#refs/tags/REDACTED
+          if [ "${{ github.event_name REDACTEDREDACTED" = "workflow_dispatch" ]; then
+            TAG_NAME=${{ github.event.inputs.tag REDACTEDREDACTED
+          else
+            TAG_NAME=${GITHUB_REF#refs/tags/REDACTED
+          fi
           VERSION=${TAG_NAME#vREDACTED
           REPO="${{ github.repository REDACTEDREDACTED"
           GHCR_IMAGE="ghcr.io/${REPO,,REDACTED"  # ${,,REDACTED converts to lowercase
