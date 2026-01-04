@@ -246,13 +246,3 @@ REDACTED
 
 	return client
 REDACTED
-
-func prefix(s string, n int) string {
-	if n <= 0 {
-		return ""
-REDACTED
-	if len(s) <= n {
-		return s
-REDACTED
-	return s[:n]
-REDACTED

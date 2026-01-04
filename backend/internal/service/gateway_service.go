@@ -1731,7 +1731,6 @@ REDACTED
 	REDACTED
 REDACTED
 
-	return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 REDACTED
 
 // replaceModelInSSELine 替换SSE数据行中的model字段

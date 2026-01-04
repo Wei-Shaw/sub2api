@@ -113,12 +113,12 @@ func TestApiKeyAuthWithSubscriptionGoogle_QueryApiKeyRejected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	apiKeyService := newTestApiKeyService(fakeApiKeyRepo{
-		getByKey: func(ctx context.Context, key string) (*service.ApiKey, error) {
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
 			return nil, errors.New("should not be called")
 	REDACTED,
 REDACTED)
-	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{REDACTED))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1beta/test?api_key=legacy", nil)
@@ -137,9 +137,9 @@ func TestApiKeyAuthWithSubscriptionGoogle_QueryKeyAllowedOnV1Beta(t *testing.T) 
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	apiKeyService := newTestApiKeyService(fakeApiKeyRepo{
-		getByKey: func(ctx context.Context, key string) (*service.ApiKey, error) {
-			return &service.ApiKey{
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			return &service.APIKey{
 				ID:     1,
 				Key:    key,
 				Status: service.StatusActive,
@@ -151,7 +151,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_QueryKeyAllowedOnV1Beta(t *testing.T) 
 	REDACTED,
 REDACTED)
 	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
-	r.Use(ApiKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
 	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1beta/test?key=valid", nil)

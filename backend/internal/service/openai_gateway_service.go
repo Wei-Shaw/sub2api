@@ -934,7 +934,6 @@ REDACTED
 	REDACTED
 REDACTED
 
-	return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 REDACTED
 
 func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {

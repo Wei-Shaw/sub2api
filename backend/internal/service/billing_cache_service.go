@@ -16,7 +16,7 @@ import (
 // 注：ErrInsufficientBalance在redeem_service.go中定义
 // 注：ErrDailyLimitExceeded/ErrWeeklyLimitExceeded/ErrMonthlyLimitExceeded在subscription_service.go中定义
 var (
-	ErrSubscriptionInvalid = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
+	ErrSubscriptionInvalid       = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
 	ErrBillingServiceUnavailable = infraerrors.ServiceUnavailable("BILLING_SERVICE_ERROR", "Billing service temporarily unavailable. Please retry later.")
 )
 
@@ -73,10 +73,10 @@ REDACTED
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache    BillingCache
-	userRepo UserRepository
-	subRepo  UserSubscriptionRepository
-	cfg      *config.Config
+	cache          BillingCache
+	userRepo       UserRepository
+	subRepo        UserSubscriptionRepository
+	cfg            *config.Config
 	circuitBreaker *billingCircuitBreaker
 
 	cacheWriteChan     chan cacheWriteTask
@@ -658,29 +658,4 @@ func circuitStateString(state billingCircuitBreakerState) string {
 	default:
 		return "unknown"
 REDACTED
-REDACTED
-
-// checkSubscriptionLimitsFallback 降级检查订阅限额
-func (s *BillingCacheService) checkSubscriptionLimitsFallback(subscription *UserSubscription, group *Group) error {
-	if subscription == nil {
-		return ErrSubscriptionInvalid
-REDACTED
-
-	if !subscription.IsActive() {
-		return ErrSubscriptionInvalid
-REDACTED
-
-	if !subscription.CheckDailyLimit(group, 0) {
-		return ErrDailyLimitExceeded
-REDACTED
-
-	if !subscription.CheckWeeklyLimit(group, 0) {
-		return ErrWeeklyLimitExceeded
-REDACTED
-
-	if !subscription.CheckMonthlyLimit(group, 0) {
-		return ErrMonthlyLimitExceeded
-REDACTED
-
-	return nil
 REDACTED
