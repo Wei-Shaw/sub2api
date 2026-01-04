@@ -1026,22 +1026,23 @@ REDACTED
 		usageLog.SubscriptionID = &subscription.ID
 REDACTED
 
-	_ = s.usageLogRepo.Create(ctx, usageLog)
-
+	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		log.Printf("[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 REDACTED
 
+	shouldBill := inserted || err != nil
+
 	// Deduct based on billing type
 	if isSubscriptionBilling {
-		if cost.TotalCost > 0 {
+		if shouldBill && cost.TotalCost > 0 {
 			_ = s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost)
 			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
 	REDACTED
 REDACTED else {
-		if cost.ActualCost > 0 {
+		if shouldBill && cost.ActualCost > 0 {
 			_ = s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost)
 			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
 	REDACTED

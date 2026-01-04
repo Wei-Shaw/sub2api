@@ -12,7 +12,9 @@ import (
 )
 
 type UsageLogRepository interface {
-	Create(ctx context.Context, log *UsageLog) error
+	// Create creates a usage log and returns whether it was actually inserted.
+	// inserted is false when the insert was skipped due to conflict (idempotent retries).
+	Create(ctx context.Context, log *UsageLog) (inserted bool, err error)
 	GetByID(ctx context.Context, id int64) (*UsageLog, error)
 	Delete(ctx context.Context, id int64) error
 

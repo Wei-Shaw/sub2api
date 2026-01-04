@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
@@ -54,20 +56,34 @@ REDACTED
 type UsageService struct {
 	usageRepo UsageLogRepository
 	userRepo  UserRepository
+	entClient *dbent.Client
 REDACTED
 
 // NewUsageService 创建使用统计服务实例
-func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository) *UsageService {
+func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client) *UsageService {
 	return &UsageService{
 		usageRepo: usageRepo,
 		userRepo:  userRepo,
+		entClient: entClient,
 REDACTED
 REDACTED
 
 // Create 创建使用日志
 func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*UsageLog, error) {
+	// 使用数据库事务保证「使用日志插入」与「扣费」的原子性，避免重复扣费或漏扣风险。
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+REDACTED
+
+	txCtx := ctx
+	if err == nil {
+		defer tx.Rollback()
+		txCtx = dbent.NewTxContext(ctx, tx)
+REDACTED
+
 	// 验证用户存在
-	_, err := s.userRepo.GetByID(ctx, req.UserID)
+	_, err = s.userRepo.GetByID(txCtx, req.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
@@ -96,14 +112,21 @@ REDACTED
 		DurationMs:            req.DurationMs,
 REDACTED
 
-	if err := s.usageRepo.Create(ctx, usageLog); err != nil {
+	inserted, err := s.usageRepo.Create(txCtx, usageLog)
+	if err != nil {
 		return nil, fmt.Errorf("create usage log: %w", err)
 REDACTED
 
 	// 扣除用户余额
-	if req.ActualCost > 0 {
-		if err := s.userRepo.UpdateBalance(ctx, req.UserID, -req.ActualCost); err != nil {
+	if inserted && req.ActualCost > 0 {
+		if err := s.userRepo.UpdateBalance(txCtx, req.UserID, -req.ActualCost); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
+	REDACTED
+REDACTED
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit transaction: %w", err)
 	REDACTED
 REDACTED
 
