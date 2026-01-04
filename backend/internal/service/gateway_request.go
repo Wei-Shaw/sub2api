@@ -91,7 +91,7 @@ REDACTED
 //   - Anthropic extended thinking has a structural constraint: when top-level `thinking` is enabled and the
 //     final message is an assistant prefill, the assistant content must start with a thinking block.
 //   - If we remove thinking blocks but keep top-level `thinking` enabled, we can trigger:
-//       "Expected `thinking` or `redacted_thinking`, but found `text`"
+//     "Expected `thinking` or `redacted_thinking`, but found `text`"
 //
 // Strategy (B: preserve content as text):
 //   - Disable top-level `thinking` (remove `thinking` field).

@@ -17,14 +17,14 @@ func TestStripSignatureSensitiveBlocksFromClaudeRequest(t *testing.T) {
 	REDACTED,
 		Messages: []antigravity.ClaudeMessage{
 			{
-				Role:    "assistant",
+				Role: "assistant",
 				Content: json.RawMessage(`[
 					{"type":"thinking","thinking":"secret plan","signature":""REDACTED,
 					{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"REDACTEDREDACTED
 				]`),
 		REDACTED,
 			{
-				Role:    "user",
+				Role: "user",
 				Content: json.RawMessage(`[
 					{"type":"tool_result","tool_use_id":"t1","content":"ok","is_error":falseREDACTED,
 					{"type":"redacted_thinking","data":"..."REDACTED

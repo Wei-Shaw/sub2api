@@ -1135,90 +1135,90 @@ REDACTED
 		// 优先检测thinking block签名错误（400）并重试一次
 		if resp.StatusCode == 400 {
 			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-				if readErr == nil {
-					_ = resp.Body.Close()
+			if readErr == nil {
+				_ = resp.Body.Close()
 
-					if s.isThinkingBlockSignatureError(respBody) {
-						looksLikeToolSignatureError := func(msg string) bool {
-							m := strings.ToLower(msg)
-							return strings.Contains(m, "tool_use") ||
-								strings.Contains(m, "tool_result") ||
-								strings.Contains(m, "functioncall") ||
-								strings.Contains(m, "function_call") ||
-								strings.Contains(m, "functionresponse") ||
-								strings.Contains(m, "function_response")
-					REDACTED
-
-						// 避免在重试预算已耗尽时再发起额外请求
-						if time.Since(retryStart) >= maxRetryElapsed {
-							resp.Body = io.NopCloser(bytes.NewReader(respBody))
-							break
+				if s.isThinkingBlockSignatureError(respBody) {
+					looksLikeToolSignatureError := func(msg string) bool {
+						m := strings.ToLower(msg)
+						return strings.Contains(m, "tool_use") ||
+							strings.Contains(m, "tool_result") ||
+							strings.Contains(m, "functioncall") ||
+							strings.Contains(m, "function_call") ||
+							strings.Contains(m, "functionresponse") ||
+							strings.Contains(m, "function_response")
 				REDACTED
-					log.Printf("Account %d: detected thinking block signature error, retrying with filtered thinking blocks", account.ID)
 
-						// Conservative two-stage fallback:
-						// 1) Disable thinking + thinking->text (preserve content)
-						// 2) Only if upstream still errors AND error message points to tool/function signature issues:
-						//    also downgrade tool_use/tool_result blocks to text.
-
-						filteredBody := FilterThinkingBlocksForRetry(body)
-						retryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, filteredBody, token, tokenType, reqModel)
-						if buildErr == nil {
-							retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
-							if retryErr == nil {
-								if retryResp.StatusCode < 400 {
-									log.Printf("Account %d: signature error retry succeeded (thinking downgraded)", account.ID)
-									resp = retryResp
-									break
-							REDACTED
-
-								retryRespBody, retryReadErr := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
-								_ = retryResp.Body.Close()
-								if retryReadErr == nil && retryResp.StatusCode == 400 && s.isThinkingBlockSignatureError(retryRespBody) {
-									msg2 := extractUpstreamErrorMessage(retryRespBody)
-									if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
-										log.Printf("Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
-										filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
-										retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel)
-										if buildErr2 == nil {
-											retryResp2, retryErr2 := s.httpUpstream.Do(retryReq2, proxyURL, account.ID, account.Concurrency)
-											if retryErr2 == nil {
-												resp = retryResp2
-												break
-										REDACTED
-											if retryResp2 != nil && retryResp2.Body != nil {
-												_ = retryResp2.Body.Close()
-										REDACTED
-											log.Printf("Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
-									REDACTED else {
-											log.Printf("Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
-									REDACTED
-								REDACTED
-							REDACTED
-
-								// Fall back to the original retry response context.
-								resp = &http.Response{
-									StatusCode: retryResp.StatusCode,
-									Header:     retryResp.Header.Clone(),
-									Body:       io.NopCloser(bytes.NewReader(retryRespBody)),
-							REDACTED
-								break
-						REDACTED
-							if retryResp != nil && retryResp.Body != nil {
-								_ = retryResp.Body.Close()
-						REDACTED
-							log.Printf("Account %d: signature error retry failed: %v", account.ID, retryErr)
-					REDACTED else {
-							log.Printf("Account %d: signature error retry build request failed: %v", account.ID, buildErr)
-					REDACTED
-
-						// Retry failed: restore original response body and continue handling.
+					// 避免在重试预算已耗尽时再发起额外请求
+					if time.Since(retryStart) >= maxRetryElapsed {
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						break
 				REDACTED
-					// 不是thinking签名错误，恢复响应体
+					log.Printf("Account %d: detected thinking block signature error, retrying with filtered thinking blocks", account.ID)
+
+					// Conservative two-stage fallback:
+					// 1) Disable thinking + thinking->text (preserve content)
+					// 2) Only if upstream still errors AND error message points to tool/function signature issues:
+					//    also downgrade tool_use/tool_result blocks to text.
+
+					filteredBody := FilterThinkingBlocksForRetry(body)
+					retryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, filteredBody, token, tokenType, reqModel)
+					if buildErr == nil {
+						retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+						if retryErr == nil {
+							if retryResp.StatusCode < 400 {
+								log.Printf("Account %d: signature error retry succeeded (thinking downgraded)", account.ID)
+								resp = retryResp
+								break
+						REDACTED
+
+							retryRespBody, retryReadErr := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+							_ = retryResp.Body.Close()
+							if retryReadErr == nil && retryResp.StatusCode == 400 && s.isThinkingBlockSignatureError(retryRespBody) {
+								msg2 := extractUpstreamErrorMessage(retryRespBody)
+								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
+									log.Printf("Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
+									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
+									retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel)
+									if buildErr2 == nil {
+										retryResp2, retryErr2 := s.httpUpstream.Do(retryReq2, proxyURL, account.ID, account.Concurrency)
+										if retryErr2 == nil {
+											resp = retryResp2
+											break
+									REDACTED
+										if retryResp2 != nil && retryResp2.Body != nil {
+											_ = retryResp2.Body.Close()
+									REDACTED
+										log.Printf("Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
+								REDACTED else {
+										log.Printf("Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
+								REDACTED
+							REDACTED
+						REDACTED
+
+							// Fall back to the original retry response context.
+							resp = &http.Response{
+								StatusCode: retryResp.StatusCode,
+								Header:     retryResp.Header.Clone(),
+								Body:       io.NopCloser(bytes.NewReader(retryRespBody)),
+						REDACTED
+							break
+					REDACTED
+						if retryResp != nil && retryResp.Body != nil {
+							_ = retryResp.Body.Close()
+					REDACTED
+						log.Printf("Account %d: signature error retry failed: %v", account.ID, retryErr)
+				REDACTED else {
+						log.Printf("Account %d: signature error retry build request failed: %v", account.ID, buildErr)
+				REDACTED
+
+					// Retry failed: restore original response body and continue handling.
 					resp.Body = io.NopCloser(bytes.NewReader(respBody))
+					break
 			REDACTED
+				// 不是thinking签名错误，恢复响应体
+				resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		REDACTED
 	REDACTED
 
 		// 检查是否需要通用重试（排除400，因为400已经在上面特殊处理过了）
