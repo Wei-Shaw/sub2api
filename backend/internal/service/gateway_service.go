@@ -1157,6 +1157,9 @@ REDACTED
 							resp = retryResp
 							break
 					REDACTED
+						if retryResp != nil && retryResp.Body != nil {
+							_ = retryResp.Body.Close()
+					REDACTED
 						log.Printf("Account %d: signature error retry failed: %v", account.ID, retryErr)
 				REDACTED else {
 						log.Printf("Account %d: signature error retry build request failed: %v", account.ID, buildErr)
@@ -1603,10 +1606,10 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	// OAuth/Setup Token 账号的 403：标记账号异常
 	if account.IsOAuth() && statusCode == 403 {
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
-		log.Printf("Account %d: marked as error after %d retries for status %d", account.ID, maxRetries, statusCode)
+		log.Printf("Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
 REDACTED else {
 		// API Key 未配置错误码：不标记账号状态
-		log.Printf("Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetries)
+		log.Printf("Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
 REDACTED
 REDACTED
 
