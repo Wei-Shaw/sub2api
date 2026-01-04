@@ -15,15 +15,15 @@ func TestBuildParts_ThinkingBlockWithoutSignature(t *testing.T) {
 		description       string
 REDACTED{
 		{
-			name: "Claude model - drop thinking without signature",
+			name: "Claude model - downgrade thinking to text without signature",
 			content: `[
 				{"type": "text", "text": "Hello"REDACTED,
 				{"type": "thinking", "thinking": "Let me think...", "signature": ""REDACTED,
 				{"type": "text", "text": "World"REDACTED
 			]`,
 			allowDummyThought: false,
-			expectedParts:     2, // thinking 内容被丢弃
-			description:       "Claude模型应丢弃无signature的thinking block内容",
+			expectedParts:     3, // thinking 内容降级为普通 text part
+			description:       "Claude模型缺少signature时应将thinking降级为text，并在上层禁用thinking mode",
 	REDACTED,
 		{
 			name: "Claude model - preserve thinking block with signature",
@@ -52,7 +52,7 @@ REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			toolIDToName := make(map[string]string)
-			parts, err := buildParts(json.RawMessage(tt.content), toolIDToName, tt.allowDummyThought)
+			parts, _, err := buildParts(json.RawMessage(tt.content), toolIDToName, tt.allowDummyThought)
 
 			if err != nil {
 				t.Fatalf("buildParts() error = %v", err)
@@ -70,6 +70,17 @@ REDACTED
 				if !parts[1].Thought || parts[1].ThoughtSignature != "sig_real_123" {
 					t.Fatalf("expected thought part with signature sig_real_123, got thought=%v signature=%q",
 						parts[1].Thought, parts[1].ThoughtSignature)
+			REDACTED
+			case "Claude model - downgrade thinking to text without signature":
+				if len(parts) != 3 {
+					t.Fatalf("expected 3 parts, got %d", len(parts))
+			REDACTED
+				if parts[1].Thought {
+					t.Fatalf("expected downgraded text part, got thought=%v signature=%q",
+						parts[1].Thought, parts[1].ThoughtSignature)
+			REDACTED
+				if parts[1].Text != "Let me think..." {
+					t.Fatalf("expected downgraded text %q, got %q", "Let me think...", parts[1].Text)
 			REDACTED
 			case "Gemini model - use dummy signature":
 				if len(parts) != 3 {
@@ -91,7 +102,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 
 	t.Run("Gemini uses dummy tool_use signature", func(t *testing.T) {
 		toolIDToName := make(map[string]string)
-		parts, err := buildParts(json.RawMessage(content), toolIDToName, true)
+		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, true)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 	REDACTED
@@ -105,7 +116,7 @@ REDACTED)
 
 	t.Run("Claude model - preserve valid signature for tool_use", func(t *testing.T) {
 		toolIDToName := make(map[string]string)
-		parts, err := buildParts(json.RawMessage(content), toolIDToName, false)
+		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, false)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 	REDACTED

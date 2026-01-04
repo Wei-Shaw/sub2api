@@ -359,6 +359,7 @@ REDACTED
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 REDACTED
+	originalClaudeBody := body
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -479,6 +480,7 @@ REDACTED
 REDACTED
 
 	var resp *http.Response
+	signatureRetryStage := 0
 	for attempt := 1; attempt <= geminiMaxRetries; attempt++ {
 		upstreamReq, idHeader, err := buildReq(ctx)
 		if err != nil {
@@ -501,6 +503,46 @@ REDACTED
 				continue
 		REDACTED
 			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries: "+sanitizeUpstreamErrorMessage(err.Error()))
+	REDACTED
+
+		// Special-case: signature/thought_signature validation errors are not transient, but may be fixed by
+		// downgrading Claude thinking/tool history to plain text (conservative two-stage retry).
+		if resp.StatusCode == http.StatusBadRequest && signatureRetryStage < 2 {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+
+			if isGeminiSignatureRelatedError(respBody) {
+				var strippedClaudeBody []byte
+				stageName := ""
+				switch signatureRetryStage {
+				case 0:
+					// Stage 1: disable thinking + thinking->text
+					strippedClaudeBody = FilterThinkingBlocksForRetry(originalClaudeBody)
+					stageName = "thinking-only"
+					signatureRetryStage = 1
+				default:
+					// Stage 2: additionally downgrade tool_use/tool_result blocks to text
+					strippedClaudeBody = FilterSignatureSensitiveBlocksForRetry(originalClaudeBody)
+					stageName = "thinking+tools"
+					signatureRetryStage = 2
+			REDACTED
+				retryGeminiReq, txErr := convertClaudeMessagesToGeminiGenerateContent(strippedClaudeBody)
+				if txErr == nil {
+					log.Printf("Gemini account %d: detected signature-related 400, retrying with downgraded Claude blocks (%s)", account.ID, stageName)
+					geminiReq = retryGeminiReq
+					// Consume one retry budget attempt and continue with the updated request payload.
+					sleepGeminiBackoff(1)
+					continue
+			REDACTED
+		REDACTED
+
+			// Restore body for downstream error handling.
+			resp = &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     resp.Header.Clone(),
+				Body:       io.NopCloser(bytes.NewReader(respBody)),
+		REDACTED
+			break
 	REDACTED
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
@@ -598,6 +640,14 @@ REDACTED
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
 REDACTED, nil
+REDACTED
+
+func isGeminiSignatureRelatedError(respBody []byte) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+	if msg == "" {
+		msg = strings.ToLower(string(respBody))
+REDACTED
+	return strings.Contains(msg, "thought_signature") || strings.Contains(msg, "signature")
 REDACTED
 
 func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {

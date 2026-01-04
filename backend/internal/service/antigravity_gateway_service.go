@@ -443,35 +443,70 @@ REDACTED
 		// Antigravity /v1internal 链路在部分场景会对 thought/thinking signature 做严格校验，
 		// 当历史消息携带的 signature 不合法时会直接 400；去除 thinking 后可继续完成请求。
 		if resp.StatusCode == http.StatusBadRequest && isSignatureRelatedError(respBody) {
-			retryClaudeReq := claudeReq
-			retryClaudeReq.Messages = append([]antigravity.ClaudeMessage(nil), claudeReq.Messages...)
+			// Conservative two-stage fallback:
+			// 1) Disable top-level thinking + thinking->text
+			// 2) Only if still signature-related 400: also downgrade tool_use/tool_result to text.
 
-			stripped, stripErr := stripThinkingFromClaudeRequest(&retryClaudeReq)
-			if stripErr == nil && stripped {
-				log.Printf("Antigravity account %d: detected signature-related 400, retrying once without thinking blocks", account.ID)
+			retryStages := []struct {
+				name  string
+				strip func(*antigravity.ClaudeRequest) (bool, error)
+		REDACTED{
+				{name: "thinking-only", strip: stripThinkingFromClaudeRequestREDACTED,
+				{name: "thinking+tools", strip: stripSignatureSensitiveBlocksFromClaudeRequestREDACTED,
+		REDACTED
+
+			for _, stage := range retryStages {
+				retryClaudeReq := claudeReq
+				retryClaudeReq.Messages = append([]antigravity.ClaudeMessage(nil), claudeReq.Messages...)
+
+				stripped, stripErr := stage.strip(&retryClaudeReq)
+				if stripErr != nil || !stripped {
+					continue
+			REDACTED
+
+				log.Printf("Antigravity account %d: detected signature-related 400, retrying once (%s)", account.ID, stage.name)
 
 				retryGeminiBody, txErr := antigravity.TransformClaudeToGemini(&retryClaudeReq, projectID, mappedModel)
-				if txErr == nil {
-					retryReq, buildErr := antigravity.NewAPIRequest(ctx, action, accessToken, retryGeminiBody)
-					if buildErr == nil {
-						retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
-						if retryErr == nil {
-							// Retry success: continue normal success flow with the new response.
-							if retryResp.StatusCode < 400 {
-								_ = resp.Body.Close()
-								resp = retryResp
-								respBody = nil
-						REDACTED else {
-								// Retry still errored: replace error context with retry response.
-								retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
-								_ = retryResp.Body.Close()
-								respBody = retryBody
-								resp = retryResp
-						REDACTED
-					REDACTED else {
-							log.Printf("Antigravity account %d: signature retry request failed: %v", account.ID, retryErr)
-					REDACTED
+				if txErr != nil {
+					continue
+			REDACTED
+				retryReq, buildErr := antigravity.NewAPIRequest(ctx, action, accessToken, retryGeminiBody)
+				if buildErr != nil {
+					continue
+			REDACTED
+				retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+				if retryErr != nil {
+					log.Printf("Antigravity account %d: signature retry request failed (%s): %v", account.ID, stage.name, retryErr)
+					continue
+			REDACTED
+
+				if retryResp.StatusCode < 400 {
+					_ = resp.Body.Close()
+					resp = retryResp
+					respBody = nil
+					break
+			REDACTED
+
+				retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+				_ = retryResp.Body.Close()
+
+				// If this stage fixed the signature issue, we stop; otherwise we may try the next stage.
+				if retryResp.StatusCode != http.StatusBadRequest || !isSignatureRelatedError(retryBody) {
+					respBody = retryBody
+					resp = &http.Response{
+						StatusCode: retryResp.StatusCode,
+						Header:     retryResp.Header.Clone(),
+						Body:       io.NopCloser(bytes.NewReader(retryBody)),
 				REDACTED
+					break
+			REDACTED
+
+				// Still signature-related; capture context and allow next stage.
+				respBody = retryBody
+				resp = &http.Response{
+					StatusCode: retryResp.StatusCode,
+					Header:     retryResp.Header.Clone(),
+					Body:       io.NopCloser(bytes.NewReader(retryBody)),
 			REDACTED
 		REDACTED
 	REDACTED
@@ -555,7 +590,7 @@ REDACTED
 // stripThinkingFromClaudeRequest converts thinking blocks to text blocks in a Claude Messages request.
 // This preserves the thinking content while avoiding signature validation errors.
 // Note: redacted_thinking blocks are removed because they cannot be converted to text.
-// It also disables top-level `thinking` to prevent dummy-thought injection during retry.
+// It also disables top-level `thinking` to avoid upstream structural constraints for thinking mode.
 func stripThinkingFromClaudeRequest(req *antigravity.ClaudeRequest) (bool, error) {
 	if req == nil {
 		return false, nil
@@ -591,6 +626,92 @@ REDACTED
 			t, _ := block["type"].(string)
 			switch t {
 			case "thinking":
+				thinkingText, _ := block["thinking"].(string)
+				if thinkingText != "" {
+					filtered = append(filtered, map[string]any{
+						"type": "text",
+						"text": thinkingText,
+				REDACTED)
+			REDACTED
+				modifiedAny = true
+			case "redacted_thinking":
+				modifiedAny = true
+			case "":
+				if thinkingText, hasThinking := block["thinking"].(string); hasThinking {
+					if thinkingText != "" {
+						filtered = append(filtered, map[string]any{
+							"type": "text",
+							"text": thinkingText,
+					REDACTED)
+				REDACTED
+					modifiedAny = true
+			REDACTED else {
+					filtered = append(filtered, block)
+			REDACTED
+			default:
+				filtered = append(filtered, block)
+		REDACTED
+	REDACTED
+
+		if !modifiedAny {
+			continue
+	REDACTED
+
+		if len(filtered) == 0 {
+			filtered = append(filtered, map[string]any{
+				"type": "text",
+				"text": "(content removed)",
+		REDACTED)
+	REDACTED
+
+		newRaw, err := json.Marshal(filtered)
+		if err != nil {
+			return changed, err
+	REDACTED
+		req.Messages[i].Content = newRaw
+		changed = true
+REDACTED
+
+	return changed, nil
+REDACTED
+
+// stripSignatureSensitiveBlocksFromClaudeRequest is a stronger retry degradation that additionally converts
+// tool blocks to plain text. Use this only after a thinking-only retry still fails with signature errors.
+func stripSignatureSensitiveBlocksFromClaudeRequest(req *antigravity.ClaudeRequest) (bool, error) {
+	if req == nil {
+		return false, nil
+REDACTED
+
+	changed := false
+	if req.Thinking != nil {
+		req.Thinking = nil
+		changed = true
+REDACTED
+
+	for i := range req.Messages {
+		raw := req.Messages[i].Content
+		if len(raw) == 0 {
+			continue
+	REDACTED
+
+		// If content is a string, nothing to strip.
+		var str string
+		if json.Unmarshal(raw, &str) == nil {
+			continue
+	REDACTED
+
+		// Otherwise treat as an array of blocks and convert signature-sensitive blocks to text.
+		var blocks []map[string]any
+		if err := json.Unmarshal(raw, &blocks); err != nil {
+			continue
+	REDACTED
+
+		filtered := make([]map[string]any, 0, len(blocks))
+		modifiedAny := false
+		for _, block := range blocks {
+			t, _ := block["type"].(string)
+			switch t {
+			case "thinking":
 				// Convert thinking to text, skip if empty
 				thinkingText, _ := block["thinking"].(string)
 				if thinkingText != "" {
@@ -602,6 +723,49 @@ REDACTED
 				modifiedAny = true
 			case "redacted_thinking":
 				// Remove redacted_thinking (cannot convert encrypted content)
+				modifiedAny = true
+			case "tool_use":
+				// Convert tool_use to text to avoid upstream signature/thought_signature validation errors.
+				// This is a retry-only degradation path, so we prioritise request validity over tool semantics.
+				name, _ := block["name"].(string)
+				id, _ := block["id"].(string)
+				input := block["input"]
+				inputJSON, _ := json.Marshal(input)
+				text := "(tool_use)"
+				if name != "" {
+					text += " name=" + name
+			REDACTED
+				if id != "" {
+					text += " id=" + id
+			REDACTED
+				if len(inputJSON) > 0 && string(inputJSON) != "null" {
+					text += " input=" + string(inputJSON)
+			REDACTED
+				filtered = append(filtered, map[string]any{
+					"type": "text",
+					"text": text,
+			REDACTED)
+				modifiedAny = true
+			case "tool_result":
+				// Convert tool_result to text so it stays consistent when tool_use is downgraded.
+				toolUseID, _ := block["tool_use_id"].(string)
+				isError, _ := block["is_error"].(bool)
+				content := block["content"]
+				contentJSON, _ := json.Marshal(content)
+				text := "(tool_result)"
+				if toolUseID != "" {
+					text += " tool_use_id=" + toolUseID
+			REDACTED
+				if isError {
+					text += " is_error=true"
+			REDACTED
+				if len(contentJSON) > 0 && string(contentJSON) != "null" {
+					text += "\n" + string(contentJSON)
+			REDACTED
+				filtered = append(filtered, map[string]any{
+					"type": "text",
+					"text": text,
+			REDACTED)
 				modifiedAny = true
 			case "":
 				// Handle untyped block with "thinking" field
@@ -623,6 +787,14 @@ REDACTED
 
 		if !modifiedAny {
 			continue
+	REDACTED
+
+		if len(filtered) == 0 {
+			// Keep request valid: upstream rejects empty content arrays.
+			filtered = append(filtered, map[string]any{
+				"type": "text",
+				"text": "(content removed)",
+		REDACTED)
 	REDACTED
 
 		newRaw, err := json.Marshal(filtered)
@@ -747,11 +919,18 @@ REDACTED
 
 		break
 REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+	REDACTED
+REDACTED()
 
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		// 尽早关闭原始响应体，释放连接；后续逻辑仍可能需要读取 body，因此用内存副本重新包装。
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 		// 模型兜底：模型不存在且开启 fallback 时，自动用 fallback 模型重试一次
 		if s.settingService != nil && s.settingService.IsModelFallbackEnabled(ctx) &&
@@ -760,15 +939,13 @@ REDACTED
 			if fallbackModel != "" && fallbackModel != mappedModel {
 				log.Printf("[Antigravity] Model not found (%s), retrying with fallback model %s (account: %s)", mappedModel, fallbackModel, account.Name)
 
-				// 关闭原始响应，释放连接（respBody 已读取到内存）
-				_ = resp.Body.Close()
-
 				fallbackWrapped, err := s.wrapV1InternalRequest(projectID, fallbackModel, body)
 				if err == nil {
 					fallbackReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, fallbackWrapped)
 					if err == nil {
 						fallbackResp, err := s.httpUpstream.Do(fallbackReq, proxyURL, account.ID, account.Concurrency)
 						if err == nil && fallbackResp.StatusCode < 400 {
+							_ = resp.Body.Close()
 							resp = fallbackResp
 					REDACTED else if fallbackResp != nil {
 							_ = fallbackResp.Body.Close()

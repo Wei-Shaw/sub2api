@@ -22,7 +22,7 @@ func TransformClaudeToGemini(claudeReq *ClaudeRequest, projectID, mappedModel st
 	allowDummyThought := strings.HasPrefix(mappedModel, "gemini-")
 
 	// 1. 构建 contents
-	contents, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
+	contents, strippedThinking, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
 	if err != nil {
 		return nil, fmt.Errorf("build contents: %w", err)
 REDACTED
@@ -31,7 +31,15 @@ REDACTED
 	systemInstruction := buildSystemInstruction(claudeReq.System, claudeReq.Model)
 
 	// 3. 构建 generationConfig
-	generationConfig := buildGenerationConfig(claudeReq)
+	reqForConfig := claudeReq
+	if strippedThinking {
+		// If we had to downgrade thinking blocks to plain text due to missing/invalid signatures,
+		// disable upstream thinking mode to avoid signature/structure validation errors.
+		reqCopy := *claudeReq
+		reqCopy.Thinking = nil
+		reqForConfig = &reqCopy
+REDACTED
+	generationConfig := buildGenerationConfig(reqForConfig)
 
 	// 4. 构建 tools
 	tools := buildTools(claudeReq.Tools)
@@ -120,8 +128,9 @@ REDACTED
 REDACTED
 
 // buildContents 构建 contents
-func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled, allowDummyThought bool) ([]GeminiContent, error) {
+func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isThinkingEnabled, allowDummyThought bool) ([]GeminiContent, bool, error) {
 	var contents []GeminiContent
+	strippedThinking := false
 
 	for i, msg := range messages {
 		role := msg.Role
@@ -129,9 +138,12 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 			role = "model"
 	REDACTED
 
-		parts, err := buildParts(msg.Content, toolIDToName, allowDummyThought)
+		parts, strippedThisMsg, err := buildParts(msg.Content, toolIDToName, allowDummyThought)
 		if err != nil {
-			return nil, fmt.Errorf("build parts for message %d: %w", i, err)
+			return nil, false, fmt.Errorf("build parts for message %d: %w", i, err)
+	REDACTED
+		if strippedThisMsg {
+			strippedThinking = true
 	REDACTED
 
 		// 只有 Gemini 模型支持 dummy thinking block workaround
@@ -165,7 +177,7 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 	REDACTED)
 REDACTED
 
-	return contents, nil
+	return contents, strippedThinking, nil
 REDACTED
 
 // dummyThoughtSignature 用于跳过 Gemini 3 thought_signature 验证
@@ -174,8 +186,9 @@ const dummyThoughtSignature = "skip_thought_signature_validator"
 
 // buildParts 构建消息的 parts
 // allowDummyThought: 只有 Gemini 模型支持 dummy thought signature
-func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDummyThought bool) ([]GeminiPart, error) {
+func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDummyThought bool) ([]GeminiPart, bool, error) {
 	var parts []GeminiPart
+	strippedThinking := false
 
 	// 尝试解析为字符串
 	var textContent string
@@ -183,13 +196,13 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 		if textContent != "(no content)" && strings.TrimSpace(textContent) != "" {
 			parts = append(parts, GeminiPart{Text: strings.TrimSpace(textContent)REDACTED)
 	REDACTED
-		return parts, nil
+		return parts, false, nil
 REDACTED
 
 	// 解析为内容块数组
 	var blocks []ContentBlock
 	if err := json.Unmarshal(content, &blocks); err != nil {
-		return nil, fmt.Errorf("parse content blocks: %w", err)
+		return nil, false, fmt.Errorf("parse content blocks: %w", err)
 REDACTED
 
 	for _, block := range blocks {
@@ -208,8 +221,11 @@ REDACTED
 			if block.Signature != "" {
 				part.ThoughtSignature = block.Signature
 		REDACTED else if !allowDummyThought {
-				// Claude 模型需要有效 signature，跳过无 signature 的 thinking block
-				log.Printf("Warning: skipping thinking block without signature for Claude model")
+				// Claude 模型需要有效 signature；在缺失时降级为普通文本，并在上层禁用 thinking mode。
+				if strings.TrimSpace(block.Thinking) != "" {
+					parts = append(parts, GeminiPart{Text: block.ThinkingREDACTED)
+			REDACTED
+				strippedThinking = true
 				continue
 		REDACTED else {
 				// Gemini 模型使用 dummy signature
@@ -276,7 +292,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	return parts, nil
+	return parts, strippedThinking, nil
 REDACTED
 
 // parseToolResultContent 解析 tool_result 的 content

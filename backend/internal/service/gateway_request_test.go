@@ -151,3 +151,125 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestFilterThinkingBlocksForRetry_DisablesThinkingAndPreservesAsText(t *testing.T) {
+	input := []byte(`{
+		"model":"claude-3-5-sonnet-20241022",
+		"thinking":{"type":"enabled","budget_tokens":1024REDACTED,
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"Hi"REDACTED]REDACTED,
+			{"role":"assistant","content":[
+				{"type":"thinking","thinking":"Let me think...","signature":"bad_sig"REDACTED,
+				{"type":"text","text":"Answer"REDACTED
+			]REDACTED
+		]
+REDACTED`)
+
+	out := FilterThinkingBlocksForRetry(input)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	_, hasThinking := req["thinking"]
+	require.False(t, hasThinking)
+
+	msgs, ok := req["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, msgs, 2)
+
+	assistant := msgs[1].(map[string]any)
+	content := assistant["content"].([]any)
+	require.Len(t, content, 2)
+
+	first := content[0].(map[string]any)
+	require.Equal(t, "text", first["type"])
+	require.Equal(t, "Let me think...", first["text"])
+REDACTED
+
+func TestFilterThinkingBlocksForRetry_DisablesThinkingEvenWithoutThinkingBlocks(t *testing.T) {
+	input := []byte(`{
+		"model":"claude-3-5-sonnet-20241022",
+		"thinking":{"type":"enabled","budget_tokens":1024REDACTED,
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"Hi"REDACTED]REDACTED,
+			{"role":"assistant","content":[{"type":"text","text":"Prefill"REDACTED]REDACTED
+		]
+REDACTED`)
+
+	out := FilterThinkingBlocksForRetry(input)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	_, hasThinking := req["thinking"]
+	require.False(t, hasThinking)
+REDACTED
+
+func TestFilterThinkingBlocksForRetry_RemovesRedactedThinkingAndKeepsValidContent(t *testing.T) {
+	input := []byte(`{
+		"thinking":{"type":"enabled","budget_tokens":1024REDACTED,
+		"messages":[
+			{"role":"assistant","content":[
+				{"type":"redacted_thinking","data":"..."REDACTED,
+				{"type":"text","text":"Visible"REDACTED
+			]REDACTED
+		]
+REDACTED`)
+
+	out := FilterThinkingBlocksForRetry(input)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	_, hasThinking := req["thinking"]
+	require.False(t, hasThinking)
+
+	msgs := req["messages"].([]any)
+	content := msgs[0].(map[string]any)["content"].([]any)
+	require.Len(t, content, 1)
+	require.Equal(t, "text", content[0].(map[string]any)["type"])
+	require.Equal(t, "Visible", content[0].(map[string]any)["text"])
+REDACTED
+
+func TestFilterThinkingBlocksForRetry_EmptyContentGetsPlaceholder(t *testing.T) {
+	input := []byte(`{
+		"thinking":{"type":"enabled"REDACTED,
+		"messages":[
+			{"role":"assistant","content":[{"type":"redacted_thinking","data":"..."REDACTED]REDACTED
+		]
+REDACTED`)
+
+	out := FilterThinkingBlocksForRetry(input)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	msgs := req["messages"].([]any)
+	content := msgs[0].(map[string]any)["content"].([]any)
+	require.Len(t, content, 1)
+	require.Equal(t, "text", content[0].(map[string]any)["type"])
+	require.NotEmpty(t, content[0].(map[string]any)["text"])
+REDACTED
+
+func TestFilterSignatureSensitiveBlocksForRetry_DowngradesTools(t *testing.T) {
+	input := []byte(`{
+		"thinking":{"type":"enabled","budget_tokens":1024REDACTED,
+		"messages":[
+			{"role":"assistant","content":[
+				{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"REDACTEDREDACTED,
+				{"type":"tool_result","tool_use_id":"t1","content":"ok","is_error":falseREDACTED
+			]REDACTED
+		]
+REDACTED`)
+
+	out := FilterSignatureSensitiveBlocksForRetry(input)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	_, hasThinking := req["thinking"]
+	require.False(t, hasThinking)
+
+	msgs := req["messages"].([]any)
+	content := msgs[0].(map[string]any)["content"].([]any)
+	require.Len(t, content, 2)
+	require.Equal(t, "text", content[0].(map[string]any)["type"])
+	require.Equal(t, "text", content[1].(map[string]any)["type"])
+	require.Contains(t, content[0].(map[string]any)["text"], "tool_use")
+	require.Contains(t, content[1].(map[string]any)["text"], "tool_result")
+REDACTED
