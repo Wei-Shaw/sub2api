@@ -240,7 +240,7 @@ REDACTED)
 		DurationMs:          &d1,
 		CreatedAt:           maxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
 REDACTED
-	_, err := s.repo.Create(s.ctx, logToday)
+	_, err = s.repo.Create(s.ctx, logToday)
 	s.Require().NoError(err, "Create logToday")
 
 	logOld := &service.UsageLog{
