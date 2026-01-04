@@ -50,7 +50,8 @@ func (s *UsageLogRepoSuite) createUsageLog(user *service.User, apiKey *service.A
 		ActualCost:   cost,
 		CreatedAt:    createdAt,
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log))
+	_, err := s.repo.Create(s.ctx, log)
+	s.Require().NoError(err)
 	return log
 REDACTED
 
@@ -72,7 +73,7 @@ func (s *UsageLogRepoSuite) TestCreate() {
 		ActualCost:   0.4,
 REDACTED
 
-	err := s.repo.Create(s.ctx, log)
+	_, err = s.repo.Create(s.ctx, log)
 	s.Require().NoError(err, "Create")
 	s.Require().NotZero(log.ID)
 REDACTED
@@ -239,7 +240,8 @@ REDACTED)
 		DurationMs:          &d1,
 		CreatedAt:           maxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, logToday), "Create logToday")
+	_, err = s.repo.Create(s.ctx, logToday)
+	s.Require().NoError(err, "Create logToday")
 
 	logOld := &service.UsageLog{
 		UserID:       userOld.ID,
@@ -253,7 +255,8 @@ REDACTED
 		DurationMs:   &d2,
 		CreatedAt:    todayStart.Add(-1 * time.Hour),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, logOld), "Create logOld")
+	_, err = s.repo.Create(s.ctx, logOld)
+	s.Require().NoError(err, "Create logOld")
 
 	logPerf := &service.UsageLog{
 		UserID:       userToday.ID,
@@ -267,7 +270,8 @@ REDACTED
 		DurationMs:   &d3,
 		CreatedAt:    now.Add(-30 * time.Second),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, logPerf), "Create logPerf")
+	_, err = s.repo.Create(s.ctx, logPerf)
+	s.Require().NoError(err, "Create logPerf")
 
 	stats, err := s.repo.GetDashboardStats(s.ctx)
 	s.Require().NoError(err, "GetDashboardStats")
@@ -479,7 +483,8 @@ func (s *UsageLogRepoSuite) TestListByModelAndTimeRange() {
 		ActualCost:   0.5,
 		CreatedAt:    base,
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log1))
+	_, err = s.repo.Create(s.ctx, log1)
+	s.Require().NoError(err)
 
 	log2 := &service.UsageLog{
 		UserID:       user.ID,
@@ -492,7 +497,8 @@ REDACTED
 		ActualCost:   0.6,
 		CreatedAt:    base.Add(30 * time.Minute),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log2))
+	_, err = s.repo.Create(s.ctx, log2)
+	s.Require().NoError(err)
 
 	log3 := &service.UsageLog{
 		UserID:       user.ID,
@@ -505,7 +511,8 @@ REDACTED
 		ActualCost:   0.7,
 		CreatedAt:    base.Add(1 * time.Hour),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log3))
+	_, err = s.repo.Create(s.ctx, log3)
+	s.Require().NoError(err)
 
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(2 * time.Hour)
@@ -591,7 +598,8 @@ func (s *UsageLogRepoSuite) TestGetUserModelStats() {
 		ActualCost:   0.5,
 		CreatedAt:    base,
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log1))
+	_, err = s.repo.Create(s.ctx, log1)
+	s.Require().NoError(err)
 
 	log2 := &service.UsageLog{
 		UserID:       user.ID,
@@ -604,7 +612,8 @@ REDACTED
 		ActualCost:   0.2,
 		CreatedAt:    base.Add(1 * time.Hour),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log2))
+	_, err = s.repo.Create(s.ctx, log2)
+	s.Require().NoError(err)
 
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(2 * time.Hour)
@@ -684,7 +693,8 @@ func (s *UsageLogRepoSuite) TestGetModelStatsWithFilters() {
 		ActualCost:   0.5,
 		CreatedAt:    base,
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log1))
+	_, err = s.repo.Create(s.ctx, log1)
+	s.Require().NoError(err)
 
 	log2 := &service.UsageLog{
 		UserID:       user.ID,
@@ -697,7 +707,8 @@ REDACTED
 		ActualCost:   0.2,
 		CreatedAt:    base.Add(1 * time.Hour),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log2))
+	_, err = s.repo.Create(s.ctx, log2)
+	s.Require().NoError(err)
 
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(2 * time.Hour)
@@ -739,7 +750,8 @@ func (s *UsageLogRepoSuite) TestGetAccountUsageStats() {
 		ActualCost:   0.4,
 		CreatedAt:    base.Add(12 * time.Hour),
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log1))
+	_, err = s.repo.Create(s.ctx, log1)
+	s.Require().NoError(err)
 
 	log2 := &service.UsageLog{
 		UserID:       user.ID,
@@ -752,7 +764,8 @@ REDACTED
 		ActualCost:   0.15,
 		CreatedAt:    base.Add(36 * time.Hour), // next day
 REDACTED
-	s.Require().NoError(s.repo.Create(s.ctx, log2))
+	_, err = s.repo.Create(s.ctx, log2)
+	s.Require().NoError(err)
 
 	startTime := base
 	endTime := base.Add(72 * time.Hour)
