@@ -606,8 +606,8 @@ const geminiAuthTypeLabel = computed(() => {
     const tierLabel = geminiTier.value ? tierMap[geminiTier.value] || 'Free' : 'Free'
     return `GCP ${tierLabelREDACTED`
   REDACTED else if (oauthType === 'ai_studio') {
-    // AI Studio: just show "AI Studio" (no tier)
-    return 'AI Studio'
+    // 自定义 OAuth Client: show "Client" (no tier)
+    return 'Client'
   REDACTED
 
   return null
