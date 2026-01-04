@@ -84,17 +84,25 @@ func FilterThinkingBlocks(body []byte) []byte {
 	return filterThinkingBlocksInternal(body, false)
 REDACTED
 
-// FilterThinkingBlocksForRetry converts thinking blocks to text blocks for retry scenarios
-// This preserves the thinking content while avoiding signature validation errors.
-// Note: redacted_thinking blocks are removed because they cannot be converted to text.
+// FilterThinkingBlocksForRetry removes thinking blocks from HISTORICAL messages for retry scenarios.
+// This is used when upstream returns signature-related 400 errors.
+//
+// Key insight:
+//   - User's thinking.type = "enabled" should be PRESERVED (user's intent)
+//   - Only HISTORICAL assistant messages have thinking blocks with signatures
+//   - These signatures may be invalid when switching accounts/platforms
+//   - New responses will generate fresh thinking blocks without signature issues
+//
+// Strategy:
+//   - Keep thinking.type = "enabled" (preserve user intent)
+//   - Remove thinking/redacted_thinking blocks from historical assistant messages
+//   - Ensure no message has empty content after filtering
 func FilterThinkingBlocksForRetry(body []byte) []byte {
-	// Fast path: check for presence of thinking-related keys
+	// Fast path: check for presence of thinking-related keys in messages
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
 		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
 		!bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) &&
-		!bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) &&
-		!bytes.Contains(body, []byte(`"thinking":`)) &&
-		!bytes.Contains(body, []byte(`"thinking" :`)) {
+		!bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) {
 		return body
 REDACTED
 
@@ -103,20 +111,29 @@ REDACTED
 		return body
 REDACTED
 
+	// DO NOT modify thinking.type - preserve user's intent to use thinking mode
+	// The issue is with historical message signatures, not the thinking mode itself
+
 	messages, ok := req["messages"].([]any)
 	if !ok {
 		return body
 REDACTED
 
 	modified := false
+	newMessages := make([]any, 0, len(messages))
+
 	for _, msg := range messages {
 		msgMap, ok := msg.(map[string]any)
 		if !ok {
+			newMessages = append(newMessages, msg)
 			continue
 	REDACTED
 
+		role, _ := msgMap["role"].(string)
 		content, ok := msgMap["content"].([]any)
 		if !ok {
+			// String content or other format - keep as is
+			newMessages = append(newMessages, msg)
 			continue
 	REDACTED
 
@@ -132,50 +149,40 @@ REDACTED
 
 			blockType, _ := blockMap["type"].(string)
 
-			// Case 1: Standard thinking block - convert to text
-			if blockType == "thinking" {
-				thinkingText, _ := blockMap["thinking"].(string)
-				if thinkingText != "" {
-					newContent = append(newContent, map[string]any{
-						"type": "text",
-						"text": thinkingText,
-				REDACTED)
-			REDACTED
+			// Remove thinking/redacted_thinking blocks from historical messages
+			// These have signatures that may be invalid across different accounts
+			if blockType == "thinking" || blockType == "redacted_thinking" {
 				modifiedThisMsg = true
 				continue
-		REDACTED
-
-			// Case 2: Redacted thinking block - remove (cannot convert encrypted content)
-			if blockType == "redacted_thinking" {
-				modifiedThisMsg = true
-				continue
-		REDACTED
-
-			// Case 3: Untyped block with "thinking" field - convert to text
-			if blockType == "" {
-				if thinkingText, hasThinking := blockMap["thinking"].(string); hasThinking {
-					if thinkingText != "" {
-						newContent = append(newContent, map[string]any{
-							"type": "text",
-							"text": thinkingText,
-					REDACTED)
-				REDACTED
-					modifiedThisMsg = true
-					continue
-			REDACTED
 		REDACTED
 
 			newContent = append(newContent, block)
 	REDACTED
 
 		if modifiedThisMsg {
-			msgMap["content"] = newContent
 			modified = true
+			// Handle empty content after filtering
+			if len(newContent) == 0 {
+				// For assistant messages, skip entirely (remove from conversation)
+				// For user messages, add placeholder to avoid empty content error
+				if role == "user" {
+					newContent = append(newContent, map[string]any{
+						"type": "text",
+						"text": "(content removed)",
+				REDACTED)
+					msgMap["content"] = newContent
+					newMessages = append(newMessages, msgMap)
+			REDACTED
+				// Skip assistant messages with empty content (don't append)
+				continue
+		REDACTED
+			msgMap["content"] = newContent
 	REDACTED
+		newMessages = append(newMessages, msgMap)
 REDACTED
 
-	if !modified {
-		return body
+	if modified {
+		req["messages"] = newMessages
 REDACTED
 
 	newBody, err := json.Marshal(req)

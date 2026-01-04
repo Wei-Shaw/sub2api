@@ -1029,9 +1029,17 @@ REDACTED
 						retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
 						if retryErr == nil {
 							// 使用重试后的响应，继续后续处理
+							if retryResp.StatusCode < 400 {
+								log.Printf("Account %d: signature error retry succeeded", account.ID)
+						REDACTED else {
+								log.Printf("Account %d: signature error retry returned status %d", account.ID, retryResp.StatusCode)
+						REDACTED
 							resp = retryResp
 							break
 					REDACTED
+						log.Printf("Account %d: signature error retry failed: %v", account.ID, retryErr)
+				REDACTED else {
+						log.Printf("Account %d: signature error retry build request failed: %v", account.ID, buildErr)
 				REDACTED
 					// 重试失败，恢复原始响应体继续处理
 					resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -1295,7 +1303,7 @@ REDACTED
 	return s
 REDACTED
 
-// isThinkingBlockSignatureError 检测是否是thinking block签名错误
+// isThinkingBlockSignatureError 检测是否是thinking block相关错误
 // 这类错误可以通过过滤thinking blocks并重试来解决
 func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
@@ -1303,9 +1311,27 @@ func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 		return false
 REDACTED
 
+	// Log for debugging
+	log.Printf("[SignatureCheck] Checking error message: %s", msg)
+
 	// 检测signature相关的错误（更宽松的匹配）
 	// 例如: "Invalid `signature` in `thinking` block", "***.signature" 等
 	if strings.Contains(msg, "signature") {
+		log.Printf("[SignatureCheck] Detected signature error")
+		return true
+REDACTED
+
+	// 检测 thinking block 顺序/类型错误
+	// 例如: "Expected `thinking` or `redacted_thinking`, but found `text`"
+	if strings.Contains(msg, "expected") && (strings.Contains(msg, "thinking") || strings.Contains(msg, "redacted_thinking")) {
+		log.Printf("[SignatureCheck] Detected thinking block type error")
+		return true
+REDACTED
+
+	// 检测空消息内容错误（可能是过滤 thinking blocks 后导致的）
+	// 例如: "all messages must have non-empty content"
+	if strings.Contains(msg, "non-empty content") || strings.Contains(msg, "empty content") {
+		log.Printf("[SignatureCheck] Detected empty content error")
 		return true
 REDACTED
 
