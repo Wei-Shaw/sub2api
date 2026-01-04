@@ -1,16 +1,16 @@
 <template>
-  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-    <div class="relative max-w-md flex-1">
-      <SearchInput 
-        :model-value="searchQuery" 
-        :placeholder="t('admin.accounts.searchAccounts')" 
+  <div class="flex flex-wrap items-start gap-3">
+    <div class="min-w-0 flex-1">
+      <SearchInput
+        :model-value="searchQuery"
+        :placeholder="t('admin.accounts.searchAccounts')"
         @update:model-value="$emit('update:searchQuery', $event)"
         @search="$emit('change')"
       />
     </div>
-    <div class="flex gap-3">
-      <Select v-model="filters.platform" :options="pOpts" @change="$emit('change')" />
-      <Select v-model="filters.status" :options="sOpts" @change="$emit('change')" />
+    <div class="flex flex-wrap items-center gap-3">
+      <Select v-model="filters.platform" class="w-40 flex-shrink-0" :options="pOpts" @change="$emit('change')" />
+      <Select v-model="filters.status" class="w-40 flex-shrink-0" :options="sOpts" @change="$emit('change')" />
     </div>
   </div>
 </template>

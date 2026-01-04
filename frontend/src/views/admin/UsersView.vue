@@ -3,11 +3,11 @@
     <TablePageLayout>
       <!-- Single Row: Search, Filters, and Actions -->
       <template #filters>
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex w-full flex-wrap-reverse items-center justify-between gap-4">
           <!-- Left: Search + Active Filters -->
-          <div class="flex flex-1 flex-wrap items-center gap-3">
+          <div class="flex min-w-[280px] flex-1 flex-wrap content-start items-center gap-3">
             <!-- Search Box -->
-            <div class="relative w-64">
+            <div class="relative w-full sm:w-64">
               <svg
                 class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
                 fill="none"
@@ -31,7 +31,7 @@
             </div>
 
             <!-- Role Filter (visible when enabled) -->
-            <div v-if="visibleFilters.has('role')" class="w-32">
+            <div v-if="visibleFilters.has('role')" class="w-full sm:w-32">
               <Select
                 v-model="filters.role"
                 :options="[
@@ -44,7 +44,7 @@
             </div>
 
             <!-- Status Filter (visible when enabled) -->
-            <div v-if="visibleFilters.has('status')" class="w-32">
+            <div v-if="visibleFilters.has('status')" class="w-full sm:w-32">
               <Select
                 v-model="filters.status"
                 :options="[
@@ -58,7 +58,10 @@
 
             <!-- Dynamic Attribute Filters -->
             <template v-for="(value, attrId) in activeAttributeFilters" :key="attrId">
-              <div v-if="visibleFilters.has(`attr_${attrIdREDACTED`)" class="relative">
+              <div
+                v-if="visibleFilters.has(`attr_${attrIdREDACTED`)"
+                class="relative w-full sm:w-36"
+              >
                 <!-- Text/Email/URL/Textarea/Date type: styled input -->
                 <input
                   v-if="['text', 'textarea', 'email', 'url', 'date'].includes(getAttributeDefinition(Number(attrId))?.type || 'text')"
@@ -66,7 +69,7 @@
                   @input="(e) => updateAttributeFilter(Number(attrId), (e.target as HTMLInputElement).value)"
                   @keyup.enter="applyFilter"
                   :placeholder="getAttributeDefinitionName(Number(attrId))"
-                  class="input w-36"
+                  class="input w-full"
                 />
                 <!-- Number type: number input -->
                 <input
@@ -76,11 +79,11 @@
                   @input="(e) => updateAttributeFilter(Number(attrId), (e.target as HTMLInputElement).value)"
                   @keyup.enter="applyFilter"
                   :placeholder="getAttributeDefinitionName(Number(attrId))"
-                  class="input w-32"
+                  class="input w-full"
                 />
                 <!-- Select/Multi-select type -->
                 <template v-else-if="['select', 'multi_select'].includes(getAttributeDefinition(Number(attrId))?.type || '')">
-                  <div class="w-36">
+                  <div class="w-full">
                     <Select
                       :model-value="value"
                       :options="[
@@ -98,14 +101,14 @@
                   @input="(e) => updateAttributeFilter(Number(attrId), (e.target as HTMLInputElement).value)"
                   @keyup.enter="applyFilter"
                   :placeholder="getAttributeDefinitionName(Number(attrId))"
-                  class="input w-36"
+                  class="input w-full"
                 />
               </div>
             </template>
           </div>
 
           <!-- Right: Actions and Settings -->
-          <div class="flex items-center gap-3">
+          <div class="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
             <!-- Refresh Button -->
             <button
               @click="loadUsers"
@@ -395,8 +398,7 @@
               <!-- Edit Button -->
               <button
                 @click="handleEdit(row)"
-                class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-                :title="t('common.edit')"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
                 <svg
                   class="h-4 w-4"
@@ -411,17 +413,60 @@
                     d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
                   />
                 </svg>
+                <span class="text-xs">{{ t('common.edit') REDACTEDREDACTED</span>
+              </button>
+
+              <!-- Toggle Status Button (not for admin) -->
+              <button
+                v-if="row.role !== 'admin'"
+                @click="handleToggleStatus(row)"
+                :class="[
+                  'flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors',
+                  row.status === 'active'
+                    ? 'hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400'
+                    : 'hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
+                ]"
+              >
+                <svg
+                  v-if="row.status === 'active'"
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                  />
+                </svg>
+                <svg
+                  v-else
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span class="text-xs">{{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') REDACTEDREDACTED</span>
               </button>
 
               <!-- More Actions Menu Trigger -->
               <button
                 :ref="(el) => setActionButtonRef(row.id, el)"
                 @click="openActionMenu(row)"
-                class="action-menu-trigger flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
+                class="action-menu-trigger flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
                 :class="{ 'bg-gray-100 text-gray-900 dark:bg-dark-700 dark:text-white': activeMenuId === row.id REDACTED"
               >
                 <svg
-                  class="h-5 w-5"
+                  class="h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -433,6 +478,7 @@
                     d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"
                   />
                 </svg>
+                <span class="text-xs">{{ t('common.more') REDACTEDREDACTED</span>
               </button>
             </div>
           </template>
@@ -518,33 +564,6 @@
               </button>
 
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
-
-              <!-- Toggle Status (not for admin) -->
-              <button
-                v-if="user.role !== 'admin'"
-                @click="handleToggleStatus(user); closeActionMenu()"
-                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
-              >
-                <svg
-                  v-if="user.status === 'active'"
-                  class="h-4 w-4 text-orange-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                </svg>
-                <svg
-                  v-else
-                  class="h-4 w-4 text-green-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {{ user.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') REDACTEDREDACTED
-              </button>
 
               <!-- Delete (not for admin) -->
               <button

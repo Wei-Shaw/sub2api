@@ -809,6 +809,7 @@ export default {
     groups: {
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
+      searchGroups: '搜索分组...',
       createGroup: '创建分组',
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
@@ -1803,6 +1804,7 @@ export default {
       description: '查看和管理所有用户的使用记录',
       userFilter: '用户',
       searchUserPlaceholder: '按邮箱搜索用户...',
+      searchApiKeyPlaceholder: '按名称搜索 API 密钥...',
       selectedUser: '已选择',
       user: '用户',
       account: '账户',
