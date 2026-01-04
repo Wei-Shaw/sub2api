@@ -487,7 +487,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 			return "", "", errors.New("access_token not found in credentials")
 	REDACTED
 		return accessToken, "oauth", nil
-	case AccountTypeApiKey:
+	case AccountTypeAPIKey:
 		apiKey := account.GetOpenAIApiKey()
 		if apiKey == "" {
 			return "", "", errors.New("api_key not found in credentials")
@@ -627,7 +627,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	case AccountTypeOAuth:
 		// OAuth accounts use ChatGPT internal API
 		targetURL = chatgptCodexURL
-	case AccountTypeApiKey:
+	case AccountTypeAPIKey:
 		// API Key accounts use Platform API or custom base URL
 		baseURL := account.GetOpenAIBaseURL()
 		if baseURL != "" {
@@ -946,7 +946,7 @@ REDACTED
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
 	Result       *OpenAIForwardResult
-	ApiKey       *ApiKey
+	APIKey       *APIKey
 	User         *User
 	Account      *Account
 	Subscription *UserSubscription
@@ -955,7 +955,7 @@ REDACTED
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	result := input.Result
-	apiKey := input.ApiKey
+	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
@@ -997,7 +997,7 @@ REDACTED
 	durationMs := int(result.Duration.Milliseconds())
 	usageLog := &UsageLog{
 		UserID:              user.ID,
-		ApiKeyID:            apiKey.ID,
+		APIKeyID:            apiKey.ID,
 		AccountID:           account.ID,
 		RequestID:           result.RequestID,
 		Model:               result.Model,

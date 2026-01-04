@@ -230,9 +230,9 @@ type TestSMTPRequest struct {
 	SMTPUseTLS   bool   `json:"smtp_use_tls"`
 REDACTED
 
-// TestSmtpConnection 测试SMTP连接
+// TestSMTPConnection 测试SMTP连接
 // POST /api/v1/admin/settings/test-smtp
-func (h *SettingHandler) TestSmtpConnection(c *gin.Context) {
+func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	var req TestSMTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -246,13 +246,13 @@ REDACTED
 	// 如果未提供密码，从数据库获取已保存的密码
 	password := req.SMTPPassword
 	if password == "" {
-		savedConfig, err := h.emailService.GetSmtpConfig(c.Request.Context())
+		savedConfig, err := h.emailService.GetSMTPConfig(c.Request.Context())
 		if err == nil && savedConfig != nil {
 			password = savedConfig.Password
 	REDACTED
 REDACTED
 
-	config := &service.SmtpConfig{
+	config := &service.SMTPConfig{
 		Host:     req.SMTPHost,
 		Port:     req.SMTPPort,
 		Username: req.SMTPUsername,
@@ -260,7 +260,7 @@ REDACTED
 		UseTLS:   req.SMTPUseTLS,
 REDACTED
 
-	err := h.emailService.TestSmtpConnectionWithConfig(config)
+	err := h.emailService.TestSMTPConnectionWithConfig(config)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -297,13 +297,13 @@ REDACTED
 	// 如果未提供密码，从数据库获取已保存的密码
 	password := req.SMTPPassword
 	if password == "" {
-		savedConfig, err := h.emailService.GetSmtpConfig(c.Request.Context())
+		savedConfig, err := h.emailService.GetSMTPConfig(c.Request.Context())
 		if err == nil && savedConfig != nil {
 			password = savedConfig.Password
 	REDACTED
 REDACTED
 
-	config := &service.SmtpConfig{
+	config := &service.SMTPConfig{
 		Host:     req.SMTPHost,
 		Port:     req.SMTPPort,
 		Username: req.SMTPUsername,
@@ -355,10 +355,10 @@ REDACTED
 	response.Success(c, gin.H{"message": "Test email sent successfully"REDACTED)
 REDACTED
 
-// GetAdminApiKey 获取管理员 API Key 状态
+// GetAdminAPIKey 获取管理员 API Key 状态
 // GET /api/v1/admin/settings/admin-api-key
-func (h *SettingHandler) GetAdminApiKey(c *gin.Context) {
-	maskedKey, exists, err := h.settingService.GetAdminApiKeyStatus(c.Request.Context())
+func (h *SettingHandler) GetAdminAPIKey(c *gin.Context) {
+	maskedKey, exists, err := h.settingService.GetAdminAPIKeyStatus(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -370,10 +370,10 @@ REDACTED
 REDACTED)
 REDACTED
 
-// RegenerateAdminApiKey 生成/重新生成管理员 API Key
+// RegenerateAdminAPIKey 生成/重新生成管理员 API Key
 // POST /api/v1/admin/settings/admin-api-key/regenerate
-func (h *SettingHandler) RegenerateAdminApiKey(c *gin.Context) {
-	key, err := h.settingService.GenerateAdminApiKey(c.Request.Context())
+func (h *SettingHandler) RegenerateAdminAPIKey(c *gin.Context) {
+	key, err := h.settingService.GenerateAdminAPIKey(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -384,10 +384,10 @@ REDACTED
 REDACTED)
 REDACTED
 
-// DeleteAdminApiKey 删除管理员 API Key
+// DeleteAdminAPIKey 删除管理员 API Key
 // DELETE /api/v1/admin/settings/admin-api-key
-func (h *SettingHandler) DeleteAdminApiKey(c *gin.Context) {
-	if err := h.settingService.DeleteAdminApiKey(c.Request.Context()); err != nil {
+func (h *SettingHandler) DeleteAdminAPIKey(c *gin.Context) {
+	if err := h.settingService.DeleteAdminAPIKey(c.Request.Context()); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED

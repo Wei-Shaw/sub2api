@@ -28,7 +28,7 @@ REDACTED
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
 	NewUserRepository,
-	NewApiKeyRepository,
+	NewAPIKeyRepository,
 	NewGroupRepository,
 	NewAccountRepository,
 	NewProxyRepository,
@@ -42,7 +42,7 @@ var ProviderSet = wire.NewSet(
 	// Cache implementations
 	NewGatewayCache,
 	NewBillingCache,
-	NewApiKeyCache,
+	NewAPIKeyCache,
 	NewTempUnschedCache,
 	ProvideConcurrencyCache,
 	NewEmailCache,

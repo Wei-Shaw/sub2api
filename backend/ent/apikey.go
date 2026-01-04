@@ -14,8 +14,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
-// ApiKey is the model entity for the ApiKey schema.
-type ApiKey struct {
+// APIKey is the model entity for the APIKey schema.
+type APIKey struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID int64 `json:"id,omitempty"`
@@ -36,13 +36,13 @@ type ApiKey struct {
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
-	// The values are being populated by the ApiKeyQuery when eager-loading is set.
-	Edges        ApiKeyEdges `json:"edges"`
+	// The values are being populated by the APIKeyQuery when eager-loading is set.
+	Edges        APIKeyEdges `json:"edges"`
 	selectValues sql.SelectValues
 REDACTED
 
-// ApiKeyEdges holds the relations/edges for other nodes in the graph.
-type ApiKeyEdges struct {
+// APIKeyEdges holds the relations/edges for other nodes in the graph.
+type APIKeyEdges struct {
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
 	// Group holds the value of the group edge.
@@ -56,7 +56,7 @@ REDACTED
 
 // UserOrErr returns the User value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e ApiKeyEdges) UserOrErr() (*User, error) {
+func (e APIKeyEdges) UserOrErr() (*User, error) {
 	if e.User != nil {
 		return e.User, nil
 REDACTED else if e.loadedTypes[0] {
@@ -67,7 +67,7 @@ REDACTED
 
 // GroupOrErr returns the Group value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e ApiKeyEdges) GroupOrErr() (*Group, error) {
+func (e APIKeyEdges) GroupOrErr() (*Group, error) {
 	if e.Group != nil {
 		return e.Group, nil
 REDACTED else if e.loadedTypes[1] {
@@ -78,7 +78,7 @@ REDACTED
 
 // UsageLogsOrErr returns the UsageLogs value or an error if the edge
 // was not loaded in eager-loading.
-func (e ApiKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
+func (e APIKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
 	if e.loadedTypes[2] {
 		return e.UsageLogs, nil
 REDACTED
@@ -86,7 +86,7 @@ REDACTED
 REDACTED
 
 // scanValues returns the types for scanning values from sql.Rows.
-func (*ApiKey) scanValues(columns []string) ([]any, error) {
+func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
@@ -104,8 +104,8 @@ REDACTED
 REDACTED
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
-// to the ApiKey fields.
-func (_m *ApiKey) assignValues(columns []string, values []any) error {
+// to the APIKey fields.
+func (_m *APIKey) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 REDACTED
@@ -174,49 +174,49 @@ REDACTED
 	return nil
 REDACTED
 
-// Value returns the ent.Value that was dynamically selected and assigned to the ApiKey.
+// Value returns the ent.Value that was dynamically selected and assigned to the APIKey.
 // This includes values selected through modifiers, order, etc.
-func (_m *ApiKey) Value(name string) (ent.Value, error) {
+func (_m *APIKey) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 REDACTED
 
-// QueryUser queries the "user" edge of the ApiKey entity.
-func (_m *ApiKey) QueryUser() *UserQuery {
-	return NewApiKeyClient(_m.config).QueryUser(_m)
+// QueryUser queries the "user" edge of the APIKey entity.
+func (_m *APIKey) QueryUser() *UserQuery {
+	return NewAPIKeyClient(_m.config).QueryUser(_m)
 REDACTED
 
-// QueryGroup queries the "group" edge of the ApiKey entity.
-func (_m *ApiKey) QueryGroup() *GroupQuery {
-	return NewApiKeyClient(_m.config).QueryGroup(_m)
+// QueryGroup queries the "group" edge of the APIKey entity.
+func (_m *APIKey) QueryGroup() *GroupQuery {
+	return NewAPIKeyClient(_m.config).QueryGroup(_m)
 REDACTED
 
-// QueryUsageLogs queries the "usage_logs" edge of the ApiKey entity.
-func (_m *ApiKey) QueryUsageLogs() *UsageLogQuery {
-	return NewApiKeyClient(_m.config).QueryUsageLogs(_m)
+// QueryUsageLogs queries the "usage_logs" edge of the APIKey entity.
+func (_m *APIKey) QueryUsageLogs() *UsageLogQuery {
+	return NewAPIKeyClient(_m.config).QueryUsageLogs(_m)
 REDACTED
 
-// Update returns a builder for updating this ApiKey.
-// Note that you need to call ApiKey.Unwrap() before calling this method if this ApiKey
+// Update returns a builder for updating this APIKey.
+// Note that you need to call APIKey.Unwrap() before calling this method if this APIKey
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (_m *ApiKey) Update() *ApiKeyUpdateOne {
-	return NewApiKeyClient(_m.config).UpdateOne(_m)
+func (_m *APIKey) Update() *APIKeyUpdateOne {
+	return NewAPIKeyClient(_m.config).UpdateOne(_m)
 REDACTED
 
-// Unwrap unwraps the ApiKey entity that was returned from a transaction after it was closed,
+// Unwrap unwraps the APIKey entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (_m *ApiKey) Unwrap() *ApiKey {
+func (_m *APIKey) Unwrap() *APIKey {
 	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
-		panic("ent: ApiKey is not a transactional entity")
+		panic("ent: APIKey is not a transactional entity")
 REDACTED
 	_m.config.driver = _tx.drv
 	return _m
 REDACTED
 
 // String implements the fmt.Stringer.
-func (_m *ApiKey) String() string {
+func (_m *APIKey) String() string {
 	var builder strings.Builder
-	builder.WriteString("ApiKey(")
+	builder.WriteString("APIKey(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
@@ -249,5 +249,5 @@ REDACTED
 	return builder.String()
 REDACTED
 
-// ApiKeys is a parsable slice of ApiKey.
-type ApiKeys []*ApiKey
+// APIKeys is a parsable slice of APIKey.
+type APIKeys []*APIKey

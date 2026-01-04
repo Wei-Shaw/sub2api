@@ -80,6 +80,33 @@ REDACTED
 	return f(ctx, query)
 REDACTED
 
+// The APIKeyFunc type is an adapter to allow the use of ordinary function as a Querier.
+type APIKeyFunc func(context.Context, *ent.APIKeyQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f APIKeyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.APIKeyQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.APIKeyQuery", q)
+REDACTED
+
+// The TraverseAPIKey type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAPIKey func(context.Context, *ent.APIKeyQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAPIKey) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseAPIKey) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.APIKeyQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.APIKeyQuery", q)
+REDACTED
+
 // The AccountFunc type is an adapter to allow the use of ordinary function as a Querier.
 type AccountFunc func(context.Context, *ent.AccountQuery) (ent.Value, error)
 
@@ -132,33 +159,6 @@ func (f TraverseAccountGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 REDACTED
 	return fmt.Errorf("unexpected query type %T. expect *ent.AccountGroupQuery", q)
-REDACTED
-
-// The ApiKeyFunc type is an adapter to allow the use of ordinary function as a Querier.
-type ApiKeyFunc func(context.Context, *ent.ApiKeyQuery) (ent.Value, error)
-
-// Query calls f(ctx, q).
-func (f ApiKeyFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
-	if q, ok := q.(*ent.ApiKeyQuery); ok {
-		return f(ctx, q)
-REDACTED
-	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ApiKeyQuery", q)
-REDACTED
-
-// The TraverseApiKey type is an adapter to allow the use of ordinary function as Traverser.
-type TraverseApiKey func(context.Context, *ent.ApiKeyQuery) error
-
-// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
-func (f TraverseApiKey) Intercept(next ent.Querier) ent.Querier {
-	return next
-REDACTED
-
-// Traverse calls f(ctx, q).
-func (f TraverseApiKey) Traverse(ctx context.Context, q ent.Query) error {
-	if q, ok := q.(*ent.ApiKeyQuery); ok {
-		return f(ctx, q)
-REDACTED
-	return fmt.Errorf("unexpected query type %T. expect *ent.ApiKeyQuery", q)
 REDACTED
 
 // The GroupFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -434,12 +434,12 @@ REDACTED
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
+	case *ent.APIKeyQuery:
+		return &query[*ent.APIKeyQuery, predicate.APIKey, apikey.OrderOption]{typ: ent.TypeAPIKey, tq: qREDACTED, nil
 	case *ent.AccountQuery:
 		return &query[*ent.AccountQuery, predicate.Account, account.OrderOption]{typ: ent.TypeAccount, tq: qREDACTED, nil
 	case *ent.AccountGroupQuery:
 		return &query[*ent.AccountGroupQuery, predicate.AccountGroup, accountgroup.OrderOption]{typ: ent.TypeAccountGroup, tq: qREDACTED, nil
-	case *ent.ApiKeyQuery:
-		return &query[*ent.ApiKeyQuery, predicate.ApiKey, apikey.OrderOption]{typ: ent.TypeApiKey, tq: qREDACTED, nil
 	case *ent.GroupQuery:
 		return &query[*ent.GroupQuery, predicate.Group, group.OrderOption]{typ: ent.TypeGroup, tq: qREDACTED, nil
 	case *ent.ProxyQuery:

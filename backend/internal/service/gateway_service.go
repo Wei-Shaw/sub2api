@@ -907,7 +907,7 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 	case AccountTypeOAuth, AccountTypeSetupToken:
 		// Both oauth and setup-token use OAuth token flow
 		return s.getOAuthToken(ctx, account)
-	case AccountTypeApiKey:
+	case AccountTypeAPIKey:
 		apiKey := account.GetCredential("api_key")
 		if apiKey == "" {
 			return "", "", errors.New("api_key not found in credentials")
@@ -1045,7 +1045,7 @@ REDACTED
 
 	// 应用模型映射（仅对apikey类型账号）
 	originalModel := reqModel
-	if account.Type == AccountTypeApiKey {
+	if account.Type == AccountTypeAPIKey {
 		mappedModel := account.GetMappedModel(reqModel)
 		if mappedModel != reqModel {
 			// 替换请求体中的模型名
@@ -1223,7 +1223,7 @@ REDACTED
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string) (*http.Request, error) {
 	// 确定目标URL
 	targetURL := claudeAPIURL
-	if account.Type == AccountTypeApiKey {
+	if account.Type == AccountTypeAPIKey {
 		baseURL := account.GetBaseURL()
 		targetURL = baseURL + "/v1/messages"
 REDACTED
@@ -1287,10 +1287,10 @@ REDACTED
 	// 处理anthropic-beta header（OAuth账号需要特殊处理）
 	if tokenType == "oauth" {
 		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
-REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForApiKey && req.Header.Get("anthropic-beta") == "" {
+REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header.Get("anthropic-beta") == "" {
 		// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
 		if requestNeedsBetaFeatures(body) {
-			if beta := defaultApiKeyBetaHeader(body); beta != "" {
+			if beta := defaultAPIKeyBetaHeader(body); beta != "" {
 				req.Header.Set("anthropic-beta", beta)
 		REDACTED
 	REDACTED
@@ -1357,12 +1357,12 @@ REDACTED
 	return false
 REDACTED
 
-func defaultApiKeyBetaHeader(body []byte) string {
+func defaultAPIKeyBetaHeader(body []byte) string {
 	modelID := gjson.GetBytes(body, "model").String()
 	if strings.Contains(strings.ToLower(modelID), "haiku") {
-		return claude.ApiKeyHaikuBetaHeader
+		return claude.APIKeyHaikuBetaHeader
 REDACTED
-	return claude.ApiKeyBetaHeader
+	return claude.APIKeyBetaHeader
 REDACTED
 
 func truncateForLog(b []byte, maxBytes int) string {
@@ -1780,7 +1780,7 @@ REDACTED
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
 	Result       *ForwardResult
-	ApiKey       *ApiKey
+	APIKey       *APIKey
 	User         *User
 	Account      *Account
 	Subscription *UserSubscription // 可选：订阅信息
@@ -1789,7 +1789,7 @@ REDACTED
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	result := input.Result
-	apiKey := input.ApiKey
+	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
@@ -1826,7 +1826,7 @@ REDACTED
 	durationMs := int(result.Duration.Milliseconds())
 	usageLog := &UsageLog{
 		UserID:              user.ID,
-		ApiKeyID:            apiKey.ID,
+		APIKeyID:            apiKey.ID,
 		AccountID:           account.ID,
 		RequestID:           result.RequestID,
 		Model:               result.Model,
@@ -1914,7 +1914,7 @@ REDACTED
 REDACTED
 
 	// 应用模型映射（仅对 apikey 类型账号）
-	if account.Type == AccountTypeApiKey {
+	if account.Type == AccountTypeAPIKey {
 		if reqModel != "" {
 			mappedModel := account.GetMappedModel(reqModel)
 			if mappedModel != reqModel {
@@ -2018,7 +2018,7 @@ REDACTED
 func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string) (*http.Request, error) {
 	// 确定目标 URL
 	targetURL := claudeAPICountTokensURL
-	if account.Type == AccountTypeApiKey {
+	if account.Type == AccountTypeAPIKey {
 		baseURL := account.GetBaseURL()
 		targetURL = baseURL + "/v1/messages/count_tokens"
 REDACTED
@@ -2077,10 +2077,10 @@ REDACTED
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {
 		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
-REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForApiKey && req.Header.Get("anthropic-beta") == "" {
+REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header.Get("anthropic-beta") == "" {
 		// API-key：与 messages 同步的按需 beta 注入（默认关闭）
 		if requestNeedsBetaFeatures(body) {
-			if beta := defaultApiKeyBetaHeader(body); beta != "" {
+			if beta := defaultAPIKeyBetaHeader(body); beta != "" {
 				req.Header.Set("anthropic-beta", beta)
 		REDACTED
 	REDACTED

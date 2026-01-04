@@ -9,6 +9,60 @@ import (
 )
 
 var (
+	// APIKeysColumns holds the columns for the "api_keys" table.
+	APIKeysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "key", Type: field.TypeString, Unique: true, Size: 128REDACTED,
+		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
+		{Name: "group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
+		{Name: "user_id", Type: field.TypeInt64REDACTED,
+REDACTED
+	// APIKeysTable holds the schema information for the "api_keys" table.
+	APIKeysTable = &schema.Table{
+		Name:       "api_keys",
+		Columns:    APIKeysColumns,
+		PrimaryKey: []*schema.Column{APIKeysColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "api_keys_groups_api_keys",
+				Columns:    []*schema.Column{APIKeysColumns[7]REDACTED,
+				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
+				OnDelete:   schema.SetNull,
+		REDACTED,
+			{
+				Symbol:     "api_keys_users_api_keys",
+				Columns:    []*schema.Column{APIKeysColumns[8]REDACTED,
+				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+	REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "apikey_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[8]REDACTED,
+		REDACTED,
+			{
+				Name:    "apikey_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[7]REDACTED,
+		REDACTED,
+			{
+				Name:    "apikey_status",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[6]REDACTED,
+		REDACTED,
+			{
+				Name:    "apikey_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[3]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
 	// AccountsColumns holds the columns for the "accounts" table.
 	AccountsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -141,60 +195,6 @@ REDACTED
 				Name:    "accountgroup_priority",
 				Unique:  false,
 				Columns: []*schema.Column{AccountGroupsColumns[0]REDACTED,
-		REDACTED,
-	REDACTED,
-REDACTED
-	// APIKeysColumns holds the columns for the "api_keys" table.
-	APIKeysColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
-		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
-		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
-		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
-		{Name: "key", Type: field.TypeString, Unique: true, Size: 128REDACTED,
-		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
-		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
-		{Name: "group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
-		{Name: "user_id", Type: field.TypeInt64REDACTED,
-REDACTED
-	// APIKeysTable holds the schema information for the "api_keys" table.
-	APIKeysTable = &schema.Table{
-		Name:       "api_keys",
-		Columns:    APIKeysColumns,
-		PrimaryKey: []*schema.Column{APIKeysColumns[0]REDACTED,
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[7]REDACTED,
-				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
-				OnDelete:   schema.SetNull,
-		REDACTED,
-			{
-				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[8]REDACTED,
-				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
-				OnDelete:   schema.NoAction,
-		REDACTED,
-	REDACTED,
-		Indexes: []*schema.Index{
-			{
-				Name:    "apikey_user_id",
-				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[8]REDACTED,
-		REDACTED,
-			{
-				Name:    "apikey_group_id",
-				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[7]REDACTED,
-		REDACTED,
-			{
-				Name:    "apikey_status",
-				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[6]REDACTED,
-		REDACTED,
-			{
-				Name:    "apikey_deleted_at",
-				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[3]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -368,8 +368,8 @@ REDACTED
 		{Name: "duration_ms", Type: field.TypeInt, Nullable: trueREDACTED,
 		{Name: "first_token_ms", Type: field.TypeInt, Nullable: trueREDACTED,
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
-		{Name: "account_id", Type: field.TypeInt64REDACTED,
 		{Name: "api_key_id", Type: field.TypeInt64REDACTED,
+		{Name: "account_id", Type: field.TypeInt64REDACTED,
 		{Name: "group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "user_id", Type: field.TypeInt64REDACTED,
 		{Name: "subscription_id", Type: field.TypeInt64, Nullable: trueREDACTED,
@@ -381,15 +381,15 @@ REDACTED
 		PrimaryKey: []*schema.Column{UsageLogsColumns[0]REDACTED,
 		ForeignKeys: []*schema.ForeignKey{
 			{
-				Symbol:     "usage_logs_accounts_usage_logs",
+				Symbol:     "usage_logs_api_keys_usage_logs",
 				Columns:    []*schema.Column{UsageLogsColumns[21]REDACTED,
-				RefColumns: []*schema.Column{AccountsColumns[0]REDACTED,
+				RefColumns: []*schema.Column{APIKeysColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
-				Symbol:     "usage_logs_api_keys_usage_logs",
+				Symbol:     "usage_logs_accounts_usage_logs",
 				Columns:    []*schema.Column{UsageLogsColumns[22]REDACTED,
-				RefColumns: []*schema.Column{APIKeysColumns[0]REDACTED,
+				RefColumns: []*schema.Column{AccountsColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
@@ -420,12 +420,12 @@ REDACTED
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[22]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[21]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[21]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[22]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_group_id",
@@ -460,7 +460,7 @@ REDACTED
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[22], UsageLogsColumns[20]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[21], UsageLogsColumns[20]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -702,9 +702,9 @@ REDACTED
 REDACTED
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
-		APIKeysTable,
 		GroupsTable,
 		ProxiesTable,
 		RedeemCodesTable,
@@ -719,6 +719,11 @@ REDACTED
 )
 
 func init() {
+	APIKeysTable.ForeignKeys[0].RefTable = GroupsTable
+	APIKeysTable.ForeignKeys[1].RefTable = UsersTable
+	APIKeysTable.Annotation = &entsql.Annotation{
+		Table: "api_keys",
+REDACTED
 	AccountsTable.ForeignKeys[0].RefTable = ProxiesTable
 	AccountsTable.Annotation = &entsql.Annotation{
 		Table: "accounts",
@@ -727,11 +732,6 @@ REDACTED
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
-REDACTED
-	APIKeysTable.ForeignKeys[0].RefTable = GroupsTable
-	APIKeysTable.ForeignKeys[1].RefTable = UsersTable
-	APIKeysTable.Annotation = &entsql.Annotation{
-		Table: "api_keys",
 REDACTED
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
@@ -747,8 +747,8 @@ REDACTED
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
 REDACTED
-	UsageLogsTable.ForeignKeys[0].RefTable = AccountsTable
-	UsageLogsTable.ForeignKeys[1].RefTable = APIKeysTable
+	UsageLogsTable.ForeignKeys[0].RefTable = APIKeysTable
+	UsageLogsTable.ForeignKeys[1].RefTable = AccountsTable
 	UsageLogsTable.ForeignKeys[2].RefTable = GroupsTable
 	UsageLogsTable.ForeignKeys[3].RefTable = UsersTable
 	UsageLogsTable.ForeignKeys[4].RefTable = UserSubscriptionsTable

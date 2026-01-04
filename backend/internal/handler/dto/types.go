@@ -15,11 +15,11 @@ type User struct {
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
-	ApiKeys       []ApiKey           `json:"api_keys,omitempty"`
+	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
 REDACTED
 
-type ApiKey struct {
+type APIKey struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
 	Key       string    `json:"key"`
@@ -139,7 +139,7 @@ REDACTED
 type UsageLog struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
-	ApiKeyID  int64  `json:"api_key_id"`
+	APIKeyID  int64  `json:"api_key_id"`
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
@@ -171,7 +171,7 @@ type UsageLog struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`
-	ApiKey       *ApiKey           `json:"api_key,omitempty"`
+	APIKey       *APIKey           `json:"api_key,omitempty"`
 	Account      *Account          `json:"account,omitempty"`
 	Group        *Group            `json:"group,omitempty"`
 	Subscription *UserSubscription `json:"subscription,omitempty"`

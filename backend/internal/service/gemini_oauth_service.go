@@ -353,7 +353,7 @@ REDACTED
 	return GeminiTierGoogleOneUnknown
 REDACTED
 
-// fetchGoogleOneTier fetches Google One tier from Drive API
+// FetchGoogleOneTier fetches Google One tier from Drive API.
 // Note: LoadCodeAssist API is NOT called for Google One accounts because:
 // 1. It's designed for GCP IAM (enterprise), not personal Google accounts
 // 2. Personal accounts will get 403/404 from cloudaicompanion.googleapis.com

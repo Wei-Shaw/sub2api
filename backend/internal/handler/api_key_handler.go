@@ -1,3 +1,4 @@
+// Package handler provides HTTP request handlers for the application.
 package handler
 
 import (
@@ -14,11 +15,11 @@ import (
 
 // APIKeyHandler handles API key-related requests
 type APIKeyHandler struct {
-	apiKeyService *service.ApiKeyService
+	apiKeyService *service.APIKeyService
 REDACTED
 
 // NewAPIKeyHandler creates a new APIKeyHandler
-func NewAPIKeyHandler(apiKeyService *service.ApiKeyService) *APIKeyHandler {
+func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 	return &APIKeyHandler{
 		apiKeyService: apiKeyService,
 REDACTED
@@ -56,9 +57,9 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.ApiKey, 0, len(keys))
+	out := make([]dto.APIKey, 0, len(keys))
 	for i := range keys {
-		out = append(out, *dto.ApiKeyFromService(&keys[i]))
+		out = append(out, *dto.APIKeyFromService(&keys[i]))
 REDACTED
 	response.Paginated(c, out, result.Total, page, pageSize)
 REDACTED
@@ -90,7 +91,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.ApiKeyFromService(key))
+	response.Success(c, dto.APIKeyFromService(key))
 REDACTED
 
 // Create handles creating a new API key
@@ -108,7 +109,7 @@ REDACTED
 		return
 REDACTED
 
-	svcReq := service.CreateApiKeyRequest{
+	svcReq := service.CreateAPIKeyRequest{
 		Name:      req.Name,
 		GroupID:   req.GroupID,
 		CustomKey: req.CustomKey,
@@ -119,7 +120,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.ApiKeyFromService(key))
+	response.Success(c, dto.APIKeyFromService(key))
 REDACTED
 
 // Update handles updating an API key
@@ -143,7 +144,7 @@ REDACTED
 		return
 REDACTED
 
-	svcReq := service.UpdateApiKeyRequest{REDACTED
+	svcReq := service.UpdateAPIKeyRequest{REDACTED
 	if req.Name != "" {
 		svcReq.Name = &req.Name
 REDACTED
@@ -158,7 +159,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.ApiKeyFromService(key))
+	response.Success(c, dto.APIKeyFromService(key))
 REDACTED
 
 // Delete handles deleting an API key

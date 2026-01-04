@@ -91,7 +91,7 @@ REDACTED{
 			name: "GET /api/v1/keys (paginated)",
 			setup: func(t *testing.T, deps *contractDeps) {
 			REDACTED
-				deps.apiKeyRepo.MustSeed(&service.ApiKey{
+				deps.apiKeyRepo.MustSeed(&service.APIKey{
 					ID:        100,
 					UserID:    1,
 					Key:       "sk_custom_1234567890",
@@ -135,7 +135,7 @@ REDACTED{
 					{
 						ID:                  1,
 						UserID:              1,
-						ApiKeyID:            100,
+						APIKeyID:            100,
 						AccountID:           200,
 						Model:               "claude-3",
 						InputTokens:         10,
@@ -150,7 +150,7 @@ REDACTED{
 					{
 						ID:           2,
 						UserID:       1,
-						ApiKeyID:     100,
+						APIKeyID:     100,
 						AccountID:    200,
 						Model:        "claude-3",
 						InputTokens:  5,
@@ -188,7 +188,7 @@ REDACTED{
 					{
 						ID:                  1,
 						UserID:              1,
-						ApiKeyID:            100,
+						APIKeyID:            100,
 						AccountID:           200,
 						RequestID:           "req_123",
 						Model:               "claude-3",
@@ -259,13 +259,13 @@ REDACTED{
 					service.SettingKeyRegistrationEnabled: "true",
 					service.SettingKeyEmailVerifyEnabled:  "false",
 
-					service.SettingKeySmtpHost:     "smtp.example.com",
-					service.SettingKeySmtpPort:     "587",
-					service.SettingKeySmtpUsername: "user",
-					service.SettingKeySmtpPassword: "secret",
-					service.SettingKeySmtpFrom:     "no-reply@example.com",
-					service.SettingKeySmtpFromName: "Sub2API",
-					service.SettingKeySmtpUseTLS:   "true",
+					service.SettingKeySMTPHost:     "smtp.example.com",
+					service.SettingKeySMTPPort:     "587",
+					service.SettingKeySMTPUsername: "user",
+					service.SettingKeySMTPPassword: "secret",
+					service.SettingKeySMTPFrom:     "no-reply@example.com",
+					service.SettingKeySMTPFromName: "Sub2API",
+					service.SettingKeySMTPUseTLS:   "true",
 
 					service.SettingKeyTurnstileEnabled:   "true",
 					service.SettingKeyTurnstileSiteKey:   "site-key",
@@ -274,9 +274,9 @@ REDACTED{
 					service.SettingKeySiteName:     "Sub2API",
 					service.SettingKeySiteLogo:     "",
 					service.SettingKeySiteSubtitle: "Subtitle",
-					service.SettingKeyApiBaseUrl:   "https://api.example.com",
+					service.SettingKeyAPIBaseURL:   "https://api.example.com",
 					service.SettingKeyContactInfo:  "support",
-					service.SettingKeyDocUrl:       "https://docs.example.com",
+					service.SettingKeyDocURL:       "https://docs.example.com",
 
 					service.SettingKeyDefaultConcurrency: "5",
 					service.SettingKeyDefaultBalance:     "1.25",
@@ -371,13 +371,13 @@ REDACTED
 
 	cfg := &config.Config{
 		Default: config.DefaultConfig{
-			ApiKeyPrefix: "sk-",
+			APIKeyPrefix: "sk-",
 	REDACTED,
 		RunMode: config.RunModeStandard,
 REDACTED
 
 	userService := service.NewUserService(userRepo)
-	apiKeyService := service.NewApiKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, apiKeyCache, cfg)
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()
 	usageService := service.NewUsageService(usageRepo, userRepo, nil)
@@ -669,20 +669,20 @@ type stubApiKeyRepo struct {
 	now time.Time
 
 	nextID int64
-	byID   map[int64]*service.ApiKey
-	byKey  map[string]*service.ApiKey
+	byID   map[int64]*service.APIKey
+	byKey  map[string]*service.APIKey
 REDACTED
 
 func newStubApiKeyRepo(now time.Time) *stubApiKeyRepo {
 	return &stubApiKeyRepo{
 		now:    now,
 		nextID: 100,
-		byID:   make(map[int64]*service.ApiKey),
-		byKey:  make(map[string]*service.ApiKey),
+		byID:   make(map[int64]*service.APIKey),
+		byKey:  make(map[string]*service.APIKey),
 REDACTED
 REDACTED
 
-func (r *stubApiKeyRepo) MustSeed(key *service.ApiKey) {
+func (r *stubApiKeyRepo) MustSeed(key *service.APIKey) {
 	if key == nil {
 		return
 REDACTED
@@ -691,7 +691,7 @@ REDACTED
 	r.byKey[clone.Key] = &clone
 REDACTED
 
-func (r *stubApiKeyRepo) Create(ctx context.Context, key *service.ApiKey) error {
+func (r *stubApiKeyRepo) Create(ctx context.Context, key *service.APIKey) error {
 	if key == nil {
 		return errors.New("nil key")
 REDACTED
@@ -711,10 +711,10 @@ REDACTED
 	return nil
 REDACTED
 
-func (r *stubApiKeyRepo) GetByID(ctx context.Context, id int64) (*service.ApiKey, error) {
+func (r *stubApiKeyRepo) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
 	key, ok := r.byID[id]
 	if !ok {
-		return nil, service.ErrApiKeyNotFound
+		return nil, service.ErrAPIKeyNotFound
 REDACTED
 	clone := *key
 	return &clone, nil
@@ -723,26 +723,26 @@ REDACTED
 func (r *stubApiKeyRepo) GetOwnerID(ctx context.Context, id int64) (int64, error) {
 	key, ok := r.byID[id]
 	if !ok {
-		return 0, service.ErrApiKeyNotFound
+		return 0, service.ErrAPIKeyNotFound
 REDACTED
 	return key.UserID, nil
 REDACTED
 
-func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.ApiKey, error) {
+func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
 	found, ok := r.byKey[key]
 	if !ok {
-		return nil, service.ErrApiKeyNotFound
+		return nil, service.ErrAPIKeyNotFound
 REDACTED
 	clone := *found
 	return &clone, nil
 REDACTED
 
-func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.ApiKey) error {
+func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
 	if key == nil {
 		return errors.New("nil key")
 REDACTED
 	if _, ok := r.byID[key.ID]; !ok {
-		return service.ErrApiKeyNotFound
+		return service.ErrAPIKeyNotFound
 REDACTED
 	if key.UpdatedAt.IsZero() {
 		key.UpdatedAt = r.now
@@ -756,14 +756,14 @@ REDACTED
 func (r *stubApiKeyRepo) Delete(ctx context.Context, id int64) error {
 	key, ok := r.byID[id]
 	if !ok {
-		return service.ErrApiKeyNotFound
+		return service.ErrAPIKeyNotFound
 REDACTED
 	delete(r.byID, id)
 	delete(r.byKey, key.Key)
 	return nil
 REDACTED
 
-func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
+func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
 	ids := make([]int64, 0, len(r.byID))
 	for id := range r.byID {
 		if r.byID[id].UserID == userID {
@@ -781,7 +781,7 @@ REDACTED
 		end = len(ids)
 REDACTED
 
-	out := make([]service.ApiKey, 0, end-start)
+	out := make([]service.APIKey, 0, end-start)
 	for _, id := range ids[start:end] {
 		clone := *r.byID[id]
 		out = append(out, clone)
@@ -835,11 +835,11 @@ func (r *stubApiKeyRepo) ExistsByKey(ctx context.Context, key string) (bool, err
 	return ok, nil
 REDACTED
 
-func (r *stubApiKeyRepo) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.ApiKey, *pagination.PaginationResult, error) {
+func (r *stubApiKeyRepo) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) SearchApiKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.ApiKey, error) {
+func (r *stubApiKeyRepo) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]service.APIKey, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
@@ -882,7 +882,7 @@ func (r *stubUsageLogRepo) ListByUser(ctx context.Context, userID int64, params 
 	return out, paginationResult(total, params), nil
 REDACTED
 
-func (r *stubUsageLogRepo) ListByApiKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *stubUsageLogRepo) ListByAPIKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
@@ -895,7 +895,7 @@ func (r *stubUsageLogRepo) ListByUserAndTimeRange(ctx context.Context, userID in
 	return logs, paginationResult(int64(len(logs)), pagination.PaginationParams{Page: 1, PageSize: 100REDACTED), nil
 REDACTED
 
-func (r *stubUsageLogRepo) ListByApiKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
+func (r *stubUsageLogRepo) ListByAPIKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
@@ -927,7 +927,7 @@ func (r *stubUsageLogRepo) GetModelStatsWithFilters(ctx context.Context, startTi
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubUsageLogRepo) GetApiKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.ApiKeyUsageTrendPoint, error) {
+func (r *stubUsageLogRepo) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
@@ -980,7 +980,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (r *stubUsageLogRepo) GetApiKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
+func (r *stubUsageLogRepo) GetAPIKeyStatsAggregated(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
@@ -1000,7 +1000,7 @@ func (r *stubUsageLogRepo) GetBatchUserUsageStats(ctx context.Context, userIDs [
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubUsageLogRepo) GetBatchApiKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchApiKeyUsageStats, error) {
+func (r *stubUsageLogRepo) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchAPIKeyUsageStats, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
@@ -1022,8 +1022,8 @@ func (r *stubUsageLogRepo) ListWithFilters(ctx context.Context, params paginatio
 	// Apply filters
 	var filtered []service.UsageLog
 	for _, log := range logs {
-		// Apply ApiKeyID filter
-		if filters.ApiKeyID > 0 && log.ApiKeyID != filters.ApiKeyID {
+		// Apply APIKeyID filter
+		if filters.APIKeyID > 0 && log.APIKeyID != filters.APIKeyID {
 			continue
 	REDACTED
 		// Apply Model filter
@@ -1156,8 +1156,8 @@ REDACTED
 // Ensure compile-time interface compliance.
 var (
 	_ service.UserRepository             = (*stubUserRepo)(nil)
-	_ service.ApiKeyRepository           = (*stubApiKeyRepo)(nil)
-	_ service.ApiKeyCache                = (*stubApiKeyCache)(nil)
+	_ service.APIKeyRepository           = (*stubApiKeyRepo)(nil)
+	_ service.APIKeyCache                = (*stubApiKeyCache)(nil)
 	_ service.GroupRepository            = (*stubGroupRepo)(nil)
 	_ service.UserSubscriptionRepository = (*stubUserSubscriptionRepo)(nil)
 	_ service.UsageLogRepository         = (*stubUsageLogRepo)(nil)

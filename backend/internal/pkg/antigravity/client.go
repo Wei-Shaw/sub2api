@@ -1,3 +1,4 @@
+// Package antigravity provides a client for the Antigravity API.
 package antigravity
 
 import (

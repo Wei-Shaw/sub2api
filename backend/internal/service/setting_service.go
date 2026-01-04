@@ -61,9 +61,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeySiteName,
 		SettingKeySiteLogo,
 		SettingKeySiteSubtitle,
-		SettingKeyApiBaseUrl,
+		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
-		SettingKeyDocUrl,
+		SettingKeyDocURL,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -79,9 +79,9 @@ REDACTED
 		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
 		SiteLogo:            settings[SettingKeySiteLogo],
 		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:          settings[SettingKeyApiBaseUrl],
+		APIBaseURL:          settings[SettingKeyAPIBaseURL],
 		ContactInfo:         settings[SettingKeyContactInfo],
-		DocURL:              settings[SettingKeyDocUrl],
+		DocURL:              settings[SettingKeyDocURL],
 REDACTED, nil
 REDACTED
 
@@ -94,15 +94,15 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
 
 	// 邮件服务设置（只有非空才更新密码）
-	updates[SettingKeySmtpHost] = settings.SMTPHost
-	updates[SettingKeySmtpPort] = strconv.Itoa(settings.SMTPPort)
-	updates[SettingKeySmtpUsername] = settings.SMTPUsername
+	updates[SettingKeySMTPHost] = settings.SMTPHost
+	updates[SettingKeySMTPPort] = strconv.Itoa(settings.SMTPPort)
+	updates[SettingKeySMTPUsername] = settings.SMTPUsername
 	if settings.SMTPPassword != "" {
-		updates[SettingKeySmtpPassword] = settings.SMTPPassword
+		updates[SettingKeySMTPPassword] = settings.SMTPPassword
 REDACTED
-	updates[SettingKeySmtpFrom] = settings.SMTPFrom
-	updates[SettingKeySmtpFromName] = settings.SMTPFromName
-	updates[SettingKeySmtpUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	updates[SettingKeySMTPFrom] = settings.SMTPFrom
+	updates[SettingKeySMTPFromName] = settings.SMTPFromName
+	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
@@ -115,9 +115,9 @@ REDACTED
 	updates[SettingKeySiteName] = settings.SiteName
 	updates[SettingKeySiteLogo] = settings.SiteLogo
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
-	updates[SettingKeyApiBaseUrl] = settings.APIBaseURL
+	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
-	updates[SettingKeyDocUrl] = settings.DocURL
+	updates[SettingKeyDocURL] = settings.DocURL
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -205,8 +205,8 @@ REDACTED
 		SettingKeySiteLogo:            "",
 		SettingKeyDefaultConcurrency:  strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:      strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
-		SettingKeySmtpPort:            "587",
-		SettingKeySmtpUseTLS:          "false",
+		SettingKeySMTPPort:            "587",
+		SettingKeySMTPUseTLS:          "false",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -223,23 +223,23 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result := &SystemSettings{
 		RegistrationEnabled: settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:  settings[SettingKeyEmailVerifyEnabled] == "true",
-		SMTPHost:            settings[SettingKeySmtpHost],
-		SMTPUsername:        settings[SettingKeySmtpUsername],
-		SMTPFrom:            settings[SettingKeySmtpFrom],
-		SMTPFromName:        settings[SettingKeySmtpFromName],
-		SMTPUseTLS:          settings[SettingKeySmtpUseTLS] == "true",
+		SMTPHost:            settings[SettingKeySMTPHost],
+		SMTPUsername:        settings[SettingKeySMTPUsername],
+		SMTPFrom:            settings[SettingKeySMTPFrom],
+		SMTPFromName:        settings[SettingKeySMTPFromName],
+		SMTPUseTLS:          settings[SettingKeySMTPUseTLS] == "true",
 		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
 		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
 		SiteLogo:            settings[SettingKeySiteLogo],
 		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:          settings[SettingKeyApiBaseUrl],
+		APIBaseURL:          settings[SettingKeyAPIBaseURL],
 		ContactInfo:         settings[SettingKeyContactInfo],
-		DocURL:              settings[SettingKeyDocUrl],
+		DocURL:              settings[SettingKeyDocURL],
 REDACTED
 
 	// 解析整数类型
-	if port, err := strconv.Atoi(settings[SettingKeySmtpPort]); err == nil {
+	if port, err := strconv.Atoi(settings[SettingKeySMTPPort]); err == nil {
 		result.SMTPPort = port
 REDACTED else {
 		result.SMTPPort = 587
@@ -259,7 +259,7 @@ REDACTED else {
 REDACTED
 
 	// 敏感信息直接返回，方便测试连接时使用
-	result.SMTPPassword = settings[SettingKeySmtpPassword]
+	result.SMTPPassword = settings[SettingKeySMTPPassword]
 	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
 
 	// Model fallback settings
@@ -298,28 +298,28 @@ REDACTED
 	return value
 REDACTED
 
-// GenerateAdminApiKey 生成新的管理员 API Key
-func (s *SettingService) GenerateAdminApiKey(ctx context.Context) (string, error) {
+// GenerateAdminAPIKey 生成新的管理员 API Key
+func (s *SettingService) GenerateAdminAPIKey(ctx context.Context) (string, error) {
 	// 生成 32 字节随机数 = 64 位十六进制字符
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("generate random bytes: %w", err)
 REDACTED
 
-	key := AdminApiKeyPrefix + hex.EncodeToString(bytes)
+	key := AdminAPIKeyPrefix + hex.EncodeToString(bytes)
 
 	// 存储到 settings 表
-	if err := s.settingRepo.Set(ctx, SettingKeyAdminApiKey, key); err != nil {
+	if err := s.settingRepo.Set(ctx, SettingKeyAdminAPIKey, key); err != nil {
 		return "", fmt.Errorf("save admin api key: %w", err)
 REDACTED
 
 	return key, nil
 REDACTED
 
-// GetAdminApiKeyStatus 获取管理员 API Key 状态
+// GetAdminAPIKeyStatus 获取管理员 API Key 状态
 // 返回脱敏的 key、是否存在、错误
-func (s *SettingService) GetAdminApiKeyStatus(ctx context.Context) (maskedKey string, exists bool, err error) {
-	key, err := s.settingRepo.GetValue(ctx, SettingKeyAdminApiKey)
+func (s *SettingService) GetAdminAPIKeyStatus(ctx context.Context) (maskedKey string, exists bool, err error) {
+	key, err := s.settingRepo.GetValue(ctx, SettingKeyAdminAPIKey)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
 			return "", false, nil
@@ -340,10 +340,10 @@ REDACTED
 	return maskedKey, true, nil
 REDACTED
 
-// GetAdminApiKey 获取完整的管理员 API Key（仅供内部验证使用）
+// GetAdminAPIKey 获取完整的管理员 API Key（仅供内部验证使用）
 // 如果未配置返回空字符串和 nil 错误，只有数据库错误时才返回 error
-func (s *SettingService) GetAdminApiKey(ctx context.Context) (string, error) {
-	key, err := s.settingRepo.GetValue(ctx, SettingKeyAdminApiKey)
+func (s *SettingService) GetAdminAPIKey(ctx context.Context) (string, error) {
+	key, err := s.settingRepo.GetValue(ctx, SettingKeyAdminAPIKey)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
 			return "", nil // 未配置，返回空字符串
@@ -353,9 +353,9 @@ REDACTED
 	return key, nil
 REDACTED
 
-// DeleteAdminApiKey 删除管理员 API Key
-func (s *SettingService) DeleteAdminApiKey(ctx context.Context) error {
-	return s.settingRepo.Delete(ctx, SettingKeyAdminApiKey)
+// DeleteAdminAPIKey 删除管理员 API Key
+func (s *SettingService) DeleteAdminAPIKey(ctx context.Context) error {
+	return s.settingRepo.Delete(ctx, SettingKeyAdminAPIKey)
 REDACTED
 
 // IsModelFallbackEnabled 检查是否启用模型兜底机制
