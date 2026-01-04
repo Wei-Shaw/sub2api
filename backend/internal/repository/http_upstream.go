@@ -30,9 +30,9 @@ const (
 	// defaultMaxConnsPerHost: 默认每主机最大连接数（含活跃连接）
 	// 达到上限后新请求会等待，而非无限创建连接
 	defaultMaxConnsPerHost = 240
-	// defaultIdleConnTimeout: 默认空闲连接超时时间（5分钟）
-	// 超时后连接会被关闭，释放系统资源
-	defaultIdleConnTimeout = 300 * time.Second
+	// defaultIdleConnTimeout: 默认空闲连接超时时间（90秒）
+	// 超时后连接会被关闭，释放系统资源（建议小于上游 LB 超时）
+	defaultIdleConnTimeout = 90 * time.Second
 	// defaultResponseHeaderTimeout: 默认等待响应头超时时间（5分钟）
 	// LLM 请求可能排队较久，需要较长超时
 	defaultResponseHeaderTimeout = 300 * time.Second

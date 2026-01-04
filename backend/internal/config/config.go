@@ -45,6 +45,7 @@ type Config struct {
 	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
 	Pricing      PricingConfig      `mapstructure:"pricing"`
 	Gateway      GatewayConfig      `mapstructure:"gateway"`
+	Concurrency  ConcurrencyConfig  `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig `mapstructure:"token_refresh"`
 	RunMode      string             `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
@@ -155,6 +156,11 @@ type CircuitBreakerConfig struct {
 	HalfOpenRequests    int  `mapstructure:"half_open_requests"`
 REDACTED
 
+type ConcurrencyConfig struct {
+	// PingInterval: 并发等待期间的 SSE ping 间隔（秒）
+	PingInterval int `mapstructure:"ping_interval"`
+REDACTED
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -186,6 +192,13 @@ type GatewayConfig struct {
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
 	ConcurrencySlotTTLMinutes int `mapstructure:"concurrency_slot_ttl_minutes"`
+
+	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
+	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`
+	// StreamKeepaliveInterval: 流式 keepalive 间隔（秒），0表示禁用
+	StreamKeepaliveInterval int `mapstructure:"stream_keepalive_interval"`
+	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
+	MaxLineSize int `mapstructure:"max_line_size"`
 
 	// 是否记录上游错误响应体摘要（避免输出请求内容）
 	LogUpstreamErrorBody bool `mapstructure:"log_upstream_error_body"`
@@ -475,7 +488,7 @@ REDACTED)
 	viper.SetDefault("timezone", "Asia/Shanghai")
 
 	// Gateway
-	viper.SetDefault("gateway.response_header_timeout", 300) // 300秒(5分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", false)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -486,16 +499,20 @@ REDACTED)
 	viper.SetDefault("gateway.max_idle_conns", 240)            // 最大空闲连接总数（HTTP/2 场景默认）
 	viper.SetDefault("gateway.max_idle_conns_per_host", 120)   // 每主机最大空闲连接（HTTP/2 场景默认）
 	viper.SetDefault("gateway.max_conns_per_host", 240)        // 每主机最大连接数（含活跃，HTTP/2 场景默认）
-	viper.SetDefault("gateway.idle_conn_timeout_seconds", 300) // 空闲连接超时（秒）
+	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90) // 空闲连接超时（秒）
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
-	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 15) // 并发槽位过期时间（支持超长请求）
+	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
+	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
+	viper.SetDefault("gateway.stream_keepalive_interval", 10)
+	viper.SetDefault("gateway.max_line_size", 10*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 45*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
+	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
@@ -604,6 +621,9 @@ REDACTED
 	if c.Gateway.IdleConnTimeoutSeconds <= 0 {
 		return fmt.Errorf("gateway.idle_conn_timeout_seconds must be positive")
 REDACTED
+	if c.Gateway.IdleConnTimeoutSeconds > 180 {
+		log.Printf("Warning: gateway.idle_conn_timeout_seconds is %d (> 180). Consider 60-120 seconds for better connection reuse.", c.Gateway.IdleConnTimeoutSeconds)
+REDACTED
 	if c.Gateway.MaxUpstreamClients <= 0 {
 		return fmt.Errorf("gateway.max_upstream_clients must be positive")
 REDACTED
@@ -612,6 +632,26 @@ REDACTED
 REDACTED
 	if c.Gateway.ConcurrencySlotTTLMinutes <= 0 {
 		return fmt.Errorf("gateway.concurrency_slot_ttl_minutes must be positive")
+REDACTED
+	if c.Gateway.StreamDataIntervalTimeout < 0 {
+		return fmt.Errorf("gateway.stream_data_interval_timeout must be non-negative")
+REDACTED
+	if c.Gateway.StreamDataIntervalTimeout != 0 &&
+		(c.Gateway.StreamDataIntervalTimeout < 30 || c.Gateway.StreamDataIntervalTimeout > 300) {
+		return fmt.Errorf("gateway.stream_data_interval_timeout must be 0 or between 30-300 seconds")
+REDACTED
+	if c.Gateway.StreamKeepaliveInterval < 0 {
+		return fmt.Errorf("gateway.stream_keepalive_interval must be non-negative")
+REDACTED
+	if c.Gateway.StreamKeepaliveInterval != 0 &&
+		(c.Gateway.StreamKeepaliveInterval < 5 || c.Gateway.StreamKeepaliveInterval > 30) {
+		return fmt.Errorf("gateway.stream_keepalive_interval must be 0 or between 5-30 seconds")
+REDACTED
+	if c.Gateway.MaxLineSize < 0 {
+		return fmt.Errorf("gateway.max_line_size must be non-negative")
+REDACTED
+	if c.Gateway.MaxLineSize != 0 && c.Gateway.MaxLineSize < 1024*1024 {
+		return fmt.Errorf("gateway.max_line_size must be at least 1MB")
 REDACTED
 	if c.Gateway.Scheduling.StickySessionMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.sticky_session_max_waiting must be positive")
@@ -627,6 +667,9 @@ REDACTED
 REDACTED
 	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
 		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")
+REDACTED
+	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
+		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")
 REDACTED
 	return nil
 REDACTED

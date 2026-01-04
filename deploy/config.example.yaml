@@ -70,7 +70,7 @@ security:
 # =============================================================================
 gateway:
   # 等待上游响应头超时时间（秒）
-  response_header_timeout: 300
+  response_header_timeout: 600
   # 请求体最大字节数（默认 100MB）
   max_body_size: 104857600
   # 连接池隔离策略：
@@ -82,14 +82,20 @@ gateway:
   max_idle_conns: 240
   max_idle_conns_per_host: 120
   max_conns_per_host: 240
-  idle_conn_timeout_seconds: 300
+  idle_conn_timeout_seconds: 90
   # 上游连接池客户端缓存配置
   # max_upstream_clients: 最大缓存客户端数量，超出后淘汰最久未使用的
   # client_idle_ttl_seconds: 客户端空闲回收阈值（秒），超时且无活跃请求时回收
   max_upstream_clients: 5000
   client_idle_ttl_seconds: 900
   # 并发槽位过期时间（分钟）
-  concurrency_slot_ttl_minutes: 15
+  concurrency_slot_ttl_minutes: 30
+  # 流数据间隔超时（秒），0=禁用
+  stream_data_interval_timeout: 180
+  # 流式 keepalive 间隔（秒），0=禁用
+  stream_keepalive_interval: 10
+  # SSE 单行最大字节数（默认 10MB）
+  max_line_size: 10485760
   # Log upstream error response body summary (safe/truncated; does not log request content)
   log_upstream_error_body: false
   # Max bytes to log from upstream error body
@@ -98,6 +104,13 @@ gateway:
   inject_beta_for_apikey: false
   # Allow failover on selected 400 errors (default off)
   failover_on_400: false
+
+# =============================================================================
+# 并发等待配置
+# =============================================================================
+concurrency:
+  # 并发等待期间的 SSE ping 间隔（秒）
+  ping_interval: 10
 
 # =============================================================================
 # Database Configuration (PostgreSQL)

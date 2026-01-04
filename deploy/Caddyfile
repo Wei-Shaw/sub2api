@@ -25,8 +25,8 @@
 		timeouts {
 			read_body 30s
 			read_header 10s
-			write 60s
-			idle 120s
+			write 300s
+			idle 300s
 	REDACTED
 REDACTED
 REDACTED
@@ -77,7 +77,10 @@ REDACTED
 			write_buffer 16KB
 			compression off
 	REDACTED
-		
+
+		# SSE/流式传输优化：禁用响应缓冲，立即刷新数据给客户端
+		flush_interval -1
+
 		# 故障转移
 		fail_duration 30s
 		max_fails 3
@@ -92,6 +95,10 @@ REDACTED
 		gzip 6
 		minimum_length 256
 		match {
+			# SSE 请求通常会带 Accept: text/event-stream，需排除压缩
+			not header Accept text/event-stream*
+			# 排除已知 SSE 路径（即便 Accept 缺失）
+			not path /v1/messages /v1/responses /responses /antigravity/v1/messages /v1beta/models/* /antigravity/v1beta/models/*
 			header Content-Type text/*
 			header Content-Type application/json*
 			header Content-Type application/javascript*
@@ -179,6 +186,3 @@ REDACTED
 # =============================================================================
 # HTTP 重定向到 HTTPS (Caddy 默认自动处理，此处显式声明)
 # =============================================================================
-; http://example.com {
-; 	redir https://{hostREDACTED{uriREDACTED permanent
-; REDACTED

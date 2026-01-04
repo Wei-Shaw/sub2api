@@ -34,7 +34,7 @@ import (
 const (
 	defaultMaxIdleConns        = 100              // 最大空闲连接数
 	defaultMaxIdleConnsPerHost = 10               // 每个主机最大空闲连接数
-	defaultIdleConnTimeout     = 90 * time.Second // 空闲连接超时时间
+	defaultIdleConnTimeout     = 90 * time.Second // 空闲连接超时时间（建议小于上游 LB 超时）
 )
 
 // Options 定义共享 HTTP 客户端的构建参数
