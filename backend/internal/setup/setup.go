@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/repository"
@@ -196,11 +197,17 @@ REDACTED
 
 	// Generate JWT secret if not provided
 	if cfg.JWT.Secret == "" {
+		if strings.EqualFold(cfg.Server.Mode, "release") {
+			return fmt.Errorf("jwt secret is required in release mode")
+	REDACTED
 		secret, err := generateSecret(32)
 		if err != nil {
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
+		log.Println("Warning: JWT secret auto-generated for non-release mode. Do not use in production.")
+REDACTED else if strings.EqualFold(cfg.Server.Mode, "release") && len(cfg.JWT.Secret) < 32 {
+		return fmt.Errorf("jwt secret must be at least 32 characters in release mode")
 REDACTED
 
 	// Test connections
@@ -474,12 +481,17 @@ REDACTED
 
 	// Generate JWT secret if not provided
 	if cfg.JWT.Secret == "" {
+		if strings.EqualFold(cfg.Server.Mode, "release") {
+			return fmt.Errorf("jwt secret is required in release mode")
+	REDACTED
 		secret, err := generateSecret(32)
 		if err != nil {
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Generated JWT secret automatically")
+		log.Println("Warning: JWT secret auto-generated for non-release mode. Do not use in production.")
+REDACTED else if strings.EqualFold(cfg.Server.Mode, "release") && len(cfg.JWT.Secret) < 32 {
+		return fmt.Errorf("jwt secret must be at least 32 characters in release mode")
 REDACTED
 
 	// Generate admin password if not provided
@@ -489,8 +501,8 @@ REDACTED
 			return fmt.Errorf("failed to generate admin password: %w", err)
 	REDACTED
 		cfg.Admin.Password = password
-		log.Printf("Generated admin password: %s", cfg.Admin.Password)
-		log.Println("IMPORTANT: Save this password! It will not be shown again.")
+		fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
+		fmt.Println("IMPORTANT: Save this password! It will not be shown again.")
 REDACTED
 
 	// Test database connection

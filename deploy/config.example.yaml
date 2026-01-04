@@ -12,6 +12,8 @@ server:
   port: 8080
   # Mode: "debug" for development, "release" for production
   mode: "release"
+  # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
+  trusted_proxies: []
 
 # =============================================================================
 # Run Mode Configuration
@@ -22,11 +24,53 @@ server:
 run_mode: "standard"
 
 # =============================================================================
+# CORS Configuration
+# =============================================================================
+cors:
+  # Allowed origins list. Leave empty to disable cross-origin requests.
+  allowed_origins: []
+  # Allow credentials (cookies/authorization headers). Cannot be used with "*".
+  allow_credentials: true
+
+# =============================================================================
+# Security Configuration
+# =============================================================================
+security:
+  url_allowlist:
+    # Allowed upstream hosts for API proxying
+    upstream_hosts:
+      - "api.openai.com"
+      - "api.anthropic.com"
+      - "generativelanguage.googleapis.com"
+      - "cloudcode-pa.googleapis.com"
+      - "*.openai.azure.com"
+    # Allowed hosts for pricing data download
+    pricing_hosts:
+      - "raw.githubusercontent.com"
+    # Allowed hosts for CRS sync (required when using CRS sync)
+    crs_hosts: []
+    # Allow localhost/private IPs for upstream/pricing/CRS (use only in trusted networks)
+    allow_private_hosts: false
+  response_headers:
+    # Extra allowed response headers from upstream
+    additional_allowed: []
+    # Force-remove response headers from upstream
+    force_remove: []
+  csp:
+    # Enable Content-Security-Policy header
+    enabled: true
+    # Default CSP policy (override if you host assets on other domains)
+    policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  proxy_probe:
+    # Allow skipping TLS verification for proxy probe (debug only)
+    insecure_skip_verify: false
+
+# =============================================================================
 # 网关配置
 # =============================================================================
 gateway:
   # 等待上游响应头超时时间（秒）
-  response_header_timeout: 300
+  response_header_timeout: 600
   # 请求体最大字节数（默认 100MB）
   max_body_size: 104857600
   # 连接池隔离策略：
@@ -38,14 +82,35 @@ gateway:
   max_idle_conns: 240
   max_idle_conns_per_host: 120
   max_conns_per_host: 240
-  idle_conn_timeout_seconds: 300
+  idle_conn_timeout_seconds: 90
   # 上游连接池客户端缓存配置
   # max_upstream_clients: 最大缓存客户端数量，超出后淘汰最久未使用的
   # client_idle_ttl_seconds: 客户端空闲回收阈值（秒），超时且无活跃请求时回收
   max_upstream_clients: 5000
   client_idle_ttl_seconds: 900
   # 并发槽位过期时间（分钟）
-  concurrency_slot_ttl_minutes: 15
+  concurrency_slot_ttl_minutes: 30
+  # 流数据间隔超时（秒），0=禁用
+  stream_data_interval_timeout: 180
+  # 流式 keepalive 间隔（秒），0=禁用
+  stream_keepalive_interval: 10
+  # SSE 单行最大字节数（默认 10MB）
+  max_line_size: 10485760
+  # Log upstream error response body summary (safe/truncated; does not log request content)
+  log_upstream_error_body: false
+  # Max bytes to log from upstream error body
+  log_upstream_error_body_max_bytes: 2048
+  # Auto inject anthropic-beta for API-key accounts when needed (default off)
+  inject_beta_for_apikey: false
+  # Allow failover on selected 400 errors (default off)
+  failover_on_400: false
+
+# =============================================================================
+# 并发等待配置
+# =============================================================================
+concurrency:
+  # 并发等待期间的 SSE ping 间隔（秒）
+  ping_interval: 10
 
 # =============================================================================
 # Database Configuration (PostgreSQL)
@@ -77,7 +142,7 @@ jwt:
   # IMPORTANT: Change this to a random string in production!
   # Generate with: openssl rand -hex 32
   secret: "change-this-to-a-secure-random-string"
-  # Token expiration time in hours
+  # Token expiration time in hours (max 24)
   expire_hour: 24
 
 # =============================================================================
@@ -123,19 +188,21 @@ pricing:
   hash_check_interval_minutes: 10
 
 # =============================================================================
-# Gateway (Optional)
+# Billing Configuration
 # =============================================================================
-gateway:
-  # Wait time (in seconds) for upstream response headers (streaming body not affected)
-  response_header_timeout: 300
-  # Log upstream error response body summary (safe/truncated; does not log request content)
-  log_upstream_error_body: false
-  # Max bytes to log from upstream error body
-  log_upstream_error_body_max_bytes: 2048
-  # Auto inject anthropic-beta for API-key accounts when needed (default off)
-  inject_beta_for_apikey: false
-  # Allow failover on selected 400 errors (default off)
-  failover_on_400: false
+billing:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    reset_timeout_seconds: 30
+    half_open_requests: 3
+
+# =============================================================================
+# Turnstile Configuration
+# =============================================================================
+turnstile:
+  # Require Turnstile in release mode (when enabled, login/register will fail if not configured)
+  required: false
 
 # =============================================================================
 # Gemini OAuth (Required for Gemini accounts)

@@ -5,28 +5,48 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func NewProxyExitInfoProber() service.ProxyExitInfoProber {
-	return &proxyProbeService{ipInfoURL: defaultIPInfoURLREDACTED
+func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
+	insecure := false
+	allowPrivate := false
+	if cfg != nil {
+		insecure = cfg.Security.ProxyProbe.InsecureSkipVerify
+		allowPrivate = cfg.Security.URLAllowlist.AllowPrivateHosts
+REDACTED
+	if insecure {
+		log.Printf("[ProxyProbe] Warning: TLS verification is disabled for proxy probing.")
+REDACTED
+	return &proxyProbeService{
+		ipInfoURL:          defaultIPInfoURL,
+		insecureSkipVerify: insecure,
+		allowPrivateHosts:  allowPrivate,
+REDACTED
 REDACTED
 
 const defaultIPInfoURL = "https://ipinfo.io/json"
 
 type proxyProbeService struct {
-	ipInfoURL string
+	ipInfoURL          string
+	insecureSkipVerify bool
+	allowPrivateHosts  bool
 REDACTED
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
 	client, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
 		Timeout:            15 * time.Second,
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: s.insecureSkipVerify,
+		ProxyStrict:        true,
+		ValidateResolvedIP: true,
+		AllowPrivateHosts:  s.allowPrivateHosts,
 REDACTED)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create proxy client: %w", err)

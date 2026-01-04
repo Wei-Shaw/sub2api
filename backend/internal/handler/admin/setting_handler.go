@@ -1,8 +1,12 @@
 package admin
 
 import (
+	"log"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -34,31 +38,31 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled:      settings.RegistrationEnabled,
-		EmailVerifyEnabled:       settings.EmailVerifyEnabled,
-		SMTPHost:                 settings.SMTPHost,
-		SMTPPort:                 settings.SMTPPort,
-		SMTPUsername:             settings.SMTPUsername,
-		SMTPPassword:             settings.SMTPPassword,
-		SMTPFrom:                 settings.SMTPFrom,
-		SMTPFromName:             settings.SMTPFromName,
-		SMTPUseTLS:               settings.SMTPUseTLS,
-		TurnstileEnabled:         settings.TurnstileEnabled,
-		TurnstileSiteKey:         settings.TurnstileSiteKey,
-		TurnstileSecretKey:       settings.TurnstileSecretKey,
-		SiteName:                 settings.SiteName,
-		SiteLogo:                 settings.SiteLogo,
-		SiteSubtitle:             settings.SiteSubtitle,
-		APIBaseURL:               settings.APIBaseURL,
-		ContactInfo:              settings.ContactInfo,
-		DocURL:                   settings.DocURL,
-		DefaultConcurrency:       settings.DefaultConcurrency,
-		DefaultBalance:           settings.DefaultBalance,
-		EnableModelFallback:      settings.EnableModelFallback,
-		FallbackModelAnthropic:   settings.FallbackModelAnthropic,
-		FallbackModelOpenAI:      settings.FallbackModelOpenAI,
-		FallbackModelGemini:      settings.FallbackModelGemini,
-		FallbackModelAntigravity: settings.FallbackModelAntigravity,
+		RegistrationEnabled:          settings.RegistrationEnabled,
+		EmailVerifyEnabled:           settings.EmailVerifyEnabled,
+		SMTPHost:                     settings.SMTPHost,
+		SMTPPort:                     settings.SMTPPort,
+		SMTPUsername:                 settings.SMTPUsername,
+		SMTPPasswordConfigured:       settings.SMTPPasswordConfigured,
+		SMTPFrom:                     settings.SMTPFrom,
+		SMTPFromName:                 settings.SMTPFromName,
+		SMTPUseTLS:                   settings.SMTPUseTLS,
+		TurnstileEnabled:             settings.TurnstileEnabled,
+		TurnstileSiteKey:             settings.TurnstileSiteKey,
+		TurnstileSecretKeyConfigured: settings.TurnstileSecretKeyConfigured,
+		SiteName:                     settings.SiteName,
+		SiteLogo:                     settings.SiteLogo,
+		SiteSubtitle:                 settings.SiteSubtitle,
+		APIBaseURL:                   settings.APIBaseURL,
+		ContactInfo:                  settings.ContactInfo,
+		DocURL:                       settings.DocURL,
+		DefaultConcurrency:           settings.DefaultConcurrency,
+		DefaultBalance:               settings.DefaultBalance,
+		EnableModelFallback:          settings.EnableModelFallback,
+		FallbackModelAnthropic:       settings.FallbackModelAnthropic,
+		FallbackModelOpenAI:          settings.FallbackModelOpenAI,
+		FallbackModelGemini:          settings.FallbackModelGemini,
+		FallbackModelAntigravity:     settings.FallbackModelAntigravity,
 REDACTED)
 REDACTED
 
@@ -108,6 +112,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	previousSettings, err := h.settingService.GetAllSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -185,6 +195,8 @@ REDACTED
 		return
 REDACTED
 
+	h.auditSettingsUpdate(c, previousSettings, settings, req)
+
 	// 重新获取设置返回
 	updatedSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -193,32 +205,132 @@ REDACTED
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled:      updatedSettings.RegistrationEnabled,
-		EmailVerifyEnabled:       updatedSettings.EmailVerifyEnabled,
-		SMTPHost:                 updatedSettings.SMTPHost,
-		SMTPPort:                 updatedSettings.SMTPPort,
-		SMTPUsername:             updatedSettings.SMTPUsername,
-		SMTPPassword:             updatedSettings.SMTPPassword,
-		SMTPFrom:                 updatedSettings.SMTPFrom,
-		SMTPFromName:             updatedSettings.SMTPFromName,
-		SMTPUseTLS:               updatedSettings.SMTPUseTLS,
-		TurnstileEnabled:         updatedSettings.TurnstileEnabled,
-		TurnstileSiteKey:         updatedSettings.TurnstileSiteKey,
-		TurnstileSecretKey:       updatedSettings.TurnstileSecretKey,
-		SiteName:                 updatedSettings.SiteName,
-		SiteLogo:                 updatedSettings.SiteLogo,
-		SiteSubtitle:             updatedSettings.SiteSubtitle,
-		APIBaseURL:               updatedSettings.APIBaseURL,
-		ContactInfo:              updatedSettings.ContactInfo,
-		DocURL:                   updatedSettings.DocURL,
-		DefaultConcurrency:       updatedSettings.DefaultConcurrency,
-		DefaultBalance:           updatedSettings.DefaultBalance,
-		EnableModelFallback:      updatedSettings.EnableModelFallback,
-		FallbackModelAnthropic:   updatedSettings.FallbackModelAnthropic,
-		FallbackModelOpenAI:      updatedSettings.FallbackModelOpenAI,
-		FallbackModelGemini:      updatedSettings.FallbackModelGemini,
-		FallbackModelAntigravity: updatedSettings.FallbackModelAntigravity,
+		RegistrationEnabled:          updatedSettings.RegistrationEnabled,
+		EmailVerifyEnabled:           updatedSettings.EmailVerifyEnabled,
+		SMTPHost:                     updatedSettings.SMTPHost,
+		SMTPPort:                     updatedSettings.SMTPPort,
+		SMTPUsername:                 updatedSettings.SMTPUsername,
+		SMTPPasswordConfigured:       updatedSettings.SMTPPasswordConfigured,
+		SMTPFrom:                     updatedSettings.SMTPFrom,
+		SMTPFromName:                 updatedSettings.SMTPFromName,
+		SMTPUseTLS:                   updatedSettings.SMTPUseTLS,
+		TurnstileEnabled:             updatedSettings.TurnstileEnabled,
+		TurnstileSiteKey:             updatedSettings.TurnstileSiteKey,
+		TurnstileSecretKeyConfigured: updatedSettings.TurnstileSecretKeyConfigured,
+		SiteName:                     updatedSettings.SiteName,
+		SiteLogo:                     updatedSettings.SiteLogo,
+		SiteSubtitle:                 updatedSettings.SiteSubtitle,
+		APIBaseURL:                   updatedSettings.APIBaseURL,
+		ContactInfo:                  updatedSettings.ContactInfo,
+		DocURL:                       updatedSettings.DocURL,
+		DefaultConcurrency:           updatedSettings.DefaultConcurrency,
+		DefaultBalance:               updatedSettings.DefaultBalance,
+		EnableModelFallback:          updatedSettings.EnableModelFallback,
+		FallbackModelAnthropic:       updatedSettings.FallbackModelAnthropic,
+		FallbackModelOpenAI:          updatedSettings.FallbackModelOpenAI,
+		FallbackModelGemini:          updatedSettings.FallbackModelGemini,
+		FallbackModelAntigravity:     updatedSettings.FallbackModelAntigravity,
 REDACTED)
+REDACTED
+
+func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.SystemSettings, after *service.SystemSettings, req UpdateSettingsRequest) {
+	if before == nil || after == nil {
+		return
+REDACTED
+
+	changed := diffSettings(before, after, req)
+	if len(changed) == 0 {
+		return
+REDACTED
+
+	subject, _ := middleware.GetAuthSubjectFromContext(c)
+	role, _ := middleware.GetUserRoleFromContext(c)
+	log.Printf("AUDIT: settings updated at=%s user_id=%d role=%s changed=%v",
+		time.Now().UTC().Format(time.RFC3339),
+		subject.UserID,
+		role,
+		changed,
+	)
+REDACTED
+
+func diffSettings(before *service.SystemSettings, after *service.SystemSettings, req UpdateSettingsRequest) []string {
+	changed := make([]string, 0, 20)
+	if before.RegistrationEnabled != after.RegistrationEnabled {
+		changed = append(changed, "registration_enabled")
+REDACTED
+	if before.EmailVerifyEnabled != after.EmailVerifyEnabled {
+		changed = append(changed, "email_verify_enabled")
+REDACTED
+	if before.SMTPHost != after.SMTPHost {
+		changed = append(changed, "smtp_host")
+REDACTED
+	if before.SMTPPort != after.SMTPPort {
+		changed = append(changed, "smtp_port")
+REDACTED
+	if before.SMTPUsername != after.SMTPUsername {
+		changed = append(changed, "smtp_username")
+REDACTED
+	if req.SMTPPassword != "" {
+		changed = append(changed, "smtp_password")
+REDACTED
+	if before.SMTPFrom != after.SMTPFrom {
+		changed = append(changed, "smtp_from_email")
+REDACTED
+	if before.SMTPFromName != after.SMTPFromName {
+		changed = append(changed, "smtp_from_name")
+REDACTED
+	if before.SMTPUseTLS != after.SMTPUseTLS {
+		changed = append(changed, "smtp_use_tls")
+REDACTED
+	if before.TurnstileEnabled != after.TurnstileEnabled {
+		changed = append(changed, "turnstile_enabled")
+REDACTED
+	if before.TurnstileSiteKey != after.TurnstileSiteKey {
+		changed = append(changed, "turnstile_site_key")
+REDACTED
+	if req.TurnstileSecretKey != "" {
+		changed = append(changed, "turnstile_secret_key")
+REDACTED
+	if before.SiteName != after.SiteName {
+		changed = append(changed, "site_name")
+REDACTED
+	if before.SiteLogo != after.SiteLogo {
+		changed = append(changed, "site_logo")
+REDACTED
+	if before.SiteSubtitle != after.SiteSubtitle {
+		changed = append(changed, "site_subtitle")
+REDACTED
+	if before.APIBaseURL != after.APIBaseURL {
+		changed = append(changed, "api_base_url")
+REDACTED
+	if before.ContactInfo != after.ContactInfo {
+		changed = append(changed, "contact_info")
+REDACTED
+	if before.DocURL != after.DocURL {
+		changed = append(changed, "doc_url")
+REDACTED
+	if before.DefaultConcurrency != after.DefaultConcurrency {
+		changed = append(changed, "default_concurrency")
+REDACTED
+	if before.DefaultBalance != after.DefaultBalance {
+		changed = append(changed, "default_balance")
+REDACTED
+	if before.EnableModelFallback != after.EnableModelFallback {
+		changed = append(changed, "enable_model_fallback")
+REDACTED
+	if before.FallbackModelAnthropic != after.FallbackModelAnthropic {
+		changed = append(changed, "fallback_model_anthropic")
+REDACTED
+	if before.FallbackModelOpenAI != after.FallbackModelOpenAI {
+		changed = append(changed, "fallback_model_openai")
+REDACTED
+	if before.FallbackModelGemini != after.FallbackModelGemini {
+		changed = append(changed, "fallback_model_gemini")
+REDACTED
+	if before.FallbackModelAntigravity != after.FallbackModelAntigravity {
+		changed = append(changed, "fallback_model_antigravity")
+REDACTED
+	return changed
 REDACTED
 
 // TestSMTPRequest 测试SMTP连接请求

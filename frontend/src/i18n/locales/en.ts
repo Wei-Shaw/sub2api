@@ -200,6 +200,7 @@ export default {
     registrationFailed: 'Registration failed. Please try again.',
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteNameREDACTED.',
+    reloginRequired: 'Session expired. Please log in again.',
     turnstileExpired: 'Verification expired, please try again',
     turnstileFailed: 'Verification failed, please try again',
     completeVerification: 'Please complete the verification',
@@ -1127,13 +1128,13 @@ export default {
           'One sessionKey per line, e.g.:\nsk-ant-sid01-xxxxx...\nsk-ant-sid01-yyyyy...',
         sessionKeyPlaceholderSingle: 'sk-ant-sid01-xxxxx...',
         howToGetSessionKey: 'How to get sessionKey',
-        step1: 'Login to <strong>claude.ai</strong> in your browser',
-        step2: 'Press <kbd>F12</kbd> to open Developer Tools',
-        step3: 'Go to <strong>Application</strong> tab',
-        step4: 'Find <strong>Cookies</strong> → <strong>https://claude.ai</strong>',
-        step5: 'Find the row with key <strong>sessionKey</strong>',
-        step6: 'Copy the <strong>Value</strong>',
-        sessionKeyFormat: 'sessionKey usually starts with <code>sk-ant-sid01-</code>',
+        step1: 'Login to claude.ai in your browser',
+        step2: 'Press F12 to open Developer Tools',
+        step3: 'Go to Application tab',
+        step4: 'Find Cookies → https://claude.ai',
+        step5: 'Find the row with key sessionKey',
+        step6: 'Copy the Value',
+        sessionKeyFormat: 'sessionKey usually starts with sk-ant-sid01-',
         startAutoAuth: 'Start Auto-Auth',
         authorizing: 'Authorizing...',
         followSteps: 'Follow these steps to authorize your Claude account:',
@@ -1145,10 +1146,10 @@ export default {
         openUrlDesc:
           'Open the authorization URL in a new tab, log in to your Claude account and authorize.',
         proxyWarning:
-          '<strong>Note:</strong> If you configured a proxy, make sure your browser uses the same proxy to access the authorization page.',
+          'Note: If you configured a proxy, make sure your browser uses the same proxy to access the authorization page.',
         step3EnterCode: 'Enter the Authorization Code',
         authCodeDesc:
-          'After authorization is complete, the page will display an <strong>Authorization Code</strong>. Copy and paste it below:',
+          'After authorization is complete, the page will display an Authorization Code. Copy and paste it below:',
         authCode: 'Authorization Code',
         authCodePlaceholder: 'Paste the Authorization Code from Claude page...',
         authCodeHint: 'Paste the Authorization Code copied from the Claude page',
@@ -1169,10 +1170,10 @@ export default {
           openUrlDesc:
             'Open the authorization URL in a new tab, log in to your OpenAI account and authorize.',
           importantNotice:
-            '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to <code>http://localhost...</code>, the authorization is complete.',
+            'Important: The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to http://localhost..., the authorization is complete.',
           step3EnterCode: 'Enter Authorization URL or Code',
           authCodeDesc:
-            'After authorization is complete, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+            'After authorization is complete, when the page URL becomes http://localhost:xxx/auth/callback?code=...:',
           authCode: 'Authorization URL or Code',
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
@@ -1195,7 +1196,7 @@ export default {
 	            'Open the authorization URL in a new tab, log in to your Google account and authorize.',
 	          step3EnterCode: 'Enter Authorization URL or Code',
 	          authCodeDesc:
-	            'After authorization, copy the callback URL (recommended) or just the <code>code</code> and paste it below.',
+	            'After authorization, copy the callback URL (recommended) or just the code and paste it below.',
 	          authCode: 'Callback URL or Code',
 	          authCodePlaceholder:
 	            'Option 1 (recommended): Paste the callback URL\nOption 2: Paste only the code value',
@@ -1237,10 +1238,10 @@ export default {
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
           openUrlDesc: 'Open the authorization URL in a new tab, log in to your Google account and authorize.',
           importantNotice:
-            '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar shows <code>http://localhost...</code>, authorization is complete.',
+            'Important: The page may take a while to load after authorization. Please wait patiently. When the browser address bar shows http://localhost..., authorization is complete.',
           step3EnterCode: 'Enter Authorization URL or Code',
           authCodeDesc:
-            'After authorization, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+            'After authorization, when the page URL becomes http://localhost:xxx/auth/callback?code=...:',
           authCode: 'Authorization URL or Code',
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
@@ -1652,8 +1653,8 @@ export default {
         secretKey: 'Secret Key',
         siteKeyHint: 'Get this from your Cloudflare Dashboard',
         cloudflareDashboard: 'Cloudflare Dashboard',
-        secretKeyHint: 'Server-side verification key (keep this secret)'
-      REDACTED,
+        secretKeyHint: 'Server-side verification key (keep this secret)',
+        secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'      REDACTED,
       defaults: {
         title: 'Default User Settings',
         description: 'Default values for new users',
@@ -1703,6 +1704,8 @@ export default {
         password: 'SMTP Password',
         passwordPlaceholder: '********',
         passwordHint: 'Leave empty to keep existing password',
+        passwordConfiguredPlaceholder: '********',
+        passwordConfiguredHint: 'Password configured. Leave empty to keep the current value.',
         fromEmail: 'From Email',
         fromEmailPlaceholder: "noreply{'@'REDACTEDexample.com",
         fromName: 'From Name',

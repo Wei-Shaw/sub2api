@@ -268,6 +268,15 @@ default:
   rate_multiplier: 1.0
 ```
 
+Additional security-related options are available in `config.yaml`:
+
+- `cors.allowed_origins` for CORS allowlist
+- `security.url_allowlist` for upstream/pricing/CRS host allowlists
+- `security.csp` to control Content-Security-Policy headers
+- `billing.circuit_breaker` to fail closed on billing errors
+- `server.trusted_proxies` to enable X-Forwarded-For parsing
+- `turnstile.required` to require Turnstile in release mode
+
 ```bash
 # 6. Run the application
 ./sub2api

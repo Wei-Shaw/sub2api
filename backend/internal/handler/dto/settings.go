@@ -5,17 +5,17 @@ type SystemSettings struct {
 	RegistrationEnabled bool `json:"registration_enabled"`
 	EmailVerifyEnabled  bool `json:"email_verify_enabled"`
 
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password,omitempty"`
-	SMTPFrom     string `json:"smtp_from_email"`
-	SMTPFromName string `json:"smtp_from_name"`
-	SMTPUseTLS   bool   `json:"smtp_use_tls"`
+	SMTPHost               string `json:"smtp_host"`
+	SMTPPort               int    `json:"smtp_port"`
+	SMTPUsername           string `json:"smtp_username"`
+	SMTPPasswordConfigured bool   `json:"smtp_password_configured"`
+	SMTPFrom               string `json:"smtp_from_email"`
+	SMTPFromName           string `json:"smtp_from_name"`
+	SMTPUseTLS             bool   `json:"smtp_use_tls"`
 
-	TurnstileEnabled   bool   `json:"turnstile_enabled"`
-	TurnstileSiteKey   string `json:"turnstile_site_key"`
-	TurnstileSecretKey string `json:"turnstile_secret_key,omitempty"`
+	TurnstileEnabled             bool   `json:"turnstile_enabled"`
+	TurnstileSiteKey             string `json:"turnstile_site_key"`
+	TurnstileSecretKeyConfigured bool   `json:"turnstile_secret_key_configured"`
 
 	SiteName     string `json:"site_name"`
 	SiteLogo     string `json:"site_logo"`
