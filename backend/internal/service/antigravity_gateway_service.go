@@ -64,6 +64,7 @@ type AntigravityGatewayService struct {
 	tokenProvider    *AntigravityTokenProvider
 	rateLimitService *RateLimitService
 	httpUpstream     HTTPUpstream
+	settingService   *SettingService
 REDACTED
 
 func NewAntigravityGatewayService(
@@ -72,12 +73,14 @@ func NewAntigravityGatewayService(
 	tokenProvider *AntigravityTokenProvider,
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
+	settingService *SettingService,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
 		accountRepo:      accountRepo,
 		tokenProvider:    tokenProvider,
 		rateLimitService: rateLimitService,
 		httpUpstream:     httpUpstream,
+		settingService:   settingService,
 REDACTED
 REDACTED
 
@@ -307,6 +310,22 @@ REDACTED
 	return body, nil
 REDACTED
 
+// isModelNotFoundError 检测是否为模型不存在的 404 错误
+func isModelNotFoundError(statusCode int, body []byte) bool {
+	if statusCode != 404 {
+		return false
+REDACTED
+
+	bodyStr := strings.ToLower(string(body))
+	keywords := []string{"model not found", "unknown model", "not found"REDACTED
+	for _, keyword := range keywords {
+		if strings.Contains(bodyStr, keyword) {
+			return true
+	REDACTED
+REDACTED
+	return true // 404 without specific message also treated as model not found
+REDACTED
+
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
 	startTime := time.Now()
@@ -397,16 +416,56 @@ REDACTED
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
-	// 处理错误响应
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-		s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		// 优先检测 thinking block 的 signature 相关错误（400）并重试一次：
+		// Antigravity /v1internal 链路在部分场景会对 thought/thinking signature 做严格校验，
+		// 当历史消息携带的 signature 不合法时会直接 400；去除 thinking 后可继续完成请求。
+		if resp.StatusCode == http.StatusBadRequest && isSignatureRelatedError(respBody) {
+			retryClaudeReq := claudeReq
+			retryClaudeReq.Messages = append([]antigravity.ClaudeMessage(nil), claudeReq.Messages...)
+
+			stripped, stripErr := stripThinkingFromClaudeRequest(&retryClaudeReq)
+			if stripErr == nil && stripped {
+				log.Printf("Antigravity account %d: detected signature-related 400, retrying once without thinking blocks", account.ID)
+
+				retryGeminiBody, txErr := antigravity.TransformClaudeToGemini(&retryClaudeReq, projectID, mappedModel)
+				if txErr == nil {
+					retryReq, buildErr := antigravity.NewAPIRequest(ctx, action, accessToken, retryGeminiBody)
+					if buildErr == nil {
+						retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+						if retryErr == nil {
+							// Retry success: continue normal success flow with the new response.
+							if retryResp.StatusCode < 400 {
+								_ = resp.Body.Close()
+								resp = retryResp
+								respBody = nil
+						REDACTED
+
+							// Retry still errored: replace error context with retry response.
+							retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+							_ = retryResp.Body.Close()
+							respBody = retryBody
+							resp = retryResp
+					REDACTED else {
+							log.Printf("Antigravity account %d: signature retry request failed: %v", account.ID, retryErr)
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
 	REDACTED
 
-		return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
+		// 处理错误响应（重试后仍失败或不触发重试）
+		if resp.StatusCode >= 400 {
+			s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+
+			if s.shouldFailoverUpstreamError(resp.StatusCode) {
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		REDACTED
+
+			return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
+	REDACTED
 REDACTED
 
 	requestID := resp.Header.Get("x-request-id")
@@ -438,6 +497,122 @@ REDACTED
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
 REDACTED, nil
+REDACTED
+
+func isSignatureRelatedError(respBody []byte) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+	if msg == "" {
+		// Fallback: best-effort scan of the raw payload.
+		msg = strings.ToLower(string(respBody))
+REDACTED
+
+	// Keep this intentionally broad: different upstreams may use "signature" or "thought_signature".
+	return strings.Contains(msg, "thought_signature") || strings.Contains(msg, "signature")
+REDACTED
+
+func extractAntigravityErrorMessage(body []byte) string {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+REDACTED
+
+	// Google-style: {"error": {"message": "..."REDACTEDREDACTED
+	if errObj, ok := payload["error"].(map[string]any); ok {
+		if msg, ok := errObj["message"].(string); ok && strings.TrimSpace(msg) != "" {
+			return msg
+	REDACTED
+REDACTED
+
+	// Fallback: top-level message
+	if msg, ok := payload["message"].(string); ok && strings.TrimSpace(msg) != "" {
+		return msg
+REDACTED
+
+	return ""
+REDACTED
+
+// stripThinkingFromClaudeRequest converts thinking blocks to text blocks in a Claude Messages request.
+// This preserves the thinking content while avoiding signature validation errors.
+// Note: redacted_thinking blocks are removed because they cannot be converted to text.
+// It also disables top-level `thinking` to prevent dummy-thought injection during retry.
+func stripThinkingFromClaudeRequest(req *antigravity.ClaudeRequest) (bool, error) {
+	if req == nil {
+		return false, nil
+REDACTED
+
+	changed := false
+	if req.Thinking != nil {
+		req.Thinking = nil
+		changed = true
+REDACTED
+
+	for i := range req.Messages {
+		raw := req.Messages[i].Content
+		if len(raw) == 0 {
+			continue
+	REDACTED
+
+		// If content is a string, nothing to strip.
+		var str string
+		if json.Unmarshal(raw, &str) == nil {
+			continue
+	REDACTED
+
+		// Otherwise treat as an array of blocks and convert thinking blocks to text.
+		var blocks []map[string]any
+		if err := json.Unmarshal(raw, &blocks); err != nil {
+			continue
+	REDACTED
+
+		filtered := make([]map[string]any, 0, len(blocks))
+		modifiedAny := false
+		for _, block := range blocks {
+			t, _ := block["type"].(string)
+			switch t {
+			case "thinking":
+				// Convert thinking to text, skip if empty
+				thinkingText, _ := block["thinking"].(string)
+				if thinkingText != "" {
+					filtered = append(filtered, map[string]any{
+						"type": "text",
+						"text": thinkingText,
+				REDACTED)
+			REDACTED
+				modifiedAny = true
+			case "redacted_thinking":
+				// Remove redacted_thinking (cannot convert encrypted content)
+				modifiedAny = true
+			case "":
+				// Handle untyped block with "thinking" field
+				if thinkingText, hasThinking := block["thinking"].(string); hasThinking {
+					if thinkingText != "" {
+						filtered = append(filtered, map[string]any{
+							"type": "text",
+							"text": thinkingText,
+					REDACTED)
+				REDACTED
+					modifiedAny = true
+			REDACTED else {
+					filtered = append(filtered, block)
+			REDACTED
+			default:
+				filtered = append(filtered, block)
+		REDACTED
+	REDACTED
+
+		if !modifiedAny {
+			continue
+	REDACTED
+
+		newRaw, err := json.Marshal(filtered)
+		if err != nil {
+			return changed, err
+	REDACTED
+		req.Messages[i].Content = newRaw
+		changed = true
+REDACTED
+
+	return changed, nil
 REDACTED
 
 // ForwardGemini 转发 Gemini 协议请求
@@ -550,14 +725,40 @@ REDACTED
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
-	requestID := resp.Header.Get("x-request-id")
-	if requestID != "" {
-		c.Header("x-request-id", requestID)
-REDACTED
-
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+		// 模型兜底：模型不存在且开启 fallback 时，自动用 fallback 模型重试一次
+		if s.settingService != nil && s.settingService.IsModelFallbackEnabled(ctx) &&
+			isModelNotFoundError(resp.StatusCode, respBody) {
+			fallbackModel := s.settingService.GetFallbackModel(ctx, PlatformAntigravity)
+			if fallbackModel != "" && fallbackModel != mappedModel {
+				log.Printf("[Antigravity] Model not found (%s), retrying with fallback model %s (account: %s)", mappedModel, fallbackModel, account.Name)
+
+				// 关闭原始响应，释放连接（respBody 已读取到内存）
+				_ = resp.Body.Close()
+
+				fallbackWrapped, err := s.wrapV1InternalRequest(projectID, fallbackModel, body)
+				if err == nil {
+					fallbackReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, fallbackWrapped)
+					if err == nil {
+						fallbackResp, err := s.httpUpstream.Do(fallbackReq, proxyURL, account.ID, account.Concurrency)
+						if err == nil && fallbackResp.StatusCode < 400 {
+							resp = fallbackResp
+					REDACTED else if fallbackResp != nil {
+							_ = fallbackResp.Body.Close()
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// fallback 成功：继续按正常响应处理
+		if resp.StatusCode < 400 {
+			goto handleSuccess
+	REDACTED
+
 		s.handleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -565,6 +766,10 @@ REDACTED
 	REDACTED
 
 		// 解包并返回错误
+		requestID := resp.Header.Get("x-request-id")
+		if requestID != "" {
+			c.Header("x-request-id", requestID)
+	REDACTED
 		unwrapped, _ := s.unwrapV1InternalResponse(respBody)
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
@@ -572,6 +777,12 @@ REDACTED
 	REDACTED
 		c.Data(resp.StatusCode, contentType, unwrapped)
 		return nil, fmt.Errorf("antigravity upstream error: %d", resp.StatusCode)
+REDACTED
+
+handleSuccess:
+	requestID := resp.Header.Get("x-request-id")
+	if requestID != "" {
+		c.Header("x-request-id", requestID)
 REDACTED
 
 	var usage *ClaudeUsage
