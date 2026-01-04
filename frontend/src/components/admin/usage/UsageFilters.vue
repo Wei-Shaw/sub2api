@@ -15,11 +15,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, reactive REDACTED from 'vue'; import { useI18n REDACTED from 'vue-i18n'; import { adminAPI REDACTED from '@/api/admin'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import { ref, onMounted REDACTED from 'vue'; import { useI18n REDACTED from 'vue-i18n'; import { adminAPI REDACTED from '@/api/admin'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 const props = defineProps(['modelValue', 'exporting', 'startDate', 'endDate']); const emit = defineEmits(['update:modelValue', 'update:startDate', 'update:endDate', 'change', 'reset', 'export'])
 const { t REDACTED = useI18n(); const filters = props.modelValue
 const userKW = ref(''); const results = ref<any[]>([]); const showDD = ref(false); let timeout: any = null
-const mOpts = ref([{ value: null, label: t('admin.usage.allModels') REDACTED]); const gOpts = ref([{ value: null, label: t('admin.usage.allGroups') REDACTED])
+const mOpts = ref<{value: string | null, label: stringREDACTED[]>([{ value: null, label: t('admin.usage.allModels') REDACTED]); const gOpts = ref<any[]>([{ value: null, label: t('admin.usage.allGroups') REDACTED])
 const emitChange = () => emit('change')
 const debounceSearch = () => { clearTimeout(timeout); timeout = setTimeout(async () => { if(!userKW.value) { results.value = []; return REDACTED; try { results.value = await adminAPI.usage.searchUsers(userKW.value) REDACTED catch {REDACTED REDACTED, 300) REDACTED
 const selectUser = (u: any) => { userKW.value = u.email; showDD.value = false; filters.user_id = u.id; emitChange() REDACTED

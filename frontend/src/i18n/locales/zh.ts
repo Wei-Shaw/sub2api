@@ -1612,21 +1612,6 @@ export default {
       deleteConfirmMessage: "确定要删除代理 '{nameREDACTED' 吗？",
       testProxy: '测试代理',
       columns: {
-        name: '名称',
-        protocol: '协议',
-        address: '地址',
-        priority: '优先级',
-        status: '状态',
-        lastCheck: '最近检测',
-        actions: '操作'
-      REDACTED,
-      protocols: {
-        http: 'HTTP',
-        https: 'HTTPS',
-        socks5: 'SOCKS5',
-        socks5h: 'SOCKS5H (服务端解析 DNS)'
-      REDACTED,
-      columns: {
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
         protocolLabel: '协议',
