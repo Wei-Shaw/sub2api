@@ -9,7 +9,7 @@
       <ProfileInfoCard :user="user" />
       <div v-if="contactInfo" class="card border-primary-200 bg-primary-50 dark:bg-primary-900/20 p-6">
         <div class="flex items-center gap-4">
-          <div class="p-3 bg-primary-100 rounded-xl text-primary-600">💬</div>
+          <div class="p-3 bg-primary-100 rounded-xl text-primary-600"><Icon name="chat" size="lg" /></div>
           <div><h3 class="font-semibold text-primary-800 dark:text-primary-200">{{ t('common.contactSupport') REDACTEDREDACTED</h3><p class="text-sm font-medium">{{ contactInfo REDACTEDREDACTED</p></div>
         </div>
       </div>
@@ -27,6 +27,7 @@ import StatCard from '@/components/common/StatCard.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
+import { Icon REDACTED from '@/components/icons'
 
 const { t REDACTED = useI18n(); const authStore = useAuthStore(); const user = computed(() => authStore.user)
 const contactInfo = ref('')

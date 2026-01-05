@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	mathrand "math/rand"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -405,6 +406,14 @@ REDACTED
 	// 重试循环
 	var resp *http.Response
 	for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
+		// 检查 context 是否已取消（客户端断开连接）
+		select {
+		case <-ctx.Done():
+			log.Printf("%s status=context_canceled error=%v", prefix, ctx.Err())
+			return nil, ctx.Err()
+		default:
+	REDACTED
+
 		upstreamReq, err := antigravity.NewAPIRequest(ctx, action, accessToken, geminiBody)
 		if err != nil {
 			return nil, err
@@ -414,7 +423,10 @@ REDACTED
 		if err != nil {
 			if attempt < antigravityMaxRetries {
 				log.Printf("%s status=request_failed retry=%d/%d error=%v", prefix, attempt, antigravityMaxRetries, err)
-				sleepAntigravityBackoff(attempt)
+				if !sleepAntigravityBackoffWithContext(ctx, attempt) {
+					log.Printf("%s status=context_canceled_during_backoff", prefix)
+					return nil, ctx.Err()
+			REDACTED
 				continue
 		REDACTED
 			log.Printf("%s status=request_failed retries_exhausted error=%v", prefix, err)
@@ -427,7 +439,10 @@ REDACTED
 
 			if attempt < antigravityMaxRetries {
 				log.Printf("%s status=%d retry=%d/%d", prefix, resp.StatusCode, attempt, antigravityMaxRetries)
-				sleepAntigravityBackoff(attempt)
+				if !sleepAntigravityBackoffWithContext(ctx, attempt) {
+					log.Printf("%s status=context_canceled_during_backoff", prefix)
+					return nil, ctx.Err()
+			REDACTED
 				continue
 		REDACTED
 			// 所有重试都失败，标记限流状态
@@ -901,6 +916,14 @@ REDACTED
 	// 重试循环
 	var resp *http.Response
 	for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
+		// 检查 context 是否已取消（客户端断开连接）
+		select {
+		case <-ctx.Done():
+			log.Printf("%s status=context_canceled error=%v", prefix, ctx.Err())
+			return nil, ctx.Err()
+		default:
+	REDACTED
+
 		upstreamReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, wrappedBody)
 		if err != nil {
 			return nil, err
@@ -910,7 +933,10 @@ REDACTED
 		if err != nil {
 			if attempt < antigravityMaxRetries {
 				log.Printf("%s status=request_failed retry=%d/%d error=%v", prefix, attempt, antigravityMaxRetries, err)
-				sleepAntigravityBackoff(attempt)
+				if !sleepAntigravityBackoffWithContext(ctx, attempt) {
+					log.Printf("%s status=context_canceled_during_backoff", prefix)
+					return nil, ctx.Err()
+			REDACTED
 				continue
 		REDACTED
 			log.Printf("%s status=request_failed retries_exhausted error=%v", prefix, err)
@@ -923,7 +949,10 @@ REDACTED
 
 			if attempt < antigravityMaxRetries {
 				log.Printf("%s status=%d retry=%d/%d", prefix, resp.StatusCode, attempt, antigravityMaxRetries)
-				sleepAntigravityBackoff(attempt)
+				if !sleepAntigravityBackoffWithContext(ctx, attempt) {
+					log.Printf("%s status=context_canceled_during_backoff", prefix)
+					return nil, ctx.Err()
+			REDACTED
 				continue
 		REDACTED
 			// 所有重试都失败，标记限流状态
@@ -1060,6 +1089,30 @@ REDACTED
 
 func sleepAntigravityBackoff(attempt int) {
 	sleepGeminiBackoff(attempt) // 复用 Gemini 的退避逻辑
+REDACTED
+
+// sleepAntigravityBackoffWithContext 带 context 取消检查的退避等待
+// 返回 true 表示正常完成等待，false 表示 context 已取消
+func sleepAntigravityBackoffWithContext(ctx context.Context, attempt int) bool {
+	delay := geminiRetryBaseDelay * time.Duration(1<<uint(attempt-1))
+	if delay > geminiRetryMaxDelay {
+		delay = geminiRetryMaxDelay
+REDACTED
+
+	// +/- 20% jitter
+	r := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
+	jitter := time.Duration(float64(delay) * 0.2 * (r.Float64()*2 - 1))
+	sleepFor := delay + jitter
+	if sleepFor < 0 {
+		sleepFor = 0
+REDACTED
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(sleepFor):
+		return true
+REDACTED
 REDACTED
 
 func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte) {

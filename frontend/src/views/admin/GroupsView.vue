@@ -336,7 +336,7 @@
                   </p>
                   <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
                     <p class="text-xs leading-relaxed text-gray-300">
-                      <span class="text-primary-400">💡 {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
+                      <span class="inline-flex items-center gap-1 text-primary-400"><Icon name="lightbulb" size="xs" /> {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
                       {{ t('admin.groups.exclusiveTooltip.exampleContent') REDACTEDREDACTED
                     </p>
                   </div>
@@ -531,7 +531,7 @@
                   </p>
                   <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
                     <p class="text-xs leading-relaxed text-gray-300">
-                      <span class="text-primary-400">💡 {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
+                      <span class="inline-flex items-center gap-1 text-primary-400"><Icon name="lightbulb" size="xs" /> {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
                       {{ t('admin.groups.exclusiveTooltip.exampleContent') REDACTEDREDACTED
                     </p>
                   </div>
@@ -691,6 +691,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { Icon REDACTED from '@/components/icons'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
