@@ -41,6 +41,9 @@ security:
     upstream_hosts:
       - "api.openai.com"
       - "api.anthropic.com"
+      - "api.kimi.com"
+      - "open.bigmodel.cn"
+      - "api.minimaxi.com"
       - "generativelanguage.googleapis.com"
       - "cloudcode-pa.googleapis.com"
       - "*.openai.azure.com"
