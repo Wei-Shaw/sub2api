@@ -237,6 +237,9 @@ func (s *GeminiMessagesCompatService) GetAntigravityGatewayService() *Antigravit
 REDACTED
 
 func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (string, error) {
+	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
+		return strings.TrimSpace(raw), nil
+REDACTED
 	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
 		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
 		RequireAllowlist: true,
@@ -1719,6 +1722,10 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	REDACTED
 REDACTED
 	log.Printf("[GeminiAPI] ====================================================")
+
+	if s.cfg != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
+REDACTED
 
 	c.Status(resp.StatusCode)
 	c.Header("Cache-Control", "no-cache")

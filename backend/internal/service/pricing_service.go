@@ -409,6 +409,9 @@ REDACTED
 REDACTED
 
 func (s *PricingService) validatePricingURL(raw string) (string, error) {
+	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
+		return strings.TrimSpace(raw), nil
+REDACTED
 	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
 		AllowedHosts:     s.cfg.Security.URLAllowlist.PricingHosts,
 		RequireAllowlist: true,

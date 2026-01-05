@@ -37,6 +37,8 @@ cors:
 # =============================================================================
 security:
   url_allowlist:
+    # Enable URL allowlist validation (disable to skip all URL checks)
+    enabled: false
     # Allowed upstream hosts for API proxying
     upstream_hosts:
       - "api.openai.com"
@@ -55,6 +57,8 @@ security:
     # Allow localhost/private IPs for upstream/pricing/CRS (use only in trusted networks)
     allow_private_hosts: false
   response_headers:
+    # Enable response header filtering (disable to pass through upstream headers)
+    enabled: false
     # Extra allowed response headers from upstream
     additional_allowed: []
     # Force-remove response headers from upstream

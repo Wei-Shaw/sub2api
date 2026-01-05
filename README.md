@@ -272,10 +272,18 @@ Additional security-related options are available in `config.yaml`:
 
 - `cors.allowed_origins` for CORS allowlist
 - `security.url_allowlist` for upstream/pricing/CRS host allowlists
+- `security.url_allowlist.enabled` to disable URL validation (use with caution)
+- `security.response_headers.enabled` to disable response header filtering
 - `security.csp` to control Content-Security-Policy headers
 - `billing.circuit_breaker` to fail closed on billing errors
 - `server.trusted_proxies` to enable X-Forwarded-For parsing
 - `turnstile.required` to require Turnstile in release mode
+
+If you disable URL validation or response header filtering, harden your network layer:
+- Enforce an egress allowlist for upstream domains/IPs
+- Block private/loopback/link-local ranges
+- Enforce TLS-only outbound traffic
+- Strip sensitive upstream response headers at the proxy
 
 ```bash
 # 6. Run the application

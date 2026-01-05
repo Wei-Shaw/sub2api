@@ -8,6 +8,7 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
+    "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
     "typecheck": "vue-tsc --noEmit"
   REDACTED,
   "dependencies": {
@@ -30,6 +31,10 @@
     "@types/node": "^20.10.5",
     "@vitejs/plugin-vue": "^5.2.3",
     "autoprefixer": "^10.4.16",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-vue": "^9.25.0",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "~5.6.0",

@@ -17,9 +17,11 @@ import (
 func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
 	insecure := false
 	allowPrivate := false
+	validateResolvedIP := true
 	if cfg != nil {
 		insecure = cfg.Security.ProxyProbe.InsecureSkipVerify
 		allowPrivate = cfg.Security.URLAllowlist.AllowPrivateHosts
+		validateResolvedIP = cfg.Security.URLAllowlist.Enabled
 REDACTED
 	if insecure {
 		log.Printf("[ProxyProbe] Warning: TLS verification is disabled for proxy probing.")
@@ -28,6 +30,7 @@ REDACTED
 		ipInfoURL:          defaultIPInfoURL,
 		insecureSkipVerify: insecure,
 		allowPrivateHosts:  allowPrivate,
+		validateResolvedIP: validateResolvedIP,
 REDACTED
 REDACTED
 
@@ -37,6 +40,7 @@ type proxyProbeService struct {
 	ipInfoURL          string
 	insecureSkipVerify bool
 	allowPrivateHosts  bool
+	validateResolvedIP bool
 REDACTED
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
@@ -45,7 +49,7 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 		Timeout:            15 * time.Second,
 		InsecureSkipVerify: s.insecureSkipVerify,
 		ProxyStrict:        true,
-		ValidateResolvedIP: true,
+		ValidateResolvedIP: s.validateResolvedIP,
 		AllowPrivateHosts:  s.allowPrivateHosts,
 REDACTED)
 	if err != nil {

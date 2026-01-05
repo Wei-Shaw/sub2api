@@ -194,9 +194,13 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 	if s.cfg == nil {
 		return nil, errors.New("config is not available")
 REDACTED
-	baseURL, err := normalizeBaseURL(input.BaseURL, s.cfg.Security.URLAllowlist.CRSHosts, s.cfg.Security.URLAllowlist.AllowPrivateHosts)
-	if err != nil {
-		return nil, err
+	baseURL := strings.TrimSpace(input.BaseURL)
+	if s.cfg.Security.URLAllowlist.Enabled {
+		normalized, err := normalizeBaseURL(baseURL, s.cfg.Security.URLAllowlist.CRSHosts, s.cfg.Security.URLAllowlist.AllowPrivateHosts)
+		if err != nil {
+			return nil, err
+	REDACTED
+		baseURL = normalized
 REDACTED
 	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" {
 		return nil, errors.New("username and password are required")
@@ -204,7 +208,7 @@ REDACTED
 
 	client, err := httpclient.GetClient(httpclient.Options{
 		Timeout:            20 * time.Second,
-		ValidateResolvedIP: true,
+		ValidateResolvedIP: s.cfg.Security.URLAllowlist.Enabled,
 		AllowPrivateHosts:  s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 REDACTED)
 	if err != nil {
