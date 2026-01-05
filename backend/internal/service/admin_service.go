@@ -504,6 +504,11 @@ REDACTED
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
 
+	// 图片价格：负数表示清除（使用默认价格），0 保留（表示免费）
+	imagePrice1K := normalizePrice(input.ImagePrice1K)
+	imagePrice2K := normalizePrice(input.ImagePrice2K)
+	imagePrice4K := normalizePrice(input.ImagePrice4K)
+
 	group := &Group{
 		Name:             input.Name,
 		Description:      input.Description,
@@ -515,9 +520,9 @@ REDACTED
 		DailyLimitUSD:    dailyLimit,
 		WeeklyLimitUSD:   weeklyLimit,
 		MonthlyLimitUSD:  monthlyLimit,
-		ImagePrice1K:     input.ImagePrice1K,
-		ImagePrice2K:     input.ImagePrice2K,
-		ImagePrice4K:     input.ImagePrice4K,
+		ImagePrice1K:     imagePrice1K,
+		ImagePrice2K:     imagePrice2K,
+		ImagePrice4K:     imagePrice4K,
 REDACTED
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -531,6 +536,14 @@ func normalizeLimit(limit *float64) *float64 {
 		return nil
 REDACTED
 	return limit
+REDACTED
+
+// normalizePrice 将负数转换为 nil（表示使用默认价格），0 保留（表示免费）
+func normalizePrice(price *float64) *float64 {
+	if price == nil || *price < 0 {
+		return nil
+REDACTED
+	return price
 REDACTED
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
@@ -572,15 +585,15 @@ REDACTED
 	if input.MonthlyLimitUSD != nil {
 		group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
 REDACTED
-	// 图片生成计费配置
+	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.ImagePrice1K != nil {
-		group.ImagePrice1K = input.ImagePrice1K
+		group.ImagePrice1K = normalizePrice(input.ImagePrice1K)
 REDACTED
 	if input.ImagePrice2K != nil {
-		group.ImagePrice2K = input.ImagePrice2K
+		group.ImagePrice2K = normalizePrice(input.ImagePrice2K)
 REDACTED
 	if input.ImagePrice4K != nil {
-		group.ImagePrice4K = input.ImagePrice4K
+		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
 REDACTED
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

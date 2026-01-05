@@ -28,6 +28,9 @@ func TestIsImageGenerationModel_RegularModel(t *testing.T) {
 	require.False(t, isImageGenerationModel("gpt-4o"))
 	require.False(t, isImageGenerationModel("gemini-2.5-pro")) // 非图片模型
 	require.False(t, isImageGenerationModel("gemini-2.5-flash"))
+	// 验证不会误匹配包含关键词的自定义模型名
+	require.False(t, isImageGenerationModel("my-gemini-3-pro-image-test"))
+	require.False(t, isImageGenerationModel("custom-gemini-2.5-flash-image-wrapper"))
 REDACTED
 
 // TestIsImageGenerationModel_CaseInsensitive 测试大小写不敏感

@@ -838,7 +838,7 @@ REDACTED
 	// 判断是否为图片生成模型
 	imageCount := 0
 	if isImageGenerationModel(mappedModel) {
-		// 图片模型按次计费，默认 1 张图片
+		// Gemini 图片生成 API 每次请求只生成一张图片（API 限制）
 		imageCount = 1
 REDACTED
 
@@ -1192,8 +1192,17 @@ REDACTED
 REDACTED
 
 // isImageGenerationModel 判断模型是否为图片生成模型
+// 支持的模型：gemini-3-pro-image, gemini-3-pro-image-preview, gemini-2.5-flash-image 等
 func isImageGenerationModel(model string) bool {
 	modelLower := strings.ToLower(model)
-	return strings.Contains(modelLower, "gemini-3-pro-image") ||
-		strings.Contains(modelLower, "gemini-2.5-flash-image")
+	// 移除 models/ 前缀
+	modelLower = strings.TrimPrefix(modelLower, "models/")
+
+	// 精确匹配或前缀匹配
+	return modelLower == "gemini-3-pro-image" ||
+		modelLower == "gemini-3-pro-image-preview" ||
+		strings.HasPrefix(modelLower, "gemini-3-pro-image-") ||
+		modelLower == "gemini-2.5-flash-image" ||
+		modelLower == "gemini-2.5-flash-image-preview" ||
+		strings.HasPrefix(modelLower, "gemini-2.5-flash-image-")
 REDACTED
