@@ -47,6 +47,7 @@ export default {
     description: 'Configure your Sub2API instance',
     database: {
       title: 'Database Configuration',
+      description: 'Connect to your PostgreSQL database',
       host: 'Host',
       port: 'Port',
       username: 'Username',
@@ -63,6 +64,7 @@ export default {
     REDACTED,
     redis: {
       title: 'Redis Configuration',
+      description: 'Connect to your Redis server',
       host: 'Host',
       port: 'Port',
       password: 'Password (optional)',
@@ -71,6 +73,7 @@ export default {
     REDACTED,
     admin: {
       title: 'Admin Account',
+      description: 'Create your administrator account',
       email: 'Email',
       password: 'Password',
       confirmPassword: 'Confirm Password',
@@ -80,9 +83,21 @@ export default {
     REDACTED,
     ready: {
       title: 'Ready to Install',
+      description: 'Review your configuration and complete setup',
       database: 'Database',
       redis: 'Redis',
       adminEmail: 'Admin Email'
+    REDACTED,
+    status: {
+      testing: 'Testing...',
+      success: 'Connection Successful',
+      testConnection: 'Test Connection',
+      installing: 'Installing...',
+      completeInstallation: 'Complete Installation',
+      completed: 'Installation completed!',
+      redirecting: 'Redirecting to login page...',
+      restarting: 'Service is restarting, please wait...',
+      timeout: 'Service restart is taking longer than expected. Please refresh the page manually.'
     REDACTED
   REDACTED,
 
@@ -130,11 +145,13 @@ export default {
     copiedToClipboard: 'Copied to clipboard',
     copyFailed: 'Failed to copy',
     contactSupport: 'Contact Support',
-    selectOption: 'Select an option',
-    searchPlaceholder: 'Search...',
-    noOptionsFound: 'No options found',
-    saving: 'Saving...',
-    refresh: 'Refresh',
+        selectOption: 'Select an option',
+        searchPlaceholder: 'Search...', 
+        noOptionsFound: 'No options found',
+        noGroupsAvailable: 'No groups available',
+        unknownError: 'Unknown error occurred',
+        saving: 'Saving...', 
+        selectedCount: '({countREDACTED selected)',    refresh: 'Refresh',
     notAvailable: 'N/A',
     now: 'Now',
     unknown: 'Unknown',
@@ -673,6 +690,10 @@ export default {
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
       insufficientBalance: 'Insufficient balance, balance cannot be negative after withdrawal',
+      roles: {
+        admin: 'Admin',
+        user: 'User'
+      REDACTED,
       // Settings Dropdowns
       filterSettings: 'Filter Settings',
       columnSettings: 'Column Settings',
@@ -739,6 +760,7 @@ export default {
     groups: {
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
+      searchGroups: 'Search groups...',
       createGroup: 'Create Group',
       editGroup: 'Edit Group',
       deleteGroup: 'Delete Group',
@@ -794,6 +816,13 @@ export default {
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
+      platforms: {
+        all: 'All Platforms',
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
+      REDACTED,
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
       deleteConfirmSubscription:
@@ -935,9 +964,16 @@ export default {
         antigravityOauth: 'Antigravity OAuth'
       REDACTED,
       status: {
+        active: 'Active',
+        inactive: 'Inactive',
+        error: 'Error',
+        cooldown: 'Cooldown',
         paused: 'Paused',
         limited: 'Limited',
-        tempUnschedulable: 'Temp Unschedulable'
+        tempUnschedulable: 'Temp Unschedulable',
+        rateLimitedUntil: 'Rate limited until {timeREDACTED',
+        overloadedUntil: 'Overloaded until {timeREDACTED',
+        viewTempUnschedDetails: 'View temp unschedulable details'
       REDACTED,
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -1484,6 +1520,12 @@ export default {
       searchProxies: 'Search proxies...',
       allProtocols: 'All Protocols',
       allStatus: 'All Status',
+      protocols: {
+        http: 'HTTP',
+        https: 'HTTPS',
+        socks5: 'SOCKS5',
+        socks5h: 'SOCKS5H (Remote DNS)'
+      REDACTED,
       columns: {
         name: 'Name',
         protocol: 'Protocol',
@@ -1601,7 +1643,13 @@ export default {
       selectGroupPlaceholder: 'Choose a subscription group',
       validityDays: 'Validity Days',
       groupRequired: 'Please select a subscription group',
-      days: ' days'
+      days: ' days',
+      status: {
+        unused: 'Unused',
+        used: 'Used',
+        expired: 'Expired',
+        disabled: 'Disabled'
+      REDACTED
     REDACTED,
 
     // Usage Records
@@ -1610,6 +1658,7 @@ export default {
       description: 'View and manage all user usage records',
       userFilter: 'User',
       searchUserPlaceholder: 'Search user by email...',
+      searchApiKeyPlaceholder: 'Search API key by name...',
       selectedUser: 'Selected',
       user: 'User',
       account: 'Account',

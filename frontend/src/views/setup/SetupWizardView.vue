@@ -87,7 +87,7 @@
               {{ t('setup.database.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Connect to your PostgreSQL database
+              {{ t('setup.database.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -145,12 +145,15 @@
             </div>
             <div>
               <label class="input-label">{{ t('setup.database.sslMode') REDACTEDREDACTED</label>
-              <select v-model="formData.database.sslmode" class="input">
-                <option value="disable">{{ t('setup.database.ssl.disable') REDACTEDREDACTED</option>
-                <option value="require">{{ t('setup.database.ssl.require') REDACTEDREDACTED</option>
-                <option value="verify-ca">{{ t('setup.database.ssl.verifyCa') REDACTEDREDACTED</option>
-                <option value="verify-full">{{ t('setup.database.ssl.verifyFull') REDACTEDREDACTED</option>
-              </select>
+              <Select
+                v-model="formData.database.sslmode"
+                :options="[
+                  { value: 'disable', label: t('setup.database.ssl.disable') REDACTED,
+                  { value: 'require', label: t('setup.database.ssl.require') REDACTED,
+                  { value: 'verify-ca', label: t('setup.database.ssl.verifyCa') REDACTED,
+                  { value: 'verify-full', label: t('setup.database.ssl.verifyFull') REDACTED
+                ]"
+              />
             </div>
           </div>
 
@@ -190,7 +193,11 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
             </svg>
             {{
-              testingDb ? 'Testing...' : dbConnected ? 'Connection Successful' : 'Test Connection'
+              testingDb
+                ? t('setup.status.testing')
+                : dbConnected
+                  ? t('setup.status.success')
+                  : t('setup.status.testConnection')
             REDACTEDREDACTED
           </button>
         </div>
@@ -202,7 +209,7 @@
               {{ t('setup.redis.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Connect to your Redis server
+              {{ t('setup.redis.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -285,10 +292,10 @@
             </svg>
             {{
               testingRedis
-                ? 'Testing...'
+                ? t('setup.status.testing')
                 : redisConnected
-                  ? 'Connection Successful'
-                  : 'Test Connection'
+                  ? t('setup.status.success')
+                  : t('setup.status.testConnection')
             REDACTEDREDACTED
           </button>
         </div>
@@ -300,7 +307,7 @@
               {{ t('setup.admin.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Create your administrator account
+              {{ t('setup.admin.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -348,7 +355,7 @@
               {{ t('setup.ready.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Review your configuration and complete setup
+              {{ t('setup.ready.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -447,13 +454,13 @@
             </svg>
             <div>
               <p class="text-sm font-medium text-green-700 dark:text-green-400">
-                Installation completed!
+                {{ t('setup.status.completed') REDACTEDREDACTED
               </p>
               <p class="mt-1 text-sm text-green-600 dark:text-green-500">
                 {{
                   serviceReady
-                    ? 'Redirecting to login page...'
-                    : 'Service is restarting, please wait...'
+                    ? t('setup.status.redirecting')
+                    : t('setup.status.restarting')
                 REDACTEDREDACTED
               </p>
             </div>
@@ -480,7 +487,7 @@
                 d="M15.75 19.5L8.25 12l7.5-7.5"
               />
             </svg>
-            Previous
+            {{ t('common.back') REDACTEDREDACTED
           </button>
           <div v-else></div>
 
@@ -490,7 +497,7 @@
             :disabled="!canProceed"
             class="btn btn-primary"
           >
-            Next
+            {{ t('common.next') REDACTEDREDACTED
             <svg
               class="ml-2 h-4 w-4"
               fill="none"
@@ -528,7 +535,7 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            {{ installing ? 'Installing...' : 'Complete Installation' REDACTEDREDACTED
+            {{ installing ? t('setup.status.installing') : t('setup.status.completeInstallation') REDACTEDREDACTED
           </button>
         </div>
       </div>
@@ -540,15 +547,16 @@
 import { ref, reactive, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { testDatabase, testRedis, install, type InstallRequest REDACTED from '@/api/setup'
+import Select from '@/components/common/Select.vue'
 
 const { t REDACTED = useI18n()
 
-const steps = [
-  { id: 'database', title: 'Database' REDACTED,
-  { id: 'redis', title: 'Redis' REDACTED,
-  { id: 'admin', title: 'Admin' REDACTED,
-  { id: 'complete', title: 'Complete' REDACTED
-]
+const steps = computed(() => [
+  { id: 'database', title: t('setup.database.title') REDACTED,
+  { id: 'redis', title: t('setup.redis.title') REDACTED,
+  { id: 'admin', title: t('setup.admin.title') REDACTED,
+  { id: 'complete', title: t('setup.ready.title') REDACTED
+])
 
 const currentStep = ref(0)
 const errorMessage = ref('')
@@ -710,7 +718,6 @@ async function waitForServiceRestart() {
 
   // If we reach here, service didn't restart in time
   // Show a message to refresh manually
-  errorMessage.value =
-    'Service restart is taking longer than expected. Please refresh the page manually.'
+  errorMessage.value = t('setup.status.timeout')
 REDACTED
 </script>

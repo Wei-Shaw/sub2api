@@ -13,8 +13,15 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': resolve(__dirname, 'src'),
+      // 使用 vue-i18n 运行时版本，避免 CSP unsafe-eval 问题
+      'vue-i18n': 'vue-i18n/dist/vue-i18n.runtime.esm-bundler.js'
     REDACTED
+  REDACTED,
+  define: {
+    // 启用 vue-i18n JIT 编译，在 CSP 环境下处理消息插值
+    // JIT 编译器生成 AST 对象而非 JS 代码，无需 unsafe-eval
+    __INTLIFY_JIT_COMPILATION__: true
   REDACTED,
   build: {
     outDir: '../backend/internal/web/dist',

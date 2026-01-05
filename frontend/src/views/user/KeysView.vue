@@ -141,7 +141,7 @@
 
           <template #cell-status="{ value REDACTED">
             <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-gray']">
-              {{ value REDACTEDREDACTED
+              {{ t('admin.accounts.status.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -335,12 +335,14 @@
               />
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') REDACTEDREDACTED</span>
             </template>
-            <template #option="{ option REDACTED">
-              <GroupBadge
+            <template #option="{ option, selected REDACTED">
+              <GroupOptionItem
                 :name="(option as unknown as GroupOption).label"
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
+                :description="(option as unknown as GroupOption).description"
+                :selected="selected"
               />
             </template>
           </Select>
@@ -501,7 +503,8 @@
       <div
         v-if="groupSelectorKeyId !== null && dropdownPosition"
         ref="dropdownRef"
-        class="animate-in fade-in slide-in-from-top-2 fixed z-[9999] w-64 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-64 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+        style="pointer-events: auto !important;"
         :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' REDACTED"
       >
         <div class="max-h-64 overflow-y-auto p-1.5">
@@ -516,26 +519,19 @@
                 ? 'bg-primary-50 dark:bg-primary-900/20'
                 : 'hover:bg-gray-100 dark:hover:bg-dark-700'
             ]"
+            :title="option.description || undefined"
           >
-            <GroupBadge
+            <GroupOptionItem
               :name="option.label"
               :platform="option.platform"
               :subscription-type="option.subscriptionType"
               :rate-multiplier="option.rate"
-            />
-            <svg
-              v-if="
+              :description="option.description"
+              :selected="
                 selectedKeyForGroup?.group_id === option.value ||
                 (!selectedKeyForGroup?.group_id && option.value === null)
               "
-              class="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+            />
           </button>
         </div>
       </div>
@@ -562,6 +558,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
+import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import type { BatchApiKeyUsageStats REDACTED from '@/api/usage'
@@ -570,6 +567,7 @@ import { formatDateTime REDACTED from '@/utils/format'
 interface GroupOption {
   value: number
   label: string
+  description: string | null
   rate: number
   subscriptionType: SubscriptionType
   platform: GroupPlatform
@@ -665,6 +663,7 @@ const groupOptions = computed(() =>
   groups.value.map((group) => ({
     value: group.id,
     label: group.name,
+    description: group.description,
     rate: group.rate_multiplier,
     subscriptionType: group.subscription_type,
     platform: group.platform

@@ -44,6 +44,7 @@ export default {
     description: '配置您的 Sub2API 实例',
     database: {
       title: '数据库配置',
+      description: '连接到您的 PostgreSQL 数据库',
       host: '主机',
       port: '端口',
       username: '用户名',
@@ -60,6 +61,7 @@ export default {
     REDACTED,
     redis: {
       title: 'Redis 配置',
+      description: '连接到您的 Redis 服务器',
       host: '主机',
       port: '端口',
       password: '密码（可选）',
@@ -68,6 +70,7 @@ export default {
     REDACTED,
     admin: {
       title: '管理员账户',
+      description: '创建您的管理员账户',
       email: '邮箱',
       password: '密码',
       confirmPassword: '确认密码',
@@ -77,9 +80,21 @@ export default {
     REDACTED,
     ready: {
       title: '准备安装',
+      description: '检查您的配置并完成安装',
       database: '数据库',
       redis: 'Redis',
       adminEmail: '管理员邮箱'
+    REDACTED,
+    status: {
+      testing: '测试中...',
+      success: '连接成功',
+      testConnection: '测试连接',
+      installing: '安装中...',
+      completeInstallation: '完成安装',
+      completed: '安装完成！',
+      redirecting: '正在跳转到登录页面...',
+      restarting: '服务正在重启，请稍候...',
+      timeout: '服务重启时间超出预期，请手动刷新页面。'
     REDACTED
   REDACTED,
 
@@ -130,7 +145,10 @@ export default {
     selectOption: '请选择',
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
+    noGroupsAvailable: '无可用分组',
+    unknownError: '发生未知错误',
     saving: '保存中...',
+    selectedCount: '（已选 {countREDACTED 个）',
     refresh: '刷新',
     notAvailable: '不可用',
     now: '现在',
@@ -665,10 +683,6 @@ export default {
         admin: '管理员',
         user: '用户'
       REDACTED,
-      statuses: {
-        active: '正常',
-        banned: '禁用'
-      REDACTED,
       form: {
         emailLabel: '邮箱',
         emailPlaceholder: '请输入邮箱',
@@ -795,6 +809,7 @@ export default {
     groups: {
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
+      searchGroups: '搜索分组...',
       createGroup: '创建分组',
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
@@ -852,8 +867,10 @@ export default {
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
       platforms: {
         all: '全部平台',
-        claude: 'Claude',
-        openai: 'OpenAI'
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
       REDACTED,
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -1054,16 +1071,17 @@ export default {
         api_key: 'API Key',
         cookie: 'Cookie'
       REDACTED,
-      statuses: {
+      status: {
         active: '正常',
         inactive: '停用',
         error: '错误',
-        cooldown: '冷却中'
-      REDACTED,
-      status: {
-        paused: '已暂停',
-        limited: '受限',
-        tempUnschedulable: '临时不可调度'
+        cooldown: '冷却中',
+        paused: '暂停',
+        limited: '限流',
+        tempUnschedulable: '临时不可调度',
+        rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
+        overloadedUntil: '负载过重，重置时间：{timeREDACTED',
+        viewTempUnschedDetails: '查看临时不可调度详情'
       REDACTED,
       tempUnschedulable: {
         title: '临时不可调度',
@@ -1596,25 +1614,6 @@ export default {
       deleteConfirmMessage: "确定要删除代理 '{nameREDACTED' 吗？",
       testProxy: '测试代理',
       columns: {
-        name: '名称',
-        protocol: '协议',
-        address: '地址',
-        priority: '优先级',
-        status: '状态',
-        lastCheck: '最近检测',
-        actions: '操作'
-      REDACTED,
-      protocols: {
-        http: 'HTTP',
-        https: 'HTTPS',
-        socks5: 'SOCKS5'
-      REDACTED,
-      statuses: {
-        active: '正常',
-        inactive: '停用',
-        error: '错误'
-      REDACTED,
-      form: {
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
         protocolLabel: '协议',
@@ -1753,7 +1752,7 @@ export default {
       validityDays: '有效天数',
       groupRequired: '请选择订阅分组',
       days: '天',
-      statuses: {
+      status: {
         unused: '未使用',
         used: '已使用',
         expired: '已过期',
@@ -1805,6 +1804,7 @@ export default {
       description: '查看和管理所有用户的使用记录',
       userFilter: '用户',
       searchUserPlaceholder: '按邮箱搜索用户...',
+      searchApiKeyPlaceholder: '按名称搜索 API 密钥...',
       selectedUser: '已选择',
       user: '用户',
       account: '账户',

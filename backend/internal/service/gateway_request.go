@@ -84,25 +84,37 @@ func FilterThinkingBlocks(body []byte) []byte {
 	return filterThinkingBlocksInternal(body, false)
 REDACTED
 
-// FilterThinkingBlocksForRetry removes thinking blocks from HISTORICAL messages for retry scenarios.
-// This is used when upstream returns signature-related 400 errors.
+// FilterThinkingBlocksForRetry strips thinking-related constructs for retry scenarios.
 //
-// Key insight:
-//   - User's thinking.type = "enabled" should be PRESERVED (user's intent)
-//   - Only HISTORICAL assistant messages have thinking blocks with signatures
-//   - These signatures may be invalid when switching accounts/platforms
-//   - New responses will generate fresh thinking blocks without signature issues
+// Why:
+//   - Upstreams may reject historical `thinking`/`redacted_thinking` blocks due to invalid/missing signatures.
+//   - Anthropic extended thinking has a structural constraint: when top-level `thinking` is enabled and the
+//     final message is an assistant prefill, the assistant content must start with a thinking block.
+//   - If we remove thinking blocks but keep top-level `thinking` enabled, we can trigger:
+//     "Expected `thinking` or `redacted_thinking`, but found `text`"
 //
-// Strategy:
-//   - Keep thinking.type = "enabled" (preserve user intent)
-//   - Remove thinking/redacted_thinking blocks from historical assistant messages
-//   - Ensure no message has empty content after filtering
+// Strategy (B: preserve content as text):
+//   - Disable top-level `thinking` (remove `thinking` field).
+//   - Convert `thinking` blocks to `text` blocks (preserve the thinking content).
+//   - Remove `redacted_thinking` blocks (cannot be converted to text).
+//   - Ensure no message ends up with empty content.
 func FilterThinkingBlocksForRetry(body []byte) []byte {
-	// Fast path: check for presence of thinking-related keys in messages
-	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
-		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
-		!bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) &&
-		!bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) {
+	hasThinkingContent := bytes.Contains(body, []byte(`"type":"thinking"`)) ||
+		bytes.Contains(body, []byte(`"type": "thinking"`)) ||
+		bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) ||
+		bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) ||
+		bytes.Contains(body, []byte(`"thinking":`)) ||
+		bytes.Contains(body, []byte(`"thinking" :`))
+
+	// Also check for empty content arrays that need fixing.
+	// Note: This is a heuristic check; the actual empty content handling is done below.
+	hasEmptyContent := bytes.Contains(body, []byte(`"content":[]`)) ||
+		bytes.Contains(body, []byte(`"content": []`)) ||
+		bytes.Contains(body, []byte(`"content" : []`)) ||
+		bytes.Contains(body, []byte(`"content" :[]`))
+
+	// Fast path: nothing to process
+	if !hasThinkingContent && !hasEmptyContent {
 		return body
 REDACTED
 
@@ -111,15 +123,19 @@ REDACTED
 		return body
 REDACTED
 
-	// DO NOT modify thinking.type - preserve user's intent to use thinking mode
-	// The issue is with historical message signatures, not the thinking mode itself
+	modified := false
 
 	messages, ok := req["messages"].([]any)
 	if !ok {
 		return body
 REDACTED
 
-	modified := false
+	// Disable top-level thinking mode for retry to avoid structural/signature constraints upstream.
+	if _, exists := req["thinking"]; exists {
+		delete(req, "thinking")
+		modified = true
+REDACTED
+
 	newMessages := make([]any, 0, len(messages))
 
 	for _, msg := range messages {
@@ -149,33 +165,59 @@ REDACTED
 
 			blockType, _ := blockMap["type"].(string)
 
-			// Remove thinking/redacted_thinking blocks from historical messages
-			// These have signatures that may be invalid across different accounts
-			if blockType == "thinking" || blockType == "redacted_thinking" {
+			// Convert thinking blocks to text (preserve content) and drop redacted_thinking.
+			switch blockType {
+			case "thinking":
+				modifiedThisMsg = true
+				thinkingText, _ := blockMap["thinking"].(string)
+				if thinkingText == "" {
+					continue
+			REDACTED
+				newContent = append(newContent, map[string]any{
+					"type": "text",
+					"text": thinkingText,
+			REDACTED)
+				continue
+			case "redacted_thinking":
 				modifiedThisMsg = true
 				continue
+		REDACTED
+
+			// Handle blocks without type discriminator but with a "thinking" field.
+			if blockType == "" {
+				if rawThinking, hasThinking := blockMap["thinking"]; hasThinking {
+					modifiedThisMsg = true
+					switch v := rawThinking.(type) {
+					case string:
+						if v != "" {
+							newContent = append(newContent, map[string]any{"type": "text", "text": vREDACTED)
+					REDACTED
+					default:
+						if b, err := json.Marshal(v); err == nil && len(b) > 0 {
+							newContent = append(newContent, map[string]any{"type": "text", "text": string(b)REDACTED)
+					REDACTED
+				REDACTED
+					continue
+			REDACTED
 		REDACTED
 
 			newContent = append(newContent, block)
 	REDACTED
 
-		if modifiedThisMsg {
+		// Handle empty content: either from filtering or originally empty
+		if len(newContent) == 0 {
 			modified = true
-			// Handle empty content after filtering
-			if len(newContent) == 0 {
-				// For assistant messages, skip entirely (remove from conversation)
-				// For user messages, add placeholder to avoid empty content error
-				if role == "user" {
-					newContent = append(newContent, map[string]any{
-						"type": "text",
-						"text": "(content removed)",
-				REDACTED)
-					msgMap["content"] = newContent
-					newMessages = append(newMessages, msgMap)
-			REDACTED
-				// Skip assistant messages with empty content (don't append)
-				continue
+			placeholder := "(content removed)"
+			if role == "assistant" {
+				placeholder = "(assistant content removed)"
 		REDACTED
+			newContent = append(newContent, map[string]any{
+				"type": "text",
+				"text": placeholder,
+		REDACTED)
+			msgMap["content"] = newContent
+	REDACTED else if modifiedThisMsg {
+			modified = true
 			msgMap["content"] = newContent
 	REDACTED
 		newMessages = append(newMessages, msgMap)
@@ -183,8 +225,177 @@ REDACTED
 
 	if modified {
 		req["messages"] = newMessages
+REDACTED else {
+		// Avoid rewriting JSON when no changes are needed.
+		return body
 REDACTED
 
+	newBody, err := json.Marshal(req)
+	if err != nil {
+		return body
+REDACTED
+	return newBody
+REDACTED
+
+// FilterSignatureSensitiveBlocksForRetry is a stronger retry filter for cases where upstream errors indicate
+// signature/thought_signature validation issues involving tool blocks.
+//
+// This performs everything in FilterThinkingBlocksForRetry, plus:
+//   - Convert `tool_use` blocks to text (name/id/input) so we stop sending structured tool calls.
+//   - Convert `tool_result` blocks to text so we keep tool results visible without tool semantics.
+//
+// Use this only when needed: converting tool blocks to text changes model behaviour and can increase the
+// risk of prompt injection (tool output becomes plain conversation text).
+func FilterSignatureSensitiveBlocksForRetry(body []byte) []byte {
+	// Fast path: only run when we see likely relevant constructs.
+	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
+		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
+		!bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) &&
+		!bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) &&
+		!bytes.Contains(body, []byte(`"type":"tool_use"`)) &&
+		!bytes.Contains(body, []byte(`"type": "tool_use"`)) &&
+		!bytes.Contains(body, []byte(`"type":"tool_result"`)) &&
+		!bytes.Contains(body, []byte(`"type": "tool_result"`)) &&
+		!bytes.Contains(body, []byte(`"thinking":`)) &&
+		!bytes.Contains(body, []byte(`"thinking" :`)) {
+		return body
+REDACTED
+
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body
+REDACTED
+
+	modified := false
+
+	// Disable top-level thinking for retry to avoid structural/signature constraints upstream.
+	if _, exists := req["thinking"]; exists {
+		delete(req, "thinking")
+		modified = true
+REDACTED
+
+	messages, ok := req["messages"].([]any)
+	if !ok {
+		return body
+REDACTED
+
+	newMessages := make([]any, 0, len(messages))
+
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			newMessages = append(newMessages, msg)
+			continue
+	REDACTED
+
+		role, _ := msgMap["role"].(string)
+		content, ok := msgMap["content"].([]any)
+		if !ok {
+			newMessages = append(newMessages, msg)
+			continue
+	REDACTED
+
+		newContent := make([]any, 0, len(content))
+		modifiedThisMsg := false
+
+		for _, block := range content {
+			blockMap, ok := block.(map[string]any)
+			if !ok {
+				newContent = append(newContent, block)
+				continue
+		REDACTED
+
+			blockType, _ := blockMap["type"].(string)
+			switch blockType {
+			case "thinking":
+				modifiedThisMsg = true
+				thinkingText, _ := blockMap["thinking"].(string)
+				if thinkingText == "" {
+					continue
+			REDACTED
+				newContent = append(newContent, map[string]any{"type": "text", "text": thinkingTextREDACTED)
+				continue
+			case "redacted_thinking":
+				modifiedThisMsg = true
+				continue
+			case "tool_use":
+				modifiedThisMsg = true
+				name, _ := blockMap["name"].(string)
+				id, _ := blockMap["id"].(string)
+				input := blockMap["input"]
+				inputJSON, _ := json.Marshal(input)
+				text := "(tool_use)"
+				if name != "" {
+					text += " name=" + name
+			REDACTED
+				if id != "" {
+					text += " id=" + id
+			REDACTED
+				if len(inputJSON) > 0 && string(inputJSON) != "null" {
+					text += " input=" + string(inputJSON)
+			REDACTED
+				newContent = append(newContent, map[string]any{"type": "text", "text": textREDACTED)
+				continue
+			case "tool_result":
+				modifiedThisMsg = true
+				toolUseID, _ := blockMap["tool_use_id"].(string)
+				isError, _ := blockMap["is_error"].(bool)
+				content := blockMap["content"]
+				contentJSON, _ := json.Marshal(content)
+				text := "(tool_result)"
+				if toolUseID != "" {
+					text += " tool_use_id=" + toolUseID
+			REDACTED
+				if isError {
+					text += " is_error=true"
+			REDACTED
+				if len(contentJSON) > 0 && string(contentJSON) != "null" {
+					text += "\n" + string(contentJSON)
+			REDACTED
+				newContent = append(newContent, map[string]any{"type": "text", "text": textREDACTED)
+				continue
+		REDACTED
+
+			if blockType == "" {
+				if rawThinking, hasThinking := blockMap["thinking"]; hasThinking {
+					modifiedThisMsg = true
+					switch v := rawThinking.(type) {
+					case string:
+						if v != "" {
+							newContent = append(newContent, map[string]any{"type": "text", "text": vREDACTED)
+					REDACTED
+					default:
+						if b, err := json.Marshal(v); err == nil && len(b) > 0 {
+							newContent = append(newContent, map[string]any{"type": "text", "text": string(b)REDACTED)
+					REDACTED
+				REDACTED
+					continue
+			REDACTED
+		REDACTED
+
+			newContent = append(newContent, block)
+	REDACTED
+
+		if modifiedThisMsg {
+			modified = true
+			if len(newContent) == 0 {
+				placeholder := "(content removed)"
+				if role == "assistant" {
+					placeholder = "(assistant content removed)"
+			REDACTED
+				newContent = append(newContent, map[string]any{"type": "text", "text": placeholderREDACTED)
+		REDACTED
+			msgMap["content"] = newContent
+	REDACTED
+
+		newMessages = append(newMessages, msgMap)
+REDACTED
+
+	if !modified {
+		return body
+REDACTED
+
+	req["messages"] = newMessages
 	newBody, err := json.Marshal(req)
 	if err != nil {
 		return body

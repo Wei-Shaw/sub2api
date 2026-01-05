@@ -34,6 +34,9 @@ export interface SystemSettings {
   turnstile_enabled: boolean
   turnstile_site_key: string
   turnstile_secret_key_configured: boolean
+  // Identity patch configuration (Claude -> Gemini)
+  enable_identity_patch: boolean
+  identity_patch_prompt: string
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -57,6 +60,8 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean
   turnstile_site_key?: string
   turnstile_secret_key?: string
+  enable_identity_patch?: boolean
+  identity_patch_prompt?: string
 REDACTED
 
 /**

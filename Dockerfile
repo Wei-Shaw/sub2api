@@ -19,13 +19,16 @@ FROM ${NODE_IMAGEREDACTED AS frontend-builder
 
 WORKDIR /app/frontend
 
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
 # Install dependencies first (better caching)
-COPY frontend/package*.json ./
-RUN npm ci
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
-RUN npm run build
+RUN pnpm run build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder

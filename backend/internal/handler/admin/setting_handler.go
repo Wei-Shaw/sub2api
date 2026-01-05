@@ -63,6 +63,8 @@ REDACTED
 		FallbackModelOpenAI:          settings.FallbackModelOpenAI,
 		FallbackModelGemini:          settings.FallbackModelGemini,
 		FallbackModelAntigravity:     settings.FallbackModelAntigravity,
+		EnableIdentityPatch:          settings.EnableIdentityPatch,
+		IdentityPatchPrompt:          settings.IdentityPatchPrompt,
 REDACTED)
 REDACTED
 
@@ -104,6 +106,10 @@ type UpdateSettingsRequest struct {
 	FallbackModelOpenAI      string `json:"fallback_model_openai"`
 	FallbackModelGemini      string `json:"fallback_model_gemini"`
 	FallbackModelAntigravity string `json:"fallback_model_antigravity"`
+
+	// Identity patch configuration (Claude -> Gemini)
+	EnableIdentityPatch bool   `json:"enable_identity_patch"`
+	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -139,21 +145,18 @@ REDACTED
 			response.BadRequest(c, "Turnstile Site Key is required when enabled")
 			return
 	REDACTED
+		// 如果未提供 secret key，使用已保存的值（留空保留当前值）
 		if req.TurnstileSecretKey == "" {
-			response.BadRequest(c, "Turnstile Secret Key is required when enabled")
-			return
-	REDACTED
-
-		// 获取当前设置，检查参数是否有变化
-		currentSettings, err := h.settingService.GetAllSettings(c.Request.Context())
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
+			if previousSettings.TurnstileSecretKey == "" {
+				response.BadRequest(c, "Turnstile Secret Key is required when enabled")
+				return
+		REDACTED
+			req.TurnstileSecretKey = previousSettings.TurnstileSecretKey
 	REDACTED
 
 		// 当 site_key 或 secret_key 任一变化时验证（避免配置错误导致无法登录）
-		siteKeyChanged := currentSettings.TurnstileSiteKey != req.TurnstileSiteKey
-		secretKeyChanged := currentSettings.TurnstileSecretKey != req.TurnstileSecretKey
+		siteKeyChanged := previousSettings.TurnstileSiteKey != req.TurnstileSiteKey
+		secretKeyChanged := previousSettings.TurnstileSecretKey != req.TurnstileSecretKey
 		if siteKeyChanged || secretKeyChanged {
 			if err := h.turnstileService.ValidateSecretKey(c.Request.Context(), req.TurnstileSecretKey); err != nil {
 				response.ErrorFrom(c, err)
@@ -188,6 +191,8 @@ REDACTED
 		FallbackModelOpenAI:      req.FallbackModelOpenAI,
 		FallbackModelGemini:      req.FallbackModelGemini,
 		FallbackModelAntigravity: req.FallbackModelAntigravity,
+		EnableIdentityPatch:      req.EnableIdentityPatch,
+		IdentityPatchPrompt:      req.IdentityPatchPrompt,
 REDACTED
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -230,6 +235,8 @@ REDACTED
 		FallbackModelOpenAI:          updatedSettings.FallbackModelOpenAI,
 		FallbackModelGemini:          updatedSettings.FallbackModelGemini,
 		FallbackModelAntigravity:     updatedSettings.FallbackModelAntigravity,
+		EnableIdentityPatch:          updatedSettings.EnableIdentityPatch,
+		IdentityPatchPrompt:          updatedSettings.IdentityPatchPrompt,
 REDACTED)
 REDACTED
 
