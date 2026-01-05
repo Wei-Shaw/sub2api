@@ -1087,10 +1087,6 @@ func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) 
 REDACTED
 REDACTED
 
-func sleepAntigravityBackoff(attempt int) {
-	sleepGeminiBackoff(attempt) // 复用 Gemini 的退避逻辑
-REDACTED
-
 // sleepAntigravityBackoffWithContext 带 context 取消检查的退避等待
 // 返回 true 表示正常完成等待，false 表示 context 已取消
 func sleepAntigravityBackoffWithContext(ctx context.Context, attempt int) bool {
