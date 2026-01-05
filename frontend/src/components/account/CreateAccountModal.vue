@@ -1522,7 +1522,7 @@
             </ul>
             <div class="mt-2 flex flex-wrap gap-2">
               <a
-                href="https://gemini.google.com/faq#location"
+                href="https://policies.google.com/terms"
                 target="_blank"
                 rel="noreferrer"
                 class="text-sm text-blue-600 hover:underline dark:text-blue-400"
@@ -1531,7 +1531,16 @@
               </a>
               <span class="text-gray-400">·</span>
               <a
-                href="https://gemini.google.com"
+                href="https://policies.google.com/country-association-form"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                修改归属地
+              </a>
+              <span class="text-gray-400">·</span>
+              <a
+                href="https://gemini.google.com/gems/create?hl=en-US&pli=1"
                 target="_blank"
                 rel="noreferrer"
                 class="text-sm text-blue-600 hover:underline dark:text-blue-400"
@@ -1869,8 +1878,9 @@ const geminiHelpLinks = {
   apiKey: 'https://aistudio.google.com/app/apikey',
   aiStudioPricing: 'https://ai.google.dev/pricing',
   gcpProject: 'https://console.cloud.google.com/welcome/new',
-  geminiWebActivation: 'https://gemini.google.com/gems/create?hl=en-US',
-  countryCheck: 'https://policies.google.com/country-association-form'
+  geminiWebActivation: 'https://gemini.google.com/gems/create?hl=en-US&pli=1',
+  countryCheck: 'https://policies.google.com/terms',
+  countryChange: 'https://policies.google.com/country-association-form'
 REDACTED
 
 // Computed: current preset mappings based on platform
