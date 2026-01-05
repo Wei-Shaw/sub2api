@@ -5,7 +5,7 @@
       v-if="isTempUnschedulable"
       type="button"
       :class="['badge text-xs', statusClass, 'cursor-pointer']"
-      :title="t('admin.accounts.tempUnschedulable.viewDetails')"
+      :title="t('admin.accounts.status.viewTempUnschedDetails')"
       @click="handleTempUnschedClick"
     >
       {{ statusText REDACTEDREDACTED
@@ -61,7 +61,7 @@
       <div
         class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
       >
-        Rate limited until {{ formatTime(account.rate_limit_reset_at) REDACTEDREDACTED
+        {{ t('admin.accounts.status.rateLimitedUntil', { time: formatTime(account.rate_limit_reset_at) REDACTED) REDACTEDREDACTED
         <div
           class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
         ></div>
@@ -86,7 +86,7 @@
       <div
         class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
       >
-        Overloaded until {{ formatTime(account.overload_until) REDACTEDREDACTED
+        {{ t('admin.accounts.status.overloadedUntil', { time: formatTime(account.overload_until) REDACTED) REDACTEDREDACTED
         <div
           class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
         ></div>
@@ -160,7 +160,7 @@ REDACTED)
 // Computed: status text
 const statusText = computed(() => {
   if (hasError.value) {
-    return t('common.error')
+    return t('admin.accounts.status.error')
   REDACTED
   if (isTempUnschedulable.value) {
     return t('admin.accounts.status.tempUnschedulable')
@@ -171,7 +171,7 @@ const statusText = computed(() => {
   if (isRateLimited.value || isOverloaded.value) {
     return t('admin.accounts.status.limited')
   REDACTED
-  return t(`common.${props.account.statusREDACTED`)
+  return t(`admin.accounts.status.${props.account.statusREDACTED`)
 REDACTED)
 
 const handleTempUnschedClick = () => {

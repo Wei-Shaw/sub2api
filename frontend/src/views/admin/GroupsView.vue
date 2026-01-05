@@ -1,49 +1,31 @@
 <template>
   <AppLayout>
     <TablePageLayout>
-      <template #actions>
-        <div class="flex justify-end gap-3">
-          <button
-            @click="loadGroups"
-            :disabled="loading"
-            class="btn btn-secondary"
-            :title="t('common.refresh')"
-          >
-            <svg
-              :class="['h-5 w-5', loading ? 'animate-spin' : '']"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-              />
-            </svg>
-          </button>
-          <button
-            @click="showCreateModal = true"
-            class="btn btn-primary"
-            data-tour="groups-create-btn"
-          >
-            <svg
-              class="mr-2 h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            {{ t('admin.groups.createGroup') REDACTEDREDACTED
-          </button>
-        </div>
-      </template>
-
       <template #filters>
-        <div class="flex flex-wrap gap-3">
+        <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+          <!-- Left: fuzzy search + filters (can wrap to multiple lines) -->
+          <div class="flex flex-1 flex-wrap items-center gap-3">
+            <div class="relative w-full sm:w-72 lg:w-80">
+              <svg
+                class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+                />
+              </svg>
+              <input
+                v-model="searchQuery"
+                type="text"
+                :placeholder="t('admin.groups.searchGroups')"
+                class="input pl-10"
+              />
+            </div>
           <Select
             v-model="filters.platform"
             :options="platformFilterOptions"
@@ -65,11 +47,56 @@
             class="w-44"
             @change="loadGroups"
           />
+          </div>
+
+          <!-- Right: actions -->
+          <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
+            <button
+              @click="loadGroups"
+              :disabled="loading"
+              class="btn btn-secondary"
+              :title="t('common.refresh')"
+            >
+              <svg
+                :class="['h-5 w-5', loading ? 'animate-spin' : '']"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                />
+              </svg>
+            </button>
+            <button
+              @click="showCreateModal = true"
+              class="btn btn-primary"
+              data-tour="groups-create-btn"
+            >
+              <svg
+                class="mr-2 h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 4.5v15m7.5-7.5h-15"
+                />
+              </svg>
+              {{ t('admin.groups.createGroup') REDACTEDREDACTED
+            </button>
+          </div>
         </div>
       </template>
 
       <template #table>
-        <DataTable :columns="columns" :data="groups" :loading="loading">
+        <DataTable :columns="columns" :data="displayedGroups" :loading="loading">
           <template #cell-name="{ value REDACTED">
             <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
           </template>
@@ -88,15 +115,7 @@
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
-              {{
-                value === 'anthropic'
-                  ? 'Anthropic'
-                  : value === 'openai'
-                    ? 'OpenAI'
-                    : value === 'antigravity'
-                      ? 'Antigravity'
-                      : 'Gemini'
-              REDACTEDREDACTED
+              {{ t('admin.groups.platforms.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -172,7 +191,7 @@
 
           <template #cell-status="{ value REDACTED">
             <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-danger']">
-              {{ value REDACTEDREDACTED
+              {{ t('admin.accounts.status.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -691,8 +710,8 @@ const columns = computed<Column[]>(() => [
 // Filter options
 const statusOptions = computed(() => [
   { value: '', label: t('admin.groups.allStatus') REDACTED,
-  { value: 'active', label: t('common.active') REDACTED,
-  { value: 'inactive', label: t('common.inactive') REDACTED
+  { value: 'active', label: t('admin.accounts.status.active') REDACTED,
+  { value: 'inactive', label: t('admin.accounts.status.inactive') REDACTED
 ])
 
 const exclusiveOptions = computed(() => [
@@ -717,8 +736,8 @@ const platformFilterOptions = computed(() => [
 ])
 
 const editStatusOptions = computed(() => [
-  { value: 'active', label: t('common.active') REDACTED,
-  { value: 'inactive', label: t('common.inactive') REDACTED
+  { value: 'active', label: t('admin.accounts.status.active') REDACTED,
+  { value: 'inactive', label: t('admin.accounts.status.inactive') REDACTED
 ])
 
 const subscriptionTypeOptions = computed(() => [
@@ -728,6 +747,7 @@ const subscriptionTypeOptions = computed(() => [
 
 const groups = ref<Group[]>([])
 const loading = ref(false)
+const searchQuery = ref('')
 const filters = reactive({
   platform: '',
   status: '',
@@ -741,6 +761,16 @@ const pagination = reactive({
 REDACTED)
 
 let abortController: AbortController | null = null
+
+const displayedGroups = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return groups.value
+  return groups.value.filter((group) => {
+    const name = group.name?.toLowerCase?.() ?? ''
+    const description = group.description?.toLowerCase?.() ?? ''
+    return name.includes(q) || description.includes(q)
+  REDACTED)
+REDACTED)
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)

@@ -1,82 +1,92 @@
 <template>
   <AppLayout>
     <TablePageLayout>
-      <template #actions>
-        <div class="flex justify-end gap-3">
-          <button
-          @click="loadProxies"
-          :disabled="loading"
-          class="btn btn-secondary"
-          :title="t('common.refresh')"
-        >
-          <svg
-            :class="['h-5 w-5', loading ? 'animate-spin' : '']"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-            />
-          </svg>
-        </button>
-        <button @click="showCreateModal = true" class="btn btn-primary">
-          <svg
-            class="mr-2 h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          {{ t('admin.proxies.createProxy') REDACTEDREDACTED
-        </button>
-        </div>
-      </template>
-
       <template #filters>
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div class="relative max-w-md flex-1">
-          <svg
-            class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-            />
-          </svg>
-          <input
-            v-model="searchQuery"
-            type="text"
-            :placeholder="t('admin.proxies.searchProxies')"
-            class="input pl-10"
-            @input="handleSearch"
-          />
+        <!-- Top Toolbar: Left (search + filters) / Right (actions) -->
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <!-- Left: Fuzzy search + filters (wrap to multiple lines) -->
+          <div class="flex flex-1 flex-wrap items-center gap-3">
+            <!-- Search -->
+            <div class="relative w-full sm:flex-1 sm:min-w-[14rem] sm:max-w-md">
+              <svg
+                class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+                />
+              </svg>
+              <input
+                v-model="searchQuery"
+                type="text"
+                :placeholder="t('admin.proxies.searchProxies')"
+                class="input pl-10"
+                @input="handleSearch"
+              />
+            </div>
+
+            <!-- Filters -->
+            <div class="w-full sm:w-40">
+              <Select
+                v-model="filters.protocol"
+                :options="protocolOptions"
+                :placeholder="t('admin.proxies.allProtocols')"
+                @change="loadProxies"
+              />
+            </div>
+            <div class="w-full sm:w-36">
+              <Select
+                v-model="filters.status"
+                :options="statusOptions"
+                :placeholder="t('admin.proxies.allStatus')"
+                @change="loadProxies"
+              />
+            </div>
           </div>
-          <div class="flex flex-wrap gap-3">
-          <Select
-            v-model="filters.protocol"
-            :options="protocolOptions"
-            :placeholder="t('admin.proxies.allProtocols')"
-            class="w-40"
-            @change="loadProxies"
-          />
-          <Select
-            v-model="filters.status"
-            :options="statusOptions"
-            :placeholder="t('admin.proxies.allStatus')"
-            class="w-36"
-            @change="loadProxies"
-          />
+
+          <!-- Right: Actions -->
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
+            <button
+              @click="loadProxies"
+              :disabled="loading"
+              class="btn btn-secondary"
+              :title="t('common.refresh')"
+            >
+              <svg
+                :class="['h-5 w-5', loading ? 'animate-spin' : '']"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                />
+              </svg>
+            </button>
+            <button @click="showCreateModal = true" class="btn btn-primary">
+              <svg
+                class="mr-2 h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 4.5v15m7.5-7.5h-15"
+                />
+              </svg>
+              {{ t('admin.proxies.createProxy') REDACTEDREDACTED
+            </button>
           </div>
         </div>
       </template>
@@ -103,7 +113,7 @@
 
           <template #cell-status="{ value REDACTED">
             <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-danger']">
-              {{ value REDACTEDREDACTED
+              {{ t('admin.accounts.status.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -634,21 +644,21 @@ const protocolOptions = computed(() => [
 
 const statusOptions = computed(() => [
   { value: '', label: t('admin.proxies.allStatus') REDACTED,
-  { value: 'active', label: t('common.active') REDACTED,
-  { value: 'inactive', label: t('common.inactive') REDACTED
+  { value: 'active', label: t('admin.accounts.status.active') REDACTED,
+  { value: 'inactive', label: t('admin.accounts.status.inactive') REDACTED
 ])
 
 // Form options
-const protocolSelectOptions = [
-  { value: 'http', label: 'HTTP' REDACTED,
-  { value: 'https', label: 'HTTPS' REDACTED,
-  { value: 'socks5', label: 'SOCKS5' REDACTED,
-  { value: 'socks5h', label: 'SOCKS5H (服务端解析DNS)' REDACTED
-]
+const protocolSelectOptions = computed(() => [
+  { value: 'http', label: t('admin.proxies.protocols.http') REDACTED,
+  { value: 'https', label: t('admin.proxies.protocols.https') REDACTED,
+  { value: 'socks5', label: t('admin.proxies.protocols.socks5') REDACTED,
+  { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') REDACTED
+])
 
 const editStatusOptions = computed(() => [
-  { value: 'active', label: t('common.active') REDACTED,
-  { value: 'inactive', label: t('common.inactive') REDACTED
+  { value: 'active', label: t('admin.accounts.status.active') REDACTED,
+  { value: 'inactive', label: t('admin.accounts.status.inactive') REDACTED
 ])
 
 const proxies = ref<Proxy[]>([])

@@ -1,5 +1,8 @@
 import { ref REDACTED from 'vue'
 import { useAppStore REDACTED from '@/stores/app'
+import { i18n REDACTED from '@/i18n'
+
+const { t REDACTED = i18n.global
 
 /**
  * 检测是否支持 Clipboard API（需要安全上下文：HTTPS/localhost）
@@ -31,7 +34,7 @@ export function useClipboard() {
 
   const copyToClipboard = async (
     text: string,
-    successMessage = 'Copied to clipboard'
+    successMessage?: string
   ): Promise<boolean> => {
     if (!text) return false
 
@@ -50,12 +53,12 @@ export function useClipboard() {
 
     if (success) {
       copied.value = true
-      appStore.showSuccess(successMessage)
+      appStore.showSuccess(successMessage || t('common.copiedToClipboard'))
       setTimeout(() => {
         copied.value = false
       REDACTED, 2000)
     REDACTED else {
-      appStore.showError('Copy failed')
+      appStore.showError(t('common.copyFailed'))
     REDACTED
 
     return success
