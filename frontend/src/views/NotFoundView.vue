@@ -54,35 +54,11 @@
       <!-- Action Buttons -->
       <div class="flex flex-col justify-center gap-3 sm:flex-row">
         <button @click="goBack" class="btn btn-secondary">
-          <svg
-            class="mr-2 h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
-            />
-          </svg>
+          <Icon name="arrowLeft" size="md" class="mr-2" />
           Go Back
         </button>
         <router-link to="/dashboard" class="btn btn-primary">
-          <svg
-            class="mr-2 h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
-            />
-          </svg>
+          <Icon name="home" size="md" class="mr-2" />
           Go to Dashboard
         </router-link>
       </div>
@@ -104,6 +80,7 @@
 <script setup lang="ts">
 import { useI18n REDACTED from 'vue-i18n'
 import { useRouter REDACTED from 'vue-router'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 const router = useRouter()

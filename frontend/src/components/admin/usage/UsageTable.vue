@@ -38,11 +38,11 @@
           <div class="space-y-1 text-sm">
             <div class="flex items-center gap-2">
               <div class="inline-flex items-center gap-1">
-                <svg class="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                <Icon name="arrowDown" size="sm" class="h-3.5 w-3.5 text-emerald-500" />
                 <span class="font-medium text-gray-900 dark:text-white">{{ row.input_tokens?.toLocaleString() || 0 REDACTEDREDACTED</span>
               </div>
               <div class="inline-flex items-center gap-1">
-                <svg class="h-3.5 w-3.5 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                <Icon name="arrowUp" size="sm" class="h-3.5 w-3.5 text-violet-500" />
                 <span class="font-medium text-gray-900 dark:text-white">{{ row.output_tokens?.toLocaleString() || 0 REDACTEDREDACTED</span>
               </div>
             </div>
@@ -87,7 +87,7 @@
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400 truncate" :title="row.request_id">{{ row.request_id REDACTEDREDACTED</span>
             <button @click="copyRequestId(row.request_id)" class="flex-shrink-0 rounded p-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700" :class="copiedRequestId === row.request_id ? 'text-green-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'" :title="copiedRequestId === row.request_id ? t('keys.copied') : t('keys.copyToClipboard')">
               <svg v-if="copiedRequestId === row.request_id" class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-              <svg v-else class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+              <Icon v-else name="copy" size="sm" class="h-3.5 w-3.5" />
             </button>
           </div>
           <span v-else class="text-gray-400 dark:text-gray-500">-</span>
@@ -106,6 +106,7 @@ import { formatDateTime REDACTED from '@/utils/format'
 import { useAppStore REDACTED from '@/stores/app'
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 defineProps(['data', 'loading'])
 const { t REDACTED = useI18n()
