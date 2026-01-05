@@ -56,8 +56,10 @@ security:
     crs_hosts: []
     # Allow localhost/private IPs for upstream/pricing/CRS (use only in trusted networks)
     allow_private_hosts: false
+    # Allow http:// URLs when allowlist is disabled (default: false, require https)
+    allow_insecure_http: false
   response_headers:
-    # Enable response header filtering (disable to pass through upstream headers)
+    # Enable configurable response header filtering (disable to use default allowlist)
     enabled: false
     # Extra allowed response headers from upstream
     additional_allowed: []

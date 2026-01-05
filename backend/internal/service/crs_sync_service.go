@@ -201,6 +201,12 @@ REDACTED
 			return nil, err
 	REDACTED
 		baseURL = normalized
+REDACTED else {
+		normalized, err := urlvalidator.ValidateURLFormat(baseURL, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		if err != nil {
+			return nil, fmt.Errorf("invalid base_url: %w", err)
+	REDACTED
+		baseURL = normalized
 REDACTED
 	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" {
 		return nil, errors.New("username and password are required")

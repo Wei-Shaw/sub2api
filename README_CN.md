@@ -273,7 +273,8 @@ default:
 - `cors.allowed_origins` 配置 CORS 白名单
 - `security.url_allowlist` 配置上游/价格数据/CRS 主机白名单
 - `security.url_allowlist.enabled` 可关闭 URL 校验（慎用）
-- `security.response_headers.enabled` 可关闭响应头过滤
+- `security.url_allowlist.allow_insecure_http` 关闭校验时允许 http URL
+- `security.response_headers.enabled` 可启用可配置响应头过滤（关闭时使用默认白名单）
 - `security.csp` 配置 Content-Security-Policy
 - `billing.circuit_breaker` 计费异常时 fail-closed
 - `server.trusted_proxies` 启用可信代理解析 X-Forwarded-For

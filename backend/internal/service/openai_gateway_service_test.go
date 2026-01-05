@@ -174,7 +174,7 @@ REDACTED
 		Body:       pr,
 		Header: http.Header{
 			"Cache-Control": []string{"upstream"REDACTED,
-			"X-Test":        []string{"value"REDACTED,
+			"X-Request-Id":  []string{"req-123"REDACTED,
 			"Content-Type":  []string{"application/custom"REDACTED,
 	REDACTED,
 REDACTED
@@ -196,8 +196,8 @@ REDACTED
 	if rec.Header().Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("expected Content-Type override, got %q", rec.Header().Get("Content-Type"))
 REDACTED
-	if rec.Header().Get("X-Test") != "value" {
-		t.Fatalf("expected X-Test passthrough, got %q", rec.Header().Get("X-Test"))
+	if rec.Header().Get("X-Request-Id") != "req-123" {
+		t.Fatalf("expected X-Request-Id passthrough, got %q", rec.Header().Get("X-Request-Id"))
 REDACTED
 REDACTED
 
@@ -226,7 +226,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestOpenAIValidateUpstreamBaseURLDisabledSkipsValidation(t *testing.T) {
+func TestOpenAIValidateUpstreamBaseURLDisabledRequiresHTTPS(t *testing.T) {
 	cfg := &config.Config{
 		Security: config.SecurityConfig{
 			URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTED,
@@ -234,9 +234,32 @@ func TestOpenAIValidateUpstreamBaseURLDisabledSkipsValidation(t *testing.T) {
 REDACTED
 	svc := &OpenAIGatewayService{cfg: cfgREDACTED
 
+	if _, err := svc.validateUpstreamBaseURL("http://not-https.example.com"); err == nil {
+		t.Fatalf("expected http to be rejected when allow_insecure_http is false")
+REDACTED
+	normalized, err := svc.validateUpstreamBaseURL("https://example.com")
+	if err != nil {
+		t.Fatalf("expected https to be allowed when allowlist disabled, got %v", err)
+REDACTED
+	if normalized != "https://example.com" {
+		t.Fatalf("expected raw url passthrough, got %q", normalized)
+REDACTED
+REDACTED
+
+func TestOpenAIValidateUpstreamBaseURLDisabledAllowsHTTP(t *testing.T) {
+	cfg := &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{
+				Enabled:           false,
+				AllowInsecureHTTP: true,
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
 	normalized, err := svc.validateUpstreamBaseURL("http://not-https.example.com")
 	if err != nil {
-		t.Fatalf("expected no error when allowlist disabled, got %v", err)
+		t.Fatalf("expected http allowed when allow_insecure_http is true, got %v", err)
 REDACTED
 	if normalized != "http://not-https.example.com" {
 		t.Fatalf("expected raw url passthrough, got %q", normalized)

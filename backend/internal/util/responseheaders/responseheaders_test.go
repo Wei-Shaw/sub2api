@@ -7,28 +7,28 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
-func TestFilterHeadersDisabledPassThrough(t *testing.T) {
+func TestFilterHeadersDisabledUsesDefaultAllowlist(t *testing.T) {
 	src := http.Header{REDACTED
 	src.Add("Content-Type", "application/json")
+	src.Add("X-Request-Id", "req-123")
 	src.Add("X-Test", "ok")
-	src.Add("X-Remove", "keep")
 	src.Add("Connection", "keep-alive")
 	src.Add("Content-Length", "123")
 
 	cfg := config.ResponseHeaderConfig{
 		Enabled:     false,
-		ForceRemove: []string{"x-test"REDACTED,
+		ForceRemove: []string{"x-request-id"REDACTED,
 REDACTED
 
 	filtered := FilterHeaders(src, cfg)
 	if filtered.Get("Content-Type") != "application/json" {
 		t.Fatalf("expected Content-Type passthrough, got %q", filtered.Get("Content-Type"))
 REDACTED
-	if filtered.Get("X-Test") != "ok" {
-		t.Fatalf("expected X-Test passthrough, got %q", filtered.Get("X-Test"))
+	if filtered.Get("X-Request-Id") != "req-123" {
+		t.Fatalf("expected X-Request-Id allowed, got %q", filtered.Get("X-Request-Id"))
 REDACTED
-	if filtered.Get("X-Remove") != "keep" {
-		t.Fatalf("expected X-Remove passthrough, got %q", filtered.Get("X-Remove"))
+	if filtered.Get("X-Test") != "" {
+		t.Fatalf("expected X-Test removed, got %q", filtered.Get("X-Test"))
 REDACTED
 	if filtered.Get("Connection") != "" {
 		t.Fatalf("expected Connection to be removed, got %q", filtered.Get("Connection"))

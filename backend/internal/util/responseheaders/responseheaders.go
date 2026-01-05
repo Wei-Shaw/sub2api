@@ -42,28 +42,31 @@ var hopByHopHeaders = map[string]struct{REDACTED{
 REDACTED
 
 func FilterHeaders(src http.Header, cfg config.ResponseHeaderConfig) http.Header {
-	if !cfg.Enabled {
-		return passThroughHeaders(src)
-REDACTED
 	allowed := make(map[string]struct{REDACTED, len(defaultAllowed)+len(cfg.AdditionalAllowed))
 	for key := range defaultAllowed {
 		allowed[key] = struct{REDACTED{REDACTED
 REDACTED
-	for _, key := range cfg.AdditionalAllowed {
-		normalized := strings.ToLower(strings.TrimSpace(key))
-		if normalized == "" {
-			continue
+	// 关闭时只使用默认白名单，additional/force_remove 不生效
+	if cfg.Enabled {
+		for _, key := range cfg.AdditionalAllowed {
+			normalized := strings.ToLower(strings.TrimSpace(key))
+			if normalized == "" {
+				continue
+		REDACTED
+			allowed[normalized] = struct{REDACTED{REDACTED
 	REDACTED
-		allowed[normalized] = struct{REDACTED{REDACTED
 REDACTED
 
-	forceRemove := make(map[string]struct{REDACTED, len(cfg.ForceRemove))
-	for _, key := range cfg.ForceRemove {
-		normalized := strings.ToLower(strings.TrimSpace(key))
-		if normalized == "" {
-			continue
+	forceRemove := map[string]struct{REDACTED{REDACTED
+	if cfg.Enabled {
+		forceRemove = make(map[string]struct{REDACTED, len(cfg.ForceRemove))
+		for _, key := range cfg.ForceRemove {
+			normalized := strings.ToLower(strings.TrimSpace(key))
+			if normalized == "" {
+				continue
+		REDACTED
+			forceRemove[normalized] = struct{REDACTED{REDACTED
 	REDACTED
-		forceRemove[normalized] = struct{REDACTED{REDACTED
 REDACTED
 
 	filtered := make(http.Header, len(src))
@@ -93,18 +96,4 @@ func WriteFilteredHeaders(dst http.Header, src http.Header, cfg config.ResponseH
 			dst.Add(key, value)
 	REDACTED
 REDACTED
-REDACTED
-
-func passThroughHeaders(src http.Header) http.Header {
-	filtered := make(http.Header, len(src))
-	for key, values := range src {
-		lower := strings.ToLower(key)
-		if _, isHopByHop := hopByHopHeaders[lower]; isHopByHop {
-			continue
-	REDACTED
-		for _, value := range values {
-			filtered.Add(key, value)
-	REDACTED
-REDACTED
-	return filtered
 REDACTED

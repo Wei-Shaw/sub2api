@@ -273,7 +273,8 @@ Additional security-related options are available in `config.yaml`:
 - `cors.allowed_origins` for CORS allowlist
 - `security.url_allowlist` for upstream/pricing/CRS host allowlists
 - `security.url_allowlist.enabled` to disable URL validation (use with caution)
-- `security.response_headers.enabled` to disable response header filtering
+- `security.url_allowlist.allow_insecure_http` to allow http URLs when validation is disabled
+- `security.response_headers.enabled` to enable configurable response header filtering (disabled uses default allowlist)
 - `security.csp` to control Content-Security-Policy headers
 - `billing.circuit_breaker` to fail closed on billing errors
 - `server.trusted_proxies` to enable X-Forwarded-For parsing
