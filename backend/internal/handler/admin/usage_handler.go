@@ -102,8 +102,9 @@ REDACTED
 
 	// Parse date range
 	var startTime, endTime *time.Time
+	userTZ := c.Query("timezone") // Get user's timezone from request
 	if startDateStr := c.Query("start_date"); startDateStr != "" {
-		t, err := timezone.ParseInLocation("2006-01-02", startDateStr)
+		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
 			return
@@ -112,7 +113,7 @@ REDACTED
 REDACTED
 
 	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInLocation("2006-01-02", endDateStr)
+		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return
@@ -172,7 +173,8 @@ REDACTED
 REDACTED
 
 	// Parse date range
-	now := timezone.Now()
+	userTZ := c.Query("timezone") // Get user's timezone from request
+	now := timezone.NowInUserLocation(userTZ)
 	var startTime, endTime time.Time
 
 	startDateStr := c.Query("start_date")
@@ -180,12 +182,12 @@ REDACTED
 
 	if startDateStr != "" && endDateStr != "" {
 		var err error
-		startTime, err = timezone.ParseInLocation("2006-01-02", startDateStr)
+		startTime, err = timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
 			return
 	REDACTED
-		endTime, err = timezone.ParseInLocation("2006-01-02", endDateStr)
+		endTime, err = timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return
@@ -195,13 +197,13 @@ REDACTED else {
 		period := c.DefaultQuery("period", "today")
 		switch period {
 		case "today":
-			startTime = timezone.StartOfDay(now)
+			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
 		case "week":
 			startTime = now.AddDate(0, 0, -7)
 		case "month":
 			startTime = now.AddDate(0, -1, 0)
 		default:
-			startTime = timezone.StartOfDay(now)
+			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
 	REDACTED
 		endTime = now
 REDACTED
