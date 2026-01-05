@@ -354,7 +354,8 @@ REDACTED
 		SyncProxies: syncProxies,
 REDACTED)
 	if err != nil {
-		response.ErrorFrom(c, err)
+		// Provide detailed error message for CRS sync failures
+		response.InternalError(c, "CRS sync failed: "+err.Error())
 		return
 REDACTED
 
