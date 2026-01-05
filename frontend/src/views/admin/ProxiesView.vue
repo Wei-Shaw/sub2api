@@ -7,7 +7,7 @@
           <!-- Left: Fuzzy search + filters (wrap to multiple lines) -->
           <div class="flex flex-1 flex-wrap items-center gap-3">
             <!-- Search -->
-            <div class="relative w-full sm:flex-1 sm:min-w-[14rem] sm:max-w-md">
+            <div class="relative w-full sm:w-64">
               <svg
                 class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500"
                 fill="none"

@@ -3,7 +3,7 @@
     <SearchInput
       :model-value="searchQuery"
       :placeholder="t('admin.accounts.searchAccounts')"
-      class="w-64"
+      class="w-full sm:w-64"
       @update:model-value="$emit('update:searchQuery', $event)"
       @search="$emit('change')"
     />

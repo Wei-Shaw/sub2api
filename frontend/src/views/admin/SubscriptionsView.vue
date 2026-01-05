@@ -8,7 +8,7 @@
           <div class="flex flex-1 flex-wrap items-center gap-3">
             <!-- User Search -->
             <div
-              class="relative w-full sm:flex-1 sm:min-w-[14rem] sm:max-w-md"
+              class="relative w-full sm:w-64"
               data-filter-user-search
             >
               <svg
