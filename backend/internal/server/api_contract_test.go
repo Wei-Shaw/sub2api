@@ -241,6 +241,8 @@ REDACTED{
 							"stream": true,
 							"duration_ms": 100,
 							"first_token_ms": 50,
+							"image_count": 0,
+							"image_size": null,
 							"created_at": "2025-01-02T03:04:05Z"
 					REDACTED
 					],
