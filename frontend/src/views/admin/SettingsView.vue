@@ -24,17 +24,11 @@
               class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20"
             >
               <div class="flex items-start">
-                <svg
-                  class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
+                <Icon
+                  name="exclamationTriangle"
+                  size="md"
+                  class="mt-0.5 flex-shrink-0 text-amber-500"
+                />
                 <p class="ml-3 text-sm text-amber-700 dark:text-amber-300">
                   {{ t('admin.settings.adminApiKey.securityWarning') REDACTEDREDACTED
                 </p>
@@ -448,19 +442,7 @@
                         class="hidden"
                         @change="handleLogoUpload"
                       />
-                      <svg
-                        class="mr-1.5 h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                        />
-                      </svg>
+                      <Icon name="upload" size="sm" class="mr-1.5" :stroke-width="2" />
                       {{ t('admin.settings.site.uploadImage') REDACTEDREDACTED
                     </label>
                     <button
@@ -469,19 +451,7 @@
                       @click="form.site_logo = ''"
                       class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
                     >
-                      <svg
-                        class="mr-1.5 h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
+                      <Icon name="trash" size="sm" class="mr-1.5" :stroke-width="2" />
                       {{ t('admin.settings.site.remove') REDACTEDREDACTED
                     </button>
                   </div>
@@ -727,6 +697,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api'
 import type { SystemSettings, UpdateSettingsRequest REDACTED from '@/api/admin/settings'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore REDACTED from '@/stores'
 

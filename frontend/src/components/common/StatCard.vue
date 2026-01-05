@@ -8,18 +8,12 @@
       <div class="mt-1 flex items-baseline gap-2">
         <p class="stat-value">{{ formattedValue REDACTEDREDACTED</p>
         <span v-if="change !== undefined" :class="['stat-trend', trendClass]">
-          <svg
+          <Icon
             v-if="changeType !== 'neutral'"
-            :class="['h-3 w-3', changeType === 'down' && 'rotate-180']"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z"
-              clip-rule="evenodd"
-            />
-          </svg>
+            name="arrowUp"
+            size="xs"
+            :class="changeType === 'down' && 'rotate-180'"
+          />
           {{ formattedChange REDACTEDREDACTED
         </span>
       </div>
@@ -30,6 +24,7 @@
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
 import type { Component REDACTED from 'vue'
+import Icon from '@/components/icons/Icon.vue'
 
 type ChangeType = 'up' | 'down' | 'neutral'
 type IconVariant = 'primary' | 'success' | 'warning' | 'danger'

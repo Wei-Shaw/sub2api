@@ -21,9 +21,7 @@
     <div class="card p-4">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-          <svg class="h-5 w-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
-          </svg>
+          <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
         </div>
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.apiKeys') REDACTEDREDACTED</p>
@@ -37,9 +35,7 @@
     <div class="card p-4">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-          <svg class="h-5 w-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-          </svg>
+          <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
         </div>
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayRequests') REDACTEDREDACTED</p>
@@ -53,9 +49,7 @@
     <div class="card p-4">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-          <svg class="h-5 w-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <Icon name="dollar" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
         </div>
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayCost') REDACTEDREDACTED</p>
@@ -79,9 +73,7 @@
     <div class="card p-4">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-          <svg class="h-5 w-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-          </svg>
+          <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
         </div>
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.todayTokens') REDACTEDREDACTED</p>
@@ -95,9 +87,7 @@
     <div class="card p-4">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-          <svg class="h-5 w-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
-          </svg>
+          <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
         </div>
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.totalTokens') REDACTEDREDACTED</p>
@@ -111,9 +101,7 @@
     <div class="card p-4">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-          <svg class="h-5 w-5 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+          <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
         </div>
         <div class="flex-1">
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.performance') REDACTEDREDACTED</p>
@@ -133,9 +121,7 @@
     <div class="card p-4">
       <div class="flex items-center gap-3">
         <div class="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
-          <svg class="h-5 w-5 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
         </div>
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.avgResponse') REDACTEDREDACTED</p>
@@ -149,6 +135,7 @@
 
 <script setup lang="ts">
 import { useI18n REDACTED from 'vue-i18n'
+import Icon from '@/components/icons/Icon.vue'
 import type { UserDashboardStats as UserStatsType REDACTED from '@/api/usage'
 
 defineProps<{

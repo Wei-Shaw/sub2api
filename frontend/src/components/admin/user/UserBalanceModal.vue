@@ -37,10 +37,21 @@ watch(() => props.show, (v) => { if(v) { form.amount = 0; form.notes = '' REDACT
 
 const calculateNewBalance = () => (props.user ? (props.operation === 'add' ? props.user.balance + form.amount : props.user.balance - form.amount) : 0)
 const handleBalanceSubmit = async () => {
-  if (!props.user) return; submitting.value = true
+  if (!props.user) return
+  if (!form.amount || form.amount <= 0) {
+    appStore.showError(t('admin.users.amountRequired'))
+    return
+  REDACTED
+  if (props.operation === 'subtract' && form.amount > props.user.balance) {
+    appStore.showError(t('admin.users.insufficientBalance'))
+    return
+  REDACTED
+  submitting.value = true
   try {
     await adminAPI.users.updateBalance(props.user.id, form.amount, props.operation, form.notes)
     appStore.showSuccess(t('common.success')); emit('success'); emit('close')
-  REDACTED catch {REDACTED finally { submitting.value = false REDACTED
+  REDACTED catch (e: any) {
+    appStore.showError(e.response?.data?.detail || t('common.error'))
+  REDACTED finally { submitting.value = false REDACTED
 REDACTED
 </script>

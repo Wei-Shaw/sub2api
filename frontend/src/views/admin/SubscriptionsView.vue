@@ -8,22 +8,14 @@
           <div class="flex flex-1 flex-wrap items-center gap-3">
             <!-- User Search -->
             <div
-              class="relative w-full sm:flex-1 sm:min-w-[14rem] sm:max-w-md"
+              class="relative w-full sm:w-64"
               data-filter-user-search
             >
-              <svg
-                class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-                />
-              </svg>
+              <Icon
+                name="search"
+                size="md"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
               <input
                 v-model="filterUserKeyword"
                 type="text"
@@ -39,14 +31,7 @@
                 class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 :title="t('common.clear')"
               >
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <Icon name="x" size="sm" :stroke-width="2" />
               </button>
 
               <!-- User Dropdown -->
@@ -106,34 +91,10 @@
               class="btn btn-secondary"
               :title="t('common.refresh')"
             >
-              <svg
-                :class="['h-5 w-5', loading ? 'animate-spin' : '']"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                />
-              </svg>
+              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
             <button @click="showAssignModal = true" class="btn btn-primary">
-              <svg
-                class="mr-2 h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 4.5v15m7.5-7.5h-15"
-                />
-              </svg>
+              <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.subscriptions.assignSubscription') REDACTEDREDACTED
             </button>
           </div>
@@ -343,19 +304,7 @@
                 @click="handleExtend(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Icon name="clock" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.extend') REDACTEDREDACTED</span>
               </button>
               <button
@@ -363,19 +312,7 @@
                 @click="handleRevoke(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                  />
-                </svg>
+                <Icon name="ban" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.revoke') REDACTEDREDACTED</span>
               </button>
             </div>
@@ -434,14 +371,7 @@
               type="button"
               class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
             >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <Icon name="x" size="sm" :stroke-width="2" />
             </button>
             <!-- User Dropdown -->
             <div
@@ -610,6 +540,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -869,7 +800,18 @@ const closeAssignModal = () => {
 REDACTED
 
 const handleAssignSubscription = async () => {
-  if (!assignForm.user_id || !assignForm.group_id) return
+  if (!assignForm.user_id) {
+    appStore.showError(t('admin.subscriptions.pleaseSelectUser'))
+    return
+  REDACTED
+  if (!assignForm.group_id) {
+    appStore.showError(t('admin.subscriptions.pleaseSelectGroup'))
+    return
+  REDACTED
+  if (!assignForm.validity_days || assignForm.validity_days < 1) {
+    appStore.showError(t('admin.subscriptions.validityDaysRequired'))
+    return
+  REDACTED
 
   submitting.value = true
   try {
@@ -953,15 +895,17 @@ const isExpiringSoon = (expiresAt: string): boolean => {
   return days !== null && days <= 7
 REDACTED
 
-const getProgressWidth = (used: number, limit: number | null): string => {
+const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {
   if (!limit || limit === 0) return '0%'
-  const percentage = Math.min((used / limit) * 100, 100)
+  const usedValue = used ?? 0
+  const percentage = Math.min((usedValue / limit) * 100, 100)
   return `${percentageREDACTED%`
 REDACTED
 
-const getProgressClass = (used: number, limit: number | null): string => {
+const getProgressClass = (used: number | null | undefined, limit: number | null): string => {
   if (!limit || limit === 0) return 'bg-gray-400'
-  const percentage = (used / limit) * 100
+  const usedValue = used ?? 0
+  const percentage = (usedValue / limit) * 100
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'

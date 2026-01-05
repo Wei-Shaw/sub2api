@@ -13,19 +13,7 @@
         <div
           class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
         >
-          <svg
-            class="h-8 w-8 text-gray-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
-            />
-          </svg>
+          <Icon name="creditCard" size="xl" class="text-gray-400" />
         </div>
         <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
           {{ t('userSubscriptions.noActiveSubscriptions') REDACTEDREDACTED
@@ -50,19 +38,7 @@
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-900/30"
               >
-                <svg
-                  class="h-5 w-5 text-purple-600 dark:text-purple-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
-                  />
-                </svg>
+                <Icon name="creditCard" size="md" class="text-purple-600 dark:text-purple-400" />
               </div>
               <div>
                 <h3 class="font-semibold text-gray-900 dark:text-white">
@@ -265,6 +241,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription REDACTED from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()

@@ -19,19 +19,7 @@
       >
         <div class="flex items-start gap-3">
           <div class="flex-shrink-0">
-            <svg
-              class="h-5 w-5 text-amber-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-              />
-            </svg>
+            <Icon name="exclamationCircle" size="md" class="text-amber-500" />
           </div>
           <div class="text-sm text-amber-700 dark:text-amber-400">
             <p class="font-medium">{{ t('auth.sessionExpired') REDACTEDREDACTED</p>
@@ -73,19 +61,7 @@
         >
           <div class="flex items-start gap-3">
             <div class="flex-shrink-0">
-              <svg
-                class="h-5 w-5 text-green-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <Icon name="checkCircle" size="md" class="text-green-500" />
             </div>
             <p class="text-sm text-green-700 dark:text-green-400">
               Verification code sent! Please check your inbox.
@@ -115,19 +91,7 @@
           >
             <div class="flex items-start gap-3">
               <div class="flex-shrink-0">
-                <svg
-                  class="h-5 w-5 text-red-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-                  />
-                </svg>
+                <Icon name="exclamationCircle" size="md" class="text-red-500" />
               </div>
               <p class="text-sm text-red-700 dark:text-red-400">
                 {{ errorMessage REDACTEDREDACTED
@@ -158,20 +122,7 @@
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             ></path>
           </svg>
-          <svg
-            v-else
-            class="mr-2 h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          <Icon v-else name="checkCircle" size="md" class="mr-2" />
           {{ isLoading ? 'Verifying...' : 'Verify & Create Account' REDACTEDREDACTED
         </button>
 
@@ -210,19 +161,7 @@
         @click="handleBack"
         class="flex items-center gap-2 text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-gray-300"
       >
-        <svg
-          class="h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          stroke-width="1.5"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"
-          />
-        </svg>
+        <Icon name="arrowLeft" size="sm" />
         Back to registration
       </button>
     </template>
@@ -234,6 +173,7 @@ import { ref, onMounted, onUnmounted REDACTED from 'vue'
 import { useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
+import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import { getPublicSettings, sendVerifyCode REDACTED from '@/api/auth'

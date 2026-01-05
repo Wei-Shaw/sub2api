@@ -5,20 +5,12 @@
         <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <!-- Left: fuzzy search + filters (can wrap to multiple lines) -->
           <div class="flex flex-1 flex-wrap items-center gap-3">
-            <div class="relative w-full sm:w-72 lg:w-80">
-              <svg
-                class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-                />
-              </svg>
+            <div class="relative w-full sm:w-64">
+              <Icon
+                name="search"
+                size="md"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              />
               <input
                 v-model="searchQuery"
                 type="text"
@@ -57,38 +49,14 @@
               class="btn btn-secondary"
               :title="t('common.refresh')"
             >
-              <svg
-                :class="['h-5 w-5', loading ? 'animate-spin' : '']"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                />
-              </svg>
+              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
             <button
               @click="showCreateModal = true"
               class="btn btn-primary"
               data-tour="groups-create-btn"
             >
-              <svg
-                class="mr-2 h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 4.5v15m7.5-7.5h-15"
-                />
-              </svg>
+              <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.groups.createGroup') REDACTEDREDACTED
             </button>
           </div>
@@ -201,38 +169,14 @@
                 @click="handleEdit(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-                  />
-                </svg>
+                <Icon name="edit" size="sm" />
                 <span class="text-xs">{{ t('common.edit') REDACTEDREDACTED</span>
               </button>
               <button
                 @click="handleDelete(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                  />
-                </svg>
+                <Icon name="trash" size="sm" />
                 <span class="text-xs">{{ t('common.delete') REDACTEDREDACTED</span>
               </button>
             </div>
@@ -318,15 +262,12 @@
             </label>
             <!-- Help Tooltip -->
             <div class="group relative inline-flex">
-              <svg
-                class="h-3.5 w-3.5 cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
               <!-- Tooltip Popover -->
               <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
                 <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
@@ -336,7 +277,7 @@
                   </p>
                   <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
                     <p class="text-xs leading-relaxed text-gray-300">
-                      <span class="text-primary-400">💡 {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
+                      <span class="inline-flex items-center gap-1 text-primary-400"><Icon name="lightbulb" size="xs" /> {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
                       {{ t('admin.groups.exclusiveTooltip.exampleContent') REDACTEDREDACTED
                     </p>
                   </div>
@@ -513,15 +454,12 @@
             </label>
             <!-- Help Tooltip -->
             <div class="group relative inline-flex">
-              <svg
-                class="h-3.5 w-3.5 cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
               <!-- Tooltip Popover -->
               <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
                 <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
@@ -531,7 +469,7 @@
                   </p>
                   <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
                     <p class="text-xs leading-relaxed text-gray-300">
-                      <span class="text-primary-400">💡 {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
+                      <span class="inline-flex items-center gap-1 text-primary-400"><Icon name="lightbulb" size="xs" /> {{ t('admin.groups.exclusiveTooltip.example') REDACTEDREDACTED</span>
                       {{ t('admin.groups.exclusiveTooltip.exampleContent') REDACTEDREDACTED
                     </p>
                   </div>
@@ -691,6 +629,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -871,6 +810,10 @@ const closeCreateModal = () => {
 REDACTED
 
 const handleCreateGroup = async () => {
+  if (!createForm.name.trim()) {
+    appStore.showError(t('admin.groups.nameRequired'))
+    return
+  REDACTED
   submitting.value = true
   try {
     await adminAPI.groups.create(createForm)
@@ -912,6 +855,10 @@ REDACTED
 
 const handleUpdateGroup = async () => {
   if (!editingGroup.value) return
+  if (!editForm.name.trim()) {
+    appStore.showError(t('admin.groups.nameRequired'))
+    return
+  REDACTED
 
   submitting.value = true
   try {
