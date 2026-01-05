@@ -398,6 +398,51 @@
           </div>
         </div>
 
+        <!-- 图片生成计费配置（antigravity 和 gemini 平台） -->
+        <div v-if="createForm.platform === 'antigravity' || createForm.platform === 'gemini'" class="border-t pt-4">
+          <label class="block mb-2 font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.groups.imagePricing.title') REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t('admin.groups.imagePricing.description') REDACTEDREDACTED
+          </p>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="input-label">1K ($)</label>
+              <input
+                v-model.number="createForm.image_price_1k"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.134"
+              />
+            </div>
+            <div>
+              <label class="input-label">2K ($)</label>
+              <input
+                v-model.number="createForm.image_price_2k"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.134"
+              />
+            </div>
+            <div>
+              <label class="input-label">4K ($)</label>
+              <input
+                v-model.number="createForm.image_price_4k"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.268"
+              />
+            </div>
+          </div>
+        </div>
+
       </form>
 
       <template #footer>
@@ -601,6 +646,51 @@
           </div>
         </div>
 
+        <!-- 图片生成计费配置（antigravity 和 gemini 平台） -->
+        <div v-if="editForm.platform === 'antigravity' || editForm.platform === 'gemini'" class="border-t pt-4">
+          <label class="block mb-2 font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.groups.imagePricing.title') REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t('admin.groups.imagePricing.description') REDACTEDREDACTED
+          </p>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="input-label">1K ($)</label>
+              <input
+                v-model.number="editForm.image_price_1k"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.134"
+              />
+            </div>
+            <div>
+              <label class="input-label">2K ($)</label>
+              <input
+                v-model.number="editForm.image_price_2k"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.134"
+              />
+            </div>
+            <div>
+              <label class="input-label">4K ($)</label>
+              <input
+                v-model.number="editForm.image_price_4k"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.268"
+              />
+            </div>
+          </div>
+        </div>
+
       </form>
 
       <template #footer>
@@ -758,7 +848,11 @@ const createForm = reactive({
   subscription_type: 'standard' as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
-  monthly_limit_usd: null as number | null
+  monthly_limit_usd: null as number | null,
+  // 图片生成计费配置（仅 antigravity 平台使用）
+  image_price_1k: null as number | null,
+  image_price_2k: null as number | null,
+  image_price_4k: null as number | null
 REDACTED)
 
 const editForm = reactive({
@@ -771,7 +865,11 @@ const editForm = reactive({
   subscription_type: 'standard' as SubscriptionType,
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
-  monthly_limit_usd: null as number | null
+  monthly_limit_usd: null as number | null,
+  // 图片生成计费配置（仅 antigravity 平台使用）
+  image_price_1k: null as number | null,
+  image_price_2k: null as number | null,
+  image_price_4k: null as number | null
 REDACTED)
 
 // 根据分组类型返回不同的删除确认消息
@@ -838,6 +936,9 @@ const closeCreateModal = () => {
   createForm.daily_limit_usd = null
   createForm.weekly_limit_usd = null
   createForm.monthly_limit_usd = null
+  createForm.image_price_1k = null
+  createForm.image_price_2k = null
+  createForm.image_price_4k = null
 REDACTED
 
 const handleCreateGroup = async () => {
@@ -872,6 +973,9 @@ const handleEdit = (group: Group) => {
   editForm.daily_limit_usd = group.daily_limit_usd
   editForm.weekly_limit_usd = group.weekly_limit_usd
   editForm.monthly_limit_usd = group.monthly_limit_usd
+  editForm.image_price_1k = group.image_price_1k
+  editForm.image_price_2k = group.image_price_2k
+  editForm.image_price_4k = group.image_price_4k
   showEditModal.value = true
 REDACTED
 

@@ -33,6 +33,10 @@ type CreateGroupRequest struct {
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	// 图片生成计费配置（仅 antigravity 平台使用）
+	ImagePrice1K *float64 `json:"image_price_1k"`
+	ImagePrice2K *float64 `json:"image_price_2k"`
+	ImagePrice4K *float64 `json:"image_price_4k"`
 REDACTED
 
 // UpdateGroupRequest represents update group request
@@ -47,6 +51,10 @@ type UpdateGroupRequest struct {
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	// 图片生成计费配置（仅 antigravity 平台使用）
+	ImagePrice1K *float64 `json:"image_price_1k"`
+	ImagePrice2K *float64 `json:"image_price_2k"`
+	ImagePrice4K *float64 `json:"image_price_4k"`
 REDACTED
 
 // List handles listing all groups with pagination
@@ -139,6 +147,9 @@ REDACTED
 		DailyLimitUSD:    req.DailyLimitUSD,
 		WeeklyLimitUSD:   req.WeeklyLimitUSD,
 		MonthlyLimitUSD:  req.MonthlyLimitUSD,
+		ImagePrice1K:     req.ImagePrice1K,
+		ImagePrice2K:     req.ImagePrice2K,
+		ImagePrice4K:     req.ImagePrice4K,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -174,6 +185,9 @@ REDACTED
 		DailyLimitUSD:    req.DailyLimitUSD,
 		WeeklyLimitUSD:   req.WeeklyLimitUSD,
 		MonthlyLimitUSD:  req.MonthlyLimitUSD,
+		ImagePrice1K:     req.ImagePrice1K,
+		ImagePrice2K:     req.ImagePrice2K,
+		ImagePrice4K:     req.ImagePrice4K,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

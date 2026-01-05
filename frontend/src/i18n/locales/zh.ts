@@ -399,7 +399,8 @@ export default {
     exportExcelFailed: '使用数据导出失败',
     billingType: '消费类型',
     balance: '余额',
-    subscription: '订阅'
+    subscription: '订阅',
+    imageUnit: '张'
   REDACTED,
 
   // Redeem
@@ -900,6 +901,10 @@ export default {
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
         noLimit: '无限制'
+      REDACTED,
+      imagePricing: {
+        title: '图片生成计费',
+        description: '配置 gemini-3-pro-image 模型的图片生成价格，留空则使用默认价格'
       REDACTED
     REDACTED,
 

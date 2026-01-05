@@ -39,6 +39,10 @@ type UsageLog struct {
 	DurationMs   *int
 	FirstTokenMs *int
 
+	// 图片生成字段
+	ImageCount int
+	ImageSize  *string
+
 	CreatedAt time.Time
 
 	User         *User

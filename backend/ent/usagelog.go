@@ -70,6 +70,10 @@ type UsageLog struct {
 	DurationMs *int `json:"duration_ms,omitempty"`
 	// FirstTokenMs holds the value of the "first_token_ms" field.
 	FirstTokenMs *int `json:"first_token_ms,omitempty"`
+	// ImageCount holds the value of the "image_count" field.
+	ImageCount int `json:"image_count,omitempty"`
+	// ImageSize holds the value of the "image_size" field.
+	ImageSize *string `json:"image_size,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -159,9 +163,9 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldImageSize:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -334,6 +338,19 @@ REDACTED
 				_m.FirstTokenMs = new(int)
 				*_m.FirstTokenMs = int(value.Int64)
 		REDACTED
+		case usagelog.FieldImageCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_count", values[i])
+		REDACTED else if value.Valid {
+				_m.ImageCount = int(value.Int64)
+		REDACTED
+		case usagelog.FieldImageSize:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_size", values[i])
+		REDACTED else if value.Valid {
+				_m.ImageSize = new(string)
+				*_m.ImageSize = value.String
+		REDACTED
 		case usagelog.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -479,6 +496,14 @@ REDACTED
 	if v := _m.FirstTokenMs; v != nil {
 		builder.WriteString("first_token_ms=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+REDACTED
+	builder.WriteString(", ")
+	builder.WriteString("image_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageCount))
+	builder.WriteString(", ")
+	if v := _m.ImageSize; v != nil {
+		builder.WriteString("image_size=")
+		builder.WriteString(*v)
 REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
