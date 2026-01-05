@@ -139,21 +139,18 @@ REDACTED
 			response.BadRequest(c, "Turnstile Site Key is required when enabled")
 			return
 	REDACTED
+		// 如果未提供 secret key，使用已保存的值（留空保留当前值）
 		if req.TurnstileSecretKey == "" {
-			response.BadRequest(c, "Turnstile Secret Key is required when enabled")
-			return
-	REDACTED
-
-		// 获取当前设置，检查参数是否有变化
-		currentSettings, err := h.settingService.GetAllSettings(c.Request.Context())
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
+			if previousSettings.TurnstileSecretKey == "" {
+				response.BadRequest(c, "Turnstile Secret Key is required when enabled")
+				return
+		REDACTED
+			req.TurnstileSecretKey = previousSettings.TurnstileSecretKey
 	REDACTED
 
 		// 当 site_key 或 secret_key 任一变化时验证（避免配置错误导致无法登录）
-		siteKeyChanged := currentSettings.TurnstileSiteKey != req.TurnstileSiteKey
-		secretKeyChanged := currentSettings.TurnstileSecretKey != req.TurnstileSecretKey
+		siteKeyChanged := previousSettings.TurnstileSiteKey != req.TurnstileSiteKey
+		secretKeyChanged := previousSettings.TurnstileSecretKey != req.TurnstileSecretKey
 		if siteKeyChanged || secretKeyChanged {
 			if err := h.turnstileService.ValidateSecretKey(c.Request.Context(), req.TurnstileSecretKey); err != nil {
 				response.ErrorFrom(c, err)
