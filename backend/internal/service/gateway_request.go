@@ -99,13 +99,22 @@ REDACTED
 //   - Remove `redacted_thinking` blocks (cannot be converted to text).
 //   - Ensure no message ends up with empty content.
 func FilterThinkingBlocksForRetry(body []byte) []byte {
-	// Fast path: check for presence of thinking-related keys in messages or top-level thinking config.
-	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
-		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
-		!bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) &&
-		!bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) &&
-		!bytes.Contains(body, []byte(`"thinking":`)) &&
-		!bytes.Contains(body, []byte(`"thinking" :`)) {
+	hasThinkingContent := bytes.Contains(body, []byte(`"type":"thinking"`)) ||
+		bytes.Contains(body, []byte(`"type": "thinking"`)) ||
+		bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) ||
+		bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) ||
+		bytes.Contains(body, []byte(`"thinking":`)) ||
+		bytes.Contains(body, []byte(`"thinking" :`))
+
+	// Also check for empty content arrays that need fixing.
+	// Note: This is a heuristic check; the actual empty content handling is done below.
+	hasEmptyContent := bytes.Contains(body, []byte(`"content":[]`)) ||
+		bytes.Contains(body, []byte(`"content": []`)) ||
+		bytes.Contains(body, []byte(`"content" : []`)) ||
+		bytes.Contains(body, []byte(`"content" :[]`))
+
+	// Fast path: nothing to process
+	if !hasThinkingContent && !hasEmptyContent {
 		return body
 REDACTED
 
@@ -195,20 +204,20 @@ REDACTED
 			newContent = append(newContent, block)
 	REDACTED
 
-		if modifiedThisMsg {
+		// Handle empty content: either from filtering or originally empty
+		if len(newContent) == 0 {
 			modified = true
-			// Handle empty content after filtering
-			if len(newContent) == 0 {
-				// Always add a placeholder to avoid upstream "non-empty content" errors.
-				placeholder := "(content removed)"
-				if role == "assistant" {
-					placeholder = "(assistant content removed)"
-			REDACTED
-				newContent = append(newContent, map[string]any{
-					"type": "text",
-					"text": placeholder,
-			REDACTED)
+			placeholder := "(content removed)"
+			if role == "assistant" {
+				placeholder = "(assistant content removed)"
 		REDACTED
+			newContent = append(newContent, map[string]any{
+				"type": "text",
+				"text": placeholder,
+		REDACTED)
+			msgMap["content"] = newContent
+	REDACTED else if modifiedThisMsg {
+			modified = true
 			msgMap["content"] = newContent
 	REDACTED
 		newMessages = append(newMessages, msgMap)
