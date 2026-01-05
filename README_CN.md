@@ -218,20 +218,23 @@ docker-compose logs -f
 git clone https://github.com/Wei-Shaw/sub2api.git
 cd sub2api
 
-# 2. 编译前端
+# 2. 安装 pnpm（如果还没有安装）
+npm install -g pnpm
+
+# 3. 编译前端
 cd frontend
-npm install
-npm run build
+pnpm install
+pnpm run build
 # 构建产物输出到 ../backend/internal/web/dist/
 
-# 3. 编译后端（嵌入前端）
+# 4. 编译后端（嵌入前端）
 cd ../backend
 go build -tags embed -o sub2api ./cmd/server
 
-# 4. 创建配置文件
+# 5. 创建配置文件
 cp ../deploy/config.example.yaml ./config.yaml
 
-# 5. 编辑配置
+# 6. 编辑配置
 nano config.yaml
 ```
 
@@ -291,7 +294,7 @@ go run ./cmd/server
 
 # 前端（支持热重载）
 cd frontend
-npm run dev
+pnpm run dev
 ```
 
 #### 代码生成
