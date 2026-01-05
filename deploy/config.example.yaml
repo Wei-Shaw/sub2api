@@ -80,7 +80,7 @@ security:
     allow_private_hosts: true
     # Allow http:// URLs when allowlist is disabled (default: false, require https)
     # 白名单禁用时是否允许 http:// URL（默认: false，要求 https）
-    allow_insecure_http: false
+    allow_insecure_http: true
   response_headers:
     # Enable configurable response header filtering (disable to use default allowlist)
     # 启用可配置的响应头过滤（禁用则使用默认白名单）
