@@ -904,6 +904,8 @@ export default {
       failedToAssign: 'Failed to assign subscription',
       failedToExtend: 'Failed to extend subscription',
       failedToRevoke: 'Failed to revoke subscription',
+      pleaseSelectUser: 'Please select a user',
+      pleaseSelectGroup: 'Please select a group',
       revokeConfirm:
         "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone."
     REDACTED,

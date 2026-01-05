@@ -981,6 +981,8 @@ export default {
       failedToAssign: '分配订阅失败',
       failedToExtend: '延长订阅失败',
       failedToRevoke: '撤销订阅失败',
+      pleaseSelectUser: '请选择用户',
+      pleaseSelectGroup: '请选择分组',
       revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。"
     REDACTED,
 
