@@ -1,12 +1,13 @@
 # =============================================================================
-# Sub2API Docker Compose Configuration
+# Sub2API Docker Compose Test Configuration (Local Build)
 # =============================================================================
 # Quick Start:
 #   1. Copy .env.example to .env and configure
-#   2. docker-compose up -d
-#   3. Check logs: docker-compose logs -f sub2api
+#   2. docker-compose -f docker-compose-test.yml up -d --build
+#   3. Check logs: docker-compose -f docker-compose-test.yml logs -f sub2api
 #   4. Access: http://localhost:8080
 #
+# This configuration builds the image from source (Dockerfile in project root).
 # All configuration is done via environment variables.
 # No Setup Wizard needed - the system auto-initializes on first run.
 # =============================================================================
@@ -17,6 +18,9 @@ services:
   # ===========================================================================
   sub2api:
     image: sub2api:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
     container_name: sub2api
     restart: unless-stopped
     ulimits:
