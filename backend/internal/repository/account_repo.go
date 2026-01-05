@@ -67,6 +67,7 @@ REDACTED
 
 	builder := r.client.Account.Create().
 		SetName(account.Name).
+		SetNillableNotes(account.Notes).
 		SetPlatform(account.Platform).
 		SetType(account.Type).
 		SetCredentials(normalizeJSONMap(account.Credentials)).
@@ -270,6 +271,7 @@ REDACTED
 
 	builder := r.client.Account.UpdateOneID(account.ID).
 		SetName(account.Name).
+		SetNillableNotes(account.Notes).
 		SetPlatform(account.Platform).
 		SetType(account.Type).
 		SetCredentials(normalizeJSONMap(account.Credentials)).
@@ -319,6 +321,9 @@ REDACTED
 		builder.SetSessionWindowStatus(account.SessionWindowStatus)
 REDACTED else {
 		builder.ClearSessionWindowStatus()
+REDACTED
+	if account.Notes == nil {
+		builder.ClearNotes()
 REDACTED
 
 	updated, err := builder.Save(ctx)
@@ -1065,6 +1070,7 @@ REDACTED
 	return &service.Account{
 		ID:                  m.ID,
 		Name:                m.Name,
+		Notes:               m.Notes,
 		Platform:            m.Platform,
 		Type:                m.Type,
 		Credentials:         copyJSONMap(m.Credentials),

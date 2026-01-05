@@ -1014,6 +1014,9 @@ export default {
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
       searchAccounts: '搜索账号...',
+      notes: '备注',
+      notesPlaceholder: '请输入备注',
+      notesHint: '备注可选',
       // Filter options
       allPlatforms: '全部平台',
       allTypes: '全部类型',
@@ -1031,6 +1034,7 @@ export default {
         platform: '平台',
         type: '类型',
         concurrencyStatus: '并发',
+        notes: '备注',
         priority: '优先级',
         weight: '权重',
         status: '状态',

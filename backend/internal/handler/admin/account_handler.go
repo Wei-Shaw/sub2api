@@ -73,6 +73,7 @@ REDACTED
 // CreateAccountRequest represents create account request
 type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
+	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
 	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
@@ -88,6 +89,7 @@ REDACTED
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
+	Notes                   *string        `json:"notes"`
 	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
@@ -190,6 +192,7 @@ REDACTED
 
 	account, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
 		Name:                  req.Name,
+		Notes:                 req.Notes,
 		Platform:              req.Platform,
 		Type:                  req.Type,
 		Credentials:           req.Credentials,
@@ -246,6 +249,7 @@ REDACTED
 
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Name:                  req.Name,
+		Notes:                 req.Notes,
 		Type:                  req.Type,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,

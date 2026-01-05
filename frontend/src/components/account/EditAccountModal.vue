@@ -15,6 +15,16 @@
         <label class="input-label">{{ t('common.name') REDACTEDREDACTED</label>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.accounts.notes') REDACTEDREDACTED</label>
+        <textarea
+          v-model="form.notes"
+          rows="3"
+          class="input"
+          :placeholder="t('admin.accounts.notesPlaceholder')"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.notesHint') REDACTEDREDACTED</p>
+      </div>
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
@@ -795,6 +805,7 @@ REDACTED)
 
 const form = reactive({
   name: '',
+  notes: '',
   proxy_id: null as number | null,
   concurrency: 1,
   priority: 1,
@@ -813,6 +824,7 @@ watch(
   (newAccount) => {
     if (newAccount) {
       form.name = newAccount.name
+      form.notes = newAccount.notes || ''
       form.proxy_id = newAccount.proxy_id
       form.concurrency = newAccount.concurrency
       form.priority = newAccount.priority

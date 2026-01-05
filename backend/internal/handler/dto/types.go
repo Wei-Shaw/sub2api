@@ -57,6 +57,7 @@ REDACTED
 type Account struct {
 	ID           int64          `json:"id"`
 	Name         string         `json:"name"`
+	Notes        *string        `json:"notes"`
 	Platform     string         `json:"platform"`
 	Type         string         `json:"type"`
 	Credentials  map[string]any `json:"credentials"`
