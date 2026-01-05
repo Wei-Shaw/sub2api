@@ -98,11 +98,11 @@
           <!-- No Proxy option -->
           <div
             @click="selectOption(null)"
-            :class="['select-option', modelValue === null && 'select-option-selected']"
+            :class="['select-option', (modelValue === null || modelValue === 0) && 'select-option-selected']"
           >
             <span class="select-option-label">{{ t('admin.accounts.noProxy') REDACTEDREDACTED</span>
             <svg
-              v-if="modelValue === null"
+              v-if="modelValue === null || modelValue === 0"
               class="h-4 w-4 text-primary-500"
               fill="none"
               stroke="currentColor"
@@ -265,7 +265,7 @@ const testingProxyIds = reactive(new Set<number>())
 const batchTesting = ref(false)
 
 const selectedProxy = computed(() => {
-  if (props.modelValue === null) return null
+  if (props.modelValue === null || props.modelValue === 0) return null
   return props.proxies.find((p) => p.id === props.modelValue) || null
 REDACTED)
 
@@ -300,7 +300,8 @@ const toggle = () => {
 REDACTED
 
 const selectOption = (value: number | null) => {
-  emit('update:modelValue', value)
+  // 使用 0 表示"无代理"，以便后端能正确识别清除意图
+  emit('update:modelValue', value === null ? 0 : value)
   isOpen.value = false
   searchQuery.value = ''
 REDACTED

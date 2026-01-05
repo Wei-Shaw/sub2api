@@ -702,7 +702,12 @@ REDACTED
 		account.Extra = input.Extra
 REDACTED
 	if input.ProxyID != nil {
-		account.ProxyID = input.ProxyID
+		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
+		if *input.ProxyID == 0 {
+			account.ProxyID = nil
+	REDACTED else {
+			account.ProxyID = input.ProxyID
+	REDACTED
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
 REDACTED
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
