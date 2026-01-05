@@ -3,22 +3,18 @@
     <TablePageLayout>
       <template #filters>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <AccountTableFilters
-              v-model:searchQuery="params.search"
-              :filters="params"
-              @change="reload"
-              @update:searchQuery="debouncedReload"
-            />
-          </div>
-          <div class="flex-shrink-0">
-            <AccountTableActions
-              :loading="loading"
-              @refresh="load"
-              @sync="showSync = true"
-              @create="showCreate = true"
-            />
-          </div>
+          <AccountTableFilters
+            v-model:searchQuery="params.search"
+            :filters="params"
+            @change="reload"
+            @update:searchQuery="debouncedReload"
+          />
+          <AccountTableActions
+            :loading="loading"
+            @refresh="load"
+            @sync="showSync = true"
+            @create="showCreate = true"
+          />
         </div>
       </template>
       <template #table>

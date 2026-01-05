@@ -1625,6 +1625,11 @@ export default {
       deleteConfirmMessage: "确定要删除代理 '{nameREDACTED' 吗？",
       testProxy: '测试代理',
       columns: {
+        name: '名称',
+        protocol: '协议',
+        address: '地址',
+        status: '状态',
+        actions: '操作',
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
         protocolLabel: '协议',
