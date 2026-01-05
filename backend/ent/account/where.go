@@ -75,6 +75,11 @@ func Name(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldName, v))
 REDACTED
 
+// Notes applies equality check predicate on the "notes" field. It's identical to NotesEQ.
+func Notes(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldNotes, v))
+REDACTED
+
 // Platform applies equality check predicate on the "platform" field. It's identical to PlatformEQ.
 func Platform(v string) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldPlatform, v))
@@ -343,6 +348,81 @@ REDACTED
 // NameContainsFold applies the ContainsFold predicate on the "name" field.
 func NameContainsFold(v string) predicate.Account {
 	return predicate.Account(sql.FieldContainsFold(FieldName, v))
+REDACTED
+
+// NotesEQ applies the EQ predicate on the "notes" field.
+func NotesEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldNotes, v))
+REDACTED
+
+// NotesNEQ applies the NEQ predicate on the "notes" field.
+func NotesNEQ(v string) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldNotes, v))
+REDACTED
+
+// NotesIn applies the In predicate on the "notes" field.
+func NotesIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldNotes, vs...))
+REDACTED
+
+// NotesNotIn applies the NotIn predicate on the "notes" field.
+func NotesNotIn(vs ...string) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldNotes, vs...))
+REDACTED
+
+// NotesGT applies the GT predicate on the "notes" field.
+func NotesGT(v string) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldNotes, v))
+REDACTED
+
+// NotesGTE applies the GTE predicate on the "notes" field.
+func NotesGTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldNotes, v))
+REDACTED
+
+// NotesLT applies the LT predicate on the "notes" field.
+func NotesLT(v string) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldNotes, v))
+REDACTED
+
+// NotesLTE applies the LTE predicate on the "notes" field.
+func NotesLTE(v string) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldNotes, v))
+REDACTED
+
+// NotesContains applies the Contains predicate on the "notes" field.
+func NotesContains(v string) predicate.Account {
+	return predicate.Account(sql.FieldContains(FieldNotes, v))
+REDACTED
+
+// NotesHasPrefix applies the HasPrefix predicate on the "notes" field.
+func NotesHasPrefix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasPrefix(FieldNotes, v))
+REDACTED
+
+// NotesHasSuffix applies the HasSuffix predicate on the "notes" field.
+func NotesHasSuffix(v string) predicate.Account {
+	return predicate.Account(sql.FieldHasSuffix(FieldNotes, v))
+REDACTED
+
+// NotesIsNil applies the IsNil predicate on the "notes" field.
+func NotesIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldNotes))
+REDACTED
+
+// NotesNotNil applies the NotNil predicate on the "notes" field.
+func NotesNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldNotes))
+REDACTED
+
+// NotesEqualFold applies the EqualFold predicate on the "notes" field.
+func NotesEqualFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldEqualFold(FieldNotes, v))
+REDACTED
+
+// NotesContainsFold applies the ContainsFold predicate on the "notes" field.
+func NotesContainsFold(v string) predicate.Account {
+	return predicate.Account(sql.FieldContainsFold(FieldNotes, v))
 REDACTED
 
 // PlatformEQ applies the EQ predicate on the "platform" field.

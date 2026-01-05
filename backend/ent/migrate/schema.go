@@ -70,6 +70,7 @@ REDACTED
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "platform", Type: field.TypeString, Size: 50REDACTED,
 		{Name: "type", Type: field.TypeString, Size: 20REDACTED,
 		{Name: "credentials", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
@@ -96,7 +97,7 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "accounts_proxies_proxy",
-				Columns:    []*schema.Column{AccountsColumns[21]REDACTED,
+				Columns:    []*schema.Column{AccountsColumns[22]REDACTED,
 				RefColumns: []*schema.Column{ProxiesColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -105,52 +106,52 @@ REDACTED
 			{
 				Name:    "account_platform",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[5]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[6]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_type",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[6]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[7]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_status",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[11]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[12]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[21]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[22]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_priority",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[10]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[11]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[13]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[14]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_schedulable",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[14]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[15]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_rate_limited_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[15]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[16]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_rate_limit_reset_at",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[16]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[17]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_overload_until",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[17]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[18]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_deleted_at",

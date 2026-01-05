@@ -115,6 +115,7 @@ REDACTED
 
 type CreateAccountInput struct {
 	Name        string
+	Notes       *string
 	Platform    string
 	Type        string
 	Credentials map[string]any
@@ -130,6 +131,7 @@ REDACTED
 
 type UpdateAccountInput struct {
 	Name                  string
+	Notes                 *string
 	Type                  string // Account type: oauth, setup-token, apikey
 	Credentials           map[string]any
 	Extra                 map[string]any
@@ -653,6 +655,7 @@ REDACTED
 
 	account := &Account{
 		Name:        input.Name,
+		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
 		Type:        input.Type,
 		Credentials: input.Credentials,
@@ -688,6 +691,9 @@ REDACTED
 REDACTED
 	if input.Type != "" {
 		account.Type = input.Type
+REDACTED
+	if input.Notes != nil {
+		account.Notes = normalizeAccountNotes(input.Notes)
 REDACTED
 	if len(input.Credentials) > 0 {
 		account.Credentials = input.Credentials
