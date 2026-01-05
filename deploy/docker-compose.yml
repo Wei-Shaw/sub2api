@@ -28,8 +28,9 @@ services:
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
-      # Mount custom config.yaml (optional, overrides auto-generated config)
-      - ./config.yaml:/app/data/config.yaml:ro
+      # Optional: Mount custom config.yaml (uncomment and create the file first)
+      # Copy config.example.yaml to config.yaml, modify it, then uncomment:
+      # - ./config.yaml:/app/data/config.yaml:ro
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
