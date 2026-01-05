@@ -71,6 +71,26 @@ REDACTED
 	return _u
 REDACTED
 
+// SetNotes sets the "notes" field.
+func (_u *AccountUpdate) SetNotes(v string) *AccountUpdate {
+	_u.mutation.SetNotes(v)
+	return _u
+REDACTED
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableNotes(v *string) *AccountUpdate {
+	if v != nil {
+		_u.SetNotes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearNotes clears the value of the "notes" field.
+func (_u *AccountUpdate) ClearNotes() *AccountUpdate {
+	_u.mutation.ClearNotes()
+	return _u
+REDACTED
+
 // SetPlatform sets the "platform" field.
 func (_u *AccountUpdate) SetPlatform(v string) *AccountUpdate {
 	_u.mutation.SetPlatform(v)
@@ -545,6 +565,12 @@ REDACTED
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(account.FieldName, field.TypeString, value)
 REDACTED
+	if value, ok := _u.mutation.Notes(); ok {
+		_spec.SetField(account.FieldNotes, field.TypeString, value)
+REDACTED
+	if _u.mutation.NotesCleared() {
+		_spec.ClearField(account.FieldNotes, field.TypeString)
+REDACTED
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(account.FieldPlatform, field.TypeString, value)
 REDACTED
@@ -811,6 +837,26 @@ func (_u *AccountUpdateOne) SetNillableName(v *string) *AccountUpdateOne {
 	if v != nil {
 		_u.SetName(*v)
 REDACTED
+	return _u
+REDACTED
+
+// SetNotes sets the "notes" field.
+func (_u *AccountUpdateOne) SetNotes(v string) *AccountUpdateOne {
+	_u.mutation.SetNotes(v)
+	return _u
+REDACTED
+
+// SetNillableNotes sets the "notes" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableNotes(v *string) *AccountUpdateOne {
+	if v != nil {
+		_u.SetNotes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearNotes clears the value of the "notes" field.
+func (_u *AccountUpdateOne) ClearNotes() *AccountUpdateOne {
+	_u.mutation.ClearNotes()
 	return _u
 REDACTED
 
@@ -1317,6 +1363,12 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(account.FieldName, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.Notes(); ok {
+		_spec.SetField(account.FieldNotes, field.TypeString, value)
+REDACTED
+	if _u.mutation.NotesCleared() {
+		_spec.ClearField(account.FieldNotes, field.TypeString)
 REDACTED
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(account.FieldPlatform, field.TypeString, value)

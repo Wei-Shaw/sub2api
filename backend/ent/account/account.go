@@ -23,6 +23,8 @@ const (
 	FieldDeletedAt = "deleted_at"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
+	// FieldNotes holds the string denoting the notes field in the database.
+	FieldNotes = "notes"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
 	// FieldType holds the string denoting the type field in the database.
@@ -102,6 +104,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldDeletedAt,
 	FieldName,
+	FieldNotes,
 	FieldPlatform,
 	FieldType,
 	FieldCredentials,
@@ -201,6 +204,11 @@ REDACTED
 // ByName orders the results by the name field.
 func ByName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldName, opts...).ToFunc()
+REDACTED
+
+// ByNotes orders the results by the notes field.
+func ByNotes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNotes, opts...).ToFunc()
 REDACTED
 
 // ByPlatform orders the results by the platform field.
