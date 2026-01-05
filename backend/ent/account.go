@@ -27,6 +27,8 @@ type Account struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
+	// Notes holds the value of the "notes" field.
+	Notes *string `json:"notes,omitempty"`
 	// Platform holds the value of the "platform" field.
 	Platform string `json:"platform,omitempty"`
 	// Type holds the value of the "type" field.
@@ -131,7 +133,7 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldPriority:
 			values[i] = new(sql.NullInt64)
-		case account.FieldName, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldSessionWindowStatus:
+		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldSessionWindowStatus:
 			values[i] = new(sql.NullString)
 		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd:
 			values[i] = new(sql.NullTime)
@@ -180,6 +182,13 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 		REDACTED else if value.Valid {
 				_m.Name = value.String
+		REDACTED
+		case account.FieldNotes:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field notes", values[i])
+		REDACTED else if value.Valid {
+				_m.Notes = new(string)
+				*_m.Notes = value.String
 		REDACTED
 		case account.FieldPlatform:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -365,6 +374,11 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
+	builder.WriteString(", ")
+	if v := _m.Notes; v != nil {
+		builder.WriteString("notes=")
+		builder.WriteString(*v)
+REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("platform=")
 	builder.WriteString(_m.Platform)

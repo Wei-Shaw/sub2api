@@ -106,6 +106,7 @@ REDACTED
 REDACTED
 		ID:                      a.ID,
 		Name:                    a.Name,
+		Notes:                   a.Notes,
 		Platform:                a.Platform,
 		Type:                    a.Type,
 		Credentials:             a.Credentials,

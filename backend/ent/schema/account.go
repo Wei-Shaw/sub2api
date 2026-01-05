@@ -54,6 +54,11 @@ func (Account) Fields() []ent.Field {
 		field.String("name").
 			MaxLen(100).
 			NotEmpty(),
+		// notes: 管理员备注（可为空）
+		field.String("notes").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "text"REDACTED),
 
 		// platform: 所属平台，如 "claude", "gemini", "openai" 等
 		field.String("platform").

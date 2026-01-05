@@ -936,6 +936,9 @@ export default {
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
       searchAccounts: 'Search accounts...',
+      notes: 'Notes',
+      notesPlaceholder: 'Enter notes',
+      notesHint: 'Notes are optional',
       allPlatforms: 'All Platforms',
       allTypes: 'All Types',
       allStatus: 'All Status',
@@ -974,6 +977,23 @@ export default {
         rateLimitedUntil: 'Rate limited until {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
         viewTempUnschedDetails: 'View temp unschedulable details'
+      REDACTED,
+      columns: {
+        name: 'Name',
+        platformType: 'Platform/Type',
+        platform: 'Platform',
+        type: 'Type',
+        concurrencyStatus: 'Concurrency',
+        notes: 'Notes',
+        priority: 'Priority',
+        weight: 'Weight',
+        status: 'Status',
+        schedulable: 'Schedulable',
+        todayStats: 'Today Stats',
+        groups: 'Groups',
+        usageWindows: 'Usage Windows',
+        lastUsed: 'Last Used',
+        actions: 'Actions'
       REDACTED,
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -1017,21 +1037,6 @@ export default {
           unavailableLabel: '503 Unavailable',
           unavailableDesc: 'Unavailable - pause 30 minutes'
         REDACTED
-      REDACTED,
-      columns: {
-        name: 'Name',
-        platformType: 'Platform/Type',
-        platform: 'Platform',
-        type: 'Type',
-        concurrencyStatus: 'Concurrency',
-        status: 'Status',
-        schedulable: 'Schedule',
-        todayStats: "Today's Stats",
-        groups: 'Groups',
-        usageWindows: 'Usage Windows',
-        priority: 'Priority',
-        lastUsed: 'Last Used',
-        actions: 'Actions'
       REDACTED,
       clearRateLimit: 'Clear Rate Limit',
       testConnection: 'Test Connection',
