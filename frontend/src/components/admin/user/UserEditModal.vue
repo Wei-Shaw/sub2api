@@ -86,6 +86,14 @@ const copyPassword = async () => {
 REDACTED
 const handleUpdateUser = async () => {
   if (!props.user) return
+  if (!form.email.trim()) {
+    appStore.showError(t('admin.users.emailRequired'))
+    return
+  REDACTED
+  if (form.concurrency < 1) {
+    appStore.showError(t('admin.users.concurrencyMin'))
+    return
+  REDACTED
   submitting.value = true
   try {
     const data: any = { email: form.email, username: form.username, notes: form.notes, concurrency: form.concurrency REDACTED

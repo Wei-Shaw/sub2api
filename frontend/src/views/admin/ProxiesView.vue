@@ -887,6 +887,18 @@ const handleBatchCreate = async () => {
 REDACTED
 
 const handleCreateProxy = async () => {
+  if (!createForm.name.trim()) {
+    appStore.showError(t('admin.proxies.nameRequired'))
+    return
+  REDACTED
+  if (!createForm.host.trim()) {
+    appStore.showError(t('admin.proxies.hostRequired'))
+    return
+  REDACTED
+  if (createForm.port < 1 || createForm.port > 65535) {
+    appStore.showError(t('admin.proxies.portInvalid'))
+    return
+  REDACTED
   submitting.value = true
   try {
     await adminAPI.proxies.create({
@@ -927,6 +939,18 @@ REDACTED
 
 const handleUpdateProxy = async () => {
   if (!editingProxy.value) return
+  if (!editForm.name.trim()) {
+    appStore.showError(t('admin.proxies.nameRequired'))
+    return
+  REDACTED
+  if (!editForm.host.trim()) {
+    appStore.showError(t('admin.proxies.hostRequired'))
+    return
+  REDACTED
+  if (editForm.port < 1 || editForm.port > 65535) {
+    appStore.showError(t('admin.proxies.portInvalid'))
+    return
+  REDACTED
 
   submitting.value = true
   try {
