@@ -495,9 +495,12 @@ REDACTED)
 	s.Require().NoError(err, "GetByID after DeductBalance")
 	s.Require().InDelta(7.5, got4.Balance, 1e-6)
 
+	// 透支策略：允许扣除超过余额的金额
 	err = s.repo.DeductBalance(s.ctx, user1.ID, 999)
-	s.Require().Error(err, "DeductBalance expected error for insufficient balance")
-	s.Require().ErrorIs(err, service.ErrInsufficientBalance, "DeductBalance unexpected error")
+	s.Require().NoError(err, "DeductBalance should allow overdraft")
+	gotOverdraft, err := s.repo.GetByID(s.ctx, user1.ID)
+	s.Require().NoError(err, "GetByID after overdraft")
+	s.Require().Less(gotOverdraft.Balance, 0.0, "Balance should be negative after overdraft")
 
 	s.Require().NoError(s.repo.UpdateConcurrency(s.ctx, user1.ID, 3), "UpdateConcurrency")
 	got5, err := s.repo.GetByID(s.ctx, user1.ID)
