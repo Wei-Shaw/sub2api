@@ -196,7 +196,7 @@ const handleViewStats = (a: Account) => { statsAcc.value = a; showStats.value = 
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true REDACTED
 const handleRefresh = async (a: Account) => { try { await adminAPI.accounts.refreshCredentials(a.id); load() REDACTED catch {REDACTED REDACTED
 const handleResetStatus = async (a: Account) => { try { await adminAPI.accounts.clearError(a.id); appStore.showSuccess(t('common.success')); load() REDACTED catch {REDACTED REDACTED
-const handleClearRateLimit = async (a: Account) => { try { await adminAPI.accounts.clearError(a.id); appStore.showSuccess(t('common.success')); load() REDACTED catch {REDACTED REDACTED
+const handleClearRateLimit = async (a: Account) => { try { await adminAPI.accounts.clearRateLimit(a.id); appStore.showSuccess(t('common.success')); load() REDACTED catch {REDACTED REDACTED
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true REDACTED
 const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() REDACTED catch {REDACTED REDACTED
 const handleToggleSchedulable = async (a: Account) => { togglingSchedulable.value = a.id; try { await adminAPI.accounts.update(a.id, { schedulable: !a.schedulable REDACTED); load() REDACTED finally { togglingSchedulable.value = null REDACTED REDACTED
