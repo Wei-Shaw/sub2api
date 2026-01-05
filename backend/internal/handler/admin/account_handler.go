@@ -34,15 +34,16 @@ REDACTED
 
 // AccountHandler handles admin account management
 type AccountHandler struct {
-	adminService        service.AdminService
-	oauthService        *service.OAuthService
-	openaiOAuthService  *service.OpenAIOAuthService
-	geminiOAuthService  *service.GeminiOAuthService
-	rateLimitService    *service.RateLimitService
-	accountUsageService *service.AccountUsageService
-	accountTestService  *service.AccountTestService
-	concurrencyService  *service.ConcurrencyService
-	crsSyncService      *service.CRSSyncService
+	adminService            service.AdminService
+	oauthService            *service.OAuthService
+	openaiOAuthService      *service.OpenAIOAuthService
+	geminiOAuthService      *service.GeminiOAuthService
+	antigravityOAuthService *service.AntigravityOAuthService
+	rateLimitService        *service.RateLimitService
+	accountUsageService     *service.AccountUsageService
+	accountTestService      *service.AccountTestService
+	concurrencyService      *service.ConcurrencyService
+	crsSyncService          *service.CRSSyncService
 REDACTED
 
 // NewAccountHandler creates a new admin account handler
@@ -51,6 +52,7 @@ func NewAccountHandler(
 	oauthService *service.OAuthService,
 	openaiOAuthService *service.OpenAIOAuthService,
 	geminiOAuthService *service.GeminiOAuthService,
+	antigravityOAuthService *service.AntigravityOAuthService,
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
@@ -58,15 +60,16 @@ func NewAccountHandler(
 	crsSyncService *service.CRSSyncService,
 ) *AccountHandler {
 	return &AccountHandler{
-		adminService:        adminService,
-		oauthService:        oauthService,
-		openaiOAuthService:  openaiOAuthService,
-		geminiOAuthService:  geminiOAuthService,
-		rateLimitService:    rateLimitService,
-		accountUsageService: accountUsageService,
-		accountTestService:  accountTestService,
-		concurrencyService:  concurrencyService,
-		crsSyncService:      crsSyncService,
+		adminService:            adminService,
+		oauthService:            oauthService,
+		openaiOAuthService:      openaiOAuthService,
+		geminiOAuthService:      geminiOAuthService,
+		antigravityOAuthService: antigravityOAuthService,
+		rateLimitService:        rateLimitService,
+		accountUsageService:     accountUsageService,
+		accountTestService:      accountTestService,
+		concurrencyService:      concurrencyService,
+		crsSyncService:          crsSyncService,
 REDACTED
 REDACTED
 
@@ -410,6 +413,19 @@ REDACTED else if account.Platform == service.PlatformGemini {
 	REDACTED
 
 		newCredentials = h.geminiOAuthService.BuildAccountCredentials(tokenInfo)
+		for k, v := range account.Credentials {
+			if _, exists := newCredentials[k]; !exists {
+				newCredentials[k] = v
+		REDACTED
+	REDACTED
+REDACTED else if account.Platform == service.PlatformAntigravity {
+		tokenInfo, err := h.antigravityOAuthService.RefreshAccountToken(c.Request.Context(), account)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+
+		newCredentials = h.antigravityOAuthService.BuildAccountCredentials(tokenInfo)
 		for k, v := range account.Credentials {
 			if _, exists := newCredentials[k]; !exists {
 				newCredentials[k] = v
