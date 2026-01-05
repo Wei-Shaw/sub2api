@@ -877,6 +877,10 @@ const handleAssignSubscription = async () => {
     appStore.showError(t('admin.subscriptions.pleaseSelectGroup'))
     return
   REDACTED
+  if (!assignForm.validity_days || assignForm.validity_days < 1) {
+    appStore.showError(t('admin.subscriptions.validityDaysRequired'))
+    return
+  REDACTED
 
   submitting.value = true
   try {
@@ -960,15 +964,17 @@ const isExpiringSoon = (expiresAt: string): boolean => {
   return days !== null && days <= 7
 REDACTED
 
-const getProgressWidth = (used: number, limit: number | null): string => {
+const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {
   if (!limit || limit === 0) return '0%'
-  const percentage = Math.min((used / limit) * 100, 100)
+  const usedValue = used ?? 0
+  const percentage = Math.min((usedValue / limit) * 100, 100)
   return `${percentageREDACTED%`
 REDACTED
 
-const getProgressClass = (used: number, limit: number | null): string => {
+const getProgressClass = (used: number | null | undefined, limit: number | null): string => {
   if (!limit || limit === 0) return 'bg-gray-400'
-  const percentage = (used / limit) * 100
+  const usedValue = used ?? 0
+  const percentage = (usedValue / limit) * 100
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'

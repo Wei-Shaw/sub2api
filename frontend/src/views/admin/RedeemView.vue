@@ -525,7 +525,8 @@ const filterTypeOptions = computed(() => [
 const filterStatusOptions = computed(() => [
   { value: '', label: t('admin.redeem.allStatus') REDACTED,
   { value: 'unused', label: t('admin.redeem.unused') REDACTED,
-  { value: 'used', label: t('admin.redeem.used') REDACTED
+  { value: 'used', label: t('admin.redeem.used') REDACTED,
+  { value: 'expired', label: t('admin.redeem.status.expired') REDACTED
 ])
 
 const codes = ref<RedeemCode[]>([])

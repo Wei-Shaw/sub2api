@@ -991,6 +991,7 @@ export default {
       failedToRevoke: '撤销订阅失败',
       pleaseSelectUser: '请选择用户',
       pleaseSelectGroup: '请选择分组',
+      validityDaysRequired: '请输入有效的天数（至少1天）',
       revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。"
     REDACTED,
 
