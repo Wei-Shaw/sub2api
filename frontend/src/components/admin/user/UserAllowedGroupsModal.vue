@@ -52,7 +52,7 @@ const load = async () => { loading.value = true; try { const res = await adminAP
 const handleSave = async () => {
   if (!props.user) return; submitting.value = true
   try {
-    await adminAPI.users.update(props.user.id, { allowed_groups: selectedIds.value.length > 0 ? selectedIds.value : null REDACTED)
+    await adminAPI.users.update(props.user.id, { allowed_groups: selectedIds.value REDACTED)
     appStore.showSuccess(t('admin.users.allowedGroupsUpdated')); emit('success'); emit('close')
   REDACTED catch (error) { console.error('Failed to update allowed groups:', error) REDACTED finally { submitting.value = false REDACTED
 REDACTED

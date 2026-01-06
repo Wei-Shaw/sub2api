@@ -295,3 +295,88 @@ func (s *BillingService) ForceUpdatePricing() error {
 REDACTED
 	return fmt.Errorf("pricing service not initialized")
 REDACTED
+
+// ImagePriceConfig 图片计费配置
+type ImagePriceConfig struct {
+	Price1K *float64 // 1K 尺寸价格（nil 表示使用默认值）
+	Price2K *float64 // 2K 尺寸价格（nil 表示使用默认值）
+	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
+REDACTED
+
+// CalculateImageCost 计算图片生成费用
+// model: 请求的模型名称（用于获取 LiteLLM 默认价格）
+// imageSize: 图片尺寸 "1K", "2K", "4K"
+// imageCount: 生成的图片数量
+// groupConfig: 分组配置的价格（可能为 nil，表示使用默认值）
+// rateMultiplier: 费率倍数
+func (s *BillingService) CalculateImageCost(model string, imageSize string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64) *CostBreakdown {
+	if imageCount <= 0 {
+		return &CostBreakdown{REDACTED
+REDACTED
+
+	// 获取单价
+	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig)
+
+	// 计算总费用
+	totalCost := unitPrice * float64(imageCount)
+
+	// 应用倍率
+	if rateMultiplier <= 0 {
+		rateMultiplier = 1.0
+REDACTED
+	actualCost := totalCost * rateMultiplier
+
+	return &CostBreakdown{
+		TotalCost:  totalCost,
+		ActualCost: actualCost,
+REDACTED
+REDACTED
+
+// getImageUnitPrice 获取图片单价
+func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
+	// 优先使用分组配置的价格
+	if groupConfig != nil {
+		switch imageSize {
+		case "1K":
+			if groupConfig.Price1K != nil {
+				return *groupConfig.Price1K
+		REDACTED
+		case "2K":
+			if groupConfig.Price2K != nil {
+				return *groupConfig.Price2K
+		REDACTED
+		case "4K":
+			if groupConfig.Price4K != nil {
+				return *groupConfig.Price4K
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 回退到 LiteLLM 默认价格
+	return s.getDefaultImagePrice(model, imageSize)
+REDACTED
+
+// getDefaultImagePrice 获取 LiteLLM 默认图片价格
+func (s *BillingService) getDefaultImagePrice(model string, imageSize string) float64 {
+	basePrice := 0.0
+
+	// 从 PricingService 获取 output_cost_per_image
+	if s.pricingService != nil {
+		pricing := s.pricingService.GetModelPricing(model)
+		if pricing != nil && pricing.OutputCostPerImage > 0 {
+			basePrice = pricing.OutputCostPerImage
+	REDACTED
+REDACTED
+
+	// 如果没有找到价格，使用硬编码默认值（$0.134，来自 gemini-3-pro-image-preview）
+	if basePrice <= 0 {
+		basePrice = 0.134
+REDACTED
+
+	// 4K 尺寸翻倍
+	if imageSize == "4K" {
+		return basePrice * 2
+REDACTED
+
+	return basePrice
+REDACTED

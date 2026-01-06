@@ -421,7 +421,8 @@ export default {
     exportExcelFailed: 'Failed to export usage data',
     billingType: 'Billing',
     balance: 'Balance',
-    subscription: 'Subscription'
+    subscription: 'Subscription',
+    imageUnit: ' images'
   REDACTED,
 
   // Redeem
@@ -462,7 +463,8 @@ export default {
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
-    subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.'
+    subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
+    pleaseEnterCode: 'Please enter a redeem code'
   REDACTED,
 
   // Profile
@@ -658,6 +660,10 @@ export default {
       failedToDelete: 'Failed to delete user',
       failedToToggle: 'Failed to update user status',
       failedToLoadApiKeys: 'Failed to load user API keys',
+      emailRequired: 'Please enter email',
+      concurrencyMin: 'Concurrency must be at least 1',
+      amountRequired: 'Please enter a valid amount',
+      insufficientBalance: 'Insufficient balance',
       deleteConfirm: "Are you sure you want to delete '{emailREDACTED'? This action cannot be undone.",
       setAllowedGroups: 'Set Allowed Groups',
       allowedGroupsHint:
@@ -689,7 +695,6 @@ export default {
       failedToDeposit: 'Failed to deposit',
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
-      insufficientBalance: 'Insufficient balance, balance cannot be negative after withdrawal',
       roles: {
         admin: 'Admin',
         user: 'User'
@@ -749,6 +754,9 @@ export default {
         failedToLoad: 'Failed to load attributes',
         failedToCreate: 'Failed to create attribute',
         failedToUpdate: 'Failed to update attribute',
+        keyRequired: 'Please enter attribute key',
+        nameRequired: 'Please enter display name',
+        optionsRequired: 'Please add at least one option',
         failedToDelete: 'Failed to delete attribute',
         failedToReorder: 'Failed to update order',
         keyExists: 'Attribute key already exists',
@@ -816,6 +824,7 @@ export default {
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
+      nameRequired: 'Please enter group name',
       platforms: {
         all: 'All Platforms',
         anthropic: 'Anthropic',
@@ -841,6 +850,10 @@ export default {
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
         noLimit: 'No limit'
+      REDACTED,
+      imagePricing: {
+        title: 'Image Generation Pricing',
+        description: 'Configure pricing for gemini-3-pro-image model. Leave empty to use default prices.'
       REDACTED
     REDACTED,
 
@@ -904,6 +917,9 @@ export default {
       failedToAssign: 'Failed to assign subscription',
       failedToExtend: 'Failed to extend subscription',
       failedToRevoke: 'Failed to revoke subscription',
+      pleaseSelectUser: 'Please select a user',
+      pleaseSelectGroup: 'Please select a group',
+      validityDaysRequired: 'Please enter a valid number of days (at least 1)',
       revokeConfirm:
         "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone."
     REDACTED,
@@ -1587,6 +1603,9 @@ export default {
       failedToUpdate: 'Failed to update proxy',
       failedToDelete: 'Failed to delete proxy',
       failedToTest: 'Failed to test proxy',
+      nameRequired: 'Please enter proxy name',
+      hostRequired: 'Please enter host address',
+      portInvalid: 'Port must be between 1-65535',
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed."
     REDACTED,
@@ -1644,6 +1663,14 @@ export default {
       failedToDelete: 'Failed to delete code',
       failedToDeleteUnused: 'Failed to delete unused codes',
       failedToCopy: 'Failed to copy codes',
+      types: {
+        balance: 'Balance',
+        concurrency: 'Concurrency',
+        subscription: 'Subscription',
+        // Admin adjustment types (created when admin modifies user balance/concurrency)
+        admin_balance: 'Balance (Admin)',
+        admin_concurrency: 'Concurrency (Admin)'
+      REDACTED,
       selectGroup: 'Select Group',
       selectGroupPlaceholder: 'Choose a subscription group',
       validityDays: 'Validity Days',

@@ -125,6 +125,21 @@ func DefaultValidityDays(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultValidityDays, v))
 REDACTED
 
+// ImagePrice1k applies equality check predicate on the "image_price_1k" field. It's identical to ImagePrice1kEQ.
+func ImagePrice1k(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImagePrice1k, v))
+REDACTED
+
+// ImagePrice2k applies equality check predicate on the "image_price_2k" field. It's identical to ImagePrice2kEQ.
+func ImagePrice2k(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImagePrice2k, v))
+REDACTED
+
+// ImagePrice4k applies equality check predicate on the "image_price_4k" field. It's identical to ImagePrice4kEQ.
+func ImagePrice4k(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImagePrice4k, v))
+REDACTED
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -828,6 +843,156 @@ REDACTED
 // DefaultValidityDaysLTE applies the LTE predicate on the "default_validity_days" field.
 func DefaultValidityDaysLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldDefaultValidityDays, v))
+REDACTED
+
+// ImagePrice1kEQ applies the EQ predicate on the "image_price_1k" field.
+func ImagePrice1kEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImagePrice1k, v))
+REDACTED
+
+// ImagePrice1kNEQ applies the NEQ predicate on the "image_price_1k" field.
+func ImagePrice1kNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImagePrice1k, v))
+REDACTED
+
+// ImagePrice1kIn applies the In predicate on the "image_price_1k" field.
+func ImagePrice1kIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImagePrice1k, vs...))
+REDACTED
+
+// ImagePrice1kNotIn applies the NotIn predicate on the "image_price_1k" field.
+func ImagePrice1kNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImagePrice1k, vs...))
+REDACTED
+
+// ImagePrice1kGT applies the GT predicate on the "image_price_1k" field.
+func ImagePrice1kGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImagePrice1k, v))
+REDACTED
+
+// ImagePrice1kGTE applies the GTE predicate on the "image_price_1k" field.
+func ImagePrice1kGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImagePrice1k, v))
+REDACTED
+
+// ImagePrice1kLT applies the LT predicate on the "image_price_1k" field.
+func ImagePrice1kLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImagePrice1k, v))
+REDACTED
+
+// ImagePrice1kLTE applies the LTE predicate on the "image_price_1k" field.
+func ImagePrice1kLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImagePrice1k, v))
+REDACTED
+
+// ImagePrice1kIsNil applies the IsNil predicate on the "image_price_1k" field.
+func ImagePrice1kIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldImagePrice1k))
+REDACTED
+
+// ImagePrice1kNotNil applies the NotNil predicate on the "image_price_1k" field.
+func ImagePrice1kNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldImagePrice1k))
+REDACTED
+
+// ImagePrice2kEQ applies the EQ predicate on the "image_price_2k" field.
+func ImagePrice2kEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImagePrice2k, v))
+REDACTED
+
+// ImagePrice2kNEQ applies the NEQ predicate on the "image_price_2k" field.
+func ImagePrice2kNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImagePrice2k, v))
+REDACTED
+
+// ImagePrice2kIn applies the In predicate on the "image_price_2k" field.
+func ImagePrice2kIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImagePrice2k, vs...))
+REDACTED
+
+// ImagePrice2kNotIn applies the NotIn predicate on the "image_price_2k" field.
+func ImagePrice2kNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImagePrice2k, vs...))
+REDACTED
+
+// ImagePrice2kGT applies the GT predicate on the "image_price_2k" field.
+func ImagePrice2kGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImagePrice2k, v))
+REDACTED
+
+// ImagePrice2kGTE applies the GTE predicate on the "image_price_2k" field.
+func ImagePrice2kGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImagePrice2k, v))
+REDACTED
+
+// ImagePrice2kLT applies the LT predicate on the "image_price_2k" field.
+func ImagePrice2kLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImagePrice2k, v))
+REDACTED
+
+// ImagePrice2kLTE applies the LTE predicate on the "image_price_2k" field.
+func ImagePrice2kLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImagePrice2k, v))
+REDACTED
+
+// ImagePrice2kIsNil applies the IsNil predicate on the "image_price_2k" field.
+func ImagePrice2kIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldImagePrice2k))
+REDACTED
+
+// ImagePrice2kNotNil applies the NotNil predicate on the "image_price_2k" field.
+func ImagePrice2kNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldImagePrice2k))
+REDACTED
+
+// ImagePrice4kEQ applies the EQ predicate on the "image_price_4k" field.
+func ImagePrice4kEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImagePrice4k, v))
+REDACTED
+
+// ImagePrice4kNEQ applies the NEQ predicate on the "image_price_4k" field.
+func ImagePrice4kNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImagePrice4k, v))
+REDACTED
+
+// ImagePrice4kIn applies the In predicate on the "image_price_4k" field.
+func ImagePrice4kIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImagePrice4k, vs...))
+REDACTED
+
+// ImagePrice4kNotIn applies the NotIn predicate on the "image_price_4k" field.
+func ImagePrice4kNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImagePrice4k, vs...))
+REDACTED
+
+// ImagePrice4kGT applies the GT predicate on the "image_price_4k" field.
+func ImagePrice4kGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImagePrice4k, v))
+REDACTED
+
+// ImagePrice4kGTE applies the GTE predicate on the "image_price_4k" field.
+func ImagePrice4kGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImagePrice4k, v))
+REDACTED
+
+// ImagePrice4kLT applies the LT predicate on the "image_price_4k" field.
+func ImagePrice4kLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImagePrice4k, v))
+REDACTED
+
+// ImagePrice4kLTE applies the LTE predicate on the "image_price_4k" field.
+func ImagePrice4kLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImagePrice4k, v))
+REDACTED
+
+// ImagePrice4kIsNil applies the IsNil predicate on the "image_price_4k" field.
+func ImagePrice4kIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldImagePrice4k))
+REDACTED
+
+// ImagePrice4kNotNil applies the NotNil predicate on the "image_price_4k" field.
+func ImagePrice4kNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldImagePrice4k))
 REDACTED
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

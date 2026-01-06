@@ -418,7 +418,8 @@ export default {
     exportExcelFailed: '使用数据导出失败',
     billingType: '消费类型',
     balance: '余额',
-    subscription: '订阅'
+    subscription: '订阅',
+    imageUnit: '张'
   REDACTED,
 
   // Redeem
@@ -459,7 +460,8 @@ export default {
     days: '天',
     codeRedeemSuccess: '兑换成功！',
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
-    subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。'
+    subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
+    pleaseEnterCode: '请输入兑换码'
   REDACTED,
 
   // Profile
@@ -716,6 +718,10 @@ export default {
       concurrencyAdjustedSuccess: '并发数调整成功',
       failedToSave: '保存用户失败',
       failedToAdjust: '调整失败',
+      emailRequired: '请输入邮箱',
+      concurrencyMin: '并发数不能小于1',
+      amountRequired: '请输入有效金额',
+      insufficientBalance: '余额不足',
       setAllowedGroups: '设置允许分组',
       allowedGroupsHint: '选择此用户可以使用的标准分组。订阅类型分组请在订阅管理中配置。',
       noStandardGroups: '暂无标准分组',
@@ -742,7 +748,6 @@ export default {
       failedToDeposit: '充值失败',
       failedToWithdraw: '退款失败',
       useDepositWithdrawButtons: '请使用充值/退款按钮调整余额',
-      insufficientBalance: '余额不足，退款后余额不能为负数',
       // Settings Dropdowns
       filterSettings: '筛选设置',
       columnSettings: '列设置',
@@ -798,6 +803,9 @@ export default {
         failedToLoad: '加载属性列表失败',
         failedToCreate: '创建属性失败',
         failedToUpdate: '更新属性失败',
+        keyRequired: '请输入属性键',
+        nameRequired: '请输入显示名称',
+        optionsRequired: '请至少添加一个选项',
         failedToDelete: '删除属性失败',
         failedToReorder: '更新排序失败',
         keyExists: '属性键已存在',
@@ -905,6 +913,7 @@ export default {
       groupDeleted: '分组删除成功',
       failedToCreate: '创建分组失败',
       failedToUpdate: '更新分组失败',
+      nameRequired: '请输入分组名称',
       subscription: {
         title: '订阅设置',
         type: '计费类型',
@@ -918,6 +927,10 @@ export default {
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
         noLimit: '无限制'
+      REDACTED,
+      imagePricing: {
+        title: '图片生成计费',
+        description: '配置 gemini-3-pro-image 模型的图片生成价格，留空则使用默认价格'
       REDACTED
     REDACTED,
 
@@ -981,6 +994,9 @@ export default {
       failedToAssign: '分配订阅失败',
       failedToExtend: '延长订阅失败',
       failedToRevoke: '撤销订阅失败',
+      pleaseSelectUser: '请选择用户',
+      pleaseSelectGroup: '请选择分组',
+      validityDaysRequired: '请输入有效的天数（至少1天）',
       revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。"
     REDACTED,
 
@@ -1618,6 +1634,11 @@ export default {
       deleteConfirmMessage: "确定要删除代理 '{nameREDACTED' 吗？",
       testProxy: '测试代理',
       columns: {
+        name: '名称',
+        protocol: '协议',
+        address: '地址',
+        status: '状态',
+        actions: '操作',
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
         protocolLabel: '协议',
@@ -1696,6 +1717,9 @@ export default {
       failedToCreate: '创建代理失败',
       failedToUpdate: '更新代理失败',
       failedToTest: '测试代理失败',
+      nameRequired: '请输入代理名称',
+      hostRequired: '请输入主机地址',
+      portInvalid: '端口必须在 1-65535 之间',
       deleteConfirm: "确定要删除代理 '{nameREDACTED' 吗？使用此代理的账号将被移除代理设置。"
     REDACTED,
 
@@ -1717,7 +1741,10 @@ export default {
       types: {
         balance: '余额',
         concurrency: '并发数',
-        subscription: '订阅'
+        subscription: '订阅',
+        // 管理员在用户管理页面调整余额/并发时产生的记录
+        admin_balance: '余额（管理员）',
+        admin_concurrency: '并发数（管理员）'
       REDACTED,
       // 用于选择器和筛选器的直接键
       balance: '余额',

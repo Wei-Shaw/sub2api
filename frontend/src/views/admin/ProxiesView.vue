@@ -7,20 +7,12 @@
           <!-- Left: Fuzzy search + filters (wrap to multiple lines) -->
           <div class="flex flex-1 flex-wrap items-center gap-3">
             <!-- Search -->
-            <div class="relative w-full sm:flex-1 sm:min-w-[14rem] sm:max-w-md">
-              <svg
-                class="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-                />
-              </svg>
+            <div class="relative w-full sm:w-64">
+              <Icon
+                name="search"
+                size="md"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              />
               <input
                 v-model="searchQuery"
                 type="text"
@@ -57,34 +49,10 @@
               class="btn btn-secondary"
               :title="t('common.refresh')"
             >
-              <svg
-                :class="['h-5 w-5', loading ? 'animate-spin' : '']"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                />
-              </svg>
+              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
             <button @click="showCreateModal = true" class="btn btn-primary">
-              <svg
-                class="mr-2 h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 4.5v15m7.5-7.5h-15"
-                />
-              </svg>
+              <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.proxies.createProxy') REDACTEDREDACTED
             </button>
           </div>
@@ -144,58 +112,21 @@
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                <svg
-                  v-else
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Icon v-else name="checkCircle" size="sm" />
                 <span class="text-xs">{{ t('admin.proxies.testConnection') REDACTEDREDACTED</span>
               </button>
               <button
                 @click="handleEdit(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-                  />
-                </svg>
+                <Icon name="edit" size="sm" />
                 <span class="text-xs">{{ t('common.edit') REDACTEDREDACTED</span>
               </button>
               <button
                 @click="handleDelete(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                  />
-                </svg>
+                <Icon name="trash" size="sm" />
                 <span class="text-xs">{{ t('common.delete') REDACTEDREDACTED</span>
               </button>
             </div>
@@ -243,15 +174,7 @@
               : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
           ]"
         >
-          <svg
-            class="mr-1.5 inline h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
+          <Icon name="plus" size="sm" class="mr-1.5 inline" />
           {{ t('admin.proxies.standardAdd') REDACTEDREDACTED
         </button>
         <button
@@ -365,39 +288,20 @@
 
         <!-- Parse Result -->
         <div v-if="batchParseResult.total > 0" class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
-          <div class="flex items-center gap-4 text-sm">
-            <div class="flex items-center gap-1.5">
-              <svg
-                class="h-4 w-4 text-primary-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+            <div class="flex items-center gap-4 text-sm">
+              <div class="flex items-center gap-1.5">
+              <Icon name="checkCircle" size="sm" :stroke-width="2" class="text-primary-500" />
               <span class="text-gray-700 dark:text-gray-300">
                 {{ t('admin.proxies.parsedCount', { count: batchParseResult.valid REDACTED) REDACTEDREDACTED
               </span>
             </div>
             <div v-if="batchParseResult.invalid > 0" class="flex items-center gap-1.5">
-              <svg
-                class="h-4 w-4 text-amber-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-                />
-              </svg>
+              <Icon
+                name="exclamationCircle"
+                size="sm"
+                :stroke-width="2"
+                class="text-amber-500"
+              />
               <span class="text-amber-600 dark:text-amber-400">
                 {{ t('admin.proxies.invalidCount', { count: batchParseResult.invalid REDACTED) REDACTEDREDACTED
               </span>
@@ -621,6 +525,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -887,6 +792,18 @@ const handleBatchCreate = async () => {
 REDACTED
 
 const handleCreateProxy = async () => {
+  if (!createForm.name.trim()) {
+    appStore.showError(t('admin.proxies.nameRequired'))
+    return
+  REDACTED
+  if (!createForm.host.trim()) {
+    appStore.showError(t('admin.proxies.hostRequired'))
+    return
+  REDACTED
+  if (createForm.port < 1 || createForm.port > 65535) {
+    appStore.showError(t('admin.proxies.portInvalid'))
+    return
+  REDACTED
   submitting.value = true
   try {
     await adminAPI.proxies.create({
@@ -927,6 +844,18 @@ REDACTED
 
 const handleUpdateProxy = async () => {
   if (!editingProxy.value) return
+  if (!editForm.name.trim()) {
+    appStore.showError(t('admin.proxies.nameRequired'))
+    return
+  REDACTED
+  if (!editForm.host.trim()) {
+    appStore.showError(t('admin.proxies.hostRequired'))
+    return
+  REDACTED
+  if (editForm.port < 1 || editForm.port > 65535) {
+    appStore.showError(t('admin.proxies.portInvalid'))
+    return
+  REDACTED
 
   submitting.value = true
   try {

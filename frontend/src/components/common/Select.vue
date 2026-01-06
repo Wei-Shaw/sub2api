@@ -23,15 +23,11 @@
         </slot>
       </span>
       <span class="select-icon">
-        <svg
-          :class="['h-5 w-5 transition-transform duration-200', isOpen && 'rotate-180']"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          stroke-width="1.5"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
+        <Icon
+          name="chevronDown"
+          size="md"
+          :class="['transition-transform duration-200', isOpen && 'rotate-180']"
+        />
       </span>
     </button>
 
@@ -51,19 +47,7 @@
         >
           <!-- Search input -->
           <div v-if="searchable" class="select-search">
-            <svg
-              class="h-4 w-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-              />
-            </svg>
+            <Icon name="search" size="sm" class="text-gray-400" />
             <input
               ref="searchInputRef"
               v-model="searchQuery"
@@ -93,16 +77,13 @@
             >
               <slot name="option" :option="option" :selected="isSelected(option)">
                 <span class="select-option-label">{{ getOptionLabel(option) REDACTEDREDACTED</span>
-                <svg
+                <Icon
                   v-if="isSelected(option)"
-                  class="h-4 w-4 text-primary-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
+                  name="check"
+                  size="sm"
+                  class="text-primary-500"
+                  :stroke-width="2"
+                />
               </slot>
             </div>
 
@@ -120,6 +101,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 

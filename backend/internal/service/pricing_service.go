@@ -34,6 +34,7 @@ type LiteLLMModelPricing struct {
 	LiteLLMProvider             string  `json:"litellm_provider"`
 	Mode                        string  `json:"mode"`
 	SupportsPromptCaching       bool    `json:"supports_prompt_caching"`
+	OutputCostPerImage          float64 `json:"output_cost_per_image"` // 图片生成模型每张图片价格
 REDACTED
 
 // PricingRemoteClient 远程价格数据获取接口
@@ -51,6 +52,7 @@ type LiteLLMRawEntry struct {
 	LiteLLMProvider             string   `json:"litellm_provider"`
 	Mode                        string   `json:"mode"`
 	SupportsPromptCaching       bool     `json:"supports_prompt_caching"`
+	OutputCostPerImage          *float64 `json:"output_cost_per_image"`
 REDACTED
 
 // PricingService 动态价格服务
@@ -318,6 +320,9 @@ REDACTED
 	REDACTED
 		if entry.CacheReadInputTokenCost != nil {
 			pricing.CacheReadInputTokenCost = *entry.CacheReadInputTokenCost
+	REDACTED
+		if entry.OutputCostPerImage != nil {
+			pricing.OutputCostPerImage = *entry.OutputCostPerImage
 	REDACTED
 
 		result[modelName] = pricing

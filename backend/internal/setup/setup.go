@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/repository"
@@ -22,9 +21,43 @@ import (
 
 // Config paths
 const (
-	ConfigFile = "config.yaml"
-	EnvFile    = ".env"
+	ConfigFileName  = "config.yaml"
+	InstallLockFile = ".installed"
 )
+
+// GetDataDir returns the data directory for storing config and lock files.
+// Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
+func GetDataDir() string {
+	// Check DATA_DIR environment variable first
+	if dir := os.Getenv("DATA_DIR"); dir != "" {
+		return dir
+REDACTED
+
+	// Check if /app/data exists and is writable (Docker environment)
+	dockerDataDir := "/app/data"
+	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
+		// Try to check if writable by creating a temp file
+		testFile := dockerDataDir + "/.write_test"
+		if f, err := os.Create(testFile); err == nil {
+			_ = f.Close()
+			_ = os.Remove(testFile)
+			return dockerDataDir
+	REDACTED
+REDACTED
+
+	// Default to current directory
+	return "."
+REDACTED
+
+// GetConfigFilePath returns the full path to config.yaml
+func GetConfigFilePath() string {
+	return GetDataDir() + "/" + ConfigFileName
+REDACTED
+
+// GetInstallLockPath returns the full path to .installed lock file
+func GetInstallLockPath() string {
+	return GetDataDir() + "/" + InstallLockFile
+REDACTED
 
 // SetupConfig holds the setup configuration
 type SetupConfig struct {
@@ -72,13 +105,12 @@ REDACTED
 // Uses multiple checks to prevent attackers from forcing re-setup by deleting config
 func NeedsSetup() bool {
 	// Check 1: Config file must not exist
-	if _, err := os.Stat(ConfigFile); !os.IsNotExist(err) {
+	if _, err := os.Stat(GetConfigFilePath()); !os.IsNotExist(err) {
 		return false // Config exists, no setup needed
 REDACTED
 
 	// Check 2: Installation lock file (harder to bypass)
-	lockFile := ".installed"
-	if _, err := os.Stat(lockFile); !os.IsNotExist(err) {
+	if _, err := os.Stat(GetInstallLockPath()); !os.IsNotExist(err) {
 		return false // Lock file exists, already installed
 REDACTED
 
@@ -197,17 +229,12 @@ REDACTED
 
 	// Generate JWT secret if not provided
 	if cfg.JWT.Secret == "" {
-		if strings.EqualFold(cfg.Server.Mode, "release") {
-			return fmt.Errorf("jwt secret is required in release mode")
-	REDACTED
 		secret, err := generateSecret(32)
 		if err != nil {
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated for non-release mode. Do not use in production.")
-REDACTED else if strings.EqualFold(cfg.Server.Mode, "release") && len(cfg.JWT.Secret) < 32 {
-		return fmt.Errorf("jwt secret must be at least 32 characters in release mode")
+		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
 	// Test connections
@@ -244,9 +271,8 @@ REDACTED
 
 // createInstallLock creates a lock file to prevent re-installation attacks
 func createInstallLock() error {
-	lockFile := ".installed"
 	content := fmt.Sprintf("installed_at=%s\n", time.Now().UTC().Format(time.RFC3339))
-	return os.WriteFile(lockFile, []byte(content), 0400) // Read-only for owner
+	return os.WriteFile(GetInstallLockPath(), []byte(content), 0400) // Read-only for owner
 REDACTED
 
 func initializeDatabase(cfg *SetupConfig) error {
@@ -397,7 +423,7 @@ REDACTED
 		return err
 REDACTED
 
-	return os.WriteFile(ConfigFile, data, 0600)
+	return os.WriteFile(GetConfigFilePath(), data, 0600)
 REDACTED
 
 func generateSecret(length int) (string, error) {
@@ -440,6 +466,7 @@ REDACTED
 // This is designed for Docker deployment where all config is passed via env vars
 func AutoSetupFromEnv() error {
 	log.Println("Auto setup enabled, configuring from environment variables...")
+	log.Printf("Data directory: %s", GetDataDir())
 
 	// Get timezone from TZ or TIMEZONE env var (TZ is standard for Docker)
 	tz := getEnvOrDefault("TZ", "")
@@ -481,17 +508,12 @@ REDACTED
 
 	// Generate JWT secret if not provided
 	if cfg.JWT.Secret == "" {
-		if strings.EqualFold(cfg.Server.Mode, "release") {
-			return fmt.Errorf("jwt secret is required in release mode")
-	REDACTED
 		secret, err := generateSecret(32)
 		if err != nil {
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated for non-release mode. Do not use in production.")
-REDACTED else if strings.EqualFold(cfg.Server.Mode, "release") && len(cfg.JWT.Secret) < 32 {
-		return fmt.Errorf("jwt secret must be at least 32 characters in release mode")
+		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
 	// Generate admin password if not provided

@@ -174,10 +174,12 @@ export function formatCostFixed(amount: number, fractionDigits: number = 4): str
 REDACTED
 
 /**
- * 格式化 token 数量（>=1000 显示为 K，保留 1 位小数）
+ * 格式化 token 数量（>=1M 显示为 M，>=1K 显示为 K，保留 1 位小数）
  * @param tokens token 数量
- * @returns 格式化后的字符串，如 "950", "1.2K"
+ * @returns 格式化后的字符串，如 "950", "1.2K", "3.5M"
  */
 export function formatTokensK(tokens: number): string {
-  return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)REDACTEDK` : tokens.toString()
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)REDACTEDM`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)REDACTEDK`
+  return tokens.toString()
 REDACTED

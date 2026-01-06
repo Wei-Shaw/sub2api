@@ -773,9 +773,14 @@ REDACTED
 		idx++
 REDACTED
 	if updates.ProxyID != nil {
-		setClauses = append(setClauses, "proxy_id = $"+itoa(idx))
-		args = append(args, *updates.ProxyID)
-		idx++
+		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
+		if *updates.ProxyID == 0 {
+			setClauses = append(setClauses, "proxy_id = NULL")
+	REDACTED else {
+			setClauses = append(setClauses, "proxy_id = $"+itoa(idx))
+			args = append(args, *updates.ProxyID)
+			idx++
+	REDACTED
 REDACTED
 	if updates.Concurrency != nil {
 		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
