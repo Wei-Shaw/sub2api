@@ -39,8 +39,8 @@ REDACTED
 		// Try to check if writable by creating a temp file
 		testFile := dockerDataDir + "/.write_test"
 		if f, err := os.Create(testFile); err == nil {
-			f.Close()
-			os.Remove(testFile)
+			_ = f.Close()
+			_ = os.Remove(testFile)
 			return dockerDataDir
 	REDACTED
 REDACTED

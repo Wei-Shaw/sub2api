@@ -153,6 +153,10 @@ const formatBalance = (b: number) =>
 
 const formatNumber = (n: number) => n.toLocaleString()
 const formatCost = (c: number) => c.toFixed(4)
-const formatTokens = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(1)REDACTEDK` : t.toString())
+const formatTokens = (t: number) => {
+  if (t >= 1_000_000) return `${(t / 1_000_000).toFixed(1)REDACTEDM`
+  if (t >= 1000) return `${(t / 1000).toFixed(1)REDACTEDK`
+  return t.toString()
+REDACTED
 const formatDuration = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(2)REDACTEDs` : `${ms.toFixed(0)REDACTEDms`
 </script>
