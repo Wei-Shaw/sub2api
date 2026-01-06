@@ -22,7 +22,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, image_count, image_size, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, image_count, image_size, created_at"
 
 type usageLogRepository struct {
 	client *dbent.Client
@@ -109,6 +109,7 @@ REDACTED
 			stream,
 			duration_ms,
 			first_token_ms,
+			user_agent,
 			image_count,
 			image_size,
 			created_at
@@ -118,8 +119,7 @@ REDACTED
 			$8, $9, $10, $11,
 			$12, $13,
 			$14, $15, $16, $17, $18, $19,
-			$20, $21, $22, $23, $24,
-			$25, $26, $27
+		$20, $21, $22, $23, $24, $25, $26, $27, $28
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -129,6 +129,7 @@ REDACTED
 	subscriptionID := nullInt64(log.SubscriptionID)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
+	userAgent := nullString(log.UserAgent)
 	imageSize := nullString(log.ImageSize)
 
 	var requestIDArg any
@@ -161,6 +162,7 @@ REDACTED
 		log.Stream,
 		duration,
 		firstToken,
+		userAgent,
 		log.ImageCount,
 		imageSize,
 		createdAt,
@@ -1870,6 +1872,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		stream              bool
 		durationMs          sql.NullInt64
 		firstTokenMs        sql.NullInt64
+		userAgent           sql.NullString
 		imageCount          int
 		imageSize           sql.NullString
 		createdAt           time.Time
@@ -1901,6 +1904,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		&stream,
 		&durationMs,
 		&firstTokenMs,
+		&userAgent,
 		&imageCount,
 		&imageSize,
 		&createdAt,
@@ -1951,6 +1955,9 @@ REDACTED
 	if firstTokenMs.Valid {
 		value := int(firstTokenMs.Int64)
 		log.FirstTokenMs = &value
+REDACTED
+	if userAgent.Valid {
+		log.UserAgent = &userAgent.String
 REDACTED
 	if imageSize.Valid {
 		log.ImageSize = &imageSize.String
