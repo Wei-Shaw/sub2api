@@ -1,15 +1,21 @@
 <template>
   <div class="relative" ref="containerRef">
     <button
+      ref="triggerRef"
       type="button"
       @click="toggle"
       :disabled="disabled"
+      :aria-expanded="isOpen"
+      :aria-haspopup="true"
+      aria-label="Select option"
       :class="[
         'select-trigger',
         isOpen && 'select-trigger-open',
         error && 'select-trigger-error',
         disabled && 'select-trigger-disabled'
       ]"
+      @keydown.down.prevent="onTriggerKeyDown"
+      @keydown.up.prevent="onTriggerKeyDown"
     >
       <span class="select-value">
         <slot name="selected" :option="selectedOption">
@@ -17,44 +23,31 @@
         </slot>
       </span>
       <span class="select-icon">
-        <svg
-          :class="['h-5 w-5 transition-transform duration-200', isOpen && 'rotate-180']"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          stroke-width="1.5"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
+        <Icon
+          name="chevronDown"
+          size="md"
+          :class="['transition-transform duration-200', isOpen && 'rotate-180']"
+        />
       </span>
     </button>
 
-    <!-- Teleport dropdown to body to escape stacking context (for driver.js overlay compatibility) -->
+    <!-- Teleport dropdown to body to escape stacking context -->
     <Teleport to="body">
       <Transition name="select-dropdown">
         <div
           v-if="isOpen"
           ref="dropdownRef"
           class="select-dropdown-portal"
+          :class="[instanceId]"
           :style="dropdownStyle"
+          role="listbox"
           @click.stop
           @mousedown.stop
+          @keydown="onDropdownKeyDown"
         >
           <!-- Search input -->
           <div v-if="searchable" class="select-search">
-            <svg
-              class="h-4 w-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-              />
-            </svg>
+            <Icon name="search" size="sm" class="text-gray-400" />
             <input
               ref="searchInputRef"
               v-model="searchQuery"
@@ -66,25 +59,31 @@
           </div>
 
           <!-- Options list -->
-          <div class="select-options">
+          <div class="select-options" ref="optionsListRef">
             <div
-              v-for="option in filteredOptions"
+              v-for="(option, index) in filteredOptions"
               :key="`${typeof getOptionValue(option)REDACTED:${String(getOptionValue(option) ?? '')REDACTED`"
-              @click.stop="selectOption(option)"
-              :class="['select-option', isSelected(option) && 'select-option-selected']"
+              role="option"
+              :aria-selected="isSelected(option)"
+              :aria-disabled="isOptionDisabled(option)"
+              @click.stop="!isOptionDisabled(option) && selectOption(option)"
+              @mouseenter="focusedIndex = index"
+              :class="[
+                'select-option',
+                isSelected(option) && 'select-option-selected',
+                isOptionDisabled(option) && 'select-option-disabled',
+                focusedIndex === index && 'select-option-focused'
+              ]"
             >
               <slot name="option" :option="option" :selected="isSelected(option)">
                 <span class="select-option-label">{{ getOptionLabel(option) REDACTEDREDACTED</span>
-                <svg
+                <Icon
                   v-if="isSelected(option)"
-                  class="h-4 w-4 text-primary-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
+                  name="check"
+                  size="sm"
+                  class="text-primary-500"
+                  :stroke-width="2"
+                />
               </slot>
             </div>
 
@@ -102,8 +101,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
+
+// Instance ID for unique click-outside detection
+const instanceId = `select-${Math.random().toString(36).substring(2, 9)REDACTED`
 
 export interface SelectOption {
   value: string | number | boolean | null
@@ -138,22 +141,23 @@ const props = withDefaults(defineProps<Props>(), {
   labelKey: 'label'
 REDACTED)
 
-// Use computed for i18n default values
-const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
-const searchPlaceholderText = computed(
-  () => props.searchPlaceholder ?? t('common.searchPlaceholder')
-)
-const emptyTextDisplay = computed(() => props.emptyText ?? t('common.noOptionsFound'))
-
 const emit = defineEmits<Emits>()
 
 const isOpen = ref(false)
 const searchQuery = ref('')
+const focusedIndex = ref(-1)
 const containerRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLButtonElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
+const optionsListRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<'bottom' | 'top'>('bottom')
 const triggerRect = ref<DOMRect | null>(null)
+
+// i18n placeholders
+const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
+const searchPlaceholderText = computed(() => props.searchPlaceholder ?? t('common.searchPlaceholder'))
+const emptyTextDisplay = computed(() => props.emptyText ?? t('common.noOptionsFound'))
 
 // Computed style for teleported dropdown
 const dropdownStyle = computed(() => {
@@ -164,32 +168,37 @@ const dropdownStyle = computed(() => {
     position: 'fixed',
     left: `${rect.leftREDACTEDpx`,
     minWidth: `${rect.widthREDACTEDpx`,
-    zIndex: '100000020' // Higher than driver.js overlay (99999998)
+    zIndex: '100000020'
   REDACTED
 
   if (dropdownPosition.value === 'top') {
-    style.bottom = `${window.innerHeight - rect.top + 8REDACTEDpx`
+    style.bottom = `${window.innerHeight - rect.top + 4REDACTEDpx`
   REDACTED else {
-    style.top = `${rect.bottom + 8REDACTEDpx`
+    style.top = `${rect.bottom + 4REDACTEDpx`
   REDACTED
 
   return style
 REDACTED)
 
-const getOptionValue = (
-  option: SelectOption | Record<string, unknown>
-): string | number | boolean | null | undefined => {
+const getOptionValue = (option: any): any => {
   if (typeof option === 'object' && option !== null) {
-    return option[props.valueKey] as string | number | boolean | null | undefined
+    return option[props.valueKey]
   REDACTED
-  return option as string | number | boolean | null
+  return option
 REDACTED
 
-const getOptionLabel = (option: SelectOption | Record<string, unknown>): string => {
+const getOptionLabel = (option: any): string => {
   if (typeof option === 'object' && option !== null) {
     return String(option[props.labelKey] ?? '')
   REDACTED
   return String(option ?? '')
+REDACTED
+
+const isOptionDisabled = (option: any): boolean => {
+  if (typeof option === 'object' && option !== null) {
+    return !!option.disabled
+  REDACTED
+  return false
 REDACTED
 
 const selectedOption = computed(() => {
@@ -204,36 +213,35 @@ const selectedLabel = computed(() => {
 REDACTED)
 
 const filteredOptions = computed(() => {
-  if (!props.searchable || !searchQuery.value) {
-    return props.options
+  let opts = props.options as any[]
+  if (props.searchable && searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    opts = opts.filter((opt) => getOptionLabel(opt).toLowerCase().includes(query))
   REDACTED
-  const query = searchQuery.value.toLowerCase()
-  return props.options.filter((opt) => {
-    const label = getOptionLabel(opt).toLowerCase()
-    return label.includes(query)
-  REDACTED)
+  return opts
 REDACTED)
 
-const isSelected = (option: SelectOption | Record<string, unknown>): boolean => {
+const isSelected = (option: any): boolean => {
   return getOptionValue(option) === props.modelValue
+REDACTED
+
+// Update trigger rect periodically while open to follow scroll/resize
+const updateTriggerRect = () => {
+  if (containerRef.value) {
+    triggerRect.value = containerRef.value.getBoundingClientRect()
+  REDACTED
 REDACTED
 
 const calculateDropdownPosition = () => {
   if (!containerRef.value) return
-
-  // Update trigger rect for positioning
-  triggerRect.value = containerRef.value.getBoundingClientRect()
+  updateTriggerRect()
 
   nextTick(() => {
-    if (!containerRef.value || !dropdownRef.value) return
+    if (!dropdownRef.value || !triggerRect.value) return
+    const dropdownHeight = dropdownRef.value.offsetHeight || 240
+    const spaceBelow = window.innerHeight - triggerRect.value.bottom
+    const spaceAbove = triggerRect.value.top
 
-    const rect = triggerRect.value!
-    const dropdownHeight = dropdownRef.value.offsetHeight || 240 // Max height fallback
-    const viewportHeight = window.innerHeight
-    const spaceBelow = viewportHeight - rect.bottom
-    const spaceAbove = rect.top
-
-    // If not enough space below but enough space above, show dropdown on top
     if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
       dropdownPosition.value = 'top'
     REDACTED else {
@@ -245,63 +253,108 @@ REDACTED
 const toggle = () => {
   if (props.disabled) return
   isOpen.value = !isOpen.value
-  if (isOpen.value) {
+REDACTED
+
+watch(isOpen, (open) => {
+  if (open) {
     calculateDropdownPosition()
+    // Reset focused index to current selection or first item
+    const selectedIdx = filteredOptions.value.findIndex(isSelected)
+    focusedIndex.value = selectedIdx >= 0 ? selectedIdx : 0
+
     if (props.searchable) {
-      nextTick(() => {
-        searchInputRef.value?.focus()
-      REDACTED)
+      nextTick(() => searchInputRef.value?.focus())
     REDACTED
+    // Add scroll listener to update position
+    window.addEventListener('scroll', updateTriggerRect, { capture: true, passive: true REDACTED)
+    window.addEventListener('resize', calculateDropdownPosition)
+  REDACTED else {
+    searchQuery.value = ''
+    focusedIndex.value = -1
+    window.removeEventListener('scroll', updateTriggerRect, { capture: true REDACTED)
+    window.removeEventListener('resize', calculateDropdownPosition)
+  REDACTED
+REDACTED)
+
+const selectOption = (option: any) => {
+  const value = getOptionValue(option) ?? null
+  emit('update:modelValue', value)
+  emit('change', value, option)
+  isOpen.value = false
+  triggerRef.value?.focus()
+REDACTED
+
+// Keyboards
+const onTriggerKeyDown = () => {
+  if (!isOpen.value) {
+    isOpen.value = true
   REDACTED
 REDACTED
 
-const selectOption = (option: SelectOption | Record<string, unknown>) => {
-  const value = getOptionValue(option) ?? null
-  emit('update:modelValue', value)
-  emit('change', value, option as SelectOption)
-  isOpen.value = false
-  searchQuery.value = ''
+const onDropdownKeyDown = (e: KeyboardEvent) => {
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault()
+      focusedIndex.value = (focusedIndex.value + 1) % filteredOptions.value.length
+      scrollToFocused()
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      focusedIndex.value = (focusedIndex.value - 1 + filteredOptions.value.length) % filteredOptions.value.length
+      scrollToFocused()
+      break
+    case 'Enter':
+      e.preventDefault()
+      if (focusedIndex.value >= 0 && focusedIndex.value < filteredOptions.value.length) {
+        const opt = filteredOptions.value[focusedIndex.value]
+        if (!isOptionDisabled(opt)) selectOption(opt)
+      REDACTED
+      break
+    case 'Escape':
+      e.preventDefault()
+      isOpen.value = false
+      triggerRef.value?.focus()
+      break
+    case 'Tab':
+      isOpen.value = false
+      break
+  REDACTED
+REDACTED
+
+const scrollToFocused = () => {
+  nextTick(() => {
+    const list = optionsListRef.value
+    if (!list) return
+    const focusedEl = list.children[focusedIndex.value] as HTMLElement
+    if (!focusedEl) return
+
+    if (focusedEl.offsetTop < list.scrollTop) {
+      list.scrollTop = focusedEl.offsetTop
+    REDACTED else if (focusedEl.offsetTop + focusedEl.offsetHeight > list.scrollTop + list.offsetHeight) {
+      list.scrollTop = focusedEl.offsetTop + focusedEl.offsetHeight - list.offsetHeight
+    REDACTED
+  REDACTED)
 REDACTED
 
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement
+  // Check if click is inside THIS specific instance's dropdown or trigger
+  const isInDropdown = !!target.closest(`.${instanceIdREDACTED`)
+  const isInTrigger = containerRef.value?.contains(target)
 
-  // 使用 closest 检查点击是否在下拉菜单内部（更可靠，不依赖 ref）
-  if (target.closest('.select-dropdown-portal')) {
-    return // 点击在下拉菜单内，不关闭
-  REDACTED
-
-  // 检查是否点击在触发器内
-  if (containerRef.value && containerRef.value.contains(target)) {
-    return // 点击在触发器内，让 toggle 处理
-  REDACTED
-
-  // 点击在外部，关闭下拉菜单
-  isOpen.value = false
-  searchQuery.value = ''
-REDACTED
-
-const handleEscape = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && isOpen.value) {
+  if (!isInDropdown && !isInTrigger && isOpen.value) {
     isOpen.value = false
-    searchQuery.value = ''
   REDACTED
 REDACTED
-
-watch(isOpen, (open) => {
-  if (!open) {
-    searchQuery.value = ''
-  REDACTED
-REDACTED)
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  document.addEventListener('keydown', handleEscape)
 REDACTED)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
-  document.removeEventListener('keydown', handleEscape)
+  window.removeEventListener('scroll', updateTriggerRect, { capture: true REDACTED)
+  window.removeEventListener('resize', calculateDropdownPosition)
 REDACTED)
 </script>
 
@@ -339,16 +392,14 @@ REDACTED
 REDACTED
 </style>
 
-<!-- Global styles for teleported dropdown -->
 <style>
 .select-dropdown-portal {
-  @apply w-max max-w-[300px];
+  @apply w-max min-w-[160px] max-w-[320px];
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
   @apply overflow-hidden;
-  /* 确保下拉菜单在引导期间可点击（覆盖 driver.js 的 pointer-events 影响） */
   pointer-events: auto !important;
 REDACTED
 
@@ -365,7 +416,7 @@ REDACTED
 REDACTED
 
 .select-dropdown-portal .select-options {
-  @apply max-h-60 overflow-y-auto py-1;
+  @apply max-h-60 overflow-y-auto py-1 outline-none;
 REDACTED
 
 .select-dropdown-portal .select-option {
@@ -374,13 +425,20 @@ REDACTED
   @apply text-gray-700 dark:text-gray-300;
   @apply cursor-pointer transition-colors duration-150;
   @apply hover:bg-gray-50 dark:hover:bg-dark-700;
-  /* 确保选项在引导期间可点击 */
   pointer-events: auto !important;
 REDACTED
 
 .select-dropdown-portal .select-option-selected {
   @apply bg-primary-50 dark:bg-primary-900/20;
   @apply text-primary-700 dark:text-primary-300;
+REDACTED
+
+.select-dropdown-portal .select-option-focused {
+  @apply bg-gray-100 dark:bg-dark-700;
+REDACTED
+
+.select-dropdown-portal .select-option-disabled {
+  @apply cursor-not-allowed opacity-40;
 REDACTED
 
 .select-dropdown-portal .select-option-label {
@@ -392,7 +450,6 @@ REDACTED
   @apply text-gray-500 dark:text-dark-400;
 REDACTED
 
-/* Dropdown animation */
 .select-dropdown-enter-active,
 .select-dropdown-leave-active {
   transition: all 0.2s ease;

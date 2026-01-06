@@ -9,30 +9,10 @@
           class="btn btn-secondary"
           :title="t('common.refresh')"
         >
-          <svg
-            :class="['h-5 w-5', loading ? 'animate-spin' : '']"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-            />
-          </svg>
+          <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
         </button>
         <button @click="showCreateModal = true" class="btn btn-primary" data-tour="keys-create-btn">
-          <svg
-            class="mr-2 h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
+          <Icon name="plus" size="md" class="mr-2" />
           {{ t('keys.createKey') REDACTEDREDACTED
         </button>
       </div>
@@ -55,30 +35,13 @@
                 "
                 :title="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
               >
-                <svg
+                <Icon
                   v-if="copiedKeyId === row.id"
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                <svg
-                  v-else
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"
-                  />
-                </svg>
+                  name="check"
+                  size="sm"
+                  :stroke-width="2"
+                />
+                <Icon v-else name="clipboard" size="sm" />
               </button>
             </div>
           </template>
@@ -141,7 +104,7 @@
 
           <template #cell-status="{ value REDACTED">
             <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-gray']">
-              {{ value REDACTEDREDACTED
+              {{ t('admin.accounts.status.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -156,19 +119,7 @@
                 @click="openUseKeyModal(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"
-                  />
-                </svg>
+                <Icon name="terminal" size="sm" />
                 <span class="text-xs">{{ t('keys.useKey') REDACTEDREDACTED</span>
               </button>
               <!-- Import to CC Switch Button -->
@@ -176,19 +127,7 @@
                 @click="importToCcswitch(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-                  />
-                </svg>
+                <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') REDACTEDREDACTED</span>
               </button>
               <!-- Toggle Status Button -->
@@ -201,34 +140,8 @@
                     : 'text-gray-500 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
                 ]"
               >
-                <svg
-                  v-if="row.status === 'active'"
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                  />
-                </svg>
-                <svg
-                  v-else
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Icon v-if="row.status === 'active'" name="ban" size="sm" />
+                <Icon v-else name="checkCircle" size="sm" />
                 <span class="text-xs">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') REDACTEDREDACTED</span>
               </button>
               <!-- Edit Button -->
@@ -236,19 +149,7 @@
                 @click="editKey(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-                  />
-                </svg>
+                <Icon name="edit" size="sm" />
                 <span class="text-xs">{{ t('common.edit') REDACTEDREDACTED</span>
               </button>
               <!-- Delete Button -->
@@ -256,19 +157,7 @@
                 @click="confirmDelete(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
-                <svg
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                  />
-                </svg>
+                <Icon name="trash" size="sm" />
                 <span class="text-xs">{{ t('common.delete') REDACTEDREDACTED</span>
               </button>
             </div>
@@ -335,12 +224,14 @@
               />
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') REDACTEDREDACTED</span>
             </template>
-            <template #option="{ option REDACTED">
-              <GroupBadge
+            <template #option="{ option, selected REDACTED">
+              <GroupOptionItem
                 :name="(option as unknown as GroupOption).label"
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
+                :description="(option as unknown as GroupOption).description"
+                :selected="selected"
               />
             </template>
           </Select>
@@ -463,30 +354,34 @@
       <div class="space-y-4">
         <p class="text-sm text-gray-600 dark:text-gray-400">
           {{ t('keys.ccsClientSelect.description') REDACTEDREDACTED
-        </p>
-        <div class="grid grid-cols-2 gap-3">
-          <button
-            @click="handleCcsClientSelect('claude')"
-            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-          >
-            <svg class="w-8 h-8 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 17.25V6.75A2.25 2.25 0 0 0 18.75 4.5H5.25A2.25 2.25 0 0 0 3 6.75v10.5A2.25 2.25 0 0 0 5.25 20.25Z" />
-            </svg>
-            <span class="font-medium text-gray-900 dark:text-white">{{ t('keys.ccsClientSelect.claudeCode') REDACTEDREDACTED</span>
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.ccsClientSelect.claudeCodeDesc') REDACTEDREDACTED</span>
-          </button>
-          <button
-            @click="handleCcsClientSelect('gemini')"
-            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-          >
-            <svg class="w-8 h-8 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-            </svg>
-            <span class="font-medium text-gray-900 dark:text-white">{{ t('keys.ccsClientSelect.geminiCli') REDACTEDREDACTED</span>
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.ccsClientSelect.geminiCliDesc') REDACTEDREDACTED</span>
-          </button>
-        </div>
-      </div>
+	        </p>
+	        <div class="grid grid-cols-2 gap-3">
+	          <button
+	            @click="handleCcsClientSelect('claude')"
+	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+	          >
+	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
+	            <span class="font-medium text-gray-900 dark:text-white">{{
+	              t('keys.ccsClientSelect.claudeCode')
+	            REDACTEDREDACTED</span>
+	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
+	              t('keys.ccsClientSelect.claudeCodeDesc')
+	            REDACTEDREDACTED</span>
+	          </button>
+	          <button
+	            @click="handleCcsClientSelect('gemini')"
+	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+	          >
+	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
+	            <span class="font-medium text-gray-900 dark:text-white">{{
+	              t('keys.ccsClientSelect.geminiCli')
+	            REDACTEDREDACTED</span>
+	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
+	              t('keys.ccsClientSelect.geminiCliDesc')
+	            REDACTEDREDACTED</span>
+	          </button>
+	        </div>
+	      </div>
       <template #footer>
         <div class="flex justify-end">
           <button @click="closeCcsClientSelect" class="btn btn-secondary">
@@ -501,7 +396,8 @@
       <div
         v-if="groupSelectorKeyId !== null && dropdownPosition"
         ref="dropdownRef"
-        class="animate-in fade-in slide-in-from-top-2 fixed z-[9999] w-64 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-64 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+        style="pointer-events: auto !important;"
         :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' REDACTED"
       >
         <div class="max-h-64 overflow-y-auto p-1.5">
@@ -516,26 +412,19 @@
                 ? 'bg-primary-50 dark:bg-primary-900/20'
                 : 'hover:bg-gray-100 dark:hover:bg-dark-700'
             ]"
+            :title="option.description || undefined"
           >
-            <GroupBadge
+            <GroupOptionItem
               :name="option.label"
               :platform="option.platform"
               :subscription-type="option.subscriptionType"
               :rate-multiplier="option.rate"
-            />
-            <svg
-              v-if="
+              :description="option.description"
+              :selected="
                 selectedKeyForGroup?.group_id === option.value ||
                 (!selectedKeyForGroup?.group_id && option.value === null)
               "
-              class="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+            />
           </button>
         </div>
       </div>
@@ -544,25 +433,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance REDACTED from 'vue'
-import { useI18n REDACTED from 'vue-i18n'
-import { useAppStore REDACTED from '@/stores/app'
-import { useOnboardingStore REDACTED from '@/stores/onboarding'
-import { useClipboard REDACTED from '@/composables/useClipboard'
+	import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance REDACTED from 'vue'
+	import { useI18n REDACTED from 'vue-i18n'
+	import { useAppStore REDACTED from '@/stores/app'
+	import { useOnboardingStore REDACTED from '@/stores/onboarding'
+	import { useClipboard REDACTED from '@/composables/useClipboard'
 
 const { t REDACTED = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI REDACTED from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
-import DataTable from '@/components/common/DataTable.vue'
-import Pagination from '@/components/common/Pagination.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import EmptyState from '@/components/common/EmptyState.vue'
-import Select from '@/components/common/Select.vue'
-import UseKeyModal from '@/components/keys/UseKeyModal.vue'
-import GroupBadge from '@/components/common/GroupBadge.vue'
-import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform REDACTED from '@/types'
+	import DataTable from '@/components/common/DataTable.vue'
+	import Pagination from '@/components/common/Pagination.vue'
+	import BaseDialog from '@/components/common/BaseDialog.vue'
+	import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+	import EmptyState from '@/components/common/EmptyState.vue'
+	import Select from '@/components/common/Select.vue'
+	import Icon from '@/components/icons/Icon.vue'
+	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
+	import GroupBadge from '@/components/common/GroupBadge.vue'
+	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import type { BatchApiKeyUsageStats REDACTED from '@/api/usage'
 import { formatDateTime REDACTED from '@/utils/format'
@@ -570,6 +461,7 @@ import { formatDateTime REDACTED from '@/utils/format'
 interface GroupOption {
   value: number
   label: string
+  description: string | null
   rate: number
   subscriptionType: SubscriptionType
   platform: GroupPlatform
@@ -665,6 +557,7 @@ const groupOptions = computed(() =>
   groups.value.map((group) => ({
     value: group.id,
     label: group.name,
+    description: group.description,
     rate: group.rate_multiplier,
     subscriptionType: group.subscription_type,
     platform: group.platform

@@ -130,6 +130,10 @@ REDACTED
 	updates[SettingKeyFallbackModelGemini] = settings.FallbackModelGemini
 	updates[SettingKeyFallbackModelAntigravity] = settings.FallbackModelAntigravity
 
+	// Identity patch configuration (Claude -> Gemini)
+	updates[SettingKeyEnableIdentityPatch] = strconv.FormatBool(settings.EnableIdentityPatch)
+	updates[SettingKeyIdentityPatchPrompt] = settings.IdentityPatchPrompt
+
 	return s.settingRepo.SetMultiple(ctx, updates)
 REDACTED
 
@@ -213,6 +217,9 @@ REDACTED
 		SettingKeyFallbackModelOpenAI:      "gpt-4o",
 		SettingKeyFallbackModelGemini:      "gemini-2.5-pro",
 		SettingKeyFallbackModelAntigravity: "gemini-2.5-pro",
+		// Identity patch defaults
+		SettingKeyEnableIdentityPatch: "true",
+		SettingKeyIdentityPatchPrompt: "",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -221,21 +228,23 @@ REDACTED
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	result := &SystemSettings{
-		RegistrationEnabled: settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:  settings[SettingKeyEmailVerifyEnabled] == "true",
-		SMTPHost:            settings[SettingKeySMTPHost],
-		SMTPUsername:        settings[SettingKeySMTPUsername],
-		SMTPFrom:            settings[SettingKeySMTPFrom],
-		SMTPFromName:        settings[SettingKeySMTPFromName],
-		SMTPUseTLS:          settings[SettingKeySMTPUseTLS] == "true",
-		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
-		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
-		SiteLogo:            settings[SettingKeySiteLogo],
-		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:          settings[SettingKeyAPIBaseURL],
-		ContactInfo:         settings[SettingKeyContactInfo],
-		DocURL:              settings[SettingKeyDocURL],
+		RegistrationEnabled:          settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:           settings[SettingKeyEmailVerifyEnabled] == "true",
+		SMTPHost:                     settings[SettingKeySMTPHost],
+		SMTPUsername:                 settings[SettingKeySMTPUsername],
+		SMTPFrom:                     settings[SettingKeySMTPFrom],
+		SMTPFromName:                 settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                   settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:       settings[SettingKeySMTPPassword] != "",
+		TurnstileEnabled:             settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:             settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured: settings[SettingKeyTurnstileSecretKey] != "",
+		SiteName:                     s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:                     settings[SettingKeySiteLogo],
+		SiteSubtitle:                 s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                   settings[SettingKeyAPIBaseURL],
+		ContactInfo:                  settings[SettingKeyContactInfo],
+		DocURL:                       settings[SettingKeyDocURL],
 REDACTED
 
 	// 解析整数类型
@@ -269,6 +278,14 @@ REDACTED
 	result.FallbackModelGemini = s.getStringOrDefault(settings, SettingKeyFallbackModelGemini, "gemini-2.5-pro")
 	result.FallbackModelAntigravity = s.getStringOrDefault(settings, SettingKeyFallbackModelAntigravity, "gemini-2.5-pro")
 
+	// Identity patch settings (default: enabled, to preserve existing behavior)
+	if v, ok := settings[SettingKeyEnableIdentityPatch]; ok && v != "" {
+		result.EnableIdentityPatch = v == "true"
+REDACTED else {
+		result.EnableIdentityPatch = true
+REDACTED
+	result.IdentityPatchPrompt = settings[SettingKeyIdentityPatchPrompt]
+
 	return result
 REDACTED
 
@@ -292,6 +309,25 @@ REDACTED
 // GetTurnstileSecretKey 获取 Turnstile Secret Key
 func (s *SettingService) GetTurnstileSecretKey(ctx context.Context) string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyTurnstileSecretKey)
+	if err != nil {
+		return ""
+REDACTED
+	return value
+REDACTED
+
+// IsIdentityPatchEnabled 检查是否启用身份补丁（Claude -> Gemini systemInstruction 注入）
+func (s *SettingService) IsIdentityPatchEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyEnableIdentityPatch)
+	if err != nil {
+		// 默认开启，保持兼容
+		return true
+REDACTED
+	return value == "true"
+REDACTED
+
+// GetIdentityPatchPrompt 获取自定义身份补丁提示词（为空表示使用内置默认模板）
+func (s *SettingService) GetIdentityPatchPrompt(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyIdentityPatchPrompt)
 	if err != nil {
 		return ""
 REDACTED

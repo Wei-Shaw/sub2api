@@ -8,24 +8,7 @@
         <div
           class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg"
         >
-          <svg
-            class="h-8 w-8 text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
+          <Icon name="cog" size="xl" class="text-white" />
         </div>
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ t('setup.title') REDACTEDREDACTED</h1>
         <p class="mt-2 text-gray-500 dark:text-dark-400">{{ t('setup.description') REDACTEDREDACTED</p>
@@ -46,16 +29,12 @@
                       : 'bg-gray-200 text-gray-500 dark:bg-dark-700 dark:text-dark-400'
                 ]"
               >
-                <svg
+                <Icon
                   v-if="currentStep > index"
-                  class="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
+                  name="check"
+                  size="md"
+                  :stroke-width="2"
+                />
                 <span v-else>{{ index + 1 REDACTEDREDACTED</span>
               </div>
               <span
@@ -87,7 +66,7 @@
               {{ t('setup.database.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Connect to your PostgreSQL database
+              {{ t('setup.database.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -145,12 +124,15 @@
             </div>
             <div>
               <label class="input-label">{{ t('setup.database.sslMode') REDACTEDREDACTED</label>
-              <select v-model="formData.database.sslmode" class="input">
-                <option value="disable">{{ t('setup.database.ssl.disable') REDACTEDREDACTED</option>
-                <option value="require">{{ t('setup.database.ssl.require') REDACTEDREDACTED</option>
-                <option value="verify-ca">{{ t('setup.database.ssl.verifyCa') REDACTEDREDACTED</option>
-                <option value="verify-full">{{ t('setup.database.ssl.verifyFull') REDACTEDREDACTED</option>
-              </select>
+              <Select
+                v-model="formData.database.sslmode"
+                :options="[
+                  { value: 'disable', label: t('setup.database.ssl.disable') REDACTED,
+                  { value: 'require', label: t('setup.database.ssl.require') REDACTED,
+                  { value: 'verify-ca', label: t('setup.database.ssl.verifyCa') REDACTED,
+                  { value: 'verify-full', label: t('setup.database.ssl.verifyFull') REDACTED
+                ]"
+              />
             </div>
           </div>
 
@@ -179,18 +161,13 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            <svg
-              v-else-if="dbConnected"
-              class="mr-2 h-5 w-5 text-green-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
+            <Icon v-else-if="dbConnected" name="check" size="md" class="mr-2 text-green-500" :stroke-width="2" />
             {{
-              testingDb ? 'Testing...' : dbConnected ? 'Connection Successful' : 'Test Connection'
+              testingDb
+                ? t('setup.status.testing')
+                : dbConnected
+                  ? t('setup.status.success')
+                  : t('setup.status.testConnection')
             REDACTEDREDACTED
           </button>
         </div>
@@ -202,7 +179,7 @@
               {{ t('setup.redis.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Connect to your Redis server
+              {{ t('setup.redis.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -273,22 +250,19 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            <svg
+            <Icon
               v-else-if="redisConnected"
-              class="mr-2 h-5 w-5 text-green-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
+              name="check"
+              size="md"
+              class="mr-2 text-green-500"
+              :stroke-width="2"
+            />
             {{
               testingRedis
-                ? 'Testing...'
+                ? t('setup.status.testing')
                 : redisConnected
-                  ? 'Connection Successful'
-                  : 'Test Connection'
+                  ? t('setup.status.success')
+                  : t('setup.status.testConnection')
             REDACTEDREDACTED
           </button>
         </div>
@@ -300,7 +274,7 @@
               {{ t('setup.admin.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Create your administrator account
+              {{ t('setup.admin.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -348,7 +322,7 @@
               {{ t('setup.ready.title') REDACTEDREDACTED
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-              Review your configuration and complete setup
+              {{ t('setup.ready.description') REDACTEDREDACTED
             </p>
           </div>
 
@@ -388,19 +362,7 @@
           class="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
         >
           <div class="flex items-start gap-3">
-            <svg
-              class="h-5 w-5 flex-shrink-0 text-red-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-              />
-            </svg>
+            <Icon name="exclamationCircle" size="md" class="flex-shrink-0 text-red-500" />
             <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage REDACTEDREDACTED</p>
           </div>
         </div>
@@ -431,29 +393,16 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            <svg
-              v-else
-              class="h-5 w-5 flex-shrink-0 text-green-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <Icon v-else name="checkCircle" size="md" class="flex-shrink-0 text-green-500" />
             <div>
               <p class="text-sm font-medium text-green-700 dark:text-green-400">
-                Installation completed!
+                {{ t('setup.status.completed') REDACTEDREDACTED
               </p>
               <p class="mt-1 text-sm text-green-600 dark:text-green-500">
                 {{
                   serviceReady
-                    ? 'Redirecting to login page...'
-                    : 'Service is restarting, please wait...'
+                    ? t('setup.status.redirecting')
+                    : t('setup.status.restarting')
                 REDACTEDREDACTED
               </p>
             </div>
@@ -467,20 +416,8 @@
             @click="currentStep--"
             class="btn btn-secondary"
           >
-            <svg
-              class="mr-2 h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M15.75 19.5L8.25 12l7.5-7.5"
-              />
-            </svg>
-            Previous
+            <Icon name="chevronLeft" size="sm" class="mr-2" :stroke-width="2" />
+            {{ t('common.back') REDACTEDREDACTED
           </button>
           <div v-else></div>
 
@@ -490,16 +427,8 @@
             :disabled="!canProceed"
             class="btn btn-primary"
           >
-            Next
-            <svg
-              class="ml-2 h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-            </svg>
+            {{ t('common.next') REDACTEDREDACTED
+            <Icon name="chevronRight" size="sm" class="ml-2" :stroke-width="2" />
           </button>
 
           <button
@@ -528,7 +457,7 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            {{ installing ? 'Installing...' : 'Complete Installation' REDACTEDREDACTED
+            {{ installing ? t('setup.status.installing') : t('setup.status.completeInstallation') REDACTEDREDACTED
           </button>
         </div>
       </div>
@@ -540,15 +469,17 @@
 import { ref, reactive, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { testDatabase, testRedis, install, type InstallRequest REDACTED from '@/api/setup'
+import Select from '@/components/common/Select.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 
-const steps = [
-  { id: 'database', title: 'Database' REDACTED,
-  { id: 'redis', title: 'Redis' REDACTED,
-  { id: 'admin', title: 'Admin' REDACTED,
-  { id: 'complete', title: 'Complete' REDACTED
-]
+const steps = computed(() => [
+  { id: 'database', title: t('setup.database.title') REDACTED,
+  { id: 'redis', title: t('setup.redis.title') REDACTED,
+  { id: 'admin', title: t('setup.admin.title') REDACTED,
+  { id: 'complete', title: t('setup.ready.title') REDACTED
+])
 
 const currentStep = ref(0)
 const errorMessage = ref('')
@@ -710,7 +641,6 @@ async function waitForServiceRestart() {
 
   // If we reach here, service didn't restart in time
   // Show a message to refresh manually
-  errorMessage.value =
-    'Service restart is taking longer than expected. Please refresh the page manually.'
+  errorMessage.value = t('setup.status.timeout')
 REDACTED
 </script>

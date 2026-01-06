@@ -15,11 +15,14 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
@@ -30,6 +33,7 @@ const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
+	defaultMaxLineSize      = 10 * 1024 * 1024
 	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
 )
 
@@ -933,8 +937,16 @@ REDACTED
 
 // 重试相关常量
 const (
-	maxRetries = 10              // 最大重试次数
-	retryDelay = 3 * time.Second // 重试等待时间
+	// 最大尝试次数（包含首次请求）。过多重试会导致请求堆积与资源耗尽。
+	maxRetryAttempts = 5
+
+	// 指数退避：第 N 次失败后的等待 = retryBaseDelay * 2^(N-1)，并且上限为 retryMaxDelay。
+	retryBaseDelay = 300 * time.Millisecond
+	retryMaxDelay  = 3 * time.Second
+
+	// 最大重试耗时（包含请求本身耗时 + 退避等待时间）。
+	// 用于防止极端情况下 goroutine 长时间堆积导致资源耗尽。
+	maxRetryElapsed = 10 * time.Second
 )
 
 func (s *GatewayService) shouldRetryUpstreamError(account *Account, statusCode int) bool {
@@ -954,6 +966,40 @@ func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 		return true
 	default:
 		return statusCode >= 500
+REDACTED
+REDACTED
+
+func retryBackoffDelay(attempt int) time.Duration {
+	// attempt 从 1 开始，表示第 attempt 次请求刚失败，需要等待后进行第 attempt+1 次请求。
+	if attempt <= 0 {
+		return retryBaseDelay
+REDACTED
+	delay := retryBaseDelay * time.Duration(1<<(attempt-1))
+	if delay > retryMaxDelay {
+		return retryMaxDelay
+REDACTED
+	return delay
+REDACTED
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+REDACTED
+	timer := time.NewTimer(d)
+	defer func() {
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+		REDACTED
+	REDACTED
+REDACTED()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 REDACTED
 REDACTED
 
@@ -1073,7 +1119,8 @@ REDACTED
 
 	// 重试循环
 	var resp *http.Response
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	retryStart := time.Now()
+	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel)
 		if err != nil {
@@ -1083,6 +1130,9 @@ REDACTED
 		// 发送请求
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+		REDACTED
 			return nil, fmt.Errorf("upstream request failed: %w", err)
 	REDACTED
 
@@ -1093,28 +1143,80 @@ REDACTED
 				_ = resp.Body.Close()
 
 				if s.isThinkingBlockSignatureError(respBody) {
+					looksLikeToolSignatureError := func(msg string) bool {
+						m := strings.ToLower(msg)
+						return strings.Contains(m, "tool_use") ||
+							strings.Contains(m, "tool_result") ||
+							strings.Contains(m, "functioncall") ||
+							strings.Contains(m, "function_call") ||
+							strings.Contains(m, "functionresponse") ||
+							strings.Contains(m, "function_response")
+				REDACTED
+
+					// 避免在重试预算已耗尽时再发起额外请求
+					if time.Since(retryStart) >= maxRetryElapsed {
+						resp.Body = io.NopCloser(bytes.NewReader(respBody))
+						break
+				REDACTED
 					log.Printf("Account %d: detected thinking block signature error, retrying with filtered thinking blocks", account.ID)
 
-					// 过滤thinking blocks并重试（使用更激进的过滤）
+					// Conservative two-stage fallback:
+					// 1) Disable thinking + thinking->text (preserve content)
+					// 2) Only if upstream still errors AND error message points to tool/function signature issues:
+					//    also downgrade tool_use/tool_result blocks to text.
+
 					filteredBody := FilterThinkingBlocksForRetry(body)
 					retryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, filteredBody, token, tokenType, reqModel)
 					if buildErr == nil {
 						retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
 						if retryErr == nil {
-							// 使用重试后的响应，继续后续处理
 							if retryResp.StatusCode < 400 {
-								log.Printf("Account %d: signature error retry succeeded", account.ID)
-						REDACTED else {
-								log.Printf("Account %d: signature error retry returned status %d", account.ID, retryResp.StatusCode)
+								log.Printf("Account %d: signature error retry succeeded (thinking downgraded)", account.ID)
+								resp = retryResp
+								break
 						REDACTED
-							resp = retryResp
+
+							retryRespBody, retryReadErr := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+							_ = retryResp.Body.Close()
+							if retryReadErr == nil && retryResp.StatusCode == 400 && s.isThinkingBlockSignatureError(retryRespBody) {
+								msg2 := extractUpstreamErrorMessage(retryRespBody)
+								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
+									log.Printf("Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
+									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
+									retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel)
+									if buildErr2 == nil {
+										retryResp2, retryErr2 := s.httpUpstream.Do(retryReq2, proxyURL, account.ID, account.Concurrency)
+										if retryErr2 == nil {
+											resp = retryResp2
+											break
+									REDACTED
+										if retryResp2 != nil && retryResp2.Body != nil {
+											_ = retryResp2.Body.Close()
+									REDACTED
+										log.Printf("Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
+								REDACTED else {
+										log.Printf("Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
+								REDACTED
+							REDACTED
+						REDACTED
+
+							// Fall back to the original retry response context.
+							resp = &http.Response{
+								StatusCode: retryResp.StatusCode,
+								Header:     retryResp.Header.Clone(),
+								Body:       io.NopCloser(bytes.NewReader(retryRespBody)),
+						REDACTED
 							break
+					REDACTED
+						if retryResp != nil && retryResp.Body != nil {
+							_ = retryResp.Body.Close()
 					REDACTED
 						log.Printf("Account %d: signature error retry failed: %v", account.ID, retryErr)
 				REDACTED else {
 						log.Printf("Account %d: signature error retry build request failed: %v", account.ID, buildErr)
 				REDACTED
-					// 重试失败，恢复原始响应体继续处理
+
+					// Retry failed: restore original response body and continue handling.
 					resp.Body = io.NopCloser(bytes.NewReader(respBody))
 					break
 			REDACTED
@@ -1125,11 +1227,27 @@ REDACTED
 
 		// 检查是否需要通用重试（排除400，因为400已经在上面特殊处理过了）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
-			if attempt < maxRetries {
-				log.Printf("Account %d: upstream error %d, retry %d/%d after %v",
-					account.ID, resp.StatusCode, attempt, maxRetries, retryDelay)
+			if attempt < maxRetryAttempts {
+				elapsed := time.Since(retryStart)
+				if elapsed >= maxRetryElapsed {
+					break
+			REDACTED
+
+				delay := retryBackoffDelay(attempt)
+				remaining := maxRetryElapsed - elapsed
+				if delay > remaining {
+					delay = remaining
+			REDACTED
+				if delay <= 0 {
+					break
+			REDACTED
+
+				log.Printf("Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
+					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
 				_ = resp.Body.Close()
-				time.Sleep(retryDelay)
+				if err := sleepWithContext(ctx, delay); err != nil {
+					return nil, err
+			REDACTED
 				continue
 		REDACTED
 			// 最后一次尝试也失败，跳出循环处理重试耗尽
@@ -1145,6 +1263,9 @@ REDACTED
 		REDACTED
 	REDACTED
 		break
+REDACTED
+	if resp == nil || resp.Body == nil {
+		return nil, errors.New("upstream request failed: empty response")
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
@@ -1229,7 +1350,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	targetURL := claudeAPIURL
 	if account.Type == AccountTypeAPIKey {
 		baseURL := account.GetBaseURL()
-		targetURL = baseURL + "/v1/messages"
+		if baseURL != "" {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+		REDACTED
+			targetURL = validatedURL + "/v1/messages"
+	REDACTED
 REDACTED
 
 	// OAuth账号：应用统一指纹
@@ -1537,10 +1664,10 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	// OAuth/Setup Token 账号的 403：标记账号异常
 	if account.IsOAuth() && statusCode == 403 {
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
-		log.Printf("Account %d: marked as error after %d retries for status %d", account.ID, maxRetries, statusCode)
+		log.Printf("Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
 REDACTED else {
 		// API Key 未配置错误码：不标记账号状态
-		log.Printf("Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetries)
+		log.Printf("Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
 REDACTED
 REDACTED
 
@@ -1577,6 +1704,10 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
+	if s.cfg != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
+REDACTED
+
 	// 设置SSE响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -1598,51 +1729,133 @@ REDACTED
 	var firstTokenMs *int
 	scanner := bufio.NewScanner(resp.Body)
 	// 设置更大的buffer以处理长行
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	maxLineSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxLineSize = s.cfg.Gateway.MaxLineSize
+REDACTED
+	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+
+	type scanEvent struct {
+		line string
+		err  error
+REDACTED
+	// 独立 goroutine 读取上游，避免读取阻塞导致超时/keepalive无法处理
+	events := make(chan scanEvent, 16)
+	done := make(chan struct{REDACTED)
+	sendEvent := func(ev scanEvent) bool {
+		select {
+		case events <- ev:
+			return true
+		case <-done:
+			return false
+	REDACTED
+REDACTED
+	var lastReadAt int64
+	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+	go func() {
+		defer close(events)
+		for scanner.Scan() {
+			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+			if !sendEvent(scanEvent{line: scanner.Text()REDACTED) {
+				return
+		REDACTED
+	REDACTED
+		if err := scanner.Err(); err != nil {
+			_ = sendEvent(scanEvent{err: errREDACTED)
+	REDACTED
+REDACTED()
+	defer close(done)
+
+	streamInterval := time.Duration(0)
+	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+REDACTED
+	// 仅监控上游数据间隔超时，避免下游写入阻塞导致误判
+	var intervalTicker *time.Ticker
+	if streamInterval > 0 {
+		intervalTicker = time.NewTicker(streamInterval)
+		defer intervalTicker.Stop()
+REDACTED
+	var intervalCh <-chan time.Time
+	if intervalTicker != nil {
+		intervalCh = intervalTicker.C
+REDACTED
+
+	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）
+	errorEventSent := false
+	sendErrorEvent := func(reason string) {
+		if errorEventSent {
+			return
+	REDACTED
+		errorEventSent = true
+		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"REDACTED\n\n", reason)
+		flusher.Flush()
+REDACTED
 
 	needModelReplace := originalModel != mappedModel
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "event: error" {
-			return nil, errors.New("have error in stream")
-	REDACTED
-
-		// Extract data from SSE line (supports both "data: " and "data:" formats)
-		if sseDataRe.MatchString(line) {
-			data := sseDataRe.ReplaceAllString(line, "")
-
-			// 如果有模型映射，替换响应中的model字段
-			if needModelReplace {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
+		REDACTED
+			if ev.err != nil {
+				if errors.Is(ev.err, bufio.ErrTooLong) {
+					log.Printf("SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
+					sendErrorEvent("response_too_large")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, ev.err
+			REDACTED
+				sendErrorEvent("stream_read_error")
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream read error: %w", ev.err)
+		REDACTED
+			line := ev.line
+			if line == "event: error" {
+				return nil, errors.New("have error in stream")
 		REDACTED
 
-			// 转发行
-			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
-		REDACTED
-			flusher.Flush()
+			// Extract data from SSE line (supports both "data: " and "data:" formats)
+			if sseDataRe.MatchString(line) {
+				data := sseDataRe.ReplaceAllString(line, "")
 
-			// 记录首字时间：第一个有效的 content_block_delta 或 message_start
-			if firstTokenMs == nil && data != "" && data != "[DONE]" {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
+				// 如果有模型映射，替换响应中的model字段
+				if needModelReplace {
+					line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			REDACTED
+
+				// 转发行
+				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+					sendErrorEvent("write_failed")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+			REDACTED
+				flusher.Flush()
+
+				// 记录首字时间：第一个有效的 content_block_delta 或 message_start
+				if firstTokenMs == nil && data != "" && data != "[DONE]" {
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+			REDACTED
+				s.parseSSEUsage(data, usage)
+		REDACTED else {
+				// 非 data 行直接转发
+				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+					sendErrorEvent("write_failed")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+			REDACTED
+				flusher.Flush()
 		REDACTED
-			s.parseSSEUsage(data, usage)
-	REDACTED else {
-			// 非 data 行直接转发
-			if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+
+		case <-intervalCh:
+			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
+			if time.Since(lastRead) < streamInterval {
+				continue
 		REDACTED
-			flusher.Flush()
+			log.Printf("Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+			sendErrorEvent("stream_timeout")
+			return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
 	REDACTED
 REDACTED
 
-	if err := scanner.Err(); err != nil {
-		return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream read error: %w", err)
-REDACTED
-
-	return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 REDACTED
 
 // replaceModelInSSELine 替换SSE数据行中的model字段
@@ -1747,15 +1960,17 @@ REDACTED
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 REDACTED
 
-	// 透传响应头
-	for key, values := range resp.Header {
-		for _, value := range values {
-			c.Header(key, value)
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
+
+	contentType := "application/json"
+	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
+		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
+			contentType = upstreamType
 	REDACTED
 REDACTED
 
 	// 写入响应
-	c.Data(resp.StatusCode, "application/json", body)
+	c.Data(resp.StatusCode, contentType, body)
 
 	return &response.Usage, nil
 REDACTED
@@ -1989,7 +2204,7 @@ REDACTED
 	if resp.StatusCode == 400 && s.isThinkingBlockSignatureError(respBody) {
 		log.Printf("Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
 
-		filteredBody := FilterThinkingBlocks(body)
+		filteredBody := FilterThinkingBlocksForRetry(body)
 		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel)
 		if buildErr == nil {
 			retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
@@ -2045,7 +2260,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	targetURL := claudeAPICountTokensURL
 	if account.Type == AccountTypeAPIKey {
 		baseURL := account.GetBaseURL()
-		targetURL = baseURL + "/v1/messages/count_tokens"
+		if baseURL != "" {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+		REDACTED
+			targetURL = validatedURL + "/v1/messages/count_tokens"
+	REDACTED
 REDACTED
 
 	// OAuth 账号：应用统一指纹和重写 userID
@@ -2123,6 +2344,25 @@ func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, m
 			"message": message,
 	REDACTED,
 REDACTED)
+REDACTED
+
+func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
+	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
+		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		if err != nil {
+			return "", fmt.Errorf("invalid base_url: %w", err)
+	REDACTED
+		return normalized, nil
+REDACTED
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+REDACTED)
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
+REDACTED
+	return normalized, nil
 REDACTED
 
 // GetAvailableModels returns the list of models available for a group

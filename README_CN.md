@@ -218,20 +218,23 @@ docker-compose logs -f
 git clone https://github.com/Wei-Shaw/sub2api.git
 cd sub2api
 
-# 2. 编译前端
+# 2. 安装 pnpm（如果还没有安装）
+npm install -g pnpm
+
+# 3. 编译前端
 cd frontend
-npm install
-npm run build
+pnpm install
+pnpm run build
 # 构建产物输出到 ../backend/internal/web/dist/
 
-# 3. 编译后端（嵌入前端）
+# 4. 编译后端（嵌入前端）
 cd ../backend
 go build -tags embed -o sub2api ./cmd/server
 
-# 4. 创建配置文件
+# 5. 创建配置文件
 cp ../deploy/config.example.yaml ./config.yaml
 
-# 5. 编辑配置
+# 6. 编辑配置
 nano config.yaml
 ```
 
@@ -268,6 +271,24 @@ default:
   rate_multiplier: 1.0
 ```
 
+`config.yaml` 还支持以下安全相关配置：
+
+- `cors.allowed_origins` 配置 CORS 白名单
+- `security.url_allowlist` 配置上游/价格数据/CRS 主机白名单
+- `security.url_allowlist.enabled` 可关闭 URL 校验（慎用）
+- `security.url_allowlist.allow_insecure_http` 关闭校验时允许 http URL
+- `security.response_headers.enabled` 可启用可配置响应头过滤（关闭时使用默认白名单）
+- `security.csp` 配置 Content-Security-Policy
+- `billing.circuit_breaker` 计费异常时 fail-closed
+- `server.trusted_proxies` 启用可信代理解析 X-Forwarded-For
+- `turnstile.required` 在 release 模式强制启用 Turnstile
+
+如关闭 URL 校验或响应头过滤，请加强网络层防护：
+- 出站访问白名单限制上游域名/IP
+- 阻断私网/回环/链路本地地址
+- 强制仅允许 TLS 出站
+- 在反向代理层移除敏感响应头
+
 ```bash
 # 6. 运行应用
 ./sub2api
@@ -282,7 +303,7 @@ go run ./cmd/server
 
 # 前端（支持热重载）
 cd frontend
-npm run dev
+pnpm run dev
 ```
 
 #### 代码生成

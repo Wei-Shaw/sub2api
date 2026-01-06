@@ -101,6 +101,10 @@ const (
 	SettingKeyFallbackModelOpenAI      = "fallback_model_openai"
 	SettingKeyFallbackModelGemini      = "fallback_model_gemini"
 	SettingKeyFallbackModelAntigravity = "fallback_model_antigravity"
+
+	// Request identity patch (Claude -> Gemini systemInstruction injection)
+	SettingKeyEnableIdentityPatch = "enable_identity_patch"
+	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

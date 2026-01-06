@@ -44,6 +44,7 @@ export default {
     description: '配置您的 Sub2API 实例',
     database: {
       title: '数据库配置',
+      description: '连接到您的 PostgreSQL 数据库',
       host: '主机',
       port: '端口',
       username: '用户名',
@@ -60,6 +61,7 @@ export default {
     REDACTED,
     redis: {
       title: 'Redis 配置',
+      description: '连接到您的 Redis 服务器',
       host: '主机',
       port: '端口',
       password: '密码（可选）',
@@ -68,6 +70,7 @@ export default {
     REDACTED,
     admin: {
       title: '管理员账户',
+      description: '创建您的管理员账户',
       email: '邮箱',
       password: '密码',
       confirmPassword: '确认密码',
@@ -77,9 +80,21 @@ export default {
     REDACTED,
     ready: {
       title: '准备安装',
+      description: '检查您的配置并完成安装',
       database: '数据库',
       redis: 'Redis',
       adminEmail: '管理员邮箱'
+    REDACTED,
+    status: {
+      testing: '测试中...',
+      success: '连接成功',
+      testConnection: '测试连接',
+      installing: '安装中...',
+      completeInstallation: '完成安装',
+      completed: '安装完成！',
+      redirecting: '正在跳转到登录页面...',
+      restarting: '服务正在重启，请稍候...',
+      timeout: '服务重启时间超出预期，请手动刷新页面。'
     REDACTED
   REDACTED,
 
@@ -130,7 +145,10 @@ export default {
     selectOption: '请选择',
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
+    noGroupsAvailable: '无可用分组',
+    unknownError: '发生未知错误',
     saving: '保存中...',
+    selectedCount: '（已选 {countREDACTED 个）',
     refresh: '刷新',
     notAvailable: '不可用',
     now: '现在',
@@ -197,6 +215,7 @@ export default {
     registrationFailed: '注册失败，请重试。',
     loginSuccess: '登录成功！欢迎回来。',
     accountCreatedSuccess: '账户创建成功！欢迎使用 {siteNameREDACTED。',
+    reloginRequired: '会话已过期，请重新登录。',
     turnstileExpired: '验证已过期，请重试',
     turnstileFailed: '验证失败，请重试',
     completeVerification: '请完成验证',
@@ -441,7 +460,8 @@ export default {
     days: '天',
     codeRedeemSuccess: '兑换成功！',
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
-    subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。'
+    subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
+    pleaseEnterCode: '请输入兑换码'
   REDACTED,
 
   // Profile
@@ -665,10 +685,6 @@ export default {
         admin: '管理员',
         user: '用户'
       REDACTED,
-      statuses: {
-        active: '正常',
-        banned: '禁用'
-      REDACTED,
       form: {
         emailLabel: '邮箱',
         emailPlaceholder: '请输入邮箱',
@@ -702,6 +718,10 @@ export default {
       concurrencyAdjustedSuccess: '并发数调整成功',
       failedToSave: '保存用户失败',
       failedToAdjust: '调整失败',
+      emailRequired: '请输入邮箱',
+      concurrencyMin: '并发数不能小于1',
+      amountRequired: '请输入有效金额',
+      insufficientBalance: '余额不足',
       setAllowedGroups: '设置允许分组',
       allowedGroupsHint: '选择此用户可以使用的标准分组。订阅类型分组请在订阅管理中配置。',
       noStandardGroups: '暂无标准分组',
@@ -728,7 +748,6 @@ export default {
       failedToDeposit: '充值失败',
       failedToWithdraw: '退款失败',
       useDepositWithdrawButtons: '请使用充值/退款按钮调整余额',
-      insufficientBalance: '余额不足，退款后余额不能为负数',
       // Settings Dropdowns
       filterSettings: '筛选设置',
       columnSettings: '列设置',
@@ -784,6 +803,9 @@ export default {
         failedToLoad: '加载属性列表失败',
         failedToCreate: '创建属性失败',
         failedToUpdate: '更新属性失败',
+        keyRequired: '请输入属性键',
+        nameRequired: '请输入显示名称',
+        optionsRequired: '请至少添加一个选项',
         failedToDelete: '删除属性失败',
         failedToReorder: '更新排序失败',
         keyExists: '属性键已存在',
@@ -795,6 +817,7 @@ export default {
     groups: {
       title: '分组管理',
       description: '管理 API 密钥分组和费率配置',
+      searchGroups: '搜索分组...',
       createGroup: '创建分组',
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
@@ -852,8 +875,10 @@ export default {
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
       platforms: {
         all: '全部平台',
-        claude: 'Claude',
-        openai: 'OpenAI'
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
       REDACTED,
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -888,6 +913,7 @@ export default {
       groupDeleted: '分组删除成功',
       failedToCreate: '创建分组失败',
       failedToUpdate: '更新分组失败',
+      nameRequired: '请输入分组名称',
       subscription: {
         title: '订阅设置',
         type: '计费类型',
@@ -968,6 +994,9 @@ export default {
       failedToAssign: '分配订阅失败',
       failedToExtend: '延长订阅失败',
       failedToRevoke: '撤销订阅失败',
+      pleaseSelectUser: '请选择用户',
+      pleaseSelectGroup: '请选择分组',
+      validityDaysRequired: '请输入有效的天数（至少1天）',
       revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。"
     REDACTED,
 
@@ -1001,6 +1030,9 @@ export default {
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
       searchAccounts: '搜索账号...',
+      notes: '备注',
+      notesPlaceholder: '请输入备注',
+      notesHint: '备注可选',
       // Filter options
       allPlatforms: '全部平台',
       allTypes: '全部类型',
@@ -1018,6 +1050,7 @@ export default {
         platform: '平台',
         type: '类型',
         concurrencyStatus: '并发',
+        notes: '备注',
         priority: '优先级',
         weight: '权重',
         status: '状态',
@@ -1058,16 +1091,17 @@ export default {
         api_key: 'API Key',
         cookie: 'Cookie'
       REDACTED,
-      statuses: {
+      status: {
         active: '正常',
         inactive: '停用',
         error: '错误',
-        cooldown: '冷却中'
-      REDACTED,
-      status: {
-        paused: '已暂停',
-        limited: '受限',
-        tempUnschedulable: '临时不可调度'
+        cooldown: '冷却中',
+        paused: '暂停',
+        limited: '限流',
+        tempUnschedulable: '临时不可调度',
+        rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
+        overloadedUntil: '负载过重，重置时间：{timeREDACTED',
+        viewTempUnschedDetails: '查看临时不可调度详情'
       REDACTED,
       tempUnschedulable: {
         title: '临时不可调度',
@@ -1284,13 +1318,13 @@ export default {
           '每行一个 sessionKey，例如：\nsk-ant-sid01-xxxxx...\nsk-ant-sid01-yyyyy...',
         sessionKeyPlaceholderSingle: 'sk-ant-sid01-xxxxx...',
         howToGetSessionKey: '如何获取 sessionKey',
-        step1: '在浏览器中登录 <strong>claude.ai</strong>',
-        step2: '按 <kbd>F12</kbd> 打开开发者工具',
-        step3: '切换到 <strong>Application</strong> 标签',
-        step4: '找到 <strong>Cookies</strong> → <strong>https://claude.ai</strong>',
-        step5: '找到 <strong>sessionKey</strong> 所在行',
-        step6: '复制 <strong>Value</strong> 列的值',
-        sessionKeyFormat: 'sessionKey 通常以 <code>sk-ant-sid01-</code> 开头',
+        step1: '在浏览器中登录 claude.ai',
+        step2: '按 F12 打开开发者工具',
+        step3: '切换到 Application 标签',
+        step4: '找到 Cookies → https://claude.ai',
+        step5: '找到 sessionKey 所在行',
+        step6: '复制 Value 列的值',
+        sessionKeyFormat: 'sessionKey 通常以 sk-ant-sid01- 开头',
         startAutoAuth: '开始自动授权',
         authorizing: '授权中...',
         followSteps: '按照以下步骤授权您的 Claude 账号：',
@@ -1301,9 +1335,9 @@ export default {
         step2OpenUrl: '在浏览器中打开 URL 并完成授权',
         openUrlDesc: '在新标签页中打开授权 URL，登录您的 Claude 账号并授权。',
         proxyWarning:
-          '<strong>注意：</strong>如果您配置了代理，请确保浏览器使用相同的代理访问授权页面。',
+          '注意：如果您配置了代理，请确保浏览器使用相同的代理访问授权页面。',
         step3EnterCode: '输入授权码',
-        authCodeDesc: '授权完成后，页面会显示一个 <strong>授权码</strong>。复制并粘贴到下方：',
+        authCodeDesc: '授权完成后，页面会显示一个授权码。复制并粘贴到下方：',
         authCode: '授权码',
         authCodePlaceholder: '粘贴 Claude 页面的授权码...',
         authCodeHint: '粘贴从 Claude 页面复制的授权码',
@@ -1323,10 +1357,10 @@ export default {
           step2OpenUrl: '在浏览器中打开链接并完成授权',
           openUrlDesc: '请在新标签页中打开授权链接，登录您的 OpenAI 账户并授权。',
           importantNotice:
-            '<strong>重要提示：</strong>授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 <code>http://localhost...</code> 开头时，表示授权已完成。',
+            '重要提示：授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 http://localhost... 开头时，表示授权已完成。',
           step3EnterCode: '输入授权链接或 Code',
           authCodeDesc:
-            '授权完成后，当页面地址变为 <code>http://localhost:xxx/auth/callback?code=...</code> 时：',
+            '授权完成后，当页面地址变为 http://localhost:xxx/auth/callback?code=... 时：',
           authCode: '授权链接或 Code',
           authCodePlaceholder:
             '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
@@ -1345,7 +1379,7 @@ export default {
 	          step2OpenUrl: '在浏览器中打开链接并完成授权',
 	          openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
 	          step3EnterCode: '输入回调链接或 Code',
-	          authCodeDesc: '授权完成后，复制浏览器跳转后的回调链接（推荐）或仅复制 <code>code</code>，粘贴到下方即可。',
+	          authCodeDesc: '授权完成后，复制浏览器跳转后的回调链接（推荐）或仅复制 code，粘贴到下方即可。',
 	          authCode: '回调链接或 Code',
 	          authCodePlaceholder: '方式1（推荐）：粘贴回调链接\n方式2：仅粘贴 code 参数的值',
 	          authCodeHint: '系统会自动从链接中解析 code/state。',
@@ -1381,10 +1415,10 @@ export default {
           step2OpenUrl: '在浏览器中打开链接并完成授权',
           openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
           importantNotice:
-            '<strong>重要提示：</strong>授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 <code>http://localhost...</code> 开头时，表示授权已完成。',
+            '重要提示：授权后页面可能会加载较长时间，请耐心等待。当浏览器地址栏变为 http://localhost... 开头时，表示授权已完成。',
           step3EnterCode: '输入授权链接或 Code',
           authCodeDesc:
-            '授权完成后，当页面地址变为 <code>http://localhost:xxx/auth/callback?code=...</code> 时：',
+            '授权完成后，当页面地址变为 http://localhost:xxx/auth/callback?code=... 时：',
           authCode: '授权链接或 Code',
           authCodePlaceholder:
             '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
@@ -1603,22 +1637,8 @@ export default {
         name: '名称',
         protocol: '协议',
         address: '地址',
-        priority: '优先级',
         status: '状态',
-        lastCheck: '最近检测',
-        actions: '操作'
-      REDACTED,
-      protocols: {
-        http: 'HTTP',
-        https: 'HTTPS',
-        socks5: 'SOCKS5'
-      REDACTED,
-      statuses: {
-        active: '正常',
-        inactive: '停用',
-        error: '错误'
-      REDACTED,
-      form: {
+        actions: '操作',
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
         protocolLabel: '协议',
@@ -1697,6 +1717,9 @@ export default {
       failedToCreate: '创建代理失败',
       failedToUpdate: '更新代理失败',
       failedToTest: '测试代理失败',
+      nameRequired: '请输入代理名称',
+      hostRequired: '请输入主机地址',
+      portInvalid: '端口必须在 1-65535 之间',
       deleteConfirm: "确定要删除代理 '{nameREDACTED' 吗？使用此代理的账号将被移除代理设置。"
     REDACTED,
 
@@ -1718,7 +1741,10 @@ export default {
       types: {
         balance: '余额',
         concurrency: '并发数',
-        subscription: '订阅'
+        subscription: '订阅',
+        // 管理员在用户管理页面调整余额/并发时产生的记录
+        admin_balance: '余额（管理员）',
+        admin_concurrency: '并发数（管理员）'
       REDACTED,
       // 用于选择器和筛选器的直接键
       balance: '余额',
@@ -1757,7 +1783,7 @@ export default {
       validityDays: '有效天数',
       groupRequired: '请选择订阅分组',
       days: '天',
-      statuses: {
+      status: {
         unused: '未使用',
         used: '已使用',
         expired: '已过期',
@@ -1809,6 +1835,7 @@ export default {
       description: '查看和管理所有用户的使用记录',
       userFilter: '用户',
       searchUserPlaceholder: '按邮箱搜索用户...',
+      searchApiKeyPlaceholder: '按名称搜索 API 密钥...',
       selectedUser: '已选择',
       user: '用户',
       account: '账户',
@@ -1852,8 +1879,8 @@ export default {
         secretKey: '私密密钥',
         siteKeyHint: '从 Cloudflare Dashboard 获取',
         cloudflareDashboard: 'Cloudflare Dashboard',
-        secretKeyHint: '服务端验证密钥（请保密）'
-      REDACTED,
+        secretKeyHint: '服务端验证密钥（请保密）',
+        secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'      REDACTED,
       defaults: {
         title: '用户默认设置',
         description: '新用户的默认值',
@@ -1902,6 +1929,8 @@ export default {
         password: 'SMTP 密码',
         passwordPlaceholder: '********',
         passwordHint: '留空以保留现有密码',
+        passwordConfiguredPlaceholder: '********',
+        passwordConfiguredHint: '密码已配置，留空以保留当前值。',
         fromEmail: '发件人邮箱',
         fromEmailPlaceholder: "noreply{'@'REDACTEDexample.com",
         fromName: '发件人名称',

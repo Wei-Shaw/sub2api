@@ -43,16 +43,7 @@
           @click="!actionTo && $emit('action')"
           class="btn btn-primary"
         >
-          <svg
-            v-if="actionIcon"
-            class="mr-2 h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
+          <Icon v-if="actionIcon" name="plus" size="md" class="mr-2" />
           {{ actionText REDACTEDREDACTED
         </component>
       </slot>
@@ -64,6 +55,7 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import type { Component REDACTED from 'vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 

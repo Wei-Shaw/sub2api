@@ -15,6 +15,16 @@
         <label class="input-label">{{ t('common.name') REDACTEDREDACTED</label>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.accounts.notes') REDACTEDREDACTED</label>
+        <textarea
+          v-model="form.notes"
+          rows="3"
+          class="input"
+          :placeholder="t('admin.accounts.notesPlaceholder')"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.notesHint') REDACTEDREDACTED</p>
+      </div>
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
@@ -255,19 +265,7 @@
           <div v-if="customErrorCodesEnabled" class="space-y-3">
             <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
               <p class="text-xs text-amber-700 dark:text-amber-400">
-                <svg
-                  class="mr-1 inline h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
+                <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
                 {{ t('admin.accounts.customErrorCodesWarning') REDACTEDREDACTED
               </p>
             </div>
@@ -326,14 +324,7 @@
                   @click="removeErrorCode(code)"
                   class="hover:text-red-900 dark:hover:text-red-300"
                 >
-                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  <Icon name="x" size="sm" :stroke-width="2" />
                 </button>
               </span>
               <span v-if="selectedErrorCodes.length === 0" class="text-xs text-gray-400">
@@ -402,19 +393,7 @@
         <div v-if="tempUnschedEnabled" class="space-y-3">
           <div class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
             <p class="text-xs text-blue-700 dark:text-blue-400">
-              <svg
-                class="mr-1 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
+              <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
               {{ t('admin.accounts.tempUnschedulable.notice') REDACTEDREDACTED
             </p>
           </div>
@@ -448,9 +427,7 @@
                     @click="moveTempUnschedRule(index, -1)"
                     class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-gray-200"
                   >
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
-                    </svg>
+                    <Icon name="chevronUp" size="sm" :stroke-width="2" />
                   </button>
                   <button
                     type="button"
@@ -467,14 +444,7 @@
                     @click="removeTempUnschedRule(index)"
                     class="rounded p-1 text-red-500 transition-colors hover:text-red-600"
                   >
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    <Icon name="x" size="sm" :stroke-width="2" />
                   </button>
                 </div>
               </div>
@@ -692,6 +662,7 @@ import { adminAPI REDACTED from '@/api/admin'
 import type { Account, Proxy, Group REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
@@ -795,6 +766,7 @@ REDACTED)
 
 const form = reactive({
   name: '',
+  notes: '',
   proxy_id: null as number | null,
   concurrency: 1,
   priority: 1,
@@ -813,6 +785,7 @@ watch(
   (newAccount) => {
     if (newAccount) {
       form.name = newAccount.name
+      form.notes = newAccount.notes || ''
       form.proxy_id = newAccount.proxy_id
       form.concurrency = newAccount.concurrency
       form.priority = newAccount.priority
@@ -1080,6 +1053,10 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     const updatePayload: Record<string, unknown> = { ...form REDACTED
+    // 后端期望 proxy_id: 0 表示清除代理，而不是 null
+    if (updatePayload.proxy_id === null) {
+      updatePayload.proxy_id = 0
+    REDACTED
 
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {

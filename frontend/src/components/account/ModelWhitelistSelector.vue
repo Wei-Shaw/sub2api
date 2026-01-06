@@ -21,9 +21,7 @@
               @click.stop="removeModel(model)"
               class="shrink-0 rounded-full hover:bg-gray-200 dark:hover:bg-dark-500"
             >
-              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <Icon name="x" size="xs" class="h-3.5 w-3.5" :stroke-width="2" />
             </button>
           </span>
         </div>
@@ -126,6 +124,7 @@ import { ref, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import ModelIcon from '@/components/common/ModelIcon.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { allModels, getModelsByPlatform REDACTED from '@/composables/useModelWhitelist'
 
 const { t REDACTED = useI18n()

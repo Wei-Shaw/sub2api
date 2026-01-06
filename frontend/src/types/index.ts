@@ -2,6 +2,26 @@
  * Core Type Definitions for Sub2API Frontend
  */
 
+// ==================== Common Types ====================
+
+export interface SelectOption {
+  value: string | number | boolean | null
+  label: string
+  [key: string]: any // Support extra properties for custom templates
+REDACTED
+
+export interface BasePaginationResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+REDACTED
+
+export interface FetchOptions {
+  signal?: AbortSignal
+REDACTED
+
 // ==================== User & Auth Types ====================
 
 export interface User {
@@ -369,6 +389,7 @@ REDACTED
 export interface Account {
   id: number
   name: string
+  notes?: string | null
   platform: AccountPlatform
   type: AccountType
   credentials?: Record<string, unknown>
@@ -461,6 +482,7 @@ REDACTED
 
 export interface CreateAccountRequest {
   name: string
+  notes?: string | null
   platform: AccountPlatform
   type: AccountType
   credentials: Record<string, unknown>
@@ -474,12 +496,14 @@ REDACTED
 
 export interface UpdateAccountRequest {
   name?: string
+  notes?: string | null
   type?: AccountType
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number
   priority?: number
+  schedulable?: boolean
   status?: 'active' | 'inactive'
   group_ids?: number[]
   confirm_mixed_channel_risk?: boolean
@@ -835,6 +859,7 @@ export type UserAttributeType = 'text' | 'textarea' | 'number' | 'email' | 'url'
 export interface UserAttributeOption {
   value: string
   label: string
+  [key: string]: unknown
 REDACTED
 
 export interface UserAttributeValidation {

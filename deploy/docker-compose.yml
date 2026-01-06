@@ -28,6 +28,9 @@ services:
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
+      # Optional: Mount custom config.yaml (uncomment and create the file first)
+      # Copy config.example.yaml to config.yaml, modify it, then uncomment:
+      # - ./config.yaml:/app/data/config.yaml:ro
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
@@ -69,7 +72,10 @@ services:
       # =======================================================================
       # JWT Configuration
       # =======================================================================
-      # Leave empty to auto-generate (recommended)
+      # IMPORTANT: Set a fixed JWT_SECRET to prevent login sessions from being
+      # invalidated after container restarts. If left empty, a random secret
+      # will be generated on each startup.
+      # Generate a secure secret: openssl rand -hex 32
       - JWT_SECRET=${JWT_SECRET:-REDACTED
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24REDACTED
 
@@ -91,6 +97,13 @@ services:
       - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-REDACTED
       - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-REDACTED
       - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-REDACTED
+
+      # =======================================================================
+      # Security Configuration (URL Allowlist)
+      # =======================================================================
+      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-REDACTED
+      # Allow private IP addresses for CRS sync (for internal deployments)
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-falseREDACTED
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,7 +151,7 @@ services:
   # Redis Cache
   # ===========================================================================
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
     ulimits:

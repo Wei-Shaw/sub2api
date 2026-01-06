@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
 // 默认配置常量
@@ -30,9 +31,9 @@ const (
 	// defaultMaxConnsPerHost: 默认每主机最大连接数（含活跃连接）
 	// 达到上限后新请求会等待，而非无限创建连接
 	defaultMaxConnsPerHost = 240
-	// defaultIdleConnTimeout: 默认空闲连接超时时间（5分钟）
-	// 超时后连接会被关闭，释放系统资源
-	defaultIdleConnTimeout = 300 * time.Second
+	// defaultIdleConnTimeout: 默认空闲连接超时时间（90秒）
+	// 超时后连接会被关闭，释放系统资源（建议小于上游 LB 超时）
+	defaultIdleConnTimeout = 90 * time.Second
 	// defaultResponseHeaderTimeout: 默认等待响应头超时时间（5分钟）
 	// LLM 请求可能排队较久，需要较长超时
 	defaultResponseHeaderTimeout = 300 * time.Second
@@ -120,6 +121,10 @@ REDACTED
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	if err := s.validateRequestHost(req); err != nil {
+		return nil, err
+REDACTED
+
 	// 获取或创建对应的客户端，并标记请求占用
 	entry, err := s.acquireClient(proxyURL, accountID, accountConcurrency)
 	if err != nil {
@@ -143,6 +148,40 @@ REDACTED
 REDACTED)
 
 	return resp, nil
+REDACTED
+
+func (s *httpUpstreamService) shouldValidateResolvedIP() bool {
+	if s.cfg == nil {
+		return false
+REDACTED
+	if !s.cfg.Security.URLAllowlist.Enabled {
+		return false
+REDACTED
+	return !s.cfg.Security.URLAllowlist.AllowPrivateHosts
+REDACTED
+
+func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
+	if !s.shouldValidateResolvedIP() {
+		return nil
+REDACTED
+	if req == nil || req.URL == nil {
+		return errors.New("request url is nil")
+REDACTED
+	host := strings.TrimSpace(req.URL.Hostname())
+	if host == "" {
+		return errors.New("request host is empty")
+REDACTED
+	if err := urlvalidator.ValidateResolvedIP(host); err != nil {
+		return err
+REDACTED
+	return nil
+REDACTED
+
+func (s *httpUpstreamService) redirectChecker(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+REDACTED
+	return s.validateRequestHost(req)
 REDACTED
 
 // acquireClient 获取或创建客户端，并标记为进行中请求
@@ -232,6 +271,9 @@ REDACTED
 		return nil, fmt.Errorf("build transport: %w", err)
 REDACTED
 	client := &http.Client{Transport: transportREDACTED
+	if s.shouldValidateResolvedIP() {
+		client.CheckRedirect = s.redirectChecker
+REDACTED
 	entry := &upstreamClientEntry{
 		client:   client,
 		proxyKey: proxyKey,

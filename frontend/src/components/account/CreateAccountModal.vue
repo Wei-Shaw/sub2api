@@ -56,6 +56,16 @@
           data-tour="account-form-name"
         />
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.accounts.notes') REDACTEDREDACTED</label>
+        <textarea
+          v-model="form.notes"
+          rows="3"
+          class="input"
+          :placeholder="t('admin.accounts.notesPlaceholder')"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.accounts.notesHint') REDACTEDREDACTED</p>
+      </div>
 
       <!-- Platform Selection - Segmented Control Style -->
       <div>
@@ -71,19 +81,7 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <svg
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
-              />
-            </svg>
+            <Icon name="sparkles" size="sm" />
             Anthropic
           </button>
           <button
@@ -146,19 +144,7 @@
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
-            <svg
-              class="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"
-              />
-            </svg>
+            <Icon name="cloud" size="sm" />
             Antigravity
           </button>
         </div>
@@ -186,19 +172,7 @@
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
             >
-              <svg
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
-                />
-              </svg>
+              <Icon name="sparkles" size="sm" />
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
@@ -228,19 +202,7 @@
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
             >
-              <svg
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
-                />
-              </svg>
+              <Icon name="key" size="sm" />
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
@@ -276,19 +238,7 @@
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
             >
-              <svg
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
-                />
-              </svg>
+              <Icon name="key" size="sm" />
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
@@ -314,19 +264,7 @@
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
             >
-              <svg
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
-                />
-              </svg>
+              <Icon name="key" size="sm" />
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
@@ -370,19 +308,7 @@
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
             >
-              <svg
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
-                />
-              </svg>
+              <Icon name="key" size="sm" />
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">
@@ -477,9 +403,7 @@
                     : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
                 ]"
               >
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
+                <Icon name="user" size="sm" />
               </div>
               <div class="min-w-0">
                 <span class="block text-sm font-medium text-gray-900 dark:text-white">
@@ -522,9 +446,7 @@
                     : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
                 ]"
               >
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
-                </svg>
+                <Icon name="cloud" size="sm" />
               </div>
               <div class="min-w-0">
                 <span class="block text-sm font-medium text-gray-900 dark:text-white">
@@ -700,19 +622,7 @@
             class="flex items-center gap-3 rounded-lg border-2 border-purple-500 bg-purple-50 p-3 dark:bg-purple-900/20"
           >
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500 text-white">
-              <svg
-                class="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
-                />
-              </svg>
+              <Icon name="key" size="sm" />
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
@@ -1002,19 +912,7 @@
           <div v-if="customErrorCodesEnabled" class="space-y-3">
             <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
               <p class="text-xs text-amber-700 dark:text-amber-400">
-                <svg
-                  class="mr-1 inline h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
+                <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
                 {{ t('admin.accounts.customErrorCodesWarning') REDACTEDREDACTED
               </p>
             </div>
@@ -1073,14 +971,7 @@
                   @click="removeErrorCode(code)"
                   class="hover:text-red-900 dark:hover:text-red-300"
                 >
-                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  <Icon name="x" size="sm" :stroke-width="2" />
                 </button>
               </span>
               <span v-if="selectedErrorCodes.length === 0" class="text-xs text-gray-400">
@@ -1148,23 +1039,11 @@
 
         <div v-if="tempUnschedEnabled" class="space-y-3">
           <div class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-            <p class="text-xs text-blue-700 dark:text-blue-400">
-              <svg
-                class="mr-1 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-              {{ t('admin.accounts.tempUnschedulable.notice') REDACTEDREDACTED
-            </p>
-          </div>
+              <p class="text-xs text-blue-700 dark:text-blue-400">
+                <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
+                {{ t('admin.accounts.tempUnschedulable.notice') REDACTEDREDACTED
+              </p>
+            </div>
 
           <div class="flex flex-wrap gap-2">
             <button
@@ -1195,9 +1074,7 @@
                     @click="moveTempUnschedRule(index, -1)"
                     class="rounded p-1 text-gray-400 transition-colors hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-gray-200"
                   >
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
-                    </svg>
+                    <Icon name="chevronUp" size="sm" :stroke-width="2" />
                   </button>
                   <button
                     type="button"
@@ -1214,14 +1091,7 @@
                     @click="removeTempUnschedRule(index)"
                     class="rounded p-1 text-red-500 transition-colors hover:text-red-600"
                   >
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    <Icon name="x" size="sm" :stroke-width="2" />
                   </button>
                 </div>
               </div>
@@ -1522,7 +1392,7 @@
             </ul>
             <div class="mt-2 flex flex-wrap gap-2">
               <a
-                href="https://gemini.google.com/faq#location"
+                href="https://policies.google.com/terms"
                 target="_blank"
                 rel="noreferrer"
                 class="text-sm text-blue-600 hover:underline dark:text-blue-400"
@@ -1531,7 +1401,16 @@
               </a>
               <span class="text-gray-400">·</span>
               <a
-                href="https://gemini.google.com"
+                href="https://policies.google.com/country-association-form"
+                target="_blank"
+                rel="noreferrer"
+                class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                修改归属地
+              </a>
+              <span class="text-gray-400">·</span>
+              <a
+                href="https://gemini.google.com/gems/create?hl=en-US&pli=1"
                 target="_blank"
                 rel="noreferrer"
                 class="text-sm text-blue-600 hover:underline dark:text-blue-400"
@@ -1715,6 +1594,7 @@ import { useGeminiOAuth REDACTED from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth REDACTED from '@/composables/useAntigravityOAuth'
 import type { Proxy, Group, AccountPlatform, AccountType REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
@@ -1869,8 +1749,9 @@ const geminiHelpLinks = {
   apiKey: 'https://aistudio.google.com/app/apikey',
   aiStudioPricing: 'https://ai.google.dev/pricing',
   gcpProject: 'https://console.cloud.google.com/welcome/new',
-  geminiWebActivation: 'https://gemini.google.com/gems/create?hl=en-US',
-  countryCheck: 'https://policies.google.com/country-association-form'
+  geminiWebActivation: 'https://gemini.google.com/gems/create?hl=en-US&pli=1',
+  countryCheck: 'https://policies.google.com/terms',
+  countryChange: 'https://policies.google.com/country-association-form'
 REDACTED
 
 // Computed: current preset mappings based on platform
@@ -1907,6 +1788,7 @@ const tempUnschedPresets = computed(() => [
 
 const form = reactive({
   name: '',
+  notes: '',
   platform: 'anthropic' as AccountPlatform,
   type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {REDACTED as Record<string, unknown>,
@@ -2165,6 +2047,7 @@ REDACTED
 const resetForm = () => {
   step.value = 1
   form.name = ''
+  form.notes = ''
   form.platform = 'anthropic'
   form.type = 'oauth'
   form.credentials = {REDACTED
@@ -2311,6 +2194,7 @@ const createAccountAndFinish = async (
   REDACTED
   await adminAPI.accounts.create({
     name: form.name,
+    notes: form.notes,
     platform,
     type,
     credentials,

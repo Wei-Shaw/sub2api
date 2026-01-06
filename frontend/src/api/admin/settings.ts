@@ -26,14 +26,42 @@ export interface SystemSettings {
   smtp_host: string
   smtp_port: number
   smtp_username: string
-  smtp_password: string
+  smtp_password_configured: boolean
   smtp_from_email: string
   smtp_from_name: string
   smtp_use_tls: boolean
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean
   turnstile_site_key: string
-  turnstile_secret_key: string
+  turnstile_secret_key_configured: boolean
+  // Identity patch configuration (Claude -> Gemini)
+  enable_identity_patch: boolean
+  identity_patch_prompt: string
+REDACTED
+
+export interface UpdateSettingsRequest {
+  registration_enabled?: boolean
+  email_verify_enabled?: boolean
+  default_balance?: number
+  default_concurrency?: number
+  site_name?: string
+  site_logo?: string
+  site_subtitle?: string
+  api_base_url?: string
+  contact_info?: string
+  doc_url?: string
+  smtp_host?: string
+  smtp_port?: number
+  smtp_username?: string
+  smtp_password?: string
+  smtp_from_email?: string
+  smtp_from_name?: string
+  smtp_use_tls?: boolean
+  turnstile_enabled?: boolean
+  turnstile_site_key?: string
+  turnstile_secret_key?: string
+  enable_identity_patch?: boolean
+  identity_patch_prompt?: string
 REDACTED
 
 /**
@@ -50,7 +78,7 @@ REDACTED
  * @param settings - Partial settings to update
  * @returns Updated settings
  */
-export async function updateSettings(settings: Partial<SystemSettings>): Promise<SystemSettings> {
+export async function updateSettings(settings: UpdateSettingsRequest): Promise<SystemSettings> {
   const { data REDACTED = await apiClient.put<SystemSettings>('/admin/settings', settings)
   return data
 REDACTED

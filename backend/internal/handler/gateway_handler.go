@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -38,14 +40,19 @@ func NewGatewayHandler(
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
+	cfg *config.Config,
 ) *GatewayHandler {
+	pingInterval := time.Duration(0)
+	if cfg != nil {
+		pingInterval = time.Duration(cfg.Concurrency.PingInterval) * time.Second
+REDACTED
 	return &GatewayHandler{
 		gatewayService:            gatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
 		userService:               userService,
 		billingCacheService:       billingCacheService,
-		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude),
+		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 REDACTED
 REDACTED
 
@@ -121,6 +128,8 @@ REDACTED
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 REDACTED
+	// 在请求结束或 Context 取消时确保释放槽位，避免客户端断开造成泄漏
+	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 REDACTED
@@ -128,7 +137,8 @@ REDACTED
 	// 2. 【新增】Wait后二次检查余额/订阅
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		log.Printf("Billing eligibility check failed after wait: %v", err)
-		h.handleStreamingAwareError(c, http.StatusForbidden, "billing_error", err.Error(), streamStarted)
+		status, code, message := billingErrorDetails(err)
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 REDACTED
 
@@ -220,6 +230,9 @@ REDACTED
 					log.Printf("Bind sticky session failed: %v", err)
 			REDACTED
 		REDACTED
+			// 账号槽位/等待计数需要在超时或断开时安全回收
+			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+			accountWaitRelease = wrapReleaseOnDone(c.Request.Context(), accountWaitRelease)
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
@@ -344,6 +357,9 @@ REDACTED
 				log.Printf("Bind sticky session failed: %v", err)
 		REDACTED
 	REDACTED
+		// 账号槽位/等待计数需要在超时或断开时安全回收
+		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+		accountWaitRelease = wrapReleaseOnDone(c.Request.Context(), accountWaitRelease)
 
 		// 转发请求 - 根据账号平台分流
 		var result *service.ForwardResult
@@ -674,7 +690,8 @@ REDACTED
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		h.errorResponse(c, http.StatusForbidden, "billing_error", err.Error())
+		status, code, message := billingErrorDetails(err)
+		h.errorResponse(c, status, code, message)
 		return
 REDACTED
 
@@ -799,4 +816,19 @@ func sendMockWarmupResponse(c *gin.Context, model string) {
 			"output_tokens": 2,
 	REDACTED,
 REDACTED)
+REDACTED
+
+func billingErrorDetails(err error) (status int, code, message string) {
+	if errors.Is(err, service.ErrBillingServiceUnavailable) {
+		msg := pkgerrors.Message(err)
+		if msg == "" {
+			msg = "Billing service temporarily unavailable. Please retry later."
+	REDACTED
+		return http.StatusServiceUnavailable, "billing_service_error", msg
+REDACTED
+	msg := pkgerrors.Message(err)
+	if msg == "" {
+		msg = err.Error()
+REDACTED
+	return http.StatusForbidden, "billing_error", msg
 REDACTED

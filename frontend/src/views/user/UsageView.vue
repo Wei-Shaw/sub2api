@@ -7,19 +7,7 @@
           <div class="card p-4">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-              <svg
-                class="h-5 w-5 text-blue-600 dark:text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
+              <Icon name="document" size="md" class="text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -39,19 +27,7 @@
         <div class="card p-4">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-              <svg
-                class="h-5 w-5 text-amber-600 dark:text-amber-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"
-                />
-              </svg>
+              <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" />
             </div>
             <div>
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -72,19 +48,7 @@
         <div class="card p-4">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-              <svg
-                class="h-5 w-5 text-green-600 dark:text-green-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <Icon name="dollar" size="md" class="text-green-600 dark:text-green-400" />
             </div>
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -106,19 +70,7 @@
         <div class="card p-4">
           <div class="flex items-center gap-3">
             <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-              <svg
-                class="h-5 w-5 text-purple-600 dark:text-purple-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <Icon name="clock" size="md" class="text-purple-600 dark:text-purple-400" />
             </div>
             <div>
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -244,38 +196,14 @@
                 <div class="flex items-center gap-2">
                   <!-- Input -->
                   <div class="inline-flex items-center gap-1">
-                    <svg
-                      class="h-3.5 w-3.5 text-emerald-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 14l-7 7m0 0l-7-7m7 7V3"
-                      />
-                    </svg>
+                    <Icon name="arrowDown" size="sm" class="text-emerald-500" />
                     <span class="font-medium text-gray-900 dark:text-white">{{
                       row.input_tokens.toLocaleString()
                     REDACTEDREDACTED</span>
                   </div>
                   <!-- Output -->
                   <div class="inline-flex items-center gap-1">
-                    <svg
-                      class="h-3.5 w-3.5 text-violet-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M5 10l7-7m0 0l7 7m-7-7v18"
-                      />
-                    </svg>
+                    <Icon name="arrowUp" size="sm" class="text-violet-500" />
                     <span class="font-medium text-gray-900 dark:text-white">{{
                       row.output_tokens.toLocaleString()
                     REDACTEDREDACTED</span>
@@ -288,38 +216,14 @@
                 >
                   <!-- Cache Read -->
                   <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
-                    <svg
-                      class="h-3.5 w-3.5 text-sky-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-                      />
-                    </svg>
+                    <Icon name="inbox" size="sm" class="text-sky-500" />
                     <span class="font-medium text-sky-600 dark:text-sky-400">{{
                       formatCacheTokens(row.cache_read_tokens)
                     REDACTEDREDACTED</span>
                   </div>
                   <!-- Cache Write -->
                   <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
-                    <svg
-                      class="h-3.5 w-3.5 text-amber-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                      />
-                    </svg>
+                    <Icon name="edit" size="sm" class="text-amber-500" />
                     <span class="font-medium text-amber-600 dark:text-amber-400">{{
                       formatCacheTokens(row.cache_creation_tokens)
                     REDACTEDREDACTED</span>
@@ -335,17 +239,11 @@
                 <div
                   class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50"
                 >
-                  <svg
-                    class="h-3 w-3 text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fill-rule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                      clip-rule="evenodd"
-                    />
-                  </svg>
+                  <Icon
+                    name="infoCircle"
+                    size="xs"
+                    class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
+                  />
                 </div>
               </div>
             </div>
@@ -365,17 +263,11 @@
                 <div
                   class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50"
                 >
-                  <svg
-                    class="h-3 w-3 text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fill-rule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                      clip-rule="evenodd"
-                    />
-                  </svg>
+                  <Icon
+                    name="infoCircle"
+                    size="xs"
+                    class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
+                  />
                 </div>
               </div>
             </div>
@@ -535,6 +427,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import Icon from '@/components/icons/Icon.vue'
 import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import { formatDateTime REDACTED from '@/utils/format'

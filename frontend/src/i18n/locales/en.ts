@@ -47,6 +47,7 @@ export default {
     description: 'Configure your Sub2API instance',
     database: {
       title: 'Database Configuration',
+      description: 'Connect to your PostgreSQL database',
       host: 'Host',
       port: 'Port',
       username: 'Username',
@@ -63,6 +64,7 @@ export default {
     REDACTED,
     redis: {
       title: 'Redis Configuration',
+      description: 'Connect to your Redis server',
       host: 'Host',
       port: 'Port',
       password: 'Password (optional)',
@@ -71,6 +73,7 @@ export default {
     REDACTED,
     admin: {
       title: 'Admin Account',
+      description: 'Create your administrator account',
       email: 'Email',
       password: 'Password',
       confirmPassword: 'Confirm Password',
@@ -80,9 +83,21 @@ export default {
     REDACTED,
     ready: {
       title: 'Ready to Install',
+      description: 'Review your configuration and complete setup',
       database: 'Database',
       redis: 'Redis',
       adminEmail: 'Admin Email'
+    REDACTED,
+    status: {
+      testing: 'Testing...',
+      success: 'Connection Successful',
+      testConnection: 'Test Connection',
+      installing: 'Installing...',
+      completeInstallation: 'Complete Installation',
+      completed: 'Installation completed!',
+      redirecting: 'Redirecting to login page...',
+      restarting: 'Service is restarting, please wait...',
+      timeout: 'Service restart is taking longer than expected. Please refresh the page manually.'
     REDACTED
   REDACTED,
 
@@ -130,11 +145,13 @@ export default {
     copiedToClipboard: 'Copied to clipboard',
     copyFailed: 'Failed to copy',
     contactSupport: 'Contact Support',
-    selectOption: 'Select an option',
-    searchPlaceholder: 'Search...',
-    noOptionsFound: 'No options found',
-    saving: 'Saving...',
-    refresh: 'Refresh',
+        selectOption: 'Select an option',
+        searchPlaceholder: 'Search...', 
+        noOptionsFound: 'No options found',
+        noGroupsAvailable: 'No groups available',
+        unknownError: 'Unknown error occurred',
+        saving: 'Saving...', 
+        selectedCount: '({countREDACTED selected)',    refresh: 'Refresh',
     notAvailable: 'N/A',
     now: 'Now',
     unknown: 'Unknown',
@@ -200,6 +217,7 @@ export default {
     registrationFailed: 'Registration failed. Please try again.',
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteNameREDACTED.',
+    reloginRequired: 'Session expired. Please log in again.',
     turnstileExpired: 'Verification expired, please try again',
     turnstileFailed: 'Verification failed, please try again',
     completeVerification: 'Please complete the verification',
@@ -445,7 +463,8 @@ export default {
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
-    subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.'
+    subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
+    pleaseEnterCode: 'Please enter a redeem code'
   REDACTED,
 
   // Profile
@@ -641,6 +660,10 @@ export default {
       failedToDelete: 'Failed to delete user',
       failedToToggle: 'Failed to update user status',
       failedToLoadApiKeys: 'Failed to load user API keys',
+      emailRequired: 'Please enter email',
+      concurrencyMin: 'Concurrency must be at least 1',
+      amountRequired: 'Please enter a valid amount',
+      insufficientBalance: 'Insufficient balance',
       deleteConfirm: "Are you sure you want to delete '{emailREDACTED'? This action cannot be undone.",
       setAllowedGroups: 'Set Allowed Groups',
       allowedGroupsHint:
@@ -672,7 +695,10 @@ export default {
       failedToDeposit: 'Failed to deposit',
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
-      insufficientBalance: 'Insufficient balance, balance cannot be negative after withdrawal',
+      roles: {
+        admin: 'Admin',
+        user: 'User'
+      REDACTED,
       // Settings Dropdowns
       filterSettings: 'Filter Settings',
       columnSettings: 'Column Settings',
@@ -728,6 +754,9 @@ export default {
         failedToLoad: 'Failed to load attributes',
         failedToCreate: 'Failed to create attribute',
         failedToUpdate: 'Failed to update attribute',
+        keyRequired: 'Please enter attribute key',
+        nameRequired: 'Please enter display name',
+        optionsRequired: 'Please add at least one option',
         failedToDelete: 'Failed to delete attribute',
         failedToReorder: 'Failed to update order',
         keyExists: 'Attribute key already exists',
@@ -739,6 +768,7 @@ export default {
     groups: {
       title: 'Group Management',
       description: 'Manage API key groups and rate multipliers',
+      searchGroups: 'Search groups...',
       createGroup: 'Create Group',
       editGroup: 'Edit Group',
       deleteGroup: 'Delete Group',
@@ -794,6 +824,14 @@ export default {
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
+      nameRequired: 'Please enter group name',
+      platforms: {
+        all: 'All Platforms',
+        anthropic: 'Anthropic',
+        openai: 'OpenAI',
+        gemini: 'Gemini',
+        antigravity: 'Antigravity'
+      REDACTED,
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
       deleteConfirmSubscription:
@@ -879,6 +917,9 @@ export default {
       failedToAssign: 'Failed to assign subscription',
       failedToExtend: 'Failed to extend subscription',
       failedToRevoke: 'Failed to revoke subscription',
+      pleaseSelectUser: 'Please select a user',
+      pleaseSelectGroup: 'Please select a group',
+      validityDaysRequired: 'Please enter a valid number of days (at least 1)',
       revokeConfirm:
         "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone."
     REDACTED,
@@ -911,6 +952,9 @@ export default {
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
       searchAccounts: 'Search accounts...',
+      notes: 'Notes',
+      notesPlaceholder: 'Enter notes',
+      notesHint: 'Notes are optional',
       allPlatforms: 'All Platforms',
       allTypes: 'All Types',
       allStatus: 'All Status',
@@ -939,9 +983,33 @@ export default {
         antigravityOauth: 'Antigravity OAuth'
       REDACTED,
       status: {
+        active: 'Active',
+        inactive: 'Inactive',
+        error: 'Error',
+        cooldown: 'Cooldown',
         paused: 'Paused',
         limited: 'Limited',
-        tempUnschedulable: 'Temp Unschedulable'
+        tempUnschedulable: 'Temp Unschedulable',
+        rateLimitedUntil: 'Rate limited until {timeREDACTED',
+        overloadedUntil: 'Overloaded until {timeREDACTED',
+        viewTempUnschedDetails: 'View temp unschedulable details'
+      REDACTED,
+      columns: {
+        name: 'Name',
+        platformType: 'Platform/Type',
+        platform: 'Platform',
+        type: 'Type',
+        concurrencyStatus: 'Concurrency',
+        notes: 'Notes',
+        priority: 'Priority',
+        weight: 'Weight',
+        status: 'Status',
+        schedulable: 'Schedulable',
+        todayStats: 'Today Stats',
+        groups: 'Groups',
+        usageWindows: 'Usage Windows',
+        lastUsed: 'Last Used',
+        actions: 'Actions'
       REDACTED,
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -985,21 +1053,6 @@ export default {
           unavailableLabel: '503 Unavailable',
           unavailableDesc: 'Unavailable - pause 30 minutes'
         REDACTED
-      REDACTED,
-      columns: {
-        name: 'Name',
-        platformType: 'Platform/Type',
-        platform: 'Platform',
-        type: 'Type',
-        concurrencyStatus: 'Concurrency',
-        status: 'Status',
-        schedulable: 'Schedule',
-        todayStats: "Today's Stats",
-        groups: 'Groups',
-        usageWindows: 'Usage Windows',
-        priority: 'Priority',
-        lastUsed: 'Last Used',
-        actions: 'Actions'
       REDACTED,
       clearRateLimit: 'Clear Rate Limit',
       testConnection: 'Test Connection',
@@ -1132,13 +1185,13 @@ export default {
           'One sessionKey per line, e.g.:\nsk-ant-sid01-xxxxx...\nsk-ant-sid01-yyyyy...',
         sessionKeyPlaceholderSingle: 'sk-ant-sid01-xxxxx...',
         howToGetSessionKey: 'How to get sessionKey',
-        step1: 'Login to <strong>claude.ai</strong> in your browser',
-        step2: 'Press <kbd>F12</kbd> to open Developer Tools',
-        step3: 'Go to <strong>Application</strong> tab',
-        step4: 'Find <strong>Cookies</strong> → <strong>https://claude.ai</strong>',
-        step5: 'Find the row with key <strong>sessionKey</strong>',
-        step6: 'Copy the <strong>Value</strong>',
-        sessionKeyFormat: 'sessionKey usually starts with <code>sk-ant-sid01-</code>',
+        step1: 'Login to claude.ai in your browser',
+        step2: 'Press F12 to open Developer Tools',
+        step3: 'Go to Application tab',
+        step4: 'Find Cookies → https://claude.ai',
+        step5: 'Find the row with key sessionKey',
+        step6: 'Copy the Value',
+        sessionKeyFormat: 'sessionKey usually starts with sk-ant-sid01-',
         startAutoAuth: 'Start Auto-Auth',
         authorizing: 'Authorizing...',
         followSteps: 'Follow these steps to authorize your Claude account:',
@@ -1150,10 +1203,10 @@ export default {
         openUrlDesc:
           'Open the authorization URL in a new tab, log in to your Claude account and authorize.',
         proxyWarning:
-          '<strong>Note:</strong> If you configured a proxy, make sure your browser uses the same proxy to access the authorization page.',
+          'Note: If you configured a proxy, make sure your browser uses the same proxy to access the authorization page.',
         step3EnterCode: 'Enter the Authorization Code',
         authCodeDesc:
-          'After authorization is complete, the page will display an <strong>Authorization Code</strong>. Copy and paste it below:',
+          'After authorization is complete, the page will display an Authorization Code. Copy and paste it below:',
         authCode: 'Authorization Code',
         authCodePlaceholder: 'Paste the Authorization Code from Claude page...',
         authCodeHint: 'Paste the Authorization Code copied from the Claude page',
@@ -1174,10 +1227,10 @@ export default {
           openUrlDesc:
             'Open the authorization URL in a new tab, log in to your OpenAI account and authorize.',
           importantNotice:
-            '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to <code>http://localhost...</code>, the authorization is complete.',
+            'Important: The page may take a while to load after authorization. Please wait patiently. When the browser address bar changes to http://localhost..., the authorization is complete.',
           step3EnterCode: 'Enter Authorization URL or Code',
           authCodeDesc:
-            'After authorization is complete, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+            'After authorization is complete, when the page URL becomes http://localhost:xxx/auth/callback?code=...:',
           authCode: 'Authorization URL or Code',
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
@@ -1200,7 +1253,7 @@ export default {
 	            'Open the authorization URL in a new tab, log in to your Google account and authorize.',
 	          step3EnterCode: 'Enter Authorization URL or Code',
 	          authCodeDesc:
-	            'After authorization, copy the callback URL (recommended) or just the <code>code</code> and paste it below.',
+	            'After authorization, copy the callback URL (recommended) or just the code and paste it below.',
 	          authCode: 'Callback URL or Code',
 	          authCodePlaceholder:
 	            'Option 1 (recommended): Paste the callback URL\nOption 2: Paste only the code value',
@@ -1242,10 +1295,10 @@ export default {
           step2OpenUrl: 'Open the URL in your browser and complete authorization',
           openUrlDesc: 'Open the authorization URL in a new tab, log in to your Google account and authorize.',
           importantNotice:
-            '<strong>Important:</strong> The page may take a while to load after authorization. Please wait patiently. When the browser address bar shows <code>http://localhost...</code>, authorization is complete.',
+            'Important: The page may take a while to load after authorization. Please wait patiently. When the browser address bar shows http://localhost..., authorization is complete.',
           step3EnterCode: 'Enter Authorization URL or Code',
           authCodeDesc:
-            'After authorization, when the page URL becomes <code>http://localhost:xxx/auth/callback?code=...</code>:',
+            'After authorization, when the page URL becomes http://localhost:xxx/auth/callback?code=...:',
           authCode: 'Authorization URL or Code',
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
@@ -1488,6 +1541,12 @@ export default {
       searchProxies: 'Search proxies...',
       allProtocols: 'All Protocols',
       allStatus: 'All Status',
+      protocols: {
+        http: 'HTTP',
+        https: 'HTTPS',
+        socks5: 'SOCKS5',
+        socks5h: 'SOCKS5H (Remote DNS)'
+      REDACTED,
       columns: {
         name: 'Name',
         protocol: 'Protocol',
@@ -1544,6 +1603,9 @@ export default {
       failedToUpdate: 'Failed to update proxy',
       failedToDelete: 'Failed to delete proxy',
       failedToTest: 'Failed to test proxy',
+      nameRequired: 'Please enter proxy name',
+      hostRequired: 'Please enter host address',
+      portInvalid: 'Port must be between 1-65535',
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? Accounts using this proxy will have their proxy removed."
     REDACTED,
@@ -1601,11 +1663,25 @@ export default {
       failedToDelete: 'Failed to delete code',
       failedToDeleteUnused: 'Failed to delete unused codes',
       failedToCopy: 'Failed to copy codes',
+      types: {
+        balance: 'Balance',
+        concurrency: 'Concurrency',
+        subscription: 'Subscription',
+        // Admin adjustment types (created when admin modifies user balance/concurrency)
+        admin_balance: 'Balance (Admin)',
+        admin_concurrency: 'Concurrency (Admin)'
+      REDACTED,
       selectGroup: 'Select Group',
       selectGroupPlaceholder: 'Choose a subscription group',
       validityDays: 'Validity Days',
       groupRequired: 'Please select a subscription group',
-      days: ' days'
+      days: ' days',
+      status: {
+        unused: 'Unused',
+        used: 'Used',
+        expired: 'Expired',
+        disabled: 'Disabled'
+      REDACTED
     REDACTED,
 
     // Usage Records
@@ -1614,6 +1690,7 @@ export default {
       description: 'View and manage all user usage records',
       userFilter: 'User',
       searchUserPlaceholder: 'Search user by email...',
+      searchApiKeyPlaceholder: 'Search API key by name...',
       selectedUser: 'Selected',
       user: 'User',
       account: 'Account',
@@ -1657,8 +1734,8 @@ export default {
         secretKey: 'Secret Key',
         siteKeyHint: 'Get this from your Cloudflare Dashboard',
         cloudflareDashboard: 'Cloudflare Dashboard',
-        secretKeyHint: 'Server-side verification key (keep this secret)'
-      REDACTED,
+        secretKeyHint: 'Server-side verification key (keep this secret)',
+        secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'      REDACTED,
       defaults: {
         title: 'Default User Settings',
         description: 'Default values for new users',
@@ -1708,6 +1785,8 @@ export default {
         password: 'SMTP Password',
         passwordPlaceholder: '********',
         passwordHint: 'Leave empty to keep existing password',
+        passwordConfiguredPlaceholder: '********',
+        passwordConfiguredHint: 'Password configured. Leave empty to keep the current value.',
         fromEmail: 'From Email',
         fromEmailPlaceholder: "noreply{'@'REDACTEDexample.com",
         fromName: 'From Name',

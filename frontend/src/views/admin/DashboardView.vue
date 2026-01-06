@@ -13,19 +13,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-                <svg
-                  class="h-5 w-5 text-blue-600 dark:text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
-                  />
-                </svg>
+                <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -45,19 +33,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-                <svg
-                  class="h-5 w-5 text-purple-600 dark:text-purple-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z"
-                  />
-                </svg>
+                <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -82,19 +58,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-                <svg
-                  class="h-5 w-5 text-green-600 dark:text-green-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
-                  />
-                </svg>
+                <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -114,19 +78,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
-                <svg
-                  class="h-5 w-5 text-emerald-600 dark:text-emerald-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-                  />
-                </svg>
+                <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -149,19 +101,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-                <svg
-                  class="h-5 w-5 text-amber-600 dark:text-amber-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"
-                  />
-                </svg>
+                <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -191,19 +131,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-                <svg
-                  class="h-5 w-5 text-indigo-600 dark:text-indigo-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
-                  />
-                </svg>
+                <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -233,19 +161,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-                <svg
-                  class="h-5 w-5 text-violet-600 dark:text-violet-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
+                <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
               </div>
               <div class="flex-1">
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -271,19 +187,7 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
-                <svg
-                  class="h-5 w-5 text-rose-600 dark:text-rose-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -367,6 +271,7 @@ import { adminAPI REDACTED from '@/api/admin'
 import type { DashboardStats, TrendDataPoint, ModelStat, UserUsageTrendPoint REDACTED from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Icon from '@/components/icons/Icon.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
@@ -504,7 +409,7 @@ const userTrendChartData = computed(() => {
     if (email && email.includes('@')) {
       return email.split('@')[0]
     REDACTED
-    return `User #${userIdREDACTED`
+    return t('admin.redeem.userPrefix', { id: userId REDACTED)
   REDACTED
 
   // Group by user
@@ -652,16 +557,4 @@ REDACTED)
 </script>
 
 <style scoped>
-/* Compact Select styling for dashboard */
-:deep(.select-trigger) {
-  @apply rounded-lg px-3 py-1.5 text-sm;
-REDACTED
-
-:deep(.select-dropdown) {
-  @apply rounded-lg;
-REDACTED
-
-:deep(.select-option) {
-  @apply px-3 py-2 text-sm;
-REDACTED
 </style>

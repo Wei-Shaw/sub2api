@@ -14,15 +14,11 @@
         {{ selectedLabel REDACTEDREDACTED
       </span>
       <span class="select-icon">
-        <svg
-          :class="['h-5 w-5 transition-transform duration-200', isOpen && 'rotate-180']"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          stroke-width="1.5"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
+        <Icon
+          name="chevronDown"
+          size="md"
+          :class="['transition-transform duration-200', isOpen && 'rotate-180']"
+        />
       </span>
     </button>
 
@@ -31,19 +27,7 @@
         <!-- Search and Batch Test Header -->
         <div class="select-header">
           <div class="select-search">
-            <svg
-              class="h-4 w-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-              />
-            </svg>
+            <Icon name="search" size="sm" class="text-gray-400" />
             <input
               ref="searchInputRef"
               v-model="searchQuery"
@@ -76,20 +60,7 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               ></path>
             </svg>
-            <svg
-              v-else
-              class="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
-              />
-            </svg>
+            <Icon v-else name="play" size="sm" />
           </button>
         </div>
 
@@ -101,16 +72,7 @@
             :class="['select-option', modelValue === null && 'select-option-selected']"
           >
             <span class="select-option-label">{{ t('admin.accounts.noProxy') REDACTEDREDACTED</span>
-            <svg
-              v-if="modelValue === null"
-              class="h-4 w-4 text-primary-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
+            <Icon v-if="modelValue === null" name="check" size="sm" class="text-primary-500" />
           </div>
 
           <!-- Proxy options -->
@@ -184,32 +146,15 @@
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              <svg
-                v-else
-                class="h-3.5 w-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
-                />
-              </svg>
+              <Icon v-else name="play" size="xs" />
             </button>
 
-            <svg
+            <Icon
               v-if="modelValue === proxy.id"
-              class="h-4 w-4 flex-shrink-0 text-primary-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              stroke-width="2"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
+              name="check"
+              size="sm"
+              class="flex-shrink-0 text-primary-500"
+            />
           </div>
 
           <!-- Empty state -->
@@ -226,6 +171,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
+import Icon from '@/components/icons/Icon.vue'
 import type { Proxy REDACTED from '@/types'
 
 const { t REDACTED = useI18n()

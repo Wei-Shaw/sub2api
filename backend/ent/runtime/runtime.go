@@ -124,7 +124,7 @@ REDACTED()
 	REDACTED
 REDACTED()
 	// accountDescPlatform is the schema descriptor for platform field.
-	accountDescPlatform := accountFields[1].Descriptor()
+	accountDescPlatform := accountFields[2].Descriptor()
 	// account.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	account.PlatformValidator = func() func(string) error {
 		validators := accountDescPlatform.Validators
@@ -142,7 +142,7 @@ REDACTED()
 	REDACTED
 REDACTED()
 	// accountDescType is the schema descriptor for type field.
-	accountDescType := accountFields[2].Descriptor()
+	accountDescType := accountFields[3].Descriptor()
 	// account.TypeValidator is a validator for the "type" field. It is called by the builders before save.
 	account.TypeValidator = func() func(string) error {
 		validators := accountDescType.Validators
@@ -160,33 +160,33 @@ REDACTED()
 	REDACTED
 REDACTED()
 	// accountDescCredentials is the schema descriptor for credentials field.
-	accountDescCredentials := accountFields[3].Descriptor()
+	accountDescCredentials := accountFields[4].Descriptor()
 	// account.DefaultCredentials holds the default value on creation for the credentials field.
 	account.DefaultCredentials = accountDescCredentials.Default.(func() map[string]interface{REDACTED)
 	// accountDescExtra is the schema descriptor for extra field.
-	accountDescExtra := accountFields[4].Descriptor()
+	accountDescExtra := accountFields[5].Descriptor()
 	// account.DefaultExtra holds the default value on creation for the extra field.
 	account.DefaultExtra = accountDescExtra.Default.(func() map[string]interface{REDACTED)
 	// accountDescConcurrency is the schema descriptor for concurrency field.
-	accountDescConcurrency := accountFields[6].Descriptor()
+	accountDescConcurrency := accountFields[7].Descriptor()
 	// account.DefaultConcurrency holds the default value on creation for the concurrency field.
 	account.DefaultConcurrency = accountDescConcurrency.Default.(int)
 	// accountDescPriority is the schema descriptor for priority field.
-	accountDescPriority := accountFields[7].Descriptor()
+	accountDescPriority := accountFields[8].Descriptor()
 	// account.DefaultPriority holds the default value on creation for the priority field.
 	account.DefaultPriority = accountDescPriority.Default.(int)
 	// accountDescStatus is the schema descriptor for status field.
-	accountDescStatus := accountFields[8].Descriptor()
+	accountDescStatus := accountFields[9].Descriptor()
 	// account.DefaultStatus holds the default value on creation for the status field.
 	account.DefaultStatus = accountDescStatus.Default.(string)
 	// account.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	account.StatusValidator = accountDescStatus.Validators[0].(func(string) error)
 	// accountDescSchedulable is the schema descriptor for schedulable field.
-	accountDescSchedulable := accountFields[11].Descriptor()
+	accountDescSchedulable := accountFields[12].Descriptor()
 	// account.DefaultSchedulable holds the default value on creation for the schedulable field.
 	account.DefaultSchedulable = accountDescSchedulable.Default.(bool)
 	// accountDescSessionWindowStatus is the schema descriptor for session_window_status field.
-	accountDescSessionWindowStatus := accountFields[17].Descriptor()
+	accountDescSessionWindowStatus := accountFields[18].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
 	accountgroupFields := schema.AccountGroup{REDACTED.Fields()

@@ -56,7 +56,7 @@ REDACTED
 	// 确保数据库 schema 已准备就绪。
 	// SQL 迁移文件是 schema 的权威来源（source of truth）。
 	// 这种方式比 Ent 的自动迁移更可控，支持复杂的迁移场景。
-	migrationCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露

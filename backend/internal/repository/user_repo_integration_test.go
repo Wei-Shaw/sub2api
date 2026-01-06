@@ -290,9 +290,14 @@ REDACTED
 func (s *UserRepoSuite) TestDeductBalance_InsufficientFunds() {
 	user := s.mustCreateUser(&service.User{Email: "insuf@test.com", Balance: 5REDACTED)
 
+	// 透支策略：允许扣除超过余额的金额
 	err := s.repo.DeductBalance(s.ctx, user.ID, 999)
-	s.Require().Error(err, "expected error for insufficient balance")
-	s.Require().ErrorIs(err, service.ErrInsufficientBalance)
+	s.Require().NoError(err, "DeductBalance should allow overdraft")
+
+	// 验证余额变为负数
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(-994.0, got.Balance, 1e-6, "Balance should be negative after overdraft")
 REDACTED
 
 func (s *UserRepoSuite) TestDeductBalance_ExactAmount() {
@@ -304,6 +309,19 @@ func (s *UserRepoSuite) TestDeductBalance_ExactAmount() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	s.Require().InDelta(0.0, got.Balance, 1e-6)
+REDACTED
+
+func (s *UserRepoSuite) TestDeductBalance_AllowsOverdraft() {
+	user := s.mustCreateUser(&service.User{Email: "overdraft@test.com", Balance: 5.0REDACTED)
+
+	// 扣除超过余额的金额 - 应该成功
+	err := s.repo.DeductBalance(s.ctx, user.ID, 10.0)
+	s.Require().NoError(err, "DeductBalance should allow overdraft")
+
+	// 验证余额为负
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(-5.0, got.Balance, 1e-6, "Balance should be -5.0 after overdraft")
 REDACTED
 
 // --- Concurrency ---
@@ -477,9 +495,12 @@ REDACTED)
 	s.Require().NoError(err, "GetByID after DeductBalance")
 	s.Require().InDelta(7.5, got4.Balance, 1e-6)
 
+	// 透支策略：允许扣除超过余额的金额
 	err = s.repo.DeductBalance(s.ctx, user1.ID, 999)
-	s.Require().Error(err, "DeductBalance expected error for insufficient balance")
-	s.Require().ErrorIs(err, service.ErrInsufficientBalance, "DeductBalance unexpected error")
+	s.Require().NoError(err, "DeductBalance should allow overdraft")
+	gotOverdraft, err := s.repo.GetByID(s.ctx, user1.ID)
+	s.Require().NoError(err, "GetByID after overdraft")
+	s.Require().Less(gotOverdraft.Balance, 0.0, "Balance should be negative after overdraft")
 
 	s.Require().NoError(s.repo.UpdateConcurrency(s.ctx, user1.ID, 3), "UpdateConcurrency")
 	got5, err := s.repo.GetByID(s.ctx, user1.ID)
@@ -511,6 +532,6 @@ REDACTED
 func (s *UserRepoSuite) TestDeductBalance_NotFound() {
 	err := s.repo.DeductBalance(s.ctx, 999999, 5)
 	s.Require().Error(err, "expected error for non-existent user")
-	// DeductBalance 在用户不存在时返回 ErrInsufficientBalance 因为 WHERE 条件不匹配
-	s.Require().ErrorIs(err, service.ErrInsufficientBalance)
+	// DeductBalance 在用户不存在时返回 ErrUserNotFound
+	s.Require().ErrorIs(err, service.ErrUserNotFound)
 REDACTED

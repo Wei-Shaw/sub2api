@@ -14,18 +14,23 @@ import (
 )
 
 type githubReleaseClient struct {
-	httpClient *http.Client
+	httpClient        *http.Client
+	allowPrivateHosts bool
 REDACTED
 
 func NewGitHubReleaseClient() service.GitHubReleaseClient {
+	allowPrivate := false
 	sharedClient, err := httpclient.GetClient(httpclient.Options{
-		Timeout: 30 * time.Second,
+		Timeout:            30 * time.Second,
+		ValidateResolvedIP: true,
+		AllowPrivateHosts:  allowPrivate,
 REDACTED)
 	if err != nil {
 		sharedClient = &http.Client{Timeout: 30 * time.SecondREDACTED
 REDACTED
 	return &githubReleaseClient{
-		httpClient: sharedClient,
+		httpClient:        sharedClient,
+		allowPrivateHosts: allowPrivate,
 REDACTED
 REDACTED
 
@@ -64,7 +69,9 @@ func (c *githubReleaseClient) DownloadFile(ctx context.Context, url, dest string
 REDACTED
 
 	downloadClient, err := httpclient.GetClient(httpclient.Options{
-		Timeout: 10 * time.Minute,
+		Timeout:            10 * time.Minute,
+		ValidateResolvedIP: true,
+		AllowPrivateHosts:  c.allowPrivateHosts,
 REDACTED)
 	if err != nil {
 		downloadClient = &http.Client{Timeout: 10 * time.MinuteREDACTED

@@ -8,12 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
 type CRSSyncService struct {
@@ -22,6 +23,7 @@ type CRSSyncService struct {
 	oauthService       *OAuthService
 	openaiOAuthService *OpenAIOAuthService
 	geminiOAuthService *GeminiOAuthService
+	cfg                *config.Config
 REDACTED
 
 func NewCRSSyncService(
@@ -30,6 +32,7 @@ func NewCRSSyncService(
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
+	cfg *config.Config,
 ) *CRSSyncService {
 	return &CRSSyncService{
 		accountRepo:        accountRepo,
@@ -37,6 +40,7 @@ func NewCRSSyncService(
 		oauthService:       oauthService,
 		openaiOAuthService: openaiOAuthService,
 		geminiOAuthService: geminiOAuthService,
+		cfg:                cfg,
 REDACTED
 REDACTED
 
@@ -187,16 +191,31 @@ type crsGeminiAPIKeyAccount struct {
 REDACTED
 
 func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput) (*SyncFromCRSResult, error) {
-	baseURL, err := normalizeBaseURL(input.BaseURL)
-	if err != nil {
-		return nil, err
+	if s.cfg == nil {
+		return nil, errors.New("config is not available")
+REDACTED
+	baseURL := strings.TrimSpace(input.BaseURL)
+	if s.cfg.Security.URLAllowlist.Enabled {
+		normalized, err := normalizeBaseURL(baseURL, s.cfg.Security.URLAllowlist.CRSHosts, s.cfg.Security.URLAllowlist.AllowPrivateHosts)
+		if err != nil {
+			return nil, err
+	REDACTED
+		baseURL = normalized
+REDACTED else {
+		normalized, err := urlvalidator.ValidateURLFormat(baseURL, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		if err != nil {
+			return nil, fmt.Errorf("invalid base_url: %w", err)
+	REDACTED
+		baseURL = normalized
 REDACTED
 	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" {
 		return nil, errors.New("username and password are required")
 REDACTED
 
 	client, err := httpclient.GetClient(httpclient.Options{
-		Timeout: 20 * time.Second,
+		Timeout:            20 * time.Second,
+		ValidateResolvedIP: s.cfg.Security.URLAllowlist.Enabled,
+		AllowPrivateHosts:  s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 REDACTED)
 	if err != nil {
 		client = &http.Client{Timeout: 20 * time.SecondREDACTED
@@ -1055,17 +1074,18 @@ REDACTED
 	return "active"
 REDACTED
 
-func normalizeBaseURL(raw string) (string, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return "", errors.New("base_url is required")
+func normalizeBaseURL(raw string, allowlist []string, allowPrivate bool) (string, error) {
+	// 当 allowlist 为空时，不强制要求白名单（只进行基本的 URL 和 SSRF 验证）
+	requireAllowlist := len(allowlist) > 0
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowedHosts:     allowlist,
+		RequireAllowlist: requireAllowlist,
+		AllowPrivate:     allowPrivate,
+REDACTED)
+	if err != nil {
+		return "", fmt.Errorf("invalid base_url: %w", err)
 REDACTED
-	u, err := url.Parse(trimmed)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return "", fmt.Errorf("invalid base_url: %s", trimmed)
-REDACTED
-	u.Path = strings.TrimRight(u.Path, "/")
-	return strings.TrimRight(u.String(), "/"), nil
+	return normalized, nil
 REDACTED
 
 // cleanBaseURL removes trailing suffix from base_url in credentials

@@ -45,19 +45,7 @@
             class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
             :title="t('home.viewDocs')"
           >
-            <svg
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
-              />
-            </svg>
+            <Icon name="book" size="md" />
           </a>
 
           <!-- Theme Toggle -->
@@ -66,34 +54,8 @@
             class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
             :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
           >
-            <svg
-              v-if="isDark"
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
-              />
-            </svg>
-            <svg
-              v-else
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"
-              />
-            </svg>
+            <Icon v-if="isDark" name="sun" size="md" />
+            <Icon v-else name="moon" size="md" />
           </button>
 
           <!-- Login / Dashboard Button -->
@@ -156,19 +118,7 @@
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') REDACTEDREDACTED
-                <svg
-                  class="ml-2 h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
-                  />
-                </svg>
+                <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
             </div>
           </div>
@@ -216,19 +166,7 @@
           <div
             class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
           >
-            <svg
-              class="h-4 w-4 text-primary-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
-              />
-            </svg>
+            <Icon name="swap" size="sm" class="text-primary-500" />
             <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
               t('home.tags.subscriptionToApi')
             REDACTEDREDACTED</span>
@@ -236,19 +174,7 @@
           <div
             class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
           >
-            <svg
-              class="h-4 w-4 text-primary-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
-              />
-            </svg>
+            <Icon name="shield" size="sm" class="text-primary-500" />
             <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
               t('home.tags.stickySession')
             REDACTEDREDACTED</span>
@@ -256,19 +182,7 @@
           <div
             class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
           >
-            <svg
-              class="h-4 w-4 text-primary-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
-              />
-            </svg>
+            <Icon name="chart" size="sm" class="text-primary-500" />
             <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
               t('home.tags.realtimeBilling')
             REDACTEDREDACTED</span>
@@ -284,19 +198,7 @@
             <div
               class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-110"
             >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z"
-                />
-              </svg>
+              <Icon name="server" size="lg" class="text-white" />
             </div>
             <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('home.features.unifiedGateway') REDACTEDREDACTED
@@ -493,6 +395,8 @@ import { useI18n REDACTED from 'vue-i18n'
 import { getPublicSettings REDACTED from '@/api/auth'
 import { useAuthStore REDACTED from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import Icon from '@/components/icons/Icon.vue'
+import { sanitizeUrl REDACTED from '@/utils/url'
 
 const { t REDACTED = useI18n()
 
@@ -549,9 +453,9 @@ onMounted(async () => {
   try {
     const settings = await getPublicSettings()
     siteName.value = settings.site_name || 'Sub2API'
-    siteLogo.value = settings.site_logo || ''
+    siteLogo.value = sanitizeUrl(settings.site_logo || '', { allowRelative: true REDACTED)
     siteSubtitle.value = settings.site_subtitle || 'AI API Gateway Platform'
-    docUrl.value = settings.doc_url || ''
+    docUrl.value = sanitizeUrl(settings.doc_url || '', { allowRelative: true REDACTED)
   REDACTED catch (error) {
     console.error('Failed to load public settings:', error)
   REDACTED

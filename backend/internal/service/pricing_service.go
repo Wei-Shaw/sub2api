@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
 var (
@@ -213,14 +214,33 @@ REDACTED
 
 // downloadPricingData 从远程下载价格数据
 func (s *PricingService) downloadPricingData() error {
-	log.Printf("[Pricing] Downloading from %s", s.cfg.Pricing.RemoteURL)
+	remoteURL, err := s.validatePricingURL(s.cfg.Pricing.RemoteURL)
+	if err != nil {
+		return err
+REDACTED
+	log.Printf("[Pricing] Downloading from %s", remoteURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	body, err := s.remoteClient.FetchPricingJSON(ctx, s.cfg.Pricing.RemoteURL)
+	var expectedHash string
+	if strings.TrimSpace(s.cfg.Pricing.HashURL) != "" {
+		expectedHash, err = s.fetchRemoteHash()
+		if err != nil {
+			return fmt.Errorf("fetch remote hash: %w", err)
+	REDACTED
+REDACTED
+
+	body, err := s.remoteClient.FetchPricingJSON(ctx, remoteURL)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
+REDACTED
+
+	if expectedHash != "" {
+		actualHash := sha256.Sum256(body)
+		if !strings.EqualFold(expectedHash, hex.EncodeToString(actualHash[:])) {
+			return fmt.Errorf("pricing hash mismatch")
+	REDACTED
 REDACTED
 
 	// 解析JSON数据（使用灵活的解析方式）
@@ -378,10 +398,38 @@ REDACTED
 
 // fetchRemoteHash 从远程获取哈希值
 func (s *PricingService) fetchRemoteHash() (string, error) {
+	hashURL, err := s.validatePricingURL(s.cfg.Pricing.HashURL)
+	if err != nil {
+		return "", err
+REDACTED
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	return s.remoteClient.FetchHashText(ctx, s.cfg.Pricing.HashURL)
+	hash, err := s.remoteClient.FetchHashText(ctx, hashURL)
+	if err != nil {
+		return "", err
+REDACTED
+	return strings.TrimSpace(hash), nil
+REDACTED
+
+func (s *PricingService) validatePricingURL(raw string) (string, error) {
+	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
+		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		if err != nil {
+			return "", fmt.Errorf("invalid pricing url: %w", err)
+	REDACTED
+		return normalized, nil
+REDACTED
+	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+		AllowedHosts:     s.cfg.Security.URLAllowlist.PricingHosts,
+		RequireAllowlist: true,
+		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+REDACTED)
+	if err != nil {
+		return "", fmt.Errorf("invalid pricing url: %w", err)
+REDACTED
+	return normalized, nil
 REDACTED
 
 // computeFileHash 计算文件哈希

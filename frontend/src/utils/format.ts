@@ -3,7 +3,7 @@
  * 参考 CRS 项目的 format.js 实现
  */
 
-import { i18n REDACTED from '@/i18n'
+import { i18n, getLocale REDACTED from '@/i18n'
 
 /**
  * 格式化相对时间
@@ -39,33 +39,39 @@ REDACTED
 export function formatNumber(num: number | null | undefined): string {
   if (num === null || num === undefined) return '0'
 
+  const locale = getLocale()
   const absNum = Math.abs(num)
 
-  if (absNum >= 1e9) {
-    return (num / 1e9).toFixed(2) + 'B'
-  REDACTED else if (absNum >= 1e6) {
-    return (num / 1e6).toFixed(2) + 'M'
-  REDACTED else if (absNum >= 1e3) {
-    return (num / 1e3).toFixed(1) + 'K'
-  REDACTED
+  // Use Intl.NumberFormat for compact notation if supported and needed
+  // Note: Compact notation in 'zh' uses '万/亿', which is appropriate for Chinese
+  const formatter = new Intl.NumberFormat(locale, {
+    notation: absNum >= 10000 ? 'compact' : 'standard',
+    maximumFractionDigits: 1
+  REDACTED)
 
-  return num.toLocaleString()
+  return formatter.format(num)
 REDACTED
 
 /**
  * 格式化货币金额
  * @param amount 金额
- * @returns 格式化后的字符串，如 "$1.25" 或 "$0.000123"
+ * @param currency 货币代码，默认 USD
+ * @returns 格式化后的字符串，如 "$1.25"
  */
-export function formatCurrency(amount: number | null | undefined): string {
+export function formatCurrency(amount: number | null | undefined, currency: string = 'USD'): string {
   if (amount === null || amount === undefined) return '$0.00'
 
-  // 小于 0.01 时显示更多小数位
-  if (amount > 0 && amount < 0.01) {
-    return '$' + amount.toFixed(6)
-  REDACTED
+  const locale = getLocale()
 
-  return '$' + amount.toFixed(2)
+  // For very small amounts, show more decimals
+  const fractionDigits = amount > 0 && amount < 0.01 ? 6 : 2
+
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency: currency,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  REDACTED).format(amount)
 REDACTED
 
 /**
@@ -89,57 +95,91 @@ REDACTED
 /**
  * 格式化日期
  * @param date 日期字符串或 Date 对象
- * @param format 格式字符串，支持 YYYY, MM, DD, HH, mm, ss
+ * @param options Intl.DateTimeFormatOptions
  * @returns 格式化后的日期字符串
  */
 export function formatDate(
   date: string | Date | null | undefined,
-  format: string = 'YYYY-MM-DD HH:mm:ss'
+  options: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  REDACTED
 ): string {
   if (!date) return ''
 
   const d = new Date(date)
   if (isNaN(d.getTime())) return ''
 
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  const seconds = String(d.getSeconds()).padStart(2, '0')
-
-  return format
-    .replace('YYYY', String(year))
-    .replace('MM', month)
-    .replace('DD', day)
-    .replace('HH', hours)
-    .replace('mm', minutes)
-    .replace('ss', seconds)
+  const locale = getLocale()
+  return new Intl.DateTimeFormat(locale, options).format(d)
 REDACTED
 
 /**
  * 格式化日期（只显示日期部分）
  * @param date 日期字符串或 Date 对象
- * @returns 格式化后的日期字符串，格式为 YYYY-MM-DD
+ * @returns 格式化后的日期字符串
  */
 export function formatDateOnly(date: string | Date | null | undefined): string {
-  return formatDate(date, 'YYYY-MM-DD')
+  return formatDate(date, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  REDACTED)
 REDACTED
 
 /**
  * 格式化日期时间（完整格式）
  * @param date 日期字符串或 Date 对象
- * @returns 格式化后的日期时间字符串，格式为 YYYY-MM-DD HH:mm:ss
+ * @returns 格式化后的日期时间字符串
  */
 export function formatDateTime(date: string | Date | null | undefined): string {
-  return formatDate(date, 'YYYY-MM-DD HH:mm:ss')
+  return formatDate(date)
 REDACTED
 
 /**
  * 格式化时间（只显示时分）
  * @param date 日期字符串或 Date 对象
- * @returns 格式化后的时间字符串，格式为 HH:mm
+ * @returns 格式化后的时间字符串
  */
 export function formatTime(date: string | Date | null | undefined): string {
-  return formatDate(date, 'HH:mm')
+  return formatDate(date, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  REDACTED)
+REDACTED
+
+/**
+ * 格式化数字（千分位分隔，不使用紧凑单位）
+ * @param num 数字
+ * @returns 格式化后的字符串，如 "12,345"
+ */
+export function formatNumberLocaleString(num: number): string {
+  return num.toLocaleString()
+REDACTED
+
+/**
+ * 格式化金额（固定小数位，不带货币符号）
+ * @param amount 金额
+ * @param fractionDigits 小数位数，默认 4
+ * @returns 格式化后的字符串，如 "1.2345"
+ */
+export function formatCostFixed(amount: number, fractionDigits: number = 4): string {
+  return amount.toFixed(fractionDigits)
+REDACTED
+
+/**
+ * 格式化 token 数量（>=1M 显示为 M，>=1K 显示为 K，保留 1 位小数）
+ * @param tokens token 数量
+ * @returns 格式化后的字符串，如 "950", "1.2K", "3.5M"
+ */
+export function formatTokensK(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)REDACTEDM`
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)REDACTEDK`
+  return tokens.toString()
 REDACTED

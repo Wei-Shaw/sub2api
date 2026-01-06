@@ -46,20 +46,12 @@
               :disabled="loading"
               :title="t('version.refresh')"
             >
-              <svg
-                class="h-4 w-4"
+              <Icon
+                name="refresh"
+                size="sm"
+                :stroke-width="2"
                 :class="{ 'animate-spin': loading REDACTED"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                />
-              </svg>
+              />
             </button>
           </div>
 
@@ -129,19 +121,12 @@
                   <div
                     class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/50"
                   >
-                    <svg
-                      class="h-4 w-4 text-red-600 dark:text-red-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
+                    <Icon
+                      name="x"
+                      size="sm"
+                      :stroke-width="2"
+                      class="text-red-600 dark:text-red-400"
+                    />
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-red-700 dark:text-red-300">
@@ -253,19 +238,12 @@
                   <div
                     class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
                   >
-                    <svg
-                      class="h-4 w-4 text-amber-600 dark:text-amber-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                      />
-                    </svg>
+                    <Icon
+                      name="download"
+                      size="sm"
+                      :stroke-width="2"
+                      class="text-amber-600 dark:text-amber-400"
+                    />
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
@@ -314,23 +292,16 @@
                 <div
                   class="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
                 >
-                  <div
-                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
-                  >
-                    <svg
-                      class="h-4 w-4 text-amber-600 dark:text-amber-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                      />
-                    </svg>
-                  </div>
+                <div
+                  class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
+                >
+                  <Icon
+                    name="download"
+                    size="sm"
+                    :stroke-width="2"
+                    class="text-amber-600 dark:text-amber-400"
+                  />
+                </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
                       {{ t('version.updateAvailable') REDACTEDREDACTED
@@ -362,20 +333,7 @@
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  <svg
-                    v-else
-                    class="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                    />
-                  </svg>
+                  <Icon v-else name="download" size="sm" :stroke-width="2" />
                   {{ updating ? t('version.updating') : t('version.updateNow') REDACTEDREDACTED
                 </button>
 
@@ -388,19 +346,7 @@
                   class="flex items-center justify-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
                 >
                   {{ t('version.viewChangelog') REDACTEDREDACTED
-                  <svg
-                    class="h-3 w-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
+                  <Icon name="externalLink" size="xs" :stroke-width="2" />
                 </a>
               </div>
 
@@ -439,6 +385,7 @@ import { ref, computed, onMounted, onBeforeUnmount REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import { performUpdate, restartService REDACTED from '@/api/admin/system'
+import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 

@@ -296,13 +296,13 @@ REDACTED{
 					"smtp_host": "smtp.example.com",
 					"smtp_port": 587,
 					"smtp_username": "user",
-					"smtp_password": "secret",
+					"smtp_password_configured": true,
 					"smtp_from_email": "no-reply@example.com",
 					"smtp_from_name": "Sub2API",
 					"smtp_use_tls": true,
 					"turnstile_enabled": true,
 					"turnstile_site_key": "site-key",
-					"turnstile_secret_key": "secret-key",
+					"turnstile_secret_key_configured": true,
 					"site_name": "Sub2API",
 					"site_logo": "",
 					"site_subtitle": "Subtitle",
@@ -315,7 +315,9 @@ REDACTED{
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
 					"fallback_model_antigravity": "gemini-2.5-pro",
 					"fallback_model_gemini": "gemini-2.5-pro",
-					"fallback_model_openai": "gpt-4o"
+					"fallback_model_openai": "gpt-4o",
+					"enable_identity_patch": true,
+					"identity_patch_prompt": ""
 			REDACTED
 		REDACTED`,
 	REDACTED,
