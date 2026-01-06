@@ -1065,6 +1065,10 @@ func (r *stubUsageLogRepo) GetAccountUsageStats(ctx context.Context, accountID i
 	return nil, errors.New("not implemented")
 REDACTED
 
+func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
 type stubSettingRepo struct {
 	all map[string]string
 REDACTED
