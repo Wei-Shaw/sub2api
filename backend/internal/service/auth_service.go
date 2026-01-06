@@ -20,11 +20,15 @@ var (
 	ErrEmailExists         = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
 	ErrInvalidToken        = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
 	ErrTokenExpired        = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrTokenTooLarge       = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
 	ErrTokenRevoked        = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
 	ErrEmailVerifyRequired = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
 	ErrRegDisabled         = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable  = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 )
+
+// maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
+const maxTokenLength = 8192
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
@@ -309,7 +313,20 @@ REDACTED
 
 // ValidateToken 验证JWT token并返回用户声明
 func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{REDACTED, func(token *jwt.Token) (any, error) {
+	// 先做长度校验，尽早拒绝异常超长 token，降低 DoS 风险。
+	if len(tokenString) > maxTokenLength {
+		return nil, ErrTokenTooLarge
+REDACTED
+
+	// 使用解析器并限制可接受的签名算法，防止算法混淆。
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{
+		jwt.SigningMethodHS256.Name,
+		jwt.SigningMethodHS384.Name,
+		jwt.SigningMethodHS512.Name,
+REDACTED))
+
+	// 保留默认 claims 校验（exp/nbf），避免放行过期或未生效的 token。
+	token, err := parser.ParseWithClaims(tokenString, &JWTClaims{REDACTED, func(token *jwt.Token) (any, error) {
 		// 验证签名方法
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])

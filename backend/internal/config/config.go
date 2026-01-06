@@ -147,7 +147,7 @@ type CSPConfig struct {
 REDACTED
 
 type ProxyProbeConfig struct {
-	InsecureSkipVerify bool `mapstructure:"insecure_skip_verify"`
+	InsecureSkipVerify bool `mapstructure:"insecure_skip_verify"` // 已禁用：禁止跳过 TLS 证书验证
 REDACTED
 
 type BillingConfig struct {

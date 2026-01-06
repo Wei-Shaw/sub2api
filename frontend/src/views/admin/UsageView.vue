@@ -12,7 +12,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted REDACTED from 'vue'
-import * as XLSX from 'xlsx'; import { saveAs REDACTED from 'file-saver'
+import { saveAs REDACTED from 'file-saver'
 import { useAppStore REDACTED from '@/stores/app'; import { adminAPI REDACTED from '@/api/admin'; import { adminUsageAPI REDACTED from '@/api/admin/usage'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
@@ -57,6 +57,8 @@ const exportToExcel = async () => {
       if (all.length >= total || res.items.length < 100) break; p++
     REDACTED
     if(!c.signal.aborted) {
+      // 动态加载 xlsx，降低首屏包体并减少高危依赖的常驻暴露面。
+      const XLSX = await import('xlsx')
       const ws = XLSX.utils.json_to_sheet(all); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Usage')
       saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' REDACTED)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' REDACTED), `usage_${Date.now()REDACTED.xlsx`)
       appStore.showSuccess('Export Success')

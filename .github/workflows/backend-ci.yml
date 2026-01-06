@@ -15,8 +15,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
-          check-latest: true
+          check-latest: false
           cache: true
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.25.5'
       - name: Unit tests
         working-directory: backend
         run: make test-unit
@@ -31,8 +34,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
-          check-latest: true
+          check-latest: false
           cache: true
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.25.5'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
