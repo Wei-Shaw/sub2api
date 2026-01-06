@@ -1661,7 +1661,10 @@ export default {
       types: {
         balance: 'Balance',
         concurrency: 'Concurrency',
-        subscription: 'Subscription'
+        subscription: 'Subscription',
+        // Admin adjustment types (created when admin modifies user balance/concurrency)
+        admin_balance: 'Balance (Admin)',
+        admin_concurrency: 'Concurrency (Admin)'
       REDACTED,
       selectGroup: 'Select Group',
       selectGroupPlaceholder: 'Choose a subscription group',
