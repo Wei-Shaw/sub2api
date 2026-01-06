@@ -831,7 +831,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   let credentialsChanged = false
 
   if (enableProxy.value) {
-    updates.proxy_id = proxyId.value
+    // 后端期望 proxy_id: 0 表示清除代理，而不是 null
+    updates.proxy_id = proxyId.value === null ? 0 : proxyId.value
   REDACTED
 
   if (enableConcurrency.value) {

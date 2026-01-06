@@ -1053,6 +1053,10 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     const updatePayload: Record<string, unknown> = { ...form REDACTED
+    // 后端期望 proxy_id: 0 表示清除代理，而不是 null
+    if (updatePayload.proxy_id === null) {
+      updatePayload.proxy_id = 0
+    REDACTED
 
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
