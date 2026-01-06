@@ -47,6 +47,11 @@ type Group struct {
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 
+	// 图片生成计费配置（仅 antigravity 平台使用）
+	ImagePrice1K *float64 `json:"image_price_1k"`
+	ImagePrice2K *float64 `json:"image_price_2k"`
+	ImagePrice4K *float64 `json:"image_price_4k"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -168,6 +173,10 @@ type UsageLog struct {
 	Stream       bool `json:"stream"`
 	DurationMs   *int `json:"duration_ms"`
 	FirstTokenMs *int `json:"first_token_ms"`
+
+	// 图片生成字段
+	ImageCount int     `json:"image_count"`
+	ImageSize  *string `json:"image_size"`
 
 	CreatedAt time.Time `json:"created_at"`
 

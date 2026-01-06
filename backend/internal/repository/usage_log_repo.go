@@ -22,7 +22,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, image_count, image_size, created_at"
 
 type usageLogRepository struct {
 	client *dbent.Client
@@ -109,6 +109,8 @@ REDACTED
 			stream,
 			duration_ms,
 			first_token_ms,
+			image_count,
+			image_size,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5,
@@ -116,7 +118,8 @@ REDACTED
 			$8, $9, $10, $11,
 			$12, $13,
 			$14, $15, $16, $17, $18, $19,
-			$20, $21, $22, $23, $24, $25
+			$20, $21, $22, $23, $24,
+			$25, $26, $27
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -126,6 +129,7 @@ REDACTED
 	subscriptionID := nullInt64(log.SubscriptionID)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
+	imageSize := nullString(log.ImageSize)
 
 	var requestIDArg any
 	if requestID != "" {
@@ -157,6 +161,8 @@ REDACTED
 		log.Stream,
 		duration,
 		firstToken,
+		log.ImageCount,
+		imageSize,
 		createdAt,
 REDACTED
 	if err := scanSingleRow(ctx, sqlq, query, args, &log.ID, &log.CreatedAt); err != nil {
@@ -1789,6 +1795,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		stream              bool
 		durationMs          sql.NullInt64
 		firstTokenMs        sql.NullInt64
+		imageCount          int
+		imageSize           sql.NullString
 		createdAt           time.Time
 	)
 
@@ -1818,6 +1826,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		&stream,
 		&durationMs,
 		&firstTokenMs,
+		&imageCount,
+		&imageSize,
 		&createdAt,
 	); err != nil {
 		return nil, err
@@ -1844,6 +1854,7 @@ REDACTED
 		RateMultiplier:        rateMultiplier,
 		BillingType:           int8(billingType),
 		Stream:                stream,
+		ImageCount:            imageCount,
 		CreatedAt:             createdAt,
 REDACTED
 
@@ -1865,6 +1876,9 @@ REDACTED
 	if firstTokenMs.Valid {
 		value := int(firstTokenMs.Int64)
 		log.FirstTokenMs = &value
+REDACTED
+	if imageSize.Valid {
+		log.ImageSize = &imageSize.String
 REDACTED
 
 	return log, nil
@@ -1936,6 +1950,13 @@ func nullInt(v *int) sql.NullInt64 {
 		return sql.NullInt64{REDACTED
 REDACTED
 	return sql.NullInt64{Int64: int64(*v), Valid: trueREDACTED
+REDACTED
+
+func nullString(v *string) sql.NullString {
+	if v == nil || *v == "" {
+		return sql.NullString{REDACTED
+REDACTED
+	return sql.NullString{String: *v, Valid: trueREDACTED
 REDACTED
 
 func setToSlice(set map[int64]struct{REDACTED) []int64 {

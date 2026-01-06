@@ -273,6 +273,87 @@ func (_u *GroupUpdate) AddDefaultValidityDays(v int) *GroupUpdate {
 	return _u
 REDACTED
 
+// SetImagePrice1k sets the "image_price_1k" field.
+func (_u *GroupUpdate) SetImagePrice1k(v float64) *GroupUpdate {
+	_u.mutation.ResetImagePrice1k()
+	_u.mutation.SetImagePrice1k(v)
+	return _u
+REDACTED
+
+// SetNillableImagePrice1k sets the "image_price_1k" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImagePrice1k(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImagePrice1k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddImagePrice1k adds value to the "image_price_1k" field.
+func (_u *GroupUpdate) AddImagePrice1k(v float64) *GroupUpdate {
+	_u.mutation.AddImagePrice1k(v)
+	return _u
+REDACTED
+
+// ClearImagePrice1k clears the value of the "image_price_1k" field.
+func (_u *GroupUpdate) ClearImagePrice1k() *GroupUpdate {
+	_u.mutation.ClearImagePrice1k()
+	return _u
+REDACTED
+
+// SetImagePrice2k sets the "image_price_2k" field.
+func (_u *GroupUpdate) SetImagePrice2k(v float64) *GroupUpdate {
+	_u.mutation.ResetImagePrice2k()
+	_u.mutation.SetImagePrice2k(v)
+	return _u
+REDACTED
+
+// SetNillableImagePrice2k sets the "image_price_2k" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImagePrice2k(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImagePrice2k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddImagePrice2k adds value to the "image_price_2k" field.
+func (_u *GroupUpdate) AddImagePrice2k(v float64) *GroupUpdate {
+	_u.mutation.AddImagePrice2k(v)
+	return _u
+REDACTED
+
+// ClearImagePrice2k clears the value of the "image_price_2k" field.
+func (_u *GroupUpdate) ClearImagePrice2k() *GroupUpdate {
+	_u.mutation.ClearImagePrice2k()
+	return _u
+REDACTED
+
+// SetImagePrice4k sets the "image_price_4k" field.
+func (_u *GroupUpdate) SetImagePrice4k(v float64) *GroupUpdate {
+	_u.mutation.ResetImagePrice4k()
+	_u.mutation.SetImagePrice4k(v)
+	return _u
+REDACTED
+
+// SetNillableImagePrice4k sets the "image_price_4k" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImagePrice4k(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImagePrice4k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddImagePrice4k adds value to the "image_price_4k" field.
+func (_u *GroupUpdate) AddImagePrice4k(v float64) *GroupUpdate {
+	_u.mutation.AddImagePrice4k(v)
+	return _u
+REDACTED
+
+// ClearImagePrice4k clears the value of the "image_price_4k" field.
+func (_u *GroupUpdate) ClearImagePrice4k() *GroupUpdate {
+	_u.mutation.ClearImagePrice4k()
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -641,6 +722,33 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.AddedDefaultValidityDays(); ok {
 		_spec.AddField(group.FieldDefaultValidityDays, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.ImagePrice1k(); ok {
+		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedImagePrice1k(); ok {
+		_spec.AddField(group.FieldImagePrice1k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.ImagePrice1kCleared() {
+		_spec.ClearField(group.FieldImagePrice1k, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.ImagePrice2k(); ok {
+		_spec.SetField(group.FieldImagePrice2k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedImagePrice2k(); ok {
+		_spec.AddField(group.FieldImagePrice2k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.ImagePrice2kCleared() {
+		_spec.ClearField(group.FieldImagePrice2k, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.ImagePrice4k(); ok {
+		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedImagePrice4k(); ok {
+		_spec.AddField(group.FieldImagePrice4k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.ImagePrice4kCleared() {
+		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1195,6 +1303,87 @@ func (_u *GroupUpdateOne) AddDefaultValidityDays(v int) *GroupUpdateOne {
 	return _u
 REDACTED
 
+// SetImagePrice1k sets the "image_price_1k" field.
+func (_u *GroupUpdateOne) SetImagePrice1k(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImagePrice1k()
+	_u.mutation.SetImagePrice1k(v)
+	return _u
+REDACTED
+
+// SetNillableImagePrice1k sets the "image_price_1k" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImagePrice1k(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImagePrice1k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddImagePrice1k adds value to the "image_price_1k" field.
+func (_u *GroupUpdateOne) AddImagePrice1k(v float64) *GroupUpdateOne {
+	_u.mutation.AddImagePrice1k(v)
+	return _u
+REDACTED
+
+// ClearImagePrice1k clears the value of the "image_price_1k" field.
+func (_u *GroupUpdateOne) ClearImagePrice1k() *GroupUpdateOne {
+	_u.mutation.ClearImagePrice1k()
+	return _u
+REDACTED
+
+// SetImagePrice2k sets the "image_price_2k" field.
+func (_u *GroupUpdateOne) SetImagePrice2k(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImagePrice2k()
+	_u.mutation.SetImagePrice2k(v)
+	return _u
+REDACTED
+
+// SetNillableImagePrice2k sets the "image_price_2k" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImagePrice2k(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImagePrice2k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddImagePrice2k adds value to the "image_price_2k" field.
+func (_u *GroupUpdateOne) AddImagePrice2k(v float64) *GroupUpdateOne {
+	_u.mutation.AddImagePrice2k(v)
+	return _u
+REDACTED
+
+// ClearImagePrice2k clears the value of the "image_price_2k" field.
+func (_u *GroupUpdateOne) ClearImagePrice2k() *GroupUpdateOne {
+	_u.mutation.ClearImagePrice2k()
+	return _u
+REDACTED
+
+// SetImagePrice4k sets the "image_price_4k" field.
+func (_u *GroupUpdateOne) SetImagePrice4k(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImagePrice4k()
+	_u.mutation.SetImagePrice4k(v)
+	return _u
+REDACTED
+
+// SetNillableImagePrice4k sets the "image_price_4k" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImagePrice4k(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImagePrice4k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddImagePrice4k adds value to the "image_price_4k" field.
+func (_u *GroupUpdateOne) AddImagePrice4k(v float64) *GroupUpdateOne {
+	_u.mutation.AddImagePrice4k(v)
+	return _u
+REDACTED
+
+// ClearImagePrice4k clears the value of the "image_price_4k" field.
+func (_u *GroupUpdateOne) ClearImagePrice4k() *GroupUpdateOne {
+	_u.mutation.ClearImagePrice4k()
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1593,6 +1782,33 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.AddedDefaultValidityDays(); ok {
 		_spec.AddField(group.FieldDefaultValidityDays, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.ImagePrice1k(); ok {
+		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedImagePrice1k(); ok {
+		_spec.AddField(group.FieldImagePrice1k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.ImagePrice1kCleared() {
+		_spec.ClearField(group.FieldImagePrice1k, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.ImagePrice2k(); ok {
+		_spec.SetField(group.FieldImagePrice2k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedImagePrice2k(); ok {
+		_spec.AddField(group.FieldImagePrice2k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.ImagePrice2kCleared() {
+		_spec.ClearField(group.FieldImagePrice2k, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.ImagePrice4k(); ok {
+		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedImagePrice4k(); ok {
+		_spec.AddField(group.FieldImagePrice4k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.ImagePrice4kCleared() {
+		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

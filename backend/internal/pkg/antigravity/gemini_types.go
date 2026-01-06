@@ -67,6 +67,13 @@ type GeminiGenerationConfig struct {
 	TopK            *int                  `json:"topK,omitempty"`
 	ThinkingConfig  *GeminiThinkingConfig `json:"thinkingConfig,omitempty"`
 	StopSequences   []string              `json:"stopSequences,omitempty"`
+	ImageConfig     *GeminiImageConfig    `json:"imageConfig,omitempty"`
+REDACTED
+
+// GeminiImageConfig Gemini 图片生成配置（仅 gemini-3-pro-image 支持）
+type GeminiImageConfig struct {
+	AspectRatio string `json:"aspectRatio,omitempty"` // "1:1", "16:9", "9:16", "4:3", "3:4"
+	ImageSize   string `json:"imageSize,omitempty"`   // "1K", "2K", "4K"
 REDACTED
 
 // GeminiThinkingConfig Gemini thinking 配置

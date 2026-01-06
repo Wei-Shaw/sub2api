@@ -860,6 +860,9 @@ REDACTED
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Request body is empty")
 REDACTED
 
+	// 解析请求以获取 image_size（用于图片计费）
+	imageSize := s.extractImageSize(body)
+
 	switch action {
 	case "generateContent", "streamGenerateContent":
 		// ok
@@ -1059,6 +1062,13 @@ REDACTED
 		usage = &ClaudeUsage{REDACTED
 REDACTED
 
+	// 判断是否为图片生成模型
+	imageCount := 0
+	if isImageGenerationModel(mappedModel) {
+		// Gemini 图片生成 API 每次请求只生成一张图片（API 限制）
+		imageCount = 1
+REDACTED
+
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
@@ -1066,6 +1076,8 @@ REDACTED
 		Stream:       stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
+		ImageCount:   imageCount,
+		ImageSize:    imageSize,
 REDACTED, nil
 REDACTED
 
@@ -1571,4 +1583,37 @@ REDACTED
 	REDACTED
 REDACTED
 
+REDACTED
+
+// extractImageSize 从 Gemini 请求中提取 image_size 参数
+func (s *AntigravityGatewayService) extractImageSize(body []byte) string {
+	var req antigravity.GeminiRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "2K" // 默认 2K
+REDACTED
+
+	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
+		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
+		if size == "1K" || size == "2K" || size == "4K" {
+			return size
+	REDACTED
+REDACTED
+
+	return "2K" // 默认 2K
+REDACTED
+
+// isImageGenerationModel 判断模型是否为图片生成模型
+// 支持的模型：gemini-3-pro-image, gemini-3-pro-image-preview, gemini-2.5-flash-image 等
+func isImageGenerationModel(model string) bool {
+	modelLower := strings.ToLower(model)
+	// 移除 models/ 前缀
+	modelLower = strings.TrimPrefix(modelLower, "models/")
+
+	// 精确匹配或前缀匹配
+	return modelLower == "gemini-3-pro-image" ||
+		modelLower == "gemini-3-pro-image-preview" ||
+		strings.HasPrefix(modelLower, "gemini-3-pro-image-") ||
+		modelLower == "gemini-2.5-flash-image" ||
+		modelLower == "gemini-2.5-flash-image-preview" ||
+		strings.HasPrefix(modelLower, "gemini-2.5-flash-image-")
 REDACTED

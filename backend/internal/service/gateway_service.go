@@ -104,6 +104,10 @@ type ForwardResult struct {
 	Stream       bool
 	Duration     time.Duration
 	FirstTokenMs *int // 首字时间（流式请求）
+
+	// 图片生成计费字段（仅 gemini-3-pro-image 使用）
+	ImageCount int    // 生成的图片数量
+	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
 REDACTED
 
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
@@ -2009,25 +2013,40 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	account := input.Account
 	subscription := input.Subscription
 
-	// 计算费用
-	tokens := UsageTokens{
-		InputTokens:         result.Usage.InputTokens,
-		OutputTokens:        result.Usage.OutputTokens,
-		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:     result.Usage.CacheReadInputTokens,
-REDACTED
-
 	// 获取费率倍数
 	multiplier := s.cfg.Default.RateMultiplier
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		multiplier = apiKey.Group.RateMultiplier
 REDACTED
 
-	cost, err := s.billingService.CalculateCost(result.Model, tokens, multiplier)
-	if err != nil {
-		log.Printf("Calculate cost failed: %v", err)
-		// 使用默认费用继续
-		cost = &CostBreakdown{ActualCost: 0REDACTED
+	var cost *CostBreakdown
+
+	// 根据请求类型选择计费方式
+	if result.ImageCount > 0 {
+		// 图片生成计费
+		var groupConfig *ImagePriceConfig
+		if apiKey.Group != nil {
+			groupConfig = &ImagePriceConfig{
+				Price1K: apiKey.Group.ImagePrice1K,
+				Price2K: apiKey.Group.ImagePrice2K,
+				Price4K: apiKey.Group.ImagePrice4K,
+		REDACTED
+	REDACTED
+		cost = s.billingService.CalculateImageCost(result.Model, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+REDACTED else {
+		// Token 计费
+		tokens := UsageTokens{
+			InputTokens:         result.Usage.InputTokens,
+			OutputTokens:        result.Usage.OutputTokens,
+			CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+			CacheReadTokens:     result.Usage.CacheReadInputTokens,
+	REDACTED
+		var err error
+		cost, err = s.billingService.CalculateCost(result.Model, tokens, multiplier)
+		if err != nil {
+			log.Printf("Calculate cost failed: %v", err)
+			cost = &CostBreakdown{ActualCost: 0REDACTED
+	REDACTED
 REDACTED
 
 	// 判断计费方式：订阅模式 vs 余额模式
@@ -2039,6 +2058,10 @@ REDACTED
 
 	// 创建使用日志
 	durationMs := int(result.Duration.Milliseconds())
+	var imageSize *string
+	if result.ImageSize != "" {
+		imageSize = &result.ImageSize
+REDACTED
 	usageLog := &UsageLog{
 		UserID:              user.ID,
 		APIKeyID:            apiKey.ID,
@@ -2060,6 +2083,8 @@ REDACTED
 		Stream:              result.Stream,
 		DurationMs:          &durationMs,
 		FirstTokenMs:        result.FirstTokenMs,
+		ImageCount:          result.ImageCount,
+		ImageSize:           imageSize,
 		CreatedAt:           time.Now(),
 REDACTED
 
