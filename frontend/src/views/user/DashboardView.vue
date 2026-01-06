@@ -28,9 +28,9 @@ const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>
 const formatLD = (d: Date) => d.toISOString().split('T')[0]
 const startDate = ref(formatLD(new Date(Date.now() - 6 * 86400000))); const endDate = ref(formatLD(new Date())); const granularity = ref('day')
 
-const loadStats = async () => { loading.value = true; try { await authStore.refreshUser(); stats.value = await usageAPI.getDashboardStats() REDACTED catch {REDACTED finally { loading.value = false REDACTED REDACTED
-const loadCharts = async () => { loadingCharts.value = true; try { const res = await Promise.all([usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any REDACTED), usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value REDACTED)]); trendData.value = res[0].trend || []; modelStats.value = res[1].models || [] REDACTED catch {REDACTED finally { loadingCharts.value = false REDACTED REDACTED
-const loadRecent = async () => { loadingUsage.value = true; try { const res = await usageAPI.getByDateRange(startDate.value, endDate.value); recentUsage.value = res.items.slice(0, 5) REDACTED catch {REDACTED finally { loadingUsage.value = false REDACTED REDACTED
+const loadStats = async () => { loading.value = true; try { await authStore.refreshUser(); stats.value = await usageAPI.getDashboardStats() REDACTED catch (error) { console.error('Failed to load dashboard stats:', error) REDACTED finally { loading.value = false REDACTED REDACTED
+const loadCharts = async () => { loadingCharts.value = true; try { const res = await Promise.all([usageAPI.getDashboardTrend({ start_date: startDate.value, end_date: endDate.value, granularity: granularity.value as any REDACTED), usageAPI.getDashboardModels({ start_date: startDate.value, end_date: endDate.value REDACTED)]); trendData.value = res[0].trend || []; modelStats.value = res[1].models || [] REDACTED catch (error) { console.error('Failed to load charts:', error) REDACTED finally { loadingCharts.value = false REDACTED REDACTED
+const loadRecent = async () => { loadingUsage.value = true; try { const res = await usageAPI.getByDateRange(startDate.value, endDate.value); recentUsage.value = res.items.slice(0, 5) REDACTED catch (error) { console.error('Failed to load recent usage:', error) REDACTED finally { loadingUsage.value = false REDACTED REDACTED
 
 onMounted(() => { loadStats(); loadCharts(); loadRecent() REDACTED)
 </script>

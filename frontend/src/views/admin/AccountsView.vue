@@ -191,7 +191,7 @@ const handleEdit = (a: Account) => { edAcc.value = a; showEdit.value = true REDA
 const openMenu = (a: Account, e: MouseEvent) => { menu.acc = a; menu.pos = { top: e.clientY, left: e.clientX - 200 REDACTED; menu.show = true REDACTED
 const toggleSel = (id: number) => { const i = selIds.value.indexOf(id); if(i === -1) selIds.value.push(id); else selIds.value.splice(i, 1) REDACTED
 const selectPage = () => { selIds.value = [...new Set([...selIds.value, ...accounts.value.map(a => a.id)])] REDACTED
-const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); selIds.value = []; reload() REDACTED catch {REDACTED REDACTED
+const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); selIds.value = []; reload() REDACTED catch (error) { console.error('Failed to bulk delete accounts:', error) REDACTED REDACTED
 const handleBulkUpdated = () => { showBulkEdit.value = false; selIds.value = []; reload() REDACTED
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null REDACTED
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null REDACTED
@@ -199,14 +199,14 @@ const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = nul
 const handleTest = (a: Account) => { testingAcc.value = a; showTest.value = true REDACTED
 const handleViewStats = (a: Account) => { statsAcc.value = a; showStats.value = true REDACTED
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true REDACTED
-const handleRefresh = async (a: Account) => { try { await adminAPI.accounts.refreshCredentials(a.id); load() REDACTED catch {REDACTED REDACTED
-const handleResetStatus = async (a: Account) => { try { await adminAPI.accounts.clearError(a.id); appStore.showSuccess(t('common.success')); load() REDACTED catch {REDACTED REDACTED
-const handleClearRateLimit = async (a: Account) => { try { await adminAPI.accounts.clearError(a.id); appStore.showSuccess(t('common.success')); load() REDACTED catch {REDACTED REDACTED
+const handleRefresh = async (a: Account) => { try { await adminAPI.accounts.refreshCredentials(a.id); load() REDACTED catch (error) { console.error('Failed to refresh credentials:', error) REDACTED REDACTED
+const handleResetStatus = async (a: Account) => { try { await adminAPI.accounts.clearError(a.id); appStore.showSuccess(t('common.success')); load() REDACTED catch (error) { console.error('Failed to reset status:', error) REDACTED REDACTED
+const handleClearRateLimit = async (a: Account) => { try { await adminAPI.accounts.clearError(a.id); appStore.showSuccess(t('common.success')); load() REDACTED catch (error) { console.error('Failed to clear rate limit:', error) REDACTED REDACTED
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true REDACTED
-const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() REDACTED catch {REDACTED REDACTED
+const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() REDACTED catch (error) { console.error('Failed to delete account:', error) REDACTED REDACTED
 const handleToggleSchedulable = async (a: Account) => { togglingSchedulable.value = a.id; try { await adminAPI.accounts.update(a.id, { schedulable: !a.schedulable REDACTED); load() REDACTED finally { togglingSchedulable.value = null REDACTED REDACTED
 const handleShowTempUnsched = (a: Account) => { tempUnschedAcc.value = a; showTempUnsched.value = true REDACTED
-const handleTempUnschedReset = async () => { if(!tempUnschedAcc.value) return; try { await adminAPI.accounts.clearError(tempUnschedAcc.value.id); showTempUnsched.value = false; tempUnschedAcc.value = null; load() REDACTED catch {REDACTED REDACTED
+const handleTempUnschedReset = async () => { if(!tempUnschedAcc.value) return; try { await adminAPI.accounts.clearError(tempUnschedAcc.value.id); showTempUnsched.value = false; tempUnschedAcc.value = null; load() REDACTED catch (error) { console.error('Failed to reset temp unscheduled:', error) REDACTED REDACTED
 
-onMounted(async () => { load(); try { const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()]); proxies.value = p; groups.value = g REDACTED catch {REDACTED REDACTED)
+onMounted(async () => { load(); try { const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()]); proxies.value = p; groups.value = g REDACTED catch (error) { console.error('Failed to load proxies/groups:', error) REDACTED REDACTED)
 </script>
