@@ -388,3 +388,18 @@ gemini:
         # Cooldown time (minutes) after hitting quota
         # 达到配额后的冷却时间（分钟）
         cooldown_minutes: 5
+
+# =============================================================================
+# Update Configuration (在线更新配置)
+# =============================================================================
+update:
+  # Proxy URL for accessing GitHub (used for online updates and pricing data)
+  # 用于访问 GitHub 的代理地址（用于在线更新和定价数据获取）
+  # Supports: http, https, socks5, socks5h
+  # Examples:
+  #   - HTTP proxy: "http://127.0.0.1:7890"
+  #   - SOCKS5 proxy: "socks5://127.0.0.1:1080"
+  #   - With authentication: "http://user:pass@proxy.example.com:8080"
+  # Leave empty for direct connection (recommended for overseas servers)
+  # 留空表示直连（适用于海外服务器）
+  proxy_url: ""

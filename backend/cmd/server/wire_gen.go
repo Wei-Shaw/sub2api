@@ -114,7 +114,7 @@ REDACTED
 	adminRedeemHandler := admin.NewRedeemHandler(adminService)
 	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService)
 	updateCache := repository.NewUpdateCache(redisClient)
-	gitHubReleaseClient := repository.NewGitHubReleaseClient()
+	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
 	serviceBuildInfo := provideServiceBuildInfo(buildInfo)
 	updateService := service.ProvideUpdateService(updateCache, gitHubReleaseClient, serviceBuildInfo)
 	systemHandler := handler.ProvideSystemHandler(updateService)
@@ -125,7 +125,7 @@ REDACTED
 	userAttributeService := service.NewUserAttributeService(userAttributeDefinitionRepository, userAttributeValueRepository)
 	userAttributeHandler := admin.NewUserAttributeHandler(userAttributeService)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, settingHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler)
-	pricingRemoteClient := repository.NewPricingRemoteClient(configConfig)
+	pricingRemoteClient := repository.ProvidePricingRemoteClient(configConfig)
 	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
 	if err != nil {
 		return nil, err

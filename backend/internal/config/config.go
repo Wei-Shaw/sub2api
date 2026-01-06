@@ -52,6 +52,15 @@ type Config struct {
 	RunMode      string             `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini       GeminiConfig       `mapstructure:"gemini"`
+	Update       UpdateConfig       `mapstructure:"update"`
+REDACTED
+
+// UpdateConfig 在线更新相关配置
+type UpdateConfig struct {
+	// ProxyURL 用于访问 GitHub 的代理地址
+	// 支持 http/https/socks5/socks5h 协议
+	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
+	ProxyURL string `mapstructure:"proxy_url"`
 REDACTED
 
 type GeminiConfig struct {
@@ -558,6 +567,10 @@ REDACTED)
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
+
+	// Update - 在线更新配置
+	// 代理地址为空表示直连 GitHub（适用于海外服务器）
+	viper.SetDefault("update.proxy_url", "")
 REDACTED
 
 func (c *Config) Validate() error {
