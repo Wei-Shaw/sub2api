@@ -1388,6 +1388,81 @@ REDACTED
 	return stats, nil
 REDACTED
 
+// GetStatsWithFilters gets usage statistics with optional filters
+func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters UsageLogFilters) (*UsageStats, error) {
+	conditions := make([]string, 0, 9)
+	args := make([]any, 0, 9)
+
+	if filters.UserID > 0 {
+		conditions = append(conditions, fmt.Sprintf("user_id = $%d", len(args)+1))
+		args = append(args, filters.UserID)
+REDACTED
+	if filters.APIKeyID > 0 {
+		conditions = append(conditions, fmt.Sprintf("api_key_id = $%d", len(args)+1))
+		args = append(args, filters.APIKeyID)
+REDACTED
+	if filters.AccountID > 0 {
+		conditions = append(conditions, fmt.Sprintf("account_id = $%d", len(args)+1))
+		args = append(args, filters.AccountID)
+REDACTED
+	if filters.GroupID > 0 {
+		conditions = append(conditions, fmt.Sprintf("group_id = $%d", len(args)+1))
+		args = append(args, filters.GroupID)
+REDACTED
+	if filters.Model != "" {
+		conditions = append(conditions, fmt.Sprintf("model = $%d", len(args)+1))
+		args = append(args, filters.Model)
+REDACTED
+	if filters.Stream != nil {
+		conditions = append(conditions, fmt.Sprintf("stream = $%d", len(args)+1))
+		args = append(args, *filters.Stream)
+REDACTED
+	if filters.BillingType != nil {
+		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
+		args = append(args, int16(*filters.BillingType))
+REDACTED
+	if filters.StartTime != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
+		args = append(args, *filters.StartTime)
+REDACTED
+	if filters.EndTime != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", len(args)+1))
+		args = append(args, *filters.EndTime)
+REDACTED
+
+	query := fmt.Sprintf(`
+		SELECT
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(duration_ms), 0) as avg_duration_ms
+		FROM usage_logs
+		%s
+	`, buildWhere(conditions))
+
+	stats := &UsageStats{REDACTED
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		args,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
+		return nil, err
+REDACTED
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
+	return stats, nil
+REDACTED
+
 // AccountUsageHistory represents daily usage history for an account
 type AccountUsageHistory = usagestats.AccountUsageHistory
 

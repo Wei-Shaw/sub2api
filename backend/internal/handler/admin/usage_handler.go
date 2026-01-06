@@ -152,8 +152,8 @@ REDACTED
 // Stats handles getting usage statistics with filters
 // GET /api/v1/admin/usage/stats
 func (h *UsageHandler) Stats(c *gin.Context) {
-	// Parse filters
-	var userID, apiKeyID int64
+	// Parse filters - same as List endpoint
+	var userID, apiKeyID, accountID, groupID int64
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		id, err := strconv.ParseInt(userIDStr, 10, 64)
 		if err != nil {
@@ -172,8 +172,49 @@ REDACTED
 		apiKeyID = id
 REDACTED
 
+	if accountIDStr := c.Query("account_id"); accountIDStr != "" {
+		id, err := strconv.ParseInt(accountIDStr, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid account_id")
+			return
+	REDACTED
+		accountID = id
+REDACTED
+
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		id, err := strconv.ParseInt(groupIDStr, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid group_id")
+			return
+	REDACTED
+		groupID = id
+REDACTED
+
+	model := c.Query("model")
+
+	var stream *bool
+	if streamStr := c.Query("stream"); streamStr != "" {
+		val, err := strconv.ParseBool(streamStr)
+		if err != nil {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return
+	REDACTED
+		stream = &val
+REDACTED
+
+	var billingType *int8
+	if billingTypeStr := c.Query("billing_type"); billingTypeStr != "" {
+		val, err := strconv.ParseInt(billingTypeStr, 10, 8)
+		if err != nil {
+			response.BadRequest(c, "Invalid billing_type")
+			return
+	REDACTED
+		bt := int8(val)
+		billingType = &bt
+REDACTED
+
 	// Parse date range
-	userTZ := c.Query("timezone") // Get user's timezone from request
+	userTZ := c.Query("timezone")
 	now := timezone.NowInUserLocation(userTZ)
 	var startTime, endTime time.Time
 
@@ -208,28 +249,20 @@ REDACTED else {
 		endTime = now
 REDACTED
 
-	if apiKeyID > 0 {
-		stats, err := h.usageService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-	REDACTED
-		response.Success(c, stats)
-		return
+	// Build filters and call GetStatsWithFilters
+	filters := usagestats.UsageLogFilters{
+		UserID:      userID,
+		APIKeyID:    apiKeyID,
+		AccountID:   accountID,
+		GroupID:     groupID,
+		Model:       model,
+		Stream:      stream,
+		BillingType: billingType,
+		StartTime:   &startTime,
+		EndTime:     &endTime,
 REDACTED
 
-	if userID > 0 {
-		stats, err := h.usageService.GetStatsByUser(c.Request.Context(), userID, startTime, endTime)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-	REDACTED
-		response.Success(c, stats)
-		return
-REDACTED
-
-	// Get global stats
-	stats, err := h.usageService.GetGlobalStats(c.Request.Context(), startTime, endTime)
+	stats, err := h.usageService.GetStatsWithFilters(c.Request.Context(), filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

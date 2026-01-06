@@ -50,7 +50,7 @@
             class="input pr-8"
             :placeholder="t('admin.usage.searchApiKeyPlaceholder')"
             @input="debounceApiKeySearch"
-            @focus="showApiKeyDropdown = true"
+            @focus="onApiKeyFocus"
           />
           <button
             v-if="filters.api_key_id"
@@ -62,7 +62,7 @@
             ✕
           </button>
           <div
-            v-if="showApiKeyDropdown && (apiKeyResults.length > 0 || apiKeyKeyword)"
+            v-if="showApiKeyDropdown && apiKeyResults.length > 0"
             class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-gray-800"
           >
             <button
@@ -223,14 +223,10 @@ REDACTED
 const debounceApiKeySearch = () => {
   if (apiKeySearchTimeout) clearTimeout(apiKeySearchTimeout)
   apiKeySearchTimeout = setTimeout(async () => {
-    if (!apiKeyKeyword.value) {
-      apiKeyResults.value = []
-      return
-    REDACTED
     try {
       apiKeyResults.value = await adminAPI.usage.searchApiKeys(
         filters.value.user_id,
-        apiKeyKeyword.value
+        apiKeyKeyword.value || ''
       )
     REDACTED catch {
       apiKeyResults.value = []
@@ -238,11 +234,19 @@ const debounceApiKeySearch = () => {
   REDACTED, 300)
 REDACTED
 
-const selectUser = (u: SimpleUser) => {
+const selectUser = async (u: SimpleUser) => {
   userKeyword.value = u.email
   showUserDropdown.value = false
   filters.value.user_id = u.id
   clearApiKey()
+
+  // Auto-load API keys for this user
+  try {
+    apiKeyResults.value = await adminAPI.usage.searchApiKeys(u.id, '')
+  REDACTED catch {
+    apiKeyResults.value = []
+  REDACTED
+
   emitChange()
 REDACTED
 
@@ -272,6 +276,14 @@ REDACTED
 const onClearApiKey = () => {
   clearApiKey()
   emitChange()
+REDACTED
+
+const onApiKeyFocus = () => {
+  showApiKeyDropdown.value = true
+  // Trigger search if no results yet
+  if (apiKeyResults.value.length === 0) {
+    debounceApiKeySearch()
+  REDACTED
 REDACTED
 
 const onDocumentClick = (e: MouseEvent) => {
