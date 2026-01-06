@@ -6,6 +6,7 @@
           <AccountTableFilters
             v-model:searchQuery="params.search"
             :filters="params"
+            @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="reload"
             @update:searchQuery="debouncedReload"
           />
