@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -338,8 +339,19 @@ REDACTED
 func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
+
+	// Add config paths in priority order
+	// 1. DATA_DIR environment variable (highest priority)
+	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
+		viper.AddConfigPath(dataDir)
+REDACTED
+	// 2. Docker data directory
+	viper.AddConfigPath("/app/data")
+	// 3. Current directory
 	viper.AddConfigPath(".")
+	// 4. Config subdirectory
 	viper.AddConfigPath("./config")
+	// 5. System config directory
 	viper.AddConfigPath("/etc/sub2api")
 
 	// 环境变量支持
@@ -372,13 +384,13 @@ REDACTED
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
 
-	if cfg.Server.Mode != "release" && cfg.JWT.Secret == "" {
+	if cfg.JWT.Secret == "" {
 		secret, err := generateJWTSecret(64)
 		if err != nil {
 			return nil, fmt.Errorf("generate jwt secret error: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated for non-release mode. Do not use in production.")
+		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
 	if err := cfg.Validate(); err != nil {
@@ -392,7 +404,7 @@ REDACTED
 		log.Println("Warning: security.response_headers.enabled=false; configurable header filtering disabled (default allowlist only).")
 REDACTED
 
-	if cfg.Server.Mode != "release" && cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
+	if cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
 		log.Println("Warning: JWT secret appears weak; use a 32+ character random secret in production.")
 REDACTED
 	if len(cfg.Security.ResponseHeaders.AdditionalAllowed) > 0 || len(cfg.Security.ResponseHeaders.ForceRemove) > 0 {
@@ -549,17 +561,6 @@ REDACTED)
 REDACTED
 
 func (c *Config) Validate() error {
-	if c.Server.Mode == "release" {
-		if c.JWT.Secret == "" {
-			return fmt.Errorf("jwt.secret is required in release mode")
-	REDACTED
-		if len(c.JWT.Secret) < 32 {
-			return fmt.Errorf("jwt.secret must be at least 32 characters")
-	REDACTED
-		if isWeakJWTSecret(c.JWT.Secret) {
-			return fmt.Errorf("jwt.secret is too weak")
-	REDACTED
-REDACTED
 	if c.JWT.ExpireHour <= 0 {
 		return fmt.Errorf("jwt.expire_hour must be positive")
 REDACTED
