@@ -120,6 +120,16 @@ func LastUsedAt(v time.Time) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldLastUsedAt, v))
 REDACTED
 
+// ExpiresAt applies equality check predicate on the "expires_at" field. It's identical to ExpiresAtEQ.
+func ExpiresAt(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldExpiresAt, v))
+REDACTED
+
+// AutoPauseOnExpired applies equality check predicate on the "auto_pause_on_expired" field. It's identical to AutoPauseOnExpiredEQ.
+func AutoPauseOnExpired(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldAutoPauseOnExpired, v))
+REDACTED
+
 // Schedulable applies equality check predicate on the "schedulable" field. It's identical to SchedulableEQ.
 func Schedulable(v bool) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldSchedulable, v))
@@ -853,6 +863,66 @@ REDACTED
 // LastUsedAtNotNil applies the NotNil predicate on the "last_used_at" field.
 func LastUsedAtNotNil() predicate.Account {
 	return predicate.Account(sql.FieldNotNull(FieldLastUsedAt))
+REDACTED
+
+// ExpiresAtEQ applies the EQ predicate on the "expires_at" field.
+func ExpiresAtEQ(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldExpiresAt, v))
+REDACTED
+
+// ExpiresAtNEQ applies the NEQ predicate on the "expires_at" field.
+func ExpiresAtNEQ(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldExpiresAt, v))
+REDACTED
+
+// ExpiresAtIn applies the In predicate on the "expires_at" field.
+func ExpiresAtIn(vs ...time.Time) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldExpiresAt, vs...))
+REDACTED
+
+// ExpiresAtNotIn applies the NotIn predicate on the "expires_at" field.
+func ExpiresAtNotIn(vs ...time.Time) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldExpiresAt, vs...))
+REDACTED
+
+// ExpiresAtGT applies the GT predicate on the "expires_at" field.
+func ExpiresAtGT(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldExpiresAt, v))
+REDACTED
+
+// ExpiresAtGTE applies the GTE predicate on the "expires_at" field.
+func ExpiresAtGTE(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldExpiresAt, v))
+REDACTED
+
+// ExpiresAtLT applies the LT predicate on the "expires_at" field.
+func ExpiresAtLT(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldExpiresAt, v))
+REDACTED
+
+// ExpiresAtLTE applies the LTE predicate on the "expires_at" field.
+func ExpiresAtLTE(v time.Time) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldExpiresAt, v))
+REDACTED
+
+// ExpiresAtIsNil applies the IsNil predicate on the "expires_at" field.
+func ExpiresAtIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldExpiresAt))
+REDACTED
+
+// ExpiresAtNotNil applies the NotNil predicate on the "expires_at" field.
+func ExpiresAtNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldExpiresAt))
+REDACTED
+
+// AutoPauseOnExpiredEQ applies the EQ predicate on the "auto_pause_on_expired" field.
+func AutoPauseOnExpiredEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldAutoPauseOnExpired, v))
+REDACTED
+
+// AutoPauseOnExpiredNEQ applies the NEQ predicate on the "auto_pause_on_expired" field.
+func AutoPauseOnExpiredNEQ(v bool) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldAutoPauseOnExpired, v))
 REDACTED
 
 // SchedulableEQ applies the EQ predicate on the "schedulable" field.

@@ -401,6 +401,8 @@ export interface Account {
   status: 'active' | 'inactive' | 'error'
   error_message: string | null
   last_used_at: string | null
+  expires_at: number | null
+  auto_pause_on_expired: boolean
   created_at: string
   updated_at: string
   proxy?: Proxy
@@ -491,6 +493,8 @@ export interface CreateAccountRequest {
   concurrency?: number
   priority?: number
   group_ids?: number[]
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
 REDACTED
 
@@ -506,6 +510,8 @@ export interface UpdateAccountRequest {
   schedulable?: boolean
   status?: 'active' | 'inactive'
   group_ids?: number[]
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
 REDACTED
 

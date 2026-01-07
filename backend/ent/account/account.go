@@ -45,6 +45,10 @@ const (
 	FieldErrorMessage = "error_message"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
+	// FieldExpiresAt holds the string denoting the expires_at field in the database.
+	FieldExpiresAt = "expires_at"
+	// FieldAutoPauseOnExpired holds the string denoting the auto_pause_on_expired field in the database.
+	FieldAutoPauseOnExpired = "auto_pause_on_expired"
 	// FieldSchedulable holds the string denoting the schedulable field in the database.
 	FieldSchedulable = "schedulable"
 	// FieldRateLimitedAt holds the string denoting the rate_limited_at field in the database.
@@ -115,6 +119,8 @@ var Columns = []string{
 	FieldStatus,
 	FieldErrorMessage,
 	FieldLastUsedAt,
+	FieldExpiresAt,
+	FieldAutoPauseOnExpired,
 	FieldSchedulable,
 	FieldRateLimitedAt,
 	FieldRateLimitResetAt,
@@ -172,6 +178,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultAutoPauseOnExpired holds the default value on creation for the "auto_pause_on_expired" field.
+	DefaultAutoPauseOnExpired bool
 	// DefaultSchedulable holds the default value on creation for the "schedulable" field.
 	DefaultSchedulable bool
 	// SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
@@ -249,6 +257,16 @@ REDACTED
 // ByLastUsedAt orders the results by the last_used_at field.
 func ByLastUsedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastUsedAt, opts...).ToFunc()
+REDACTED
+
+// ByExpiresAt orders the results by the expires_at field.
+func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiresAt, opts...).ToFunc()
+REDACTED
+
+// ByAutoPauseOnExpired orders the results by the auto_pause_on_expired field.
+func ByAutoPauseOnExpired(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAutoPauseOnExpired, opts...).ToFunc()
 REDACTED
 
 // BySchedulable orders the results by the schedulable field.

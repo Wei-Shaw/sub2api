@@ -70,6 +70,25 @@
           <template #cell-last_used_at="{ value REDACTED">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatRelativeTime(value) REDACTEDREDACTED</span>
           </template>
+          <template #cell-expires_at="{ row, value REDACTED">
+            <div class="flex flex-col items-start gap-1">
+              <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatExpiresAt(value) REDACTEDREDACTED</span>
+              <div v-if="isExpired(value) || (row.auto_pause_on_expired && value)" class="flex items-center gap-1">
+                <span
+                  v-if="isExpired(value)"
+                  class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                >
+                  {{ t('admin.accounts.expired') REDACTEDREDACTED
+                </span>
+                <span
+                  v-if="row.auto_pause_on_expired && value"
+                  class="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                >
+                  {{ t('admin.accounts.autoPauseOnExpired') REDACTEDREDACTED
+                </span>
+              </div>
+            </div>
+          </template>
           <template #cell-actions="{ row REDACTED">
             <div class="flex items-center gap-1">
               <button @click="handleEdit(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400">
@@ -128,7 +147,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
-import { formatRelativeTime REDACTED from '@/utils/format'
+import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import type { Account, Proxy, Group REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
@@ -178,6 +197,7 @@ const cols = computed(() => {
     { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
+    { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true REDACTED,
     { key: 'notes', label: t('admin.accounts.columns.notes'), sortable: false REDACTED,
     { key: 'actions', label: t('admin.accounts.columns.actions'), sortable: false REDACTED
   )
@@ -204,6 +224,25 @@ const confirmDelete = async () => { if(!deletingAcc.value) return; try { await a
 const handleToggleSchedulable = async (a: Account) => { togglingSchedulable.value = a.id; try { await adminAPI.accounts.setSchedulable(a.id, !a.schedulable); load() REDACTED finally { togglingSchedulable.value = null REDACTED REDACTED
 const handleShowTempUnsched = (a: Account) => { tempUnschedAcc.value = a; showTempUnsched.value = true REDACTED
 const handleTempUnschedReset = async () => { if(!tempUnschedAcc.value) return; try { await adminAPI.accounts.clearError(tempUnschedAcc.value.id); showTempUnsched.value = false; tempUnschedAcc.value = null; load() REDACTED catch (error) { console.error('Failed to reset temp unscheduled:', error) REDACTED REDACTED
+const formatExpiresAt = (value: number | null) => {
+  if (!value) return '-'
+  return formatDateTime(
+    new Date(value * 1000),
+    {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    REDACTED,
+    'sv-SE'
+  )
+REDACTED
+const isExpired = (value: number | null) => {
+  if (!value) return false
+  return value * 1000 <= Date.now()
+REDACTED
 
 onMounted(async () => { load(); try { const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()]); proxies.value = p; groups.value = g REDACTED catch (error) { console.error('Failed to load proxies/groups:', error) REDACTED REDACTED)
 </script>
