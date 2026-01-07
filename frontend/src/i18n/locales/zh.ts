@@ -373,6 +373,8 @@ export default {
   usage: {
     title: '使用记录',
     description: '查看和分析您的 API 使用历史',
+    costDetails: '成本明细',
+    tokenDetails: 'Token 明细',
     totalRequests: '总请求数',
     totalTokens: '总 Token',
     totalCost: '总消费',
@@ -1836,6 +1838,7 @@ export default {
       userFilter: '用户',
       searchUserPlaceholder: '按邮箱搜索用户...',
       searchApiKeyPlaceholder: '按名称搜索 API 密钥...',
+      searchAccountPlaceholder: '按名称搜索账号...',
       selectedUser: '已选择',
       user: '用户',
       account: '账户',

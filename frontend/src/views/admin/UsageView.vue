@@ -85,11 +85,48 @@ const exportToExcel = async () => {
       if (all.length >= total || res.items.length < 100) break; p++
     REDACTED
     if(!c.signal.aborted) {
-      // 动态加载 xlsx，降低首屏包体并减少高危依赖的常驻暴露面。
       const XLSX = await import('xlsx')
-      const ws = XLSX.utils.json_to_sheet(all); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Usage')
-      saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' REDACTED)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' REDACTED), `usage_${Date.now()REDACTED.xlsx`)
-      appStore.showSuccess('Export Success')
+      const headers = [
+        t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
+        t('admin.usage.account'), t('usage.model'), t('admin.usage.group'),
+        t('usage.type'),
+        t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
+        t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
+        t('admin.usage.inputCost'), t('admin.usage.outputCost'),
+        t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
+        t('usage.rate'), t('usage.original'), t('usage.billed'),
+        t('usage.billingType'), t('usage.firstToken'), t('usage.duration'),
+        t('admin.usage.requestId')
+      ]
+      const rows = all.map(log => [
+        log.created_at,
+        log.user?.email || '',
+        log.api_key?.name || '',
+        log.account?.name || '',
+        log.model,
+        log.group?.name || '',
+        log.stream ? t('usage.stream') : t('usage.sync'),
+        log.input_tokens,
+        log.output_tokens,
+        log.cache_read_tokens,
+        log.cache_creation_tokens,
+        log.input_cost?.toFixed(6) || '0.000000',
+        log.output_cost?.toFixed(6) || '0.000000',
+        log.cache_read_cost?.toFixed(6) || '0.000000',
+        log.cache_creation_cost?.toFixed(6) || '0.000000',
+        log.rate_multiplier?.toFixed(2) || '1.00',
+        log.total_cost?.toFixed(6) || '0.000000',
+        log.actual_cost?.toFixed(6) || '0.000000',
+        log.billing_type === 1 ? t('usage.subscription') : t('usage.balance'),
+        log.first_token_ms ?? '',
+        log.duration_ms,
+        log.request_id || ''
+      ])
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Usage')
+      saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' REDACTED)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' REDACTED), `usage_${filters.value.start_dateREDACTED_to_${filters.value.end_dateREDACTED.xlsx`)
+      appStore.showSuccess(t('usage.exportSuccess'))
     REDACTED
   REDACTED catch (error) { console.error('Failed to export:', error); appStore.showError('Export Failed') REDACTED
   finally { if(exportAbortController === c) { exportAbortController = null; exporting.value = false; exportProgress.show = false REDACTED REDACTED
