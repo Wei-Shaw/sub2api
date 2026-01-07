@@ -44,7 +44,7 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 
 | 组件 | 技术 |
 |------|------|
-| 后端 | Go 1.25.5, Gin, GORM |
+| 后端 | Go 1.25.5, Gin, Ent |
 | 前端 | Vue 3.4+, Vite 5+, TailwindCSS |
 | 数据库 | PostgreSQL 15+ |
 | 缓存/队列 | Redis 7+ |
