@@ -366,17 +366,8 @@ REDACTED
 		return s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 REDACTED
 
-	// 强制平台模式：优先按分组查找，找不到再查全部该平台账户
-	if hasForcePlatform && groupID != nil {
-		account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
-		if err == nil {
-			return account, nil
-	REDACTED
-		// 分组中找不到，回退查询全部该平台账户
-		groupID = nil
-REDACTED
-
 	// antigravity 分组、强制平台模式或无分组使用单平台选择
+	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询
 	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 REDACTED
 
@@ -454,7 +445,8 @@ REDACTED
 		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
 			account, err := s.accountRepo.GetByID(ctx, accountID)
-			if err == nil && s.isAccountAllowedForPlatform(account, platform, useMixed) &&
+			if err == nil && s.isAccountInGroup(account, groupID) &&
+				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 				account.IsSchedulable() &&
 				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
@@ -671,9 +663,7 @@ REDACTED
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 REDACTED else if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
-		if err == nil && len(accounts) == 0 && hasForcePlatform {
-			accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
-	REDACTED
+		// 分组内无账号则返回空列表，由上层处理错误，不再回退到全平台查询
 REDACTED else {
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 REDACTED
@@ -694,6 +684,23 @@ REDACTED
 		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
 REDACTED
 	return account.Platform == platform
+REDACTED
+
+// isAccountInGroup checks if the account belongs to the specified group.
+// Returns true if groupID is nil (no group restriction) or account belongs to the group.
+func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool {
+	if groupID == nil {
+		return true // 无分组限制
+REDACTED
+	if account == nil {
+		return false
+REDACTED
+	for _, ag := range account.AccountGroups {
+		if ag.GroupID == *groupID {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
@@ -734,8 +741,8 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
-				// 检查账号平台是否匹配（确保粘性会话不会跨平台）
-				if err == nil && account.Platform == platform && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
+				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
 				REDACTED
@@ -823,8 +830,8 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
-				// 检查账号是否有效：原生平台直接匹配，antigravity 需要启用混合调度
-				if err == nil && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
+				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 						if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
