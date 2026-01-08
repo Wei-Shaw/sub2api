@@ -33,10 +33,11 @@ const (
 		"https://www.googleapis.com/auth/experimentsandconfigs"
 
 	// API 端点
-	BaseURL = "https://cloudcode-pa.googleapis.com"
+	// 优先使用 sandbox daily URL，配额更宽松
+	BaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 
-	// User-Agent
-	UserAgent = "antigravity/1.11.9 windows/amd64"
+	// User-Agent（模拟官方客户端）
+	UserAgent = "antigravity/1.104.0 darwin/arm64"
 
 	// Session 过期时间
 	SessionTTL = 30 * time.Minute

@@ -181,11 +181,16 @@ REDACTED
 		return nil, fmt.Errorf("构建请求失败: %w", err)
 REDACTED
 
-	// 构建 HTTP 请求（非流式）
-	req, err := antigravity.NewAPIRequest(ctx, "generateContent", accessToken, requestBody)
+	// 构建 HTTP 请求（总是使用流式 endpoint，与官方客户端一致）
+	req, err := antigravity.NewAPIRequest(ctx, "streamGenerateContent", accessToken, requestBody)
 	if err != nil {
 		return nil, err
 REDACTED
+
+	// DEBUG: 打印请求 header 和 body
+	log.Printf("[DEBUG] Antigravity TestConnection - URL: %s", req.URL.String())
+	log.Printf("[DEBUG] Antigravity TestConnection - Headers: %v", req.Header)
+	log.Printf("[DEBUG] Antigravity TestConnection - Body: %s", string(requestBody))
 
 	// 代理 URL
 	proxyURL := ""
@@ -210,14 +215,8 @@ REDACTED
 		return nil, fmt.Errorf("API 返回 %d: %s", resp.StatusCode, string(respBody))
 REDACTED
 
-	// 解包 v1internal 响应
-	unwrapped, err := s.unwrapV1InternalResponse(respBody)
-	if err != nil {
-		return nil, fmt.Errorf("解包响应失败: %w", err)
-REDACTED
-
-	// 提取响应文本
-	text := extractGeminiResponseText(unwrapped)
+	// 解析流式响应，提取文本
+	text := extractTextFromSSEResponse(respBody)
 
 	return &TestConnectionResult{
 		Text:        text,
@@ -267,38 +266,66 @@ REDACTED
 	return opts
 REDACTED
 
-// extractGeminiResponseText 从 Gemini 响应中提取文本
-func extractGeminiResponseText(respBody []byte) string {
-	var resp map[string]any
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return ""
-REDACTED
-
-	candidates, ok := resp["candidates"].([]any)
-	if !ok || len(candidates) == 0 {
-		return ""
-REDACTED
-
-	candidate, ok := candidates[0].(map[string]any)
-	if !ok {
-		return ""
-REDACTED
-
-	content, ok := candidate["content"].(map[string]any)
-	if !ok {
-		return ""
-REDACTED
-
-	parts, ok := content["parts"].([]any)
-	if !ok {
-		return ""
-REDACTED
-
+// extractTextFromSSEResponse 从 SSE 流式响应中提取文本
+func extractTextFromSSEResponse(respBody []byte) string {
 	var texts []string
-	for _, part := range parts {
-		if partMap, ok := part.(map[string]any); ok {
-			if text, ok := partMap["text"].(string); ok && text != "" {
-				texts = append(texts, text)
+	lines := bytes.Split(respBody, []byte("\n"))
+
+	for _, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+	REDACTED
+
+		// 跳过 SSE 前缀
+		if bytes.HasPrefix(line, []byte("data:")) {
+			line = bytes.TrimPrefix(line, []byte("data:"))
+			line = bytes.TrimSpace(line)
+	REDACTED
+
+		// 跳过非 JSON 行
+		if len(line) == 0 || line[0] != '{' {
+			continue
+	REDACTED
+
+		// 解析 JSON
+		var data map[string]any
+		if err := json.Unmarshal(line, &data); err != nil {
+			continue
+	REDACTED
+
+		// 尝试从 response.candidates[0].content.parts[].text 提取
+		response, ok := data["response"].(map[string]any)
+		if !ok {
+			// 尝试直接从 candidates 提取（某些响应格式）
+			response = data
+	REDACTED
+
+		candidates, ok := response["candidates"].([]any)
+		if !ok || len(candidates) == 0 {
+			continue
+	REDACTED
+
+		candidate, ok := candidates[0].(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+
+		content, ok := candidate["content"].(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+
+		parts, ok := content["parts"].([]any)
+		if !ok {
+			continue
+	REDACTED
+
+		for _, part := range parts {
+			if partMap, ok := part.(map[string]any); ok {
+				if text, ok := partMap["text"].(string); ok && text != "" {
+					texts = append(texts, text)
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
@@ -316,7 +343,7 @@ REDACTED
 	wrapped := map[string]any{
 		"project":     projectID,
 		"requestId":   "agent-" + uuid.New().String(),
-		"userAgent":   "sub2api",
+		"userAgent":   "antigravity", // 固定值，与官方客户端一致
 		"requestType": "agent",
 		"model":       model,
 		"request":     request,
@@ -397,10 +424,10 @@ REDACTED
 		return nil, fmt.Errorf("transform request: %w", err)
 REDACTED
 
-	// 构建上游 action
+	// 构建上游 action（NewAPIRequest 会自动处理 ?alt=sse 和 Accept Header）
 	action := "generateContent"
 	if claudeReq.Stream {
-		action = "streamGenerateContent?alt=sse"
+		action = "streamGenerateContent"
 REDACTED
 
 	// 重试循环
@@ -907,13 +934,10 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 构建上游 action
+	// 构建上游 action（NewAPIRequest 会自动处理 ?alt=sse 和 Accept Header）
 	upstreamAction := action
 	if action == "generateContent" && stream {
 		upstreamAction = "streamGenerateContent"
-REDACTED
-	if stream || upstreamAction == "streamGenerateContent" {
-		upstreamAction += "?alt=sse"
 REDACTED
 
 	// 重试循环
