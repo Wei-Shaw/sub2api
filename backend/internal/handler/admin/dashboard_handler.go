@@ -26,31 +26,33 @@ REDACTED
 REDACTED
 
 // parseTimeRange parses start_date, end_date query parameters
+// Uses user's timezone if provided, otherwise falls back to server timezone
 func parseTimeRange(c *gin.Context) (time.Time, time.Time) {
-	now := timezone.Now()
+	userTZ := c.Query("timezone") // Get user's timezone from request
+	now := timezone.NowInUserLocation(userTZ)
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
 	var startTime, endTime time.Time
 
 	if startDate != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", startDate); err == nil {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", startDate, userTZ); err == nil {
 			startTime = t
 	REDACTED else {
-			startTime = timezone.StartOfDay(now.AddDate(0, 0, -7))
+			startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
 	REDACTED
 REDACTED else {
-		startTime = timezone.StartOfDay(now.AddDate(0, 0, -7))
+		startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
 REDACTED
 
 	if endDate != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", endDate); err == nil {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ); err == nil {
 			endTime = t.Add(24 * time.Hour) // Include the end date
 	REDACTED else {
-			endTime = timezone.StartOfDay(now.AddDate(0, 0, 1))
+			endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
 	REDACTED
 REDACTED else {
-		endTime = timezone.StartOfDay(now.AddDate(0, 0, 1))
+		endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
 REDACTED
 
 	return startTime, endTime

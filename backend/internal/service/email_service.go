@@ -140,6 +140,8 @@ REDACTED
 func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
 	tlsConfig := &tls.Config{
 		ServerName: host,
+		// 强制 TLS 1.2+，避免协议降级导致的弱加密风险。
+		MinVersion: tls.VersionTLS12,
 REDACTED
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
@@ -311,7 +313,11 @@ func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
 	if config.UseTLS {
-		tlsConfig := &tls.Config{ServerName: config.HostREDACTED
+		tlsConfig := &tls.Config{
+			ServerName: config.Host,
+			// 与发送逻辑一致，显式要求 TLS 1.2+。
+			MinVersion: tls.VersionTLS12,
+	REDACTED
 		conn, err := tls.Dial("tcp", addr, tlsConfig)
 		if err != nil {
 			return fmt.Errorf("tls connection failed: %w", err)

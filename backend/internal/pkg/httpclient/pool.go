@@ -16,7 +16,6 @@
 package httpclient
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -40,7 +39,7 @@ type Options struct {
 	ProxyURL              string        // 代理 URL（支持 http/https/socks5/socks5h）
 	Timeout               time.Duration // 请求总超时时间
 	ResponseHeaderTimeout time.Duration // 等待响应头超时时间
-	InsecureSkipVerify    bool          // 是否跳过 TLS 证书验证
+	InsecureSkipVerify    bool          // 是否跳过 TLS 证书验证（已禁用，不允许设置为 true）
 	ProxyStrict           bool          // 严格代理模式：代理失败时返回错误而非回退
 	ValidateResolvedIP    bool          // 是否校验解析后的 IP（防止 DNS Rebinding）
 	AllowPrivateHosts     bool          // 允许私有地址解析（与 ValidateResolvedIP 一起使用）
@@ -113,7 +112,8 @@ REDACTED
 REDACTED
 
 	if opts.InsecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: trueREDACTED
+		// 安全要求：禁止跳过证书验证，避免中间人攻击。
+		return nil, fmt.Errorf("insecure_skip_verify is not allowed; install a trusted certificate instead")
 REDACTED
 
 	proxyURL := strings.TrimSpace(opts.ProxyURL)

@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
 import { resolve REDACTED from 'path'
 
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -29,7 +30,7 @@ export default defineConfig({
   REDACTED,
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: Number(process.env.VITE_DEV_PORT || 3000),
     proxy: {
       '/api': {
         target: process.env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080',

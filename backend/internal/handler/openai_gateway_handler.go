@@ -242,7 +242,7 @@ REDACTED
 	REDACTED
 
 		// Async record usage
-		go func(result *service.OpenAIForwardResult, usedAccount *service.Account) {
+		go func(result *service.OpenAIForwardResult, usedAccount *service.Account, ua string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
@@ -251,10 +251,11 @@ REDACTED
 				User:         apiKey.User,
 				Account:      usedAccount,
 				Subscription: subscription,
+				UserAgent:    ua,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account)
+	REDACTED(result, account, userAgent)
 		return
 REDACTED
 REDACTED

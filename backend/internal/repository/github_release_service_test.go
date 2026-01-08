@@ -39,8 +39,8 @@ REDACTED
 
 func newTestGitHubReleaseClient() *githubReleaseClient {
 	return &githubReleaseClient{
-		httpClient:        &http.Client{REDACTED,
-		allowPrivateHosts: true,
+		httpClient:         &http.Client{REDACTED,
+		downloadHTTPClient: &http.Client{REDACTED,
 REDACTED
 REDACTED
 
@@ -234,7 +234,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
-		allowPrivateHosts: true,
+		downloadHTTPClient: &http.Client{REDACTED,
 REDACTED
 
 	release, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -254,7 +254,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
-		allowPrivateHosts: true,
+		downloadHTTPClient: &http.Client{REDACTED,
 REDACTED
 
 	_, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -272,7 +272,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
-		allowPrivateHosts: true,
+		downloadHTTPClient: &http.Client{REDACTED,
 REDACTED
 
 	_, err := s.client.FetchLatestRelease(context.Background(), "test/repo")
@@ -288,7 +288,7 @@ REDACTED))
 		httpClient: &http.Client{
 			Transport: &testTransport{testServerURL: s.srv.URLREDACTED,
 	REDACTED,
-		allowPrivateHosts: true,
+		downloadHTTPClient: &http.Client{REDACTED,
 REDACTED
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -88,8 +88,9 @@ REDACTED
 
 	// Parse date range
 	var startTime, endTime *time.Time
+	userTZ := c.Query("timezone") // Get user's timezone from request
 	if startDateStr := c.Query("start_date"); startDateStr != "" {
-		t, err := timezone.ParseInLocation("2006-01-02", startDateStr)
+		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
 			return
@@ -98,7 +99,7 @@ REDACTED
 REDACTED
 
 	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInLocation("2006-01-02", endDateStr)
+		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return
@@ -194,7 +195,8 @@ REDACTED
 REDACTED
 
 	// 获取时间范围参数
-	now := timezone.Now()
+	userTZ := c.Query("timezone") // Get user's timezone from request
+	now := timezone.NowInUserLocation(userTZ)
 	var startTime, endTime time.Time
 
 	// 优先使用 start_date 和 end_date 参数
@@ -204,12 +206,12 @@ REDACTED
 	if startDateStr != "" && endDateStr != "" {
 		// 使用自定义日期范围
 		var err error
-		startTime, err = timezone.ParseInLocation("2006-01-02", startDateStr)
+		startTime, err = timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
 			return
 	REDACTED
-		endTime, err = timezone.ParseInLocation("2006-01-02", endDateStr)
+		endTime, err = timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return
@@ -221,13 +223,13 @@ REDACTED else {
 		period := c.DefaultQuery("period", "today")
 		switch period {
 		case "today":
-			startTime = timezone.StartOfDay(now)
+			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
 		case "week":
 			startTime = now.AddDate(0, 0, -7)
 		case "month":
 			startTime = now.AddDate(0, -1, 0)
 		default:
-			startTime = timezone.StartOfDay(now)
+			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
 	REDACTED
 		endTime = now
 REDACTED
@@ -248,31 +250,33 @@ REDACTED
 REDACTED
 
 // parseUserTimeRange parses start_date, end_date query parameters for user dashboard
+// Uses user's timezone if provided, otherwise falls back to server timezone
 func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
-	now := timezone.Now()
+	userTZ := c.Query("timezone") // Get user's timezone from request
+	now := timezone.NowInUserLocation(userTZ)
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
 	var startTime, endTime time.Time
 
 	if startDate != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", startDate); err == nil {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", startDate, userTZ); err == nil {
 			startTime = t
 	REDACTED else {
-			startTime = timezone.StartOfDay(now.AddDate(0, 0, -7))
+			startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
 	REDACTED
 REDACTED else {
-		startTime = timezone.StartOfDay(now.AddDate(0, 0, -7))
+		startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
 REDACTED
 
 	if endDate != "" {
-		if t, err := timezone.ParseInLocation("2006-01-02", endDate); err == nil {
+		if t, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ); err == nil {
 			endTime = t.Add(24 * time.Hour) // Include the end date
 	REDACTED else {
-			endTime = timezone.StartOfDay(now.AddDate(0, 0, 1))
+			endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
 	REDACTED
 REDACTED else {
-		endTime = timezone.StartOfDay(now.AddDate(0, 0, 1))
+		endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
 REDACTED
 
 	return startTime, endTime

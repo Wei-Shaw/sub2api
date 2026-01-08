@@ -504,6 +504,26 @@ func (_u *UsageLogUpdate) ClearFirstTokenMs() *UsageLogUpdate {
 	return _u
 REDACTED
 
+// SetUserAgent sets the "user_agent" field.
+func (_u *UsageLogUpdate) SetUserAgent(v string) *UsageLogUpdate {
+	_u.mutation.SetUserAgent(v)
+	return _u
+REDACTED
+
+// SetNillableUserAgent sets the "user_agent" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUserAgent(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUserAgent(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearUserAgent clears the value of the "user_agent" field.
+func (_u *UsageLogUpdate) ClearUserAgent() *UsageLogUpdate {
+	_u.mutation.ClearUserAgent()
+	return _u
+REDACTED
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdate) SetImageCount(v int) *UsageLogUpdate {
 	_u.mutation.ResetImageCount()
@@ -642,6 +662,11 @@ REDACTED
 	if v, ok := _u.mutation.Model(); ok {
 		if err := usagelog.ModelValidator(v); err != nil {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.UserAgent(); ok {
+		if err := usagelog.UserAgentValidator(v); err != nil {
+			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if v, ok := _u.mutation.ImageSize(); ok {
@@ -783,6 +808,12 @@ REDACTED
 REDACTED
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+REDACTED
+	if value, ok := _u.mutation.UserAgent(); ok {
+		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
+REDACTED
+	if _u.mutation.UserAgentCleared() {
+		_spec.ClearField(usagelog.FieldUserAgent, field.TypeString)
 REDACTED
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
@@ -1433,6 +1464,26 @@ func (_u *UsageLogUpdateOne) ClearFirstTokenMs() *UsageLogUpdateOne {
 	return _u
 REDACTED
 
+// SetUserAgent sets the "user_agent" field.
+func (_u *UsageLogUpdateOne) SetUserAgent(v string) *UsageLogUpdateOne {
+	_u.mutation.SetUserAgent(v)
+	return _u
+REDACTED
+
+// SetNillableUserAgent sets the "user_agent" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUserAgent(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUserAgent(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearUserAgent clears the value of the "user_agent" field.
+func (_u *UsageLogUpdateOne) ClearUserAgent() *UsageLogUpdateOne {
+	_u.mutation.ClearUserAgent()
+	return _u
+REDACTED
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdateOne) SetImageCount(v int) *UsageLogUpdateOne {
 	_u.mutation.ResetImageCount()
@@ -1584,6 +1635,11 @@ REDACTED
 	if v, ok := _u.mutation.Model(); ok {
 		if err := usagelog.ModelValidator(v); err != nil {
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.UserAgent(); ok {
+		if err := usagelog.UserAgentValidator(v); err != nil {
+			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if v, ok := _u.mutation.ImageSize(); ok {
@@ -1742,6 +1798,12 @@ REDACTED
 REDACTED
 	if _u.mutation.FirstTokenMsCleared() {
 		_spec.ClearField(usagelog.FieldFirstTokenMs, field.TypeInt)
+REDACTED
+	if value, ok := _u.mutation.UserAgent(); ok {
+		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
+REDACTED
+	if _u.mutation.UserAgentCleared() {
+		_spec.ClearField(usagelog.FieldUserAgent, field.TypeString)
 REDACTED
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)

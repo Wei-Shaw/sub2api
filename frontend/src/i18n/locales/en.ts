@@ -376,6 +376,8 @@ export default {
   usage: {
     title: 'Usage Records',
     description: 'View and analyze your API usage history',
+    costDetails: 'Cost Breakdown',
+    tokenDetails: 'Token Breakdown',
     totalRequests: 'Total Requests',
     totalTokens: 'Total Tokens',
     totalCost: 'Total Cost',
@@ -1009,6 +1011,7 @@ export default {
         groups: 'Groups',
         usageWindows: 'Usage Windows',
         lastUsed: 'Last Used',
+        expiresAt: 'Expires At',
         actions: 'Actions'
       REDACTED,
       tempUnschedulable: {
@@ -1150,12 +1153,17 @@ export default {
       interceptWarmupRequests: 'Intercept Warmup Requests',
       interceptWarmupRequestsDesc:
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
+      autoPauseOnExpired: 'Auto Pause On Expired',
+      autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
+      expired: 'Expired',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
       concurrency: 'Concurrency',
       priority: 'Priority',
-      priorityHint: 'Higher priority accounts are used first',
-      higherPriorityFirst: 'Higher value means higher priority',
+      priorityHint: 'Lower value accounts are used first',
+      expiresAt: 'Expires At',
+      expiresAtHint: 'Leave empty for no expiration',
+      higherPriorityFirst: 'Lower value means higher priority',
       mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
       mixedSchedulingTooltip:
@@ -1691,6 +1699,7 @@ export default {
       userFilter: 'User',
       searchUserPlaceholder: 'Search user by email...',
       searchApiKeyPlaceholder: 'Search API key by name...',
+      searchAccountPlaceholder: 'Search account by name...',
       selectedUser: 'Selected',
       user: 'User',
       account: 'Account',
@@ -1984,7 +1993,7 @@ export default {
       REDACTED,
       accountPriority: {
         title: '⚖️ 4. Priority (Optional)',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Set the account call priority.</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 Priority Rules:</b><ul style="margin: 8px 0 0 16px;"><li>Higher number = higher priority</li><li>System uses high-priority accounts first</li><li>Same priority = random selection</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 Use Case:</b> Set main account to high priority, backup accounts to low priority</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Set the account call priority.</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 Priority Rules:</b><ul style="margin: 8px 0 0 16px;"><li>Lower number = higher priority</li><li>System uses low-value accounts first</li><li>Same priority = random selection</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 Use Case:</b> Set main account to lower value, backup accounts to higher value</p></div>',
         nextBtn: 'Next'
       REDACTED,
       accountGroups: {

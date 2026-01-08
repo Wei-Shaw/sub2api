@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.25.5-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
@@ -44,10 +44,16 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 
 | Component | Technology |
 |-----------|------------|
-| Backend | Go 1.21+, Gin, GORM |
+| Backend | Go 1.25.5, Gin, Ent |
 | Frontend | Vue 3.4+, Vite 5+, TailwindCSS |
 | Database | PostgreSQL 15+ |
 | Cache/Queue | Redis 7+ |
+
+---
+
+## Documentation
+
+- Dependency Security: `docs/dependency-security.md`
 
 ---
 
@@ -160,6 +166,22 @@ ADMIN_PASSWORD=your_admin_password
 
 # Optional: Custom port
 SERVER_PORT=8080
+
+# Optional: Security configuration
+# Enable URL allowlist validation (false to skip allowlist checks, only basic format validation)
+SECURITY_URL_ALLOWLIST_ENABLED=false
+
+# Allow insecure HTTP URLs when allowlist is disabled (default: false, requires https)
+# ⚠️ WARNING: Enabling this allows HTTP (plaintext) URLs which can expose API keys
+#             Only recommended for:
+#             - Development/testing environments
+#             - Internal networks with trusted endpoints
+#             - When using local test servers (http://localhost)
+# PRODUCTION: Keep this false or use HTTPS URLs only
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
+
+# Allow private IP addresses for upstream/pricing/CRS (for internal deployments)
+SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
 ```
 
 ```bash
@@ -276,12 +298,47 @@ Additional security-related options are available in `config.yaml`:
 - `cors.allowed_origins` for CORS allowlist
 - `security.url_allowlist` for upstream/pricing/CRS host allowlists
 - `security.url_allowlist.enabled` to disable URL validation (use with caution)
-- `security.url_allowlist.allow_insecure_http` to allow http URLs when validation is disabled
+- `security.url_allowlist.allow_insecure_http` to allow HTTP URLs when validation is disabled
+- `security.url_allowlist.allow_private_hosts` to allow private/local IP addresses
 - `security.response_headers.enabled` to enable configurable response header filtering (disabled uses default allowlist)
 - `security.csp` to control Content-Security-Policy headers
 - `billing.circuit_breaker` to fail closed on billing errors
 - `server.trusted_proxies` to enable X-Forwarded-For parsing
 - `turnstile.required` to require Turnstile in release mode
+
+**⚠️ Security Warning: HTTP URL Configuration**
+
+When `security.url_allowlist.enabled=false`, the system performs minimal URL validation by default, **rejecting HTTP URLs** and only allowing HTTPS. To allow HTTP URLs (e.g., for development or internal testing), you must explicitly set:
+
+```yaml
+security:
+  url_allowlist:
+    enabled: false                # Disable allowlist checks
+    allow_insecure_http: true     # Allow HTTP URLs (⚠️ INSECURE)
+```
+
+**Or via environment variable:**
+
+```bash
+SECURITY_URL_ALLOWLIST_ENABLED=false
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
+```
+
+**Risks of allowing HTTP:**
+- API keys and data transmitted in **plaintext** (vulnerable to interception)
+- Susceptible to **man-in-the-middle (MITM) attacks**
+- **NOT suitable for production** environments
+
+**When to use HTTP:**
+- ✅ Development/testing with local servers (http://localhost)
+- ✅ Internal networks with trusted endpoints
+- ✅ Testing account connectivity before obtaining HTTPS
+- ❌ Production environments (use HTTPS only)
+
+**Example error without this setting:**
+```
+Invalid base URL: invalid url scheme: http
+```
 
 If you disable URL validation or response header filtering, harden your network layer:
 - Enforce an egress allowlist for upstream domains/IPs

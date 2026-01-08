@@ -48,12 +48,12 @@ const emit = defineEmits(['close', 'success']); const { t REDACTED = useI18n(); 
 const groups = ref<Group[]>([]); const selectedIds = ref<number[]>([]); const loading = ref(false); const submitting = ref(false)
 
 watch(() => props.show, (v) => { if(v && props.user) { selectedIds.value = props.user.allowed_groups || []; load() REDACTED REDACTED)
-const load = async () => { loading.value = true; try { const res = await adminAPI.groups.list(1, 1000); groups.value = res.items.filter(g => g.subscription_type === 'standard' && g.status === 'active') REDACTED catch {REDACTED finally { loading.value = false REDACTED REDACTED
+const load = async () => { loading.value = true; try { const res = await adminAPI.groups.list(1, 1000); groups.value = res.items.filter(g => g.subscription_type === 'standard' && g.status === 'active') REDACTED catch (error) { console.error('Failed to load groups:', error) REDACTED finally { loading.value = false REDACTED REDACTED
 const handleSave = async () => {
   if (!props.user) return; submitting.value = true
   try {
     await adminAPI.users.update(props.user.id, { allowed_groups: selectedIds.value REDACTED)
     appStore.showSuccess(t('admin.users.allowedGroupsUpdated')); emit('success'); emit('close')
-  REDACTED catch {REDACTED finally { submitting.value = false REDACTED
+  REDACTED catch (error) { console.error('Failed to update allowed groups:', error) REDACTED finally { submitting.value = false REDACTED
 REDACTED
 </script>

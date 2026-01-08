@@ -181,12 +181,16 @@ REDACTED()
 	account.DefaultStatus = accountDescStatus.Default.(string)
 	// account.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	account.StatusValidator = accountDescStatus.Validators[0].(func(string) error)
+	// accountDescAutoPauseOnExpired is the schema descriptor for auto_pause_on_expired field.
+	accountDescAutoPauseOnExpired := accountFields[13].Descriptor()
+	// account.DefaultAutoPauseOnExpired holds the default value on creation for the auto_pause_on_expired field.
+	account.DefaultAutoPauseOnExpired = accountDescAutoPauseOnExpired.Default.(bool)
 	// accountDescSchedulable is the schema descriptor for schedulable field.
-	accountDescSchedulable := accountFields[12].Descriptor()
+	accountDescSchedulable := accountFields[14].Descriptor()
 	// account.DefaultSchedulable holds the default value on creation for the schedulable field.
 	account.DefaultSchedulable = accountDescSchedulable.Default.(bool)
 	// accountDescSessionWindowStatus is the schema descriptor for session_window_status field.
-	accountDescSessionWindowStatus := accountFields[18].Descriptor()
+	accountDescSessionWindowStatus := accountFields[20].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
 	accountgroupFields := schema.AccountGroup{REDACTED.Fields()
@@ -521,16 +525,20 @@ REDACTED()
 	usagelogDescStream := usagelogFields[21].Descriptor()
 	// usagelog.DefaultStream holds the default value on creation for the stream field.
 	usagelog.DefaultStream = usagelogDescStream.Default.(bool)
+	// usagelogDescUserAgent is the schema descriptor for user_agent field.
+	usagelogDescUserAgent := usagelogFields[24].Descriptor()
+	// usagelog.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
+	usagelog.UserAgentValidator = usagelogDescUserAgent.Validators[0].(func(string) error)
 	// usagelogDescImageCount is the schema descriptor for image_count field.
-	usagelogDescImageCount := usagelogFields[24].Descriptor()
+	usagelogDescImageCount := usagelogFields[25].Descriptor()
 	// usagelog.DefaultImageCount holds the default value on creation for the image_count field.
 	usagelog.DefaultImageCount = usagelogDescImageCount.Default.(int)
 	// usagelogDescImageSize is the schema descriptor for image_size field.
-	usagelogDescImageSize := usagelogFields[25].Descriptor()
+	usagelogDescImageSize := usagelogFields[26].Descriptor()
 	// usagelog.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	usagelog.ImageSizeValidator = usagelogDescImageSize.Validators[0].(func(string) error)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[26].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[27].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{REDACTED.Mixin()

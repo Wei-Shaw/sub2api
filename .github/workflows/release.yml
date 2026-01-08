@@ -109,8 +109,13 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: backend/go.mod
+          check-latest: false
           cache-dependency-path: backend/go.sum
+
+      - name: Verify Go version
+        run: |
+          go version | grep -q 'go1.25.5'
 
       # Docker setup for GoReleaser
       - name: Set up QEMU

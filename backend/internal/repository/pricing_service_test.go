@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -20,13 +19,7 @@ REDACTED
 
 func (s *PricingServiceSuite) SetupTest() {
 	s.ctx = context.Background()
-	client, ok := NewPricingRemoteClient(&config.Config{
-		Security: config.SecurityConfig{
-			URLAllowlist: config.URLAllowlistConfig{
-				AllowPrivateHosts: true,
-		REDACTED,
-	REDACTED,
-REDACTED).(*pricingRemoteClient)
+	client, ok := NewPricingRemoteClient("").(*pricingRemoteClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 REDACTED

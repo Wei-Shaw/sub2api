@@ -35,6 +35,7 @@ const (
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 10 * 1024 * 1024
 	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
+	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
@@ -43,6 +44,16 @@ var (
 	sseDataRe            = regexp.MustCompile(`^data:\s*`)
 	sessionIDRegex       = regexp.MustCompile(`session_([a-f0-9-]{36REDACTED)`)
 	claudeCliUserAgentRe = regexp.MustCompile(`^claude-cli/\d+\.\d+\.\d+`)
+
+	// claudeCodePromptPrefixes 用于检测 Claude Code 系统提示词的前缀列表
+	// 支持多种变体：标准版、Agent SDK 版、Explore Agent 版、Compact 版等
+	// 注意：前缀之间不应存在包含关系，否则会导致冗余匹配
+	claudeCodePromptPrefixes = []string{
+		"You are Claude Code, Anthropic's official CLI for Claude",             // 标准版 & Agent SDK 版（含 running within...）
+		"You are a Claude agent, built on Anthropic's Claude Agent SDK",        // Agent SDK 变体
+		"You are a file search specialist for Claude Code",                     // Explore Agent 版
+		"You are a helpful AI assistant tasked with summarizing conversations", // Compact 版
+REDACTED
 )
 
 // allowedHeaders 白名单headers（参考CRS项目）
@@ -98,12 +109,13 @@ REDACTED
 
 // ForwardResult 转发结果
 type ForwardResult struct {
-	RequestID    string
-	Usage        ClaudeUsage
-	Model        string
-	Stream       bool
-	Duration     time.Duration
-	FirstTokenMs *int // 首字时间（流式请求）
+	RequestID        string
+	Usage            ClaudeUsage
+	Model            string
+	Stream           bool
+	Duration         time.Duration
+	FirstTokenMs     *int // 首字时间（流式请求）
+	ClientDisconnect bool // 客户端是否在流式传输过程中断开
 
 	// 图片生成计费字段（仅 gemini-3-pro-image 使用）
 	ImageCount int    // 生成的图片数量
@@ -355,17 +367,8 @@ REDACTED
 		return s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 REDACTED
 
-	// 强制平台模式：优先按分组查找，找不到再查全部该平台账户
-	if hasForcePlatform && groupID != nil {
-		account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
-		if err == nil {
-			return account, nil
-	REDACTED
-		// 分组中找不到，回退查询全部该平台账户
-		groupID = nil
-REDACTED
-
 	// antigravity 分组、强制平台模式或无分组使用单平台选择
+	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询
 	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 REDACTED
 
@@ -443,7 +446,8 @@ REDACTED
 		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
 			account, err := s.accountRepo.GetByID(ctx, accountID)
-			if err == nil && s.isAccountAllowedForPlatform(account, platform, useMixed) &&
+			if err == nil && s.isAccountInGroup(account, groupID) &&
+				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 				account.IsSchedulable() &&
 				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
@@ -660,9 +664,7 @@ REDACTED
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 REDACTED else if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
-		if err == nil && len(accounts) == 0 && hasForcePlatform {
-			accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
-	REDACTED
+		// 分组内无账号则返回空列表，由上层处理错误，不再回退到全平台查询
 REDACTED else {
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 REDACTED
@@ -683,6 +685,23 @@ REDACTED
 		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
 REDACTED
 	return account.Platform == platform
+REDACTED
+
+// isAccountInGroup checks if the account belongs to the specified group.
+// Returns true if groupID is nil (no group restriction) or account belongs to the group.
+func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool {
+	if groupID == nil {
+		return true // 无分组限制
+REDACTED
+	if account == nil {
+		return false
+REDACTED
+	for _, ag := range account.AccountGroups {
+		if ag.GroupID == *groupID {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
@@ -723,8 +742,8 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
-				// 检查账号平台是否匹配（确保粘性会话不会跨平台）
-				if err == nil && account.Platform == platform && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
+				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
 				REDACTED
@@ -812,8 +831,8 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
-				// 检查账号是否有效：原生平台直接匹配，antigravity 需要启用混合调度
-				if err == nil && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
+				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 						if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
@@ -1013,18 +1032,28 @@ REDACTED
 REDACTED
 
 // systemIncludesClaudeCodePrompt 检查 system 中是否已包含 Claude Code 提示词
-// 支持 string 和 []any 两种格式
+// 使用前缀匹配支持多种变体（标准版、Agent SDK 版等）
 func systemIncludesClaudeCodePrompt(system any) bool {
 	switch v := system.(type) {
 	case string:
-		return v == claudeCodeSystemPrompt
+		return hasClaudeCodePrefix(v)
 	case []any:
 		for _, item := range v {
 			if m, ok := item.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok && text == claudeCodeSystemPrompt {
+				if text, ok := m["text"].(string); ok && hasClaudeCodePrefix(text) {
 					return true
 			REDACTED
 		REDACTED
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// hasClaudeCodePrefix 检查文本是否以 Claude Code 提示词的特征前缀开头
+func hasClaudeCodePrefix(text string) bool {
+	for _, prefix := range claudeCodePromptPrefixes {
+		if strings.HasPrefix(text, prefix) {
+			return true
 	REDACTED
 REDACTED
 	return false
@@ -1073,6 +1102,124 @@ REDACTED
 	return result
 REDACTED
 
+// enforceCacheControlLimit 强制执行 cache_control 块数量限制（最多 4 个）
+// 超限时优先从 messages 中移除 cache_control，保护 system 中的缓存控制
+func enforceCacheControlLimit(body []byte) []byte {
+	var data map[string]any
+	if err := json.Unmarshal(body, &data); err != nil {
+		return body
+REDACTED
+
+	// 计算当前 cache_control 块数量
+	count := countCacheControlBlocks(data)
+	if count <= maxCacheControlBlocks {
+		return body
+REDACTED
+
+	// 超限：优先从 messages 中移除，再从 system 中移除
+	for count > maxCacheControlBlocks {
+		if removeCacheControlFromMessages(data) {
+			count--
+			continue
+	REDACTED
+		if removeCacheControlFromSystem(data) {
+			count--
+			continue
+	REDACTED
+		break
+REDACTED
+
+	result, err := json.Marshal(data)
+	if err != nil {
+		return body
+REDACTED
+	return result
+REDACTED
+
+// countCacheControlBlocks 统计 system 和 messages 中的 cache_control 块数量
+func countCacheControlBlocks(data map[string]any) int {
+	count := 0
+
+	// 统计 system 中的块
+	if system, ok := data["system"].([]any); ok {
+		for _, item := range system {
+			if m, ok := item.(map[string]any); ok {
+				if _, has := m["cache_control"]; has {
+					count++
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 统计 messages 中的块
+	if messages, ok := data["messages"].([]any); ok {
+		for _, msg := range messages {
+			if msgMap, ok := msg.(map[string]any); ok {
+				if content, ok := msgMap["content"].([]any); ok {
+					for _, item := range content {
+						if m, ok := item.(map[string]any); ok {
+							if _, has := m["cache_control"]; has {
+								count++
+						REDACTED
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	return count
+REDACTED
+
+// removeCacheControlFromMessages 从 messages 中移除一个 cache_control（从头开始）
+// 返回 true 表示成功移除，false 表示没有可移除的
+func removeCacheControlFromMessages(data map[string]any) bool {
+	messages, ok := data["messages"].([]any)
+	if !ok {
+		return false
+REDACTED
+
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		content, ok := msgMap["content"].([]any)
+		if !ok {
+			continue
+	REDACTED
+		for _, item := range content {
+			if m, ok := item.(map[string]any); ok {
+				if _, has := m["cache_control"]; has {
+					delete(m, "cache_control")
+					return true
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// removeCacheControlFromSystem 从 system 中移除一个 cache_control（从尾部开始，保护注入的 prompt）
+// 返回 true 表示成功移除，false 表示没有可移除的
+func removeCacheControlFromSystem(data map[string]any) bool {
+	system, ok := data["system"].([]any)
+	if !ok {
+		return false
+REDACTED
+
+	// 从尾部开始移除，保护开头注入的 Claude Code prompt
+	for i := len(system) - 1; i >= 0; i-- {
+		if m, ok := system[i].(map[string]any); ok {
+			if _, has := m["cache_control"]; has {
+				delete(m, "cache_control")
+				return true
+		REDACTED
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
 // Forward 转发请求到Claude API
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {
 	startTime := time.Now()
@@ -1092,6 +1239,9 @@ REDACTED
 		!systemIncludesClaudeCodePrompt(parsed.System) {
 		body = injectClaudeCodePrompt(body, parsed.System)
 REDACTED
+
+	// 强制执行 cache_control 块数量限制（最多 4 个）
+	body = enforceCacheControlLimit(body)
 
 	// 应用模型映射（仅对apikey类型账号）
 	originalModel := reqModel
@@ -1316,6 +1466,7 @@ REDACTED
 	// 处理正常响应
 	var usage *ClaudeUsage
 	var firstTokenMs *int
+	var clientDisconnect bool
 	if reqStream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel)
 		if err != nil {
@@ -1328,6 +1479,7 @@ REDACTED
 	REDACTED
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
+		clientDisconnect = streamResult.clientDisconnect
 REDACTED else {
 		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
 		if err != nil {
@@ -1336,12 +1488,13 @@ REDACTED else {
 REDACTED
 
 	return &ForwardResult{
-		RequestID:    resp.Header.Get("x-request-id"),
-		Usage:        *usage,
-		Model:        originalModel, // 使用原始模型用于计费和日志
-		Stream:       reqStream,
-		Duration:     time.Since(startTime),
-		FirstTokenMs: firstTokenMs,
+		RequestID:        resp.Header.Get("x-request-id"),
+		Usage:            *usage,
+		Model:            originalModel, // 使用原始模型用于计费和日志
+		Stream:           reqStream,
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     firstTokenMs,
+		ClientDisconnect: clientDisconnect,
 REDACTED, nil
 REDACTED
 
@@ -1696,8 +1849,9 @@ REDACTED
 
 // streamingResult 流式响应结果
 type streamingResult struct {
-	usage        *ClaudeUsage
-	firstTokenMs *int
+	usage            *ClaudeUsage
+	firstTokenMs     *int
+	clientDisconnect bool // 客户端是否在流式传输过程中断开
 REDACTED
 
 func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*streamingResult, error) {
@@ -1793,14 +1947,27 @@ REDACTED
 REDACTED
 
 	needModelReplace := originalModel != mappedModel
+	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
+				// 上游完成，返回结果
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, nil
 		REDACTED
 			if ev.err != nil {
+				// 检测 context 取消（客户端断开会导致 context 取消，进而影响上游读取）
+				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
+					log.Printf("Context canceled during streaming, returning collected usage")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+			REDACTED
+				// 客户端已通过写入失败检测到断开，上游也出错了，返回已收集的 usage
+				if clientDisconnected {
+					log.Printf("Upstream read error after client disconnect: %v, returning collected usage", ev.err)
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+			REDACTED
+				// 客户端未断开，正常的错误处理
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					log.Printf("SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
 					sendErrorEvent("response_too_large")
@@ -1811,44 +1978,51 @@ REDACTED
 		REDACTED
 			line := ev.line
 			if line == "event: error" {
+				// 上游返回错误事件，如果客户端已断开仍返回已收集的 usage
+				if clientDisconnected {
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+			REDACTED
 				return nil, errors.New("have error in stream")
 		REDACTED
 
 			// Extract data from SSE line (supports both "data: " and "data:" formats)
+			var data string
 			if sseDataRe.MatchString(line) {
-				data := sseDataRe.ReplaceAllString(line, "")
-
+				data = sseDataRe.ReplaceAllString(line, "")
 				// 如果有模型映射，替换响应中的model字段
 				if needModelReplace {
 					line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 			REDACTED
+		REDACTED
 
-				// 转发行
+			// 写入客户端（统一处理 data 行和非 data 行）
+			if !clientDisconnected {
 				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-					sendErrorEvent("write_failed")
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+					clientDisconnected = true
+					log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+			REDACTED else {
+					flusher.Flush()
 			REDACTED
-				flusher.Flush()
+		REDACTED
 
-				// 记录首字时间：第一个有效的 content_block_delta 或 message_start
-				if firstTokenMs == nil && data != "" && data != "[DONE]" {
+			// 无论客户端是否断开，都解析 usage（仅对 data 行）
+			if data != "" {
+				if firstTokenMs == nil && data != "[DONE]" {
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 			REDACTED
 				s.parseSSEUsage(data, usage)
-		REDACTED else {
-				// 非 data 行直接转发
-				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-					sendErrorEvent("write_failed")
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
-			REDACTED
-				flusher.Flush()
 		REDACTED
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 			if time.Since(lastRead) < streamInterval {
 				continue
+		REDACTED
+			if clientDisconnected {
+				// 客户端已断开，上游也超时了，返回已收集的 usage
+				log.Printf("Upstream timeout after client disconnect, returning collected usage")
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
 		REDACTED
 			log.Printf("Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
 			sendErrorEvent("stream_timeout")
@@ -2003,6 +2177,7 @@ type RecordUsageInput struct {
 	User         *User
 	Account      *Account
 	Subscription *UserSubscription // 可选：订阅信息
+	UserAgent    string            // 请求的 User-Agent
 REDACTED
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -2086,6 +2261,11 @@ REDACTED
 		ImageCount:          result.ImageCount,
 		ImageSize:           imageSize,
 		CreatedAt:           time.Now(),
+REDACTED
+
+	// 添加 UserAgent
+	if input.UserAgent != "" {
+		usageLog.UserAgent = &input.UserAgent
 REDACTED
 
 	// 添加分组和订阅关联

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)](https://golang.org/)
+[![Go](https://img.shields.io/badge/Go-1.25.5-00ADD8.svg)](https://golang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.4+-4FC08D.svg)](https://vuejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
@@ -44,10 +44,16 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 
 | 组件 | 技术 |
 |------|------|
-| 后端 | Go 1.21+, Gin, GORM |
+| 后端 | Go 1.25.5, Gin, Ent |
 | 前端 | Vue 3.4+, Vite 5+, TailwindCSS |
 | 数据库 | PostgreSQL 15+ |
 | 缓存/队列 | Redis 7+ |
+
+---
+
+## 文档
+
+- 依赖安全：`docs/dependency-security.md`
 
 ---
 
@@ -160,6 +166,22 @@ ADMIN_PASSWORD=your_admin_password
 
 # 可选：自定义端口
 SERVER_PORT=8080
+
+# 可选：安全配置
+# 启用 URL 白名单验证（false 则跳过白名单检查，仅做基本格式校验）
+SECURITY_URL_ALLOWLIST_ENABLED=false
+
+# 关闭白名单时，是否允许 http:// URL（默认 false，只允许 https://）
+# ⚠️ 警告：允许 HTTP 会暴露 API 密钥（明文传输）
+#          仅建议在以下场景使用：
+#          - 开发/测试环境
+#          - 内部可信网络
+#          - 本地测试服务器（http://localhost）
+# 生产环境：保持 false 或仅使用 HTTPS URL
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
+
+# 是否允许私有 IP 地址用于上游/定价/CRS（内网部署时使用）
+SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
 ```
 
 ```bash
@@ -276,12 +298,47 @@ default:
 - `cors.allowed_origins` 配置 CORS 白名单
 - `security.url_allowlist` 配置上游/价格数据/CRS 主机白名单
 - `security.url_allowlist.enabled` 可关闭 URL 校验（慎用）
-- `security.url_allowlist.allow_insecure_http` 关闭校验时允许 http URL
+- `security.url_allowlist.allow_insecure_http` 关闭校验时允许 HTTP URL
+- `security.url_allowlist.allow_private_hosts` 允许私有/本地 IP 地址
 - `security.response_headers.enabled` 可启用可配置响应头过滤（关闭时使用默认白名单）
 - `security.csp` 配置 Content-Security-Policy
 - `billing.circuit_breaker` 计费异常时 fail-closed
 - `server.trusted_proxies` 启用可信代理解析 X-Forwarded-For
 - `turnstile.required` 在 release 模式强制启用 Turnstile
+
+**⚠️ 安全警告：HTTP URL 配置**
+
+当 `security.url_allowlist.enabled=false` 时，系统默认执行最小 URL 校验，**拒绝 HTTP URL**，仅允许 HTTPS。要允许 HTTP URL（例如用于开发或内网测试），必须显式设置：
+
+```yaml
+security:
+  url_allowlist:
+    enabled: false                # 禁用白名单检查
+    allow_insecure_http: true     # 允许 HTTP URL（⚠️ 不安全）
+```
+
+**或通过环境变量：**
+
+```bash
+SECURITY_URL_ALLOWLIST_ENABLED=false
+SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
+```
+
+**允许 HTTP 的风险：**
+- API 密钥和数据以**明文传输**（可被截获）
+- 易受**中间人攻击 (MITM)**
+- **不适合生产环境**
+
+**适用场景：**
+- ✅ 开发/测试环境的本地服务器（http://localhost）
+- ✅ 内网可信端点
+- ✅ 获取 HTTPS 前测试账号连通性
+- ❌ 生产环境（仅使用 HTTPS）
+
+**未设置此项时的错误示例：**
+```
+Invalid base URL: invalid url scheme: http
+```
 
 如关闭 URL 校验或响应头过滤，请加强网络层防护：
 - 出站访问白名单限制上游域名/IP

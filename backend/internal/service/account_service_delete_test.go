@@ -103,6 +103,10 @@ func (s *accountRepoStub) SetSchedulable(ctx context.Context, id int64, schedula
 	panic("unexpected SetSchedulable call")
 REDACTED
 
+func (s *accountRepoStub) AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error) {
+	panic("unexpected AutoPauseExpiredAccounts call")
+REDACTED
+
 func (s *accountRepoStub) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
 	panic("unexpected BindGroups call")
 REDACTED

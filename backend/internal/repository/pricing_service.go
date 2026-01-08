@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -17,17 +16,12 @@ type pricingRemoteClient struct {
 	httpClient *http.Client
 REDACTED
 
-func NewPricingRemoteClient(cfg *config.Config) service.PricingRemoteClient {
-	allowPrivate := false
-	validateResolvedIP := true
-	if cfg != nil {
-		allowPrivate = cfg.Security.URLAllowlist.AllowPrivateHosts
-		validateResolvedIP = cfg.Security.URLAllowlist.Enabled
-REDACTED
+// NewPricingRemoteClient 创建定价数据远程客户端
+// proxyURL 为空时直连，支持 http/https/socks5/socks5h 协议
+func NewPricingRemoteClient(proxyURL string) service.PricingRemoteClient {
 	sharedClient, err := httpclient.GetClient(httpclient.Options{
-		Timeout:            30 * time.Second,
-		ValidateResolvedIP: validateResolvedIP,
-		AllowPrivateHosts:  allowPrivate,
+		Timeout:  30 * time.Second,
+		ProxyURL: proxyURL,
 REDACTED)
 	if err != nil {
 		sharedClient = &http.Client{Timeout: 30 * time.SecondREDACTED

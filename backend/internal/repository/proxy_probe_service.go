@@ -24,7 +24,7 @@ func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
 		validateResolvedIP = cfg.Security.URLAllowlist.Enabled
 REDACTED
 	if insecure {
-		log.Printf("[ProxyProbe] Warning: TLS verification is disabled for proxy probing.")
+		log.Printf("[ProxyProbe] Warning: insecure_skip_verify is not allowed and will cause probe failure.")
 REDACTED
 	return &proxyProbeService{
 		ipInfoURL:          defaultIPInfoURL,
