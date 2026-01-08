@@ -47,6 +47,7 @@ type AdminService interface {
 
 	// Proxy management
 	ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string) ([]Proxy, int64, error)
+	ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string) ([]ProxyWithAccountCount, int64, error)
 	GetAllProxies(ctx context.Context) ([]Proxy, error)
 	GetAllProxiesWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
 	GetProxy(ctx context.Context, id int64) (*Proxy, error)
@@ -944,6 +945,15 @@ REDACTED
 func (s *adminServiceImpl) ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string) ([]Proxy, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	proxies, result, err := s.proxyRepo.ListWithFilters(ctx, params, protocol, status, search)
+	if err != nil {
+		return nil, 0, err
+REDACTED
+	return proxies, result.Total, nil
+REDACTED
+
+func (s *adminServiceImpl) ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string) ([]ProxyWithAccountCount, int64, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	proxies, result, err := s.proxyRepo.ListWithFiltersAndAccountCount(ctx, params, protocol, status, search)
 	if err != nil {
 		return nil, 0, err
 REDACTED
