@@ -61,7 +61,7 @@
           <!-- Login / Dashboard Button -->
           <router-link
             v-if="isAuthenticated"
-            to="/dashboard"
+            :to="dashboardPath"
             class="inline-flex items-center gap-1.5 rounded-full bg-gray-900 py-1 pl-1 pr-2.5 transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
             <span
@@ -114,7 +114,7 @@
             <!-- CTA Button -->
             <div>
               <router-link
-                :to="isAuthenticated ? '/dashboard' : '/login'"
+                :to="isAuthenticated ? dashboardPath : '/login'"
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') REDACTEDREDACTED
@@ -416,6 +416,8 @@ const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const isAdmin = computed(() => authStore.isAdmin)
+const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
 const userInitial = computed(() => {
   const user = authStore.user
   if (!user || !user.email) return ''
