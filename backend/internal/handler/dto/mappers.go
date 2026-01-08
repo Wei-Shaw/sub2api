@@ -234,7 +234,21 @@ REDACTED
 REDACTED
 REDACTED
 
-func UsageLogFromService(l *service.UsageLog) *UsageLog {
+// AccountSummaryFromService returns a minimal AccountSummary for usage log display.
+// Only includes ID and Name - no sensitive fields like Credentials, Proxy, etc.
+func AccountSummaryFromService(a *service.Account) *AccountSummary {
+	if a == nil {
+		return nil
+REDACTED
+	return &AccountSummary{
+		ID:   a.ID,
+		Name: a.Name,
+REDACTED
+REDACTED
+
+// usageLogFromServiceBase is a helper that converts service UsageLog to DTO.
+// The account parameter allows caller to control what Account info is included.
+func usageLogFromServiceBase(l *service.UsageLog, account *AccountSummary) *UsageLog {
 	if l == nil {
 		return nil
 REDACTED
@@ -269,10 +283,25 @@ REDACTED
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
 		APIKey:                APIKeyFromService(l.APIKey),
-		Account:               AccountFromService(l.Account),
+		Account:               account,
 		Group:                 GroupFromServiceShallow(l.Group),
 		Subscription:          UserSubscriptionFromService(l.Subscription),
 REDACTED
+REDACTED
+
+// UsageLogFromService converts a service UsageLog to DTO for regular users.
+// It excludes Account details - users should not see account information.
+func UsageLogFromService(l *service.UsageLog) *UsageLog {
+	return usageLogFromServiceBase(l, nil)
+REDACTED
+
+// UsageLogFromServiceAdmin converts a service UsageLog to DTO for admin users.
+// It includes minimal Account info (ID, Name only).
+func UsageLogFromServiceAdmin(l *service.UsageLog) *UsageLog {
+	if l == nil {
+		return nil
+REDACTED
+	return usageLogFromServiceBase(l, AccountSummaryFromService(l.Account))
 REDACTED
 
 func SettingFromService(s *service.Setting) *Setting {

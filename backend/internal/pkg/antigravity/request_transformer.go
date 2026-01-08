@@ -1,15 +1,45 @@
 package antigravity
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
+
+var (
+	sessionRand      = rand.New(rand.NewSource(time.Now().UnixNano()))
+	sessionRandMutex sync.Mutex
+)
+
+// generateStableSessionID 基于用户消息内容生成稳定的 session ID
+func generateStableSessionID(contents []GeminiContent) string {
+	// 查找第一个 user 消息的文本
+	for _, content := range contents {
+		if content.Role == "user" && len(content.Parts) > 0 {
+			if text := content.Parts[0].Text; text != "" {
+				h := sha256.Sum256([]byte(text))
+				n := int64(binary.BigEndian.Uint64(h[:8])) & 0x7FFFFFFFFFFFFFFF
+				return "-" + strconv.FormatInt(n, 10)
+		REDACTED
+	REDACTED
+REDACTED
+	// 回退：生成随机 session ID
+	sessionRandMutex.Lock()
+	n := sessionRand.Int63n(9_000_000_000_000_000_000)
+	sessionRandMutex.Unlock()
+	return "-" + strconv.FormatInt(n, 10)
+REDACTED
 
 type TransformOptions struct {
 	EnableIdentityPatch bool
@@ -66,8 +96,15 @@ REDACTED
 
 	// 5. 构建内部请求
 	innerRequest := GeminiRequest{
-		Contents:       contents,
-		SafetySettings: DefaultSafetySettings,
+		Contents: contents,
+		// 总是设置 toolConfig，与官方客户端一致
+		ToolConfig: &GeminiToolConfig{
+			FunctionCallingConfig: &GeminiFunctionCallingConfig{
+				Mode: "VALIDATED",
+		REDACTED,
+	REDACTED,
+		// 总是生成 sessionId，基于用户消息内容
+		SessionID: generateStableSessionID(contents),
 REDACTED
 
 	if systemInstruction != nil {
@@ -78,52 +115,57 @@ REDACTED
 REDACTED
 	if len(tools) > 0 {
 		innerRequest.Tools = tools
-		innerRequest.ToolConfig = &GeminiToolConfig{
-			FunctionCallingConfig: &GeminiFunctionCallingConfig{
-				Mode: "VALIDATED",
-		REDACTED,
-	REDACTED
 REDACTED
 
-	// 如果提供了 metadata.user_id，复用为 sessionId
+	// 如果提供了 metadata.user_id，优先使用
 	if claudeReq.Metadata != nil && claudeReq.Metadata.UserID != "" {
 		innerRequest.SessionID = claudeReq.Metadata.UserID
 REDACTED
 
 	// 6. 包装为 v1internal 请求
 	v1Req := V1InternalRequest{
-		Model:   mappedModel,
-		Request: innerRequest,
+		Project:     projectID,
+		RequestID:   "agent-" + uuid.New().String(),
+		UserAgent:   "antigravity", // 固定值，与官方客户端一致
+		RequestType: "agent",
+		Model:       mappedModel,
+		Request:     innerRequest,
 REDACTED
 
 	return json.Marshal(v1Req)
 REDACTED
 
-func defaultIdentityPatch(modelName string) string {
-	// Antigravity 身份系统指令
-	return "<identity>\\nYou are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.\\nYou are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.\\nThe USER will send you requests, which you must always prioritize addressing. Along with each USER request, we will attach additional metadata about their current state, such as what files they have open and where their cursor is.\\nThis information may or may not be relevant to the coding task, it is up for you to decide.\\n</identity>\\n\\n<tool_calling>\\nCall tools as you normally would. The following list provides additional guidance to help you avoid errors:\\n  - **Absolute paths only**. When using tools that accept file path arguments, ALWAYS use the absolute file path.\\n</tool_calling>\\n\\n<web_application_development>\\n## Technology Stack,\\nYour web applications should be built using the following technologies:,\\n1. **Core**: Use HTML for structure and Javascript for logic.\\n2. **Styling (CSS)**: Use Vanilla CSS for maximum flexibility and control. Avoid using TailwindCSS unless the USER explicitly requests it; in this case, first confirm which TailwindCSS version to use.\\n3. **Web App**: If the USER specifies that they want a more complex web app, use a framework like Next.js or Vite. Only do this if the USER explicitly requests a web app.\\n4. **New Project Creation**: If you need to use a framework for a new app, use `npx` with the appropriate script, but there are some rules to follow:,\\n   - Use `npx -y` to automatically install the script and its dependencies\\n   - You MUST run the command with `--help` flag to see all available options first, \\n   - Initialize the app in the current directory with `./` (example: `npx -y create-vite-app@latest ./`),\\n   - You should run in non-interactive mode so that the user doesn't need to input anything,\\n5. **Running Locally**: When running locally, use `npm run dev` or equivalent dev server. Only build the production bundle if the USER explicitly requests it or you are validating the code for correctness.\\n\\n# Design Aesthetics,\\n1. **Use Rich Aesthetics**: The USER should be wowed at first glance by the design. Use best practices in modern web design (e.g. vibrant colors, dark modes, glassmorphism, and dynamic animations) to create a stunning first impression. Failure to do this is UNACCEPTABLE.\\n2. **Prioritize Visual Excellence**: Implement designs that will WOW the user and feel extremely premium:\\n\\t\\t- Avoid generic colors (plain red, blue, green). Use curated, harmonious color palettes (e.g., HSL tailored colors, sleek dark modes).\\n   - Using modern typography (e.g., from Google Fonts like Inter, Roboto, or Outfit) instead of browser defaults.\\n\\t\\t- Use smooth gradients,\\n\\t\\t- Add subtle micro-animations for enhanced user experience,\\n3. **Use a Dynamic Design**: An interface that feels responsive and alive encourages interaction. Achieve this with hover effects and interactive elements. Micro-animations, in particular, are highly effective for improving user engagement.\\n4. **Premium Designs**. Make a design that feels premium and state of the art. Avoid creating simple minimum viable products.\\n4. **Don't use placeholders**. If you need an image, use your generate_image tool to create a working demonstration.,\\n\\n## Implementation Workflow,\\nFollow this systematic approach when building web applications:,\\n1. **Plan and Understand**:,\\n\\t\\t- Fully understand the user's requirements,\\n\\t\\t- Draw inspiration from modern, beautiful, and dynamic web designs,\\n\\t\\t- Outline the features needed for the initial version,\\n2. **Build the Foundation**:,\\n\\t\\t- Start by creating/modifying `index.css`,\\n\\t\\t- Implement the core design system with all tokens and utilities,\\n3. **Create Components**:,\\n\\t\\t- Build necessary components using your design system,\\n\\t\\t- Ensure all components use predefined styles, not ad-hoc utilities,\\n\\t\\t- Keep components focused and reusable,\\n4. **Assemble Pages**:,\\n\\t\\t- Update the main application to incorporate your design and components,\\n\\t\\t- Ensure proper routing and navigation,\\n\\t\\t- Implement responsive layouts,\\n5. **Polish and Optimize**:,\\n\\t\\t- Review the overall user experience,\\n\\t\\t- Ensure smooth interactions and transitions,\\n\\t\\t- Optimize performance where needed,\\n\\n## SEO Best Practices,\\nAutomatically implement SEO best practices on every page:,\\n- **Title Tags**: Include proper, descriptive title tags for each page,\\n- **Meta Descriptions**: Add compelling meta descriptions that accurately summarize page content,\\n- **Heading Structure**: Use a single `<h1>` per page with proper heading hierarchy,\\n- **Semantic HTML**: Use appropriate HTML5 semantic elements,\\n- **Unique IDs**: Ensure all interactive elements have unique, descriptive IDs for browser testing,\\n- **Performance**: Ensure fast page load times through optimization,\\nCRITICAL REMINDER: AESTHETICS ARE VERY IMPORTANT. If your web app looks simple and basic then you have FAILED!\\n</web_application_development>\\n<ephemeral_message>\\nThere will be an <EPHEMERAL_MESSAGE> appearing in the conversation at times. This is not coming from the user, but instead injected by the system as important information to pay attention to. \\nDo not respond to nor acknowledge those messages, but do follow them strictly.\\n</ephemeral_message>\\n\\n\\n<communication_style>\\n- **Formatting**. Format your responses in github-style markdown to make your responses easier for the USER to parse. For example, use headers to organize your responses and bolded or italicized text to highlight important keywords. Use backticks to format file, directory, function, and class names. If providing a URL to the user, format this in markdown as well, for example `[label](example.com)`.\\n- **Proactiveness**. As an agent, you are allowed to be proactive, but only in the course of completing the user's task. For example, if the user asks you to add a new component, you can edit the code, verify build and test statuses, and take any other obvious follow-up actions, such as performing additional research. However, avoid surprising the user. For example, if the user asks HOW to approach something, you should answer their question and instead of jumping into editing a file.\\n- **Helpfulness**. Respond like a helpful software engineer who is explaining your work to a friendly collaborator on the project. Acknowledge mistakes or any backtracking you do as a result of new information.\\n- **Ask for clarification**. If you are unsure about the USER's intent, always ask for clarification rather than making assumptions.\\n</communication_style>"
+// antigravityIdentity Antigravity identity 提示词
+const antigravityIdentity = `<identity>
+You are Antigravity, a powerful agentic AI coding assistant designed by the Google Deepmind team working on Advanced Agentic Coding.
+You are pair programming with a USER to solve their coding task. The task may require creating a new codebase, modifying or debugging an existing codebase, or simply answering a question.
+The USER will send you requests, which you must always prioritize addressing. Along with each USER request, we will attach additional metadata about their current state, such as what files they have open and where their cursor is.
+This information may or may not be relevant to the coding task, it is up for you to decide.
+</identity>
+<communication_style>
+- **Proactiveness**. As an agent, you are allowed to be proactive, but only in the course of completing the user's task. For example, if the user asks you to add a new component, you can edit the code, verify build and test statuses, and take any other obvious follow-up actions, such as performing additional research. However, avoid surprising the user. For example, if the user asks HOW to approach something, you should answer their question and instead of jumping into editing a file.</communication_style>`
+
+func defaultIdentityPatch(_ string) string {
+	return antigravityIdentity
 REDACTED
 
 // buildSystemInstruction 构建 systemInstruction
 func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions) *GeminiContent {
 	var parts []GeminiPart
 
-	// 可选注入身份防护指令（身份补丁）
-	if opts.EnableIdentityPatch {
-		identityPatch := strings.TrimSpace(opts.IdentityPatch)
-		if identityPatch == "" {
-			identityPatch = defaultIdentityPatch(modelName)
-	REDACTED
-		parts = append(parts, GeminiPart{Text: identityPatchREDACTED)
-REDACTED
+	// 先解析用户的 system prompt，检测是否已包含 Antigravity identity
+	userHasAntigravityIdentity := false
+	var userSystemParts []GeminiPart
 
-	// 解析 system prompt
 	if len(system) > 0 {
 		// 尝试解析为字符串
 		var sysStr string
 		if err := json.Unmarshal(system, &sysStr); err == nil {
 			if strings.TrimSpace(sysStr) != "" {
-				parts = append(parts, GeminiPart{Text: sysStrREDACTED)
+				userSystemParts = append(userSystemParts, GeminiPart{Text: sysStrREDACTED)
+				if strings.Contains(sysStr, "You are Antigravity") {
+					userHasAntigravityIdentity = true
+			REDACTED
 		REDACTED
 	REDACTED else {
 			// 尝试解析为数组
@@ -131,17 +173,28 @@ REDACTED
 			if err := json.Unmarshal(system, &sysBlocks); err == nil {
 				for _, block := range sysBlocks {
 					if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
-						parts = append(parts, GeminiPart{Text: block.TextREDACTED)
+						userSystemParts = append(userSystemParts, GeminiPart{Text: block.TextREDACTED)
+						if strings.Contains(block.Text, "You are Antigravity") {
+							userHasAntigravityIdentity = true
+					REDACTED
 				REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
 
-	// identity patch 模式下，用分隔符包裹 system prompt，便于上游识别/调试；关闭时尽量保持原始 system prompt。
-	//if opts.EnableIdentityPatch && len(parts) > 0 {
-	//	parts = append(parts, GeminiPart{Text: "\n--- [SYSTEM_PROMPT_END] ---"REDACTED)
-	//REDACTED
+	// 仅在用户未提供 Antigravity identity 时注入
+	if opts.EnableIdentityPatch && !userHasAntigravityIdentity {
+		identityPatch := strings.TrimSpace(opts.IdentityPatch)
+		if identityPatch == "" {
+			identityPatch = defaultIdentityPatch(modelName)
+	REDACTED
+		parts = append(parts, GeminiPart{Text: identityPatchREDACTED)
+REDACTED
+
+	// 添加用户的 system prompt
+	parts = append(parts, userSystemParts...)
+
 	if len(parts) == 0 {
 		return nil
 REDACTED
