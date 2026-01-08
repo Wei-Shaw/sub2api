@@ -144,7 +144,7 @@ REDACTED
 
 	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromService(&records[i]))
+		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
 REDACTED
 	response.Paginated(c, out, result.Total, page, pageSize)
 REDACTED

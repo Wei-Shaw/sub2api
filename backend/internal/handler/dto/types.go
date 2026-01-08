@@ -184,9 +184,16 @@ type UsageLog struct {
 
 	User         *User             `json:"user,omitempty"`
 	APIKey       *APIKey           `json:"api_key,omitempty"`
-	Account      *Account          `json:"account,omitempty"`
+	Account      *AccountSummary   `json:"account,omitempty"` // Use minimal AccountSummary to prevent data leakage
 	Group        *Group            `json:"group,omitempty"`
 	Subscription *UserSubscription `json:"subscription,omitempty"`
+REDACTED
+
+// AccountSummary is a minimal account info for usage log display.
+// It intentionally excludes sensitive fields like Credentials, Proxy, etc.
+type AccountSummary struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 REDACTED
 
 type Setting struct {
