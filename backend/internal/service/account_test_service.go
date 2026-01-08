@@ -661,13 +661,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 	REDACTED
 		if candidates, ok := data["candidates"].([]any); ok && len(candidates) > 0 {
 			if candidate, ok := candidates[0].(map[string]any); ok {
-				// Check for completion
-				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
-					return nil
-			REDACTED
-
-				// Extract content
+				// Extract content first (before checking completion)
 				if content, ok := candidate["content"].(map[string]any); ok {
 					if parts, ok := content["parts"].([]any); ok {
 						for _, part := range parts {
@@ -678,6 +672,12 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 						REDACTED
 					REDACTED
 				REDACTED
+			REDACTED
+
+				// Check for completion after extracting content
+				if finishReason, ok := candidate["finishReason"].(string); ok && finishReason != "" {
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+					return nil
 			REDACTED
 		REDACTED
 	REDACTED
