@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +24,12 @@ REDACTED
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("requestType", "agent")
+
+	// 打印完整 HTTP 请求
+	log.Printf("[NewAPIRequest] POST %s\nHeaders: Content-Type=%s, Authorization=Bearer %s..., requestType=%s, User-Agent=%s\nBody: %s",
+		apiURL, req.Header.Get("Content-Type"), accessToken[:20], req.Header.Get("requestType"), req.Header.Get("User-Agent"), string(body))
+
 	return req, nil
 REDACTED
 
