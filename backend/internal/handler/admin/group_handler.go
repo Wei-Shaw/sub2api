@@ -37,6 +37,8 @@ type CreateGroupRequest struct {
 	ImagePrice1K *float64 `json:"image_price_1k"`
 	ImagePrice2K *float64 `json:"image_price_2k"`
 	ImagePrice4K *float64 `json:"image_price_4k"`
+	ClaudeCodeOnly   bool     `json:"claude_code_only"`
+	FallbackGroupID  *int64   `json:"fallback_group_id"`
 REDACTED
 
 // UpdateGroupRequest represents update group request
@@ -55,6 +57,8 @@ type UpdateGroupRequest struct {
 	ImagePrice1K *float64 `json:"image_price_1k"`
 	ImagePrice2K *float64 `json:"image_price_2k"`
 	ImagePrice4K *float64 `json:"image_price_4k"`
+	ClaudeCodeOnly   *bool    `json:"claude_code_only"`
+	FallbackGroupID  *int64   `json:"fallback_group_id"`
 REDACTED
 
 // List handles listing all groups with pagination
@@ -150,6 +154,8 @@ REDACTED
 		ImagePrice1K:     req.ImagePrice1K,
 		ImagePrice2K:     req.ImagePrice2K,
 		ImagePrice4K:     req.ImagePrice4K,
+		ClaudeCodeOnly:   req.ClaudeCodeOnly,
+		FallbackGroupID:  req.FallbackGroupID,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -188,6 +194,8 @@ REDACTED
 		ImagePrice1K:     req.ImagePrice1K,
 		ImagePrice2K:     req.ImagePrice2K,
 		ImagePrice4K:     req.ImagePrice4K,
+		ClaudeCodeOnly:   req.ClaudeCodeOnly,
+		FallbackGroupID:  req.FallbackGroupID,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

@@ -403,6 +403,62 @@
           </div>
         </div>
 
+        <!-- Claude Code 客户端限制（仅 anthropic 平台） -->
+        <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.groups.claudeCode.title') REDACTEDREDACTED
+            </label>
+            <!-- Help Tooltip -->
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+                <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t('admin.groups.claudeCode.tooltip') REDACTEDREDACTED
+                  </p>
+                  <div class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="createForm.claude_code_only = !createForm.claude_code_only"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.claude_code_only ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.claude_code_only ? 'translate-x-6' : 'translate-x-1'
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{ createForm.claude_code_only ? t('admin.groups.claudeCode.enabled') : t('admin.groups.claudeCode.disabled') REDACTEDREDACTED
+            </span>
+          </div>
+          <!-- 降级分组选择（仅当启用 claude_code_only 时显示） -->
+          <div v-if="createForm.claude_code_only" class="mt-3">
+            <label class="input-label">{{ t('admin.groups.claudeCode.fallbackGroup') REDACTEDREDACTED</label>
+            <Select
+              v-model="createForm.fallback_group_id"
+              :options="fallbackGroupOptions"
+              :placeholder="t('admin.groups.claudeCode.noFallback')"
+            />
+            <p class="input-hint">{{ t('admin.groups.claudeCode.fallbackHint') REDACTEDREDACTED</p>
+          </div>
+        </div>
+
       </form>
 
       <template #footer>
@@ -648,6 +704,62 @@
           </div>
         </div>
 
+        <!-- Claude Code 客户端限制（仅 anthropic 平台） -->
+        <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.groups.claudeCode.title') REDACTEDREDACTED
+            </label>
+            <!-- Help Tooltip -->
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+                <div class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800">
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t('admin.groups.claudeCode.tooltip') REDACTEDREDACTED
+                  </p>
+                  <div class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="editForm.claude_code_only = !editForm.claude_code_only"
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.claude_code_only ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.claude_code_only ? 'translate-x-6' : 'translate-x-1'
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{ editForm.claude_code_only ? t('admin.groups.claudeCode.enabled') : t('admin.groups.claudeCode.disabled') REDACTEDREDACTED
+            </span>
+          </div>
+          <!-- 降级分组选择（仅当启用 claude_code_only 时显示） -->
+          <div v-if="editForm.claude_code_only" class="mt-3">
+            <label class="input-label">{{ t('admin.groups.claudeCode.fallbackGroup') REDACTEDREDACTED</label>
+            <Select
+              v-model="editForm.fallback_group_id"
+              :options="fallbackGroupOptionsForEdit"
+              :placeholder="t('admin.groups.claudeCode.noFallback')"
+            />
+            <p class="input-hint">{{ t('admin.groups.claudeCode.fallbackHint') REDACTEDREDACTED</p>
+          </div>
+        </div>
+
       </form>
 
       <template #footer>
@@ -774,6 +886,35 @@ const subscriptionTypeOptions = computed(() => [
   { value: 'subscription', label: t('admin.groups.subscription.subscription') REDACTED
 ])
 
+// 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组
+const fallbackGroupOptions = computed(() => {
+  const options: { value: number | null; label: string REDACTED[] = [
+    { value: null, label: t('admin.groups.claudeCode.noFallback') REDACTED
+  ]
+  const eligibleGroups = groups.value.filter(
+    (g) => g.platform === 'anthropic' && !g.claude_code_only && g.status === 'active'
+  )
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name REDACTED)
+  REDACTED)
+  return options
+REDACTED)
+
+// 降级分组选项（编辑时）- 排除自身
+const fallbackGroupOptionsForEdit = computed(() => {
+  const options: { value: number | null; label: string REDACTED[] = [
+    { value: null, label: t('admin.groups.claudeCode.noFallback') REDACTED
+  ]
+  const currentId = editingGroup.value?.id
+  const eligibleGroups = groups.value.filter(
+    (g) => g.platform === 'anthropic' && !g.claude_code_only && g.status === 'active' && g.id !== currentId
+  )
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name REDACTED)
+  REDACTED)
+  return options
+REDACTED)
+
 const groups = ref<Group[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
@@ -821,7 +962,10 @@ const createForm = reactive({
   // 图片生成计费配置（仅 antigravity 平台使用）
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
-  image_price_4k: null as number | null
+  image_price_4k: null as number | null,
+  // Claude Code 客户端限制（仅 anthropic 平台使用）
+  claude_code_only: false,
+  fallback_group_id: null as number | null
 REDACTED)
 
 const editForm = reactive({
@@ -838,7 +982,10 @@ const editForm = reactive({
   // 图片生成计费配置（仅 antigravity 平台使用）
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
-  image_price_4k: null as number | null
+  image_price_4k: null as number | null,
+  // Claude Code 客户端限制（仅 anthropic 平台使用）
+  claude_code_only: false,
+  fallback_group_id: null as number | null
 REDACTED)
 
 // 根据分组类型返回不同的删除确认消息
@@ -908,6 +1055,8 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null
   createForm.image_price_2k = null
   createForm.image_price_4k = null
+  createForm.claude_code_only = false
+  createForm.fallback_group_id = null
 REDACTED
 
 const handleCreateGroup = async () => {
@@ -949,6 +1098,8 @@ const handleEdit = (group: Group) => {
   editForm.image_price_1k = group.image_price_1k
   editForm.image_price_2k = group.image_price_2k
   editForm.image_price_4k = group.image_price_4k
+  editForm.claude_code_only = group.claude_code_only || false
+  editForm.fallback_group_id = group.fallback_group_id
   showEditModal.value = true
 REDACTED
 
@@ -966,7 +1117,12 @@ const handleUpdateGroup = async () => {
 
   submitting.value = true
   try {
-    await adminAPI.groups.update(editingGroup.value.id, editForm)
+    // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
+    const payload = {
+      ...editForm,
+      fallback_group_id: editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id
+    REDACTED
+    await adminAPI.groups.update(editingGroup.value.id, payload)
     appStore.showSuccess(t('admin.groups.groupUpdated'))
     closeEditModal()
     loadGroups()

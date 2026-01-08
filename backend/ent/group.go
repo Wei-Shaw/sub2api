@@ -51,6 +51,10 @@ type Group struct {
 	ImagePrice2k *float64 `json:"image_price_2k,omitempty"`
 	// ImagePrice4k holds the value of the "image_price_4k" field.
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
+	// 是否仅允许 Claude Code 客户端
+	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
+	// 非 Claude Code 请求降级使用的分组 ID
+	FallbackGroupID *int64 `json:"fallback_group_id,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -157,11 +161,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldIsExclusive:
+		case group.FieldIsExclusive, group.FieldClaudeCodeOnly:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID:
 			values[i] = new(sql.NullInt64)
 		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType:
 			values[i] = new(sql.NullString)
@@ -297,6 +301,19 @@ REDACTED
 		REDACTED else if value.Valid {
 				_m.ImagePrice4k = new(float64)
 				*_m.ImagePrice4k = value.Float64
+		REDACTED
+		case group.FieldClaudeCodeOnly:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field claude_code_only", values[i])
+		REDACTED else if value.Valid {
+				_m.ClaudeCodeOnly = value.Bool
+		REDACTED
+		case group.FieldFallbackGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field fallback_group_id", values[i])
+		REDACTED else if value.Valid {
+				_m.FallbackGroupID = new(int64)
+				*_m.FallbackGroupID = value.Int64
 		REDACTED
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -438,6 +455,14 @@ REDACTED
 	builder.WriteString(", ")
 	if v := _m.ImagePrice4k; v != nil {
 		builder.WriteString("image_price_4k=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+REDACTED
+	builder.WriteString(", ")
+	builder.WriteString("claude_code_only=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ClaudeCodeOnly))
+	builder.WriteString(", ")
+	if v := _m.FallbackGroupID; v != nil {
+		builder.WriteString("fallback_group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 REDACTED
 	builder.WriteByte(')')

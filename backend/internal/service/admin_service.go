@@ -103,6 +103,8 @@ type CreateGroupInput struct {
 	ImagePrice1K *float64
 	ImagePrice2K *float64
 	ImagePrice4K *float64
+	ClaudeCodeOnly   bool     // 仅允许 Claude Code 客户端
+	FallbackGroupID  *int64   // 降级分组 ID
 REDACTED
 
 type UpdateGroupInput struct {
@@ -120,6 +122,8 @@ type UpdateGroupInput struct {
 	ImagePrice1K *float64
 	ImagePrice2K *float64
 	ImagePrice4K *float64
+	ClaudeCodeOnly   *bool    // 仅允许 Claude Code 客户端
+	FallbackGroupID  *int64   // 降级分组 ID
 REDACTED
 
 type CreateAccountInput struct {
@@ -516,6 +520,13 @@ REDACTED
 	imagePrice2K := normalizePrice(input.ImagePrice2K)
 	imagePrice4K := normalizePrice(input.ImagePrice4K)
 
+	// 校验降级分组
+	if input.FallbackGroupID != nil {
+		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
 	group := &Group{
 		Name:             input.Name,
 		Description:      input.Description,
@@ -530,6 +541,8 @@ REDACTED
 		ImagePrice1K:     imagePrice1K,
 		ImagePrice2K:     imagePrice2K,
 		ImagePrice4K:     imagePrice4K,
+		ClaudeCodeOnly:   input.ClaudeCodeOnly,
+		FallbackGroupID:  input.FallbackGroupID,
 REDACTED
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -551,6 +564,29 @@ func normalizePrice(price *float64) *float64 {
 		return nil
 REDACTED
 	return price
+REDACTED
+
+// validateFallbackGroup 校验降级分组的有效性
+// currentGroupID: 当前分组 ID（新建时为 0）
+// fallbackGroupID: 降级分组 ID
+func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGroupID, fallbackGroupID int64) error {
+	// 不能将自己设置为降级分组
+	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
+		return fmt.Errorf("cannot set self as fallback group")
+REDACTED
+
+	// 检查降级分组是否存在
+	fallbackGroup, err := s.groupRepo.GetByID(ctx, fallbackGroupID)
+	if err != nil {
+		return fmt.Errorf("fallback group not found: %w", err)
+REDACTED
+
+	// 降级分组不能启用 claude_code_only，否则会造成死循环
+	if fallbackGroup.ClaudeCodeOnly {
+		return fmt.Errorf("fallback group cannot have claude_code_only enabled")
+REDACTED
+
+	return nil
 REDACTED
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
@@ -601,6 +637,23 @@ REDACTED
 REDACTED
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
+REDACTED
+
+	// Claude Code 客户端限制
+	if input.ClaudeCodeOnly != nil {
+		group.ClaudeCodeOnly = *input.ClaudeCodeOnly
+REDACTED
+	if input.FallbackGroupID != nil {
+		// 校验降级分组
+		if *input.FallbackGroupID > 0 {
+			if err := s.validateFallbackGroup(ctx, id, *input.FallbackGroupID); err != nil {
+				return nil, err
+		REDACTED
+			group.FallbackGroupID = input.FallbackGroupID
+	REDACTED else {
+			// 传入 0 或负数表示清除降级分组
+			group.FallbackGroupID = nil
+	REDACTED
 REDACTED
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

@@ -203,6 +203,10 @@ REDACTED
 
 	// 3) select account (sticky session based on request body)
 	parsedReq, _ := service.ParseGatewayRequest(body)
+
+	// 设置 Claude Code 客户端标识到 context（用于分组限制检查）
+	SetClaudeCodeClientContext(c, body)
+
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 	sessionKey := sessionHash
 	if sessionHash != "" {
@@ -262,7 +266,7 @@ REDACTED
 				googleError(c, http.StatusTooManyRequests, err.Error())
 				return
 		REDACTED
-			if err := h.gatewayService.BindStickySession(c.Request.Context(), sessionKey, account.ID); err != nil {
+			if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID); err != nil {
 				log.Printf("Bind sticky session failed: %v", err)
 		REDACTED
 	REDACTED

@@ -3590,6 +3590,9 @@ type GroupMutation struct {
 	addimage_price_2k        *float64
 	image_price_4k           *float64
 	addimage_price_4k        *float64
+	claude_code_only         *bool
+	fallback_group_id        *int64
+	addfallback_group_id     *int64
 	clearedFields            map[string]struct{REDACTED
 	api_keys                 map[int64]struct{REDACTED
 	removedapi_keys          map[int64]struct{REDACTED
@@ -4594,6 +4597,112 @@ func (m *GroupMutation) ResetImagePrice4k() {
 	delete(m.clearedFields, group.FieldImagePrice4k)
 REDACTED
 
+// SetClaudeCodeOnly sets the "claude_code_only" field.
+func (m *GroupMutation) SetClaudeCodeOnly(b bool) {
+	m.claude_code_only = &b
+REDACTED
+
+// ClaudeCodeOnly returns the value of the "claude_code_only" field in the mutation.
+func (m *GroupMutation) ClaudeCodeOnly() (r bool, exists bool) {
+	v := m.claude_code_only
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldClaudeCodeOnly returns the old "claude_code_only" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldClaudeCodeOnly(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaudeCodeOnly is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaudeCodeOnly requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaudeCodeOnly: %w", err)
+REDACTED
+	return oldValue.ClaudeCodeOnly, nil
+REDACTED
+
+// ResetClaudeCodeOnly resets all changes to the "claude_code_only" field.
+func (m *GroupMutation) ResetClaudeCodeOnly() {
+	m.claude_code_only = nil
+REDACTED
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (m *GroupMutation) SetFallbackGroupID(i int64) {
+	m.fallback_group_id = &i
+	m.addfallback_group_id = nil
+REDACTED
+
+// FallbackGroupID returns the value of the "fallback_group_id" field in the mutation.
+func (m *GroupMutation) FallbackGroupID() (r int64, exists bool) {
+	v := m.fallback_group_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldFallbackGroupID returns the old "fallback_group_id" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFallbackGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackGroupID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackGroupID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackGroupID: %w", err)
+REDACTED
+	return oldValue.FallbackGroupID, nil
+REDACTED
+
+// AddFallbackGroupID adds i to the "fallback_group_id" field.
+func (m *GroupMutation) AddFallbackGroupID(i int64) {
+	if m.addfallback_group_id != nil {
+		*m.addfallback_group_id += i
+REDACTED else {
+		m.addfallback_group_id = &i
+REDACTED
+REDACTED
+
+// AddedFallbackGroupID returns the value that was added to the "fallback_group_id" field in this mutation.
+func (m *GroupMutation) AddedFallbackGroupID() (r int64, exists bool) {
+	v := m.addfallback_group_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (m *GroupMutation) ClearFallbackGroupID() {
+	m.fallback_group_id = nil
+	m.addfallback_group_id = nil
+	m.clearedFields[group.FieldFallbackGroupID] = struct{REDACTED{REDACTED
+REDACTED
+
+// FallbackGroupIDCleared returns if the "fallback_group_id" field was cleared in this mutation.
+func (m *GroupMutation) FallbackGroupIDCleared() bool {
+	_, ok := m.clearedFields[group.FieldFallbackGroupID]
+	return ok
+REDACTED
+
+// ResetFallbackGroupID resets all changes to the "fallback_group_id" field.
+func (m *GroupMutation) ResetFallbackGroupID() {
+	m.fallback_group_id = nil
+	m.addfallback_group_id = nil
+	delete(m.clearedFields, group.FieldFallbackGroupID)
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -4952,7 +5061,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 19)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -5004,6 +5113,12 @@ REDACTED
 	if m.image_price_4k != nil {
 		fields = append(fields, group.FieldImagePrice4k)
 REDACTED
+	if m.claude_code_only != nil {
+		fields = append(fields, group.FieldClaudeCodeOnly)
+REDACTED
+	if m.fallback_group_id != nil {
+		fields = append(fields, group.FieldFallbackGroupID)
+REDACTED
 	return fields
 REDACTED
 
@@ -5046,6 +5161,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ImagePrice2k()
 	case group.FieldImagePrice4k:
 		return m.ImagePrice4k()
+	case group.FieldClaudeCodeOnly:
+		return m.ClaudeCodeOnly()
+	case group.FieldFallbackGroupID:
+		return m.FallbackGroupID()
 REDACTED
 	return nil, false
 REDACTED
@@ -5089,6 +5208,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldImagePrice2k(ctx)
 	case group.FieldImagePrice4k:
 		return m.OldImagePrice4k(ctx)
+	case group.FieldClaudeCodeOnly:
+		return m.OldClaudeCodeOnly(ctx)
+	case group.FieldFallbackGroupID:
+		return m.OldFallbackGroupID(ctx)
 REDACTED
 	return nil, fmt.Errorf("unknown Group field %s", name)
 REDACTED
@@ -5217,6 +5340,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetImagePrice4k(v)
 		return nil
+	case group.FieldClaudeCodeOnly:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetClaudeCodeOnly(v)
+		return nil
+	case group.FieldFallbackGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetFallbackGroupID(v)
+		return nil
 REDACTED
 	return fmt.Errorf("unknown Group field %s", name)
 REDACTED
@@ -5249,6 +5386,9 @@ REDACTED
 	if m.addimage_price_4k != nil {
 		fields = append(fields, group.FieldImagePrice4k)
 REDACTED
+	if m.addfallback_group_id != nil {
+		fields = append(fields, group.FieldFallbackGroupID)
+REDACTED
 	return fields
 REDACTED
 
@@ -5273,6 +5413,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedImagePrice2k()
 	case group.FieldImagePrice4k:
 		return m.AddedImagePrice4k()
+	case group.FieldFallbackGroupID:
+		return m.AddedFallbackGroupID()
 REDACTED
 	return nil, false
 REDACTED
@@ -5338,6 +5480,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 	REDACTED
 		m.AddImagePrice4k(v)
 		return nil
+	case group.FieldFallbackGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddFallbackGroupID(v)
+		return nil
 REDACTED
 	return fmt.Errorf("unknown Group numeric field %s", name)
 REDACTED
@@ -5369,6 +5518,9 @@ REDACTED
 REDACTED
 	if m.FieldCleared(group.FieldImagePrice4k) {
 		fields = append(fields, group.FieldImagePrice4k)
+REDACTED
+	if m.FieldCleared(group.FieldFallbackGroupID) {
+		fields = append(fields, group.FieldFallbackGroupID)
 REDACTED
 	return fields
 REDACTED
@@ -5407,6 +5559,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ClearImagePrice4k()
+		return nil
+	case group.FieldFallbackGroupID:
+		m.ClearFallbackGroupID()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -5466,6 +5621,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ResetImagePrice4k()
+		return nil
+	case group.FieldClaudeCodeOnly:
+		m.ResetClaudeCodeOnly()
+		return nil
+	case group.FieldFallbackGroupID:
+		m.ResetFallbackGroupID()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group field %s", name)

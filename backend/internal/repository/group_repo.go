@@ -46,7 +46,9 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
-		SetDefaultValidityDays(groupIn.DefaultValidityDays)
+		SetDefaultValidityDays(groupIn.DefaultValidityDays).
+		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
+		SetNillableFallbackGroupID(groupIn.FallbackGroupID)
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -72,7 +74,7 @@ REDACTED
 REDACTED
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
-	updated, err := r.client.Group.UpdateOneID(groupIn.ID).
+	builder := r.client.Group.UpdateOneID(groupIn.ID).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
 		SetPlatform(groupIn.Platform).
@@ -87,7 +89,16 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
-		Save(ctx)
+		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly)
+
+	// 处理 FallbackGroupID：nil 时清除，否则设置
+	if groupIn.FallbackGroupID != nil {
+		builder = builder.SetFallbackGroupID(*groupIn.FallbackGroupID)
+REDACTED else {
+		builder = builder.ClearFallbackGroupID()
+REDACTED
+
+	updated, err := builder.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 REDACTED

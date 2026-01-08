@@ -270,6 +270,10 @@ REDACTED()
 	groupDescDefaultValidityDays := groupFields[10].Descriptor()
 	// group.DefaultDefaultValidityDays holds the default value on creation for the default_validity_days field.
 	group.DefaultDefaultValidityDays = groupDescDefaultValidityDays.Default.(int)
+	// groupDescClaudeCodeOnly is the schema descriptor for claude_code_only field.
+	groupDescClaudeCodeOnly := groupFields[14].Descriptor()
+	// group.DefaultClaudeCodeOnly holds the default value on creation for the claude_code_only field.
+	group.DefaultClaudeCodeOnly = groupDescClaudeCodeOnly.Default.(bool)
 	proxyMixin := schema.Proxy{REDACTED.Mixin()
 	proxyMixinHooks1 := proxyMixin[1].Hooks()
 	proxy.Hooks[0] = proxyMixinHooks1[0]
