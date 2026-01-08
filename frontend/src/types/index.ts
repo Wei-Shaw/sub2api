@@ -576,6 +576,9 @@ export interface UsageLog {
   image_count: number
   image_size: string | null
 
+  // User-Agent
+  user_agent: string | null
+
   created_at: string
 
   user?: User

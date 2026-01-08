@@ -421,7 +421,8 @@ export default {
     billingType: '消费类型',
     balance: '余额',
     subscription: '订阅',
-    imageUnit: '张'
+    imageUnit: '张',
+    userAgent: 'User-Agent'
   REDACTED,
 
   // Redeem

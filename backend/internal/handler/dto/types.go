@@ -180,6 +180,9 @@ type UsageLog struct {
 	ImageCount int     `json:"image_count"`
 	ImageSize  *string `json:"image_size"`
 
+	// User-Agent
+	UserAgent *string `json:"user_agent"`
+
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`

@@ -308,6 +308,11 @@
             REDACTEDREDACTED</span>
           </template>
 
+          <template #cell-user_agent="{ row REDACTED">
+            <span v-if="row.user_agent" class="text-sm text-gray-600 dark:text-gray-400 max-w-[150px] truncate block" :title="row.user_agent">{{ formatUserAgent(row.user_agent) REDACTEDREDACTED</span>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          </template>
+
           <template #empty>
             <EmptyState :message="t('usage.noRecords')" />
           </template>
@@ -480,7 +485,8 @@ const columns = computed<Column[]>(() => [
   { key: 'billing_type', label: t('usage.billingType'), sortable: false REDACTED,
   { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
   { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
-  { key: 'created_at', label: t('usage.time'), sortable: true REDACTED
+  { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
+  { key: 'user_agent', label: t('usage.userAgent'), sortable: false REDACTED
 ])
 
 const usageLogs = ref<UsageLog[]>([])
@@ -543,6 +549,19 @@ REDACTED)
 const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)REDACTEDms`
   return `${(ms / 1000).toFixed(2)REDACTEDs`
+REDACTED
+
+const formatUserAgent = (ua: string): string => {
+  // 提取主要客户端标识
+  if (ua.includes('claude-cli')) return ua.match(/claude-cli\/[\d.]+/)?.[0] || 'Claude CLI'
+  if (ua.includes('Cursor')) return 'Cursor'
+  if (ua.includes('VSCode') || ua.includes('vscode')) return 'VS Code'
+  if (ua.includes('Continue')) return 'Continue'
+  if (ua.includes('Cline')) return 'Cline'
+  if (ua.includes('OpenAI')) return 'OpenAI SDK'
+  if (ua.includes('anthropic')) return 'Anthropic SDK'
+  // 截断过长的 UA
+  return ua.length > 30 ? ua.substring(0, 30) + '...' : ua
 REDACTED
 
 const formatTokens = (value: number): string => {

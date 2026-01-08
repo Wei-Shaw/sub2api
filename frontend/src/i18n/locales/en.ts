@@ -424,7 +424,8 @@ export default {
     billingType: 'Billing',
     balance: 'Balance',
     subscription: 'Subscription',
-    imageUnit: ' images'
+    imageUnit: ' images',
+    userAgent: 'User-Agent'
   REDACTED,
 
   // Redeem
