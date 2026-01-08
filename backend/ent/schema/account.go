@@ -118,6 +118,16 @@ func (Account) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
+		// expires_at: 账户过期时间（可为空）
+		field.Time("expires_at").
+			Optional().
+			Nillable().
+			Comment("Account expiration time (NULL means no expiration).").
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
+		// auto_pause_on_expired: 过期后自动暂停调度
+		field.Bool("auto_pause_on_expired").
+			Default(true).
+			Comment("Auto pause scheduling when account expires."),
 
 		// ========== 调度和速率限制相关字段 ==========
 		// 这些字段在 migrations/005_schema_parity.sql 中添加

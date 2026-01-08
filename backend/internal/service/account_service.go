@@ -38,6 +38,7 @@ type AccountRepository interface {
 	BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error
 	SetError(ctx context.Context, id int64, errorMsg string) error
 	SetSchedulable(ctx context.Context, id int64, schedulable bool) error
+	AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error)
 	BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error
 
 	ListSchedulable(ctx context.Context) ([]Account, error)
@@ -71,29 +72,33 @@ REDACTED
 
 // CreateAccountRequest 创建账号请求
 type CreateAccountRequest struct {
-	Name        string         `json:"name"`
-	Notes       *string        `json:"notes"`
-	Platform    string         `json:"platform"`
-	Type        string         `json:"type"`
-	Credentials map[string]any `json:"credentials"`
-	Extra       map[string]any `json:"extra"`
-	ProxyID     *int64         `json:"proxy_id"`
-	Concurrency int            `json:"concurrency"`
-	Priority    int            `json:"priority"`
-	GroupIDs    []int64        `json:"group_ids"`
+	Name               string         `json:"name"`
+	Notes              *string        `json:"notes"`
+	Platform           string         `json:"platform"`
+	Type               string         `json:"type"`
+	Credentials        map[string]any `json:"credentials"`
+	Extra              map[string]any `json:"extra"`
+	ProxyID            *int64         `json:"proxy_id"`
+	Concurrency        int            `json:"concurrency"`
+	Priority           int            `json:"priority"`
+	GroupIDs           []int64        `json:"group_ids"`
+	ExpiresAt          *time.Time     `json:"expires_at"`
+	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
 REDACTED
 
 // UpdateAccountRequest 更新账号请求
 type UpdateAccountRequest struct {
-	Name        *string         `json:"name"`
-	Notes       *string         `json:"notes"`
-	Credentials *map[string]any `json:"credentials"`
-	Extra       *map[string]any `json:"extra"`
-	ProxyID     *int64          `json:"proxy_id"`
-	Concurrency *int            `json:"concurrency"`
-	Priority    *int            `json:"priority"`
-	Status      *string         `json:"status"`
-	GroupIDs    *[]int64        `json:"group_ids"`
+	Name               *string         `json:"name"`
+	Notes              *string         `json:"notes"`
+	Credentials        *map[string]any `json:"credentials"`
+	Extra              *map[string]any `json:"extra"`
+	ProxyID            *int64          `json:"proxy_id"`
+	Concurrency        *int            `json:"concurrency"`
+	Priority           *int            `json:"priority"`
+	Status             *string         `json:"status"`
+	GroupIDs           *[]int64        `json:"group_ids"`
+	ExpiresAt          *time.Time      `json:"expires_at"`
+	AutoPauseOnExpired *bool           `json:"auto_pause_on_expired"`
 REDACTED
 
 // AccountService 账号管理服务
@@ -134,6 +139,12 @@ REDACTED
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
 		Status:      StatusActive,
+		ExpiresAt:   req.ExpiresAt,
+REDACTED
+	if req.AutoPauseOnExpired != nil {
+		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
+REDACTED else {
+		account.AutoPauseOnExpired = true
 REDACTED
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -223,6 +234,12 @@ REDACTED
 
 	if req.Status != nil {
 		account.Status = *req.Status
+REDACTED
+	if req.ExpiresAt != nil {
+		account.ExpiresAt = req.ExpiresAt
+REDACTED
+	if req.AutoPauseOnExpired != nil {
+		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 REDACTED
 
 	// 先验证分组是否存在（在任何写操作之前）

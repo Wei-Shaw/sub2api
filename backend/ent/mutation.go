@@ -1006,6 +1006,8 @@ type AccountMutation struct {
 	status                *string
 	error_message         *string
 	last_used_at          *time.Time
+	expires_at            *time.Time
+	auto_pause_on_expired *bool
 	schedulable           *bool
 	rate_limited_at       *time.Time
 	rate_limit_reset_at   *time.Time
@@ -1770,6 +1772,91 @@ func (m *AccountMutation) ResetLastUsedAt() {
 	delete(m.clearedFields, account.FieldLastUsedAt)
 REDACTED
 
+// SetExpiresAt sets the "expires_at" field.
+func (m *AccountMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+REDACTED
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *AccountMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldExpiresAt returns the old "expires_at" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+REDACTED
+	return oldValue.ExpiresAt, nil
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (m *AccountMutation) ClearExpiresAt() {
+	m.expires_at = nil
+	m.clearedFields[account.FieldExpiresAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
+func (m *AccountMutation) ExpiresAtCleared() bool {
+	_, ok := m.clearedFields[account.FieldExpiresAt]
+	return ok
+REDACTED
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *AccountMutation) ResetExpiresAt() {
+	m.expires_at = nil
+	delete(m.clearedFields, account.FieldExpiresAt)
+REDACTED
+
+// SetAutoPauseOnExpired sets the "auto_pause_on_expired" field.
+func (m *AccountMutation) SetAutoPauseOnExpired(b bool) {
+	m.auto_pause_on_expired = &b
+REDACTED
+
+// AutoPauseOnExpired returns the value of the "auto_pause_on_expired" field in the mutation.
+func (m *AccountMutation) AutoPauseOnExpired() (r bool, exists bool) {
+	v := m.auto_pause_on_expired
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAutoPauseOnExpired returns the old "auto_pause_on_expired" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldAutoPauseOnExpired(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAutoPauseOnExpired is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAutoPauseOnExpired requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAutoPauseOnExpired: %w", err)
+REDACTED
+	return oldValue.AutoPauseOnExpired, nil
+REDACTED
+
+// ResetAutoPauseOnExpired resets all changes to the "auto_pause_on_expired" field.
+func (m *AccountMutation) ResetAutoPauseOnExpired() {
+	m.auto_pause_on_expired = nil
+REDACTED
+
 // SetSchedulable sets the "schedulable" field.
 func (m *AccountMutation) SetSchedulable(b bool) {
 	m.schedulable = &b
@@ -2269,7 +2356,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 22)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 REDACTED
@@ -2314,6 +2401,12 @@ REDACTED
 REDACTED
 	if m.last_used_at != nil {
 		fields = append(fields, account.FieldLastUsedAt)
+REDACTED
+	if m.expires_at != nil {
+		fields = append(fields, account.FieldExpiresAt)
+REDACTED
+	if m.auto_pause_on_expired != nil {
+		fields = append(fields, account.FieldAutoPauseOnExpired)
 REDACTED
 	if m.schedulable != nil {
 		fields = append(fields, account.FieldSchedulable)
@@ -2374,6 +2467,10 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrorMessage()
 	case account.FieldLastUsedAt:
 		return m.LastUsedAt()
+	case account.FieldExpiresAt:
+		return m.ExpiresAt()
+	case account.FieldAutoPauseOnExpired:
+		return m.AutoPauseOnExpired()
 	case account.FieldSchedulable:
 		return m.Schedulable()
 	case account.FieldRateLimitedAt:
@@ -2427,6 +2524,10 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldErrorMessage(ctx)
 	case account.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
+	case account.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case account.FieldAutoPauseOnExpired:
+		return m.OldAutoPauseOnExpired(ctx)
 	case account.FieldSchedulable:
 		return m.OldSchedulable(ctx)
 	case account.FieldRateLimitedAt:
@@ -2555,6 +2656,20 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetLastUsedAt(v)
 		return nil
+	case account.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetExpiresAt(v)
+		return nil
+	case account.FieldAutoPauseOnExpired:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAutoPauseOnExpired(v)
+		return nil
 	case account.FieldSchedulable:
 		v, ok := value.(bool)
 		if !ok {
@@ -2676,6 +2791,9 @@ REDACTED
 	if m.FieldCleared(account.FieldLastUsedAt) {
 		fields = append(fields, account.FieldLastUsedAt)
 REDACTED
+	if m.FieldCleared(account.FieldExpiresAt) {
+		fields = append(fields, account.FieldExpiresAt)
+REDACTED
 	if m.FieldCleared(account.FieldRateLimitedAt) {
 		fields = append(fields, account.FieldRateLimitedAt)
 REDACTED
@@ -2722,6 +2840,9 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldLastUsedAt:
 		m.ClearLastUsedAt()
+		return nil
+	case account.FieldExpiresAt:
+		m.ClearExpiresAt()
 		return nil
 	case account.FieldRateLimitedAt:
 		m.ClearRateLimitedAt()
@@ -2793,6 +2914,12 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldLastUsedAt:
 		m.ResetLastUsedAt()
+		return nil
+	case account.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case account.FieldAutoPauseOnExpired:
+		m.ResetAutoPauseOnExpired()
 		return nil
 	case account.FieldSchedulable:
 		m.ResetSchedulable()

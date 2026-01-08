@@ -1011,6 +1011,7 @@ export default {
         groups: 'Groups',
         usageWindows: 'Usage Windows',
         lastUsed: 'Last Used',
+        expiresAt: 'Expires At',
         actions: 'Actions'
       REDACTED,
       tempUnschedulable: {
@@ -1152,11 +1153,16 @@ export default {
       interceptWarmupRequests: 'Intercept Warmup Requests',
       interceptWarmupRequestsDesc:
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
+      autoPauseOnExpired: 'Auto Pause On Expired',
+      autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
+      expired: 'Expired',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
       concurrency: 'Concurrency',
       priority: 'Priority',
       priorityHint: 'Higher priority accounts are used first',
+      expiresAt: 'Expires At',
+      expiresAtHint: 'Leave empty for no expiration',
       higherPriorityFirst: 'Higher value means higher priority',
       mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',

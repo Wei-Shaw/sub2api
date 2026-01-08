@@ -47,6 +47,13 @@ func ProvideTokenRefreshService(
 	return svc
 REDACTED
 
+// ProvideAccountExpiryService creates and starts AccountExpiryService.
+func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
+	svc := NewAccountExpiryService(accountRepo, time.Minute)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideTimingWheelService creates and starts TimingWheelService
 func ProvideTimingWheelService() *TimingWheelService {
 	svc := NewTimingWheelService()
@@ -110,6 +117,7 @@ var ProviderSet = wire.NewSet(
 	NewCRSSyncService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
+	ProvideAccountExpiryService,
 	ProvideTimingWheelService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
