@@ -160,8 +160,8 @@ export const useAuthStore = defineStore('auth', () => {
   REDACTED
 
   /**
-   * Set token directly (OAuth/SSO callback) and load current user profile.
-   * @param newToken - JWT access token issued by backend
+   * 直接设置 token（用于 OAuth/SSO 回调），并加载当前用户信息。
+   * @param newToken - 后端签发的 JWT access token
    */
   async function setToken(newToken: string): Promise<User> {
     // Clear any previous state first (avoid mixing sessions)

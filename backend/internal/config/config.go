@@ -324,10 +324,10 @@ type TurnstileConfig struct {
 	Required bool `mapstructure:"required"`
 REDACTED
 
-// LinuxDoConnectConfig controls LinuxDo Connect OAuth login (end-user SSO).
+// LinuxDoConnectConfig 用于 LinuxDo Connect OAuth 登录（终端用户 SSO）。
 //
-// Note: This is NOT the same as upstream account OAuth (e.g. OpenAI/Gemini).
-// It is used for logging in to Sub2API itself.
+// 注意：这与上游账号的 OAuth（例如 OpenAI/Gemini 账号接入）不是一回事。
+// 这里是用于登录 Sub2API 本身的用户体系。
 type LinuxDoConnectConfig struct {
 	Enabled             bool   `mapstructure:"enabled"`
 	ClientID            string `mapstructure:"client_id"`
@@ -336,13 +336,13 @@ type LinuxDoConnectConfig struct {
 	TokenURL            string `mapstructure:"token_url"`
 	UserInfoURL         string `mapstructure:"userinfo_url"`
 	Scopes              string `mapstructure:"scopes"`
-	RedirectURL         string `mapstructure:"redirect_url"`          // backend callback URL registered at the provider
-	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // frontend route to receive token (default: /auth/linuxdo/callback)
+	RedirectURL         string `mapstructure:"redirect_url"`          // 后端回调地址（需在提供方后台登记）
+	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认：/auth/linuxdo/callback）
 	TokenAuthMethod     string `mapstructure:"token_auth_method"`     // client_secret_post / client_secret_basic / none
 	UsePKCE             bool   `mapstructure:"use_pkce"`
 
-	// Optional: gjson paths to extract fields from userinfo JSON.
-	// When empty, the server tries a set of common keys.
+	// 可选：用于从 userinfo JSON 中提取字段的 gjson 路径。
+	// 为空时，服务端会尝试一组常见字段名。
 	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
 	UserInfoIDPath       string `mapstructure:"userinfo_id_path"`
 	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
@@ -464,7 +464,8 @@ REDACTED
 	return &cfg, nil
 REDACTED
 
-func validateAbsoluteHTTPURL(raw string) error {
+// ValidateAbsoluteHTTPURL 校验一个绝对 http(s) URL（禁止 fragment）。
+func ValidateAbsoluteHTTPURL(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return fmt.Errorf("empty url")
@@ -488,7 +489,10 @@ REDACTED
 	return nil
 REDACTED
 
-func validateFrontendRedirectURL(raw string) error {
+// ValidateFrontendRedirectURL 校验前端回调地址：
+// - 允许同源相对路径（以 / 开头）
+// - 或绝对 http(s) URL（禁止 fragment）
+func ValidateFrontendRedirectURL(raw string) error {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return fmt.Errorf("empty url")
@@ -584,7 +588,7 @@ REDACTED)
 	// Turnstile
 	viper.SetDefault("turnstile.required", false)
 
-	// LinuxDo Connect OAuth login (end-user SSO)
+	// LinuxDo Connect OAuth 登录（终端用户 SSO）
 	viper.SetDefault("linuxdo_connect.enabled", false)
 	viper.SetDefault("linuxdo_connect.client_id", "")
 	viper.SetDefault("linuxdo_connect.client_secret", "")
@@ -743,19 +747,19 @@ REDACTED
 			return fmt.Errorf("linuxdo_connect.frontend_redirect_url is required when linuxdo_connect.enabled=true")
 	REDACTED
 
-		if err := validateAbsoluteHTTPURL(c.LinuxDo.AuthorizeURL); err != nil {
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.AuthorizeURL); err != nil {
 			return fmt.Errorf("linuxdo_connect.authorize_url invalid: %w", err)
 	REDACTED
-		if err := validateAbsoluteHTTPURL(c.LinuxDo.TokenURL); err != nil {
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.TokenURL); err != nil {
 			return fmt.Errorf("linuxdo_connect.token_url invalid: %w", err)
 	REDACTED
-		if err := validateAbsoluteHTTPURL(c.LinuxDo.UserInfoURL); err != nil {
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.UserInfoURL); err != nil {
 			return fmt.Errorf("linuxdo_connect.userinfo_url invalid: %w", err)
 	REDACTED
-		if err := validateAbsoluteHTTPURL(c.LinuxDo.RedirectURL); err != nil {
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.RedirectURL); err != nil {
 			return fmt.Errorf("linuxdo_connect.redirect_url invalid: %w", err)
 	REDACTED
-		if err := validateFrontendRedirectURL(c.LinuxDo.FrontendRedirectURL); err != nil {
+		if err := ValidateFrontendRedirectURL(c.LinuxDo.FrontendRedirectURL); err != nil {
 			return fmt.Errorf("linuxdo_connect.frontend_redirect_url invalid: %w", err)
 	REDACTED
 

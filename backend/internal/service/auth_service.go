@@ -32,8 +32,6 @@ var (
 	ErrServiceUnavailable  = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 )
 
-const linuxDoSyntheticEmailDomain = "@linuxdo-connect.invalid"
-
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
 const maxTokenLength = 8192
 
@@ -87,7 +85,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		return "", nil, ErrRegDisabled
 REDACTED
 
-	// Prevent users from registering emails reserved for synthetic OAuth accounts.
+	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
 	if isReservedEmail(email) {
 		return "", nil, ErrEmailReserved
 REDACTED
@@ -339,11 +337,12 @@ REDACTED
 	return token, user, nil
 REDACTED
 
-// LoginOrRegisterOAuth logs a user in by email (trusted from an OAuth provider) or creates a new user.
+// LoginOrRegisterOAuth 用于第三方 OAuth/SSO 登录：
+// - 如果邮箱已存在：直接登录（不需要本地密码）
+// - 如果邮箱不存在：创建新用户并登录
 //
-// This is used by end-user OAuth/SSO login flows (e.g. LinuxDo Connect), and intentionally does
-// NOT require the local password. A random password hash is generated for new users to satisfy
-// the existing database constraint.
+// 注意：该函数用于“终端用户登录 Sub2API 本身”的场景（不同于上游账号的 OAuth，例如 OpenAI/Gemini）。
+// 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
 func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
 	email = strings.TrimSpace(email)
 	if email == "" || len(email) > 255 {
@@ -361,7 +360,7 @@ REDACTED
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			// Treat OAuth-first login as registration.
+			// OAuth 首次登录视为注册。
 			if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
 				return "", nil, ErrRegDisabled
 		REDACTED
@@ -376,7 +375,7 @@ REDACTED
 				return "", nil, fmt.Errorf("hash password: %w", err)
 		REDACTED
 
-			// Defaults for new users.
+			// 新用户默认值。
 			defaultBalance := s.cfg.Default.UserBalance
 			defaultConcurrency := s.cfg.Default.UserConcurrency
 			if s.settingService != nil {
@@ -396,7 +395,7 @@ REDACTED
 
 			if err := s.userRepo.Create(ctx, newUser); err != nil {
 				if errors.Is(err, ErrEmailExists) {
-					// Race: user created between GetByEmail and Create.
+					// 并发场景：GetByEmail 与 Create 之间用户被创建。
 					user, err = s.userRepo.GetByEmail(ctx, email)
 					if err != nil {
 						log.Printf("[Auth] Database error getting user after conflict: %v", err)
@@ -419,7 +418,7 @@ REDACTED
 		return "", nil, ErrUserNotActive
 REDACTED
 
-	// Best-effort: fill username when empty.
+	// 尽力补全：当用户名为空时，使用第三方返回的用户名回填。
 	if user.Username == "" && username != "" {
 		user.Username = username
 		if err := s.userRepo.Update(ctx, user); err != nil {
@@ -489,7 +488,7 @@ REDACTED
 
 func isReservedEmail(email string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(email))
-	return strings.HasSuffix(normalized, linuxDoSyntheticEmailDomain)
+	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain)
 REDACTED
 
 // GenerateToken 生成JWT token

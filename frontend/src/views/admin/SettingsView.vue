@@ -261,7 +261,7 @@
           </div>
         </div>
 
-        <!-- LinuxDo Connect OAuth Login -->
+        <!-- LinuxDo Connect OAuth 登录 -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -850,7 +850,7 @@ const form = reactive<SettingsForm>({
   turnstile_site_key: '',
   turnstile_secret_key: '',
   turnstile_secret_key_configured: false,
-  // LinuxDo Connect OAuth
+  // LinuxDo Connect OAuth（终端用户登录）
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: '',
   linuxdo_connect_client_secret: '',

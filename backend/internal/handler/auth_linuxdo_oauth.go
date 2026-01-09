@@ -17,6 +17,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
@@ -66,7 +67,7 @@ REDACTED
 	return strings.Join(parts, " ")
 REDACTED
 
-// LinuxDoOAuthStart starts the LinuxDo Connect OAuth login flow.
+// LinuxDoOAuthStart 启动 LinuxDo Connect OAuth 登录流程。
 // GET /api/v1/auth/oauth/linuxdo/start?redirect=/dashboard
 func (h *AuthHandler) LinuxDoOAuthStart(c *gin.Context) {
 	cfg, err := h.getLinuxDoOAuthConfig(c.Request.Context())
@@ -116,7 +117,7 @@ REDACTED
 	c.Redirect(http.StatusFound, authURL)
 REDACTED
 
-// LinuxDoOAuthCallback handles the OAuth callback, creates/logins the user, then redirects to frontend.
+// LinuxDoOAuthCallback 处理 OAuth 回调：创建/登录用户，然后重定向到前端。
 // GET /api/v1/auth/oauth/linuxdo/callback?code=...&state=...
 func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 	cfg, cfgErr := h.getLinuxDoOAuthConfig(c.Request.Context())
@@ -197,16 +198,22 @@ REDACTED
 		return
 REDACTED
 
-	email, username, _, err := linuxDoFetchUserInfo(c.Request.Context(), cfg, tokenResp)
+	email, username, subject, err := linuxDoFetchUserInfo(c.Request.Context(), cfg, tokenResp)
 	if err != nil {
 		log.Printf("[LinuxDo OAuth] userinfo fetch failed: %v", err)
 		redirectOAuthError(c, frontendCallback, "userinfo_failed", "failed to fetch user info", "")
 		return
 REDACTED
 
+	// 安全考虑：不要把第三方返回的 email 直接映射到本地账号（可能与本地邮箱用户冲突导致账号被接管）。
+	// 统一使用基于 subject 的稳定合成邮箱来做账号绑定。
+	if subject != "" {
+		email = linuxDoSyntheticEmail(subject)
+REDACTED
+
 	jwtToken, _, err := h.authService.LoginOrRegisterOAuth(c.Request.Context(), email, username)
 	if err != nil {
-		// Avoid leaking internal details to the client; keep structured reason for frontend.
+		// 避免把内部细节泄露给客户端；给前端保留结构化原因与提示信息即可。
 		redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
 		return
 REDACTED
@@ -352,9 +359,8 @@ REDACTED
 
 	email = strings.TrimSpace(email)
 	if email == "" {
-		// LinuxDo Connect userinfo does not necessarily provide email. To keep compatibility with the
-		// existing user schema (email is required/unique), use a stable synthetic email.
-		email = fmt.Sprintf("linuxdo-%s@linuxdo-connect.invalid", subject)
+		// LinuxDo Connect 的 userinfo 可能不提供 email。为兼容现有用户模型（email 必填且唯一），使用稳定的合成邮箱。
+		email = linuxDoSyntheticEmail(subject)
 REDACTED
 
 	username = strings.TrimSpace(username)
@@ -403,7 +409,7 @@ REDACTED
 func redirectWithFragment(c *gin.Context, frontendCallback string, fragment url.Values) {
 	u, err := url.Parse(frontendCallback)
 	if err != nil {
-		// Fallback: best-effort redirect.
+		// 兜底：尽力跳转到默认页面，避免卡死在回调页。
 		c.Redirect(http.StatusFound, linuxDoOAuthDefaultRedirectTo)
 		return
 REDACTED
@@ -545,7 +551,7 @@ REDACTED
 	if len(path) > linuxDoOAuthMaxRedirectLen {
 		return ""
 REDACTED
-	// Only allow same-origin relative paths (avoid open redirect).
+	// 只允许同源相对路径（避免开放重定向）。
 	if !strings.HasPrefix(path, "/") {
 		return ""
 REDACTED
@@ -662,4 +668,12 @@ REDACTED
 	REDACTED
 REDACTED
 	return true
+REDACTED
+
+func linuxDoSyntheticEmail(subject string) string {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return ""
+REDACTED
+	return "linuxdo-" + subject + service.LinuxDoConnectSyntheticEmailDomain
 REDACTED

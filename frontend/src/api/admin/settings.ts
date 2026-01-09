@@ -34,7 +34,7 @@ export interface SystemSettings {
   turnstile_enabled: boolean
   turnstile_site_key: string
   turnstile_secret_key_configured: boolean
-  // LinuxDo Connect OAuth login (end-user SSO)
+  // LinuxDo Connect OAuth 登录（终端用户 SSO）
   linuxdo_connect_enabled: boolean
   linuxdo_connect_client_id: string
   linuxdo_connect_client_secret_configured: boolean
