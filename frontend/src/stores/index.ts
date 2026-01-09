@@ -5,6 +5,7 @@
 
 export { useAuthStore REDACTED from './auth'
 export { useAppStore REDACTED from './app'
+export { useAdminSettingsStore REDACTED from './adminSettings'
 export { useSubscriptionStore REDACTED from './subscriptions'
 export { useOnboardingStore REDACTED from './onboarding'
 
