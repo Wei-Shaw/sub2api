@@ -131,6 +131,7 @@ func (s *GroupRepoSuite) TestListWithFilters_Platform() {
 		pagination.PaginationParams{Page: 1, PageSize: 10REDACTED,
 		service.PlatformOpenAI,
 		"",
+		"",
 		nil,
 	)
 	s.Require().NoError(err, "ListWithFilters base")
@@ -152,7 +153,7 @@ REDACTED))
 		SubscriptionType: service.SubscriptionTypeStandard,
 REDACTED))
 
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformOpenAI, "", nil)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformOpenAI, "", "", nil)
 	s.Require().NoError(err)
 	s.Require().Len(groups, len(baseGroups)+1)
 	// Verify all groups are OpenAI platform
@@ -179,7 +180,7 @@ REDACTED))
 		SubscriptionType: service.SubscriptionTypeStandard,
 REDACTED))
 
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", service.StatusDisabled, nil)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", service.StatusDisabled, "", nil)
 	s.Require().NoError(err)
 	s.Require().Len(groups, 1)
 	s.Require().Equal(service.StatusDisabled, groups[0].Status)
@@ -204,10 +205,115 @@ REDACTED))
 REDACTED))
 
 	isExclusive := true
-	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", &isExclusive)
+	groups, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "", &isExclusive)
 	s.Require().NoError(err)
 	s.Require().Len(groups, 1)
 	s.Require().True(groups[0].IsExclusive)
+REDACTED
+
+func (s *GroupRepoSuite) TestListWithFilters_Search() {
+	newRepo := func() (*groupRepository, context.Context) {
+		tx := testEntTx(s.T())
+		return newGroupRepositoryWithSQL(tx.Client(), tx), context.Background()
+REDACTED
+
+	containsID := func(groups []service.Group, id int64) bool {
+		for i := range groups {
+			if groups[i].ID == id {
+				return true
+		REDACTED
+	REDACTED
+		return false
+REDACTED
+
+	mustCreate := func(repo *groupRepository, ctx context.Context, g *service.Group) *service.Group {
+		s.Require().NoError(repo.Create(ctx, g))
+		s.Require().NotZero(g.ID)
+		return g
+REDACTED
+
+	newGroup := func(name string) *service.Group {
+		return &service.Group{
+			Name:             name,
+			Platform:         service.PlatformAnthropic,
+			RateMultiplier:   1.0,
+			IsExclusive:      false,
+			Status:           service.StatusActive,
+			SubscriptionType: service.SubscriptionTypeStandard,
+	REDACTED
+REDACTED
+
+	s.Run("search_name_should_match", func() {
+		repo, ctx := newRepo()
+
+		target := mustCreate(repo, ctx, newGroup("it-group-search-name-target"))
+		other := mustCreate(repo, ctx, newGroup("it-group-search-name-other"))
+
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50REDACTED, "", "", "name-target", nil)
+		s.Require().NoError(err)
+		s.Require().True(containsID(groups, target.ID), "expected target group to match by name")
+		s.Require().False(containsID(groups, other.ID), "expected other group to be filtered out")
+REDACTED)
+
+	s.Run("search_description_should_match", func() {
+		repo, ctx := newRepo()
+
+		target := newGroup("it-group-search-desc-target")
+		target.Description = "something about desc-needle in here"
+		target = mustCreate(repo, ctx, target)
+
+		other := newGroup("it-group-search-desc-other")
+		other.Description = "nothing to see here"
+		other = mustCreate(repo, ctx, other)
+
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50REDACTED, "", "", "desc-needle", nil)
+		s.Require().NoError(err)
+		s.Require().True(containsID(groups, target.ID), "expected target group to match by description")
+		s.Require().False(containsID(groups, other.ID), "expected other group to be filtered out")
+REDACTED)
+
+	s.Run("search_nonexistent_should_return_empty", func() {
+		repo, ctx := newRepo()
+
+		_ = mustCreate(repo, ctx, newGroup("it-group-search-nonexistent-baseline"))
+
+		search := s.T().Name() + "__no_such_group__"
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50REDACTED, "", "", search, nil)
+		s.Require().NoError(err)
+		s.Require().Empty(groups)
+REDACTED)
+
+	s.Run("search_should_be_case_insensitive", func() {
+		repo, ctx := newRepo()
+
+		target := mustCreate(repo, ctx, newGroup("MiXeDCaSe-Needle"))
+		other := mustCreate(repo, ctx, newGroup("it-group-search-case-other"))
+
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50REDACTED, "", "", "mixedcase-needle", nil)
+		s.Require().NoError(err)
+		s.Require().True(containsID(groups, target.ID), "expected case-insensitive match")
+		s.Require().False(containsID(groups, other.ID), "expected other group to be filtered out")
+REDACTED)
+
+	s.Run("search_should_escape_like_wildcards", func() {
+		repo, ctx := newRepo()
+
+		percentTarget := mustCreate(repo, ctx, newGroup("it-group-search-100%-target"))
+		percentOther := mustCreate(repo, ctx, newGroup("it-group-search-100X-other"))
+
+		groups, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50REDACTED, "", "", "100%", nil)
+		s.Require().NoError(err)
+		s.Require().True(containsID(groups, percentTarget.ID), "expected literal %% match")
+		s.Require().False(containsID(groups, percentOther.ID), "expected %% not to act as wildcard")
+
+		underscoreTarget := mustCreate(repo, ctx, newGroup("it-group-search-ab_cd-target"))
+		underscoreOther := mustCreate(repo, ctx, newGroup("it-group-search-abXcd-other"))
+
+		groups, _, err = repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 50REDACTED, "", "", "ab_cd", nil)
+		s.Require().NoError(err)
+		s.Require().True(containsID(groups, underscoreTarget.ID), "expected literal _ match")
+		s.Require().False(containsID(groups, underscoreOther.ID), "expected _ not to act as wildcard")
+REDACTED)
 REDACTED
 
 func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {
@@ -244,7 +350,7 @@ REDACTED
 	s.Require().NoError(err)
 
 	isExclusive := true
-	groups, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformAnthropic, service.StatusActive, &isExclusive)
+	groups, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.PlatformAnthropic, service.StatusActive, "", &isExclusive)
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(groups, 1)

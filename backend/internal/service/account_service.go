@@ -66,6 +66,7 @@ type AccountBulkUpdate struct {
 	Concurrency *int
 	Priority    *int
 	Status      *string
+	Schedulable *bool
 	Credentials map[string]any
 	Extra       map[string]any
 REDACTED

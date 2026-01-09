@@ -1221,12 +1221,16 @@ export default {
       accountCreatedSuccess: '账号添加成功',
       accountUpdatedSuccess: '账号更新成功',
       accountDeletedSuccess: '账号删除成功',
+      bulkSchedulableEnabled: '成功启用 {countREDACTED 个账号的调度',
+      bulkSchedulableDisabled: '成功停止 {countREDACTED 个账号的调度',
       bulkActions: {
         selected: '已选择 {countREDACTED 个账号',
         selectCurrentPage: '本页全选',
         clear: '清除选择',
         edit: '批量编辑账号',
-        delete: '批量删除'
+        delete: '批量删除',
+        enableScheduling: '批量启用调度',
+        disableScheduling: '批量停止调度'
       REDACTED,
       bulkEdit: {
         title: '批量编辑账号',
