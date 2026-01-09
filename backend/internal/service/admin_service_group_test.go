@@ -35,6 +35,13 @@ REDACTED
 	return s.getByID, nil
 REDACTED
 
+func (s *groupRepoStubForAdmin) GetByIDLite(_ context.Context, _ int64) (*Group, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+REDACTED
+	return s.getByID, nil
+REDACTED
+
 func (s *groupRepoStubForAdmin) Delete(_ context.Context, _ int64) error {
 	panic("unexpected Delete call")
 REDACTED

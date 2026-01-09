@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -108,6 +109,63 @@ REDACTED)
 		require.Equal(t, http.StatusTooManyRequests, w.Code)
 		require.Contains(t, w.Body.String(), "USAGE_LIMIT_EXCEEDED")
 REDACTED)
+REDACTED
+
+func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	group := &service.Group{
+		ID:       101,
+		Name:     "g1",
+		Status:   service.StatusActive,
+		Platform: service.PlatformAnthropic,
+REDACTED
+	user := &service.User{
+		ID:          7,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+REDACTED
+	apiKey := &service.APIKey{
+		ID:     100,
+		UserID: user.ID,
+		Key:    "test-key",
+		Status: service.StatusActive,
+		User:   user,
+		Group:  group,
+REDACTED
+	apiKey.GroupID = &group.ID
+
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+		REDACTED
+			clone := *apiKey
+			return &clone, nil
+	REDACTED,
+REDACTED
+
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, cfg)
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.GET("/t", func(c *gin.Context) {
+		groupFromCtx, ok := c.Request.Context().Value(ctxkey.Group).(*service.Group)
+		if !ok || groupFromCtx == nil || groupFromCtx.ID != group.ID {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": falseREDACTED)
+			return
+	REDACTED
+		c.JSON(http.StatusOK, gin.H{"ok": trueREDACTED)
+REDACTED)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", apiKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
 REDACTED
 
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {

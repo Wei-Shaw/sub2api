@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -183,6 +184,56 @@ REDACTED
 
 func (m *mockGatewayCacheForPlatform) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
 	return nil
+REDACTED
+
+type mockGroupRepoForGateway struct {
+	groups           map[int64]*Group
+	getByIDCalls     int
+	getByIDLiteCalls int
+REDACTED
+
+func (m *mockGroupRepoForGateway) GetByID(ctx context.Context, id int64) (*Group, error) {
+	m.getByIDCalls++
+	if g, ok := m.groups[id]; ok {
+		return g, nil
+REDACTED
+	return nil, ErrGroupNotFound
+REDACTED
+
+func (m *mockGroupRepoForGateway) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	m.getByIDLiteCalls++
+	if g, ok := m.groups[id]; ok {
+		return g, nil
+REDACTED
+	return nil, ErrGroupNotFound
+REDACTED
+
+func (m *mockGroupRepoForGateway) Create(ctx context.Context, group *Group) error { return nil REDACTED
+func (m *mockGroupRepoForGateway) Update(ctx context.Context, group *Group) error { return nil REDACTED
+func (m *mockGroupRepoForGateway) Delete(ctx context.Context, id int64) error     { return nil REDACTED
+func (m *mockGroupRepoForGateway) DeleteCascade(ctx context.Context, id int64) ([]int64, error) {
+	return nil, nil
+REDACTED
+func (m *mockGroupRepoForGateway) List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
+	return nil, nil, nil
+REDACTED
+func (m *mockGroupRepoForGateway) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+	return nil, nil, nil
+REDACTED
+func (m *mockGroupRepoForGateway) ListActive(ctx context.Context) ([]Group, error) {
+	return nil, nil
+REDACTED
+func (m *mockGroupRepoForGateway) ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error) {
+	return nil, nil
+REDACTED
+func (m *mockGroupRepoForGateway) ExistsByName(ctx context.Context, name string) (bool, error) {
+	return false, nil
+REDACTED
+func (m *mockGroupRepoForGateway) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {
+	return 0, nil
+REDACTED
+func (m *mockGroupRepoForGateway) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
+	return 0, nil
 REDACTED
 
 func ptr[T any](v T) *T {
@@ -1012,4 +1063,86 @@ REDACTED)
 		require.Nil(t, result)
 		require.Contains(t, err.Error(), "no available accounts")
 REDACTED)
+REDACTED
+
+func TestGatewayService_GroupResolution_ReusesContextGroup(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(42)
+	group := &Group{
+		ID:       groupID,
+		Platform: PlatformAnthropic,
+		Status:   StatusActive,
+REDACTED
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: trueREDACTED,
+	REDACTED,
+		accountsByID: map[int64]*Account{REDACTED,
+REDACTED
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+REDACTED
+
+	groupRepo := &mockGroupRepoForGateway{
+		groups: map[int64]*Group{groupID: groupREDACTED,
+REDACTED
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo:   groupRepo,
+		cfg:         testConfig(),
+REDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, 0, groupRepo.getByIDCalls)
+	require.Equal(t, 0, groupRepo.getByIDLiteCalls)
+REDACTED
+
+func TestGatewayService_GroupResolution_FallbackUsesLiteOnce(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10)
+	fallbackID := int64(11)
+	group := &Group{
+		ID:              groupID,
+		Platform:        PlatformAnthropic,
+		Status:          StatusActive,
+		ClaudeCodeOnly:  true,
+		FallbackGroupID: &fallbackID,
+REDACTED
+	fallbackGroup := &Group{
+		ID:       fallbackID,
+		Platform: PlatformAnthropic,
+		Status:   StatusActive,
+REDACTED
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: trueREDACTED,
+	REDACTED,
+		accountsByID: map[int64]*Account{REDACTED,
+REDACTED
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+REDACTED
+
+	groupRepo := &mockGroupRepoForGateway{
+		groups: map[int64]*Group{fallbackID: fallbackGroupREDACTED,
+REDACTED
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo:   groupRepo,
+		cfg:         testConfig(),
+REDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, 0, groupRepo.getByIDCalls)
+	require.Equal(t, 1, groupRepo.getByIDLiteCalls)
 REDACTED
