@@ -47,7 +47,7 @@ func (s *groupRepoStubForAdmin) List(_ context.Context, _ pagination.PaginationP
 	panic("unexpected List call")
 REDACTED
 
-func (s *groupRepoStubForAdmin) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _ string, _ *bool) ([]Group, *pagination.PaginationResult, error) {
+func (s *groupRepoStubForAdmin) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _ string, _ *bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 REDACTED
 

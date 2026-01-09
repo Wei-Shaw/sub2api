@@ -67,6 +67,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	platform := c.Query("platform")
 	status := c.Query("status")
+	search := c.Query("search")
 	isExclusiveStr := c.Query("is_exclusive")
 
 	var isExclusive *bool
@@ -75,7 +76,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 		isExclusive = &val
 REDACTED
 
-	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, isExclusive)
+	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -1,6 +1,23 @@
 <template>
-  <div v-if="selectedIds.length > 0" class="mb-4 flex items-center justify-between p-3 bg-primary-50 rounded-lg">
-    <span class="text-sm font-medium">{{ t('admin.accounts.bulkActions.selected', { count: selectedIds.length REDACTED) REDACTEDREDACTED</span>
+  <div v-if="selectedIds.length > 0" class="mb-4 flex items-center justify-between p-3 bg-primary-50 rounded-lg dark:bg-primary-900/20">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-sm font-medium text-primary-900 dark:text-primary-100">
+        {{ t('admin.accounts.bulkActions.selected', { count: selectedIds.length REDACTED) REDACTEDREDACTED
+      </span>
+      <button
+        @click="$emit('select-page')"
+        class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+      >
+        {{ t('admin.accounts.bulkActions.selectCurrentPage') REDACTEDREDACTED
+      </button>
+      <span class="text-gray-300 dark:text-primary-800">•</span>
+      <button
+        @click="$emit('clear')"
+        class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+      >
+        {{ t('admin.accounts.bulkActions.clear') REDACTEDREDACTED
+      </button>
+    </div>
     <div class="flex gap-2">
       <button @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') REDACTEDREDACTED</button>
       <button @click="$emit('edit')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') REDACTEDREDACTED</button>
@@ -10,5 +27,5 @@
 
 <script setup lang="ts">
 import { useI18n REDACTED from 'vue-i18n'
-defineProps(['selectedIds']); defineEmits(['delete', 'edit']); const { t REDACTED = useI18n()
+defineProps(['selectedIds']); defineEmits(['delete', 'edit', 'clear', 'select-page']); const { t REDACTED = useI18n()
 </script>
