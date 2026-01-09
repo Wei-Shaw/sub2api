@@ -42,6 +42,7 @@ type Config struct {
 	Turnstile    TurnstileConfig    `mapstructure:"turnstile"`
 	Database     DatabaseConfig     `mapstructure:"database"`
 	Redis        RedisConfig        `mapstructure:"redis"`
+	Ops          OpsConfig          `mapstructure:"ops"`
 	JWT          JWTConfig          `mapstructure:"jwt"`
 	Default      DefaultConfig      `mapstructure:"default"`
 	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
@@ -304,6 +305,47 @@ func (r *RedisConfig) Address() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 REDACTED
 
+type OpsConfig struct {
+	// Enabled controls whether ops features should run.
+	//
+	// NOTE: vNext still has a DB-backed feature flag (ops_monitoring_enabled) for runtime on/off.
+	// This config flag is the "hard switch" for deployments that want to disable ops completely.
+	Enabled bool `mapstructure:"enabled"`
+
+	// UsePreaggregatedTables prefers ops_metrics_hourly/daily for long-window dashboard queries.
+	UsePreaggregatedTables bool `mapstructure:"use_preaggregated_tables"`
+
+	// Cleanup controls periodic deletion of old ops data to prevent unbounded growth.
+	Cleanup OpsCleanupConfig `mapstructure:"cleanup"`
+
+	// MetricsCollectorCache controls Redis caching for expensive per-window collector queries.
+	MetricsCollectorCache OpsMetricsCollectorCacheConfig `mapstructure:"metrics_collector_cache"`
+
+	// Pre-aggregation configuration.
+	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+REDACTED
+
+type OpsCleanupConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Schedule string `mapstructure:"schedule"`
+
+	// Retention days (0 disables that cleanup target).
+	//
+	// vNext requirement: default 30 days across ops datasets.
+	ErrorLogRetentionDays      int `mapstructure:"error_log_retention_days"`
+	MinuteMetricsRetentionDays int `mapstructure:"minute_metrics_retention_days"`
+	HourlyMetricsRetentionDays int `mapstructure:"hourly_metrics_retention_days"`
+REDACTED
+
+type OpsAggregationConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+REDACTED
+
+type OpsMetricsCollectorCacheConfig struct {
+	Enabled bool          `mapstructure:"enabled"`
+	TTL     time.Duration `mapstructure:"ttl"`
+REDACTED
+
 type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`
 	ExpireHour int    `mapstructure:"expire_hour"`
@@ -488,6 +530,20 @@ REDACTED)
 	viper.SetDefault("redis.write_timeout_seconds", 3)
 	viper.SetDefault("redis.pool_size", 128)
 	viper.SetDefault("redis.min_idle_conns", 10)
+
+	// Ops (vNext)
+	viper.SetDefault("ops.enabled", true)
+	viper.SetDefault("ops.use_preaggregated_tables", false)
+	viper.SetDefault("ops.cleanup.enabled", true)
+	viper.SetDefault("ops.cleanup.schedule", "0 2 * * *")
+	// Retention days: vNext defaults to 30 days across ops datasets.
+	viper.SetDefault("ops.cleanup.error_log_retention_days", 30)
+	viper.SetDefault("ops.cleanup.minute_metrics_retention_days", 30)
+	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
+	viper.SetDefault("ops.aggregation.enabled", true)
+	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
+	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
+	viper.SetDefault("ops.metrics_collector_cache.ttl", 65*time.Second)
 
 	// JWT
 	viper.SetDefault("jwt.secret", "")
@@ -686,6 +742,21 @@ REDACTED
 REDACTED
 	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
 		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")
+REDACTED
+	if c.Ops.MetricsCollectorCache.TTL < 0 {
+		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.ErrorLogRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.error_log_retention_days must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.MinuteMetricsRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.minute_metrics_retention_days must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.HourlyMetricsRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.hourly_metrics_retention_days must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.Enabled && strings.TrimSpace(c.Ops.Cleanup.Schedule) == "" {
+		return fmt.Errorf("ops.cleanup.schedule is required when ops.cleanup.enabled=true")
 REDACTED
 	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
 		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")

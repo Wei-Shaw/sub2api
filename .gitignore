@@ -123,6 +123,4 @@ backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
-!docs/
 docs/*
-!docs/dependency-security.md

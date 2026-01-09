@@ -7,4 +7,10 @@ type Key string
 const (
 	// ForcePlatform 强制平台（用于 /antigravity 路由），由 middleware.ForcePlatform 设置
 	ForcePlatform Key = "ctx_force_platform"
+
+	// ClientRequestID 客户端请求的唯一标识，用于追踪请求全生命周期（用于 Ops 监控与排障）。
+	ClientRequestID Key = "ctx_client_request_id"
+
+	// RetryCount 表示当前请求在网关层的重试次数（用于 Ops 记录与排障）。
+	RetryCount Key = "ctx_retry_count"
 )
