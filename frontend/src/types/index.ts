@@ -278,6 +278,8 @@ export interface ApiKey {
   name: string
   group_id: number | null
   status: 'active' | 'inactive'
+  ip_whitelist: string[]
+  ip_blacklist: string[]
   created_at: string
   updated_at: string
   group?: Group
@@ -287,12 +289,16 @@ export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
   custom_key?: string // Optional custom API Key
+  ip_whitelist?: string[]
+  ip_blacklist?: string[]
 REDACTED
 
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
   status?: 'active' | 'inactive'
+  ip_whitelist?: string[]
+  ip_blacklist?: string[]
 REDACTED
 
 export interface CreateGroupRequest {
@@ -559,9 +565,6 @@ REDACTED
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription'
 
-// 消费类型: 0=钱包余额, 1=订阅套餐
-export type BillingType = 0 | 1
-
 export interface UsageLog {
   id: number
   user_id: number
@@ -588,7 +591,6 @@ export interface UsageLog {
   actual_cost: number
   rate_multiplier: number
 
-  billing_type: BillingType
   stream: boolean
   duration_ms: number
   first_token_ms: number | null
@@ -599,6 +601,9 @@ export interface UsageLog {
 
   // User-Agent
   user_agent: string | null
+
+  // IP 地址（仅管理员可见）
+  ip_address: string | null
 
   created_at: string
 
@@ -829,7 +834,6 @@ export interface UsageQueryParams {
   group_id?: number
   model?: string
   stream?: boolean
-  billing_type?: number
   start_date?: string
   end_date?: string
 REDACTED

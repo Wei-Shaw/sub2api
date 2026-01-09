@@ -64,7 +64,6 @@ export async function getStats(params: {
   group_id?: number
   model?: string
   stream?: boolean
-  billing_type?: number
   period?: string
   start_date?: string
   end_date?: string

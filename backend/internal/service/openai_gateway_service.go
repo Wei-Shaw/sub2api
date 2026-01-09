@@ -1093,6 +1093,7 @@ type OpenAIRecordUsageInput struct {
 	Account      *Account
 	Subscription *UserSubscription
 	UserAgent    string // 请求的 User-Agent
+	IPAddress    string // 请求的客户端 IP 地址
 REDACTED
 
 // RecordUsage records usage and deducts balance
@@ -1165,6 +1166,11 @@ REDACTED
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent
+REDACTED
+
+	// 添加 IPAddress
+	if input.IPAddress != "" {
+		usageLog.IPAddress = &input.IPAddress
 REDACTED
 
 	if apiKey.GroupID != nil {
