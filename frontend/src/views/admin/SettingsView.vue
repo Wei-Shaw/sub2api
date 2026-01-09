@@ -665,6 +665,59 @@
           </div>
         </div>
 
+        <!-- Ops Monitoring -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.opsMonitoring.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.opsMonitoring.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.opsMonitoring.enabled')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.opsMonitoring.enabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.ops_monitoring_enabled" />
+            </div>
+
+            <div v-if="form.ops_monitoring_enabled" class="mt-5 flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.opsMonitoring.realtimeEnabled')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.opsMonitoring.realtimeEnabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.ops_realtime_monitoring_enabled" />
+            </div>
+
+            <div v-if="form.ops_monitoring_enabled" class="mt-5 flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.opsMonitoring.queryMode')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.opsMonitoring.queryModeHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Select
+                v-model="form.ops_query_mode_default"
+                :options="opsQueryModeOptions"
+                class="w-[220px]"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- Save Button -->
         <div class="flex justify-end">
           <button type="submit" :disabled="saving" class="btn btn-primary">
@@ -687,22 +740,34 @@
           </button>
         </div>
       </form>
+
+      <!-- Ops settings and management (only show when enabled) -->
+      <div v-if="showOpsSettings" class="space-y-6">
+        <OpsRuntimeSettingsCard />
+        <OpsEmailNotificationCard />
+        <OpsAlertRulesCard />
+      </div>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted REDACTED from 'vue'
+import { ref, reactive, onMounted, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api'
 import type { SystemSettings, UpdateSettingsRequest REDACTED from '@/api/admin/settings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
-import { useAppStore REDACTED from '@/stores'
+import Select from '@/components/common/Select.vue'
+import { useAdminSettingsStore, useAppStore REDACTED from '@/stores'
+import OpsAlertRulesCard from '@/views/admin/ops/components/OpsAlertRulesCard.vue'
+import OpsEmailNotificationCard from '@/views/admin/ops/components/OpsEmailNotificationCard.vue'
+import OpsRuntimeSettingsCard from '@/views/admin/ops/components/OpsRuntimeSettingsCard.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const adminSettingsStore = useAdminSettingsStore()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -747,10 +812,28 @@ const form = reactive<SettingsForm>({
   turnstile_site_key: '',
   turnstile_secret_key: '',
   turnstile_secret_key_configured: false,
+  // Model fallback
+  enable_model_fallback: false,
+  fallback_model_anthropic: 'claude-3-5-sonnet-20241022',
+  fallback_model_openai: 'gpt-4o',
+  fallback_model_gemini: 'gemini-2.5-pro',
+  fallback_model_antigravity: 'gemini-2.5-pro',
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
-  identity_patch_prompt: ''
+  identity_patch_prompt: '',
+  // Ops Monitoring (vNext)
+  ops_monitoring_enabled: true,
+  ops_realtime_monitoring_enabled: true,
+  ops_query_mode_default: 'auto'
 REDACTED)
+
+const opsQueryModeOptions = computed(() => [
+  { value: 'auto', label: t('admin.settings.opsMonitoring.queryModeAuto') REDACTED,
+  { value: 'raw', label: t('admin.settings.opsMonitoring.queryModeRaw') REDACTED,
+  { value: 'preagg', label: t('admin.settings.opsMonitoring.queryModePreagg') REDACTED
+])
+
+const showOpsSettings = computed(() => !!form.ops_monitoring_enabled)
 
 function handleLogoUpload(event: Event) {
   const input = event.target as HTMLInputElement
@@ -829,12 +912,25 @@ async function saveSettings() {
       smtp_use_tls: form.smtp_use_tls,
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
-      turnstile_secret_key: form.turnstile_secret_key || undefined
+      turnstile_secret_key: form.turnstile_secret_key || undefined,
+      enable_model_fallback: form.enable_model_fallback,
+      fallback_model_anthropic: form.fallback_model_anthropic,
+      fallback_model_openai: form.fallback_model_openai,
+      fallback_model_gemini: form.fallback_model_gemini,
+      fallback_model_antigravity: form.fallback_model_antigravity,
+      enable_identity_patch: form.enable_identity_patch,
+      identity_patch_prompt: form.identity_patch_prompt,
+      ops_monitoring_enabled: form.ops_monitoring_enabled,
+      ops_realtime_monitoring_enabled: form.ops_realtime_monitoring_enabled,
+      ops_query_mode_default: form.ops_query_mode_default
     REDACTED
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)
     form.smtp_password = ''
     form.turnstile_secret_key = ''
+    adminSettingsStore.setOpsMonitoringEnabledLocal(!!updated.ops_monitoring_enabled)
+    adminSettingsStore.setOpsRealtimeMonitoringEnabledLocal(!!updated.ops_realtime_monitoring_enabled)
+    adminSettingsStore.setOpsQueryModeDefaultLocal(updated.ops_query_mode_default || 'auto')
     // Refresh cached public settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))
