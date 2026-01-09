@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
@@ -530,20 +531,28 @@ REDACTED
 	reqModel, _ := reqBody["model"].(string)
 	reqStream, _ := reqBody["stream"].(bool)
 	promptCacheKey := ""
+	if v, ok := reqBody["prompt_cache_key"].(string); ok {
+		promptCacheKey = strings.TrimSpace(v)
+REDACTED
 
 	// Track if body needs re-serialization
 	bodyModified := false
 	originalModel := reqModel
 
-	// Apply model mapping
-	mappedModel := account.GetMappedModel(reqModel)
-	if mappedModel != reqModel {
-		reqBody["model"] = mappedModel
-		bodyModified = true
+	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent"))
+
+	// Apply model mapping (skip for Codex CLI for transparent forwarding)
+	mappedModel := reqModel
+	if !isCodexCLI {
+		mappedModel = account.GetMappedModel(reqModel)
+		if mappedModel != reqModel {
+			reqBody["model"] = mappedModel
+			bodyModified = true
+	REDACTED
 REDACTED
 
-	if account.Type == AccountTypeOAuth {
-		codexResult := applyCodexOAuthTransform(reqBody, codexModeEnabled())
+	if account.Type == AccountTypeOAuth && !isCodexCLI {
+		codexResult := applyCodexOAuthTransform(reqBody)
 		if codexResult.Modified {
 			bodyModified = true
 	REDACTED

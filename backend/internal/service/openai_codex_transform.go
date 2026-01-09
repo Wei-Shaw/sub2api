@@ -135,7 +135,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func applyCodexOAuthTransform(reqBody map[string]any, codexMode bool) codexTransformResult {
+func applyCodexOAuthTransform(reqBody map[string]any) codexTransformResult {
 	result := codexTransformResult{REDACTED
 
 	model := ""
@@ -151,16 +151,13 @@ REDACTED
 		result.NormalizedModel = normalizedModel
 REDACTED
 
-	reqBody["store"] = false
-	reqBody["stream"] = true
-	result.Modified = true
-
-	instructions := getCodexInstructions(normalizedModel)
-	if instructions != "" {
-		if existing, ok := reqBody["instructions"].(string); !ok || existing != instructions {
-			reqBody["instructions"] = instructions
-			result.Modified = true
-	REDACTED
+	if v, ok := reqBody["store"].(bool); !ok || v {
+		reqBody["store"] = false
+		result.Modified = true
+REDACTED
+	if v, ok := reqBody["stream"].(bool); !ok || !v {
+		reqBody["stream"] = true
+		result.Modified = true
 REDACTED
 
 	if _, ok := reqBody["max_output_tokens"]; ok {
@@ -180,46 +177,27 @@ REDACTED
 		result.PromptCacheKey = strings.TrimSpace(v)
 REDACTED
 
+	instructions := strings.TrimSpace(getCodexInstructions(normalizedModel))
+	existingInstructions, _ := reqBody["instructions"].(string)
+	existingInstructions = strings.TrimSpace(existingInstructions)
+
+	if instructions != "" {
+		if existingInstructions != "" && existingInstructions != instructions {
+			if input, ok := reqBody["input"].([]any); ok {
+				reqBody["input"] = prependSystemInstruction(input, existingInstructions)
+				result.Modified = true
+		REDACTED
+	REDACTED
+		if existingInstructions != instructions {
+			reqBody["instructions"] = instructions
+			result.Modified = true
+	REDACTED
+REDACTED
+
 	if input, ok := reqBody["input"].([]any); ok {
 		input = filterCodexInput(input)
-		if codexMode {
-			cachedPrompt := getOpenCodeCodexPrompt()
-			input = filterOpenCodeSystemPromptsWithCachedPrompt(input, cachedPrompt)
-			if hasTools(reqBody) {
-				input = addCodexBridgeMessage(input)
-		REDACTED
-	REDACTED else if hasTools(reqBody) {
-			input = addToolRemapMessage(input)
-	REDACTED
 		input = normalizeOrphanedToolOutputs(input)
 		reqBody["input"] = input
-		result.Modified = true
-REDACTED
-
-	effort, summary := resolveCodexReasoning(reqBody, normalizedModel)
-	if effort != "" || summary != "" {
-		reasoning := ensureMap(reqBody["reasoning"])
-		if effort != "" {
-			reasoning["effort"] = effort
-	REDACTED
-		if summary != "" {
-			reasoning["summary"] = summary
-	REDACTED
-		reqBody["reasoning"] = reasoning
-		result.Modified = true
-REDACTED
-
-	textVerbosity := resolveTextVerbosity(reqBody)
-	if textVerbosity != "" {
-		text := ensureMap(reqBody["text"])
-		text["verbosity"] = textVerbosity
-		reqBody["text"] = text
-		result.Modified = true
-REDACTED
-
-	include := resolveInclude(reqBody)
-	if include != nil {
-		reqBody["include"] = include
 		result.Modified = true
 REDACTED
 
@@ -485,6 +463,19 @@ func filterCodexInput(input []any) []any {
 		filtered = append(filtered, m)
 REDACTED
 	return filtered
+REDACTED
+
+func prependSystemInstruction(input []any, instructions string) []any {
+	message := map[string]any{
+		"role": "system",
+		"content": []any{
+			map[string]any{
+				"type": "input_text",
+				"text": instructions,
+		REDACTED,
+	REDACTED,
+REDACTED
+	return append([]any{messageREDACTED, input...)
 REDACTED
 
 func filterOpenCodeSystemPromptsWithCachedPrompt(input []any, cachedPrompt string) []any {

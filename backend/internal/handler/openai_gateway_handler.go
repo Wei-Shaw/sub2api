@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -92,17 +91,7 @@ REDACTED
 		return
 REDACTED
 
-	// For non-Codex CLI requests, set default instructions
 	userAgent := c.GetHeader("User-Agent")
-	if !openai.IsCodexCLIRequest(userAgent) {
-		reqBody["instructions"] = openai.DefaultInstructions
-		// Re-serialize body
-		body, err = json.Marshal(reqBody)
-		if err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to process request")
-			return
-	REDACTED
-REDACTED
 
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
