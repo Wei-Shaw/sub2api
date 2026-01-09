@@ -113,12 +113,26 @@ REDACTED, nil)
 	require.ErrorIs(t, err, ErrRegDisabled)
 REDACTED
 
-func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
+func TestAuthService_Register_EmailVerifyEnabledButServiceNotConfigured(t *testing.T) {
 	repo := &userRepoStub{REDACTED
+	// 邮件验证开启但 emailCache 为 nil（emailService 未配置）
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled: "true",
 		SettingKeyEmailVerifyEnabled:  "true",
 REDACTED, nil)
+
+	// 应返回服务不可用错误，而不是允许绕过验证
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code")
+	require.ErrorIs(t, err, ErrServiceUnavailable)
+REDACTED
+
+func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
+	repo := &userRepoStub{REDACTED
+	cache := &emailCacheStub{REDACTED // 配置 emailService
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+		SettingKeyEmailVerifyEnabled:  "true",
+REDACTED, cache)
 
 	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "")
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
@@ -179,4 +193,64 @@ REDACTED
 	require.Equal(t, 2, user.Concurrency)
 	require.Len(t, repo.created, 1)
 	require.True(t, user.CheckPassword("password"))
+REDACTED
+
+func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {
+	repo := &userRepoStub{REDACTED
+	service := newAuthService(repo, nil, nil)
+
+	// 创建用户并生成 token
+	user := &User{
+		ID:           1,
+		Email:        "test@test.com",
+		Role:         RoleUser,
+		Status:       StatusActive,
+		TokenVersion: 1,
+REDACTED
+	token, err := service.GenerateToken(user)
+REDACTED
+
+	// 验证有效 token
+	claims, err := service.ValidateToken(token)
+REDACTED
+	require.NotNil(t, claims)
+	require.Equal(t, int64(1), claims.UserID)
+
+	// 模拟过期 token（通过创建一个过期很久的 token）
+	service.cfg.JWT.ExpireHour = -1 // 设置为负数使 token 立即过期
+	expiredToken, err := service.GenerateToken(user)
+REDACTED
+	service.cfg.JWT.ExpireHour = 1 // 恢复
+
+	// 验证过期 token 应返回 claims 和 ErrTokenExpired
+	claims, err = service.ValidateToken(expiredToken)
+	require.ErrorIs(t, err, ErrTokenExpired)
+	require.NotNil(t, claims, "claims should not be nil when token is expired")
+	require.Equal(t, int64(1), claims.UserID)
+	require.Equal(t, "test@test.com", claims.Email)
+REDACTED
+
+func TestAuthService_RefreshToken_ExpiredTokenNoPanic(t *testing.T) {
+	user := &User{
+		ID:           1,
+		Email:        "test@test.com",
+		Role:         RoleUser,
+		Status:       StatusActive,
+		TokenVersion: 1,
+REDACTED
+	repo := &userRepoStub{user: userREDACTED
+	service := newAuthService(repo, nil, nil)
+
+	// 创建过期 token
+	service.cfg.JWT.ExpireHour = -1
+	expiredToken, err := service.GenerateToken(user)
+REDACTED
+	service.cfg.JWT.ExpireHour = 1
+
+	// RefreshToken 使用过期 token 不应 panic
+	require.NotPanics(t, func() {
+		newToken, err := service.RefreshToken(context.Background(), expiredToken)
+	REDACTED
+		require.NotEmpty(t, newToken)
+REDACTED)
 REDACTED
