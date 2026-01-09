@@ -337,6 +337,21 @@
                     class="input font-mono text-sm"
                     :placeholder="t('admin.settings.linuxdo.redirectUrlPlaceholder')"
                   />
+                  <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm w-fit"
+                      @click="setAndCopyLinuxdoRedirectUrl"
+                    >
+                      {{ t('admin.settings.linuxdo.quickSetCopy') REDACTEDREDACTED
+                    </button>
+                    <code
+                      v-if="linuxdoRedirectUrlSuggestion"
+                      class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+                    >
+                      {{ linuxdoRedirectUrlSuggestion REDACTEDREDACTED
+                    </code>
+                  </div>
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t('admin.settings.linuxdo.redirectUrlHint') REDACTEDREDACTED
                   </p>
@@ -777,17 +792,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted REDACTED from 'vue'
+import { ref, reactive, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api'
 import type { SystemSettings, UpdateSettingsRequest REDACTED from '@/api/admin/settings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import { useClipboard REDACTED from '@/composables/useClipboard'
 import { useAppStore REDACTED from '@/stores'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard REDACTED = useClipboard()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -843,6 +860,21 @@ const form = reactive<SettingsForm>({
   enable_identity_patch: true,
   identity_patch_prompt: ''
 REDACTED)
+
+const linuxdoRedirectUrlSuggestion = computed(() => {
+  if (typeof window === 'undefined') return ''
+  const origin =
+    window.location.origin || `${window.location.protocolREDACTED//${window.location.hostREDACTED`
+  return `${originREDACTED/api/v1/auth/oauth/linuxdo/callback`
+REDACTED)
+
+async function setAndCopyLinuxdoRedirectUrl() {
+  const url = linuxdoRedirectUrlSuggestion.value
+  if (!url) return
+
+  form.linuxdo_connect_redirect_url = url
+  await copyToClipboard(url, t('admin.settings.linuxdo.redirectUrlSetAndCopied'))
+REDACTED
 
 function handleLogoUpload(event: Event) {
   const input = event.target as HTMLInputElement

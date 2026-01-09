@@ -1926,7 +1926,9 @@ export default {
         clientSecretConfiguredHint: '密钥已配置，留空以保留当前值。',
         redirectUrl: '回调地址（Redirect URL）',
         redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/linuxdo/callback',
-        redirectUrlHint: '需与 Connect.Linux.Do 中配置的回调地址一致（必须是 http(s) 完整 URL）'
+        redirectUrlHint: '需与 Connect.Linux.Do 中配置的回调地址一致（必须是 http(s) 完整 URL）',
+        quickSetCopy: '使用当前站点生成并复制',
+        redirectUrlSetAndCopied: '已使用当前站点生成回调地址并复制到剪贴板'
       REDACTED,
       defaults: {
         title: '用户默认设置',

@@ -1782,7 +1782,9 @@ export default {
         redirectUrl: 'Redirect URL',
         redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/linuxdo/callback',
         redirectUrlHint:
-          'Must match the redirect URL configured in Connect.Linux.Do (must be an absolute http(s) URL)'
+          'Must match the redirect URL configured in Connect.Linux.Do (must be an absolute http(s) URL)',
+        quickSetCopy: 'Generate & Copy (current site)',
+        redirectUrlSetAndCopied: 'Redirect URL generated and copied to clipboard'
       REDACTED,
       defaults: {
         title: 'Default User Settings',
