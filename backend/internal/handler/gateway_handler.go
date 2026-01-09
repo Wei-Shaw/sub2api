@@ -88,6 +88,8 @@ REDACTED
 		return
 REDACTED
 
+	setOpsRequestContext(c, "", false, body)
+
 	parsedReq, err := service.ParseGatewayRequest(body)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -95,6 +97,8 @@ REDACTED
 REDACTED
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+
+	setOpsRequestContext(c, reqModel, reqStream, body)
 
 	// 验证 model 必填
 	if reqModel == "" {
@@ -111,6 +115,7 @@ REDACTED
 	// 0. 检查wait队列是否已满
 	maxWait := service.CalculateMaxWait(subject.Concurrency)
 	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
+	waitCounted := false
 	if err != nil {
 		log.Printf("Increment wait count failed: %v", err)
 		// On error, allow request to proceed
@@ -118,8 +123,15 @@ REDACTED else if !canWait {
 		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
 		return
 REDACTED
-	// 确保在函数退出时减少wait计数
-	defer h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+	if err == nil && canWait {
+		waitCounted = true
+REDACTED
+	// Ensure we decrement if we exit before acquiring the user slot.
+	defer func() {
+		if waitCounted {
+			h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+	REDACTED
+REDACTED()
 
 	// 1. 首先获取用户并发槽位
 	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
@@ -127,6 +139,11 @@ REDACTED
 		log.Printf("User concurrency acquire failed: %v", err)
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
+REDACTED
+	// User slot acquired: no longer waiting in the queue.
+	if waitCounted {
+		h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+		waitCounted = false
 REDACTED
 	// 在请求结束或 Context 取消时确保释放槽位，避免客户端断开造成泄漏
 	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)
@@ -174,6 +191,7 @@ REDACTED
 				return
 		REDACTED
 			account := selection.Account
+			setOpsSelectedAccount(c, account.ID)
 
 			// 检查预热请求拦截（在账号选择后、转发前检查）
 			if account.IsInterceptWarmupEnabled() && isWarmupRequest(body) {
@@ -190,12 +208,12 @@ REDACTED
 
 			// 3. 获取账号并发槽位
 			accountReleaseFunc := selection.ReleaseFunc
-			var accountWaitRelease func()
 			if !selection.Acquired {
 				if selection.WaitPlan == nil {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 					return
 			REDACTED
+				accountWaitCounted := false
 				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 				if err != nil {
 					log.Printf("Increment account wait count failed: %v", err)
@@ -203,12 +221,16 @@ REDACTED
 					log.Printf("Account wait queue full: account=%d", account.ID)
 					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 					return
-			REDACTED else {
-					// Only set release function if increment succeeded
-					accountWaitRelease = func() {
+			REDACTED
+				if err == nil && canWait {
+					accountWaitCounted = true
+			REDACTED
+				// Ensure the wait counter is decremented if we exit before acquiring the slot.
+				defer func() {
+					if accountWaitCounted {
 						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
 				REDACTED
-			REDACTED
+			REDACTED()
 
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 					c,
@@ -219,12 +241,14 @@ REDACTED
 					&streamStarted,
 				)
 				if err != nil {
-					if accountWaitRelease != nil {
-						accountWaitRelease()
-				REDACTED
 					log.Printf("Account concurrency acquire failed: %v", err)
 					h.handleConcurrencyError(c, err, "account", streamStarted)
 					return
+			REDACTED
+				// Slot acquired: no longer waiting in queue.
+				if accountWaitCounted {
+					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+					accountWaitCounted = false
 			REDACTED
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), sessionKey, account.ID); err != nil {
 					log.Printf("Bind sticky session failed: %v", err)
@@ -232,7 +256,6 @@ REDACTED
 		REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
-			accountWaitRelease = wrapReleaseOnDone(c.Request.Context(), accountWaitRelease)
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
@@ -243,9 +266,6 @@ REDACTED
 		REDACTED
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
-		REDACTED
-			if accountWaitRelease != nil {
-				accountWaitRelease()
 		REDACTED
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
@@ -301,6 +321,7 @@ REDACTED
 			return
 	REDACTED
 		account := selection.Account
+		setOpsSelectedAccount(c, account.ID)
 
 		// 检查预热请求拦截（在账号选择后、转发前检查）
 		if account.IsInterceptWarmupEnabled() && isWarmupRequest(body) {
@@ -317,12 +338,12 @@ REDACTED
 
 		// 3. 获取账号并发槽位
 		accountReleaseFunc := selection.ReleaseFunc
-		var accountWaitRelease func()
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 				return
 		REDACTED
+			accountWaitCounted := false
 			canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 			if err != nil {
 				log.Printf("Increment account wait count failed: %v", err)
@@ -330,12 +351,15 @@ REDACTED
 				log.Printf("Account wait queue full: account=%d", account.ID)
 				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 				return
-		REDACTED else {
-				// Only set release function if increment succeeded
-				accountWaitRelease = func() {
+		REDACTED
+			if err == nil && canWait {
+				accountWaitCounted = true
+		REDACTED
+			defer func() {
+				if accountWaitCounted {
 					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
 			REDACTED
-		REDACTED
+		REDACTED()
 
 			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 				c,
@@ -346,12 +370,13 @@ REDACTED
 				&streamStarted,
 			)
 			if err != nil {
-				if accountWaitRelease != nil {
-					accountWaitRelease()
-			REDACTED
 				log.Printf("Account concurrency acquire failed: %v", err)
 				h.handleConcurrencyError(c, err, "account", streamStarted)
 				return
+		REDACTED
+			if accountWaitCounted {
+				h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+				accountWaitCounted = false
 		REDACTED
 			if err := h.gatewayService.BindStickySession(c.Request.Context(), sessionKey, account.ID); err != nil {
 				log.Printf("Bind sticky session failed: %v", err)
@@ -359,7 +384,6 @@ REDACTED
 	REDACTED
 		// 账号槽位/等待计数需要在超时或断开时安全回收
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
-		accountWaitRelease = wrapReleaseOnDone(c.Request.Context(), accountWaitRelease)
 
 		// 转发请求 - 根据账号平台分流
 		var result *service.ForwardResult
@@ -370,9 +394,6 @@ REDACTED
 	REDACTED
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
-	REDACTED
-		if accountWaitRelease != nil {
-			accountWaitRelease()
 	REDACTED
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
@@ -672,6 +693,8 @@ REDACTED
 		return
 REDACTED
 
+	setOpsRequestContext(c, "", false, body)
+
 	parsedReq, err := service.ParseGatewayRequest(body)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -683,6 +706,8 @@ REDACTED
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 REDACTED
+
+	setOpsRequestContext(c, parsedReq.Model, parsedReq.Stream, body)
 
 	// 获取订阅信息（可能为nil）
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
@@ -704,6 +729,7 @@ REDACTED
 		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
 		return
 REDACTED
+	setOpsSelectedAccount(c, account.ID)
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {

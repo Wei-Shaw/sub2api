@@ -17,6 +17,7 @@ type AdminHandlers struct {
 	Proxy            *admin.ProxyHandler
 	Redeem           *admin.RedeemHandler
 	Setting          *admin.SettingHandler
+	Ops              *admin.OpsHandler
 	System           *admin.SystemHandler
 	Subscription     *admin.SubscriptionHandler
 	Usage            *admin.UsageHandler
