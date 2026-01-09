@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -68,6 +69,11 @@ func (h *GroupHandler) List(c *gin.Context) {
 	platform := c.Query("platform")
 	status := c.Query("status")
 	search := c.Query("search")
+	// 标准化和验证 search 参数
+	search = strings.TrimSpace(search)
+	if len(search) > 100 {
+		search = search[:100]
+REDACTED
 	isExclusiveStr := c.Query("is_exclusive")
 
 	var isExclusive *bool

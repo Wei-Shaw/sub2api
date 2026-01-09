@@ -583,7 +583,7 @@ func (stubGroupRepo) List(ctx context.Context, params pagination.PaginationParam
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
-func (stubGroupRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
+func (stubGroupRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
