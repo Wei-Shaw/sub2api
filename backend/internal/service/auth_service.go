@@ -2,9 +2,13 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
+	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -18,6 +22,7 @@ var (
 	ErrInvalidCredentials  = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
 	ErrUserNotActive       = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
 	ErrEmailExists         = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailReserved       = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
 	ErrInvalidToken        = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
 	ErrTokenExpired        = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
 	ErrTokenTooLarge       = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
@@ -75,21 +80,30 @@ REDACTED
 
 // RegisterWithVerification 用户注册（支持邮件验证），返回token和用户
 func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode string) (string, *User, error) {
-	// 检查是否开放注册
-	if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
+	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
+	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
+REDACTED
+
+	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
+	if isReservedEmail(email) {
+		return "", nil, ErrEmailReserved
 REDACTED
 
 	// 检查是否需要邮件验证
 	if s.settingService != nil && s.settingService.IsEmailVerifyEnabled(ctx) {
+		// 如果邮件验证已开启但邮件服务未配置，拒绝注册
+		// 这是一个配置错误，不应该允许绕过验证
+		if s.emailService == nil {
+			log.Println("[Auth] Email verification enabled but email service not configured, rejecting registration")
+			return "", nil, ErrServiceUnavailable
+	REDACTED
 		if verifyCode == "" {
 			return "", nil, ErrEmailVerifyRequired
 	REDACTED
 		// 验证邮箱验证码
-		if s.emailService != nil {
-			if err := s.emailService.VerifyCode(ctx, email, verifyCode); err != nil {
-				return "", nil, fmt.Errorf("verify code: %w", err)
-		REDACTED
+		if err := s.emailService.VerifyCode(ctx, email, verifyCode); err != nil {
+			return "", nil, fmt.Errorf("verify code: %w", err)
 	REDACTED
 REDACTED
 
@@ -128,6 +142,10 @@ REDACTED
 REDACTED
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
+		// 优先检查邮箱冲突错误（竞态条件下可能发生）
+		if errors.Is(err, ErrEmailExists) {
+			return "", nil, ErrEmailExists
+	REDACTED
 		log.Printf("[Auth] Database error creating user: %v", err)
 		return "", nil, ErrServiceUnavailable
 REDACTED
@@ -148,9 +166,13 @@ REDACTED
 
 // SendVerifyCode 发送邮箱验证码（同步方式）
 func (s *AuthService) SendVerifyCode(ctx context.Context, email string) error {
-	// 检查是否开放注册
-	if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
+	// 检查是否开放注册（默认关闭）
+	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return ErrRegDisabled
+REDACTED
+
+	if isReservedEmail(email) {
+		return ErrEmailReserved
 REDACTED
 
 	// 检查邮箱是否已存在
@@ -181,10 +203,14 @@ REDACTED
 func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*SendVerifyCodeResult, error) {
 	log.Printf("[Auth] SendVerifyCodeAsync called for email: %s", email)
 
-	// 检查是否开放注册
-	if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
+	// 检查是否开放注册（默认关闭）
+	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		log.Println("[Auth] Registration is disabled")
 		return nil, ErrRegDisabled
+REDACTED
+
+	if isReservedEmail(email) {
+		return nil, ErrEmailReserved
 REDACTED
 
 	// 检查邮箱是否已存在
@@ -266,7 +292,7 @@ REDACTED
 // IsRegistrationEnabled 检查是否开放注册
 func (s *AuthService) IsRegistrationEnabled(ctx context.Context) bool {
 	if s.settingService == nil {
-		return true
+		return false // 安全默认：settingService 未配置时关闭注册
 REDACTED
 	return s.settingService.IsRegistrationEnabled(ctx)
 REDACTED
@@ -311,6 +337,102 @@ REDACTED
 	return token, user, nil
 REDACTED
 
+// LoginOrRegisterOAuth 用于第三方 OAuth/SSO 登录：
+// - 如果邮箱已存在：直接登录（不需要本地密码）
+// - 如果邮箱不存在：创建新用户并登录
+//
+// 注意：该函数用于“终端用户登录 Sub2API 本身”的场景（不同于上游账号的 OAuth，例如 OpenAI/Gemini）。
+// 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
+func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
+	email = strings.TrimSpace(email)
+	if email == "" || len(email) > 255 {
+		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+REDACTED
+	if _, err := mail.ParseAddress(email); err != nil {
+		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+REDACTED
+
+	username = strings.TrimSpace(username)
+	if len([]rune(username)) > 100 {
+		username = string([]rune(username)[:100])
+REDACTED
+
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			// OAuth 首次登录视为注册。
+			if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
+				return "", nil, ErrRegDisabled
+		REDACTED
+
+			randomPassword, err := randomHexString(32)
+			if err != nil {
+				log.Printf("[Auth] Failed to generate random password for oauth signup: %v", err)
+				return "", nil, ErrServiceUnavailable
+		REDACTED
+			hashedPassword, err := s.HashPassword(randomPassword)
+			if err != nil {
+				return "", nil, fmt.Errorf("hash password: %w", err)
+		REDACTED
+
+			// 新用户默认值。
+			defaultBalance := s.cfg.Default.UserBalance
+			defaultConcurrency := s.cfg.Default.UserConcurrency
+			if s.settingService != nil {
+				defaultBalance = s.settingService.GetDefaultBalance(ctx)
+				defaultConcurrency = s.settingService.GetDefaultConcurrency(ctx)
+		REDACTED
+
+			newUser := &User{
+				Email:        email,
+				Username:     username,
+				PasswordHash: hashedPassword,
+				Role:         RoleUser,
+				Balance:      defaultBalance,
+				Concurrency:  defaultConcurrency,
+				Status:       StatusActive,
+		REDACTED
+
+			if err := s.userRepo.Create(ctx, newUser); err != nil {
+				if errors.Is(err, ErrEmailExists) {
+					// 并发场景：GetByEmail 与 Create 之间用户被创建。
+					user, err = s.userRepo.GetByEmail(ctx, email)
+					if err != nil {
+						log.Printf("[Auth] Database error getting user after conflict: %v", err)
+						return "", nil, ErrServiceUnavailable
+				REDACTED
+			REDACTED else {
+					log.Printf("[Auth] Database error creating oauth user: %v", err)
+					return "", nil, ErrServiceUnavailable
+			REDACTED
+		REDACTED else {
+				user = newUser
+		REDACTED
+	REDACTED else {
+			log.Printf("[Auth] Database error during oauth login: %v", err)
+			return "", nil, ErrServiceUnavailable
+	REDACTED
+REDACTED
+
+	if !user.IsActive() {
+		return "", nil, ErrUserNotActive
+REDACTED
+
+	// 尽力补全：当用户名为空时，使用第三方返回的用户名回填。
+	if user.Username == "" && username != "" {
+		user.Username = username
+		if err := s.userRepo.Update(ctx, user); err != nil {
+			log.Printf("[Auth] Failed to update username after oauth login: %v", err)
+	REDACTED
+REDACTED
+
+	token, err := s.GenerateToken(user)
+	if err != nil {
+		return "", nil, fmt.Errorf("generate token: %w", err)
+REDACTED
+	return token, user, nil
+REDACTED
+
 // ValidateToken 验证JWT token并返回用户声明
 func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
 	// 先做长度校验，尽早拒绝异常超长 token，降低 DoS 风险。
@@ -336,6 +458,11 @@ REDACTED)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
+			// token 过期但仍返回 claims（用于 RefreshToken 等场景）
+			// jwt-go 在解析时即使遇到过期错误，token.Claims 仍会被填充
+			if claims, ok := token.Claims.(*JWTClaims); ok {
+				return claims, ErrTokenExpired
+		REDACTED
 			return nil, ErrTokenExpired
 	REDACTED
 		return nil, ErrInvalidToken
@@ -346,6 +473,22 @@ REDACTED
 REDACTED
 
 	return nil, ErrInvalidToken
+REDACTED
+
+func randomHexString(byteLength int) (string, error) {
+	if byteLength <= 0 {
+		byteLength = 16
+REDACTED
+	buf := make([]byte, byteLength)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+REDACTED
+	return hex.EncodeToString(buf), nil
+REDACTED
+
+func isReservedEmail(email string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain)
 REDACTED
 
 // GenerateToken 生成JWT token

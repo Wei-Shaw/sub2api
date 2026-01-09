@@ -43,7 +43,8 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     if (abortController) {
       abortController.abort()
     REDACTED
-    abortController = new AbortController()
+    const currentController = new AbortController()
+    abortController = currentController
     loading.value = true
 
     try {
@@ -51,9 +52,9 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
         pagination.page,
         pagination.page_size,
         toRaw(params) as P,
-        { signal: abortController.signal REDACTED
+        { signal: currentController.signal REDACTED
       )
-      
+
       items.value = response.items || []
       pagination.total = response.total || 0
       pagination.pages = response.pages || 0
@@ -63,7 +64,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
         throw error
       REDACTED
     REDACTED finally {
-      if (abortController && !abortController.signal.aborted) {
+      if (abortController === currentController) {
         loading.value = false
       REDACTED
     REDACTED
@@ -77,7 +78,9 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
   const debouncedReload = useDebounceFn(reload, debounceMs)
 
   const handlePageChange = (page: number) => {
-    pagination.page = page
+    // 确保页码在有效范围内
+    const validPage = Math.max(1, Math.min(page, pagination.pages || 1))
+    pagination.page = validPage
     load()
   REDACTED
 

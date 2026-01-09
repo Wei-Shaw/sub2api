@@ -96,7 +96,7 @@ const exportToExcel = async () => {
         t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
         t('usage.rate'), t('usage.original'), t('usage.billed'),
         t('usage.billingType'), t('usage.firstToken'), t('usage.duration'),
-        t('admin.usage.requestId')
+        t('admin.usage.requestId'), t('usage.userAgent')
       ]
       const rows = all.map(log => [
         log.created_at,
@@ -120,7 +120,8 @@ const exportToExcel = async () => {
         log.billing_type === 1 ? t('usage.subscription') : t('usage.balance'),
         log.first_token_ms ?? '',
         log.duration_ms,
-        log.request_id || ''
+        log.request_id || '',
+        log.user_agent || ''
       ])
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
       const wb = XLSX.utils.book_new()

@@ -19,6 +19,8 @@ func RegisterAuthRoutes(
 		auth.POST("/register", h.Auth.Register)
 		auth.POST("/login", h.Auth.Login)
 		auth.POST("/send-verify-code", h.Auth.SendVerifyCode)
+		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
+		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
 REDACTED
 
 	// 公开设置（无需认证）

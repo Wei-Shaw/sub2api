@@ -258,6 +258,34 @@ REDACTED
 	return _c
 REDACTED
 
+// SetClaudeCodeOnly sets the "claude_code_only" field.
+func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
+	_c.mutation.SetClaudeCodeOnly(v)
+	return _c
+REDACTED
+
+// SetNillableClaudeCodeOnly sets the "claude_code_only" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableClaudeCodeOnly(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetClaudeCodeOnly(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (_c *GroupCreate) SetFallbackGroupID(v int64) *GroupCreate {
+	_c.mutation.SetFallbackGroupID(v)
+	return _c
+REDACTED
+
+// SetNillableFallbackGroupID sets the "fallback_group_id" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableFallbackGroupID(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetFallbackGroupID(*v)
+REDACTED
+	return _c
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -423,6 +451,10 @@ REDACTED
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
 REDACTED
+	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
+		v := group.DefaultClaudeCodeOnly
+		_c.mutation.SetClaudeCodeOnly(v)
+REDACTED
 	return nil
 REDACTED
 
@@ -474,6 +506,9 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
+		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -569,6 +604,14 @@ REDACTED
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+REDACTED
+	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
+		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
+		_node.ClaudeCodeOnly = value
+REDACTED
+	if value, ok := _c.mutation.FallbackGroupID(); ok {
+		_spec.SetField(group.FieldFallbackGroupID, field.TypeInt64, value)
+		_node.FallbackGroupID = &value
 REDACTED
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1014,6 +1057,42 @@ func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	return u
 REDACTED
 
+// SetClaudeCodeOnly sets the "claude_code_only" field.
+func (u *GroupUpsert) SetClaudeCodeOnly(v bool) *GroupUpsert {
+	u.Set(group.FieldClaudeCodeOnly, v)
+	return u
+REDACTED
+
+// UpdateClaudeCodeOnly sets the "claude_code_only" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateClaudeCodeOnly() *GroupUpsert {
+	u.SetExcluded(group.FieldClaudeCodeOnly)
+	return u
+REDACTED
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (u *GroupUpsert) SetFallbackGroupID(v int64) *GroupUpsert {
+	u.Set(group.FieldFallbackGroupID, v)
+	return u
+REDACTED
+
+// UpdateFallbackGroupID sets the "fallback_group_id" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateFallbackGroupID() *GroupUpsert {
+	u.SetExcluded(group.FieldFallbackGroupID)
+	return u
+REDACTED
+
+// AddFallbackGroupID adds v to the "fallback_group_id" field.
+func (u *GroupUpsert) AddFallbackGroupID(v int64) *GroupUpsert {
+	u.Add(group.FieldFallbackGroupID, v)
+	return u
+REDACTED
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (u *GroupUpsert) ClearFallbackGroupID() *GroupUpsert {
+	u.SetNull(group.FieldFallbackGroupID)
+	return u
+REDACTED
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1392,6 +1471,48 @@ REDACTED
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+REDACTED)
+REDACTED
+
+// SetClaudeCodeOnly sets the "claude_code_only" field.
+func (u *GroupUpsertOne) SetClaudeCodeOnly(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClaudeCodeOnly(v)
+REDACTED)
+REDACTED
+
+// UpdateClaudeCodeOnly sets the "claude_code_only" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateClaudeCodeOnly() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClaudeCodeOnly()
+REDACTED)
+REDACTED
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (u *GroupUpsertOne) SetFallbackGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFallbackGroupID(v)
+REDACTED)
+REDACTED
+
+// AddFallbackGroupID adds v to the "fallback_group_id" field.
+func (u *GroupUpsertOne) AddFallbackGroupID(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddFallbackGroupID(v)
+REDACTED)
+REDACTED
+
+// UpdateFallbackGroupID sets the "fallback_group_id" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateFallbackGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFallbackGroupID()
+REDACTED)
+REDACTED
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (u *GroupUpsertOne) ClearFallbackGroupID() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearFallbackGroupID()
 REDACTED)
 REDACTED
 
@@ -1939,6 +2060,48 @@ REDACTED
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+REDACTED)
+REDACTED
+
+// SetClaudeCodeOnly sets the "claude_code_only" field.
+func (u *GroupUpsertBulk) SetClaudeCodeOnly(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetClaudeCodeOnly(v)
+REDACTED)
+REDACTED
+
+// UpdateClaudeCodeOnly sets the "claude_code_only" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateClaudeCodeOnly() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateClaudeCodeOnly()
+REDACTED)
+REDACTED
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (u *GroupUpsertBulk) SetFallbackGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFallbackGroupID(v)
+REDACTED)
+REDACTED
+
+// AddFallbackGroupID adds v to the "fallback_group_id" field.
+func (u *GroupUpsertBulk) AddFallbackGroupID(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddFallbackGroupID(v)
+REDACTED)
+REDACTED
+
+// UpdateFallbackGroupID sets the "fallback_group_id" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateFallbackGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFallbackGroupID()
+REDACTED)
+REDACTED
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (u *GroupUpsertBulk) ClearFallbackGroupID() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearFallbackGroupID()
 REDACTED)
 REDACTED
 

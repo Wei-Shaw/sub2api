@@ -229,6 +229,15 @@ export default {
     sendingCode: 'Sending...',
     clickToResend: 'Click to resend code',
     resendCode: 'Resend verification code',
+    linuxdo: {
+      signIn: 'Continue with Linux.do',
+      orContinue: 'or continue with email',
+      callbackTitle: 'Signing you in',
+      callbackProcessing: 'Completing login, please wait...',
+      callbackHint: 'If you are not redirected automatically, go back to the login page and try again.',
+      callbackMissingToken: 'Missing login token, please try again.',
+      backToLogin: 'Back to Login'
+    REDACTED,
     oauth: {
       code: 'Code',
       state: 'State',
@@ -424,7 +433,8 @@ export default {
     billingType: 'Billing',
     balance: 'Balance',
     subscription: 'Subscription',
-    imageUnit: ' images'
+    imageUnit: ' images',
+    userAgent: 'User-Agent'
   REDACTED,
 
   // Redeem
@@ -856,6 +866,15 @@ export default {
       imagePricing: {
         title: 'Image Generation Pricing',
         description: 'Configure pricing for gemini-3-pro-image model. Leave empty to use default prices.'
+      REDACTED,
+      claudeCode: {
+        title: 'Claude Code Client Restriction',
+        tooltip: 'When enabled, this group only allows official Claude Code clients. Non-Claude Code requests will be rejected or fallback to the specified group.',
+        enabled: 'Claude Code Only',
+        disabled: 'Allow All Clients',
+        fallbackGroup: 'Fallback Group',
+        fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
+        noFallback: 'No Fallback (Reject)'
       REDACTED
     REDACTED,
 
@@ -1066,12 +1085,16 @@ export default {
       tokenRefreshed: 'Token refreshed successfully',
       accountDeleted: 'Account deleted successfully',
       rateLimitCleared: 'Rate limit cleared successfully',
+      bulkSchedulableEnabled: 'Successfully enabled scheduling for {countREDACTED account(s)',
+      bulkSchedulableDisabled: 'Successfully disabled scheduling for {countREDACTED account(s)',
       bulkActions: {
         selected: '{countREDACTED account(s) selected',
         selectCurrentPage: 'Select this page',
         clear: 'Clear selection',
         edit: 'Bulk Edit',
-        delete: 'Bulk Delete'
+        delete: 'Bulk Delete',
+        enableScheduling: 'Enable Scheduling',
+        disableScheduling: 'Disable Scheduling'
       REDACTED,
       bulkEdit: {
         title: 'Bulk Edit Accounts',
@@ -1476,6 +1499,7 @@ export default {
       testing: 'Testing...',
       retry: 'Retry',
       copyOutput: 'Copy output',
+      outputCopied: 'Output copied',
       startingTestForAccount: 'Starting test for account: {nameREDACTED',
       testAccountTypeLabel: 'Account type: {typeREDACTED',
       selectTestModel: 'Select Test Model',
@@ -1560,6 +1584,7 @@ export default {
         protocol: 'Protocol',
         address: 'Address',
         status: 'Status',
+        accounts: 'Accounts',
         actions: 'Actions'
       REDACTED,
       testConnection: 'Test Connection',
@@ -1745,6 +1770,26 @@ export default {
         cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: 'Server-side verification key (keep this secret)',
         secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'      REDACTED,
+      linuxdo: {
+        title: 'LinuxDo Connect Login',
+        description: 'Configure LinuxDo Connect OAuth for Sub2API end-user login',
+        enable: 'Enable LinuxDo Login',
+        enableHint: 'Show LinuxDo login on the login/register pages',
+        clientId: 'Client ID',
+        clientIdPlaceholder: 'e.g., hprJ5pC3...',
+        clientIdHint: 'Get this from Connect.Linux.Do',
+        clientSecret: 'Client Secret',
+        clientSecretPlaceholder: '********',
+        clientSecretHint: 'Used by backend to exchange tokens (keep it secret)',
+        clientSecretConfiguredPlaceholder: '********',
+        clientSecretConfiguredHint: 'Secret configured. Leave empty to keep the current value.',
+        redirectUrl: 'Redirect URL',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/linuxdo/callback',
+        redirectUrlHint:
+          'Must match the redirect URL configured in Connect.Linux.Do (must be an absolute http(s) URL)',
+        quickSetCopy: 'Generate & Copy (current site)',
+        redirectUrlSetAndCopied: 'Redirect URL generated and copied to clipboard'
+      REDACTED,
       defaults: {
         title: 'Default User Settings',
         description: 'Default values for new users',

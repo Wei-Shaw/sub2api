@@ -56,6 +56,9 @@ var (
 REDACTED
 )
 
+// ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
+var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
+
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
 	"accept":                                    true,
@@ -80,9 +83,17 @@ REDACTED
 
 // GatewayCache defines cache operations for gateway service
 type GatewayCache interface {
-	GetSessionAccountID(ctx context.Context, sessionHash string) (int64, error)
-	SetSessionAccountID(ctx context.Context, sessionHash string, accountID int64, ttl time.Duration) error
-	RefreshSessionTTL(ctx context.Context, sessionHash string, ttl time.Duration) error
+	GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error)
+	SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error
+	RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error
+REDACTED
+
+// derefGroupID safely dereferences *int64 to int64, returning 0 if nil
+func derefGroupID(groupID *int64) int64 {
+	if groupID == nil {
+		return 0
+REDACTED
+	return *groupID
 REDACTED
 
 type AccountWaitPlan struct {
@@ -225,11 +236,11 @@ REDACTED
 REDACTED
 
 // BindStickySession sets session -> account binding with standard TTL.
-func (s *GatewayService) BindStickySession(ctx context.Context, sessionHash string, accountID int64) error {
+func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 REDACTED
-	return s.cache.SetSessionAccountID(ctx, sessionHash, accountID, stickySessionTTL)
+	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
 REDACTED
 
 func (s *GatewayService) extractCacheableContent(parsed *ParsedRequest) string {
@@ -356,6 +367,21 @@ REDACTED else if groupID != nil {
 			return nil, fmt.Errorf("get group failed: %w", err)
 	REDACTED
 		platform = group.Platform
+
+		// 检查 Claude Code 客户端限制
+		if group.ClaudeCodeOnly {
+			isClaudeCode := IsClaudeCodeClient(ctx)
+			if !isClaudeCode {
+				// 非 Claude Code 客户端，检查是否有降级分组
+				if group.FallbackGroupID != nil {
+					// 使用降级分组重新调度
+					fallbackGroupID := *group.FallbackGroupID
+					return s.SelectAccountForModelWithExclusions(ctx, &fallbackGroupID, sessionHash, requestedModel, excludedIDs)
+			REDACTED
+				// 无降级分组，拒绝访问
+				return nil, ErrClaudeCodeOnly
+		REDACTED
+	REDACTED
 REDACTED else {
 		// 无分组时只使用原生 anthropic 平台
 		platform = PlatformAnthropic
@@ -377,10 +403,17 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	cfg := s.schedulingConfig()
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
-		if accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash); err == nil {
+		if accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); err == nil {
 			stickyAccountID = accountID
 	REDACTED
 REDACTED
+
+	// 检查 Claude Code 客户端限制（可能会替换 groupID 为降级分组）
+	groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
+	if err != nil {
+		return nil, err
+REDACTED
+
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs)
 		if err != nil {
@@ -443,7 +476,7 @@ REDACTED
 
 	// ============ Layer 1: 粘性会话优先 ============
 	if sessionHash != "" && s.cache != nil {
-		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
+		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
 			account, err := s.accountRepo.GetByID(ctx, accountID)
 			if err == nil && s.isAccountInGroup(account, groupID) &&
@@ -452,7 +485,7 @@ REDACTED
 				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 				if err == nil && result.Acquired {
-					_ = s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL)
+					_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
 					return &AccountSelectionResult{
 						Account:     account,
 						Acquired:    true,
@@ -509,7 +542,7 @@ REDACTED
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, sessionHash, preferOAuth); ok {
+		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
 			return result, nil
 	REDACTED
 REDACTED else {
@@ -559,7 +592,7 @@ REDACTED else {
 				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
 				if err == nil && result.Acquired {
 					if sessionHash != "" && s.cache != nil {
-						_ = s.cache.SetSessionAccountID(ctx, sessionHash, item.account.ID, stickySessionTTL)
+						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
 				REDACTED
 					return &AccountSelectionResult{
 						Account:     item.account,
@@ -587,7 +620,7 @@ REDACTED
 	return nil, errors.New("no available accounts")
 REDACTED
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
@@ -595,7 +628,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
 		if err == nil && result.Acquired {
 			if sessionHash != "" && s.cache != nil {
-				_ = s.cache.SetSessionAccountID(ctx, sessionHash, acc.ID, stickySessionTTL)
+				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 		REDACTED
 			return &AccountSelectionResult{
 				Account:     acc,
@@ -620,6 +653,42 @@ REDACTED
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
 REDACTED
+REDACTED
+
+// checkClaudeCodeRestriction 检查分组的 Claude Code 客户端限制
+// 如果分组启用了 claude_code_only 且请求不是来自 Claude Code 客户端：
+//   - 有降级分组：返回降级分组的 ID
+//   - 无降级分组：返回 ErrClaudeCodeOnly 错误
+func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID *int64) (*int64, error) {
+	if groupID == nil {
+		return groupID, nil
+REDACTED
+
+	// 强制平台模式不检查 Claude Code 限制
+	if _, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string); hasForcePlatform {
+		return groupID, nil
+REDACTED
+
+	group, err := s.groupRepo.GetByID(ctx, *groupID)
+	if err != nil {
+		return nil, fmt.Errorf("get group failed: %w", err)
+REDACTED
+
+	if !group.ClaudeCodeOnly {
+		return groupID, nil
+REDACTED
+
+	// 分组启用了 Claude Code 限制
+	if IsClaudeCodeClient(ctx) {
+		return groupID, nil
+REDACTED
+
+	// 非 Claude Code 客户端，检查降级分组
+	if group.FallbackGroupID != nil {
+		return group.FallbackGroupID, nil
+REDACTED
+
+	return nil, ErrClaudeCodeOnly
 REDACTED
 
 func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64) (string, bool, error) {
@@ -741,13 +810,13 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	preferOAuth := platform == PlatformGemini
 	// 1. 查询粘性会话
 	if sessionHash != "" && s.cache != nil {
-		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
+		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
 				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
-					if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
+					if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
 						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
 				REDACTED
 					return account, nil
@@ -817,7 +886,7 @@ REDACTED
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
 			log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 	REDACTED
 REDACTED
@@ -833,14 +902,14 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// 1. 查询粘性会话
 	if sessionHash != "" && s.cache != nil {
-		accountID, err := s.cache.GetSessionAccountID(ctx, sessionHash)
+		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
 				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
-						if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
+						if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
 							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
 					REDACTED
 						return account, nil
@@ -912,7 +981,7 @@ REDACTED
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
 			log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 	REDACTED
 REDACTED

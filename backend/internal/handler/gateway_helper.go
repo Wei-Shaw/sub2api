@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -12,6 +13,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// claudeCodeValidator is a singleton validator for Claude Code client detection
+var claudeCodeValidator = service.NewClaudeCodeValidator()
+
+// SetClaudeCodeClientContext 检查请求是否来自 Claude Code 客户端，并设置到 context 中
+// 返回更新后的 context
+func SetClaudeCodeClientContext(c *gin.Context, body []byte) {
+	// 解析请求体为 map
+	var bodyMap map[string]any
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &bodyMap)
+REDACTED
+
+	// 验证是否为 Claude Code 客户端
+	isClaudeCode := claudeCodeValidator.Validate(c.Request, bodyMap)
+
+	// 更新 request context
+	ctx := service.SetClaudeCodeClient(c.Request.Context(), isClaudeCode)
+	c.Request = c.Request.WithContext(ctx)
+REDACTED
 
 // 并发槽位等待相关常量
 //

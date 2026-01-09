@@ -73,113 +73,48 @@
         </div>
       </fieldset>
 
-      <!-- Gemini OAuth Type Selection -->
-      <fieldset v-if="isGemini" class="border-0 p-0">
-        <legend class="input-label">{{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED</legend>
-        <div class="mt-2 grid grid-cols-3 gap-3">
-          <button
-            type="button"
-            @click="handleSelectGeminiOAuthType('google_one')"
-            :class="[
-              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              geminiOAuthType === 'google_one'
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
-            ]"
-          >
-            <div
-              :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
-                geminiOAuthType === 'google_one'
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
-              ]"
-            >
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-              </svg>
-            </div>
-            <div class="min-w-0">
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">Google One</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">个人账号</span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            @click="handleSelectGeminiOAuthType('code_assist')"
-            :class="[
-              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              geminiOAuthType === 'code_assist'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                : 'border-gray-200 hover:border-blue-300 dark:border-dark-600 dark:hover:border-blue-700'
-            ]"
-          >
-            <div
-              :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
-                geminiOAuthType === 'code_assist'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
-              ]"
-            >
-              <Icon name="cloud" size="sm" />
-            </div>
-            <div class="min-w-0">
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                {{ t('admin.accounts.gemini.oauthType.builtInTitle') REDACTEDREDACTED
-              </span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.gemini.oauthType.builtInDesc') REDACTEDREDACTED
-              </span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            :disabled="!geminiAIStudioOAuthEnabled"
-            @click="handleSelectGeminiOAuthType('ai_studio')"
-            :class="[
-              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              !geminiAIStudioOAuthEnabled ? 'cursor-not-allowed opacity-60' : '',
-              geminiOAuthType === 'ai_studio'
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
-            ]"
-          >
-            <div
-              :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
-                geminiOAuthType === 'ai_studio'
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
-              ]"
-            >
-              <Icon name="sparkles" size="sm" />
-            </div>
-            <div class="min-w-0">
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                {{ t('admin.accounts.gemini.oauthType.customTitle') REDACTEDREDACTED
-              </span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.gemini.oauthType.customDesc') REDACTEDREDACTED
-              </span>
-              <div v-if="!geminiAIStudioOAuthEnabled" class="group relative mt-1 inline-block">
-                <span
-                  class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                >
-                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') REDACTEDREDACTED
-                </span>
-                <div
-                  class="pointer-events-none absolute left-0 top-full z-10 mt-2 w-[28rem] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
-                >
-                  {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') REDACTEDREDACTED
-                </div>
-              </div>
-            </div>
-          </button>
+      <!-- Gemini OAuth Type Display (read-only) -->
+      <div v-if="isGemini" class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700">
+        <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.oauth.gemini.oauthTypeLabel') REDACTEDREDACTED
         </div>
-      </fieldset>
+        <div class="flex items-center gap-3">
+          <div
+            :class="[
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+              geminiOAuthType === 'google_one'
+                ? 'bg-purple-500 text-white'
+                : geminiOAuthType === 'code_assist'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-amber-500 text-white'
+            ]"
+          >
+            <Icon v-if="geminiOAuthType === 'google_one'" name="user" size="sm" />
+            <Icon v-else-if="geminiOAuthType === 'code_assist'" name="cloud" size="sm" />
+            <Icon v-else name="sparkles" size="sm" />
+          </div>
+          <div>
+            <span class="block text-sm font-medium text-gray-900 dark:text-white">
+              {{
+                geminiOAuthType === 'google_one'
+                  ? 'Google One'
+                  : geminiOAuthType === 'code_assist'
+                    ? t('admin.accounts.gemini.oauthType.builtInTitle')
+                    : t('admin.accounts.gemini.oauthType.customTitle')
+              REDACTEDREDACTED
+            </span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">
+              {{
+                geminiOAuthType === 'google_one'
+                  ? '个人账号'
+                  : geminiOAuthType === 'code_assist'
+                    ? t('admin.accounts.gemini.oauthType.builtInDesc')
+                    : t('admin.accounts.gemini.oauthType.customDesc')
+              REDACTEDREDACTED
+            </span>
+          </div>
+        </div>
+      </div>
 
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
@@ -299,7 +234,6 @@ const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 // State
 const addMethod = ref<AddMethod>('oauth')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_assist')
-const geminiAIStudioOAuthEnabled = ref(false)
 
 // Computed - check platform
 const isOpenAI = computed(() => props.account?.platform === 'openai')
@@ -367,14 +301,6 @@ watch(
               ? 'ai_studio'
               : 'code_assist'
       REDACTED
-      if (isGemini.value) {
-        geminiOAuth.getCapabilities().then((caps) => {
-          geminiAIStudioOAuthEnabled.value = !!caps?.ai_studio_oauth_enabled
-          if (!geminiAIStudioOAuthEnabled.value && geminiOAuthType.value === 'ai_studio') {
-            geminiOAuthType.value = 'code_assist'
-          REDACTED
-        REDACTED)
-      REDACTED
     REDACTED else {
       resetState()
     REDACTED
@@ -385,20 +311,11 @@ watch(
 const resetState = () => {
   addMethod.value = 'oauth'
   geminiOAuthType.value = 'code_assist'
-  geminiAIStudioOAuthEnabled.value = false
   claudeOAuth.resetState()
   openaiOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   oauthFlowRef.value?.reset()
-REDACTED
-
-const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | 'ai_studio') => {
-  if (oauthType === 'ai_studio' && !geminiAIStudioOAuthEnabled.value) {
-    appStore.showError(t('admin.accounts.oauth.gemini.aiStudioNotConfigured'))
-    return
-  REDACTED
-  geminiOAuthType.value = oauthType
 REDACTED
 
 const handleClose = () => {

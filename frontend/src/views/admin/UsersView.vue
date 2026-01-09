@@ -893,12 +893,13 @@ const loadUsers = async () => {
         REDACTED
       REDACTED
     REDACTED
-  REDACTED catch (error) {
+  REDACTED catch (error: any) {
     const errorInfo = error as { name?: string; code?: string REDACTED
     if (errorInfo?.name === 'AbortError' || errorInfo?.name === 'CanceledError' || errorInfo?.code === 'ERR_CANCELED') {
       return
     REDACTED
-    appStore.showError(t('admin.users.failedToLoad'))
+    const message = error.response?.data?.detail || error.message || t('admin.users.failedToLoad')
+    appStore.showError(message)
     console.error('Error loading users:', error)
   REDACTED finally {
     if (abortController === currentAbortController) {
@@ -917,7 +918,9 @@ const handleSearch = () => {
 REDACTED
 
 const handlePageChange = (page: number) => {
-  pagination.page = page
+  // 确保页码在有效范围内
+  const validPage = Math.max(1, Math.min(page, pagination.pages || 1))
+  pagination.page = validPage
   loadUsers()
 REDACTED
 
@@ -943,6 +946,7 @@ const toggleBuiltInFilter = (key: string) => {
     visibleFilters.add(key)
   REDACTED
   saveFiltersToStorage()
+  pagination.page = 1
   loadUsers()
 REDACTED
 
@@ -957,6 +961,7 @@ const toggleAttributeFilter = (attr: UserAttributeDefinition) => {
     activeAttributeFilters[attr.id] = ''
   REDACTED
   saveFiltersToStorage()
+  pagination.page = 1
   loadUsers()
 REDACTED
 
@@ -1059,5 +1064,7 @@ REDACTED)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  clearTimeout(searchTimeout)
+  abortController?.abort()
 REDACTED)
 </script>

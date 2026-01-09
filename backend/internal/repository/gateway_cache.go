@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -18,17 +19,23 @@ func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdbREDACTED
 REDACTED
 
-func (c *gatewayCache) GetSessionAccountID(ctx context.Context, sessionHash string) (int64, error) {
-	key := stickySessionPrefix + sessionHash
+// buildSessionKey 构建 session key，包含 groupID 实现分组隔离
+// 格式: sticky_session:{groupIDREDACTED:{sessionHashREDACTED
+func buildSessionKey(groupID int64, sessionHash string) string {
+	return fmt.Sprintf("%s%d:%s", stickySessionPrefix, groupID, sessionHash)
+REDACTED
+
+func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
+	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Get(ctx, key).Int64()
 REDACTED
 
-func (c *gatewayCache) SetSessionAccountID(ctx context.Context, sessionHash string, accountID int64, ttl time.Duration) error {
-	key := stickySessionPrefix + sessionHash
+func (c *gatewayCache) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Set(ctx, key, accountID, ttl).Err()
 REDACTED
 
-func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, sessionHash string, ttl time.Duration) error {
-	key := stickySessionPrefix + sessionHash
+func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
+	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Expire(ctx, key, ttl).Err()
 REDACTED

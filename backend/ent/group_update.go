@@ -354,6 +354,47 @@ func (_u *GroupUpdate) ClearImagePrice4k() *GroupUpdate {
 	return _u
 REDACTED
 
+// SetClaudeCodeOnly sets the "claude_code_only" field.
+func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
+	_u.mutation.SetClaudeCodeOnly(v)
+	return _u
+REDACTED
+
+// SetNillableClaudeCodeOnly sets the "claude_code_only" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableClaudeCodeOnly(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetClaudeCodeOnly(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (_u *GroupUpdate) SetFallbackGroupID(v int64) *GroupUpdate {
+	_u.mutation.ResetFallbackGroupID()
+	_u.mutation.SetFallbackGroupID(v)
+	return _u
+REDACTED
+
+// SetNillableFallbackGroupID sets the "fallback_group_id" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFallbackGroupID(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetFallbackGroupID(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddFallbackGroupID adds value to the "fallback_group_id" field.
+func (_u *GroupUpdate) AddFallbackGroupID(v int64) *GroupUpdate {
+	_u.mutation.AddFallbackGroupID(v)
+	return _u
+REDACTED
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (_u *GroupUpdate) ClearFallbackGroupID() *GroupUpdate {
+	_u.mutation.ClearFallbackGroupID()
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -749,6 +790,18 @@ REDACTED
 REDACTED
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
+		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.FallbackGroupID(); ok {
+		_spec.SetField(group.FieldFallbackGroupID, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedFallbackGroupID(); ok {
+		_spec.AddField(group.FieldFallbackGroupID, field.TypeInt64, value)
+REDACTED
+	if _u.mutation.FallbackGroupIDCleared() {
+		_spec.ClearField(group.FieldFallbackGroupID, field.TypeInt64)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1384,6 +1437,47 @@ func (_u *GroupUpdateOne) ClearImagePrice4k() *GroupUpdateOne {
 	return _u
 REDACTED
 
+// SetClaudeCodeOnly sets the "claude_code_only" field.
+func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
+	_u.mutation.SetClaudeCodeOnly(v)
+	return _u
+REDACTED
+
+// SetNillableClaudeCodeOnly sets the "claude_code_only" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableClaudeCodeOnly(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetClaudeCodeOnly(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (_u *GroupUpdateOne) SetFallbackGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.ResetFallbackGroupID()
+	_u.mutation.SetFallbackGroupID(v)
+	return _u
+REDACTED
+
+// SetNillableFallbackGroupID sets the "fallback_group_id" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFallbackGroupID(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFallbackGroupID(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddFallbackGroupID adds value to the "fallback_group_id" field.
+func (_u *GroupUpdateOne) AddFallbackGroupID(v int64) *GroupUpdateOne {
+	_u.mutation.AddFallbackGroupID(v)
+	return _u
+REDACTED
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (_u *GroupUpdateOne) ClearFallbackGroupID() *GroupUpdateOne {
+	_u.mutation.ClearFallbackGroupID()
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1809,6 +1903,18 @@ REDACTED
 REDACTED
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
+		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.FallbackGroupID(); ok {
+		_spec.SetField(group.FieldFallbackGroupID, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedFallbackGroupID(); ok {
+		_spec.AddField(group.FieldFallbackGroupID, field.TypeInt64, value)
+REDACTED
+	if _u.mutation.FallbackGroupIDCleared() {
+		_spec.ClearField(group.FieldFallbackGroupID, field.TypeInt64)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

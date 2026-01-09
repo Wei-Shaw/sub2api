@@ -22,6 +22,10 @@ type Group struct {
 	ImagePrice2K *float64
 	ImagePrice4K *float64
 
+	// Claude Code 客户端限制
+	ClaudeCodeOnly  bool
+	FallbackGroupID *int64
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

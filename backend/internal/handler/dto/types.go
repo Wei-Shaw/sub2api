@@ -52,6 +52,10 @@ type Group struct {
 	ImagePrice2K *float64 `json:"image_price_2k"`
 	ImagePrice4K *float64 `json:"image_price_4k"`
 
+	// Claude Code 客户端限制
+	ClaudeCodeOnly  bool   `json:"claude_code_only"`
+	FallbackGroupID *int64 `json:"fallback_group_id"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -179,6 +183,9 @@ type UsageLog struct {
 	// 图片生成字段
 	ImageCount int     `json:"image_count"`
 	ImageSize  *string `json:"image_size"`
+
+	// User-Agent
+	UserAgent *string `json:"user_agent"`
 
 	CreatedAt time.Time `json:"created_at"`
 
