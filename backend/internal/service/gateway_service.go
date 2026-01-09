@@ -33,7 +33,7 @@ const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
-	defaultMaxLineSize      = 25 * 1024 * 1024
+	defaultMaxLineSize      = 40 * 1024 * 1024
 	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
 	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
