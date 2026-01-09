@@ -32,16 +32,78 @@ const (
 		"https://www.googleapis.com/auth/cclog " +
 		"https://www.googleapis.com/auth/experimentsandconfigs"
 
-	// API 端点
-	// 优先使用 sandbox daily URL，配额更宽松
-	BaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
-
 	// User-Agent（模拟官方客户端）
 	UserAgent = "antigravity/1.104.0 darwin/arm64"
 
 	// Session 过期时间
 	SessionTTL = 30 * time.Minute
+
+	// URL 可用性 TTL（不可用 URL 的恢复时间）
+	URLAvailabilityTTL = 5 * time.Minute
 )
+
+// BaseURLs 定义 Antigravity API 端点，按优先级排序
+// fallback 顺序: sandbox → daily → prod
+var BaseURLs = []string{
+	"https://daily-cloudcode-pa.sandbox.googleapis.com", // sandbox
+	"https://daily-cloudcode-pa.googleapis.com",         // daily
+	"https://cloudcode-pa.googleapis.com",               // prod
+REDACTED
+
+// BaseURL 默认 URL（保持向后兼容）
+var BaseURL = BaseURLs[0]
+
+// URLAvailability 管理 URL 可用性状态（带 TTL 自动恢复）
+type URLAvailability struct {
+	mu          sync.RWMutex
+	unavailable map[string]time.Time // URL -> 恢复时间
+	ttl         time.Duration
+REDACTED
+
+// DefaultURLAvailability 全局 URL 可用性管理器
+var DefaultURLAvailability = NewURLAvailability(URLAvailabilityTTL)
+
+// NewURLAvailability 创建 URL 可用性管理器
+func NewURLAvailability(ttl time.Duration) *URLAvailability {
+	return &URLAvailability{
+		unavailable: make(map[string]time.Time),
+		ttl:         ttl,
+REDACTED
+REDACTED
+
+// MarkUnavailable 标记 URL 临时不可用
+func (u *URLAvailability) MarkUnavailable(url string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.unavailable[url] = time.Now().Add(u.ttl)
+REDACTED
+
+// IsAvailable 检查 URL 是否可用
+func (u *URLAvailability) IsAvailable(url string) bool {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	expiry, exists := u.unavailable[url]
+	if !exists {
+		return true
+REDACTED
+	return time.Now().After(expiry)
+REDACTED
+
+// GetAvailableURLs 返回可用的 URL 列表（保持优先级顺序）
+func (u *URLAvailability) GetAvailableURLs() []string {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+
+	now := time.Now()
+	result := make([]string, 0, len(BaseURLs))
+	for _, url := range BaseURLs {
+		expiry, exists := u.unavailable[url]
+		if !exists || now.After(expiry) {
+			result = append(result, url)
+	REDACTED
+REDACTED
+	return result
+REDACTED
 
 // OAuthSession 保存 OAuth 授权流程的临时状态
 type OAuthSession struct {
