@@ -96,12 +96,6 @@
           </div>
         </template>
 
-        <template #cell-billing_type="{ row REDACTED">
-          <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="row.billing_type === 1 ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'">
-            {{ row.billing_type === 1 ? t('usage.subscription') : t('usage.balance') REDACTEDREDACTED
-          </span>
-        </template>
-
         <template #cell-first_token="{ row REDACTED">
           <span v-if="row.first_token_ms != null" class="text-sm text-gray-600 dark:text-gray-400">{{ formatDuration(row.first_token_ms) REDACTEDREDACTED</span>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -117,6 +111,11 @@
 
         <template #cell-user_agent="{ row REDACTED">
           <span v-if="row.user_agent" class="text-sm text-gray-600 dark:text-gray-400 max-w-[150px] truncate block" :title="row.user_agent">{{ formatUserAgent(row.user_agent) REDACTEDREDACTED</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
+        <template #cell-ip_address="{ row REDACTED">
+          <span v-if="row.ip_address" class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ row.ip_address REDACTEDREDACTED</span>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
@@ -249,11 +248,11 @@ const cols = computed(() => [
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
-  { key: 'billing_type', label: t('usage.billingType'), sortable: false REDACTED,
   { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
   { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
   { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
-  { key: 'user_agent', label: t('usage.userAgent'), sortable: false REDACTED
+  { key: 'user_agent', label: t('usage.userAgent'), sortable: false REDACTED,
+  { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false REDACTED
 ])
 
 const formatCacheTokens = (tokens: number): string => {

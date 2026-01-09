@@ -20,14 +20,16 @@ type User struct {
 REDACTED
 
 type APIKey struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	Key       string    `json:"key"`
-	Name      string    `json:"name"`
-	GroupID   *int64    `json:"group_id"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"user_id"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	GroupID     *int64    `json:"group_id"`
+	Status      string    `json:"status"`
+	IPWhitelist []string  `json:"ip_whitelist"`
+	IPBlacklist []string  `json:"ip_blacklist"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
@@ -186,6 +188,9 @@ type UsageLog struct {
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
+
+	// IP 地址（仅管理员可见）
+	IPAddress *string `json:"ip_address,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 

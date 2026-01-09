@@ -370,6 +370,14 @@ export default {
     customKeyTooShort: 'Custom key must be at least 16 characters',
     customKeyInvalidChars: 'Custom key can only contain letters, numbers, underscores, and hyphens',
     customKeyRequired: 'Please enter a custom key',
+    ipRestriction: 'IP Restriction',
+    ipWhitelist: 'IP Whitelist',
+    ipWhitelistPlaceholder: '192.168.1.100\n10.0.0.0/8',
+    ipWhitelistHint: 'One IP or CIDR per line. Only these IPs can use this key when set.',
+    ipBlacklist: 'IP Blacklist',
+    ipBlacklistPlaceholder: '1.2.3.4\n5.6.0.0/16',
+    ipBlacklistHint: 'One IP or CIDR per line. These IPs will be blocked from using this key.',
+    ipRestrictionEnabled: 'IP restriction enabled',
     ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.',
     ccsClientSelect: {
       title: 'Select Client',
@@ -430,9 +438,6 @@ export default {
     exportFailed: 'Failed to export usage data',
     exportExcelSuccess: 'Usage data exported successfully (Excel format)',
     exportExcelFailed: 'Failed to export usage data',
-    billingType: 'Billing',
-    balance: 'Balance',
-    subscription: 'Subscription',
     imageUnit: ' images',
     userAgent: 'User-Agent'
   REDACTED,
@@ -1735,7 +1740,6 @@ export default {
       allAccounts: 'All Accounts',
       allGroups: 'All Groups',
       allTypes: 'All Types',
-      allBillingTypes: 'All Billing',
       inputCost: 'Input Cost',
       outputCost: 'Output Cost',
       cacheCreationCost: 'Cache Creation Cost',
@@ -1744,7 +1748,8 @@ export default {
       outputTokens: 'Output Tokens',
       cacheCreationTokens: 'Cache Creation Tokens',
       cacheReadTokens: 'Cache Read Tokens',
-      failedToLoad: 'Failed to load usage records'
+      failedToLoad: 'Failed to load usage records',
+      ipAddress: 'IP'
     REDACTED,
 
     // Settings

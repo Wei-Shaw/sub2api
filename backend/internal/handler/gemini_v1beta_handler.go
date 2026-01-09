@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -167,6 +168,9 @@ REDACTED
 	// 获取 User-Agent
 	userAgent := c.Request.UserAgent()
 
+	// 获取客户端 IP
+	clientIP := ip.GetClientIP(c)
+
 	// For Gemini native API, do not send Claude-style ping frames.
 	geminiConcurrency := NewConcurrencyHelper(h.concurrencyHelper.concurrencyService, SSEPingFormatNone, 0)
 
@@ -307,7 +311,7 @@ REDACTED
 	REDACTED
 
 		// 6) record usage async
-		go func(result *service.ForwardResult, usedAccount *service.Account, ua string) {
+		go func(result *service.ForwardResult, usedAccount *service.Account, ua string, cip string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -317,10 +321,11 @@ REDACTED
 				Account:      usedAccount,
 				Subscription: subscription,
 				UserAgent:    ua,
+				IPAddress:    cip,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account, userAgent)
+	REDACTED(result, account, userAgent, clientIP)
 		return
 REDACTED
 REDACTED

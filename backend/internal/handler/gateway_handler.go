@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -113,6 +114,9 @@ REDACTED
 
 	// 获取 User-Agent
 	userAgent := c.Request.UserAgent()
+
+	// 获取客户端 IP
+	clientIP := ip.GetClientIP(c)
 
 	// 0. 检查wait队列是否已满
 	maxWait := service.CalculateMaxWait(subject.Concurrency)
@@ -273,7 +277,7 @@ REDACTED
 		REDACTED
 
 			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account, ua string) {
+			go func(result *service.ForwardResult, usedAccount *service.Account, ua string, cip string) {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -283,10 +287,11 @@ REDACTED
 					Account:      usedAccount,
 					Subscription: subscription,
 					UserAgent:    ua,
+					IPAddress:    cip,
 			REDACTED); err != nil {
 					log.Printf("Record usage failed: %v", err)
 			REDACTED
-		REDACTED(result, account, userAgent)
+		REDACTED(result, account, userAgent, clientIP)
 			return
 	REDACTED
 REDACTED
@@ -401,7 +406,7 @@ REDACTED
 	REDACTED
 
 		// 异步记录使用量（subscription已在函数开头获取）
-		go func(result *service.ForwardResult, usedAccount *service.Account, ua string) {
+		go func(result *service.ForwardResult, usedAccount *service.Account, ua string, cip string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -411,10 +416,11 @@ REDACTED
 				Account:      usedAccount,
 				Subscription: subscription,
 				UserAgent:    ua,
+				IPAddress:    cip,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account, userAgent)
+	REDACTED(result, account, userAgent, clientIP)
 		return
 REDACTED
 REDACTED

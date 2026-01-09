@@ -2247,6 +2247,7 @@ type RecordUsageInput struct {
 	Account      *Account
 	Subscription *UserSubscription // 可选：订阅信息
 	UserAgent    string            // 请求的 User-Agent
+	IPAddress    string            // 请求的客户端 IP 地址
 REDACTED
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -2335,6 +2336,11 @@ REDACTED
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent
+REDACTED
+
+	// 添加 IPAddress
+	if input.IPAddress != "" {
+		usageLog.IPAddress = &input.IPAddress
 REDACTED
 
 	// 添加分组和订阅关联

@@ -31,6 +31,10 @@ const (
 	FieldGroupID = "group_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
+	FieldIPWhitelist = "ip_whitelist"
+	// FieldIPBlacklist holds the string denoting the ip_blacklist field in the database.
+	FieldIPBlacklist = "ip_blacklist"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -73,6 +77,8 @@ var Columns = []string{
 	FieldName,
 	FieldGroupID,
 	FieldStatus,
+	FieldIPWhitelist,
+	FieldIPBlacklist,
 REDACTED
 
 // ValidColumn reports if the column name is valid (part of the table columns).

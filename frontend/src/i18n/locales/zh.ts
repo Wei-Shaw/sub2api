@@ -367,6 +367,14 @@ export default {
     customKeyTooShort: '自定义密钥至少需要16个字符',
     customKeyInvalidChars: '自定义密钥只能包含字母、数字、下划线和连字符',
     customKeyRequired: '请输入自定义密钥',
+    ipRestriction: 'IP 限制',
+    ipWhitelist: 'IP 白名单',
+    ipWhitelistPlaceholder: '192.168.1.100\n10.0.0.0/8',
+    ipWhitelistHint: '每行一个 IP 或 CIDR，设置后仅允许这些 IP 使用此密钥',
+    ipBlacklist: 'IP 黑名单',
+    ipBlacklistPlaceholder: '1.2.3.4\n5.6.0.0/16',
+    ipBlacklistHint: '每行一个 IP 或 CIDR，这些 IP 将被禁止使用此密钥',
+    ipRestrictionEnabled: '已配置 IP 限制',
     ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
     ccsClientSelect: {
       title: '选择客户端',
@@ -427,9 +435,6 @@ export default {
     exportFailed: '使用数据导出失败',
     exportExcelSuccess: '使用数据导出成功（Excel格式）',
     exportExcelFailed: '使用数据导出失败',
-    billingType: '消费类型',
-    balance: '余额',
-    subscription: '订阅',
     imageUnit: '张',
     userAgent: 'User-Agent'
   REDACTED,
@@ -1880,7 +1885,6 @@ export default {
       allAccounts: '全部账户',
       allGroups: '全部分组',
       allTypes: '全部类型',
-      allBillingTypes: '全部计费',
       inputCost: '输入成本',
       outputCost: '输出成本',
       cacheCreationCost: '缓存创建成本',
@@ -1889,7 +1893,8 @@ export default {
       outputTokens: '输出 Token',
       cacheCreationTokens: '缓存创建 Token',
       cacheReadTokens: '缓存读取 Token',
-      failedToLoad: '加载使用记录失败'
+      failedToLoad: '加载使用记录失败',
+      ipAddress: 'IP'
     REDACTED,
 
     // Settings
