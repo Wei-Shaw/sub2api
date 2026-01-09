@@ -300,30 +300,36 @@ REDACTED
 		return nil, true
 REDACTED
 
-	if s.redisClient == nil {
-		s.warnNoRedisOnce.Do(func() {
-			log.Printf("[OpsCleanup] redis not configured; running without distributed lock")
-	REDACTED)
-		return nil, true
-REDACTED
-
 	key := opsCleanupLeaderLockKeyDefault
 	ttl := opsCleanupLeaderLockTTLDefault
 
-	ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
-	if err != nil {
+	// Prefer Redis leader lock when available, but avoid stampeding the DB when Redis is flaky by
+	// falling back to a DB advisory lock.
+	if s.redisClient != nil {
+		ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
+		if err == nil {
+			if !ok {
+				return nil, false
+		REDACTED
+			return func() {
+				_, _ = opsCleanupReleaseScript.Run(ctx, s.redisClient, []string{keyREDACTED, s.instanceID).Result()
+		REDACTED, true
+	REDACTED
+		// Redis error: fall back to DB advisory lock.
 		s.warnNoRedisOnce.Do(func() {
-			log.Printf("[OpsCleanup] leader lock SetNX failed; running without lock: %v", err)
+			log.Printf("[OpsCleanup] leader lock SetNX failed; falling back to DB advisory lock: %v", err)
 	REDACTED)
-		return nil, true
+REDACTED else {
+		s.warnNoRedisOnce.Do(func() {
+			log.Printf("[OpsCleanup] redis not configured; using DB advisory lock")
+	REDACTED)
 REDACTED
+
+	release, ok := tryAcquireDBAdvisoryLock(ctx, s.db, hashAdvisoryLockID(key))
 	if !ok {
 		return nil, false
 REDACTED
-
-	return func() {
-		_, _ = opsCleanupReleaseScript.Run(ctx, s.redisClient, []string{keyREDACTED, s.instanceID).Result()
-REDACTED, true
+	return release, true
 REDACTED
 
 func (s *OpsCleanupService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration) {

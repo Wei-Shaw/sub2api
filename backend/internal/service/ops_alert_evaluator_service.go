@@ -720,11 +720,12 @@ REDACTED
 
 	ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
 	if err != nil {
-		// Fail-open for single-node environments, but warn.
+		// Prefer fail-closed to avoid duplicate evaluators stampeding the DB when Redis is flaky.
+		// Single-node deployments can disable the distributed lock via runtime settings.
 		s.warnNoRedisOnce.Do(func() {
-			log.Printf("[OpsAlertEvaluator] leader lock SetNX failed; running without lock: %v", err)
+			log.Printf("[OpsAlertEvaluator] leader lock SetNX failed; skipping this cycle: %v", err)
 	REDACTED)
-		return nil, true
+		return nil, false
 REDACTED
 	if !ok {
 		s.maybeLogSkip(key)

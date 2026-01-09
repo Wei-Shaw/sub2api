@@ -165,6 +165,9 @@ type OpsInsertSystemMetricsInput struct {
 	DBOK    *bool
 	RedisOK *bool
 
+	RedisConnTotal *int
+	RedisConnIdle  *int
+
 	DBConnActive  *int
 	DBConnIdle    *int
 	DBConnWaiting *int
@@ -185,6 +188,13 @@ type OpsSystemMetricsSnapshot struct {
 
 	DBOK    *bool `json:"db_ok"`
 	RedisOK *bool `json:"redis_ok"`
+
+	// Config-derived limits (best-effort). These are not historical metrics; they help UI render "current vs max".
+	DBMaxOpenConns *int `json:"db_max_open_conns"`
+	RedisPoolSize  *int `json:"redis_pool_size"`
+
+	RedisConnTotal *int `json:"redis_conn_total"`
+	RedisConnIdle  *int `json:"redis_conn_idle"`
 
 	DBConnActive  *int `json:"db_conn_active"`
 	DBConnIdle    *int `json:"db_conn_idle"`

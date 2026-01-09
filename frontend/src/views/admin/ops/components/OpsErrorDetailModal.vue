@@ -286,7 +286,7 @@ async function fetchDetail(id: number) {
     REDACTED
   REDACTED catch (err: any) {
     detail.value = null
-    appStore.showError(err?.message || 'Failed to load error detail')
+    appStore.showError(err?.message || t('admin.ops.failedToLoadErrorDetail'))
   REDACTED finally {
     loading.value = false
   REDACTED
@@ -348,7 +348,7 @@ async function runConfirmedRetry() {
     const summary = res.status === 'succeeded' ? t('admin.ops.errorDetail.retrySuccess') : t('admin.ops.errorDetail.retryFailed')
     appStore.showSuccess(summary)
   REDACTED catch (err: any) {
-    appStore.showError(err?.message || 'Retry failed')
+    appStore.showError(err?.message || t('admin.ops.retryFailed'))
   REDACTED finally {
     retrying.value = false
   REDACTED

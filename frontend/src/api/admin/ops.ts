@@ -46,6 +46,8 @@ export interface OpsDashboardOverview {
   platform: string
   group_id?: number | null
 
+  health_score?: number
+
   system_metrics?: OpsSystemMetricsSnapshot | null
   job_heartbeats?: OpsJobHeartbeat[] | null
 
@@ -227,6 +229,9 @@ export interface OpsSystemMetricsSnapshot {
 
   db_ok?: boolean | null
   redis_ok?: boolean | null
+
+  redis_conn_total?: number | null
+  redis_conn_idle?: number | null
 
   db_conn_active?: number | null
   db_conn_idle?: number | null

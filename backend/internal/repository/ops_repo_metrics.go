@@ -68,6 +68,9 @@ INSERT INTO ops_system_metrics (
   db_ok,
   redis_ok,
 
+  redis_conn_total,
+  redis_conn_idle,
+
   db_conn_active,
   db_conn_idle,
   db_conn_waiting,
@@ -83,8 +86,9 @@ INSERT INTO ops_system_metrics (
   $21,$22,$23,$24,$25,$26,
   $27,$28,$29,$30,
   $31,$32,
-  $33,$34,$35,
-  $36,$37
+  $33,$34,
+  $35,$36,$37,
+  $38,$39
 )`
 
 	_, err := r.db.ExecContext(
@@ -130,6 +134,9 @@ INSERT INTO ops_system_metrics (
 		opsNullBool(input.DBOK),
 		opsNullBool(input.RedisOK),
 
+		opsNullInt(input.RedisConnTotal),
+		opsNullInt(input.RedisConnIdle),
+
 		opsNullInt(input.DBConnActive),
 		opsNullInt(input.DBConnIdle),
 		opsNullInt(input.DBConnWaiting),
@@ -162,6 +169,9 @@ SELECT
   db_ok,
   redis_ok,
 
+  redis_conn_total,
+  redis_conn_idle,
+
   db_conn_active,
   db_conn_idle,
   db_conn_waiting,
@@ -182,6 +192,8 @@ LIMIT 1`
 	var memPct sql.NullFloat64
 	var dbOK sql.NullBool
 	var redisOK sql.NullBool
+	var redisTotal sql.NullInt64
+	var redisIdle sql.NullInt64
 	var dbActive sql.NullInt64
 	var dbIdle sql.NullInt64
 	var dbWaiting sql.NullInt64
@@ -198,6 +210,8 @@ LIMIT 1`
 		&memPct,
 		&dbOK,
 		&redisOK,
+		&redisTotal,
+		&redisIdle,
 		&dbActive,
 		&dbIdle,
 		&dbWaiting,
@@ -230,6 +244,14 @@ REDACTED
 	if redisOK.Valid {
 		v := redisOK.Bool
 		out.RedisOK = &v
+REDACTED
+	if redisTotal.Valid {
+		v := int(redisTotal.Int64)
+		out.RedisConnTotal = &v
+REDACTED
+	if redisIdle.Valid {
+		v := int(redisIdle.Int64)
+		out.RedisConnIdle = &v
 REDACTED
 	if dbActive.Valid {
 		v := int(dbActive.Int64)
@@ -398,4 +420,3 @@ func opsNullTime(v *time.Time) any {
 REDACTED
 	return sql.NullTime{Time: *v, Valid: trueREDACTED
 REDACTED
-

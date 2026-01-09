@@ -25,8 +25,6 @@ func SetupRouter(
 ) *gin.Engine {
 	// 应用中间件
 	r.Use(middleware2.Logger())
-	// WebSocket handshake auth helper (token via query param, WS endpoints only).
-	r.Use(middleware2.InjectBearerTokenFromQueryForWebSocket())
 	r.Use(middleware2.CORS(cfg.CORS))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP))
 

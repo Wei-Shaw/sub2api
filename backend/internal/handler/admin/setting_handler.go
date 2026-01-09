@@ -68,6 +68,7 @@ REDACTED
 		OpsMonitoringEnabled:         settings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled: settings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:          settings.OpsQueryModeDefault,
+		OpsMetricsIntervalSeconds:    settings.OpsMetricsIntervalSeconds,
 REDACTED)
 REDACTED
 
@@ -115,9 +116,10 @@ type UpdateSettingsRequest struct {
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
 	// Ops monitoring (vNext)
-	OpsMonitoringEnabled         *bool `json:"ops_monitoring_enabled"`
-	OpsRealtimeMonitoringEnabled *bool `json:"ops_realtime_monitoring_enabled"`
+	OpsMonitoringEnabled         *bool   `json:"ops_monitoring_enabled"`
+	OpsRealtimeMonitoringEnabled *bool   `json:"ops_realtime_monitoring_enabled"`
 	OpsQueryModeDefault          *string `json:"ops_query_mode_default"`
+	OpsMetricsIntervalSeconds    *int    `json:"ops_metrics_interval_seconds"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -173,6 +175,18 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// Ops metrics collector interval validation (seconds).
+	if req.OpsMetricsIntervalSeconds != nil {
+		v := *req.OpsMetricsIntervalSeconds
+		if v < 60 {
+			v = 60
+	REDACTED
+		if v > 3600 {
+			v = 3600
+	REDACTED
+		req.OpsMetricsIntervalSeconds = &v
+REDACTED
+
 	settings := &service.SystemSettings{
 		RegistrationEnabled:      req.RegistrationEnabled,
 		EmailVerifyEnabled:       req.EmailVerifyEnabled,
@@ -218,6 +232,12 @@ REDACTED
 				return *req.OpsQueryModeDefault
 		REDACTED
 			return previousSettings.OpsQueryModeDefault
+	REDACTED(),
+		OpsMetricsIntervalSeconds: func() int {
+			if req.OpsMetricsIntervalSeconds != nil {
+				return *req.OpsMetricsIntervalSeconds
+		REDACTED
+			return previousSettings.OpsMetricsIntervalSeconds
 	REDACTED(),
 REDACTED
 
@@ -266,6 +286,7 @@ REDACTED
 		OpsMonitoringEnabled:         updatedSettings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled: updatedSettings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:          updatedSettings.OpsQueryModeDefault,
+		OpsMetricsIntervalSeconds:    updatedSettings.OpsMetricsIntervalSeconds,
 REDACTED)
 REDACTED
 
@@ -374,6 +395,9 @@ REDACTED
 REDACTED
 	if before.OpsQueryModeDefault != after.OpsQueryModeDefault {
 		changed = append(changed, "ops_query_mode_default")
+REDACTED
+	if before.OpsMetricsIntervalSeconds != after.OpsMetricsIntervalSeconds {
+		changed = append(changed, "ops_metrics_interval_seconds")
 REDACTED
 	return changed
 REDACTED

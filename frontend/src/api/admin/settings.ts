@@ -50,6 +50,7 @@ export interface SystemSettings {
   ops_monitoring_enabled: boolean
   ops_realtime_monitoring_enabled: boolean
   ops_query_mode_default: 'auto' | 'raw' | 'preagg' | string
+  ops_metrics_interval_seconds: number
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -83,6 +84,7 @@ export interface UpdateSettingsRequest {
   ops_monitoring_enabled?: boolean
   ops_realtime_monitoring_enabled?: boolean
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string
+  ops_metrics_interval_seconds?: number
 REDACTED
 
 /**

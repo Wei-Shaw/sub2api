@@ -715,6 +715,25 @@
                 class="w-[220px]"
               />
             </div>
+
+            <div v-if="form.ops_monitoring_enabled" class="mt-5 flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.opsMonitoring.metricsInterval')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.opsMonitoring.metricsIntervalHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <input
+                v-model.number="form.ops_metrics_interval_seconds"
+                type="number"
+                min="60"
+                max="3600"
+                step="10"
+                class="w-[220px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+              />
+            </div>
           </div>
         </div>
 
@@ -824,7 +843,8 @@ const form = reactive<SettingsForm>({
   // Ops Monitoring (vNext)
   ops_monitoring_enabled: true,
   ops_realtime_monitoring_enabled: true,
-  ops_query_mode_default: 'auto'
+  ops_query_mode_default: 'auto',
+  ops_metrics_interval_seconds: 60
 REDACTED)
 
 const opsQueryModeOptions = computed(() => [
@@ -922,7 +942,8 @@ async function saveSettings() {
       identity_patch_prompt: form.identity_patch_prompt,
       ops_monitoring_enabled: form.ops_monitoring_enabled,
       ops_realtime_monitoring_enabled: form.ops_realtime_monitoring_enabled,
-      ops_query_mode_default: form.ops_query_mode_default
+      ops_query_mode_default: form.ops_query_mode_default,
+      ops_metrics_interval_seconds: form.ops_metrics_interval_seconds
     REDACTED
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)

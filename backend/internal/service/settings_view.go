@@ -43,6 +43,7 @@ type SystemSettings struct {
 	OpsMonitoringEnabled         bool
 	OpsRealtimeMonitoringEnabled bool
 	OpsQueryModeDefault          string
+	OpsMetricsIntervalSeconds    int
 REDACTED
 
 type PublicSettings struct {
