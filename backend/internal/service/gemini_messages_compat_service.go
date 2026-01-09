@@ -114,7 +114,7 @@ REDACTED
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 检查账号是否有效：原生平台直接匹配，antigravity 需要启用混合调度
-				if err == nil && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				if err == nil && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					valid := false
 					if account.Platform == platform {
 						valid = true
@@ -170,6 +170,9 @@ REDACTED
 		// 混合调度模式下：原生平台直接通过，antigravity 需要启用 mixed_scheduling
 		// 非混合调度模式（antigravity 分组）：不需要过滤
 		if useMixedScheduling && acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			continue
+	REDACTED
+		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
