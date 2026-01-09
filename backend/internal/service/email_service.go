@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"fmt"
+	"log"
 	"math/big"
 	"net/smtp"
 	"strconv"
@@ -256,7 +257,9 @@ REDACTED
 	// 验证码不匹配
 	if data.Code != code {
 		data.Attempts++
-		_ = s.cache.SetVerificationCode(ctx, email, data, verifyCodeTTL)
+		if err := s.cache.SetVerificationCode(ctx, email, data, verifyCodeTTL); err != nil {
+			log.Printf("[Email] Failed to update verification attempt count: %v", err)
+	REDACTED
 		if data.Attempts >= maxVerifyCodeAttempts {
 			return ErrVerifyCodeMaxAttempts
 	REDACTED
@@ -264,7 +267,9 @@ REDACTED
 REDACTED
 
 	// 验证成功，删除验证码
-	_ = s.cache.DeleteVerificationCode(ctx, email)
+	if err := s.cache.DeleteVerificationCode(ctx, email); err != nil {
+		log.Printf("[Email] Failed to delete verification code after success: %v", err)
+REDACTED
 	return nil
 REDACTED
 

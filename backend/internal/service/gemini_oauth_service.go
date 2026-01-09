@@ -120,15 +120,16 @@ REDACTED
 REDACTED
 
 	// OAuth client selection:
-	// - code_assist: always use built-in Gemini CLI OAuth client (public), regardless of configured client_id/secret.
-	// - google_one: uses configured OAuth client when provided; otherwise falls back to built-in client.
-	// - ai_studio: requires a user-provided OAuth client.
+	// - code_assist: always use built-in Gemini CLI OAuth client (public)
+	// - google_one: always use built-in Gemini CLI OAuth client (public)
+	// - ai_studio: requires a user-provided OAuth client
 	oauthCfg := geminicli.OAuthConfig{
 		ClientID:     s.cfg.Gemini.OAuth.ClientID,
 		ClientSecret: s.cfg.Gemini.OAuth.ClientSecret,
 		Scopes:       s.cfg.Gemini.OAuth.Scopes,
 REDACTED
-	if oauthType == "code_assist" {
+	if oauthType == "code_assist" || oauthType == "google_one" {
+		// Force use of built-in Gemini CLI OAuth client
 		oauthCfg.ClientID = ""
 		oauthCfg.ClientSecret = ""
 REDACTED
@@ -576,6 +577,20 @@ REDACTED
 
 	case "google_one":
 		log.Printf("[GeminiOAuth] Processing google_one OAuth type")
+
+		// Google One accounts use cloudaicompanion API, which requires a project_id.
+		// For personal accounts, Google auto-assigns a project_id via the LoadCodeAssist API.
+		if projectID == "" {
+			log.Printf("[GeminiOAuth] No project_id provided, attempting to fetch from LoadCodeAssist API...")
+			var err error
+			projectID, _, err = s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
+			if err != nil {
+				log.Printf("[GeminiOAuth] ERROR: Failed to fetch project_id: %v", err)
+				return nil, fmt.Errorf("google One accounts require a project_id, failed to auto-detect: %w", err)
+		REDACTED
+			log.Printf("[GeminiOAuth] Successfully fetched project_id: %s", projectID)
+	REDACTED
+
 		log.Printf("[GeminiOAuth] Attempting to fetch Google One tier from Drive API...")
 		// Attempt to fetch Drive storage tier
 		var storageInfo *geminicli.DriveStorageInfo

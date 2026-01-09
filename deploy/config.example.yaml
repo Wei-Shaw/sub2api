@@ -235,6 +235,31 @@ jwt:
   expire_hour: 24
 
 # =============================================================================
+# LinuxDo Connect OAuth Login (SSO)
+# LinuxDo Connect OAuth 登录（用于 Sub2API 用户登录）
+# =============================================================================
+linuxdo_connect:
+  enabled: false
+  client_id: ""
+  client_secret: ""
+  authorize_url: "https://connect.linux.do/oauth2/authorize"
+  token_url: "https://connect.linux.do/oauth2/token"
+  userinfo_url: "https://connect.linux.do/api/user"
+  scopes: "user"
+  # 示例: "https://your-domain.com/api/v1/auth/oauth/linuxdo/callback"
+  redirect_url: ""
+  # 安全提示：
+  # - 建议使用同源相对路径（以 / 开头），避免把 token 重定向到意外的第三方域名
+  # - 该地址不应包含 #fragment（本实现使用 URL fragment 传递 access_token）
+  frontend_redirect_url: "/auth/linuxdo/callback"
+  token_auth_method: "client_secret_post" # client_secret_post | client_secret_basic | none
+  # 注意：当 token_auth_method=none（public client）时，必须启用 PKCE
+  use_pkce: false
+  userinfo_email_path: ""
+  userinfo_id_path: ""
+  userinfo_username_path: ""
+
+# =============================================================================
 # Default Settings
 # 默认设置
 # =============================================================================

@@ -831,6 +831,11 @@ REDACTED
 		args = append(args, *updates.Status)
 		idx++
 REDACTED
+	if updates.Schedulable != nil {
+		setClauses = append(setClauses, "schedulable = $"+itoa(idx))
+		args = append(args, *updates.Schedulable)
+		idx++
+REDACTED
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
 		payload, err := json.Marshal(updates.Credentials)

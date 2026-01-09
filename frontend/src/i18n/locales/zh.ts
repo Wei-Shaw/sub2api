@@ -227,6 +227,15 @@ export default {
     sendingCode: '发送中...',
     clickToResend: '点击重新发送验证码',
     resendCode: '重新发送验证码',
+    linuxdo: {
+      signIn: '使用 Linux.do 登录',
+      orContinue: '或使用邮箱密码继续',
+      callbackTitle: '正在完成登录',
+      callbackProcessing: '正在验证登录信息，请稍候...',
+      callbackHint: '如果页面未自动跳转，请返回登录页重试。',
+      callbackMissingToken: '登录信息缺失，请返回重试。',
+      backToLogin: '返回登录'
+    REDACTED,
     oauth: {
       code: '授权码',
       state: '状态',
@@ -1217,12 +1226,16 @@ export default {
       accountCreatedSuccess: '账号添加成功',
       accountUpdatedSuccess: '账号更新成功',
       accountDeletedSuccess: '账号删除成功',
+      bulkSchedulableEnabled: '成功启用 {countREDACTED 个账号的调度',
+      bulkSchedulableDisabled: '成功停止 {countREDACTED 个账号的调度',
       bulkActions: {
         selected: '已选择 {countREDACTED 个账号',
         selectCurrentPage: '本页全选',
         clear: '清除选择',
         edit: '批量编辑账号',
-        delete: '批量删除'
+        delete: '批量删除',
+        enableScheduling: '批量启用调度',
+        disableScheduling: '批量停止调度'
       REDACTED,
       bulkEdit: {
         title: '批量编辑账号',
@@ -1606,6 +1619,7 @@ export default {
       startTest: '开始测试',
       retry: '重试',
       copyOutput: '复制输出',
+      outputCopied: '输出已复制',
       startingTestForAccount: '开始测试账号：{nameREDACTED',
       testAccountTypeLabel: '账号类型：{typeREDACTED',
 	      selectTestModel: '选择测试模型',
@@ -1906,6 +1920,25 @@ export default {
         cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: '服务端验证密钥（请保密）',
         secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'      REDACTED,
+      linuxdo: {
+        title: 'LinuxDo Connect 登录',
+        description: '配置 LinuxDo Connect OAuth，用于 Sub2API 用户登录',
+        enable: '启用 LinuxDo 登录',
+        enableHint: '在登录/注册页面显示 LinuxDo 登录入口',
+        clientId: 'Client ID',
+        clientIdPlaceholder: '例如：hprJ5pC3...',
+        clientIdHint: '从 Connect.Linux.Do 后台获取',
+        clientSecret: 'Client Secret',
+        clientSecretPlaceholder: '********',
+        clientSecretHint: '用于后端交换 token（请保密）',
+        clientSecretConfiguredPlaceholder: '********',
+        clientSecretConfiguredHint: '密钥已配置，留空以保留当前值。',
+        redirectUrl: '回调地址（Redirect URL）',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/linuxdo/callback',
+        redirectUrlHint: '需与 Connect.Linux.Do 中配置的回调地址一致（必须是 http(s) 完整 URL）',
+        quickSetCopy: '使用当前站点生成并复制',
+        redirectUrlSetAndCopied: '已使用当前站点生成回调地址并复制到剪贴板'
+      REDACTED,
       defaults: {
         title: '用户默认设置',
         description: '新用户的默认值',

@@ -73,6 +73,7 @@ export interface PublicSettings {
   api_base_url: string
   contact_info: string
   doc_url: string
+  linuxdo_oauth_enabled: boolean
   version: string
 REDACTED
 
