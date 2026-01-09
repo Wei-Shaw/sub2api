@@ -1,10 +1,12 @@
 package service
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/google/wire"
+	"github.com/redis/go-redis/v9"
 )
 
 // BuildInfo contains build information
@@ -70,6 +72,57 @@ REDACTED
 	return svc
 REDACTED
 
+// ProvideOpsMetricsCollector creates and starts OpsMetricsCollector.
+func ProvideOpsMetricsCollector(
+	opsRepo OpsRepository,
+	settingRepo SettingRepository,
+	db *sql.DB,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsMetricsCollector {
+	collector := NewOpsMetricsCollector(opsRepo, settingRepo, db, redisClient, cfg)
+	collector.Start()
+	return collector
+REDACTED
+
+// ProvideOpsAggregationService creates and starts OpsAggregationService (hourly/daily pre-aggregation).
+func ProvideOpsAggregationService(
+	opsRepo OpsRepository,
+	settingRepo SettingRepository,
+	db *sql.DB,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsAggregationService {
+	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideOpsAlertEvaluatorService creates and starts OpsAlertEvaluatorService.
+func ProvideOpsAlertEvaluatorService(
+	opsService *OpsService,
+	opsRepo OpsRepository,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsAlertEvaluatorService {
+	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideOpsCleanupService creates and starts OpsCleanupService (cron scheduled).
+func ProvideOpsCleanupService(
+	opsRepo OpsRepository,
+	db *sql.DB,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsCleanupService {
+	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -101,6 +154,11 @@ var ProviderSet = wire.NewSet(
 	NewAccountUsageService,
 	NewAccountTestService,
 	NewSettingService,
+	NewOpsService,
+	ProvideOpsMetricsCollector,
+	ProvideOpsAggregationService,
+	ProvideOpsAlertEvaluatorService,
+	ProvideOpsCleanupService,
 	NewEmailService,
 	ProvideEmailQueueService,
 	NewTurnstileService,

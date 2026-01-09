@@ -1,0 +1,839 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"math"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+)
+
+const (
+	opsAlertEvaluatorJobName = "ops_alert_evaluator"
+
+	opsAlertEvaluatorTimeout         = 45 * time.Second
+	opsAlertEvaluatorLeaderLockKey   = "ops:alert:evaluator:leader"
+	opsAlertEvaluatorLeaderLockTTL   = 90 * time.Second
+	opsAlertEvaluatorSkipLogInterval = 1 * time.Minute
+)
+
+var opsAlertEvaluatorReleaseScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
+type OpsAlertEvaluatorService struct {
+	opsService   *OpsService
+	opsRepo      OpsRepository
+	emailService *EmailService
+
+	redisClient *redis.Client
+	cfg         *config.Config
+	instanceID  string
+
+	stopCh    chan struct{REDACTED
+	startOnce sync.Once
+	stopOnce  sync.Once
+	wg        sync.WaitGroup
+
+	mu         sync.Mutex
+	ruleStates map[int64]*opsAlertRuleState
+
+	emailLimiter *slidingWindowLimiter
+
+	skipLogMu sync.Mutex
+	skipLogAt time.Time
+
+	warnNoRedisOnce sync.Once
+REDACTED
+
+type opsAlertRuleState struct {
+	LastEvaluatedAt     time.Time
+	ConsecutiveBreaches int
+REDACTED
+
+func NewOpsAlertEvaluatorService(
+	opsService *OpsService,
+	opsRepo OpsRepository,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsAlertEvaluatorService {
+	return &OpsAlertEvaluatorService{
+		opsService:   opsService,
+		opsRepo:      opsRepo,
+		emailService: emailService,
+		redisClient:  redisClient,
+		cfg:          cfg,
+		instanceID:   uuid.NewString(),
+		ruleStates:   map[int64]*opsAlertRuleState{REDACTED,
+		emailLimiter: newSlidingWindowLimiter(0, time.Hour),
+REDACTED
+REDACTED
+
+func (s *OpsAlertEvaluatorService) Start() {
+	if s == nil {
+		return
+REDACTED
+	s.startOnce.Do(func() {
+		if s.stopCh == nil {
+			s.stopCh = make(chan struct{REDACTED)
+	REDACTED
+		go s.run()
+REDACTED)
+REDACTED
+
+func (s *OpsAlertEvaluatorService) Stop() {
+	if s == nil {
+		return
+REDACTED
+	s.stopOnce.Do(func() {
+		if s.stopCh != nil {
+			close(s.stopCh)
+	REDACTED
+REDACTED)
+	s.wg.Wait()
+REDACTED
+
+func (s *OpsAlertEvaluatorService) run() {
+	s.wg.Add(1)
+	defer s.wg.Done()
+
+	// Start immediately to produce early feedback in ops dashboard.
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			interval := s.getInterval()
+			s.evaluateOnce(interval)
+			timer.Reset(interval)
+		case <-s.stopCh:
+			return
+	REDACTED
+REDACTED
+REDACTED
+
+func (s *OpsAlertEvaluatorService) getInterval() time.Duration {
+	// Default.
+	interval := 60 * time.Second
+
+	if s == nil || s.opsService == nil {
+		return interval
+REDACTED
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cfg, err := s.opsService.GetOpsAlertRuntimeSettings(ctx)
+	if err != nil || cfg == nil {
+		return interval
+REDACTED
+	if cfg.EvaluationIntervalSeconds <= 0 {
+		return interval
+REDACTED
+	if cfg.EvaluationIntervalSeconds < 1 {
+		return interval
+REDACTED
+	if cfg.EvaluationIntervalSeconds > int((24 * time.Hour).Seconds()) {
+		return interval
+REDACTED
+	return time.Duration(cfg.EvaluationIntervalSeconds) * time.Second
+REDACTED
+
+func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
+	if s == nil || s.opsRepo == nil {
+		return
+REDACTED
+	if s.cfg != nil && !s.cfg.Ops.Enabled {
+		return
+REDACTED
+
+	ctx, cancel := context.WithTimeout(context.Background(), opsAlertEvaluatorTimeout)
+	defer cancel()
+
+	if s.opsService != nil && !s.opsService.IsMonitoringEnabled(ctx) {
+		return
+REDACTED
+
+	runtimeCfg := defaultOpsAlertRuntimeSettings()
+	if s.opsService != nil {
+		if loaded, err := s.opsService.GetOpsAlertRuntimeSettings(ctx); err == nil && loaded != nil {
+			runtimeCfg = loaded
+	REDACTED
+REDACTED
+
+	release, ok := s.tryAcquireLeaderLock(ctx, runtimeCfg.DistributedLock)
+	if !ok {
+		return
+REDACTED
+	if release != nil {
+		defer release()
+REDACTED
+
+	startedAt := time.Now().UTC()
+	runAt := startedAt
+
+	rules, err := s.opsRepo.ListAlertRules(ctx)
+	if err != nil {
+		s.recordHeartbeatError(runAt, time.Since(startedAt), err)
+		log.Printf("[OpsAlertEvaluator] list rules failed: %v", err)
+		return
+REDACTED
+
+	now := time.Now().UTC()
+	safeEnd := now.Truncate(time.Minute)
+	if safeEnd.IsZero() {
+		safeEnd = now
+REDACTED
+
+	systemMetrics, _ := s.opsRepo.GetLatestSystemMetrics(ctx, 1)
+
+	// Cleanup stale state for removed rules.
+	s.pruneRuleStates(rules)
+
+	for _, rule := range rules {
+		if rule == nil || !rule.Enabled || rule.ID <= 0 {
+			continue
+	REDACTED
+
+		scopePlatform, scopeGroupID := parseOpsAlertRuleScope(rule.Filters)
+
+		windowMinutes := rule.WindowMinutes
+		if windowMinutes <= 0 {
+			windowMinutes = 1
+	REDACTED
+		windowStart := safeEnd.Add(-time.Duration(windowMinutes) * time.Minute)
+		windowEnd := safeEnd
+
+		metricValue, ok := s.computeRuleMetric(ctx, rule, systemMetrics, windowStart, windowEnd, scopePlatform, scopeGroupID)
+		if !ok {
+			s.resetRuleState(rule.ID, now)
+			continue
+	REDACTED
+
+		breachedNow := compareMetric(metricValue, rule.Operator, rule.Threshold)
+		required := requiredSustainedBreaches(rule.SustainedMinutes, interval)
+		consecutive := s.updateRuleBreaches(rule.ID, now, interval, breachedNow)
+
+		activeEvent, err := s.opsRepo.GetActiveAlertEvent(ctx, rule.ID)
+		if err != nil {
+			log.Printf("[OpsAlertEvaluator] get active event failed (rule=%d): %v", rule.ID, err)
+			continue
+	REDACTED
+
+		if breachedNow && consecutive >= required {
+			if activeEvent != nil {
+				continue
+		REDACTED
+
+			latestEvent, err := s.opsRepo.GetLatestAlertEvent(ctx, rule.ID)
+			if err != nil {
+				log.Printf("[OpsAlertEvaluator] get latest event failed (rule=%d): %v", rule.ID, err)
+				continue
+		REDACTED
+			if latestEvent != nil && rule.CooldownMinutes > 0 {
+				cooldown := time.Duration(rule.CooldownMinutes) * time.Minute
+				if now.Sub(latestEvent.FiredAt) < cooldown {
+					continue
+			REDACTED
+		REDACTED
+
+			firedEvent := &OpsAlertEvent{
+				RuleID:         rule.ID,
+				Severity:       strings.TrimSpace(rule.Severity),
+				Status:         OpsAlertStatusFiring,
+				Title:          fmt.Sprintf("%s: %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name)),
+				Description:    buildOpsAlertDescription(rule, metricValue, windowMinutes, scopePlatform, scopeGroupID),
+				MetricValue:    float64Ptr(metricValue),
+				ThresholdValue: float64Ptr(rule.Threshold),
+				Dimensions:     buildOpsAlertDimensions(scopePlatform, scopeGroupID),
+				FiredAt:        now,
+				CreatedAt:      now,
+		REDACTED
+
+			created, err := s.opsRepo.CreateAlertEvent(ctx, firedEvent)
+			if err != nil {
+				log.Printf("[OpsAlertEvaluator] create event failed (rule=%d): %v", rule.ID, err)
+				continue
+		REDACTED
+
+			if created != nil && created.ID > 0 {
+				s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created)
+		REDACTED
+			continue
+	REDACTED
+
+		// Not breached: resolve active event if present.
+		if activeEvent != nil {
+			resolvedAt := now
+			if err := s.opsRepo.UpdateAlertEventStatus(ctx, activeEvent.ID, OpsAlertStatusResolved, &resolvedAt); err != nil {
+				log.Printf("[OpsAlertEvaluator] resolve event failed (event=%d): %v", activeEvent.ID, err)
+		REDACTED
+	REDACTED
+REDACTED
+
+	s.recordHeartbeatSuccess(runAt, time.Since(startedAt))
+REDACTED
+
+func (s *OpsAlertEvaluatorService) pruneRuleStates(rules []*OpsAlertRule) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	live := map[int64]struct{REDACTED{REDACTED
+	for _, r := range rules {
+		if r != nil && r.ID > 0 {
+			live[r.ID] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+	for id := range s.ruleStates {
+		if _, ok := live[id]; !ok {
+			delete(s.ruleStates, id)
+	REDACTED
+REDACTED
+REDACTED
+
+func (s *OpsAlertEvaluatorService) resetRuleState(ruleID int64, now time.Time) {
+	if ruleID <= 0 {
+		return
+REDACTED
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, ok := s.ruleStates[ruleID]
+	if !ok {
+		state = &opsAlertRuleState{REDACTED
+		s.ruleStates[ruleID] = state
+REDACTED
+	state.LastEvaluatedAt = now
+	state.ConsecutiveBreaches = 0
+REDACTED
+
+func (s *OpsAlertEvaluatorService) updateRuleBreaches(ruleID int64, now time.Time, interval time.Duration, breached bool) int {
+	if ruleID <= 0 {
+		return 0
+REDACTED
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, ok := s.ruleStates[ruleID]
+	if !ok {
+		state = &opsAlertRuleState{REDACTED
+		s.ruleStates[ruleID] = state
+REDACTED
+
+	if !state.LastEvaluatedAt.IsZero() && interval > 0 {
+		if now.Sub(state.LastEvaluatedAt) > interval*2 {
+			state.ConsecutiveBreaches = 0
+	REDACTED
+REDACTED
+
+	state.LastEvaluatedAt = now
+	if breached {
+		state.ConsecutiveBreaches++
+REDACTED else {
+		state.ConsecutiveBreaches = 0
+REDACTED
+	return state.ConsecutiveBreaches
+REDACTED
+
+func requiredSustainedBreaches(sustainedMinutes int, interval time.Duration) int {
+	if sustainedMinutes <= 0 {
+		return 1
+REDACTED
+	if interval <= 0 {
+		return sustainedMinutes
+REDACTED
+	required := int(math.Ceil(float64(sustainedMinutes*60) / interval.Seconds()))
+	if required < 1 {
+		return 1
+REDACTED
+	return required
+REDACTED
+
+func parseOpsAlertRuleScope(filters map[string]any) (platform string, groupID *int64) {
+	if filters == nil {
+		return "", nil
+REDACTED
+	if v, ok := filters["platform"]; ok {
+		if s, ok := v.(string); ok {
+			platform = strings.TrimSpace(s)
+	REDACTED
+REDACTED
+	if v, ok := filters["group_id"]; ok {
+		switch t := v.(type) {
+		case float64:
+			if t > 0 {
+				id := int64(t)
+				groupID = &id
+		REDACTED
+		case int64:
+			if t > 0 {
+				id := t
+				groupID = &id
+		REDACTED
+		case int:
+			if t > 0 {
+				id := int64(t)
+				groupID = &id
+		REDACTED
+		case string:
+			n, err := strconv.ParseInt(strings.TrimSpace(t), 10, 64)
+			if err == nil && n > 0 {
+				groupID = &n
+		REDACTED
+	REDACTED
+REDACTED
+	return platform, groupID
+REDACTED
+
+func (s *OpsAlertEvaluatorService) computeRuleMetric(
+	ctx context.Context,
+	rule *OpsAlertRule,
+	systemMetrics *OpsSystemMetricsSnapshot,
+	start time.Time,
+	end time.Time,
+	platform string,
+	groupID *int64,
+) (float64, bool) {
+	if rule == nil {
+		return 0, false
+REDACTED
+	switch strings.TrimSpace(rule.MetricType) {
+	case "cpu_usage_percent":
+		if systemMetrics != nil && systemMetrics.CPUUsagePercent != nil {
+			return *systemMetrics.CPUUsagePercent, true
+	REDACTED
+		return 0, false
+	case "memory_usage_percent":
+		if systemMetrics != nil && systemMetrics.MemoryUsagePercent != nil {
+			return *systemMetrics.MemoryUsagePercent, true
+	REDACTED
+		return 0, false
+	case "concurrency_queue_depth":
+		if systemMetrics != nil && systemMetrics.ConcurrencyQueueDepth != nil {
+			return float64(*systemMetrics.ConcurrencyQueueDepth), true
+	REDACTED
+		return 0, false
+REDACTED
+
+	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{
+		StartTime: start,
+		EndTime:   end,
+		Platform:  platform,
+		GroupID:   groupID,
+		QueryMode: OpsQueryModeRaw,
+REDACTED)
+	if err != nil {
+		return 0, false
+REDACTED
+	if overview == nil {
+		return 0, false
+REDACTED
+
+	switch strings.TrimSpace(rule.MetricType) {
+	case "success_rate":
+		if overview.RequestCountSLA <= 0 {
+			return 0, false
+	REDACTED
+		return overview.SLA * 100, true
+	case "error_rate":
+		if overview.RequestCountSLA <= 0 {
+			return 0, false
+	REDACTED
+		return overview.ErrorRate * 100, true
+	case "upstream_error_rate":
+		if overview.RequestCountSLA <= 0 {
+			return 0, false
+	REDACTED
+		return overview.UpstreamErrorRate * 100, true
+	case "p95_latency_ms":
+		if overview.Duration.P95 == nil {
+			return 0, false
+	REDACTED
+		return float64(*overview.Duration.P95), true
+	case "p99_latency_ms":
+		if overview.Duration.P99 == nil {
+			return 0, false
+	REDACTED
+		return float64(*overview.Duration.P99), true
+	default:
+		return 0, false
+REDACTED
+REDACTED
+
+func compareMetric(value float64, operator string, threshold float64) bool {
+	switch strings.TrimSpace(operator) {
+	case ">":
+		return value > threshold
+	case ">=":
+		return value >= threshold
+	case "<":
+		return value < threshold
+	case "<=":
+		return value <= threshold
+	case "==":
+		return value == threshold
+	case "!=":
+		return value != threshold
+	default:
+		return false
+REDACTED
+REDACTED
+
+func buildOpsAlertDimensions(platform string, groupID *int64) map[string]any {
+	dims := map[string]any{REDACTED
+	if strings.TrimSpace(platform) != "" {
+		dims["platform"] = strings.TrimSpace(platform)
+REDACTED
+	if groupID != nil && *groupID > 0 {
+		dims["group_id"] = *groupID
+REDACTED
+	if len(dims) == 0 {
+		return nil
+REDACTED
+	return dims
+REDACTED
+
+func buildOpsAlertDescription(rule *OpsAlertRule, value float64, windowMinutes int, platform string, groupID *int64) string {
+	if rule == nil {
+		return ""
+REDACTED
+	scope := "overall"
+	if strings.TrimSpace(platform) != "" {
+		scope = fmt.Sprintf("platform=%s", strings.TrimSpace(platform))
+REDACTED
+	if groupID != nil && *groupID > 0 {
+		scope = fmt.Sprintf("%s group_id=%d", scope, *groupID)
+REDACTED
+	if windowMinutes <= 0 {
+		windowMinutes = 1
+REDACTED
+	return fmt.Sprintf("%s %s %.2f (current %.2f) over last %dm (%s)",
+		strings.TrimSpace(rule.MetricType),
+		strings.TrimSpace(rule.Operator),
+		rule.Threshold,
+		value,
+		windowMinutes,
+		strings.TrimSpace(scope),
+	)
+REDACTED
+
+func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) {
+	if s == nil || s.emailService == nil || s.opsService == nil || event == nil || rule == nil {
+		return
+REDACTED
+	if event.EmailSent {
+		return
+REDACTED
+	if !rule.NotifyEmail {
+		return
+REDACTED
+
+	emailCfg, err := s.opsService.GetEmailNotificationConfig(ctx)
+	if err != nil || emailCfg == nil || !emailCfg.Alert.Enabled {
+		return
+REDACTED
+
+	if len(emailCfg.Alert.Recipients) == 0 {
+		return
+REDACTED
+	if !shouldSendOpsAlertEmailByMinSeverity(strings.TrimSpace(emailCfg.Alert.MinSeverity), strings.TrimSpace(rule.Severity)) {
+		return
+REDACTED
+
+	if runtimeCfg != nil && runtimeCfg.Silencing.Enabled {
+		if isOpsAlertSilenced(time.Now().UTC(), rule, event, runtimeCfg.Silencing) {
+			return
+	REDACTED
+REDACTED
+
+	// Apply/update rate limiter.
+	s.emailLimiter.SetLimit(emailCfg.Alert.RateLimitPerHour)
+
+	subject := fmt.Sprintf("[Ops Alert][%s] %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name))
+	body := buildOpsAlertEmailBody(rule, event)
+
+	anySent := false
+	for _, to := range emailCfg.Alert.Recipients {
+		addr := strings.TrimSpace(to)
+		if addr == "" {
+			continue
+	REDACTED
+		if !s.emailLimiter.Allow(time.Now().UTC()) {
+			continue
+	REDACTED
+		if err := s.emailService.SendEmail(ctx, addr, subject, body); err != nil {
+			// Ignore per-recipient failures; continue best-effort.
+			continue
+	REDACTED
+		anySent = true
+REDACTED
+
+	if anySent {
+		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
+REDACTED
+REDACTED
+
+func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {
+	if rule == nil || event == nil {
+		return ""
+REDACTED
+	metric := strings.TrimSpace(rule.MetricType)
+	value := "-"
+	threshold := fmt.Sprintf("%.2f", rule.Threshold)
+	if event.MetricValue != nil {
+		value = fmt.Sprintf("%.2f", *event.MetricValue)
+REDACTED
+	if event.ThresholdValue != nil {
+		threshold = fmt.Sprintf("%.2f", *event.ThresholdValue)
+REDACTED
+	return fmt.Sprintf(`
+<h2>Ops Alert</h2>
+<p><b>Rule</b>: %s</p>
+<p><b>Severity</b>: %s</p>
+<p><b>Status</b>: %s</p>
+<p><b>Metric</b>: %s %s %s</p>
+<p><b>Fired at</b>: %s</p>
+<p><b>Description</b>: %s</p>
+`,
+		htmlEscape(rule.Name),
+		htmlEscape(rule.Severity),
+		htmlEscape(event.Status),
+		htmlEscape(metric),
+		htmlEscape(rule.Operator),
+		htmlEscape(fmt.Sprintf("%s (threshold %s)", value, threshold)),
+		event.FiredAt.Format(time.RFC3339),
+		htmlEscape(event.Description),
+	)
+REDACTED
+
+func shouldSendOpsAlertEmailByMinSeverity(minSeverity string, ruleSeverity string) bool {
+	minSeverity = strings.ToLower(strings.TrimSpace(minSeverity))
+	if minSeverity == "" {
+		return true
+REDACTED
+
+	eventLevel := opsEmailSeverityForOps(ruleSeverity)
+	minLevel := strings.ToLower(minSeverity)
+
+	rank := func(level string) int {
+		switch level {
+		case "critical":
+			return 3
+		case "warning":
+			return 2
+		case "info":
+			return 1
+		default:
+			return 0
+	REDACTED
+REDACTED
+	return rank(eventLevel) >= rank(minLevel)
+REDACTED
+
+func opsEmailSeverityForOps(severity string) string {
+	switch strings.ToUpper(strings.TrimSpace(severity)) {
+	case "P0":
+		return "critical"
+	case "P1":
+		return "warning"
+	default:
+		return "info"
+REDACTED
+REDACTED
+
+func isOpsAlertSilenced(now time.Time, rule *OpsAlertRule, event *OpsAlertEvent, silencing OpsAlertSilencingSettings) bool {
+	if !silencing.Enabled {
+		return false
+REDACTED
+	if now.IsZero() {
+		now = time.Now().UTC()
+REDACTED
+	if strings.TrimSpace(silencing.GlobalUntilRFC3339) != "" {
+		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(silencing.GlobalUntilRFC3339)); err == nil {
+			if now.Before(t) {
+				return true
+		REDACTED
+	REDACTED
+REDACTED
+
+	for _, entry := range silencing.Entries {
+		untilRaw := strings.TrimSpace(entry.UntilRFC3339)
+		if untilRaw == "" {
+			continue
+	REDACTED
+		until, err := time.Parse(time.RFC3339, untilRaw)
+		if err != nil {
+			continue
+	REDACTED
+		if now.After(until) {
+			continue
+	REDACTED
+		if entry.RuleID != nil && rule != nil && rule.ID > 0 && *entry.RuleID != rule.ID {
+			continue
+	REDACTED
+		if len(entry.Severities) > 0 {
+			match := false
+			for _, s := range entry.Severities {
+				if strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(event.Severity)) || strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(rule.Severity)) {
+					match = true
+					break
+			REDACTED
+		REDACTED
+			if !match {
+				continue
+		REDACTED
+	REDACTED
+		return true
+REDACTED
+
+	return false
+REDACTED
+
+func (s *OpsAlertEvaluatorService) tryAcquireLeaderLock(ctx context.Context, lock OpsDistributedLockSettings) (func(), bool) {
+	if !lock.Enabled {
+		return nil, true
+REDACTED
+	if s.redisClient == nil {
+		s.warnNoRedisOnce.Do(func() {
+			log.Printf("[OpsAlertEvaluator] redis not configured; running without distributed lock")
+	REDACTED)
+		return nil, true
+REDACTED
+	key := strings.TrimSpace(lock.Key)
+	if key == "" {
+		key = opsAlertEvaluatorLeaderLockKey
+REDACTED
+	ttl := time.Duration(lock.TTLSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = opsAlertEvaluatorLeaderLockTTL
+REDACTED
+
+	ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
+	if err != nil {
+		// Fail-open for single-node environments, but warn.
+		s.warnNoRedisOnce.Do(func() {
+			log.Printf("[OpsAlertEvaluator] leader lock SetNX failed; running without lock: %v", err)
+	REDACTED)
+		return nil, true
+REDACTED
+	if !ok {
+		s.maybeLogSkip(key)
+		return nil, false
+REDACTED
+	return func() {
+		_, _ = opsAlertEvaluatorReleaseScript.Run(ctx, s.redisClient, []string{keyREDACTED, s.instanceID).Result()
+REDACTED, true
+REDACTED
+
+func (s *OpsAlertEvaluatorService) maybeLogSkip(key string) {
+	s.skipLogMu.Lock()
+	defer s.skipLogMu.Unlock()
+
+	now := time.Now()
+	if !s.skipLogAt.IsZero() && now.Sub(s.skipLogAt) < opsAlertEvaluatorSkipLogInterval {
+		return
+REDACTED
+	s.skipLogAt = now
+	log.Printf("[OpsAlertEvaluator] leader lock held by another instance; skipping (key=%q)", key)
+REDACTED
+
+func (s *OpsAlertEvaluatorService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration) {
+	if s == nil || s.opsRepo == nil {
+		return
+REDACTED
+	now := time.Now().UTC()
+	durMs := duration.Milliseconds()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = s.opsRepo.UpsertJobHeartbeat(ctx, &OpsUpsertJobHeartbeatInput{
+		JobName:        opsAlertEvaluatorJobName,
+		LastRunAt:      &runAt,
+		LastSuccessAt:  &now,
+		LastDurationMs: &durMs,
+REDACTED)
+REDACTED
+
+func (s *OpsAlertEvaluatorService) recordHeartbeatError(runAt time.Time, duration time.Duration, err error) {
+	if s == nil || s.opsRepo == nil || err == nil {
+		return
+REDACTED
+	now := time.Now().UTC()
+	durMs := duration.Milliseconds()
+	msg := truncateString(err.Error(), 2048)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = s.opsRepo.UpsertJobHeartbeat(ctx, &OpsUpsertJobHeartbeatInput{
+		JobName:        opsAlertEvaluatorJobName,
+		LastRunAt:      &runAt,
+		LastErrorAt:    &now,
+		LastError:      &msg,
+		LastDurationMs: &durMs,
+REDACTED)
+REDACTED
+
+func htmlEscape(s string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+		"'", "&#39;",
+	)
+	return replacer.Replace(s)
+REDACTED
+
+type slidingWindowLimiter struct {
+	mu     sync.Mutex
+	limit  int
+	window time.Duration
+	sent   []time.Time
+REDACTED
+
+func newSlidingWindowLimiter(limit int, window time.Duration) *slidingWindowLimiter {
+	if window <= 0 {
+		window = time.Hour
+REDACTED
+	return &slidingWindowLimiter{
+		limit:  limit,
+		window: window,
+		sent:   []time.Time{REDACTED,
+REDACTED
+REDACTED
+
+func (l *slidingWindowLimiter) SetLimit(limit int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.limit = limit
+REDACTED
+
+func (l *slidingWindowLimiter) Allow(now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.limit <= 0 {
+		return true
+REDACTED
+	cutoff := now.Add(-l.window)
+	keep := l.sent[:0]
+	for _, t := range l.sent {
+		if t.After(cutoff) {
+			keep = append(keep, t)
+	REDACTED
+REDACTED
+	l.sent = keep
+	if len(l.sent) >= l.limit {
+		return false
+REDACTED
+	l.sent = append(l.sent, now)
+	return true
+REDACTED
