@@ -18,6 +18,13 @@ type SystemSettings struct {
 	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
 
+	// LinuxDo Connect OAuth login (end-user SSO)
+	LinuxDoConnectEnabled                bool
+	LinuxDoConnectClientID               string
+	LinuxDoConnectClientSecret           string
+	LinuxDoConnectClientSecretConfigured bool
+	LinuxDoConnectRedirectURL            string
+
 	SiteName     string
 	SiteLogo     string
 	SiteSubtitle string

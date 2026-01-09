@@ -72,3 +72,37 @@ REDACTED
 	_, _, _, err = linuxDoParseUserInfo(`{"id":"`+tooLong+`"REDACTED`, cfg)
 REDACTED
 REDACTED
+
+func TestParseOAuthProviderErrorJSON(t *testing.T) {
+	code, desc := parseOAuthProviderError(`{"error":"invalid_client","error_description":"bad secret"REDACTED`)
+	require.Equal(t, "invalid_client", code)
+	require.Equal(t, "bad secret", desc)
+REDACTED
+
+func TestParseOAuthProviderErrorForm(t *testing.T) {
+	code, desc := parseOAuthProviderError("error=invalid_request&error_description=Missing+code_verifier")
+	require.Equal(t, "invalid_request", code)
+	require.Equal(t, "Missing code_verifier", desc)
+REDACTED
+
+func TestParseLinuxDoTokenResponseJSON(t *testing.T) {
+	token, ok := parseLinuxDoTokenResponse(`{"access_token":"t1","token_type":"Bearer","expires_in":3600,"scope":"user"REDACTED`)
+	require.True(t, ok)
+	require.Equal(t, "t1", token.AccessToken)
+	require.Equal(t, "Bearer", token.TokenType)
+	require.Equal(t, int64(3600), token.ExpiresIn)
+	require.Equal(t, "user", token.Scope)
+REDACTED
+
+func TestParseLinuxDoTokenResponseForm(t *testing.T) {
+	token, ok := parseLinuxDoTokenResponse("access_token=t2&token_type=bearer&expires_in=60")
+	require.True(t, ok)
+	require.Equal(t, "t2", token.AccessToken)
+	require.Equal(t, "bearer", token.TokenType)
+	require.Equal(t, int64(60), token.ExpiresIn)
+REDACTED
+
+func TestSingleLineStripsWhitespace(t *testing.T) {
+	require.Equal(t, "hello world", singleLine("hello\r\nworld"))
+	require.Equal(t, "", singleLine("\n\t\r"))
+REDACTED

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -44,10 +45,31 @@ type linuxDoTokenResponse struct {
 	Scope        string `json:"scope,omitempty"`
 REDACTED
 
+type linuxDoTokenExchangeError struct {
+	StatusCode          int
+	ProviderError       string
+	ProviderDescription string
+	Body                string
+REDACTED
+
+func (e *linuxDoTokenExchangeError) Error() string {
+	if e == nil {
+		return ""
+REDACTED
+	parts := []string{fmt.Sprintf("token exchange status=%d", e.StatusCode)REDACTED
+	if strings.TrimSpace(e.ProviderError) != "" {
+		parts = append(parts, "error="+strings.TrimSpace(e.ProviderError))
+REDACTED
+	if strings.TrimSpace(e.ProviderDescription) != "" {
+		parts = append(parts, "error_description="+strings.TrimSpace(e.ProviderDescription))
+REDACTED
+	return strings.Join(parts, " ")
+REDACTED
+
 // LinuxDoOAuthStart starts the LinuxDo Connect OAuth login flow.
 // GET /api/v1/auth/oauth/linuxdo/start?redirect=/dashboard
 func (h *AuthHandler) LinuxDoOAuthStart(c *gin.Context) {
-	cfg, err := linuxDoOAuthConfig(h.cfg)
+	cfg, err := h.getLinuxDoOAuthConfig(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -97,7 +119,7 @@ REDACTED
 // LinuxDoOAuthCallback handles the OAuth callback, creates/logins the user, then redirects to frontend.
 // GET /api/v1/auth/oauth/linuxdo/callback?code=...&state=...
 func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
-	cfg, cfgErr := linuxDoOAuthConfig(h.cfg)
+	cfg, cfgErr := h.getLinuxDoOAuthConfig(c.Request.Context())
 	if cfgErr != nil {
 		response.ErrorFrom(c, cfgErr)
 		return
@@ -156,8 +178,22 @@ REDACTED
 
 	tokenResp, err := linuxDoExchangeCode(c.Request.Context(), cfg, code, redirectURI, codeVerifier)
 	if err != nil {
-		log.Printf("[LinuxDo OAuth] token exchange failed: %v", err)
-		redirectOAuthError(c, frontendCallback, "token_exchange_failed", "failed to exchange oauth code", "")
+		description := ""
+		var exchangeErr *linuxDoTokenExchangeError
+		if errors.As(err, &exchangeErr) && exchangeErr != nil {
+			log.Printf(
+				"[LinuxDo OAuth] token exchange failed: status=%d provider_error=%q provider_description=%q body=%s",
+				exchangeErr.StatusCode,
+				exchangeErr.ProviderError,
+				exchangeErr.ProviderDescription,
+				truncateLogValue(exchangeErr.Body, 2048),
+			)
+			description = exchangeErr.Error()
+	REDACTED else {
+			log.Printf("[LinuxDo OAuth] token exchange failed: %v", err)
+			description = err.Error()
+	REDACTED
+		redirectOAuthError(c, frontendCallback, "token_exchange_failed", "failed to exchange oauth code", singleLine(description))
 		return
 REDACTED
 
@@ -182,14 +218,17 @@ REDACTED
 	redirectWithFragment(c, frontendCallback, fragment)
 REDACTED
 
-func linuxDoOAuthConfig(cfg *config.Config) (config.LinuxDoConnectConfig, error) {
-	if cfg == nil {
+func (h *AuthHandler) getLinuxDoOAuthConfig(ctx context.Context) (config.LinuxDoConnectConfig, error) {
+	if h != nil && h.settingSvc != nil {
+		return h.settingSvc.GetLinuxDoConnectOAuthConfig(ctx)
+REDACTED
+	if h == nil || h.cfg == nil {
 		return config.LinuxDoConnectConfig{REDACTED, infraerrors.ServiceUnavailable("CONFIG_NOT_READY", "config not loaded")
 REDACTED
-	if !cfg.LinuxDo.Enabled {
+	if !h.cfg.LinuxDo.Enabled {
 		return config.LinuxDoConnectConfig{REDACTED, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
 REDACTED
-	return cfg.LinuxDo, nil
+	return h.cfg.LinuxDo, nil
 REDACTED
 
 func linuxDoExchangeCode(
@@ -224,21 +263,32 @@ REDACTED
 		return nil, fmt.Errorf("unsupported token_auth_method: %s", cfg.TokenAuthMethod)
 REDACTED
 
-	var tokenResp linuxDoTokenResponse
-	resp, err := r.SetFormDataFromValues(form).SetSuccessResult(&tokenResp).Post(cfg.TokenURL)
+	resp, err := r.SetFormDataFromValues(form).Post(cfg.TokenURL)
 	if err != nil {
 		return nil, fmt.Errorf("request token: %w", err)
 REDACTED
+	body := strings.TrimSpace(resp.String())
 	if !resp.IsSuccessState() {
-		return nil, fmt.Errorf("token exchange status=%d", resp.StatusCode)
+		providerErr, providerDesc := parseOAuthProviderError(body)
+		return nil, &linuxDoTokenExchangeError{
+			StatusCode:          resp.StatusCode,
+			ProviderError:       providerErr,
+			ProviderDescription: providerDesc,
+			Body:                body,
+	REDACTED
 REDACTED
-	if strings.TrimSpace(tokenResp.AccessToken) == "" {
-		return nil, errors.New("token response missing access_token")
+
+	tokenResp, ok := parseLinuxDoTokenResponse(body)
+	if !ok || strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return nil, &linuxDoTokenExchangeError{
+			StatusCode: resp.StatusCode,
+			Body:       body,
+	REDACTED
 REDACTED
 	if strings.TrimSpace(tokenResp.TokenType) == "" {
 		tokenResp.TokenType = "Bearer"
 REDACTED
-	return &tokenResp, nil
+	return tokenResp, nil
 REDACTED
 
 func linuxDoFetchUserInfo(
@@ -377,6 +427,81 @@ REDACTED
 	return ""
 REDACTED
 
+func parseOAuthProviderError(body string) (providerErr string, providerDesc string) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "", ""
+REDACTED
+
+	providerErr = firstNonEmpty(
+		getGJSON(body, "error"),
+		getGJSON(body, "code"),
+		getGJSON(body, "error.code"),
+	)
+	providerDesc = firstNonEmpty(
+		getGJSON(body, "error_description"),
+		getGJSON(body, "error.message"),
+		getGJSON(body, "message"),
+		getGJSON(body, "detail"),
+	)
+
+	if providerErr != "" || providerDesc != "" {
+		return providerErr, providerDesc
+REDACTED
+
+	values, err := url.ParseQuery(body)
+	if err != nil {
+		return "", ""
+REDACTED
+	providerErr = firstNonEmpty(values.Get("error"), values.Get("code"))
+	providerDesc = firstNonEmpty(values.Get("error_description"), values.Get("error_message"), values.Get("message"))
+	return providerErr, providerDesc
+REDACTED
+
+func parseLinuxDoTokenResponse(body string) (*linuxDoTokenResponse, bool) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, false
+REDACTED
+
+	accessToken := strings.TrimSpace(getGJSON(body, "access_token"))
+	if accessToken != "" {
+		tokenType := strings.TrimSpace(getGJSON(body, "token_type"))
+		refreshToken := strings.TrimSpace(getGJSON(body, "refresh_token"))
+		scope := strings.TrimSpace(getGJSON(body, "scope"))
+		expiresIn := gjson.Get(body, "expires_in").Int()
+		return &linuxDoTokenResponse{
+			AccessToken:  accessToken,
+			TokenType:    tokenType,
+			ExpiresIn:    expiresIn,
+			RefreshToken: refreshToken,
+			Scope:        scope,
+	REDACTED, true
+REDACTED
+
+	values, err := url.ParseQuery(body)
+	if err != nil {
+		return nil, false
+REDACTED
+	accessToken = strings.TrimSpace(values.Get("access_token"))
+	if accessToken == "" {
+		return nil, false
+REDACTED
+	expiresIn := int64(0)
+	if raw := strings.TrimSpace(values.Get("expires_in")); raw != "" {
+		if v, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			expiresIn = v
+	REDACTED
+REDACTED
+	return &linuxDoTokenResponse{
+		AccessToken:  accessToken,
+		TokenType:    strings.TrimSpace(values.Get("token_type")),
+		ExpiresIn:    expiresIn,
+		RefreshToken: strings.TrimSpace(values.Get("refresh_token")),
+		Scope:        strings.TrimSpace(values.Get("scope")),
+REDACTED, true
+REDACTED
+
 func getGJSON(body string, path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -387,6 +512,29 @@ REDACTED
 		return ""
 REDACTED
 	return res.String()
+REDACTED
+
+func truncateLogValue(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxLen <= 0 {
+		return ""
+REDACTED
+	if len(value) <= maxLen {
+		return value
+REDACTED
+	value = value[:maxLen]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+REDACTED
+	return value
+REDACTED
+
+func singleLine(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+REDACTED
+	return strings.Join(strings.Fields(value), " ")
 REDACTED
 
 func sanitizeFrontendRedirectPath(path string) string {

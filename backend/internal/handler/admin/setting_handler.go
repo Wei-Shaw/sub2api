@@ -2,6 +2,8 @@ package admin
 
 import (
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -38,33 +40,37 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled:          settings.RegistrationEnabled,
-		EmailVerifyEnabled:           settings.EmailVerifyEnabled,
-		SMTPHost:                     settings.SMTPHost,
-		SMTPPort:                     settings.SMTPPort,
-		SMTPUsername:                 settings.SMTPUsername,
-		SMTPPasswordConfigured:       settings.SMTPPasswordConfigured,
-		SMTPFrom:                     settings.SMTPFrom,
-		SMTPFromName:                 settings.SMTPFromName,
-		SMTPUseTLS:                   settings.SMTPUseTLS,
-		TurnstileEnabled:             settings.TurnstileEnabled,
-		TurnstileSiteKey:             settings.TurnstileSiteKey,
-		TurnstileSecretKeyConfigured: settings.TurnstileSecretKeyConfigured,
-		SiteName:                     settings.SiteName,
-		SiteLogo:                     settings.SiteLogo,
-		SiteSubtitle:                 settings.SiteSubtitle,
-		APIBaseURL:                   settings.APIBaseURL,
-		ContactInfo:                  settings.ContactInfo,
-		DocURL:                       settings.DocURL,
-		DefaultConcurrency:           settings.DefaultConcurrency,
-		DefaultBalance:               settings.DefaultBalance,
-		EnableModelFallback:          settings.EnableModelFallback,
-		FallbackModelAnthropic:       settings.FallbackModelAnthropic,
-		FallbackModelOpenAI:          settings.FallbackModelOpenAI,
-		FallbackModelGemini:          settings.FallbackModelGemini,
-		FallbackModelAntigravity:     settings.FallbackModelAntigravity,
-		EnableIdentityPatch:          settings.EnableIdentityPatch,
-		IdentityPatchPrompt:          settings.IdentityPatchPrompt,
+		RegistrationEnabled:                  settings.RegistrationEnabled,
+		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
+		SMTPHost:                             settings.SMTPHost,
+		SMTPPort:                             settings.SMTPPort,
+		SMTPUsername:                         settings.SMTPUsername,
+		SMTPPasswordConfigured:               settings.SMTPPasswordConfigured,
+		SMTPFrom:                             settings.SMTPFrom,
+		SMTPFromName:                         settings.SMTPFromName,
+		SMTPUseTLS:                           settings.SMTPUseTLS,
+		TurnstileEnabled:                     settings.TurnstileEnabled,
+		TurnstileSiteKey:                     settings.TurnstileSiteKey,
+		TurnstileSecretKeyConfigured:         settings.TurnstileSecretKeyConfigured,
+		LinuxDoConnectEnabled:                settings.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:               settings.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecretConfigured: settings.LinuxDoConnectClientSecretConfigured,
+		LinuxDoConnectRedirectURL:            settings.LinuxDoConnectRedirectURL,
+		SiteName:                             settings.SiteName,
+		SiteLogo:                             settings.SiteLogo,
+		SiteSubtitle:                         settings.SiteSubtitle,
+		APIBaseURL:                           settings.APIBaseURL,
+		ContactInfo:                          settings.ContactInfo,
+		DocURL:                               settings.DocURL,
+		DefaultConcurrency:                   settings.DefaultConcurrency,
+		DefaultBalance:                       settings.DefaultBalance,
+		EnableModelFallback:                  settings.EnableModelFallback,
+		FallbackModelAnthropic:               settings.FallbackModelAnthropic,
+		FallbackModelOpenAI:                  settings.FallbackModelOpenAI,
+		FallbackModelGemini:                  settings.FallbackModelGemini,
+		FallbackModelAntigravity:             settings.FallbackModelAntigravity,
+		EnableIdentityPatch:                  settings.EnableIdentityPatch,
+		IdentityPatchPrompt:                  settings.IdentityPatchPrompt,
 REDACTED)
 REDACTED
 
@@ -87,6 +93,12 @@ type UpdateSettingsRequest struct {
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey   string `json:"turnstile_site_key"`
 	TurnstileSecretKey string `json:"turnstile_secret_key"`
+
+	// LinuxDo Connect OAuth login (end-user SSO)
+	LinuxDoConnectEnabled      bool   `json:"linuxdo_connect_enabled"`
+	LinuxDoConnectClientID     string `json:"linuxdo_connect_client_id"`
+	LinuxDoConnectClientSecret string `json:"linuxdo_connect_client_secret"`
+	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
 
 	// OEM设置
 	SiteName     string `json:"site_name"`
@@ -165,34 +177,67 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// LinuxDo Connect 参数验证
+	if req.LinuxDoConnectEnabled {
+		req.LinuxDoConnectClientID = strings.TrimSpace(req.LinuxDoConnectClientID)
+		req.LinuxDoConnectClientSecret = strings.TrimSpace(req.LinuxDoConnectClientSecret)
+		req.LinuxDoConnectRedirectURL = strings.TrimSpace(req.LinuxDoConnectRedirectURL)
+
+		if req.LinuxDoConnectClientID == "" {
+			response.BadRequest(c, "LinuxDo Client ID is required when enabled")
+			return
+	REDACTED
+		if req.LinuxDoConnectRedirectURL == "" {
+			response.BadRequest(c, "LinuxDo Redirect URL is required when enabled")
+			return
+	REDACTED
+		if !isAbsoluteHTTPURL(req.LinuxDoConnectRedirectURL) {
+			response.BadRequest(c, "LinuxDo Redirect URL must be an absolute http(s) URL")
+			return
+	REDACTED
+
+		// If client_secret not provided, keep existing value (if any).
+		if req.LinuxDoConnectClientSecret == "" {
+			if previousSettings.LinuxDoConnectClientSecret == "" {
+				response.BadRequest(c, "LinuxDo Client Secret is required when enabled")
+				return
+		REDACTED
+			req.LinuxDoConnectClientSecret = previousSettings.LinuxDoConnectClientSecret
+	REDACTED
+REDACTED
+
 	settings := &service.SystemSettings{
-		RegistrationEnabled:      req.RegistrationEnabled,
-		EmailVerifyEnabled:       req.EmailVerifyEnabled,
-		SMTPHost:                 req.SMTPHost,
-		SMTPPort:                 req.SMTPPort,
-		SMTPUsername:             req.SMTPUsername,
-		SMTPPassword:             req.SMTPPassword,
-		SMTPFrom:                 req.SMTPFrom,
-		SMTPFromName:             req.SMTPFromName,
-		SMTPUseTLS:               req.SMTPUseTLS,
-		TurnstileEnabled:         req.TurnstileEnabled,
-		TurnstileSiteKey:         req.TurnstileSiteKey,
-		TurnstileSecretKey:       req.TurnstileSecretKey,
-		SiteName:                 req.SiteName,
-		SiteLogo:                 req.SiteLogo,
-		SiteSubtitle:             req.SiteSubtitle,
-		APIBaseURL:               req.APIBaseURL,
-		ContactInfo:              req.ContactInfo,
-		DocURL:                   req.DocURL,
-		DefaultConcurrency:       req.DefaultConcurrency,
-		DefaultBalance:           req.DefaultBalance,
-		EnableModelFallback:      req.EnableModelFallback,
-		FallbackModelAnthropic:   req.FallbackModelAnthropic,
-		FallbackModelOpenAI:      req.FallbackModelOpenAI,
-		FallbackModelGemini:      req.FallbackModelGemini,
-		FallbackModelAntigravity: req.FallbackModelAntigravity,
-		EnableIdentityPatch:      req.EnableIdentityPatch,
-		IdentityPatchPrompt:      req.IdentityPatchPrompt,
+		RegistrationEnabled:        req.RegistrationEnabled,
+		EmailVerifyEnabled:         req.EmailVerifyEnabled,
+		SMTPHost:                   req.SMTPHost,
+		SMTPPort:                   req.SMTPPort,
+		SMTPUsername:               req.SMTPUsername,
+		SMTPPassword:               req.SMTPPassword,
+		SMTPFrom:                   req.SMTPFrom,
+		SMTPFromName:               req.SMTPFromName,
+		SMTPUseTLS:                 req.SMTPUseTLS,
+		TurnstileEnabled:           req.TurnstileEnabled,
+		TurnstileSiteKey:           req.TurnstileSiteKey,
+		TurnstileSecretKey:         req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:      req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:     req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret: req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:  req.LinuxDoConnectRedirectURL,
+		SiteName:                   req.SiteName,
+		SiteLogo:                   req.SiteLogo,
+		SiteSubtitle:               req.SiteSubtitle,
+		APIBaseURL:                 req.APIBaseURL,
+		ContactInfo:                req.ContactInfo,
+		DocURL:                     req.DocURL,
+		DefaultConcurrency:         req.DefaultConcurrency,
+		DefaultBalance:             req.DefaultBalance,
+		EnableModelFallback:        req.EnableModelFallback,
+		FallbackModelAnthropic:     req.FallbackModelAnthropic,
+		FallbackModelOpenAI:        req.FallbackModelOpenAI,
+		FallbackModelGemini:        req.FallbackModelGemini,
+		FallbackModelAntigravity:   req.FallbackModelAntigravity,
+		EnableIdentityPatch:        req.EnableIdentityPatch,
+		IdentityPatchPrompt:        req.IdentityPatchPrompt,
 REDACTED
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -210,33 +255,37 @@ REDACTED
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled:          updatedSettings.RegistrationEnabled,
-		EmailVerifyEnabled:           updatedSettings.EmailVerifyEnabled,
-		SMTPHost:                     updatedSettings.SMTPHost,
-		SMTPPort:                     updatedSettings.SMTPPort,
-		SMTPUsername:                 updatedSettings.SMTPUsername,
-		SMTPPasswordConfigured:       updatedSettings.SMTPPasswordConfigured,
-		SMTPFrom:                     updatedSettings.SMTPFrom,
-		SMTPFromName:                 updatedSettings.SMTPFromName,
-		SMTPUseTLS:                   updatedSettings.SMTPUseTLS,
-		TurnstileEnabled:             updatedSettings.TurnstileEnabled,
-		TurnstileSiteKey:             updatedSettings.TurnstileSiteKey,
-		TurnstileSecretKeyConfigured: updatedSettings.TurnstileSecretKeyConfigured,
-		SiteName:                     updatedSettings.SiteName,
-		SiteLogo:                     updatedSettings.SiteLogo,
-		SiteSubtitle:                 updatedSettings.SiteSubtitle,
-		APIBaseURL:                   updatedSettings.APIBaseURL,
-		ContactInfo:                  updatedSettings.ContactInfo,
-		DocURL:                       updatedSettings.DocURL,
-		DefaultConcurrency:           updatedSettings.DefaultConcurrency,
-		DefaultBalance:               updatedSettings.DefaultBalance,
-		EnableModelFallback:          updatedSettings.EnableModelFallback,
-		FallbackModelAnthropic:       updatedSettings.FallbackModelAnthropic,
-		FallbackModelOpenAI:          updatedSettings.FallbackModelOpenAI,
-		FallbackModelGemini:          updatedSettings.FallbackModelGemini,
-		FallbackModelAntigravity:     updatedSettings.FallbackModelAntigravity,
-		EnableIdentityPatch:          updatedSettings.EnableIdentityPatch,
-		IdentityPatchPrompt:          updatedSettings.IdentityPatchPrompt,
+		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
+		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
+		SMTPHost:                             updatedSettings.SMTPHost,
+		SMTPPort:                             updatedSettings.SMTPPort,
+		SMTPUsername:                         updatedSettings.SMTPUsername,
+		SMTPPasswordConfigured:               updatedSettings.SMTPPasswordConfigured,
+		SMTPFrom:                             updatedSettings.SMTPFrom,
+		SMTPFromName:                         updatedSettings.SMTPFromName,
+		SMTPUseTLS:                           updatedSettings.SMTPUseTLS,
+		TurnstileEnabled:                     updatedSettings.TurnstileEnabled,
+		TurnstileSiteKey:                     updatedSettings.TurnstileSiteKey,
+		TurnstileSecretKeyConfigured:         updatedSettings.TurnstileSecretKeyConfigured,
+		LinuxDoConnectEnabled:                updatedSettings.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:               updatedSettings.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecretConfigured: updatedSettings.LinuxDoConnectClientSecretConfigured,
+		LinuxDoConnectRedirectURL:            updatedSettings.LinuxDoConnectRedirectURL,
+		SiteName:                             updatedSettings.SiteName,
+		SiteLogo:                             updatedSettings.SiteLogo,
+		SiteSubtitle:                         updatedSettings.SiteSubtitle,
+		APIBaseURL:                           updatedSettings.APIBaseURL,
+		ContactInfo:                          updatedSettings.ContactInfo,
+		DocURL:                               updatedSettings.DocURL,
+		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
+		DefaultBalance:                       updatedSettings.DefaultBalance,
+		EnableModelFallback:                  updatedSettings.EnableModelFallback,
+		FallbackModelAnthropic:               updatedSettings.FallbackModelAnthropic,
+		FallbackModelOpenAI:                  updatedSettings.FallbackModelOpenAI,
+		FallbackModelGemini:                  updatedSettings.FallbackModelGemini,
+		FallbackModelAntigravity:             updatedSettings.FallbackModelAntigravity,
+		EnableIdentityPatch:                  updatedSettings.EnableIdentityPatch,
+		IdentityPatchPrompt:                  updatedSettings.IdentityPatchPrompt,
 REDACTED)
 REDACTED
 
@@ -298,6 +347,18 @@ REDACTED
 	if req.TurnstileSecretKey != "" {
 		changed = append(changed, "turnstile_secret_key")
 REDACTED
+	if before.LinuxDoConnectEnabled != after.LinuxDoConnectEnabled {
+		changed = append(changed, "linuxdo_connect_enabled")
+REDACTED
+	if before.LinuxDoConnectClientID != after.LinuxDoConnectClientID {
+		changed = append(changed, "linuxdo_connect_client_id")
+REDACTED
+	if req.LinuxDoConnectClientSecret != "" {
+		changed = append(changed, "linuxdo_connect_client_secret")
+REDACTED
+	if before.LinuxDoConnectRedirectURL != after.LinuxDoConnectRedirectURL {
+		changed = append(changed, "linuxdo_connect_redirect_url")
+REDACTED
 	if before.SiteName != after.SiteName {
 		changed = append(changed, "site_name")
 REDACTED
@@ -337,7 +398,40 @@ REDACTED
 	if before.FallbackModelAntigravity != after.FallbackModelAntigravity {
 		changed = append(changed, "fallback_model_antigravity")
 REDACTED
+	if before.EnableIdentityPatch != after.EnableIdentityPatch {
+		changed = append(changed, "enable_identity_patch")
+REDACTED
+	if before.IdentityPatchPrompt != after.IdentityPatchPrompt {
+		changed = append(changed, "identity_patch_prompt")
+REDACTED
 	return changed
+REDACTED
+
+func isAbsoluteHTTPURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+REDACTED
+	if strings.HasPrefix(raw, "//") {
+		return false
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+REDACTED
+	if !u.IsAbs() {
+		return false
+REDACTED
+	if !strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https") {
+		return false
+REDACTED
+	if strings.TrimSpace(u.Host) == "" {
+		return false
+REDACTED
+	if u.Fragment != "" {
+		return false
+REDACTED
+	return true
 REDACTED
 
 // TestSMTPRequest 测试SMTP连接请求

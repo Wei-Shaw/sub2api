@@ -105,6 +105,12 @@ const (
 	// Request identity patch (Claude -> Gemini systemInstruction injection)
 	SettingKeyEnableIdentityPatch = "enable_identity_patch"
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
+
+	// LinuxDo Connect OAuth login (end-user SSO)
+	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"
+	SettingKeyLinuxDoConnectClientID     = "linuxdo_connect_client_id"
+	SettingKeyLinuxDoConnectClientSecret = "linuxdo_connect_client_secret"
+	SettingKeyLinuxDoConnectRedirectURL  = "linuxdo_connect_redirect_url"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

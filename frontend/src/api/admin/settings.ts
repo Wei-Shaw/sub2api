@@ -34,6 +34,11 @@ export interface SystemSettings {
   turnstile_enabled: boolean
   turnstile_site_key: string
   turnstile_secret_key_configured: boolean
+  // LinuxDo Connect OAuth login (end-user SSO)
+  linuxdo_connect_enabled: boolean
+  linuxdo_connect_client_id: string
+  linuxdo_connect_client_secret_configured: boolean
+  linuxdo_connect_redirect_url: string
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean
   identity_patch_prompt: string
@@ -60,6 +65,10 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean
   turnstile_site_key?: string
   turnstile_secret_key?: string
+  linuxdo_connect_enabled?: boolean
+  linuxdo_connect_client_id?: string
+  linuxdo_connect_client_secret?: string
+  linuxdo_connect_redirect_url?: string
   enable_identity_patch?: boolean
   identity_patch_prompt?: string
 REDACTED
