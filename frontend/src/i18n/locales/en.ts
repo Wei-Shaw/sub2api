@@ -1076,12 +1076,16 @@ export default {
       tokenRefreshed: 'Token refreshed successfully',
       accountDeleted: 'Account deleted successfully',
       rateLimitCleared: 'Rate limit cleared successfully',
+      bulkSchedulableEnabled: 'Successfully enabled scheduling for {countREDACTED account(s)',
+      bulkSchedulableDisabled: 'Successfully disabled scheduling for {countREDACTED account(s)',
       bulkActions: {
         selected: '{countREDACTED account(s) selected',
         selectCurrentPage: 'Select this page',
         clear: 'Clear selection',
         edit: 'Bulk Edit',
-        delete: 'Bulk Delete'
+        delete: 'Bulk Delete',
+        enableScheduling: 'Enable Scheduling',
+        disableScheduling: 'Disable Scheduling'
       REDACTED,
       bulkEdit: {
         title: 'Bulk Edit Accounts',

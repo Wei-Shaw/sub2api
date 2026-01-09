@@ -168,6 +168,7 @@ type BulkUpdateAccountsInput struct {
 	Concurrency *int
 	Priority    *int
 	Status      string
+	Schedulable *bool
 	GroupIDs    *[]int64
 	Credentials map[string]any
 	Extra       map[string]any
@@ -909,6 +910,9 @@ REDACTED
 REDACTED
 	if input.Status != "" {
 		repoUpdates.Status = &input.Status
+REDACTED
+	if input.Schedulable != nil {
+		repoUpdates.Schedulable = input.Schedulable
 REDACTED
 
 	// Run bulk update for column/jsonb fields first.
