@@ -705,3 +705,13 @@ INSERT INTO ops_alert_rules (
     '当错误率超过 20% 且持续 1 分钟时触发告警（服务严重异常）',
     true, 'error_rate', '>', 20.0, 1, 1, 'P0', true, 15, NOW(), NOW()
 ) ON CONFLICT (name) DO NOTHING;
+
+-- Ops Monitoring vNext: add Redis pool stats fields to system metrics snapshots.
+-- This migration is intentionally idempotent.
+
+ALTER TABLE ops_system_metrics
+  ADD COLUMN IF NOT EXISTS redis_conn_total INT,
+  ADD COLUMN IF NOT EXISTS redis_conn_idle INT;
+
+COMMENT ON COLUMN ops_system_metrics.redis_conn_total IS 'Redis pool total connections (go-redis PoolStats.TotalConns).';
+COMMENT ON COLUMN ops_system_metrics.redis_conn_idle IS 'Redis pool idle connections (go-redis PoolStats.IdleConns).';

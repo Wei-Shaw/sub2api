@@ -230,6 +230,10 @@ export interface OpsSystemMetricsSnapshot {
   db_ok?: boolean | null
   redis_ok?: boolean | null
 
+  // Config-derived limits (best-effort) for rendering "current vs max".
+  db_max_open_conns?: number | null
+  redis_pool_size?: number | null
+
   redis_conn_total?: number | null
   redis_conn_idle?: number | null
 
