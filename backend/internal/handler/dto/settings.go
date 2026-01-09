@@ -37,6 +37,11 @@ type SystemSettings struct {
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
+
+	// Ops monitoring (vNext)
+	OpsMonitoringEnabled         bool `json:"ops_monitoring_enabled"`
+	OpsRealtimeMonitoringEnabled bool `json:"ops_realtime_monitoring_enabled"`
+	OpsQueryModeDefault          string `json:"ops_query_mode_default"`
 REDACTED
 
 type PublicSettings struct {
