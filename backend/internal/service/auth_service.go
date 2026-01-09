@@ -2,9 +2,13 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
+	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -18,6 +22,7 @@ var (
 	ErrInvalidCredentials  = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
 	ErrUserNotActive       = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
 	ErrEmailExists         = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailReserved       = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
 	ErrInvalidToken        = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
 	ErrTokenExpired        = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
 	ErrTokenTooLarge       = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
@@ -26,6 +31,8 @@ var (
 	ErrRegDisabled         = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable  = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 )
+
+const linuxDoSyntheticEmailDomain = "@linuxdo-connect.invalid"
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
 const maxTokenLength = 8192
@@ -78,6 +85,11 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
+REDACTED
+
+	// Prevent users from registering emails reserved for synthetic OAuth accounts.
+	if isReservedEmail(email) {
+		return "", nil, ErrEmailReserved
 REDACTED
 
 	// 检查是否需要邮件验证
@@ -161,6 +173,10 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string) error {
 		return ErrRegDisabled
 REDACTED
 
+	if isReservedEmail(email) {
+		return ErrEmailReserved
+REDACTED
+
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
@@ -193,6 +209,10 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*S
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		log.Println("[Auth] Registration is disabled")
 		return nil, ErrRegDisabled
+REDACTED
+
+	if isReservedEmail(email) {
+		return nil, ErrEmailReserved
 REDACTED
 
 	// 检查邮箱是否已存在
@@ -319,6 +339,101 @@ REDACTED
 	return token, user, nil
 REDACTED
 
+// LoginOrRegisterOAuth logs a user in by email (trusted from an OAuth provider) or creates a new user.
+//
+// This is used by end-user OAuth/SSO login flows (e.g. LinuxDo Connect), and intentionally does
+// NOT require the local password. A random password hash is generated for new users to satisfy
+// the existing database constraint.
+func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
+	email = strings.TrimSpace(email)
+	if email == "" || len(email) > 255 {
+		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+REDACTED
+	if _, err := mail.ParseAddress(email); err != nil {
+		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+REDACTED
+
+	username = strings.TrimSpace(username)
+	if len([]rune(username)) > 100 {
+		username = string([]rune(username)[:100])
+REDACTED
+
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			// Treat OAuth-first login as registration.
+			if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
+				return "", nil, ErrRegDisabled
+		REDACTED
+
+			randomPassword, err := randomHexString(32)
+			if err != nil {
+				log.Printf("[Auth] Failed to generate random password for oauth signup: %v", err)
+				return "", nil, ErrServiceUnavailable
+		REDACTED
+			hashedPassword, err := s.HashPassword(randomPassword)
+			if err != nil {
+				return "", nil, fmt.Errorf("hash password: %w", err)
+		REDACTED
+
+			// Defaults for new users.
+			defaultBalance := s.cfg.Default.UserBalance
+			defaultConcurrency := s.cfg.Default.UserConcurrency
+			if s.settingService != nil {
+				defaultBalance = s.settingService.GetDefaultBalance(ctx)
+				defaultConcurrency = s.settingService.GetDefaultConcurrency(ctx)
+		REDACTED
+
+			newUser := &User{
+				Email:        email,
+				Username:     username,
+				PasswordHash: hashedPassword,
+				Role:         RoleUser,
+				Balance:      defaultBalance,
+				Concurrency:  defaultConcurrency,
+				Status:       StatusActive,
+		REDACTED
+
+			if err := s.userRepo.Create(ctx, newUser); err != nil {
+				if errors.Is(err, ErrEmailExists) {
+					// Race: user created between GetByEmail and Create.
+					user, err = s.userRepo.GetByEmail(ctx, email)
+					if err != nil {
+						log.Printf("[Auth] Database error getting user after conflict: %v", err)
+						return "", nil, ErrServiceUnavailable
+				REDACTED
+			REDACTED else {
+					log.Printf("[Auth] Database error creating oauth user: %v", err)
+					return "", nil, ErrServiceUnavailable
+			REDACTED
+		REDACTED else {
+				user = newUser
+		REDACTED
+	REDACTED else {
+			log.Printf("[Auth] Database error during oauth login: %v", err)
+			return "", nil, ErrServiceUnavailable
+	REDACTED
+REDACTED
+
+	if !user.IsActive() {
+		return "", nil, ErrUserNotActive
+REDACTED
+
+	// Best-effort: fill username when empty.
+	if user.Username == "" && username != "" {
+		user.Username = username
+		if err := s.userRepo.Update(ctx, user); err != nil {
+			log.Printf("[Auth] Failed to update username after oauth login: %v", err)
+	REDACTED
+REDACTED
+
+	token, err := s.GenerateToken(user)
+	if err != nil {
+		return "", nil, fmt.Errorf("generate token: %w", err)
+REDACTED
+	return token, user, nil
+REDACTED
+
 // ValidateToken 验证JWT token并返回用户声明
 func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
 	// 先做长度校验，尽早拒绝异常超长 token，降低 DoS 风险。
@@ -359,6 +474,22 @@ REDACTED
 REDACTED
 
 	return nil, ErrInvalidToken
+REDACTED
+
+func randomHexString(byteLength int) (string, error) {
+	if byteLength <= 0 {
+		byteLength = 16
+REDACTED
+	buf := make([]byte, byteLength)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+REDACTED
+	return hex.EncodeToString(buf), nil
+REDACTED
+
+func isReservedEmail(email string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	return strings.HasSuffix(normalized, linuxDoSyntheticEmailDomain)
 REDACTED
 
 // GenerateToken 生成JWT token

@@ -229,6 +229,15 @@ export default {
     sendingCode: 'Sending...',
     clickToResend: 'Click to resend code',
     resendCode: 'Resend verification code',
+    linuxdo: {
+      signIn: 'Continue with Linux.do',
+      orContinue: 'or continue with email',
+      callbackTitle: 'Signing you in',
+      callbackProcessing: 'Completing login, please wait...',
+      callbackHint: 'If you are not redirected automatically, go back to the login page and try again.',
+      callbackMissingToken: 'Missing login token, please try again.',
+      backToLogin: 'Back to Login'
+    REDACTED,
     oauth: {
       code: 'Code',
       state: 'State',

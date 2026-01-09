@@ -51,5 +51,6 @@ type PublicSettings struct {
 	APIBaseURL          string
 	ContactInfo         string
 	DocURL              string
+	LinuxDoOAuthEnabled bool
 	Version             string
 REDACTED

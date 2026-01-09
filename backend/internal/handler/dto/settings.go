@@ -50,5 +50,6 @@ type PublicSettings struct {
 	APIBaseURL          string `json:"api_base_url"`
 	ContactInfo         string `json:"contact_info"`
 	DocURL              string `json:"doc_url"`
+	LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
 	Version             string `json:"version"`
 REDACTED

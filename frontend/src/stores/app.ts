@@ -282,23 +282,24 @@ export const useAppStore = defineStore('app', () => {
    * Fetch public settings (uses cache unless force=true)
    * @param force - Force refresh from API
    */
-  async function fetchPublicSettings(force = false): Promise<PublicSettings | null> {
-    // Return cached data if available and not forcing refresh
-    if (publicSettingsLoaded.value && !force) {
-      return {
-        registration_enabled: false,
-        email_verify_enabled: false,
-        turnstile_enabled: false,
-        turnstile_site_key: '',
-        site_name: siteName.value,
-        site_logo: siteLogo.value,
-        site_subtitle: '',
-        api_base_url: apiBaseUrl.value,
-        contact_info: contactInfo.value,
-        doc_url: docUrl.value,
-        version: siteVersion.value
-      REDACTED
-    REDACTED
+	  async function fetchPublicSettings(force = false): Promise<PublicSettings | null> {
+	    // Return cached data if available and not forcing refresh
+	    if (publicSettingsLoaded.value && !force) {
+	      return {
+	        registration_enabled: false,
+	        email_verify_enabled: false,
+	        turnstile_enabled: false,
+	        turnstile_site_key: '',
+	        site_name: siteName.value,
+	        site_logo: siteLogo.value,
+	        site_subtitle: '',
+	        api_base_url: apiBaseUrl.value,
+	        contact_info: contactInfo.value,
+	        doc_url: docUrl.value,
+	        linuxdo_oauth_enabled: false,
+	        version: siteVersion.value
+	      REDACTED
+	    REDACTED
 
     // Prevent duplicate requests
     if (publicSettingsLoading.value) {

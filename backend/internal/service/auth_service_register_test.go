@@ -182,6 +182,14 @@ REDACTED, nil)
 	require.ErrorIs(t, err, ErrServiceUnavailable)
 REDACTED
 
+func TestAuthService_Register_ReservedEmail(t *testing.T) {
+	repo := &userRepoStub{REDACTED
+	service := newAuthService(repo, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "linuxdo-123@linuxdo-connect.invalid", "password")
+	require.ErrorIs(t, err, ErrEmailReserved)
+REDACTED
+
 func TestAuthService_Register_CreateError(t *testing.T) {
 	repo := &userRepoStub{createErr: errors.New("create failed")REDACTED
 	service := newAuthService(repo, map[string]string{

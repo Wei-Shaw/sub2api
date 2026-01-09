@@ -42,6 +42,7 @@ REDACTED
 		APIBaseURL:          settings.APIBaseURL,
 		ContactInfo:         settings.ContactInfo,
 		DocURL:              settings.DocURL,
+		LinuxDoOAuthEnabled: settings.LinuxDoOAuthEnabled,
 		Version:             h.version,
 REDACTED)
 REDACTED

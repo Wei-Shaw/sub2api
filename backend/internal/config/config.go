@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -35,24 +36,25 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig       `mapstructure:"server"`
-	CORS         CORSConfig         `mapstructure:"cors"`
-	Security     SecurityConfig     `mapstructure:"security"`
-	Billing      BillingConfig      `mapstructure:"billing"`
-	Turnstile    TurnstileConfig    `mapstructure:"turnstile"`
-	Database     DatabaseConfig     `mapstructure:"database"`
-	Redis        RedisConfig        `mapstructure:"redis"`
-	JWT          JWTConfig          `mapstructure:"jwt"`
-	Default      DefaultConfig      `mapstructure:"default"`
-	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
-	Pricing      PricingConfig      `mapstructure:"pricing"`
-	Gateway      GatewayConfig      `mapstructure:"gateway"`
-	Concurrency  ConcurrencyConfig  `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig `mapstructure:"token_refresh"`
-	RunMode      string             `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig       `mapstructure:"gemini"`
-	Update       UpdateConfig       `mapstructure:"update"`
+	Server       ServerConfig         `mapstructure:"server"`
+	CORS         CORSConfig           `mapstructure:"cors"`
+	Security     SecurityConfig       `mapstructure:"security"`
+	Billing      BillingConfig        `mapstructure:"billing"`
+	Turnstile    TurnstileConfig      `mapstructure:"turnstile"`
+	Database     DatabaseConfig       `mapstructure:"database"`
+	Redis        RedisConfig          `mapstructure:"redis"`
+	JWT          JWTConfig            `mapstructure:"jwt"`
+	LinuxDo      LinuxDoConnectConfig `mapstructure:"linuxdo_connect"`
+	Default      DefaultConfig        `mapstructure:"default"`
+	RateLimit    RateLimitConfig      `mapstructure:"rate_limit"`
+	Pricing      PricingConfig        `mapstructure:"pricing"`
+	Gateway      GatewayConfig        `mapstructure:"gateway"`
+	Concurrency  ConcurrencyConfig    `mapstructure:"concurrency"`
+	TokenRefresh TokenRefreshConfig   `mapstructure:"token_refresh"`
+	RunMode      string               `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone     string               `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini       GeminiConfig         `mapstructure:"gemini"`
+	Update       UpdateConfig         `mapstructure:"update"`
 REDACTED
 
 // UpdateConfig 在线更新相关配置
@@ -322,6 +324,30 @@ type TurnstileConfig struct {
 	Required bool `mapstructure:"required"`
 REDACTED
 
+// LinuxDoConnectConfig controls LinuxDo Connect OAuth login (end-user SSO).
+//
+// Note: This is NOT the same as upstream account OAuth (e.g. OpenAI/Gemini).
+// It is used for logging in to Sub2API itself.
+type LinuxDoConnectConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	ClientID            string `mapstructure:"client_id"`
+	ClientSecret        string `mapstructure:"client_secret"`
+	AuthorizeURL        string `mapstructure:"authorize_url"`
+	TokenURL            string `mapstructure:"token_url"`
+	UserInfoURL         string `mapstructure:"userinfo_url"`
+	Scopes              string `mapstructure:"scopes"`
+	RedirectURL         string `mapstructure:"redirect_url"`          // backend callback URL registered at the provider
+	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // frontend route to receive token (default: /auth/linuxdo/callback)
+	TokenAuthMethod     string `mapstructure:"token_auth_method"`     // client_secret_post / client_secret_basic / none
+	UsePKCE             bool   `mapstructure:"use_pkce"`
+
+	// Optional: gjson paths to extract fields from userinfo JSON.
+	// When empty, the server tries a set of common keys.
+	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
+	UserInfoIDPath       string `mapstructure:"userinfo_id_path"`
+	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
+REDACTED
+
 type DefaultConfig struct {
 	AdminEmail      string  `mapstructure:"admin_email"`
 	AdminPassword   string  `mapstructure:"admin_password"`
@@ -388,6 +414,18 @@ REDACTED
 		cfg.Server.Mode = "debug"
 REDACTED
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
+	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
+	cfg.LinuxDo.ClientSecret = strings.TrimSpace(cfg.LinuxDo.ClientSecret)
+	cfg.LinuxDo.AuthorizeURL = strings.TrimSpace(cfg.LinuxDo.AuthorizeURL)
+	cfg.LinuxDo.TokenURL = strings.TrimSpace(cfg.LinuxDo.TokenURL)
+	cfg.LinuxDo.UserInfoURL = strings.TrimSpace(cfg.LinuxDo.UserInfoURL)
+	cfg.LinuxDo.Scopes = strings.TrimSpace(cfg.LinuxDo.Scopes)
+	cfg.LinuxDo.RedirectURL = strings.TrimSpace(cfg.LinuxDo.RedirectURL)
+	cfg.LinuxDo.FrontendRedirectURL = strings.TrimSpace(cfg.LinuxDo.FrontendRedirectURL)
+	cfg.LinuxDo.TokenAuthMethod = strings.ToLower(strings.TrimSpace(cfg.LinuxDo.TokenAuthMethod))
+	cfg.LinuxDo.UserInfoEmailPath = strings.TrimSpace(cfg.LinuxDo.UserInfoEmailPath)
+	cfg.LinuxDo.UserInfoIDPath = strings.TrimSpace(cfg.LinuxDo.UserInfoIDPath)
+	cfg.LinuxDo.UserInfoUsernamePath = strings.TrimSpace(cfg.LinuxDo.UserInfoUsernamePath)
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
@@ -424,6 +462,77 @@ REDACTED
 REDACTED
 
 	return &cfg, nil
+REDACTED
+
+func validateAbsoluteHTTPURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("empty url")
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+REDACTED
+	if !u.IsAbs() {
+		return fmt.Errorf("must be absolute")
+REDACTED
+	if !isHTTPScheme(u.Scheme) {
+		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
+REDACTED
+	if strings.TrimSpace(u.Host) == "" {
+		return fmt.Errorf("missing host")
+REDACTED
+	if u.Fragment != "" {
+		return fmt.Errorf("must not include fragment")
+REDACTED
+	return nil
+REDACTED
+
+func validateFrontendRedirectURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("empty url")
+REDACTED
+	if strings.ContainsAny(raw, "\r\n") {
+		return fmt.Errorf("contains invalid characters")
+REDACTED
+	if strings.HasPrefix(raw, "/") {
+		if strings.HasPrefix(raw, "//") {
+			return fmt.Errorf("must not start with //")
+	REDACTED
+		return nil
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+REDACTED
+	if !u.IsAbs() {
+		return fmt.Errorf("must be absolute http(s) url or relative path")
+REDACTED
+	if !isHTTPScheme(u.Scheme) {
+		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
+REDACTED
+	if strings.TrimSpace(u.Host) == "" {
+		return fmt.Errorf("missing host")
+REDACTED
+	if u.Fragment != "" {
+		return fmt.Errorf("must not include fragment")
+REDACTED
+	return nil
+REDACTED
+
+func isHTTPScheme(scheme string) bool {
+	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
+REDACTED
+
+func warnIfInsecureURL(field, raw string) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return
+REDACTED
+	if strings.EqualFold(u.Scheme, "http") {
+		log.Printf("Warning: %s uses http scheme; use https in production to avoid token leakage.", field)
+REDACTED
 REDACTED
 
 func setDefaults() {
@@ -474,6 +583,22 @@ REDACTED)
 
 	// Turnstile
 	viper.SetDefault("turnstile.required", false)
+
+	// LinuxDo Connect OAuth login (end-user SSO)
+	viper.SetDefault("linuxdo_connect.enabled", false)
+	viper.SetDefault("linuxdo_connect.client_id", "")
+	viper.SetDefault("linuxdo_connect.client_secret", "")
+	viper.SetDefault("linuxdo_connect.authorize_url", "https://connect.linux.do/oauth2/authorize")
+	viper.SetDefault("linuxdo_connect.token_url", "https://connect.linux.do/oauth2/token")
+	viper.SetDefault("linuxdo_connect.userinfo_url", "https://connect.linux.do/api/user")
+	viper.SetDefault("linuxdo_connect.scopes", "user")
+	viper.SetDefault("linuxdo_connect.redirect_url", "")
+	viper.SetDefault("linuxdo_connect.frontend_redirect_url", "/auth/linuxdo/callback")
+	viper.SetDefault("linuxdo_connect.token_auth_method", "client_secret_post")
+	viper.SetDefault("linuxdo_connect.use_pkce", false)
+	viper.SetDefault("linuxdo_connect.userinfo_email_path", "")
+	viper.SetDefault("linuxdo_connect.userinfo_id_path", "")
+	viper.SetDefault("linuxdo_connect.userinfo_username_path", "")
 
 	// Database
 	viper.SetDefault("database.host", "localhost")
@@ -585,6 +710,60 @@ REDACTED
 REDACTED
 	if c.Security.CSP.Enabled && strings.TrimSpace(c.Security.CSP.Policy) == "" {
 		return fmt.Errorf("security.csp.policy is required when CSP is enabled")
+REDACTED
+	if c.LinuxDo.Enabled {
+		if strings.TrimSpace(c.LinuxDo.ClientID) == "" {
+			return fmt.Errorf("linuxdo_connect.client_id is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.AuthorizeURL) == "" {
+			return fmt.Errorf("linuxdo_connect.authorize_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.TokenURL) == "" {
+			return fmt.Errorf("linuxdo_connect.token_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.UserInfoURL) == "" {
+			return fmt.Errorf("linuxdo_connect.userinfo_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.RedirectURL) == "" {
+			return fmt.Errorf("linuxdo_connect.redirect_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		method := strings.ToLower(strings.TrimSpace(c.LinuxDo.TokenAuthMethod))
+		switch method {
+		case "", "client_secret_post", "client_secret_basic", "none":
+		default:
+			return fmt.Errorf("linuxdo_connect.token_auth_method must be one of: client_secret_post/client_secret_basic/none")
+	REDACTED
+		if method == "none" && !c.LinuxDo.UsePKCE {
+			return fmt.Errorf("linuxdo_connect.use_pkce must be true when linuxdo_connect.token_auth_method=none")
+	REDACTED
+		if (method == "" || method == "client_secret_post" || method == "client_secret_basic") && strings.TrimSpace(c.LinuxDo.ClientSecret) == "" {
+			return fmt.Errorf("linuxdo_connect.client_secret is required when linuxdo_connect.enabled=true and token_auth_method is client_secret_post/client_secret_basic")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.FrontendRedirectURL) == "" {
+			return fmt.Errorf("linuxdo_connect.frontend_redirect_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+
+		if err := validateAbsoluteHTTPURL(c.LinuxDo.AuthorizeURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.authorize_url invalid: %w", err)
+	REDACTED
+		if err := validateAbsoluteHTTPURL(c.LinuxDo.TokenURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.token_url invalid: %w", err)
+	REDACTED
+		if err := validateAbsoluteHTTPURL(c.LinuxDo.UserInfoURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.userinfo_url invalid: %w", err)
+	REDACTED
+		if err := validateAbsoluteHTTPURL(c.LinuxDo.RedirectURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.redirect_url invalid: %w", err)
+	REDACTED
+		if err := validateFrontendRedirectURL(c.LinuxDo.FrontendRedirectURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.frontend_redirect_url invalid: %w", err)
+	REDACTED
+
+		warnIfInsecureURL("linuxdo_connect.authorize_url", c.LinuxDo.AuthorizeURL)
+		warnIfInsecureURL("linuxdo_connect.token_url", c.LinuxDo.TokenURL)
+		warnIfInsecureURL("linuxdo_connect.userinfo_url", c.LinuxDo.UserInfoURL)
+		warnIfInsecureURL("linuxdo_connect.redirect_url", c.LinuxDo.RedirectURL)
+		warnIfInsecureURL("linuxdo_connect.frontend_redirect_url", c.LinuxDo.FrontendRedirectURL)
 REDACTED
 	if c.Billing.CircuitBreaker.Enabled {
 		if c.Billing.CircuitBreaker.FailureThreshold <= 0 {

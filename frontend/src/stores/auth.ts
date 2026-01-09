@@ -160,6 +160,27 @@ export const useAuthStore = defineStore('auth', () => {
   REDACTED
 
   /**
+   * Set token directly (OAuth/SSO callback) and load current user profile.
+   * @param newToken - JWT access token issued by backend
+   */
+  async function setToken(newToken: string): Promise<User> {
+    // Clear any previous state first (avoid mixing sessions)
+    clearAuth()
+
+    token.value = newToken
+    localStorage.setItem(AUTH_TOKEN_KEY, newToken)
+
+    try {
+      const userData = await refreshUser()
+      startAutoRefresh()
+      return userData
+    REDACTED catch (error) {
+      clearAuth()
+      throw error
+    REDACTED
+  REDACTED
+
+  /**
    * User logout
    * Clears all authentication state and persisted data
    */
@@ -233,6 +254,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Actions
     login,
     register,
+    setToken,
     logout,
     checkAuth,
     refreshUser
