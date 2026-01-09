@@ -448,7 +448,7 @@ REDACTED
 			account, err := s.accountRepo.GetByID(ctx, accountID)
 			if err == nil && s.isAccountInGroup(account, groupID) &&
 				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
-				account.IsSchedulable() &&
+				account.IsSchedulableForModel(requestedModel) &&
 				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 				if err == nil && result.Acquired {
@@ -484,6 +484,9 @@ REDACTED
 			continue
 	REDACTED
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+			continue
+	REDACTED
+		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
@@ -743,7 +746,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
-				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
 				REDACTED
@@ -773,6 +776,9 @@ REDACTED
 	for i := range accounts {
 		acc := &accounts[i]
 		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
@@ -832,7 +838,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
-				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 						if err := s.cache.RefreshSessionTTL(ctx, sessionHash, stickySessionTTL); err != nil {
 							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
@@ -865,6 +871,9 @@ REDACTED
 	REDACTED
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
 		if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			continue
+	REDACTED
+		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
