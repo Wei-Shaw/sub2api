@@ -34,9 +34,22 @@ export interface SystemSettings {
   turnstile_enabled: boolean
   turnstile_site_key: string
   turnstile_secret_key_configured: boolean
+
+  // Model fallback configuration
+  enable_model_fallback: boolean
+  fallback_model_anthropic: string
+  fallback_model_openai: string
+  fallback_model_gemini: string
+  fallback_model_antigravity: string
+
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean
   identity_patch_prompt: string
+
+  // Ops Monitoring (vNext)
+  ops_monitoring_enabled: boolean
+  ops_realtime_monitoring_enabled: boolean
+  ops_query_mode_default: 'auto' | 'raw' | 'preagg' | string
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -60,8 +73,16 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean
   turnstile_site_key?: string
   turnstile_secret_key?: string
+  enable_model_fallback?: boolean
+  fallback_model_anthropic?: string
+  fallback_model_openai?: string
+  fallback_model_gemini?: string
+  fallback_model_antigravity?: string
   enable_identity_patch?: boolean
   identity_patch_prompt?: string
+  ops_monitoring_enabled?: boolean
+  ops_realtime_monitoring_enabled?: boolean
+  ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string
 REDACTED
 
 /**
