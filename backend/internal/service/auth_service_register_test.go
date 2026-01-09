@@ -113,12 +113,26 @@ REDACTED, nil)
 	require.ErrorIs(t, err, ErrRegDisabled)
 REDACTED
 
-func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
+func TestAuthService_Register_EmailVerifyEnabledButServiceNotConfigured(t *testing.T) {
 	repo := &userRepoStub{REDACTED
+	// 邮件验证开启但 emailCache 为 nil（emailService 未配置）
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled: "true",
 		SettingKeyEmailVerifyEnabled:  "true",
 REDACTED, nil)
+
+	// 应返回服务不可用错误，而不是允许绕过验证
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code")
+	require.ErrorIs(t, err, ErrServiceUnavailable)
+REDACTED
+
+func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
+	repo := &userRepoStub{REDACTED
+	cache := &emailCacheStub{REDACTED // 配置 emailService
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+		SettingKeyEmailVerifyEnabled:  "true",
+REDACTED, cache)
 
 	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "")
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
