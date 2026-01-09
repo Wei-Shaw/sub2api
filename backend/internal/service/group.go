@@ -72,3 +72,17 @@ func (g *Group) GetImagePrice(imageSize string) *float64 {
 		return g.ImagePrice2K
 REDACTED
 REDACTED
+
+// IsGroupContextValid reports whether a group from context has the fields required for routing decisions.
+func IsGroupContextValid(group *Group) bool {
+	if group == nil {
+		return false
+REDACTED
+	if group.ID <= 0 {
+		return false
+REDACTED
+	if group.Platform == "" || group.Status == "" {
+		return false
+REDACTED
+	return true
+REDACTED

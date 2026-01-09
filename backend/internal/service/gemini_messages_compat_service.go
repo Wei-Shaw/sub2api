@@ -87,7 +87,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 REDACTED else if groupID != nil {
 		// 根据分组 platform 决定查询哪种账号
 		var group *Group
-		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && ctxGroup != nil && ctxGroup.ID == *groupID {
+		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 			group = ctxGroup
 	REDACTED else {
 			var err error
