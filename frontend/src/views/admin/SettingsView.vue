@@ -577,6 +577,10 @@
               <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.settings.site.homeContentHint') REDACTEDREDACTED
               </p>
+              <!-- iframe CSP Warning -->
+              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {{ t('admin.settings.site.homeContentIframeWarning') REDACTEDREDACTED
+              </p>
             </div>
           </div>
         </div>
