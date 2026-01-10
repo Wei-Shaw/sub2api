@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -291,6 +292,21 @@ REDACTED
 	return _u.AddAttributeValueIDs(ids...)
 REDACTED
 
+// AddPromoCodeUsageIDs adds the "promo_code_usages" edge to the PromoCodeUsage entity by IDs.
+func (_u *UserUpdate) AddPromoCodeUsageIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddPromoCodeUsageIDs(ids...)
+	return _u
+REDACTED
+
+// AddPromoCodeUsages adds the "promo_code_usages" edges to the PromoCodeUsage entity.
+func (_u *UserUpdate) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddPromoCodeUsageIDs(ids...)
+REDACTED
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
@@ -441,6 +457,27 @@ func (_u *UserUpdate) RemoveAttributeValues(v ...*UserAttributeValue) *UserUpdat
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveAttributeValueIDs(ids...)
+REDACTED
+
+// ClearPromoCodeUsages clears all "promo_code_usages" edges to the PromoCodeUsage entity.
+func (_u *UserUpdate) ClearPromoCodeUsages() *UserUpdate {
+	_u.mutation.ClearPromoCodeUsages()
+	return _u
+REDACTED
+
+// RemovePromoCodeUsageIDs removes the "promo_code_usages" edge to PromoCodeUsage entities by IDs.
+func (_u *UserUpdate) RemovePromoCodeUsageIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemovePromoCodeUsageIDs(ids...)
+	return _u
+REDACTED
+
+// RemovePromoCodeUsages removes "promo_code_usages" edges to PromoCodeUsage entities.
+func (_u *UserUpdate) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemovePromoCodeUsageIDs(ids...)
 REDACTED
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -893,6 +930,51 @@ REDACTED
 	REDACTED
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 REDACTED
+	if _u.mutation.PromoCodeUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PromoCodeUsagesTable,
+			Columns: []string{user.PromoCodeUsagesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedPromoCodeUsagesIDs(); len(nodes) > 0 && !_u.mutation.PromoCodeUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PromoCodeUsagesTable,
+			Columns: []string{user.PromoCodeUsagesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.PromoCodeUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PromoCodeUsagesTable,
+			Columns: []string{user.PromoCodeUsagesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.LabelREDACTED
@@ -1170,6 +1252,21 @@ REDACTED
 	return _u.AddAttributeValueIDs(ids...)
 REDACTED
 
+// AddPromoCodeUsageIDs adds the "promo_code_usages" edge to the PromoCodeUsage entity by IDs.
+func (_u *UserUpdateOne) AddPromoCodeUsageIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddPromoCodeUsageIDs(ids...)
+	return _u
+REDACTED
+
+// AddPromoCodeUsages adds the "promo_code_usages" edges to the PromoCodeUsage entity.
+func (_u *UserUpdateOne) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddPromoCodeUsageIDs(ids...)
+REDACTED
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
@@ -1320,6 +1417,27 @@ func (_u *UserUpdateOne) RemoveAttributeValues(v ...*UserAttributeValue) *UserUp
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveAttributeValueIDs(ids...)
+REDACTED
+
+// ClearPromoCodeUsages clears all "promo_code_usages" edges to the PromoCodeUsage entity.
+func (_u *UserUpdateOne) ClearPromoCodeUsages() *UserUpdateOne {
+	_u.mutation.ClearPromoCodeUsages()
+	return _u
+REDACTED
+
+// RemovePromoCodeUsageIDs removes the "promo_code_usages" edge to PromoCodeUsage entities by IDs.
+func (_u *UserUpdateOne) RemovePromoCodeUsageIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemovePromoCodeUsageIDs(ids...)
+	return _u
+REDACTED
+
+// RemovePromoCodeUsages removes "promo_code_usages" edges to PromoCodeUsage entities.
+func (_u *UserUpdateOne) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemovePromoCodeUsageIDs(ids...)
 REDACTED
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -1795,6 +1913,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(userattributevalue.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.PromoCodeUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PromoCodeUsagesTable,
+			Columns: []string{user.PromoCodeUsagesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedPromoCodeUsagesIDs(); len(nodes) > 0 && !_u.mutation.PromoCodeUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PromoCodeUsagesTable,
+			Columns: []string{user.PromoCodeUsagesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.PromoCodeUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PromoCodeUsagesTable,
+			Columns: []string{user.PromoCodeUsagesColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {

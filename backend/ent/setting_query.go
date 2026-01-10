@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
@@ -22,6 +23,7 @@ type SettingQuery struct {
 	order      []setting.OrderOption
 	inters     []Interceptor
 	predicates []predicate.Setting
+	modifiers  []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -343,6 +345,9 @@ REDACTED
 		nodes = append(nodes, node)
 		return node.assignValues(columns, values)
 REDACTED
+	if len(_q.modifiers) > 0 {
+		_spec.Modifiers = _q.modifiers
+REDACTED
 	for i := range hooks {
 		hooks[i](ctx, _spec)
 REDACTED
@@ -357,6 +362,9 @@ REDACTED
 
 func (_q *SettingQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
+	if len(_q.modifiers) > 0 {
+		_spec.Modifiers = _q.modifiers
+REDACTED
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
 		_spec.Unique = _q.ctx.Unique != nil && *_q.ctx.Unique
@@ -419,6 +427,9 @@ REDACTED
 	if _q.ctx.Unique != nil && *_q.ctx.Unique {
 		selector.Distinct()
 REDACTED
+	for _, m := range _q.modifiers {
+		m(selector)
+REDACTED
 	for _, p := range _q.predicates {
 		p(selector)
 REDACTED
@@ -434,6 +445,32 @@ REDACTED
 		selector.Limit(*limit)
 REDACTED
 	return selector
+REDACTED
+
+// ForUpdate locks the selected rows against concurrent updates, and prevent them from being
+// updated, deleted or "selected ... for update" by other sessions, until the transaction is
+// either committed or rolled-back.
+func (_q *SettingQuery) ForUpdate(opts ...sql.LockOption) *SettingQuery {
+	if _q.driver.Dialect() == dialect.Postgres {
+		_q.Unique(false)
+REDACTED
+	_q.modifiers = append(_q.modifiers, func(s *sql.Selector) {
+		s.ForUpdate(opts...)
+REDACTED)
+	return _q
+REDACTED
+
+// ForShare behaves similarly to ForUpdate, except that it acquires a shared mode lock
+// on any rows that are read. Other sessions can read the rows, but cannot modify them
+// until your transaction commits.
+func (_q *SettingQuery) ForShare(opts ...sql.LockOption) *SettingQuery {
+	if _q.driver.Dialect() == dialect.Postgres {
+		_q.Unique(false)
+REDACTED
+	_q.modifiers = append(_q.modifiers, func(s *sql.Selector) {
+		s.ForShare(opts...)
+REDACTED)
+	return _q
 REDACTED
 
 // SettingGroupBy is the group-by builder for Setting entities.

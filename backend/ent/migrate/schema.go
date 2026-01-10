@@ -259,6 +259,82 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
+	// PromoCodesColumns holds the columns for the "promo_codes" table.
+	PromoCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 32REDACTED,
+		{Name: "bonus_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "max_uses", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "used_count", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+REDACTED
+	// PromoCodesTable holds the schema information for the "promo_codes" table.
+	PromoCodesTable = &schema.Table{
+		Name:       "promo_codes",
+		Columns:    PromoCodesColumns,
+		PrimaryKey: []*schema.Column{PromoCodesColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "promocode_status",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodesColumns[5]REDACTED,
+		REDACTED,
+			{
+				Name:    "promocode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodesColumns[6]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// PromoCodeUsagesColumns holds the columns for the "promo_code_usages" table.
+	PromoCodeUsagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "bonus_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "used_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "promo_code_id", Type: field.TypeInt64REDACTED,
+		{Name: "user_id", Type: field.TypeInt64REDACTED,
+REDACTED
+	// PromoCodeUsagesTable holds the schema information for the "promo_code_usages" table.
+	PromoCodeUsagesTable = &schema.Table{
+		Name:       "promo_code_usages",
+		Columns:    PromoCodeUsagesColumns,
+		PrimaryKey: []*schema.Column{PromoCodeUsagesColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "promo_code_usages_promo_codes_usage_records",
+				Columns:    []*schema.Column{PromoCodeUsagesColumns[3]REDACTED,
+				RefColumns: []*schema.Column{PromoCodesColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+			{
+				Symbol:     "promo_code_usages_users_promo_code_usages",
+				Columns:    []*schema.Column{PromoCodeUsagesColumns[4]REDACTED,
+				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+	REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "promocodeusage_promo_code_id",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodeUsagesColumns[3]REDACTED,
+		REDACTED,
+			{
+				Name:    "promocodeusage_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodeUsagesColumns[4]REDACTED,
+		REDACTED,
+			{
+				Name:    "promocodeusage_promo_code_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{PromoCodeUsagesColumns[3], PromoCodeUsagesColumns[4]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
 	// ProxiesColumns holds the columns for the "proxies" table.
 	ProxiesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -720,6 +796,8 @@ REDACTED
 		AccountsTable,
 		AccountGroupsTable,
 		GroupsTable,
+		PromoCodesTable,
+		PromoCodeUsagesTable,
 		ProxiesTable,
 		RedeemCodesTable,
 		SettingsTable,
@@ -749,6 +827,14 @@ REDACTED
 REDACTED
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
+REDACTED
+	PromoCodesTable.Annotation = &entsql.Annotation{
+		Table: "promo_codes",
+REDACTED
+	PromoCodeUsagesTable.ForeignKeys[0].RefTable = PromoCodesTable
+	PromoCodeUsagesTable.ForeignKeys[1].RefTable = UsersTable
+	PromoCodeUsagesTable.Annotation = &entsql.Annotation{
+		Table: "promo_code_usages",
 REDACTED
 	ProxiesTable.Annotation = &entsql.Annotation{
 		Table: "proxies",

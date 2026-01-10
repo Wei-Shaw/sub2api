@@ -33,7 +33,7 @@ const (
 	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
-	defaultMaxLineSize      = 10 * 1024 * 1024
+	defaultMaxLineSize      = 40 * 1024 * 1024
 	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
 	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
@@ -361,27 +361,13 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 	if hasForcePlatform && forcePlatform != "" {
 		platform = forcePlatform
 REDACTED else if groupID != nil {
-		// 根据分组 platform 决定查询哪种账号
-		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		group, resolvedGroupID, err := s.resolveGatewayGroup(ctx, groupID)
 		if err != nil {
-			return nil, fmt.Errorf("get group failed: %w", err)
+			return nil, err
 	REDACTED
+		groupID = resolvedGroupID
+		ctx = s.withGroupContext(ctx, group)
 		platform = group.Platform
-
-		// 检查 Claude Code 客户端限制
-		if group.ClaudeCodeOnly {
-			isClaudeCode := IsClaudeCodeClient(ctx)
-			if !isClaudeCode {
-				// 非 Claude Code 客户端，检查是否有降级分组
-				if group.FallbackGroupID != nil {
-					// 使用降级分组重新调度
-					fallbackGroupID := *group.FallbackGroupID
-					return s.SelectAccountForModelWithExclusions(ctx, &fallbackGroupID, sessionHash, requestedModel, excludedIDs)
-			REDACTED
-				// 无降级分组，拒绝访问
-				return nil, ErrClaudeCodeOnly
-		REDACTED
-	REDACTED
 REDACTED else {
 		// 无分组时只使用原生 anthropic 平台
 		platform = PlatformAnthropic
@@ -409,10 +395,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 REDACTED
 
 	// 检查 Claude Code 客户端限制（可能会替换 groupID 为降级分组）
-	groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
+	group, groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
 	if err != nil {
 		return nil, err
 REDACTED
+	ctx = s.withGroupContext(ctx, group)
 
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs)
@@ -452,7 +439,7 @@ REDACTED
 	REDACTED, nil
 REDACTED
 
-	platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID)
+	platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID, group)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -478,10 +465,15 @@ REDACTED
 	if sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
-			account, err := s.accountRepo.GetByID(ctx, accountID)
-			if err == nil && s.isAccountInGroup(account, groupID) &&
+			// 粘性命中仅在当前可调度候选集中生效。
+			accountByID := make(map[int64]*Account, len(accounts))
+			for i := range accounts {
+				accountByID[accounts[i].ID] = &accounts[i]
+		REDACTED
+			account, ok := accountByID[accountID]
+			if ok && s.isAccountInGroup(account, groupID) &&
 				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
-				account.IsSchedulable() &&
+				account.IsSchedulableForModel(requestedModel) &&
 				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 				if err == nil && result.Acquired {
@@ -517,6 +509,9 @@ REDACTED
 			continue
 	REDACTED
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+			continue
+	REDACTED
+		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
@@ -652,51 +647,97 @@ REDACTED
 REDACTED
 REDACTED
 
+func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
+	if !IsGroupContextValid(group) {
+		return ctx
+REDACTED
+	if existing, ok := ctx.Value(ctxkey.Group).(*Group); ok && existing != nil && existing.ID == group.ID && IsGroupContextValid(existing) {
+		return ctx
+REDACTED
+	return context.WithValue(ctx, ctxkey.Group, group)
+REDACTED
+
+func (s *GatewayService) groupFromContext(ctx context.Context, groupID int64) *Group {
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == groupID {
+		return group
+REDACTED
+	return nil
+REDACTED
+
+func (s *GatewayService) resolveGroupByID(ctx context.Context, groupID int64) (*Group, error) {
+	if group := s.groupFromContext(ctx, groupID); group != nil {
+		return group, nil
+REDACTED
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("get group failed: %w", err)
+REDACTED
+	return group, nil
+REDACTED
+
+func (s *GatewayService) resolveGatewayGroup(ctx context.Context, groupID *int64) (*Group, *int64, error) {
+	if groupID == nil {
+		return nil, nil, nil
+REDACTED
+
+	currentID := *groupID
+	visited := map[int64]struct{REDACTED{REDACTED
+	for {
+		if _, seen := visited[currentID]; seen {
+			return nil, nil, fmt.Errorf("fallback group cycle detected")
+	REDACTED
+		visited[currentID] = struct{REDACTED{REDACTED
+
+		group, err := s.resolveGroupByID(ctx, currentID)
+		if err != nil {
+			return nil, nil, err
+	REDACTED
+
+		if !group.ClaudeCodeOnly || IsClaudeCodeClient(ctx) {
+			return group, &currentID, nil
+	REDACTED
+
+		if group.FallbackGroupID == nil {
+			return nil, nil, ErrClaudeCodeOnly
+	REDACTED
+		currentID = *group.FallbackGroupID
+REDACTED
+REDACTED
+
 // checkClaudeCodeRestriction 检查分组的 Claude Code 客户端限制
 // 如果分组启用了 claude_code_only 且请求不是来自 Claude Code 客户端：
 //   - 有降级分组：返回降级分组的 ID
 //   - 无降级分组：返回 ErrClaudeCodeOnly 错误
-func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID *int64) (*int64, error) {
+func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID *int64) (*Group, *int64, error) {
 	if groupID == nil {
-		return groupID, nil
+		return nil, groupID, nil
 REDACTED
 
 	// 强制平台模式不检查 Claude Code 限制
 	if _, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string); hasForcePlatform {
-		return groupID, nil
+		return nil, groupID, nil
 REDACTED
 
-	group, err := s.groupRepo.GetByID(ctx, *groupID)
+	group, resolvedID, err := s.resolveGatewayGroup(ctx, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("get group failed: %w", err)
+		return nil, nil, err
 REDACTED
 
-	if !group.ClaudeCodeOnly {
-		return groupID, nil
+	return group, resolvedID, nil
 REDACTED
 
-	// 分组启用了 Claude Code 限制
-	if IsClaudeCodeClient(ctx) {
-		return groupID, nil
-REDACTED
-
-	// 非 Claude Code 客户端，检查降级分组
-	if group.FallbackGroupID != nil {
-		return group.FallbackGroupID, nil
-REDACTED
-
-	return nil, ErrClaudeCodeOnly
-REDACTED
-
-func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64) (string, bool, error) {
+func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, group *Group) (string, bool, error) {
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		return forcePlatform, true, nil
 REDACTED
+	if group != nil {
+		return group.Platform, false, nil
+REDACTED
 	if groupID != nil {
-		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		group, err := s.resolveGroupByID(ctx, *groupID)
 		if err != nil {
-			return "", false, fmt.Errorf("get group failed: %w", err)
+			return "", false, err
 	REDACTED
 		return group.Platform, false, nil
 REDACTED
@@ -812,7 +853,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
-				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
 						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
 				REDACTED
@@ -842,6 +883,9 @@ REDACTED
 	for i := range accounts {
 		acc := &accounts[i]
 		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
@@ -901,7 +945,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.accountRepo.GetByID(ctx, accountID)
 				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
-				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulable() && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 						if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
 							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
@@ -934,6 +978,9 @@ REDACTED
 	REDACTED
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
 		if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			continue
+	REDACTED
+		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
