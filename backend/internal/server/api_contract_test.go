@@ -575,6 +575,10 @@ func (stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, err
 	return nil, service.ErrGroupNotFound
 REDACTED
 
+func (stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+	return nil, service.ErrGroupNotFound
+REDACTED
+
 func (stubGroupRepo) Update(ctx context.Context, group *service.Group) error {
 	return errors.New("not implemented")
 REDACTED

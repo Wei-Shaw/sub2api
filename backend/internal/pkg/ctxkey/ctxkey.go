@@ -9,4 +9,6 @@ const (
 	ForcePlatform Key = "ctx_force_platform"
 	// IsClaudeCodeClient 是否为 Claude Code 客户端，由中间件设置
 	IsClaudeCodeClient Key = "ctx_is_claude_code_client"
+	// Group 认证后的分组信息，由 API Key 认证中间件设置
+	Group Key = "ctx_group"
 )
