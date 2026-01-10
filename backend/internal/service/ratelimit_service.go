@@ -345,7 +345,7 @@ REDACTED
 
 	// 如果状态为allowed且之前有限流，说明窗口已重置，清除限流状态
 	if status == "allowed" && account.IsRateLimited() {
-		if err := s.accountRepo.ClearRateLimit(ctx, account.ID); err != nil {
+		if err := s.ClearRateLimit(ctx, account.ID); err != nil {
 			log.Printf("ClearRateLimit failed for account %d: %v", account.ID, err)
 	REDACTED
 REDACTED
@@ -353,7 +353,10 @@ REDACTED
 
 // ClearRateLimit 清除账号的限流状态
 func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) error {
-	return s.accountRepo.ClearRateLimit(ctx, accountID)
+	if err := s.accountRepo.ClearRateLimit(ctx, accountID); err != nil {
+		return err
+REDACTED
+	return s.accountRepo.ClearAntigravityQuotaScopes(ctx, accountID)
 REDACTED
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {

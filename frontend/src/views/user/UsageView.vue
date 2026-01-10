@@ -273,19 +273,6 @@
             </div>
           </template>
 
-          <template #cell-billing_type="{ row REDACTED">
-            <span
-              class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium"
-              :class="
-                row.billing_type === 1
-                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-              "
-            >
-              {{ row.billing_type === 1 ? t('usage.subscription') : t('usage.balance') REDACTEDREDACTED
-            </span>
-          </template>
-
           <template #cell-first_token="{ row REDACTED">
             <span
               v-if="row.first_token_ms != null"
@@ -306,6 +293,11 @@
             <span class="text-sm text-gray-600 dark:text-gray-400">{{
               formatDateTime(value)
             REDACTEDREDACTED</span>
+          </template>
+
+          <template #cell-user_agent="{ row REDACTED">
+            <span v-if="row.user_agent" class="text-sm text-gray-600 dark:text-gray-400 max-w-[150px] truncate block" :title="row.user_agent">{{ formatUserAgent(row.user_agent) REDACTEDREDACTED</span>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
           </template>
 
           <template #empty>
@@ -342,8 +334,8 @@
       >
         <div class="space-y-1.5">
           <!-- Token Breakdown -->
-          <div class="mb-2 border-b border-gray-700 pb-1.5">
-            <div class="text-xs font-semibold text-gray-300 mb-1">Token 明细</div>
+          <div>
+            <div class="text-xs font-semibold text-gray-300 mb-1">{{ t('usage.tokenDetails') REDACTEDREDACTED</div>
             <div v-if="tokenTooltipData && tokenTooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.inputTokens') REDACTEDREDACTED</span>
               <span class="font-medium text-white">{{ tokenTooltipData.input_tokens.toLocaleString() REDACTEDREDACTED</span>
@@ -389,6 +381,27 @@
         class="whitespace-nowrap rounded-lg border border-gray-700 bg-gray-900 px-3 py-2.5 text-xs text-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
       >
         <div class="space-y-1.5">
+          <!-- Cost Breakdown -->
+          <div class="mb-2 border-b border-gray-700 pb-1.5">
+            <div class="text-xs font-semibold text-gray-300 mb-1">{{ t('usage.costDetails') REDACTEDREDACTED</div>
+            <div v-if="tooltipData && tooltipData.input_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.inputCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.input_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.output_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.outputCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.cache_creation_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.cache_read_cost > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('admin.usage.cacheReadCost') REDACTEDREDACTED</span>
+              <span class="font-medium text-white">${{ tooltipData.cache_read_cost.toFixed(6) REDACTEDREDACTED</span>
+            </div>
+          </div>
+          <!-- Rate and Summary -->
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') REDACTEDREDACTED</span>
             <span class="font-semibold text-blue-400"
@@ -456,10 +469,10 @@ const columns = computed<Column[]>(() => [
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
-  { key: 'billing_type', label: t('usage.billingType'), sortable: false REDACTED,
   { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
   { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
-  { key: 'created_at', label: t('usage.time'), sortable: true REDACTED
+  { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
+  { key: 'user_agent', label: t('usage.userAgent'), sortable: false REDACTED
 ])
 
 const usageLogs = ref<UsageLog[]>([])
@@ -522,6 +535,19 @@ REDACTED)
 const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)REDACTEDms`
   return `${(ms / 1000).toFixed(2)REDACTEDs`
+REDACTED
+
+const formatUserAgent = (ua: string): string => {
+  // 提取主要客户端标识
+  if (ua.includes('claude-cli')) return ua.match(/claude-cli\/[\d.]+/)?.[0] || 'Claude CLI'
+  if (ua.includes('Cursor')) return 'Cursor'
+  if (ua.includes('VSCode') || ua.includes('vscode')) return 'VS Code'
+  if (ua.includes('Continue')) return 'Continue'
+  if (ua.includes('Cline')) return 'Cline'
+  if (ua.includes('OpenAI')) return 'OpenAI SDK'
+  if (ua.includes('anthropic')) return 'Anthropic SDK'
+  // 截断过长的 UA
+  return ua.length > 30 ? ua.substring(0, 30) + '...' : ua
 REDACTED
 
 const formatTokens = (value: number): string => {
@@ -705,7 +731,6 @@ const exportToCSV = async () => {
       'Rate Multiplier',
       'Billed Cost',
       'Original Cost',
-      'Billing Type',
       'First Token (ms)',
       'Duration (ms)'
     ]
@@ -722,7 +747,6 @@ const exportToCSV = async () => {
         log.rate_multiplier,
         log.actual_cost.toFixed(8),
         log.total_cost.toFixed(8),
-        log.billing_type === 1 ? 'Subscription' : 'Balance',
         log.first_token_ms ?? '',
         log.duration_ms
       ].map(escapeCSVValue)

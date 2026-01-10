@@ -73,6 +73,7 @@ export interface PublicSettings {
   api_base_url: string
   contact_info: string
   doc_url: string
+  linuxdo_oauth_enabled: boolean
   version: string
 REDACTED
 
@@ -263,6 +264,9 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
+  // Claude Code 客户端限制
+  claude_code_only: boolean
+  fallback_group_id: number | null
   account_count?: number
   created_at: string
   updated_at: string
@@ -275,6 +279,8 @@ export interface ApiKey {
   name: string
   group_id: number | null
   status: 'active' | 'inactive'
+  ip_whitelist: string[]
+  ip_blacklist: string[]
   created_at: string
   updated_at: string
   group?: Group
@@ -284,12 +290,16 @@ export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
   custom_key?: string // Optional custom API Key
+  ip_whitelist?: string[]
+  ip_blacklist?: string[]
 REDACTED
 
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
   status?: 'active' | 'inactive'
+  ip_whitelist?: string[]
+  ip_blacklist?: string[]
 REDACTED
 
 export interface CreateGroupRequest {
@@ -298,6 +308,15 @@ export interface CreateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
+  subscription_type?: SubscriptionType
+  daily_limit_usd?: number | null
+  weekly_limit_usd?: number | null
+  monthly_limit_usd?: number | null
+  image_price_1k?: number | null
+  image_price_2k?: number | null
+  image_price_4k?: number | null
+  claude_code_only?: boolean
+  fallback_group_id?: number | null
 REDACTED
 
 export interface UpdateGroupRequest {
@@ -307,6 +326,15 @@ export interface UpdateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
+  subscription_type?: SubscriptionType
+  daily_limit_usd?: number | null
+  weekly_limit_usd?: number | null
+  monthly_limit_usd?: number | null
+  image_price_1k?: number | null
+  image_price_2k?: number | null
+  image_price_4k?: number | null
+  claude_code_only?: boolean
+  fallback_group_id?: number | null
 REDACTED
 
 // ==================== Account & Proxy Types ====================
@@ -401,6 +429,8 @@ export interface Account {
   status: 'active' | 'inactive' | 'error'
   error_message: string | null
   last_used_at: string | null
+  expires_at: number | null
+  auto_pause_on_expired: boolean
   created_at: string
   updated_at: string
   proxy?: Proxy
@@ -491,6 +521,8 @@ export interface CreateAccountRequest {
   concurrency?: number
   priority?: number
   group_ids?: number[]
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
 REDACTED
 
@@ -506,6 +538,8 @@ export interface UpdateAccountRequest {
   schedulable?: boolean
   status?: 'active' | 'inactive'
   group_ids?: number[]
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
 REDACTED
 
@@ -531,9 +565,6 @@ REDACTED
 // ==================== Usage & Redeem Types ====================
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription'
-
-// 消费类型: 0=钱包余额, 1=订阅套餐
-export type BillingType = 0 | 1
 
 export interface UsageLog {
   id: number
@@ -561,7 +592,6 @@ export interface UsageLog {
   actual_cost: number
   rate_multiplier: number
 
-  billing_type: BillingType
   stream: boolean
   duration_ms: number
   first_token_ms: number | null
@@ -569,6 +599,12 @@ export interface UsageLog {
   // 图片生成字段
   image_count: number
   image_size: string | null
+
+  // User-Agent
+  user_agent: string | null
+
+  // IP 地址（仅管理员可见）
+  ip_address: string | null
 
   created_at: string
 
@@ -799,7 +835,6 @@ export interface UsageQueryParams {
   group_id?: number
   model?: string
   stream?: boolean
-  billing_type?: number
   start_date?: string
   end_date?: string
 REDACTED

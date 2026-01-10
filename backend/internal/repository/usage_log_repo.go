@@ -22,7 +22,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, image_count, image_size, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, created_at"
 
 type usageLogRepository struct {
 	client *dbent.Client
@@ -109,6 +109,8 @@ REDACTED
 			stream,
 			duration_ms,
 			first_token_ms,
+			user_agent,
+			ip_address,
 			image_count,
 			image_size,
 			created_at
@@ -118,8 +120,7 @@ REDACTED
 			$8, $9, $10, $11,
 			$12, $13,
 			$14, $15, $16, $17, $18, $19,
-			$20, $21, $22, $23, $24,
-			$25, $26, $27
+			$20, $21, $22, $23, $24, $25, $26, $27, $28, $29
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -129,6 +130,8 @@ REDACTED
 	subscriptionID := nullInt64(log.SubscriptionID)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
+	userAgent := nullString(log.UserAgent)
+	ipAddress := nullString(log.IPAddress)
 	imageSize := nullString(log.ImageSize)
 
 	var requestIDArg any
@@ -161,6 +164,8 @@ REDACTED
 		log.Stream,
 		duration,
 		firstToken,
+		userAgent,
+		ipAddress,
 		log.ImageCount,
 		imageSize,
 		createdAt,
@@ -1388,6 +1393,81 @@ REDACTED
 	return stats, nil
 REDACTED
 
+// GetStatsWithFilters gets usage statistics with optional filters
+func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters UsageLogFilters) (*UsageStats, error) {
+	conditions := make([]string, 0, 9)
+	args := make([]any, 0, 9)
+
+	if filters.UserID > 0 {
+		conditions = append(conditions, fmt.Sprintf("user_id = $%d", len(args)+1))
+		args = append(args, filters.UserID)
+REDACTED
+	if filters.APIKeyID > 0 {
+		conditions = append(conditions, fmt.Sprintf("api_key_id = $%d", len(args)+1))
+		args = append(args, filters.APIKeyID)
+REDACTED
+	if filters.AccountID > 0 {
+		conditions = append(conditions, fmt.Sprintf("account_id = $%d", len(args)+1))
+		args = append(args, filters.AccountID)
+REDACTED
+	if filters.GroupID > 0 {
+		conditions = append(conditions, fmt.Sprintf("group_id = $%d", len(args)+1))
+		args = append(args, filters.GroupID)
+REDACTED
+	if filters.Model != "" {
+		conditions = append(conditions, fmt.Sprintf("model = $%d", len(args)+1))
+		args = append(args, filters.Model)
+REDACTED
+	if filters.Stream != nil {
+		conditions = append(conditions, fmt.Sprintf("stream = $%d", len(args)+1))
+		args = append(args, *filters.Stream)
+REDACTED
+	if filters.BillingType != nil {
+		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
+		args = append(args, int16(*filters.BillingType))
+REDACTED
+	if filters.StartTime != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
+		args = append(args, *filters.StartTime)
+REDACTED
+	if filters.EndTime != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", len(args)+1))
+		args = append(args, *filters.EndTime)
+REDACTED
+
+	query := fmt.Sprintf(`
+		SELECT
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(AVG(duration_ms), 0) as avg_duration_ms
+		FROM usage_logs
+		%s
+	`, buildWhere(conditions))
+
+	stats := &UsageStats{REDACTED
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		query,
+		args,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&stats.AverageDurationMs,
+	); err != nil {
+		return nil, err
+REDACTED
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
+	return stats, nil
+REDACTED
+
 // AccountUsageHistory represents daily usage history for an account
 type AccountUsageHistory = usagestats.AccountUsageHistory
 
@@ -1795,6 +1875,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		stream              bool
 		durationMs          sql.NullInt64
 		firstTokenMs        sql.NullInt64
+		userAgent           sql.NullString
+		ipAddress           sql.NullString
 		imageCount          int
 		imageSize           sql.NullString
 		createdAt           time.Time
@@ -1826,6 +1908,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		&stream,
 		&durationMs,
 		&firstTokenMs,
+		&userAgent,
+		&ipAddress,
 		&imageCount,
 		&imageSize,
 		&createdAt,
@@ -1876,6 +1960,12 @@ REDACTED
 	if firstTokenMs.Valid {
 		value := int(firstTokenMs.Int64)
 		log.FirstTokenMs = &value
+REDACTED
+	if userAgent.Valid {
+		log.UserAgent = &userAgent.String
+REDACTED
+	if ipAddress.Valid {
+		log.IPAddress = &ipAddress.String
 REDACTED
 	if imageSize.Valid {
 		log.ImageSize = &imageSize.String

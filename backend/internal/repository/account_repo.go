@@ -76,13 +76,17 @@ REDACTED
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
 		SetErrorMessage(account.ErrorMessage).
-		SetSchedulable(account.Schedulable)
+		SetSchedulable(account.Schedulable).
+		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
 
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
 REDACTED
 	if account.LastUsedAt != nil {
 		builder.SetLastUsedAt(*account.LastUsedAt)
+REDACTED
+	if account.ExpiresAt != nil {
+		builder.SetExpiresAt(*account.ExpiresAt)
 REDACTED
 	if account.RateLimitedAt != nil {
 		builder.SetRateLimitedAt(*account.RateLimitedAt)
@@ -280,7 +284,8 @@ REDACTED
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
 		SetErrorMessage(account.ErrorMessage).
-		SetSchedulable(account.Schedulable)
+		SetSchedulable(account.Schedulable).
+		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
 
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
@@ -291,6 +296,11 @@ REDACTED
 		builder.SetLastUsedAt(*account.LastUsedAt)
 REDACTED else {
 		builder.ClearLastUsedAt()
+REDACTED
+	if account.ExpiresAt != nil {
+		builder.SetExpiresAt(*account.ExpiresAt)
+REDACTED else {
+		builder.ClearExpiresAt()
 REDACTED
 	if account.RateLimitedAt != nil {
 		builder.SetRateLimitedAt(*account.RateLimitedAt)
@@ -570,6 +580,7 @@ func (r *accountRepository) ListSchedulable(ctx context.Context) ([]service.Acco
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
@@ -596,6 +607,7 @@ func (r *accountRepository) ListSchedulableByPlatform(ctx context.Context, platf
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
@@ -629,6 +641,7 @@ REDACTED
 			dbaccount.StatusEQ(service.StatusActive),
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		).
@@ -660,6 +673,40 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 		SetRateLimitResetAt(resetAt).
 		Save(ctx)
 	return err
+REDACTED
+
+func (r *accountRepository) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope service.AntigravityQuotaScope, resetAt time.Time) error {
+	now := time.Now().UTC()
+	payload := map[string]string{
+		"rate_limited_at":     now.Format(time.RFC3339),
+		"rate_limit_reset_at": resetAt.UTC().Format(time.RFC3339),
+REDACTED
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+REDACTED
+
+	path := "{antigravity_quota_scopes," + string(scope) + "REDACTED"
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(
+		ctx,
+		"UPDATE accounts SET extra = jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), $1::text[], $2::jsonb, true), updated_at = NOW() WHERE id = $3 AND deleted_at IS NULL",
+		path,
+		raw,
+		id,
+	)
+	if err != nil {
+		return err
+REDACTED
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+REDACTED
+	if affected == 0 {
+		return service.ErrAccountNotFound
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
@@ -705,6 +752,27 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 	return err
 REDACTED
 
+func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(
+		ctx,
+		"UPDATE accounts SET extra = COALESCE(extra, '{REDACTED'::jsonb) - 'antigravity_quota_scopes', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+		id,
+	)
+	if err != nil {
+		return err
+REDACTED
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+REDACTED
+	if affected == 0 {
+		return service.ErrAccountNotFound
+REDACTED
+	return nil
+REDACTED
+
 func (r *accountRepository) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
 	builder := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
@@ -725,6 +793,27 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 		SetSchedulable(schedulable).
 		Save(ctx)
 	return err
+REDACTED
+
+func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error) {
+	result, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET schedulable = FALSE,
+			updated_at = NOW()
+		WHERE deleted_at IS NULL
+			AND schedulable = TRUE
+			AND auto_pause_on_expired = TRUE
+			AND expires_at IS NOT NULL
+			AND expires_at <= $1
+	`, now)
+	if err != nil {
+		return 0, err
+REDACTED
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+REDACTED
+	return rows, nil
 REDACTED
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
@@ -797,6 +886,11 @@ REDACTED
 		args = append(args, *updates.Status)
 		idx++
 REDACTED
+	if updates.Schedulable != nil {
+		setClauses = append(setClauses, "schedulable = $"+itoa(idx))
+		args = append(args, *updates.Schedulable)
+		idx++
+REDACTED
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
 		payload, err := json.Marshal(updates.Credentials)
@@ -861,6 +955,7 @@ REDACTED
 		preds = append(preds,
 			dbaccount.SchedulableEQ(true),
 			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
 			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
 			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
 		)
@@ -969,6 +1064,14 @@ func tempUnschedulablePredicate() dbpredicate.Account {
 			entsql.LTE(col, entsql.Expr("NOW()")),
 		))
 REDACTED)
+REDACTED
+
+func notExpiredPredicate(now time.Time) dbpredicate.Account {
+	return dbaccount.Or(
+		dbaccount.ExpiresAtIsNil(),
+		dbaccount.ExpiresAtGT(now),
+		dbaccount.AutoPauseOnExpiredEQ(false),
+	)
 REDACTED
 
 func (r *accountRepository) loadTempUnschedStates(ctx context.Context, accountIDs []int64) (map[int64]tempUnschedSnapshot, error) {
@@ -1086,6 +1189,8 @@ REDACTED
 		Status:              m.Status,
 		ErrorMessage:        derefString(m.ErrorMessage),
 		LastUsedAt:          m.LastUsedAt,
+		ExpiresAt:           m.ExpiresAt,
+		AutoPauseOnExpired:  m.AutoPauseOnExpired,
 		CreatedAt:           m.CreatedAt,
 		UpdatedAt:           m.UpdatedAt,
 		Schedulable:         m.Schedulable,

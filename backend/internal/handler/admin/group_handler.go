@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -34,9 +35,11 @@ type CreateGroupRequest struct {
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	ImagePrice1K *float64 `json:"image_price_1k"`
-	ImagePrice2K *float64 `json:"image_price_2k"`
-	ImagePrice4K *float64 `json:"image_price_4k"`
+	ImagePrice1K    *float64 `json:"image_price_1k"`
+	ImagePrice2K    *float64 `json:"image_price_2k"`
+	ImagePrice4K    *float64 `json:"image_price_4k"`
+	ClaudeCodeOnly  bool     `json:"claude_code_only"`
+	FallbackGroupID *int64   `json:"fallback_group_id"`
 REDACTED
 
 // UpdateGroupRequest represents update group request
@@ -52,9 +55,11 @@ type UpdateGroupRequest struct {
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	ImagePrice1K *float64 `json:"image_price_1k"`
-	ImagePrice2K *float64 `json:"image_price_2k"`
-	ImagePrice4K *float64 `json:"image_price_4k"`
+	ImagePrice1K    *float64 `json:"image_price_1k"`
+	ImagePrice2K    *float64 `json:"image_price_2k"`
+	ImagePrice4K    *float64 `json:"image_price_4k"`
+	ClaudeCodeOnly  *bool    `json:"claude_code_only"`
+	FallbackGroupID *int64   `json:"fallback_group_id"`
 REDACTED
 
 // List handles listing all groups with pagination
@@ -63,6 +68,12 @@ func (h *GroupHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	platform := c.Query("platform")
 	status := c.Query("status")
+	search := c.Query("search")
+	// 标准化和验证 search 参数
+	search = strings.TrimSpace(search)
+	if len(search) > 100 {
+		search = search[:100]
+REDACTED
 	isExclusiveStr := c.Query("is_exclusive")
 
 	var isExclusive *bool
@@ -71,7 +82,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 		isExclusive = &val
 REDACTED
 
-	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, isExclusive)
+	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -150,6 +161,8 @@ REDACTED
 		ImagePrice1K:     req.ImagePrice1K,
 		ImagePrice2K:     req.ImagePrice2K,
 		ImagePrice4K:     req.ImagePrice4K,
+		ClaudeCodeOnly:   req.ClaudeCodeOnly,
+		FallbackGroupID:  req.FallbackGroupID,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -188,6 +201,8 @@ REDACTED
 		ImagePrice1K:     req.ImagePrice1K,
 		ImagePrice2K:     req.ImagePrice2K,
 		ImagePrice4K:     req.ImagePrice4K,
+		ClaudeCodeOnly:   req.ClaudeCodeOnly,
+		FallbackGroupID:  req.FallbackGroupID,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

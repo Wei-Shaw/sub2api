@@ -113,6 +113,18 @@ REDACTED
 	return _c
 REDACTED
 
+// SetIPWhitelist sets the "ip_whitelist" field.
+func (_c *APIKeyCreate) SetIPWhitelist(v []string) *APIKeyCreate {
+	_c.mutation.SetIPWhitelist(v)
+	return _c
+REDACTED
+
+// SetIPBlacklist sets the "ip_blacklist" field.
+func (_c *APIKeyCreate) SetIPBlacklist(v []string) *APIKeyCreate {
+	_c.mutation.SetIPBlacklist(v)
+	return _c
+REDACTED
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *APIKeyCreate) SetUser(v *User) *APIKeyCreate {
 	return _c.SetUserID(v.ID)
@@ -284,6 +296,14 @@ REDACTED
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
+REDACTED
+	if value, ok := _c.mutation.IPWhitelist(); ok {
+		_spec.SetField(apikey.FieldIPWhitelist, field.TypeJSON, value)
+		_node.IPWhitelist = value
+REDACTED
+	if value, ok := _c.mutation.IPBlacklist(); ok {
+		_spec.SetField(apikey.FieldIPBlacklist, field.TypeJSON, value)
+		_node.IPBlacklist = value
 REDACTED
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -483,6 +503,42 @@ func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	return u
 REDACTED
 
+// SetIPWhitelist sets the "ip_whitelist" field.
+func (u *APIKeyUpsert) SetIPWhitelist(v []string) *APIKeyUpsert {
+	u.Set(apikey.FieldIPWhitelist, v)
+	return u
+REDACTED
+
+// UpdateIPWhitelist sets the "ip_whitelist" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateIPWhitelist() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldIPWhitelist)
+	return u
+REDACTED
+
+// ClearIPWhitelist clears the value of the "ip_whitelist" field.
+func (u *APIKeyUpsert) ClearIPWhitelist() *APIKeyUpsert {
+	u.SetNull(apikey.FieldIPWhitelist)
+	return u
+REDACTED
+
+// SetIPBlacklist sets the "ip_blacklist" field.
+func (u *APIKeyUpsert) SetIPBlacklist(v []string) *APIKeyUpsert {
+	u.Set(apikey.FieldIPBlacklist, v)
+	return u
+REDACTED
+
+// UpdateIPBlacklist sets the "ip_blacklist" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateIPBlacklist() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldIPBlacklist)
+	return u
+REDACTED
+
+// ClearIPBlacklist clears the value of the "ip_blacklist" field.
+func (u *APIKeyUpsert) ClearIPBlacklist() *APIKeyUpsert {
+	u.SetNull(apikey.FieldIPBlacklist)
+	return u
+REDACTED
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -637,6 +693,48 @@ REDACTED
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+REDACTED)
+REDACTED
+
+// SetIPWhitelist sets the "ip_whitelist" field.
+func (u *APIKeyUpsertOne) SetIPWhitelist(v []string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIPWhitelist(v)
+REDACTED)
+REDACTED
+
+// UpdateIPWhitelist sets the "ip_whitelist" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateIPWhitelist() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIPWhitelist()
+REDACTED)
+REDACTED
+
+// ClearIPWhitelist clears the value of the "ip_whitelist" field.
+func (u *APIKeyUpsertOne) ClearIPWhitelist() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearIPWhitelist()
+REDACTED)
+REDACTED
+
+// SetIPBlacklist sets the "ip_blacklist" field.
+func (u *APIKeyUpsertOne) SetIPBlacklist(v []string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIPBlacklist(v)
+REDACTED)
+REDACTED
+
+// UpdateIPBlacklist sets the "ip_blacklist" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateIPBlacklist() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIPBlacklist()
+REDACTED)
+REDACTED
+
+// ClearIPBlacklist clears the value of the "ip_blacklist" field.
+func (u *APIKeyUpsertOne) ClearIPBlacklist() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearIPBlacklist()
 REDACTED)
 REDACTED
 
@@ -960,6 +1058,48 @@ REDACTED
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+REDACTED)
+REDACTED
+
+// SetIPWhitelist sets the "ip_whitelist" field.
+func (u *APIKeyUpsertBulk) SetIPWhitelist(v []string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIPWhitelist(v)
+REDACTED)
+REDACTED
+
+// UpdateIPWhitelist sets the "ip_whitelist" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateIPWhitelist() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIPWhitelist()
+REDACTED)
+REDACTED
+
+// ClearIPWhitelist clears the value of the "ip_whitelist" field.
+func (u *APIKeyUpsertBulk) ClearIPWhitelist() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearIPWhitelist()
+REDACTED)
+REDACTED
+
+// SetIPBlacklist sets the "ip_blacklist" field.
+func (u *APIKeyUpsertBulk) SetIPBlacklist(v []string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIPBlacklist(v)
+REDACTED)
+REDACTED
+
+// UpdateIPBlacklist sets the "ip_blacklist" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateIPBlacklist() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIPBlacklist()
+REDACTED)
+REDACTED
+
+// ClearIPBlacklist clears the value of the "ip_blacklist" field.
+func (u *APIKeyUpsertBulk) ClearIPBlacklist() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearIPBlacklist()
 REDACTED)
 REDACTED
 

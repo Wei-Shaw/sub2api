@@ -51,16 +51,21 @@ func (h *ProxyHandler) List(c *gin.Context) {
 	protocol := c.Query("protocol")
 	status := c.Query("status")
 	search := c.Query("search")
+	// 标准化和验证 search 参数
+	search = strings.TrimSpace(search)
+	if len(search) > 100 {
+		search = search[:100]
+REDACTED
 
-	proxies, total, err := h.adminService.ListProxies(c.Request.Context(), page, pageSize, protocol, status, search)
+	proxies, total, err := h.adminService.ListProxiesWithAccountCount(c.Request.Context(), page, pageSize, protocol, status, search)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	out := make([]dto.Proxy, 0, len(proxies))
+	out := make([]dto.ProxyWithAccountCount, 0, len(proxies))
 	for i := range proxies {
-		out = append(out, *dto.ProxyFromService(&proxies[i]))
+		out = append(out, *dto.ProxyWithAccountCountFromService(&proxies[i]))
 REDACTED
 	response.Paginated(c, out, total, page, pageSize)
 REDACTED

@@ -231,6 +231,15 @@ export default {
     sendingCode: '发送中...',
     clickToResend: '点击重新发送验证码',
     resendCode: '重新发送验证码',
+    linuxdo: {
+      signIn: '使用 Linux.do 登录',
+      orContinue: '或使用邮箱密码继续',
+      callbackTitle: '正在完成登录',
+      callbackProcessing: '正在验证登录信息，请稍候...',
+      callbackHint: '如果页面未自动跳转，请返回登录页重试。',
+      callbackMissingToken: '登录信息缺失，请返回重试。',
+      backToLogin: '返回登录'
+    REDACTED,
     oauth: {
       code: '授权码',
       state: '状态',
@@ -362,6 +371,14 @@ export default {
     customKeyTooShort: '自定义密钥至少需要16个字符',
     customKeyInvalidChars: '自定义密钥只能包含字母、数字、下划线和连字符',
     customKeyRequired: '请输入自定义密钥',
+    ipRestriction: 'IP 限制',
+    ipWhitelist: 'IP 白名单',
+    ipWhitelistPlaceholder: '192.168.1.100\n10.0.0.0/8',
+    ipWhitelistHint: '每行一个 IP 或 CIDR，设置后仅允许这些 IP 使用此密钥',
+    ipBlacklist: 'IP 黑名单',
+    ipBlacklistPlaceholder: '1.2.3.4\n5.6.0.0/16',
+    ipBlacklistHint: '每行一个 IP 或 CIDR，这些 IP 将被禁止使用此密钥',
+    ipRestrictionEnabled: '已配置 IP 限制',
     ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
     ccsClientSelect: {
       title: '选择客户端',
@@ -377,6 +394,8 @@ export default {
   usage: {
     title: '使用记录',
     description: '查看和分析您的 API 使用历史',
+    costDetails: '成本明细',
+    tokenDetails: 'Token 明细',
     totalRequests: '总请求数',
     totalTokens: '总 Token',
     totalCost: '总消费',
@@ -420,10 +439,8 @@ export default {
     exportFailed: '使用数据导出失败',
     exportExcelSuccess: '使用数据导出成功（Excel格式）',
     exportExcelFailed: '使用数据导出失败',
-    billingType: '消费类型',
-    balance: '余额',
-    subscription: '订阅',
-    imageUnit: '张'
+    imageUnit: '张',
+    userAgent: 'User-Agent'
   REDACTED,
 
   // Redeem
@@ -861,7 +878,7 @@ export default {
         accountsLabel: '指定账号',
         accountsPlaceholder: '选择账号（留空则不限制）',
         priorityLabel: '优先级',
-        priorityHint: '数值越高优先级越高，用于账号调度',
+        priorityHint: '数值越小优先级越高，用于账号调度',
         statusLabel: '状态'
       REDACTED,
       exclusiveObj: {
@@ -935,6 +952,15 @@ export default {
       imagePricing: {
         title: '图片生成计费',
         description: '配置 gemini-3-pro-image 模型的图片生成价格，留空则使用默认价格'
+      REDACTED,
+      claudeCode: {
+        title: 'Claude Code 客户端限制',
+        tooltip: '启用后，此分组仅允许 Claude Code 官方客户端访问。非 Claude Code 请求将被拒绝或降级到指定分组。',
+        enabled: '仅限 Claude Code',
+        disabled: '允许所有客户端',
+        fallbackGroup: '降级分组',
+        fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
+        noFallback: '不降级（直接拒绝）'
       REDACTED
     REDACTED,
 
@@ -1063,6 +1089,7 @@ export default {
         groups: '分组',
         usageWindows: '用量窗口',
         lastUsed: '最近使用',
+        expiresAt: '过期时间',
         actions: '操作'
       REDACTED,
       clearRateLimit: '清除速率限制',
@@ -1182,7 +1209,7 @@ export default {
         credentialsLabel: '凭证',
         credentialsPlaceholder: '请输入 Cookie 或 API Key',
         priorityLabel: '优先级',
-        priorityHint: '数值越高优先级越高',
+        priorityHint: '数值越小优先级越高',
         weightLabel: '权重',
         weightHint: '用于负载均衡的权重值',
         statusLabel: '状态'
@@ -1203,12 +1230,16 @@ export default {
       accountCreatedSuccess: '账号添加成功',
       accountUpdatedSuccess: '账号更新成功',
       accountDeletedSuccess: '账号删除成功',
+      bulkSchedulableEnabled: '成功启用 {countREDACTED 个账号的调度',
+      bulkSchedulableDisabled: '成功停止 {countREDACTED 个账号的调度',
       bulkActions: {
         selected: '已选择 {countREDACTED 个账号',
         selectCurrentPage: '本页全选',
         clear: '清除选择',
         edit: '批量编辑账号',
-        delete: '批量删除'
+        delete: '批量删除',
+        enableScheduling: '批量启用调度',
+        disableScheduling: '批量停止调度'
       REDACTED,
       bulkEdit: {
         title: '批量编辑账号',
@@ -1288,12 +1319,17 @@ export default {
       errorCodeExists: '该错误码已被选中',
       interceptWarmupRequests: '拦截预热请求',
       interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
+      autoPauseOnExpired: '过期自动暂停调度',
+      autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
+      expired: '已过期',
       proxy: '代理',
       noProxy: '无代理',
       concurrency: '并发数',
       priority: '优先级',
-      priorityHint: '优先级越高的账号优先使用',
-      higherPriorityFirst: '数值越高优先级越高',
+      priorityHint: '优先级越小的账号优先使用',
+      expiresAt: '过期时间',
+      expiresAtHint: '留空表示不过期',
+      higherPriorityFirst: '数值越小优先级越高',
       mixedScheduling: '在 /v1/messages 中使用',
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',
       mixedSchedulingTooltip:
@@ -1587,6 +1623,7 @@ export default {
       startTest: '开始测试',
       retry: '重试',
       copyOutput: '复制输出',
+      outputCopied: '输出已复制',
       startingTestForAccount: '开始测试账号：{nameREDACTED',
       testAccountTypeLabel: '账号类型：{typeREDACTED',
 	      selectTestModel: '选择测试模型',
@@ -1642,6 +1679,7 @@ export default {
         protocol: '协议',
         address: '地址',
         status: '状态',
+        accounts: '账号数',
         actions: '操作',
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
@@ -1840,6 +1878,7 @@ export default {
       userFilter: '用户',
       searchUserPlaceholder: '按邮箱搜索用户...',
       searchApiKeyPlaceholder: '按名称搜索 API 密钥...',
+      searchAccountPlaceholder: '按名称搜索账号...',
       selectedUser: '已选择',
       user: '用户',
       account: '账户',
@@ -1850,7 +1889,6 @@ export default {
       allAccounts: '全部账户',
       allGroups: '全部分组',
       allTypes: '全部类型',
-      allBillingTypes: '全部计费',
       inputCost: '输入成本',
       outputCost: '输出成本',
       cacheCreationCost: '缓存创建成本',
@@ -1859,7 +1897,8 @@ export default {
       outputTokens: '输出 Token',
       cacheCreationTokens: '缓存创建 Token',
       cacheReadTokens: '缓存读取 Token',
-      failedToLoad: '加载使用记录失败'
+      failedToLoad: '加载使用记录失败',
+      ipAddress: 'IP'
     REDACTED,
 
     // Ops Monitoring
@@ -2352,6 +2391,25 @@ export default {
         cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: '服务端验证密钥（请保密）',
         secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'      REDACTED,
+      linuxdo: {
+        title: 'LinuxDo Connect 登录',
+        description: '配置 LinuxDo Connect OAuth，用于 Sub2API 用户登录',
+        enable: '启用 LinuxDo 登录',
+        enableHint: '在登录/注册页面显示 LinuxDo 登录入口',
+        clientId: 'Client ID',
+        clientIdPlaceholder: '例如：hprJ5pC3...',
+        clientIdHint: '从 Connect.Linux.Do 后台获取',
+        clientSecret: 'Client Secret',
+        clientSecretPlaceholder: '********',
+        clientSecretHint: '用于后端交换 token（请保密）',
+        clientSecretConfiguredPlaceholder: '********',
+        clientSecretConfiguredHint: '密钥已配置，留空以保留当前值。',
+        redirectUrl: '回调地址（Redirect URL）',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/linuxdo/callback',
+        redirectUrlHint: '需与 Connect.Linux.Do 中配置的回调地址一致（必须是 http(s) 完整 URL）',
+        quickSetCopy: '使用当前站点生成并复制',
+        redirectUrlSetAndCopied: '已使用当前站点生成回调地址并复制到剪贴板'
+      REDACTED,
       defaults: {
         title: '用户默认设置',
         description: '新用户的默认值',
@@ -2613,7 +2671,7 @@ export default {
       REDACTED,
       accountPriority: {
         title: '⚖️ 4. 优先级（可选）',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置账号的调用优先级。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 优先级规则：</b><ul style="margin: 8px 0 0 16px;"><li>数字越大，优先级越高</li><li>系统优先使用高优先级账号</li><li>相同优先级则随机选择</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>主账号设置高优先级，备用账号设置低优先级</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置账号的调用优先级。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 优先级规则：</b><ul style="margin: 8px 0 0 16px;"><li>数字越小，优先级越高</li><li>系统优先使用低数值账号</li><li>相同优先级则随机选择</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>主账号设置低数值，备用账号设置高数值</p></div>',
         nextBtn: '下一步'
       REDACTED,
       accountGroups: {

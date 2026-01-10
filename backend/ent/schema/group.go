@@ -86,6 +86,15 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED),
+
+		// Claude Code 客户端限制 (added by migration 029)
+		field.Bool("claude_code_only").
+			Default(false).
+			Comment("是否仅允许 Claude Code 客户端"),
+		field.Int64("fallback_group_id").
+			Optional().
+			Nillable().
+			Comment("非 Claude Code 请求降级使用的分组 ID"),
 REDACTED
 REDACTED
 
@@ -101,6 +110,8 @@ func (Group) Edges() []ent.Edge {
 		edge.From("allowed_users", User.Type).
 			Ref("allowed_groups").
 			Through("user_allowed_groups", UserAllowedGroup.Type),
+		// 注意：fallback_group_id 直接作为字段使用，不定义 edge
+		// 这样允许多个分组指向同一个降级分组（M2O 关系）
 REDACTED
 REDACTED
 

@@ -195,6 +195,34 @@ REDACTED
 	return _c
 REDACTED
 
+// SetExpiresAt sets the "expires_at" field.
+func (_c *AccountCreate) SetExpiresAt(v time.Time) *AccountCreate {
+	_c.mutation.SetExpiresAt(v)
+	return _c
+REDACTED
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableExpiresAt(v *time.Time) *AccountCreate {
+	if v != nil {
+		_c.SetExpiresAt(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetAutoPauseOnExpired sets the "auto_pause_on_expired" field.
+func (_c *AccountCreate) SetAutoPauseOnExpired(v bool) *AccountCreate {
+	_c.mutation.SetAutoPauseOnExpired(v)
+	return _c
+REDACTED
+
+// SetNillableAutoPauseOnExpired sets the "auto_pause_on_expired" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableAutoPauseOnExpired(v *bool) *AccountCreate {
+	if v != nil {
+		_c.SetAutoPauseOnExpired(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetSchedulable sets the "schedulable" field.
 func (_c *AccountCreate) SetSchedulable(v bool) *AccountCreate {
 	_c.mutation.SetSchedulable(v)
@@ -405,6 +433,10 @@ REDACTED
 		v := account.DefaultStatus
 		_c.mutation.SetStatus(v)
 REDACTED
+	if _, ok := _c.mutation.AutoPauseOnExpired(); !ok {
+		v := account.DefaultAutoPauseOnExpired
+		_c.mutation.SetAutoPauseOnExpired(v)
+REDACTED
 	if _, ok := _c.mutation.Schedulable(); !ok {
 		v := account.DefaultSchedulable
 		_c.mutation.SetSchedulable(v)
@@ -463,6 +495,9 @@ REDACTED
 		if err := account.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Account.status": %w`, err)REDACTED
 	REDACTED
+REDACTED
+	if _, ok := _c.mutation.AutoPauseOnExpired(); !ok {
+		return &ValidationError{Name: "auto_pause_on_expired", err: errors.New(`ent: missing required field "Account.auto_pause_on_expired"`)REDACTED
 REDACTED
 	if _, ok := _c.mutation.Schedulable(); !ok {
 		return &ValidationError{Name: "schedulable", err: errors.New(`ent: missing required field "Account.schedulable"`)REDACTED
@@ -554,6 +589,14 @@ REDACTED
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(account.FieldLastUsedAt, field.TypeTime, value)
 		_node.LastUsedAt = &value
+REDACTED
+	if value, ok := _c.mutation.ExpiresAt(); ok {
+		_spec.SetField(account.FieldExpiresAt, field.TypeTime, value)
+		_node.ExpiresAt = &value
+REDACTED
+	if value, ok := _c.mutation.AutoPauseOnExpired(); ok {
+		_spec.SetField(account.FieldAutoPauseOnExpired, field.TypeBool, value)
+		_node.AutoPauseOnExpired = value
 REDACTED
 	if value, ok := _c.mutation.Schedulable(); ok {
 		_spec.SetField(account.FieldSchedulable, field.TypeBool, value)
@@ -895,6 +938,36 @@ REDACTED
 // ClearLastUsedAt clears the value of the "last_used_at" field.
 func (u *AccountUpsert) ClearLastUsedAt() *AccountUpsert {
 	u.SetNull(account.FieldLastUsedAt)
+	return u
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *AccountUpsert) SetExpiresAt(v time.Time) *AccountUpsert {
+	u.Set(account.FieldExpiresAt, v)
+	return u
+REDACTED
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateExpiresAt() *AccountUpsert {
+	u.SetExcluded(account.FieldExpiresAt)
+	return u
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *AccountUpsert) ClearExpiresAt() *AccountUpsert {
+	u.SetNull(account.FieldExpiresAt)
+	return u
+REDACTED
+
+// SetAutoPauseOnExpired sets the "auto_pause_on_expired" field.
+func (u *AccountUpsert) SetAutoPauseOnExpired(v bool) *AccountUpsert {
+	u.Set(account.FieldAutoPauseOnExpired, v)
+	return u
+REDACTED
+
+// UpdateAutoPauseOnExpired sets the "auto_pause_on_expired" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateAutoPauseOnExpired() *AccountUpsert {
+	u.SetExcluded(account.FieldAutoPauseOnExpired)
 	return u
 REDACTED
 
@@ -1305,6 +1378,41 @@ REDACTED
 func (u *AccountUpsertOne) ClearLastUsedAt() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearLastUsedAt()
+REDACTED)
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *AccountUpsertOne) SetExpiresAt(v time.Time) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetExpiresAt(v)
+REDACTED)
+REDACTED
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateExpiresAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateExpiresAt()
+REDACTED)
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *AccountUpsertOne) ClearExpiresAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearExpiresAt()
+REDACTED)
+REDACTED
+
+// SetAutoPauseOnExpired sets the "auto_pause_on_expired" field.
+func (u *AccountUpsertOne) SetAutoPauseOnExpired(v bool) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetAutoPauseOnExpired(v)
+REDACTED)
+REDACTED
+
+// UpdateAutoPauseOnExpired sets the "auto_pause_on_expired" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateAutoPauseOnExpired() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateAutoPauseOnExpired()
 REDACTED)
 REDACTED
 
@@ -1901,6 +2009,41 @@ REDACTED
 func (u *AccountUpsertBulk) ClearLastUsedAt() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearLastUsedAt()
+REDACTED)
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *AccountUpsertBulk) SetExpiresAt(v time.Time) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetExpiresAt(v)
+REDACTED)
+REDACTED
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateExpiresAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateExpiresAt()
+REDACTED)
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *AccountUpsertBulk) ClearExpiresAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearExpiresAt()
+REDACTED)
+REDACTED
+
+// SetAutoPauseOnExpired sets the "auto_pause_on_expired" field.
+func (u *AccountUpsertBulk) SetAutoPauseOnExpired(v bool) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetAutoPauseOnExpired(v)
+REDACTED)
+REDACTED
+
+// UpdateAutoPauseOnExpired sets the "auto_pause_on_expired" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateAutoPauseOnExpired() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateAutoPauseOnExpired()
 REDACTED)
 REDACTED
 

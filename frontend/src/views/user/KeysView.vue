@@ -46,8 +46,17 @@
             </div>
           </template>
 
-          <template #cell-name="{ value REDACTED">
-            <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+          <template #cell-name="{ value, row REDACTED">
+            <div class="flex items-center gap-1.5">
+              <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+              <Icon
+                v-if="row.ip_whitelist?.length > 0 || row.ip_blacklist?.length > 0"
+                name="shield"
+                size="sm"
+                class="text-blue-500"
+                :title="t('keys.ipRestrictionEnabled')"
+              />
+            </div>
           </template>
 
           <template #cell-group="{ row REDACTED">
@@ -277,6 +286,52 @@
             :options="statusOptions"
             :placeholder="t('keys.selectStatus')"
           />
+        </div>
+
+        <!-- IP Restriction Section -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('keys.ipRestriction') REDACTEDREDACTED</label>
+            <button
+              type="button"
+              @click="formData.enable_ip_restriction = !formData.enable_ip_restriction"
+              :class="[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                formData.enable_ip_restriction ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  formData.enable_ip_restriction ? 'translate-x-4' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="formData.enable_ip_restriction" class="space-y-4 pt-2">
+            <div>
+              <label class="input-label">{{ t('keys.ipWhitelist') REDACTEDREDACTED</label>
+              <textarea
+                v-model="formData.ip_whitelist"
+                rows="3"
+                class="input font-mono text-sm"
+                :placeholder="t('keys.ipWhitelistPlaceholder')"
+              />
+              <p class="input-hint">{{ t('keys.ipWhitelistHint') REDACTEDREDACTED</p>
+            </div>
+
+            <div>
+              <label class="input-label">{{ t('keys.ipBlacklist') REDACTEDREDACTED</label>
+              <textarea
+                v-model="formData.ip_blacklist"
+                rows="3"
+                class="input font-mono text-sm"
+                :placeholder="t('keys.ipBlacklistPlaceholder')"
+              />
+              <p class="input-hint">{{ t('keys.ipBlacklistHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
         </div>
       </form>
       <template #footer>
@@ -528,7 +583,10 @@ const formData = ref({
   group_id: null as number | null,
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
-  custom_key: ''
+  custom_key: '',
+  enable_ip_restriction: false,
+  ip_whitelist: '',
+  ip_blacklist: ''
 REDACTED)
 
 // 自定义Key验证
@@ -664,12 +722,16 @@ REDACTED
 
 const editKey = (key: ApiKey) => {
   selectedKey.value = key
+  const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
   formData.value = {
     name: key.name,
     group_id: key.group_id,
     status: key.status,
     use_custom_key: false,
-    custom_key: ''
+    custom_key: '',
+    enable_ip_restriction: hasIPRestriction,
+    ip_whitelist: (key.ip_whitelist || []).join('\n'),
+    ip_blacklist: (key.ip_blacklist || []).join('\n')
   REDACTED
   showEditModal.value = true
 REDACTED
@@ -751,14 +813,26 @@ const handleSubmit = async () => {
     REDACTED
   REDACTED
 
+  // Parse IP lists only if IP restriction is enabled
+  const parseIPList = (text: string): string[] =>
+    text.split('\n').map(ip => ip.trim()).filter(ip => ip.length > 0)
+  const ipWhitelist = formData.value.enable_ip_restriction ? parseIPList(formData.value.ip_whitelist) : []
+  const ipBlacklist = formData.value.enable_ip_restriction ? parseIPList(formData.value.ip_blacklist) : []
+
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
-      await keysAPI.update(selectedKey.value.id, formData.value)
+      await keysAPI.update(selectedKey.value.id, {
+        name: formData.value.name,
+        group_id: formData.value.group_id,
+        status: formData.value.status,
+        ip_whitelist: ipWhitelist,
+        ip_blacklist: ipBlacklist
+      REDACTED)
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     REDACTED else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      await keysAPI.create(formData.value.name, formData.value.group_id, customKey)
+      await keysAPI.create(formData.value.name, formData.value.group_id, customKey, ipWhitelist, ipBlacklist)
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
       if (onboardingStore.isCurrentStep('[data-tour="key-form-submit"]')) {
@@ -805,7 +879,10 @@ const closeModals = () => {
     group_id: null,
     status: 'active',
     use_custom_key: false,
-    custom_key: ''
+    custom_key: '',
+    enable_ip_restriction: false,
+    ip_whitelist: '',
+    ip_blacklist: ''
   REDACTED
 REDACTED
 

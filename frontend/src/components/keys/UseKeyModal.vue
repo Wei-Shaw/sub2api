@@ -105,10 +105,7 @@
                 </button>
               </div>
               <!-- Code Content -->
-              <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto">
-                <code v-if="file.highlighted" v-html="file.highlighted"></code>
-                <code v-else v-text="file.content"></code>
-              </pre>
+              <pre class="p-4 text-sm font-mono text-gray-100 overflow-x-auto"><code v-if="file.highlighted" v-html="file.highlighted"></code><code v-else v-text="file.content"></code></pre>
             </div>
           </div>
         </div>

@@ -166,7 +166,7 @@
           >
             <div
               :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                 accountCategory === 'oauth-based'
                   ? 'bg-orange-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -196,7 +196,7 @@
           >
             <div
               :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                 accountCategory === 'apikey'
                   ? 'bg-purple-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -232,7 +232,7 @@
           >
             <div
               :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                 accountCategory === 'oauth-based'
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -258,7 +258,7 @@
           >
             <div
               :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                 accountCategory === 'apikey'
                   ? 'bg-purple-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -302,7 +302,7 @@
           >
             <div
               :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                 accountCategory === 'oauth-based'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -332,7 +332,7 @@
           >
             <div
               :class="[
-                'flex h-8 w-8 items-center justify-center rounded-lg',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                 accountCategory === 'apikey'
                   ? 'bg-purple-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -397,7 +397,7 @@
             >
               <div
                 :class="[
-                  'flex h-8 w-8 items-center justify-center rounded-lg',
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                   geminiOAuthType === 'google_one'
                     ? 'bg-purple-500 text-white'
                     : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -440,7 +440,7 @@
             >
               <div
                 :class="[
-                  'flex h-8 w-8 items-center justify-center rounded-lg',
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                   geminiOAuthType === 'code_assist'
                     ? 'bg-blue-500 text-white'
                     : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -518,7 +518,7 @@
             >
               <div
                 :class="[
-                  'flex h-8 w-8 items-center justify-center rounded-lg',
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
                   geminiOAuthType === 'ai_studio'
                     ? 'bg-amber-500 text-white'
                     : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
@@ -621,7 +621,7 @@
           <div
             class="flex items-center gap-3 rounded-lg border-2 border-purple-500 bg-purple-50 p-3 dark:bg-purple-900/20"
           >
-            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500 text-white">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-500 text-white">
               <Icon name="key" size="sm" />
             </div>
             <div>
@@ -1012,7 +1012,7 @@
       </div>
 
       <!-- Temp Unschedulable Rules -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
           <div>
             <label class="input-label mb-0">{{ t('admin.accounts.tempUnschedulable.title') REDACTEDREDACTED</label>
@@ -1213,46 +1213,81 @@
           <p class="input-hint">{{ t('admin.accounts.priorityHint') REDACTEDREDACTED</p>
         </div>
       </div>
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.expiresAt') REDACTEDREDACTED</label>
+        <input v-model="expiresAtInput" type="datetime-local" class="input" />
+        <p class="input-hint">{{ t('admin.accounts.expiresAtHint') REDACTEDREDACTED</p>
+      </div>
 
-      <!-- Mixed Scheduling (only for antigravity accounts) -->
-      <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
-        <label class="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            v-model="mixedScheduling"
-            class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
-          />
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {{ t('admin.accounts.mixedScheduling') REDACTEDREDACTED
-          </span>
-        </label>
-        <div class="group relative">
-          <span
-            class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
-          >
-            ?
-          </span>
-          <!-- Tooltip（向下显示避免被弹窗裁剪） -->
-          <div
-            class="pointer-events-none absolute left-0 top-full z-[100] mt-1.5 w-72 rounded bg-gray-900 px-3 py-2 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
-          >
-            {{ t('admin.accounts.mixedSchedulingTooltip') REDACTEDREDACTED
-            <div
-              class="absolute bottom-full left-3 border-4 border-transparent border-b-gray-900 dark:border-b-gray-700"
-            ></div>
+      <div>
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{
+              t('admin.accounts.autoPauseOnExpired')
+            REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.autoPauseOnExpiredDesc') REDACTEDREDACTED
+            </p>
           </div>
+          <button
+            type="button"
+            @click="autoPauseOnExpired = !autoPauseOnExpired"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              autoPauseOnExpired ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                autoPauseOnExpired ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
         </div>
       </div>
 
-      <!-- Group Selection - 仅标准模式显示 -->
-      <GroupSelector
-        v-if="!authStore.isSimpleMode"
-        v-model="form.group_ids"
-        :groups="groups"
-        :platform="form.platform"
-        :mixed-scheduling="mixedScheduling"
-        data-tour="account-form-groups"
-      />
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <!-- Mixed Scheduling (only for antigravity accounts) -->
+        <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
+          <label class="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              v-model="mixedScheduling"
+              class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+            />
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('admin.accounts.mixedScheduling') REDACTEDREDACTED
+            </span>
+          </label>
+          <div class="group relative">
+            <span
+              class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-200 text-xs text-gray-500 hover:bg-gray-300 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
+            >
+              ?
+            </span>
+            <!-- Tooltip（向下显示避免被弹窗裁剪） -->
+            <div
+              class="pointer-events-none absolute left-0 top-full z-[100] mt-1.5 w-72 rounded bg-gray-900 px-3 py-2 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+            >
+              {{ t('admin.accounts.mixedSchedulingTooltip') REDACTEDREDACTED
+              <div
+                class="absolute bottom-full left-3 border-4 border-transparent border-b-gray-900 dark:border-b-gray-700"
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Group Selection - 仅标准模式显示 -->
+        <GroupSelector
+          v-if="!authStore.isSimpleMode"
+          v-model="form.group_ids"
+          :groups="groups"
+          :platform="form.platform"
+          :mixed-scheduling="mixedScheduling"
+          data-tour="account-form-groups"
+        />
+      </div>
 
     </form>
 
@@ -1598,6 +1633,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
@@ -1713,6 +1749,7 @@ const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
+const autoPauseOnExpired = ref(true)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
@@ -1795,7 +1832,8 @@ const form = reactive({
   proxy_id: null as number | null,
   concurrency: 10,
   priority: 1,
-  group_ids: [] as number[]
+  group_ids: [] as number[],
+  expires_at: null as number | null
 REDACTED)
 
 // Helper to check if current type needs OAuth flow
@@ -1803,6 +1841,13 @@ const isOAuthFlow = computed(() => accountCategory.value === 'oauth-based')
 
 const isManualInputMethod = computed(() => {
   return oauthFlowRef.value?.inputMethod === 'manual'
+REDACTED)
+
+const expiresAtInput = computed({
+  get: () => formatDateTimeLocal(form.expires_at),
+  set: (value: string) => {
+    form.expires_at = parseDateTimeLocal(value)
+  REDACTED
 REDACTED)
 
 const canExchangeCode = computed(() => {
@@ -2055,6 +2100,7 @@ const resetForm = () => {
   form.concurrency = 10
   form.priority = 1
   form.group_ids = []
+  form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
@@ -2066,6 +2112,7 @@ const resetForm = () => {
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
+  autoPauseOnExpired.value = true
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
   geminiOAuthType.value = 'code_assist'
@@ -2133,7 +2180,6 @@ const handleSubmit = async () => {
   if (interceptWarmupRequests.value) {
     credentials.intercept_warmup_requests = true
   REDACTED
-
   if (!applyTempUnschedConfig(credentials)) {
     return
   REDACTED
@@ -2144,7 +2190,8 @@ const handleSubmit = async () => {
   try {
     await adminAPI.accounts.create({
       ...form,
-      group_ids: form.group_ids
+      group_ids: form.group_ids,
+      auto_pause_on_expired: autoPauseOnExpired.value
     REDACTED)
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
@@ -2182,6 +2229,9 @@ const handleGenerateUrl = async () => {
   REDACTED
 REDACTED
 
+const formatDateTimeLocal = formatDateTimeLocalInput
+const parseDateTimeLocal = parseDateTimeLocalInput
+
 // Create account and handle success/failure
 const createAccountAndFinish = async (
   platform: AccountPlatform,
@@ -2202,7 +2252,9 @@ const createAccountAndFinish = async (
     proxy_id: form.proxy_id,
     concurrency: form.concurrency,
     priority: form.priority,
-    group_ids: form.group_ids
+    group_ids: form.group_ids,
+    expires_at: form.expires_at,
+    auto_pause_on_expired: autoPauseOnExpired.value
   REDACTED)
   appStore.showSuccess(t('admin.accounts.accountCreated'))
   emit('created')
@@ -2416,7 +2468,8 @@ const handleCookieAuth = async (sessionKey: string) => {
           extra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
-          priority: form.priority
+          priority: form.priority,
+          auto_pause_on_expired: autoPauseOnExpired.value
         REDACTED)
 
         successCount++

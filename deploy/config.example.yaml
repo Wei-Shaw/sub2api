@@ -154,9 +154,9 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
-  # SSE max line size in bytes (default: 10MB)
-  # SSE 单行最大字节数（默认 10MB）
-  max_line_size: 10485760
+  # SSE max line size in bytes (default: 40MB)
+  # SSE 单行最大字节数（默认 40MB）
+  max_line_size: 41943040
   # Log upstream error response body summary (safe/truncated; does not log request content)
   # 记录上游错误响应体摘要（安全/截断；不记录请求内容）
   log_upstream_error_body: false
@@ -233,6 +233,31 @@ jwt:
   # Token expiration time in hours (max 24)
   # 令牌过期时间（小时，最大 24）
   expire_hour: 24
+
+# =============================================================================
+# LinuxDo Connect OAuth Login (SSO)
+# LinuxDo Connect OAuth 登录（用于 Sub2API 用户登录）
+# =============================================================================
+linuxdo_connect:
+  enabled: false
+  client_id: ""
+  client_secret: ""
+  authorize_url: "https://connect.linux.do/oauth2/authorize"
+  token_url: "https://connect.linux.do/oauth2/token"
+  userinfo_url: "https://connect.linux.do/api/user"
+  scopes: "user"
+  # 示例: "https://your-domain.com/api/v1/auth/oauth/linuxdo/callback"
+  redirect_url: ""
+  # 安全提示：
+  # - 建议使用同源相对路径（以 / 开头），避免把 token 重定向到意外的第三方域名
+  # - 该地址不应包含 #fragment（本实现使用 URL fragment 传递 access_token）
+  frontend_redirect_url: "/auth/linuxdo/callback"
+  token_auth_method: "client_secret_post" # client_secret_post | client_secret_basic | none
+  # 注意：当 token_auth_method=none（public client）时，必须启用 PKCE
+  use_pkce: false
+  userinfo_email_path: ""
+  userinfo_id_path: ""
+  userinfo_username_path: ""
 
 # =============================================================================
 # Default Settings
@@ -388,3 +413,18 @@ gemini:
         # Cooldown time (minutes) after hitting quota
         # 达到配额后的冷却时间（分钟）
         cooldown_minutes: 5
+
+# =============================================================================
+# Update Configuration (在线更新配置)
+# =============================================================================
+update:
+  # Proxy URL for accessing GitHub (used for online updates and pricing data)
+  # 用于访问 GitHub 的代理地址（用于在线更新和定价数据获取）
+  # Supports: http, https, socks5, socks5h
+  # Examples:
+  #   - HTTP proxy: "http://127.0.0.1:7890"
+  #   - SOCKS5 proxy: "socks5://127.0.0.1:1080"
+  #   - With authentication: "http://user:pass@proxy.example.com:8080"
+  # Leave empty for direct connection (recommended for overseas servers)
+  # 留空表示直连（适用于海外服务器）
+  proxy_url: ""

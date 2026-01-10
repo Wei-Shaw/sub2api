@@ -175,6 +175,16 @@ func FirstTokenMs(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldFirstTokenMs, v))
 REDACTED
 
+// UserAgent applies equality check predicate on the "user_agent" field. It's identical to UserAgentEQ.
+func UserAgent(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUserAgent, v))
+REDACTED
+
+// IPAddress applies equality check predicate on the "ip_address" field. It's identical to IPAddressEQ.
+func IPAddress(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldIPAddress, v))
+REDACTED
+
 // ImageCount applies equality check predicate on the "image_count" field. It's identical to ImageCountEQ.
 func ImageCount(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageCount, v))
@@ -1108,6 +1118,156 @@ REDACTED
 // FirstTokenMsNotNil applies the NotNil predicate on the "first_token_ms" field.
 func FirstTokenMsNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldFirstTokenMs))
+REDACTED
+
+// UserAgentEQ applies the EQ predicate on the "user_agent" field.
+func UserAgentEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUserAgent, v))
+REDACTED
+
+// UserAgentNEQ applies the NEQ predicate on the "user_agent" field.
+func UserAgentNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldUserAgent, v))
+REDACTED
+
+// UserAgentIn applies the In predicate on the "user_agent" field.
+func UserAgentIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldUserAgent, vs...))
+REDACTED
+
+// UserAgentNotIn applies the NotIn predicate on the "user_agent" field.
+func UserAgentNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldUserAgent, vs...))
+REDACTED
+
+// UserAgentGT applies the GT predicate on the "user_agent" field.
+func UserAgentGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldUserAgent, v))
+REDACTED
+
+// UserAgentGTE applies the GTE predicate on the "user_agent" field.
+func UserAgentGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldUserAgent, v))
+REDACTED
+
+// UserAgentLT applies the LT predicate on the "user_agent" field.
+func UserAgentLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldUserAgent, v))
+REDACTED
+
+// UserAgentLTE applies the LTE predicate on the "user_agent" field.
+func UserAgentLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldUserAgent, v))
+REDACTED
+
+// UserAgentContains applies the Contains predicate on the "user_agent" field.
+func UserAgentContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldUserAgent, v))
+REDACTED
+
+// UserAgentHasPrefix applies the HasPrefix predicate on the "user_agent" field.
+func UserAgentHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldUserAgent, v))
+REDACTED
+
+// UserAgentHasSuffix applies the HasSuffix predicate on the "user_agent" field.
+func UserAgentHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldUserAgent, v))
+REDACTED
+
+// UserAgentIsNil applies the IsNil predicate on the "user_agent" field.
+func UserAgentIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldUserAgent))
+REDACTED
+
+// UserAgentNotNil applies the NotNil predicate on the "user_agent" field.
+func UserAgentNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldUserAgent))
+REDACTED
+
+// UserAgentEqualFold applies the EqualFold predicate on the "user_agent" field.
+func UserAgentEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldUserAgent, v))
+REDACTED
+
+// UserAgentContainsFold applies the ContainsFold predicate on the "user_agent" field.
+func UserAgentContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldUserAgent, v))
+REDACTED
+
+// IPAddressEQ applies the EQ predicate on the "ip_address" field.
+func IPAddressEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldIPAddress, v))
+REDACTED
+
+// IPAddressNEQ applies the NEQ predicate on the "ip_address" field.
+func IPAddressNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldIPAddress, v))
+REDACTED
+
+// IPAddressIn applies the In predicate on the "ip_address" field.
+func IPAddressIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldIPAddress, vs...))
+REDACTED
+
+// IPAddressNotIn applies the NotIn predicate on the "ip_address" field.
+func IPAddressNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldIPAddress, vs...))
+REDACTED
+
+// IPAddressGT applies the GT predicate on the "ip_address" field.
+func IPAddressGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldIPAddress, v))
+REDACTED
+
+// IPAddressGTE applies the GTE predicate on the "ip_address" field.
+func IPAddressGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldIPAddress, v))
+REDACTED
+
+// IPAddressLT applies the LT predicate on the "ip_address" field.
+func IPAddressLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldIPAddress, v))
+REDACTED
+
+// IPAddressLTE applies the LTE predicate on the "ip_address" field.
+func IPAddressLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldIPAddress, v))
+REDACTED
+
+// IPAddressContains applies the Contains predicate on the "ip_address" field.
+func IPAddressContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldIPAddress, v))
+REDACTED
+
+// IPAddressHasPrefix applies the HasPrefix predicate on the "ip_address" field.
+func IPAddressHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldIPAddress, v))
+REDACTED
+
+// IPAddressHasSuffix applies the HasSuffix predicate on the "ip_address" field.
+func IPAddressHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldIPAddress, v))
+REDACTED
+
+// IPAddressIsNil applies the IsNil predicate on the "ip_address" field.
+func IPAddressIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldIPAddress))
+REDACTED
+
+// IPAddressNotNil applies the NotNil predicate on the "ip_address" field.
+func IPAddressNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldIPAddress))
+REDACTED
+
+// IPAddressEqualFold applies the EqualFold predicate on the "ip_address" field.
+func IPAddressEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldIPAddress, v))
+REDACTED
+
+// IPAddressContainsFold applies the ContainsFold predicate on the "ip_address" field.
+func IPAddressContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldIPAddress, v))
 REDACTED
 
 // ImageCountEQ applies the EQ predicate on the "image_count" field.

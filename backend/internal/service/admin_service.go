@@ -24,7 +24,7 @@ type AdminService interface {
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 
 	// Group management
-	ListGroups(ctx context.Context, page, pageSize int, platform, status string, isExclusive *bool) ([]Group, int64, error)
+	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error)
 	GetAllGroups(ctx context.Context) ([]Group, error)
 	GetAllGroupsByPlatform(ctx context.Context, platform string) ([]Group, error)
 	GetGroup(ctx context.Context, id int64) (*Group, error)
@@ -47,6 +47,7 @@ type AdminService interface {
 
 	// Proxy management
 	ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string) ([]Proxy, int64, error)
+	ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string) ([]ProxyWithAccountCount, int64, error)
 	GetAllProxies(ctx context.Context) ([]Proxy, error)
 	GetAllProxiesWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
 	GetProxy(ctx context.Context, id int64) (*Proxy, error)
@@ -99,9 +100,11 @@ type CreateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	ImagePrice1K *float64
-	ImagePrice2K *float64
-	ImagePrice4K *float64
+	ImagePrice1K    *float64
+	ImagePrice2K    *float64
+	ImagePrice4K    *float64
+	ClaudeCodeOnly  bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID *int64 // 降级分组 ID
 REDACTED
 
 type UpdateGroupInput struct {
@@ -116,22 +119,26 @@ type UpdateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	ImagePrice1K *float64
-	ImagePrice2K *float64
-	ImagePrice4K *float64
+	ImagePrice1K    *float64
+	ImagePrice2K    *float64
+	ImagePrice4K    *float64
+	ClaudeCodeOnly  *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID *int64 // 降级分组 ID
 REDACTED
 
 type CreateAccountInput struct {
-	Name        string
-	Notes       *string
-	Platform    string
-	Type        string
-	Credentials map[string]any
-	Extra       map[string]any
-	ProxyID     *int64
-	Concurrency int
-	Priority    int
-	GroupIDs    []int64
+	Name               string
+	Notes              *string
+	Platform           string
+	Type               string
+	Credentials        map[string]any
+	Extra              map[string]any
+	ProxyID            *int64
+	Concurrency        int
+	Priority           int
+	GroupIDs           []int64
+	ExpiresAt          *int64
+	AutoPauseOnExpired *bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
@@ -148,6 +155,8 @@ type UpdateAccountInput struct {
 	Priority              *int // 使用指针区分"未提供"和"设置为0"
 	Status                string
 	GroupIDs              *[]int64
+	ExpiresAt             *int64
+	AutoPauseOnExpired    *bool
 	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
 REDACTED
 
@@ -159,6 +168,7 @@ type BulkUpdateAccountsInput struct {
 	Concurrency *int
 	Priority    *int
 	Status      string
+	Schedulable *bool
 	GroupIDs    *[]int64
 	Credentials map[string]any
 	Extra       map[string]any
@@ -469,9 +479,9 @@ REDACTED, nil
 REDACTED
 
 // Group management implementations
-func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status string, isExclusive *bool) ([]Group, int64, error) {
+func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	groups, result, err := s.groupRepo.ListWithFilters(ctx, params, platform, status, isExclusive)
+	groups, result, err := s.groupRepo.ListWithFilters(ctx, params, platform, status, search, isExclusive)
 	if err != nil {
 		return nil, 0, err
 REDACTED
@@ -511,6 +521,13 @@ REDACTED
 	imagePrice2K := normalizePrice(input.ImagePrice2K)
 	imagePrice4K := normalizePrice(input.ImagePrice4K)
 
+	// 校验降级分组
+	if input.FallbackGroupID != nil {
+		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
 	group := &Group{
 		Name:             input.Name,
 		Description:      input.Description,
@@ -525,6 +542,8 @@ REDACTED
 		ImagePrice1K:     imagePrice1K,
 		ImagePrice2K:     imagePrice2K,
 		ImagePrice4K:     imagePrice4K,
+		ClaudeCodeOnly:   input.ClaudeCodeOnly,
+		FallbackGroupID:  input.FallbackGroupID,
 REDACTED
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -546,6 +565,29 @@ func normalizePrice(price *float64) *float64 {
 		return nil
 REDACTED
 	return price
+REDACTED
+
+// validateFallbackGroup 校验降级分组的有效性
+// currentGroupID: 当前分组 ID（新建时为 0）
+// fallbackGroupID: 降级分组 ID
+func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGroupID, fallbackGroupID int64) error {
+	// 不能将自己设置为降级分组
+	if currentGroupID > 0 && currentGroupID == fallbackGroupID {
+		return fmt.Errorf("cannot set self as fallback group")
+REDACTED
+
+	// 检查降级分组是否存在
+	fallbackGroup, err := s.groupRepo.GetByID(ctx, fallbackGroupID)
+	if err != nil {
+		return fmt.Errorf("fallback group not found: %w", err)
+REDACTED
+
+	// 降级分组不能启用 claude_code_only，否则会造成死循环
+	if fallbackGroup.ClaudeCodeOnly {
+		return fmt.Errorf("fallback group cannot have claude_code_only enabled")
+REDACTED
+
+	return nil
 REDACTED
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
@@ -596,6 +638,23 @@ REDACTED
 REDACTED
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
+REDACTED
+
+	// Claude Code 客户端限制
+	if input.ClaudeCodeOnly != nil {
+		group.ClaudeCodeOnly = *input.ClaudeCodeOnly
+REDACTED
+	if input.FallbackGroupID != nil {
+		// 校验降级分组
+		if *input.FallbackGroupID > 0 {
+			if err := s.validateFallbackGroup(ctx, id, *input.FallbackGroupID); err != nil {
+				return nil, err
+		REDACTED
+			group.FallbackGroupID = input.FallbackGroupID
+	REDACTED else {
+			// 传入 0 或负数表示清除降级分组
+			group.FallbackGroupID = nil
+	REDACTED
 REDACTED
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
@@ -700,6 +759,15 @@ REDACTED
 		Status:      StatusActive,
 		Schedulable: true,
 REDACTED
+	if input.ExpiresAt != nil && *input.ExpiresAt > 0 {
+		expiresAt := time.Unix(*input.ExpiresAt, 0)
+		account.ExpiresAt = &expiresAt
+REDACTED
+	if input.AutoPauseOnExpired != nil {
+		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
+REDACTED else {
+		account.AutoPauseOnExpired = true
+REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 REDACTED
@@ -754,6 +822,17 @@ REDACTED
 REDACTED
 	if input.Status != "" {
 		account.Status = input.Status
+REDACTED
+	if input.ExpiresAt != nil {
+		if *input.ExpiresAt <= 0 {
+			account.ExpiresAt = nil
+	REDACTED else {
+			expiresAt := time.Unix(*input.ExpiresAt, 0)
+			account.ExpiresAt = &expiresAt
+	REDACTED
+REDACTED
+	if input.AutoPauseOnExpired != nil {
+		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
 REDACTED
 
 	// 先验证分组是否存在（在任何写操作之前）
@@ -831,6 +910,9 @@ REDACTED
 REDACTED
 	if input.Status != "" {
 		repoUpdates.Status = &input.Status
+REDACTED
+	if input.Schedulable != nil {
+		repoUpdates.Schedulable = input.Schedulable
 REDACTED
 
 	// Run bulk update for column/jsonb fields first.
@@ -920,6 +1002,15 @@ REDACTED
 func (s *adminServiceImpl) ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string) ([]Proxy, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	proxies, result, err := s.proxyRepo.ListWithFilters(ctx, params, protocol, status, search)
+	if err != nil {
+		return nil, 0, err
+REDACTED
+	return proxies, result.Total, nil
+REDACTED
+
+func (s *adminServiceImpl) ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string) ([]ProxyWithAccountCount, int64, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	proxies, result, err := s.proxyRepo.ListWithFiltersAndAccountCount(ctx, params, protocol, status, search)
 	if err != nil {
 		return nil, 0, err
 REDACTED

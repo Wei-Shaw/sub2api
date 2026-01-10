@@ -9,7 +9,7 @@ build-backend:
 
 # 编译前端（需要已安装依赖）
 build-frontend:
-	@npm --prefix frontend run build
+	@pnpm --dir frontend run build
 
 # 运行测试（后端 + 前端）
 test: test-backend test-frontend
@@ -18,5 +18,5 @@ test-backend:
 	@$(MAKE) -C backend test
 
 test-frontend:
-	@npm --prefix frontend run lint:check
-	@npm --prefix frontend run typecheck
+	@pnpm --dir frontend run lint:check
+	@pnpm --dir frontend run typecheck

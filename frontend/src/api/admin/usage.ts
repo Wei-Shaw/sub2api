@@ -54,15 +54,20 @@ REDACTED
 
 /**
  * Get usage statistics with optional filters (admin only)
- * @param params - Query parameters (user_id, api_key_id, period/date range)
+ * @param params - Query parameters for filtering
  * @returns Usage statistics
  */
 export async function getStats(params: {
   user_id?: number
   api_key_id?: number
+  account_id?: number
+  group_id?: number
+  model?: string
+  stream?: boolean
   period?: string
   start_date?: string
   end_date?: string
+  timezone?: string
 REDACTED): Promise<AdminUsageStatsResponse> {
   const { data REDACTED = await apiClient.get<AdminUsageStatsResponse>('/admin/usage/stats', {
     params

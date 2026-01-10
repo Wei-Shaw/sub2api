@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -35,6 +36,10 @@ type APIKey struct {
 	GroupID *int64 `json:"group_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// Allowed IPs/CIDRs, e.g. ["192.168.1.100", "10.0.0.0/8"]
+	IPWhitelist []string `json:"ip_whitelist,omitempty"`
+	// Blocked IPs/CIDRs
+	IPBlacklist []string `json:"ip_blacklist,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the APIKeyQuery when eager-loading is set.
 	Edges        APIKeyEdges `json:"edges"`
@@ -90,6 +95,8 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
+			values[i] = new([]byte)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID:
 			values[i] = new(sql.NullInt64)
 		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
@@ -166,6 +173,22 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 		REDACTED else if value.Valid {
 				_m.Status = value.String
+		REDACTED
+		case apikey.FieldIPWhitelist:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field ip_whitelist", values[i])
+		REDACTED else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.IPWhitelist); err != nil {
+					return fmt.Errorf("unmarshal field ip_whitelist: %w", err)
+			REDACTED
+		REDACTED
+		case apikey.FieldIPBlacklist:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field ip_blacklist", values[i])
+		REDACTED else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.IPBlacklist); err != nil {
+					return fmt.Errorf("unmarshal field ip_blacklist: %w", err)
+			REDACTED
 		REDACTED
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -245,6 +268,12 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("ip_whitelist=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IPWhitelist))
+	builder.WriteString(", ")
+	builder.WriteString("ip_blacklist=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IPBlacklist))
 	builder.WriteByte(')')
 	return builder.String()
 REDACTED

@@ -20,14 +20,16 @@ type User struct {
 REDACTED
 
 type APIKey struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	Key       string    `json:"key"`
-	Name      string    `json:"name"`
-	GroupID   *int64    `json:"group_id"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"user_id"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	GroupID     *int64    `json:"group_id"`
+	Status      string    `json:"status"`
+	IPWhitelist []string  `json:"ip_whitelist"`
+	IPBlacklist []string  `json:"ip_blacklist"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
@@ -52,6 +54,10 @@ type Group struct {
 	ImagePrice2K *float64 `json:"image_price_2k"`
 	ImagePrice4K *float64 `json:"image_price_4k"`
 
+	// Claude Code 客户端限制
+	ClaudeCodeOnly  bool   `json:"claude_code_only"`
+	FallbackGroupID *int64 `json:"fallback_group_id"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -60,21 +66,23 @@ type Group struct {
 REDACTED
 
 type Account struct {
-	ID           int64          `json:"id"`
-	Name         string         `json:"name"`
-	Notes        *string        `json:"notes"`
-	Platform     string         `json:"platform"`
-	Type         string         `json:"type"`
-	Credentials  map[string]any `json:"credentials"`
-	Extra        map[string]any `json:"extra"`
-	ProxyID      *int64         `json:"proxy_id"`
-	Concurrency  int            `json:"concurrency"`
-	Priority     int            `json:"priority"`
-	Status       string         `json:"status"`
-	ErrorMessage string         `json:"error_message"`
-	LastUsedAt   *time.Time     `json:"last_used_at"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	ID                 int64          `json:"id"`
+	Name               string         `json:"name"`
+	Notes              *string        `json:"notes"`
+	Platform           string         `json:"platform"`
+	Type               string         `json:"type"`
+	Credentials        map[string]any `json:"credentials"`
+	Extra              map[string]any `json:"extra"`
+	ProxyID            *int64         `json:"proxy_id"`
+	Concurrency        int            `json:"concurrency"`
+	Priority           int            `json:"priority"`
+	Status             string         `json:"status"`
+	ErrorMessage       string         `json:"error_message"`
+	LastUsedAt         *time.Time     `json:"last_used_at"`
+	ExpiresAt          *int64         `json:"expires_at"`
+	AutoPauseOnExpired bool           `json:"auto_pause_on_expired"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
 
 	Schedulable bool `json:"schedulable"`
 
@@ -178,13 +186,26 @@ type UsageLog struct {
 	ImageCount int     `json:"image_count"`
 	ImageSize  *string `json:"image_size"`
 
+	// User-Agent
+	UserAgent *string `json:"user_agent"`
+
+	// IP 地址（仅管理员可见）
+	IPAddress *string `json:"ip_address,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`
 	APIKey       *APIKey           `json:"api_key,omitempty"`
-	Account      *Account          `json:"account,omitempty"`
+	Account      *AccountSummary   `json:"account,omitempty"` // Use minimal AccountSummary to prevent data leakage
 	Group        *Group            `json:"group,omitempty"`
 	Subscription *UserSubscription `json:"subscription,omitempty"`
+REDACTED
+
+// AccountSummary is a minimal account info for usage log display.
+// It intentionally excludes sensitive fields like Credentials, Proxy, etc.
+type AccountSummary struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 REDACTED
 
 type Setting struct {

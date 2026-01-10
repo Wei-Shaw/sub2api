@@ -67,6 +67,15 @@ const routes: RouteRecordRaw[] = [
       title: 'OAuth Callback'
     REDACTED
   REDACTED,
+  {
+    path: '/auth/linuxdo/callback',
+    name: 'LinuxDoOAuthCallback',
+    component: () => import('@/views/auth/LinuxDoCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'LinuxDo OAuth Callback'
+    REDACTED
+  REDACTED,
 
   // ==================== User Routes ====================
   {

@@ -67,6 +67,7 @@ func provideCleanup(
 	opsAlertEvaluator *service.OpsAlertEvaluatorService,
 	opsCleanup *service.OpsCleanupService,
 	tokenRefresh *service.TokenRefreshService,
+	accountExpiry *service.AccountExpiryService,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
@@ -110,6 +111,10 @@ func provideCleanup(
 	REDACTED
 			{"TokenRefreshService", func() error {
 				tokenRefresh.Stop()
+				return nil
+	REDACTED
+			{"AccountExpiryService", func() error {
+				accountExpiry.Stop()
 				return nil
 	REDACTED
 			{"PricingService", func() error {

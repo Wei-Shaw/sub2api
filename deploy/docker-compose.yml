@@ -109,6 +109,13 @@ services:
       - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-falseREDACTED
       # Upstream hosts whitelist (comma-separated, only used when enabled=true)
       - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-REDACTED
+
+      # =======================================================================
+      # Update Configuration (在线更新配置)
+      # =======================================================================
+      # Proxy for accessing GitHub (online updates + pricing data)
+      # Examples: http://host:port, socks5://host:port
+      - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-REDACTED
     depends_on:
       postgres:
         condition: service_healthy
@@ -166,11 +173,12 @@ services:
     volumes:
       - redis_data:/data
     command: >
-      redis-server
-      --save 60 1
-      --appendonly yes
-      --appendfsync everysec
-      ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORDREDACTEDREDACTED
+        sh -c '
+          redis-server
+          --save 60 1
+          --appendonly yes
+          --appendfsync everysec
+          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"REDACTED'
     environment:
       - TZ=${TZ:-Asia/ShanghaiREDACTED
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)

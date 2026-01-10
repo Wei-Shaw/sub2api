@@ -40,7 +40,7 @@
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('dashboard.redeemCode') REDACTEDREDACTED</p>
-          <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('dashboard.addBalance') REDACTEDREDACTED</p>
+          <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('dashboard.addBalanceWithCode') REDACTEDREDACTED</p>
         </div>
         <Icon
           name="chevronRight"

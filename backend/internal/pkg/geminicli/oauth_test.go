@@ -23,14 +23,14 @@ REDACTED{
 			wantErr:      false,
 	REDACTED,
 		{
-			name: "Google One with custom client",
+			name: "Google One always uses built-in client (even if custom credentials passed)",
 			input: OAuthConfig{
 				ClientID:     "custom-client-id",
 				ClientSecret: "custom-client-secret",
 		REDACTED,
 			oauthType:    "google_one",
 			wantClientID: "custom-client-id",
-			wantScopes:   DefaultGoogleOneScopes,
+			wantScopes:   DefaultCodeAssistScopes, // Uses code assist scopes even with custom client
 			wantErr:      false,
 	REDACTED,
 		{

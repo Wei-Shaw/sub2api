@@ -185,13 +185,9 @@ REDACTED
 				effective.Scopes = DefaultAIStudioScopes
 		REDACTED
 		case "google_one":
-			// Google One uses built-in Gemini CLI client (same as code_assist)
-			// Built-in client can't request restricted scopes like generative-language.retriever
-			if isBuiltinClient {
-				effective.Scopes = DefaultCodeAssistScopes
-		REDACTED else {
-				effective.Scopes = DefaultGoogleOneScopes
-		REDACTED
+			// Google One always uses built-in Gemini CLI client (same as code_assist)
+			// Built-in client can't request restricted scopes like generative-language.retriever or drive.readonly
+			effective.Scopes = DefaultCodeAssistScopes
 		default:
 			// Default to Code Assist scopes
 			effective.Scopes = DefaultCodeAssistScopes
