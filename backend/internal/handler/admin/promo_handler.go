@@ -27,11 +27,11 @@ REDACTED
 
 // CreatePromoCodeRequest represents create promo code request
 type CreatePromoCodeRequest struct {
-	Code        string  `json:"code"`                                    // 可选，为空则自动生成
-	BonusAmount float64 `json:"bonus_amount" binding:"required,min=0"`   // 赠送余额
-	MaxUses     int     `json:"max_uses" binding:"min=0"`                // 最大使用次数，0=无限
-	ExpiresAt   *int64  `json:"expires_at"`                              // 过期时间戳（秒）
-	Notes       string  `json:"notes"`                                   // 备注
+	Code        string  `json:"code"`                                  // 可选，为空则自动生成
+	BonusAmount float64 `json:"bonus_amount" binding:"required,min=0"` // 赠送余额
+	MaxUses     int     `json:"max_uses" binding:"min=0"`              // 最大使用次数，0=无限
+	ExpiresAt   *int64  `json:"expires_at"`                            // 过期时间戳（秒）
+	Notes       string  `json:"notes"`                                 // 备注
 REDACTED
 
 // UpdatePromoCodeRequest represents update promo code request
