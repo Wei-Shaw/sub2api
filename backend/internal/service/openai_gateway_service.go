@@ -545,6 +545,8 @@ REDACTED
 	// 2. Normalize input format for Codex API compatibility
 	if account.Type == AccountTypeOAuth {
 		reqBody["store"] = false
+		// Codex 上游不接受 max_output_tokens 参数，需要在转发前移除。
+		delete(reqBody, "max_output_tokens")
 		bodyModified = true
 
 		// Normalize input format: convert AI SDK multi-part content format to simplified format
