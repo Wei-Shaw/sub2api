@@ -36,25 +36,26 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig         `mapstructure:"server"`
-	CORS         CORSConfig           `mapstructure:"cors"`
-	Security     SecurityConfig       `mapstructure:"security"`
-	Billing      BillingConfig        `mapstructure:"billing"`
-	Turnstile    TurnstileConfig      `mapstructure:"turnstile"`
-	Database     DatabaseConfig       `mapstructure:"database"`
-	Redis        RedisConfig          `mapstructure:"redis"`
-	JWT          JWTConfig            `mapstructure:"jwt"`
-	LinuxDo      LinuxDoConnectConfig `mapstructure:"linuxdo_connect"`
-	Default      DefaultConfig        `mapstructure:"default"`
-	RateLimit    RateLimitConfig      `mapstructure:"rate_limit"`
-	Pricing      PricingConfig        `mapstructure:"pricing"`
-	Gateway      GatewayConfig        `mapstructure:"gateway"`
-	Concurrency  ConcurrencyConfig    `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig   `mapstructure:"token_refresh"`
-	RunMode      string               `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string               `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig         `mapstructure:"gemini"`
-	Update       UpdateConfig         `mapstructure:"update"`
+	Server       ServerConfig          `mapstructure:"server"`
+	CORS         CORSConfig            `mapstructure:"cors"`
+	Security     SecurityConfig        `mapstructure:"security"`
+	Billing      BillingConfig         `mapstructure:"billing"`
+	Turnstile    TurnstileConfig       `mapstructure:"turnstile"`
+	Database     DatabaseConfig        `mapstructure:"database"`
+	Redis        RedisConfig           `mapstructure:"redis"`
+	JWT          JWTConfig             `mapstructure:"jwt"`
+	LinuxDo      LinuxDoConnectConfig  `mapstructure:"linuxdo_connect"`
+	Default      DefaultConfig         `mapstructure:"default"`
+	RateLimit    RateLimitConfig       `mapstructure:"rate_limit"`
+	Pricing      PricingConfig         `mapstructure:"pricing"`
+	Gateway      GatewayConfig         `mapstructure:"gateway"`
+	APIKeyAuth   APIKeyAuthCacheConfig `mapstructure:"api_key_auth_cache"`
+	Concurrency  ConcurrencyConfig     `mapstructure:"concurrency"`
+	TokenRefresh TokenRefreshConfig    `mapstructure:"token_refresh"`
+	RunMode      string                `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone     string                `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini       GeminiConfig          `mapstructure:"gemini"`
+	Update       UpdateConfig          `mapstructure:"update"`
 REDACTED
 
 // UpdateConfig 在线更新相关配置
@@ -375,6 +376,16 @@ type RateLimitConfig struct {
 	OverloadCooldownMinutes int `mapstructure:"overload_cooldown_minutes"` // 529过载冷却时间(分钟)
 REDACTED
 
+// APIKeyAuthCacheConfig API Key 认证缓存配置
+type APIKeyAuthCacheConfig struct {
+	L1Size             int  `mapstructure:"l1_size"`
+	L1TTLSeconds       int  `mapstructure:"l1_ttl_seconds"`
+	L2TTLSeconds       int  `mapstructure:"l2_ttl_seconds"`
+	NegativeTTLSeconds int  `mapstructure:"negative_ttl_seconds"`
+	JitterPercent      int  `mapstructure:"jitter_percent"`
+	Singleflight       bool `mapstructure:"singleflight"`
+REDACTED
+
 func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
@@ -668,6 +679,14 @@ REDACTED)
 
 	// Timezone (default to Asia/Shanghai for Chinese users)
 	viper.SetDefault("timezone", "Asia/Shanghai")
+
+	// API Key auth cache
+	viper.SetDefault("api_key_auth_cache.l1_size", 65535)
+	viper.SetDefault("api_key_auth_cache.l1_ttl_seconds", 15)
+	viper.SetDefault("api_key_auth_cache.l2_ttl_seconds", 300)
+	viper.SetDefault("api_key_auth_cache.negative_ttl_seconds", 30)
+	viper.SetDefault("api_key_auth_cache.jitter_percent", 10)
+	viper.SetDefault("api_key_auth_cache.singleflight", true)
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
