@@ -50,13 +50,15 @@ REDACTED
 
 // GroupService 分组管理服务
 type GroupService struct {
-	groupRepo GroupRepository
+	groupRepo            GroupRepository
+	authCacheInvalidator APIKeyAuthCacheInvalidator
 REDACTED
 
 // NewGroupService 创建分组服务实例
-func NewGroupService(groupRepo GroupRepository) *GroupService {
+func NewGroupService(groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *GroupService {
 	return &GroupService{
-		groupRepo: groupRepo,
+		groupRepo:            groupRepo,
+		authCacheInvalidator: authCacheInvalidator,
 REDACTED
 REDACTED
 
@@ -155,6 +157,9 @@ REDACTED
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, fmt.Errorf("update group: %w", err)
 REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
+REDACTED
 
 	return group, nil
 REDACTED
@@ -169,6 +174,9 @@ REDACTED
 
 	if err := s.groupRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete group: %w", err)
+REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 REDACTED
 
 	return nil

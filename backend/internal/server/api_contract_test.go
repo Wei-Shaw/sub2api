@@ -389,7 +389,7 @@ REDACTED
 		RunMode: config.RunModeStandard,
 REDACTED
 
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, nil)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()
@@ -565,6 +565,18 @@ func (stubApiKeyCache) SetDailyUsageExpiry(ctx context.Context, apiKey string, t
 	return nil
 REDACTED
 
+func (stubApiKeyCache) GetAuthCache(ctx context.Context, key string) (*service.APIKeyAuthCacheEntry, error) {
+	return nil, nil
+REDACTED
+
+func (stubApiKeyCache) SetAuthCache(ctx context.Context, key string, entry *service.APIKeyAuthCacheEntry, ttl time.Duration) error {
+	return nil
+REDACTED
+
+func (stubApiKeyCache) DeleteAuthCache(ctx context.Context, key string) error {
+	return nil
+REDACTED
+
 type stubGroupRepo struct{REDACTED
 
 func (stubGroupRepo) Create(ctx context.Context, group *service.Group) error {
@@ -737,12 +749,12 @@ REDACTED
 	return &clone, nil
 REDACTED
 
-func (r *stubApiKeyRepo) GetOwnerID(ctx context.Context, id int64) (int64, error) {
+func (r *stubApiKeyRepo) GetKeyAndOwnerID(ctx context.Context, id int64) (string, int64, error) {
 	key, ok := r.byID[id]
 	if !ok {
-		return 0, service.ErrAPIKeyNotFound
+		return "", 0, service.ErrAPIKeyNotFound
 REDACTED
-	return key.UserID, nil
+	return key.Key, key.UserID, nil
 REDACTED
 
 func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
@@ -752,6 +764,10 @@ func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.API
 REDACTED
 	clone := *found
 	return &clone, nil
+REDACTED
+
+func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
+	return r.GetByKey(ctx, key)
 REDACTED
 
 func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
@@ -866,6 +882,14 @@ REDACTED
 
 func (r *stubApiKeyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
+REDACTED
+
+func (r *stubApiKeyRepo) ListKeysByUserID(ctx context.Context, userID int64) ([]string, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubApiKeyRepo) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
+	return nil, errors.New("not implemented")
 REDACTED
 
 type stubUsageLogRepo struct {

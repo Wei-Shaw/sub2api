@@ -171,6 +171,30 @@ gateway:
   failover_on_400: false
 
 # =============================================================================
+# API Key Auth Cache Configuration
+# API Key 认证缓存配置
+# =============================================================================
+api_key_auth_cache:
+  # L1 cache size (entries), in-process LRU/TTL cache
+  # L1 缓存容量（条目数），进程内 LRU/TTL 缓存
+  l1_size: 65535
+  # L1 cache TTL (seconds)
+  # L1 缓存 TTL（秒）
+  l1_ttl_seconds: 15
+  # L2 cache TTL (seconds), stored in Redis
+  # L2 缓存 TTL（秒），Redis 中存储
+  l2_ttl_seconds: 300
+  # Negative cache TTL (seconds)
+  # 负缓存 TTL（秒）
+  negative_ttl_seconds: 30
+  # TTL jitter percent (0-100)
+  # TTL 抖动百分比（0-100）
+  jitter_percent: 10
+  # Enable singleflight for cache misses
+  # 缓存未命中时启用 singleflight 合并回源
+  singleflight: true
+
+# =============================================================================
 # Concurrency Wait Configuration
 # 并发等待配置
 # =============================================================================

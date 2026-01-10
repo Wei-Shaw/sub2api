@@ -12,6 +12,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/dgraph-io/ristretto"
+	"golang.org/x/sync/singleflight"
 )
 
 var (
@@ -31,9 +33,11 @@ const (
 type APIKeyRepository interface {
 	Create(ctx context.Context, key *APIKey) error
 	GetByID(ctx context.Context, id int64) (*APIKey, error)
-	// GetOwnerID 仅获取 API Key 的所有者 ID，用于删除前的轻量级权限验证
-	GetOwnerID(ctx context.Context, id int64) (int64, error)
+	// GetKeyAndOwnerID 仅获取 API Key 的 key 与所有者 ID，用于删除等轻量场景
+	GetKeyAndOwnerID(ctx context.Context, id int64) (string, int64, error)
 	GetByKey(ctx context.Context, key string) (*APIKey, error)
+	// GetByKeyForAuth 认证专用查询，返回最小字段集
+	GetByKeyForAuth(ctx context.Context, key string) (*APIKey, error)
 	Update(ctx context.Context, key *APIKey) error
 	Delete(ctx context.Context, id int64) error
 
@@ -45,6 +49,8 @@ type APIKeyRepository interface {
 	SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error)
 	ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error)
 	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
+	ListKeysByUserID(ctx context.Context, userID int64) ([]string, error)
+	ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error)
 REDACTED
 
 // APIKeyCache defines cache operations for API key service
@@ -55,6 +61,17 @@ type APIKeyCache interface {
 
 	IncrementDailyUsage(ctx context.Context, apiKey string) error
 	SetDailyUsageExpiry(ctx context.Context, apiKey string, ttl time.Duration) error
+
+	GetAuthCache(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error)
+	SetAuthCache(ctx context.Context, key string, entry *APIKeyAuthCacheEntry, ttl time.Duration) error
+	DeleteAuthCache(ctx context.Context, key string) error
+REDACTED
+
+// APIKeyAuthCacheInvalidator 提供认证缓存失效能力
+type APIKeyAuthCacheInvalidator interface {
+	InvalidateAuthCacheByKey(ctx context.Context, key string)
+	InvalidateAuthCacheByUserID(ctx context.Context, userID int64)
+	InvalidateAuthCacheByGroupID(ctx context.Context, groupID int64)
 REDACTED
 
 // CreateAPIKeyRequest 创建API Key请求
@@ -83,6 +100,9 @@ type APIKeyService struct {
 	userSubRepo UserSubscriptionRepository
 	cache       APIKeyCache
 	cfg         *config.Config
+	authCacheL1 *ristretto.Cache
+	authCfg     apiKeyAuthCacheConfig
+	authGroup   singleflight.Group
 REDACTED
 
 // NewAPIKeyService 创建API Key服务实例
@@ -94,7 +114,7 @@ func NewAPIKeyService(
 	cache APIKeyCache,
 	cfg *config.Config,
 ) *APIKeyService {
-	return &APIKeyService{
+	svc := &APIKeyService{
 		apiKeyRepo:  apiKeyRepo,
 		userRepo:    userRepo,
 		groupRepo:   groupRepo,
@@ -102,6 +122,8 @@ func NewAPIKeyService(
 		cache:       cache,
 		cfg:         cfg,
 REDACTED
+	svc.initAuthCache(cfg)
+	return svc
 REDACTED
 
 // GenerateKey 生成随机API Key
@@ -269,6 +291,8 @@ REDACTED
 		return nil, fmt.Errorf("create api key: %w", err)
 REDACTED
 
+	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+
 	return apiKey, nil
 REDACTED
 
@@ -304,21 +328,49 @@ REDACTED
 
 // GetByKey 根据Key字符串获取API Key（用于认证）
 func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, error) {
-	// 尝试从Redis缓存获取
-	cacheKey := fmt.Sprintf("apikey:%s", key)
+	cacheKey := s.authCacheKey(key)
 
-	// 这里可以添加Redis缓存逻辑，暂时直接查询数据库
-	apiKey, err := s.apiKeyRepo.GetByKey(ctx, key)
+	if entry, ok := s.getAuthCacheEntry(ctx, cacheKey); ok {
+		if apiKey, used, err := s.applyAuthCacheEntry(key, entry); used {
+			if err != nil {
+				return nil, fmt.Errorf("get api key: %w", err)
+		REDACTED
+			return apiKey, nil
+	REDACTED
+REDACTED
+
+	if s.authCfg.singleflight {
+		value, err, _ := s.authGroup.Do(cacheKey, func() (any, error) {
+			return s.loadAuthCacheEntry(ctx, key, cacheKey)
+	REDACTED)
+		if err != nil {
+			return nil, err
+	REDACTED
+		entry, _ := value.(*APIKeyAuthCacheEntry)
+		if apiKey, used, err := s.applyAuthCacheEntry(key, entry); used {
+			if err != nil {
+				return nil, fmt.Errorf("get api key: %w", err)
+		REDACTED
+			return apiKey, nil
+	REDACTED
+REDACTED else {
+		entry, err := s.loadAuthCacheEntry(ctx, key, cacheKey)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if apiKey, used, err := s.applyAuthCacheEntry(key, entry); used {
+			if err != nil {
+				return nil, fmt.Errorf("get api key: %w", err)
+		REDACTED
+			return apiKey, nil
+	REDACTED
+REDACTED
+
+	apiKey, err := s.apiKeyRepo.GetByKeyForAuth(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
 REDACTED
-
-	// 缓存到Redis（可选，TTL设置为5分钟）
-	if s.cache != nil {
-		// 这里可以序列化并缓存API Key
-		_ = cacheKey // 使用变量避免未使用错误
-REDACTED
-
+	apiKey.Key = key
 	return apiKey, nil
 REDACTED
 
@@ -388,15 +440,14 @@ REDACTED
 		return nil, fmt.Errorf("update api key: %w", err)
 REDACTED
 
+	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+
 	return apiKey, nil
 REDACTED
 
 // Delete 删除API Key
-// 优化：使用 GetOwnerID 替代 GetByID 进行权限验证，
-// 避免加载完整 APIKey 对象及其关联数据（User、Group），提升删除操作的性能
 func (s *APIKeyService) Delete(ctx context.Context, id int64, userID int64) error {
-	// 仅获取所有者 ID 用于权限验证，而非加载完整对象
-	ownerID, err := s.apiKeyRepo.GetOwnerID(ctx, id)
+	key, ownerID, err := s.apiKeyRepo.GetKeyAndOwnerID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("get api key: %w", err)
 REDACTED
@@ -406,10 +457,11 @@ REDACTED
 		return ErrInsufficientPerms
 REDACTED
 
-	// 清除Redis缓存（使用 ownerID 而非 apiKey.UserID）
+	// 清除Redis缓存（使用 userID 而非 apiKey.UserID）
 	if s.cache != nil {
-		_ = s.cache.DeleteCreateAttemptCount(ctx, ownerID)
+		_ = s.cache.DeleteCreateAttemptCount(ctx, userID)
 REDACTED
+	s.InvalidateAuthCacheByKey(ctx, key)
 
 	if err := s.apiKeyRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete api key: %w", err)
