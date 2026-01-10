@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/Wei-Shaw/sub2api/ent/account"
@@ -25,6 +26,7 @@ type AccountGroupQuery struct {
 	predicates  []predicate.AccountGroup
 	withAccount *AccountQuery
 	withGroup   *GroupQuery
+	modifiers   []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -347,6 +349,9 @@ REDACTED
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
 REDACTED
+	if len(_q.modifiers) > 0 {
+		_spec.Modifiers = _q.modifiers
+REDACTED
 	for i := range hooks {
 		hooks[i](ctx, _spec)
 REDACTED
@@ -432,6 +437,9 @@ REDACTED
 
 func (_q *AccountGroupQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
+	if len(_q.modifiers) > 0 {
+		_spec.Modifiers = _q.modifiers
+REDACTED
 	_spec.Unique = false
 	_spec.Node.Columns = nil
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
@@ -495,6 +503,9 @@ REDACTED
 	if _q.ctx.Unique != nil && *_q.ctx.Unique {
 		selector.Distinct()
 REDACTED
+	for _, m := range _q.modifiers {
+		m(selector)
+REDACTED
 	for _, p := range _q.predicates {
 		p(selector)
 REDACTED
@@ -510,6 +521,32 @@ REDACTED
 		selector.Limit(*limit)
 REDACTED
 	return selector
+REDACTED
+
+// ForUpdate locks the selected rows against concurrent updates, and prevent them from being
+// updated, deleted or "selected ... for update" by other sessions, until the transaction is
+// either committed or rolled-back.
+func (_q *AccountGroupQuery) ForUpdate(opts ...sql.LockOption) *AccountGroupQuery {
+	if _q.driver.Dialect() == dialect.Postgres {
+		_q.Unique(false)
+REDACTED
+	_q.modifiers = append(_q.modifiers, func(s *sql.Selector) {
+		s.ForUpdate(opts...)
+REDACTED)
+	return _q
+REDACTED
+
+// ForShare behaves similarly to ForUpdate, except that it acquires a shared mode lock
+// on any rows that are read. Other sessions can read the rows, but cannot modify them
+// until your transaction commits.
+func (_q *AccountGroupQuery) ForShare(opts ...sql.LockOption) *AccountGroupQuery {
+	if _q.driver.Dialect() == dialect.Postgres {
+		_q.Unique(false)
+REDACTED
+	_q.modifiers = append(_q.modifiers, func(s *sql.Selector) {
+		s.ForShare(opts...)
+REDACTED)
+	return _q
 REDACTED
 
 // AccountGroupGroupBy is the group-by builder for AccountGroup entities.
