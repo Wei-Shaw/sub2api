@@ -5,6 +5,7 @@
 
 import { createRouter, createWebHistory, type RouteRecordRaw REDACTED from 'vue-router'
 import { useAuthStore REDACTED from '@/stores/auth'
+import { useAppStore REDACTED from '@/stores/app'
 
 /**
  * Route definitions with lazy loading
@@ -311,10 +312,12 @@ router.beforeEach((to, _from, next) => {
   REDACTED
 
   // Set page title
+  const appStore = useAppStore()
+  const siteName = appStore.siteName || 'Sub2API'
   if (to.meta.title) {
-    document.title = `${to.meta.titleREDACTED - Sub2API`
+    document.title = `${to.meta.titleREDACTED - ${siteNameREDACTED`
   REDACTED else {
-    document.title = 'Sub2API'
+    document.title = siteName
   REDACTED
 
   // Check if route requires authentication

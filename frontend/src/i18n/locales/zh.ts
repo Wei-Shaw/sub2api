@@ -1971,7 +1971,10 @@ export default {
         logoHint: 'PNG、JPG 或 SVG 格式，最大 300KB。建议：80x80px 正方形图片。',
         logoSizeError: '图片大小超过 300KB 限制（{sizeREDACTEDKB）',
         logoTypeError: '请选择图片文件',
-        logoReadError: '读取图片文件失败'
+        logoReadError: '读取图片文件失败',
+        homeContent: '首页内容',
+        homeContentPlaceholder: '在此输入首页内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性。',
+        homeContentHint: '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。'
       REDACTED,
       smtp: {
         title: 'SMTP 设置',

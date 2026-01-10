@@ -1,6 +1,21 @@
 <template>
+  <!-- Custom Home Content: Full Page Mode -->
+  <div v-if="homeContent" class="min-h-screen">
+    <!-- iframe mode -->
+    <iframe
+      v-if="isHomeContentUrl"
+      :src="homeContent.trim()"
+      class="h-screen w-full border-0"
+      allowfullscreen
+    ></iframe>
+    <!-- HTML mode - SECURITY: homeContent is admin-only setting, XSS risk is acceptable -->
+    <div v-else v-html="homeContent"></div>
+  </div>
+
+  <!-- Default Home Page -->
   <div
-    class="relative min-h-screen overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
+    v-else
+    class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
   >
     <!-- Background Decorations -->
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
@@ -96,7 +111,7 @@
     </header>
 
     <!-- Main Content -->
-    <main class="relative z-10 px-6 py-16">
+    <main class="relative z-10 flex-1 px-6 py-16">
       <div class="mx-auto max-w-6xl">
         <!-- Hero Section - Left/Right Layout -->
         <div class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
@@ -392,21 +407,27 @@
 <script setup lang="ts">
 import { ref, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { getPublicSettings REDACTED from '@/api/auth'
-import { useAuthStore REDACTED from '@/stores'
+import { useAuthStore, useAppStore REDACTED from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { sanitizeUrl REDACTED from '@/utils/url'
 
 const { t REDACTED = useI18n()
 
 const authStore = useAuthStore()
+const appStore = useAppStore()
 
-// Site settings
-const siteName = ref('Sub2API')
-const siteLogo = ref('')
-const siteSubtitle = ref('AI API Gateway Platform')
-const docUrl = ref('')
+// Site settings - directly from appStore (already initialized from injected config)
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
+const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
+const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
+
+// Check if homeContent is a URL (for iframe display)
+const isHomeContentUrl = computed(() => {
+  const content = homeContent.value.trim()
+  return content.startsWith('http://') || content.startsWith('https://')
+REDACTED)
 
 // Theme
 const isDark = ref(document.documentElement.classList.contains('dark'))
@@ -446,20 +467,15 @@ function initTheme() {
   REDACTED
 REDACTED
 
-onMounted(async () => {
+onMounted(() => {
   initTheme()
 
   // Check auth state
   authStore.checkAuth()
 
-  try {
-    const settings = await getPublicSettings()
-    siteName.value = settings.site_name || 'Sub2API'
-    siteLogo.value = sanitizeUrl(settings.site_logo || '', { allowRelative: true REDACTED)
-    siteSubtitle.value = settings.site_subtitle || 'AI API Gateway Platform'
-    docUrl.value = sanitizeUrl(settings.doc_url || '', { allowRelative: true REDACTED)
-  REDACTED catch (error) {
-    console.error('Failed to load public settings:', error)
+  // Ensure public settings are loaded (will use cache if already loaded from injected config)
+  if (!appStore.publicSettingsLoaded) {
+    appStore.fetchPublicSettings()
   REDACTED
 REDACTED)
 </script>

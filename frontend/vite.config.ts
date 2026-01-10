@@ -1,8 +1,39 @@
-import { defineConfig REDACTED from 'vite'
+import { defineConfig, Plugin REDACTED from 'vite'
 import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
 import { resolve REDACTED from 'path'
 
+/**
+ * Vite 插件：开发模式下注入公开配置到 index.html
+ * 与生产模式的后端注入行为保持一致，消除闪烁
+ */
+function injectPublicSettings(): Plugin {
+  const backendUrl = process.env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
+
+  return {
+    name: 'inject-public-settings',
+    transformIndexHtml: {
+      order: 'pre',
+      async handler(html) {
+        try {
+          const response = await fetch(`${backendUrlREDACTED/api/v1/settings/public`, {
+            signal: AbortSignal.timeout(2000)
+          REDACTED)
+          if (response.ok) {
+            const data = await response.json()
+            if (data.code === 0 && data.data) {
+              const script = `<script>window.__APP_CONFIG__=${JSON.stringify(data.data)REDACTED;</script>`
+              return html.replace('</head>', `${scriptREDACTED\n</head>`)
+            REDACTED
+          REDACTED
+        REDACTED catch (e) {
+          console.warn('[vite] 无法获取公开配置，将回退到 API 调用:', (e as Error).message)
+        REDACTED
+        return html
+      REDACTED
+    REDACTED
+  REDACTED
+REDACTED
 
 export default defineConfig({
   plugins: [
@@ -10,7 +41,8 @@ export default defineConfig({
     checker({
       typescript: true,
       vueTsc: true
-    REDACTED)
+    REDACTED),
+    injectPublicSettings()
   ],
   resolve: {
     alias: {

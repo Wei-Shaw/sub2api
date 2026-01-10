@@ -1828,7 +1828,10 @@ export default {
         logoHint: 'PNG, JPG, or SVG. Max 300KB. Recommended: 80x80px square image.',
         logoSizeError: 'Image size exceeds 300KB limit ({sizeREDACTEDKB)',
         logoTypeError: 'Please select an image file',
-        logoReadError: 'Failed to read the image file'
+        logoReadError: 'Failed to read the image file',
+        homeContent: 'Home Page Content',
+        homeContentPlaceholder: 'Enter custom content for the home page. Supports Markdown & HTML. If a URL is entered, it will be displayed as an iframe.',
+        homeContentHint: 'Customize the home page content. Supports Markdown/HTML. If you enter a URL (starting with http:// or https://), it will be used as an iframe src to embed an external page. When set, the default status information will no longer be displayed.'
       REDACTED,
       smtp: {
         title: 'SMTP Settings',
