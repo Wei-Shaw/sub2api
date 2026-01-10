@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	codexReleaseAPIURL  = "https://api.github.com/repos/openai/codex/releases/latest"
-	codexReleaseHTMLURL = "https://github.com/openai/codex/releases/latest"
-	codexPromptURLFmt   = "https://raw.githubusercontent.com/openai/codex/%s/codex-rs/core/%s"
-	opencodeCodexURL    = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex.txt"
-	codexCacheTTL       = 15 * time.Minute
+	codexReleaseAPIURL     = "https://api.github.com/repos/openai/codex/releases/latest"
+	codexReleaseHTMLURL    = "https://github.com/openai/codex/releases/latest"
+	codexPromptURLFmt      = "https://raw.githubusercontent.com/openai/codex/%s/codex-rs/core/%s"
+	opencodeCodexURL       = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex.txt"
+	opencodeCodexHeaderURL = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex_header.txt"
+	codexCacheTTL          = 15 * time.Minute
 )
 
 type codexModelFamily string
@@ -177,7 +178,7 @@ REDACTED
 		result.PromptCacheKey = strings.TrimSpace(v)
 REDACTED
 
-	instructions := strings.TrimSpace(getCodexInstructions(normalizedModel))
+	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
 	existingInstructions, _ := reqBody["instructions"].(string)
 	existingInstructions = strings.TrimSpace(existingInstructions)
 
@@ -408,13 +409,13 @@ REDACTED
 	return "", fmt.Errorf("release tag not found")
 REDACTED
 
-func getOpenCodeCodexPrompt() string {
+func getOpenCodeCachedPrompt(url, cacheFileName, metaFileName string) string {
 	cacheDir := codexCachePath("")
 	if cacheDir == "" {
 		return ""
 REDACTED
-	cacheFile := filepath.Join(cacheDir, "opencode-codex.txt")
-	metaFile := filepath.Join(cacheDir, "opencode-codex-meta.json")
+	cacheFile := filepath.Join(cacheDir, cacheFileName)
+	metaFile := filepath.Join(cacheDir, metaFileName)
 
 	var cachedContent string
 	if content, ok := readFile(cacheFile); ok {
@@ -428,7 +429,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	content, etag, status, err := fetchWithETag(opencodeCodexURL, meta.ETag)
+	content, etag, status, err := fetchWithETag(url, meta.ETag)
 	if err == nil && status == http.StatusNotModified && cachedContent != "" {
 		return cachedContent
 REDACTED
@@ -444,6 +445,14 @@ REDACTED
 REDACTED
 
 	return cachedContent
+REDACTED
+
+func getOpenCodeCodexPrompt() string {
+	return getOpenCodeCachedPrompt(opencodeCodexURL, "opencode-codex.txt", "opencode-codex-meta.json")
+REDACTED
+
+func getOpenCodeCodexHeader() string {
+	return getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
 REDACTED
 
 func filterCodexInput(input []any) []any {
