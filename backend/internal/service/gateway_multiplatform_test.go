@@ -1152,6 +1152,42 @@ REDACTED)
 		require.Equal(t, 0, concurrencyCache.loadBatchCalls, "粘性命中应在负载批量查询前返回")
 REDACTED)
 
+	t.Run("粘性账号不在候选集-回退负载感知选择", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{
+			sessionBindings: map[string]int64{"sticky": 1REDACTED,
+	REDACTED
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		concurrencyCache := &mockConcurrencyCache{REDACTED
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(concurrencyCache),
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "粘性账号不在候选集时应回退到可用账号")
+		require.Equal(t, 0, repo.getByIDCalls, "粘性账号缺失不应回退到GetByID")
+		require.Equal(t, 1, concurrencyCache.loadBatchCalls, "应继续进行负载批量查询")
+REDACTED)
+
 	t.Run("无可用账号-返回错误", func(t *testing.T) {
 		repo := &mockAccountRepoForPlatform{
 			accounts:     []Account{REDACTED,
