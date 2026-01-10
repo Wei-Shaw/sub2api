@@ -519,7 +519,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
@@ -941,5 +941,10 @@ REDACTED
 
 onMounted(() => {
   loadProxies()
+REDACTED)
+
+onUnmounted(() => {
+  clearTimeout(searchTimeout)
+  abortController?.abort()
 REDACTED)
 </script>

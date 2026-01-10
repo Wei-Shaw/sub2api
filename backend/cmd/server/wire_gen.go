@@ -53,7 +53,7 @@ REDACTED
 	emailQueueService := service.ProvideEmailQueueService(emailService)
 	authService := service.NewAuthService(userRepository, configConfig, settingService, emailService, turnstileService, emailQueueService)
 	userService := service.NewUserService(userRepository)
-	authHandler := handler.NewAuthHandler(configConfig, authService, userService)
+	authHandler := handler.NewAuthHandler(configConfig, authService, userService, settingService)
 	userHandler := handler.NewUserHandler(userService)
 	apiKeyRepository := repository.NewAPIKeyRepository(client)
 	groupRepository := repository.NewGroupRepository(client, db)

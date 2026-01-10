@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
@@ -20,6 +21,7 @@ var (
 	ErrAPIKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
 	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
 	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrInvalidIPPattern   = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
 )
 
 const (
@@ -57,16 +59,20 @@ REDACTED
 
 // CreateAPIKeyRequest 创建API Key请求
 type CreateAPIKeyRequest struct {
-	Name      string  `json:"name"`
-	GroupID   *int64  `json:"group_id"`
-	CustomKey *string `json:"custom_key"` // 可选的自定义key
+	Name        string   `json:"name"`
+	GroupID     *int64   `json:"group_id"`
+	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
+	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
 REDACTED
 
 // UpdateAPIKeyRequest 更新API Key请求
 type UpdateAPIKeyRequest struct {
-	Name    *string `json:"name"`
-	GroupID *int64  `json:"group_id"`
-	Status  *string `json:"status"`
+	Name        *string  `json:"name"`
+	GroupID     *int64   `json:"group_id"`
+	Status      *string  `json:"status"`
+	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单（空数组清空）
+	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单（空数组清空）
 REDACTED
 
 // APIKeyService API Key服务
@@ -186,6 +192,20 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 
+	// 验证 IP 白名单格式
+	if len(req.IPWhitelist) > 0 {
+		if invalid := ip.ValidateIPPatterns(req.IPWhitelist); len(invalid) > 0 {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidIPPattern, invalid)
+	REDACTED
+REDACTED
+
+	// 验证 IP 黑名单格式
+	if len(req.IPBlacklist) > 0 {
+		if invalid := ip.ValidateIPPatterns(req.IPBlacklist); len(invalid) > 0 {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidIPPattern, invalid)
+	REDACTED
+REDACTED
+
 	// 验证分组权限（如果指定了分组）
 	if req.GroupID != nil {
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
@@ -236,11 +256,13 @@ REDACTED
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:  userID,
-		Key:     key,
-		Name:    req.Name,
-		GroupID: req.GroupID,
-		Status:  StatusActive,
+		UserID:      userID,
+		Key:         key,
+		Name:        req.Name,
+		GroupID:     req.GroupID,
+		Status:      StatusActive,
+		IPWhitelist: req.IPWhitelist,
+		IPBlacklist: req.IPBlacklist,
 REDACTED
 
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
@@ -312,6 +334,20 @@ REDACTED
 		return nil, ErrInsufficientPerms
 REDACTED
 
+	// 验证 IP 白名单格式
+	if len(req.IPWhitelist) > 0 {
+		if invalid := ip.ValidateIPPatterns(req.IPWhitelist); len(invalid) > 0 {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidIPPattern, invalid)
+	REDACTED
+REDACTED
+
+	// 验证 IP 黑名单格式
+	if len(req.IPBlacklist) > 0 {
+		if invalid := ip.ValidateIPPatterns(req.IPBlacklist); len(invalid) > 0 {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidIPPattern, invalid)
+	REDACTED
+REDACTED
+
 	// 更新字段
 	if req.Name != nil {
 		apiKey.Name = *req.Name
@@ -343,6 +379,10 @@ REDACTED
 			_ = s.cache.DeleteCreateAttemptCount(ctx, apiKey.UserID)
 	REDACTED
 REDACTED
+
+	// 更新 IP 限制（空数组会清空设置）
+	apiKey.IPWhitelist = req.IPWhitelist
+	apiKey.IPBlacklist = req.IPBlacklist
 
 	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)

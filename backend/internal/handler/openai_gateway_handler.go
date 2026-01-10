@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -94,6 +95,10 @@ REDACTED
 
 	// For non-Codex CLI requests, set default instructions
 	userAgent := c.GetHeader("User-Agent")
+
+	// 获取客户端 IP
+	clientIP := ip.GetClientIP(c)
+
 	if !openai.IsCodexCLIRequest(userAgent) {
 		reqBody["instructions"] = openai.DefaultInstructions
 		// Re-serialize body
@@ -242,7 +247,7 @@ REDACTED
 	REDACTED
 
 		// Async record usage
-		go func(result *service.OpenAIForwardResult, usedAccount *service.Account, ua string) {
+		go func(result *service.OpenAIForwardResult, usedAccount *service.Account, ua string, cip string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
@@ -252,10 +257,11 @@ REDACTED
 				Account:      usedAccount,
 				Subscription: subscription,
 				UserAgent:    ua,
+				IPAddress:    cip,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account, userAgent)
+	REDACTED(result, account, userAgent, clientIP)
 		return
 REDACTED
 REDACTED

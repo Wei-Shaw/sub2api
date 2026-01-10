@@ -116,6 +116,7 @@ type BulkUpdateAccountsRequest struct {
 	Concurrency             *int           `json:"concurrency"`
 	Priority                *int           `json:"priority"`
 	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool          `json:"schedulable"`
 	GroupIDs                *[]int64       `json:"group_ids"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
@@ -136,6 +137,11 @@ func (h *AccountHandler) List(c *gin.Context) {
 	accountType := c.Query("type")
 	status := c.Query("status")
 	search := c.Query("search")
+	// 标准化和验证 search 参数
+	search = strings.TrimSpace(search)
+	if len(search) > 100 {
+		search = search[:100]
+REDACTED
 
 	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search)
 	if err != nil {
@@ -655,6 +661,7 @@ REDACTED
 		req.Concurrency != nil ||
 		req.Priority != nil ||
 		req.Status != "" ||
+		req.Schedulable != nil ||
 		req.GroupIDs != nil ||
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0
@@ -671,6 +678,7 @@ REDACTED
 		Concurrency:           req.Concurrency,
 		Priority:              req.Priority,
 		Status:                req.Status,
+		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,

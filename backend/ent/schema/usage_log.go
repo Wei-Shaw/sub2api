@@ -100,6 +100,10 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(512).
 			Optional().
 			Nillable(),
+		field.String("ip_address").
+			MaxLen(45). // 支持 IPv6
+			Optional().
+			Nillable(),
 
 		// 图片生成字段（仅 gemini-3-pro-image 等图片模型使用）
 		field.Int("image_count").

@@ -72,6 +72,8 @@ type UsageLog struct {
 	FirstTokenMs *int `json:"first_token_ms,omitempty"`
 	// UserAgent holds the value of the "user_agent" field.
 	UserAgent *string `json:"user_agent,omitempty"`
+	// IPAddress holds the value of the "ip_address" field.
+	IPAddress *string `json:"ip_address,omitempty"`
 	// ImageCount holds the value of the "image_count" field.
 	ImageCount int `json:"image_count,omitempty"`
 	// ImageSize holds the value of the "image_size" field.
@@ -167,7 +169,7 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldUserAgent, usagelog.FieldImageSize:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -347,6 +349,13 @@ REDACTED
 				_m.UserAgent = new(string)
 				*_m.UserAgent = value.String
 		REDACTED
+		case usagelog.FieldIPAddress:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field ip_address", values[i])
+		REDACTED else if value.Valid {
+				_m.IPAddress = new(string)
+				*_m.IPAddress = value.String
+		REDACTED
 		case usagelog.FieldImageCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field image_count", values[i])
@@ -509,6 +518,11 @@ REDACTED
 	builder.WriteString(", ")
 	if v := _m.UserAgent; v != nil {
 		builder.WriteString("user_agent=")
+		builder.WriteString(*v)
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.IPAddress; v != nil {
+		builder.WriteString("ip_address=")
 		builder.WriteString(*v)
 REDACTED
 	builder.WriteString(", ")

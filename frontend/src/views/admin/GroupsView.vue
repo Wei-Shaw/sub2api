@@ -16,6 +16,7 @@
                 type="text"
                 :placeholder="t('admin.groups.searchGroups')"
                 class="input pl-10"
+                @input="handleSearch"
               />
             </div>
           <Select
@@ -64,7 +65,7 @@
       </template>
 
       <template #table>
-        <DataTable :columns="columns" :data="displayedGroups" :loading="loading">
+        <DataTable :columns="columns" :data="groups" :loading="loading">
           <template #cell-name="{ value REDACTED">
             <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
           </template>
@@ -932,16 +933,6 @@ REDACTED)
 
 let abortController: AbortController | null = null
 
-const displayedGroups = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return groups.value
-  return groups.value.filter((group) => {
-    const name = group.name?.toLowerCase?.() ?? ''
-    const description = group.description?.toLowerCase?.() ?? ''
-    return name.includes(q) || description.includes(q)
-  REDACTED)
-REDACTED)
-
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
@@ -1011,7 +1002,8 @@ const loadGroups = async () => {
     const response = await adminAPI.groups.list(pagination.page, pagination.page_size, {
       platform: (filters.platform as GroupPlatform) || undefined,
       status: filters.status as any,
-      is_exclusive: filters.is_exclusive ? filters.is_exclusive === 'true' : undefined
+      is_exclusive: filters.is_exclusive ? filters.is_exclusive === 'true' : undefined,
+      search: searchQuery.value.trim() || undefined
     REDACTED, { signal REDACTED)
     if (signal.aborted) return
     groups.value = response.items
@@ -1028,6 +1020,15 @@ const loadGroups = async () => {
       loading.value = false
     REDACTED
   REDACTED
+REDACTED
+
+let searchTimeout: ReturnType<typeof setTimeout>
+const handleSearch = () => {
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => {
+    pagination.page = 1
+    loadGroups()
+  REDACTED, 300)
 REDACTED
 
 const handlePageChange = (page: number) => {

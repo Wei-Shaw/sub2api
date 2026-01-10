@@ -18,6 +18,13 @@ type SystemSettings struct {
 	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
 
+	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	LinuxDoConnectEnabled                bool
+	LinuxDoConnectClientID               string
+	LinuxDoConnectClientSecret           string
+	LinuxDoConnectClientSecretConfigured bool
+	LinuxDoConnectRedirectURL            string
+
 	SiteName     string
 	SiteLogo     string
 	SiteSubtitle string
@@ -51,5 +58,6 @@ type PublicSettings struct {
 	APIBaseURL          string
 	ContactInfo         string
 	DocURL              string
+	LinuxDoOAuthEnabled bool
 	Version             string
 REDACTED
