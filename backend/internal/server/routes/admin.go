@@ -44,6 +44,9 @@ func RegisterAdminRoutes(
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
 
+		// 优惠码管理
+		registerPromoCodeRoutes(admin, h)
+
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
@@ -198,6 +201,18 @@ func registerRedeemCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		codes.DELETE("/:id", h.Admin.Redeem.Delete)
 		codes.POST("/batch-delete", h.Admin.Redeem.BatchDelete)
 		codes.POST("/:id/expire", h.Admin.Redeem.Expire)
+REDACTED
+REDACTED
+
+func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	promoCodes := admin.Group("/promo-codes")
+	{
+		promoCodes.GET("", h.Admin.Promo.List)
+		promoCodes.GET("/:id", h.Admin.Promo.GetByID)
+		promoCodes.POST("", h.Admin.Promo.Create)
+		promoCodes.PUT("/:id", h.Admin.Promo.Update)
+		promoCodes.DELETE("/:id", h.Admin.Promo.Delete)
+		promoCodes.GET("/:id/usages", h.Admin.Promo.GetUsages)
 REDACTED
 REDACTED
 

@@ -16,6 +16,7 @@ type AdminHandlers struct {
 	AntigravityOAuth *admin.AntigravityOAuthHandler
 	Proxy            *admin.ProxyHandler
 	Redeem           *admin.RedeemHandler
+	Promo            *admin.PromoHandler
 	Setting          *admin.SettingHandler
 	System           *admin.SystemHandler
 	Subscription     *admin.SubscriptionHandler

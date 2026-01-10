@@ -113,6 +113,26 @@ export async function sendVerifyCode(
   return data
 REDACTED
 
+/**
+ * Validate promo code response
+ */
+export interface ValidatePromoCodeResponse {
+  valid: boolean
+  bonus_amount?: number
+  error_code?: string
+  message?: string
+REDACTED
+
+/**
+ * Validate promo code (public endpoint, no auth required)
+ * @param code - Promo code to validate
+ * @returns Validation result with bonus amount if valid
+ */
+export async function validatePromoCode(code: string): Promise<ValidatePromoCodeResponse> {
+  const { data REDACTED = await apiClient.post<ValidatePromoCodeResponse>('/auth/validate-promo-code', { code REDACTED)
+  return data
+REDACTED
+
 export const authAPI = {
   login,
   register,
@@ -123,7 +143,8 @@ export const authAPI = {
   getAuthToken,
   clearAuthToken,
   getPublicSettings,
-  sendVerifyCode
+  sendVerifyCode,
+  validatePromoCode
 REDACTED
 
 export default authAPI

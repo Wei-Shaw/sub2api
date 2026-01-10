@@ -200,6 +200,7 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 const email = ref<string>('')
 const password = ref<string>('')
 const initialTurnstileToken = ref<string>('')
+const promoCode = ref<string>('')
 const hasRegisterData = ref<boolean>(false)
 
 // Public settings
@@ -228,6 +229,7 @@ onMounted(async () => {
       email.value = registerData.email || ''
       password.value = registerData.password || ''
       initialTurnstileToken.value = registerData.turnstile_token || ''
+      promoCode.value = registerData.promo_code || ''
       hasRegisterData.value = !!(email.value && password.value)
     REDACTED catch {
       hasRegisterData.value = false
@@ -381,7 +383,8 @@ async function handleVerify(): Promise<void> {
       email: email.value,
       password: password.value,
       verify_code: verifyCode.value.trim(),
-      turnstile_token: initialTurnstileToken.value || undefined
+      turnstile_token: initialTurnstileToken.value || undefined,
+      promo_code: promoCode.value || undefined
     REDACTED)
 
     // Clear session data

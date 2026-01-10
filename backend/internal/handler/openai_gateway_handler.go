@@ -8,9 +8,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -92,6 +95,24 @@ REDACTED
 REDACTED
 
 	userAgent := c.GetHeader("User-Agent")
+
+	// 获取客户端 IP
+	clientIP := ip.GetClientIP(c)
+
+	if !openai.IsCodexCLIRequest(userAgent) {
+		existingInstructions, _ := reqBody["instructions"].(string)
+		if strings.TrimSpace(existingInstructions) == "" {
+			if instructions := strings.TrimSpace(service.GetOpenCodeInstructions()); instructions != "" {
+				reqBody["instructions"] = instructions
+				// Re-serialize body
+				body, err = json.Marshal(reqBody)
+				if err != nil {
+					h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to process request")
+					return
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
 
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
@@ -231,7 +252,7 @@ REDACTED
 	REDACTED
 
 		// Async record usage
-		go func(result *service.OpenAIForwardResult, usedAccount *service.Account, ua string) {
+		go func(result *service.OpenAIForwardResult, usedAccount *service.Account, ua string, cip string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
@@ -241,10 +262,11 @@ REDACTED
 				Account:      usedAccount,
 				Subscription: subscription,
 				UserAgent:    ua,
+				IPAddress:    cip,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account, userAgent)
+	REDACTED(result, account, userAgent, clientIP)
 		return
 REDACTED
 REDACTED

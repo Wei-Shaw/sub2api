@@ -11,6 +11,9 @@
         </p>
       </div>
 
+      <!-- LinuxDo Connect OAuth 登录 -->
+      <LinuxDoOAuthSection v-if="linuxdoOAuthEnabled" :disabled="isLoading" />
+
       <!-- Registration Disabled Message -->
       <div
         v-if="!registrationEnabled && settingsLoaded"
@@ -90,6 +93,57 @@
           <p v-else class="input-hint">
             {{ t('auth.passwordHint') REDACTEDREDACTED
           </p>
+        </div>
+
+        <!-- Promo Code Input (Optional) -->
+        <div>
+          <label for="promo_code" class="input-label">
+            {{ t('auth.promoCodeLabel') REDACTEDREDACTED
+            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') REDACTEDREDACTED)</span>
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="gift" size="md" :class="promoValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'" />
+            </div>
+            <input
+              id="promo_code"
+              v-model="formData.promo_code"
+              type="text"
+              :disabled="isLoading"
+              class="input pl-11 pr-10"
+              :class="{
+                'border-green-500 focus:border-green-500 focus:ring-green-500': promoValidation.valid,
+                'border-red-500 focus:border-red-500 focus:ring-red-500': promoValidation.invalid
+              REDACTED"
+              :placeholder="t('auth.promoCodePlaceholder')"
+              @input="handlePromoCodeInput"
+            />
+            <!-- Validation indicator -->
+            <div v-if="promoValidating" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+              <svg class="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <div v-else-if="promoValidation.valid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+              <Icon name="checkCircle" size="md" class="text-green-500" />
+            </div>
+            <div v-else-if="promoValidation.invalid" class="absolute inset-y-0 right-0 flex items-center pr-3.5">
+              <Icon name="exclamationCircle" size="md" class="text-red-500" />
+            </div>
+          </div>
+          <!-- Promo code validation result -->
+          <transition name="fade">
+            <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
+              <Icon name="gift" size="sm" class="text-green-600 dark:text-green-400" />
+              <span class="text-sm text-green-700 dark:text-green-400">
+                {{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) REDACTED) REDACTEDREDACTED
+              </span>
+            </div>
+            <p v-else-if="promoValidation.invalid" class="input-error-text">
+              {{ promoValidation.message REDACTEDREDACTED
+            </p>
+          </transition>
         </div>
 
         <!-- Turnstile Widget -->
@@ -177,20 +231,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted REDACTED from 'vue'
-import { useRouter REDACTED from 'vue-router'
+import { ref, reactive, onMounted, onUnmounted REDACTED from 'vue'
+import { useRouter, useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
+import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
-import { getPublicSettings REDACTED from '@/api/auth'
+import { getPublicSettings, validatePromoCode REDACTED from '@/api/auth'
 
 const { t REDACTED = useI18n()
 
 // ==================== Router & Stores ====================
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 
@@ -207,14 +263,26 @@ const emailVerifyEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('Sub2API')
+const linuxdoOAuthEnabled = ref<boolean>(false)
 
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
 
+// Promo code validation
+const promoValidating = ref<boolean>(false)
+const promoValidation = reactive({
+  valid: false,
+  invalid: false,
+  bonusAmount: null as number | null,
+  message: ''
+REDACTED)
+let promoValidateTimeout: ReturnType<typeof setTimeout> | null = null
+
 const formData = reactive({
   email: '',
-  password: ''
+  password: '',
+  promo_code: ''
 REDACTED)
 
 const errors = reactive({
@@ -226,6 +294,14 @@ REDACTED)
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  // Read promo code from URL parameter
+  const promoParam = route.query.promo as string
+  if (promoParam) {
+    formData.promo_code = promoParam
+    // Validate the promo code from URL
+    await validatePromoCodeDebounced(promoParam)
+  REDACTED
+
   try {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled
@@ -233,12 +309,92 @@ onMounted(async () => {
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     siteName.value = settings.site_name || 'Sub2API'
+    linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
   REDACTED catch (error) {
     console.error('Failed to load public settings:', error)
   REDACTED finally {
     settingsLoaded.value = true
   REDACTED
 REDACTED)
+
+onUnmounted(() => {
+  if (promoValidateTimeout) {
+    clearTimeout(promoValidateTimeout)
+  REDACTED
+REDACTED)
+
+// ==================== Promo Code Validation ====================
+
+function handlePromoCodeInput(): void {
+  const code = formData.promo_code.trim()
+
+  // Clear previous validation
+  promoValidation.valid = false
+  promoValidation.invalid = false
+  promoValidation.bonusAmount = null
+  promoValidation.message = ''
+
+  if (!code) {
+    promoValidating.value = false
+    return
+  REDACTED
+
+  // Debounce validation
+  if (promoValidateTimeout) {
+    clearTimeout(promoValidateTimeout)
+  REDACTED
+
+  promoValidateTimeout = setTimeout(() => {
+    validatePromoCodeDebounced(code)
+  REDACTED, 500)
+REDACTED
+
+async function validatePromoCodeDebounced(code: string): Promise<void> {
+  if (!code.trim()) return
+
+  promoValidating.value = true
+
+  try {
+    const result = await validatePromoCode(code)
+
+    if (result.valid) {
+      promoValidation.valid = true
+      promoValidation.invalid = false
+      promoValidation.bonusAmount = result.bonus_amount || 0
+      promoValidation.message = ''
+    REDACTED else {
+      promoValidation.valid = false
+      promoValidation.invalid = true
+      promoValidation.bonusAmount = null
+      // 根据错误码显示对应的翻译
+      promoValidation.message = getPromoErrorMessage(result.error_code)
+    REDACTED
+  REDACTED catch (error) {
+    console.error('Failed to validate promo code:', error)
+    promoValidation.valid = false
+    promoValidation.invalid = true
+    promoValidation.message = t('auth.promoCodeInvalid')
+  REDACTED finally {
+    promoValidating.value = false
+  REDACTED
+REDACTED
+
+function getPromoErrorMessage(errorCode?: string): string {
+  switch (errorCode) {
+    case 'PROMO_CODE_NOT_FOUND':
+      return t('auth.promoCodeNotFound')
+    case 'PROMO_CODE_EXPIRED':
+      return t('auth.promoCodeExpired')
+    case 'PROMO_CODE_DISABLED':
+      return t('auth.promoCodeDisabled')
+    case 'PROMO_CODE_MAX_USED':
+      return t('auth.promoCodeMaxUsed')
+    case 'PROMO_CODE_ALREADY_USED':
+      return t('auth.promoCodeAlreadyUsed')
+    default:
+      return t('auth.promoCodeInvalid')
+  REDACTED
+REDACTED
 
 // ==================== Turnstile Handlers ====================
 
@@ -310,6 +466,20 @@ async function handleRegister(): Promise<void> {
     return
   REDACTED
 
+  // Check promo code validation status
+  if (formData.promo_code.trim()) {
+    // If promo code is being validated, wait
+    if (promoValidating.value) {
+      errorMessage.value = t('auth.promoCodeValidating')
+      return
+    REDACTED
+    // If promo code is invalid, block submission
+    if (promoValidation.invalid) {
+      errorMessage.value = t('auth.promoCodeInvalidCannotRegister')
+      return
+    REDACTED
+  REDACTED
+
   isLoading.value = true
 
   try {
@@ -321,7 +491,8 @@ async function handleRegister(): Promise<void> {
         JSON.stringify({
           email: formData.email,
           password: formData.password,
-          turnstile_token: turnstileToken.value
+          turnstile_token: turnstileToken.value,
+          promo_code: formData.promo_code || undefined
         REDACTED)
       )
 
@@ -334,7 +505,8 @@ async function handleRegister(): Promise<void> {
     await authStore.register({
       email: formData.email,
       password: formData.password,
-      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
+      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
+      promo_code: formData.promo_code || undefined
     REDACTED)
 
     // Show success toast

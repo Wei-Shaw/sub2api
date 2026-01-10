@@ -39,6 +39,7 @@ type UsageLog struct {
 	DurationMs   *int
 	FirstTokenMs *int
 	UserAgent    *string
+	IPAddress    *string
 
 	// 图片生成字段
 	ImageCount int

@@ -20,14 +20,16 @@ type User struct {
 REDACTED
 
 type APIKey struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	Key       string    `json:"key"`
-	Name      string    `json:"name"`
-	GroupID   *int64    `json:"group_id"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"user_id"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	GroupID     *int64    `json:"group_id"`
+	Status      string    `json:"status"`
+	IPWhitelist []string  `json:"ip_whitelist"`
+	IPBlacklist []string  `json:"ip_blacklist"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
@@ -187,6 +189,9 @@ type UsageLog struct {
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
 
+	// IP 地址（仅管理员可见）
+	IPAddress *string `json:"ip_address,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`
@@ -244,4 +249,29 @@ type BulkAssignResult struct {
 	FailedCount   int                `json:"failed_count"`
 	Subscriptions []UserSubscription `json:"subscriptions"`
 	Errors        []string           `json:"errors"`
+REDACTED
+
+// PromoCode 注册优惠码
+type PromoCode struct {
+	ID          int64      `json:"id"`
+	Code        string     `json:"code"`
+	BonusAmount float64    `json:"bonus_amount"`
+	MaxUses     int        `json:"max_uses"`
+	UsedCount   int        `json:"used_count"`
+	Status      string     `json:"status"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	Notes       string     `json:"notes"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+REDACTED
+
+// PromoCodeUsage 优惠码使用记录
+type PromoCodeUsage struct {
+	ID          int64     `json:"id"`
+	PromoCodeID int64     `json:"promo_code_id"`
+	UserID      int64     `json:"user_id"`
+	BonusAmount float64   `json:"bonus_amount"`
+	UsedAt      time.Time `json:"used_at"`
+
+	User *User `json:"user,omitempty"`
 REDACTED

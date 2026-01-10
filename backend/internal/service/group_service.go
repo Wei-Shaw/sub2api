@@ -16,12 +16,13 @@ var (
 type GroupRepository interface {
 	Create(ctx context.Context, group *Group) error
 	GetByID(ctx context.Context, id int64) (*Group, error)
+	GetByIDLite(ctx context.Context, id int64) (*Group, error)
 	Update(ctx context.Context, group *Group) error
 	Delete(ctx context.Context, id int64) error
 	DeleteCascade(ctx context.Context, id int64) ([]int64, error)
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error)
 	ListActive(ctx context.Context) ([]Group, error)
 	ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error)
 

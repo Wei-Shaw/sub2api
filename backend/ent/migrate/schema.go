@@ -18,6 +18,8 @@ var (
 		{Name: "key", Type: field.TypeString, Unique: true, Size: 128REDACTED,
 		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
+		{Name: "ip_whitelist", Type: field.TypeJSON, Nullable: trueREDACTED,
+		{Name: "ip_blacklist", Type: field.TypeJSON, Nullable: trueREDACTED,
 		{Name: "group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "user_id", Type: field.TypeInt64REDACTED,
 REDACTED
@@ -29,13 +31,13 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[7]REDACTED,
+				Columns:    []*schema.Column{APIKeysColumns[9]REDACTED,
 				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[8]REDACTED,
+				Columns:    []*schema.Column{APIKeysColumns[10]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
@@ -44,12 +46,12 @@ REDACTED
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[8]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[10]REDACTED,
 		REDACTED,
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[7]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[9]REDACTED,
 		REDACTED,
 			{
 				Name:    "apikey_status",
@@ -257,6 +259,82 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
+	// PromoCodesColumns holds the columns for the "promo_codes" table.
+	PromoCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 32REDACTED,
+		{Name: "bonus_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "max_uses", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "used_count", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+REDACTED
+	// PromoCodesTable holds the schema information for the "promo_codes" table.
+	PromoCodesTable = &schema.Table{
+		Name:       "promo_codes",
+		Columns:    PromoCodesColumns,
+		PrimaryKey: []*schema.Column{PromoCodesColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "promocode_status",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodesColumns[5]REDACTED,
+		REDACTED,
+			{
+				Name:    "promocode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodesColumns[6]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// PromoCodeUsagesColumns holds the columns for the "promo_code_usages" table.
+	PromoCodeUsagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "bonus_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "used_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "promo_code_id", Type: field.TypeInt64REDACTED,
+		{Name: "user_id", Type: field.TypeInt64REDACTED,
+REDACTED
+	// PromoCodeUsagesTable holds the schema information for the "promo_code_usages" table.
+	PromoCodeUsagesTable = &schema.Table{
+		Name:       "promo_code_usages",
+		Columns:    PromoCodeUsagesColumns,
+		PrimaryKey: []*schema.Column{PromoCodeUsagesColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "promo_code_usages_promo_codes_usage_records",
+				Columns:    []*schema.Column{PromoCodeUsagesColumns[3]REDACTED,
+				RefColumns: []*schema.Column{PromoCodesColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+			{
+				Symbol:     "promo_code_usages_users_promo_code_usages",
+				Columns:    []*schema.Column{PromoCodeUsagesColumns[4]REDACTED,
+				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+	REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "promocodeusage_promo_code_id",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodeUsagesColumns[3]REDACTED,
+		REDACTED,
+			{
+				Name:    "promocodeusage_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{PromoCodeUsagesColumns[4]REDACTED,
+		REDACTED,
+			{
+				Name:    "promocodeusage_promo_code_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{PromoCodeUsagesColumns[3], PromoCodeUsagesColumns[4]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
 	// ProxiesColumns holds the columns for the "proxies" table.
 	ProxiesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -376,6 +454,7 @@ REDACTED
 		{Name: "duration_ms", Type: field.TypeInt, Nullable: trueREDACTED,
 		{Name: "first_token_ms", Type: field.TypeInt, Nullable: trueREDACTED,
 		{Name: "user_agent", Type: field.TypeString, Nullable: true, Size: 512REDACTED,
+		{Name: "ip_address", Type: field.TypeString, Nullable: true, Size: 45REDACTED,
 		{Name: "image_count", Type: field.TypeInt, Default: 0REDACTED,
 		{Name: "image_size", Type: field.TypeString, Nullable: true, Size: 10REDACTED,
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
@@ -393,31 +472,31 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[24]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[25]REDACTED,
 				RefColumns: []*schema.Column{APIKeysColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[25]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[26]REDACTED,
 				RefColumns: []*schema.Column{AccountsColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[26]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[27]REDACTED,
 				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[27]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[28]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[28]REDACTED,
+				Columns:    []*schema.Column{UsageLogsColumns[29]REDACTED,
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -426,32 +505,32 @@ REDACTED
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[27]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[28]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[24]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[25]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[25]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[26]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[26]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[27]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[28]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[29]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[23]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[24]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_model",
@@ -466,12 +545,12 @@ REDACTED
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[27], UsageLogsColumns[23]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[28], UsageLogsColumns[24]REDACTED,
 		REDACTED,
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[24], UsageLogsColumns[23]REDACTED,
+				Columns: []*schema.Column{UsageLogsColumns[25], UsageLogsColumns[24]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -717,6 +796,8 @@ REDACTED
 		AccountsTable,
 		AccountGroupsTable,
 		GroupsTable,
+		PromoCodesTable,
+		PromoCodeUsagesTable,
 		ProxiesTable,
 		RedeemCodesTable,
 		SettingsTable,
@@ -746,6 +827,14 @@ REDACTED
 REDACTED
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
+REDACTED
+	PromoCodesTable.Annotation = &entsql.Annotation{
+		Table: "promo_codes",
+REDACTED
+	PromoCodeUsagesTable.ForeignKeys[0].RefTable = PromoCodesTable
+	PromoCodeUsagesTable.ForeignKeys[1].RefTable = UsersTable
+	PromoCodeUsagesTable.Annotation = &entsql.Annotation{
+		Table: "promo_code_usages",
 REDACTED
 	ProxiesTable.Annotation = &entsql.Annotation{
 		Table: "proxies",

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -121,6 +122,9 @@ REDACTED
 func (m *mockAccountRepoForGemini) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	return nil
 REDACTED
+func (m *mockAccountRepoForGemini) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error {
+	return nil
+REDACTED
 func (m *mockAccountRepoForGemini) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
 	return nil
 REDACTED
@@ -131,6 +135,9 @@ func (m *mockAccountRepoForGemini) ClearTempUnschedulable(ctx context.Context, i
 	return nil
 REDACTED
 func (m *mockAccountRepoForGemini) ClearRateLimit(ctx context.Context, id int64) error { return nil REDACTED
+func (m *mockAccountRepoForGemini) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	return nil
+REDACTED
 func (m *mockAccountRepoForGemini) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
 	return nil
 REDACTED
@@ -146,10 +153,21 @@ var _ AccountRepository = (*mockAccountRepoForGemini)(nil)
 
 // mockGroupRepoForGemini Gemini 测试用的 group repo mock
 type mockGroupRepoForGemini struct {
-	groups map[int64]*Group
+	groups           map[int64]*Group
+	getByIDCalls     int
+	getByIDLiteCalls int
 REDACTED
 
 func (m *mockGroupRepoForGemini) GetByID(ctx context.Context, id int64) (*Group, error) {
+	m.getByIDCalls++
+	if g, ok := m.groups[id]; ok {
+		return g, nil
+REDACTED
+	return nil, errors.New("group not found")
+REDACTED
+
+func (m *mockGroupRepoForGemini) GetByIDLite(ctx context.Context, id int64) (*Group, error) {
+	m.getByIDLiteCalls++
 	if g, ok := m.groups[id]; ok {
 		return g, nil
 REDACTED
@@ -166,7 +184,7 @@ REDACTED
 func (m *mockGroupRepoForGemini) List(ctx context.Context, params pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 REDACTED
-func (m *mockGroupRepoForGemini) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
+func (m *mockGroupRepoForGemini) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]Group, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 REDACTED
 func (m *mockGroupRepoForGemini) ListActive(ctx context.Context) ([]Group, error) { return nil, nil REDACTED
@@ -240,6 +258,77 @@ REDACTED
 	require.NotNil(t, acc)
 	require.Equal(t, int64(1), acc.ID, "应选择优先级最高的 gemini 账户")
 	require.Equal(t, PlatformGemini, acc.Platform, "无分组时应只返回 gemini 平台账户")
+REDACTED
+
+func TestGeminiMessagesCompatService_GroupResolution_ReusesContextGroup(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(7)
+	group := &Group{
+		ID:       groupID,
+REDACTED
+		Status:   StatusActive,
+		Hydrated: true,
+REDACTED
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: trueREDACTED,
+	REDACTED,
+		accountsByID: map[int64]*Account{REDACTED,
+REDACTED
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+REDACTED
+
+	cache := &mockGatewayCacheForGemini{REDACTED
+	groupRepo := &mockGroupRepoForGemini{groups: map[int64]*Group{REDACTEDREDACTED
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo: repo,
+		groupRepo:   groupRepo,
+		cache:       cache,
+REDACTED
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "gemini-2.5-flash", nil)
+REDACTED
+	require.NotNil(t, acc)
+	require.Equal(t, 0, groupRepo.getByIDCalls)
+	require.Equal(t, 0, groupRepo.getByIDLiteCalls)
+REDACTED
+
+func TestGeminiMessagesCompatService_GroupResolution_UsesLiteFetch(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(7)
+
+	repo := &mockAccountRepoForGemini{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformGemini, Priority: 1, Status: StatusActive, Schedulable: trueREDACTED,
+	REDACTED,
+		accountsByID: map[int64]*Account{REDACTED,
+REDACTED
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+REDACTED
+
+	cache := &mockGatewayCacheForGemini{REDACTED
+	groupRepo := &mockGroupRepoForGemini{
+		groups: map[int64]*Group{
+			groupID: {ID: groupID, Platform: PlatformGeminiREDACTED,
+	REDACTED,
+REDACTED
+
+	svc := &GeminiMessagesCompatService{
+		accountRepo: repo,
+		groupRepo:   groupRepo,
+		cache:       cache,
+REDACTED
+
+	acc, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "gemini-2.5-flash", nil)
+REDACTED
+	require.NotNil(t, acc)
+	require.Equal(t, 0, groupRepo.getByIDCalls)
+	require.Equal(t, 1, groupRepo.getByIDLiteCalls)
 REDACTED
 
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_AntigravityGroup 测试 antigravity 分组

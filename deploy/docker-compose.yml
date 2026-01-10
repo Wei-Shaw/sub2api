@@ -173,11 +173,12 @@ services:
     volumes:
       - redis_data:/data
     command: >
-      redis-server
-      --save 60 1
-      --appendonly yes
-      --appendfsync everysec
-      ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORDREDACTEDREDACTED
+        sh -c '
+          redis-server
+          --save 60 1
+          --appendonly yes
+          --appendfsync everysec
+          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"REDACTED'
     environment:
       - TZ=${TZ:-Asia/ShanghaiREDACTED
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)

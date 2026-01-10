@@ -1,24 +1,36 @@
 package routes
 
 import (
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/middleware"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 // RegisterAuthRoutes 注册认证相关路由
 func RegisterAuthRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
-	jwtAuth middleware.JWTAuthMiddleware,
+	jwtAuth servermiddleware.JWTAuthMiddleware,
+	redisClient *redis.Client,
 ) {
+	// 创建速率限制器
+	rateLimiter := middleware.NewRateLimiter(redisClient)
+
 	// 公开接口
 	auth := v1.Group("/auth")
 	{
 		auth.POST("/register", h.Auth.Register)
 		auth.POST("/login", h.Auth.Login)
 		auth.POST("/send-verify-code", h.Auth.SendVerifyCode)
+		// 优惠码验证接口添加速率限制：每分钟最多 10 次
+		auth.POST("/validate-promo-code", rateLimiter.Limit("validate-promo", 10, time.Minute), h.Auth.ValidatePromoCode)
+		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
+		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
 REDACTED
 
 	// 公开设置（无需认证）

@@ -16,6 +16,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/promocode"
+	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -40,6 +42,8 @@ const (
 	TypeAccount                 = "Account"
 	TypeAccountGroup            = "AccountGroup"
 	TypeGroup                   = "Group"
+	TypePromoCode               = "PromoCode"
+	TypePromoCodeUsage          = "PromoCodeUsage"
 	TypeProxy                   = "Proxy"
 	TypeRedeemCode              = "RedeemCode"
 	TypeSetting                 = "Setting"
@@ -54,26 +58,30 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	created_at        *time.Time
-	updated_at        *time.Time
-	deleted_at        *time.Time
-	key               *string
-	name              *string
-	status            *string
-	clearedFields     map[string]struct{REDACTED
-	user              *int64
-	cleareduser       bool
-	group             *int64
-	clearedgroup      bool
-	usage_logs        map[int64]struct{REDACTED
-	removedusage_logs map[int64]struct{REDACTED
-	clearedusage_logs bool
-	done              bool
-	oldValue          func(context.Context) (*APIKey, error)
-	predicates        []predicate.APIKey
+	op                 Op
+	typ                string
+	id                 *int64
+	created_at         *time.Time
+	updated_at         *time.Time
+	deleted_at         *time.Time
+	key                *string
+	name               *string
+	status             *string
+	ip_whitelist       *[]string
+	appendip_whitelist []string
+	ip_blacklist       *[]string
+	appendip_blacklist []string
+	clearedFields      map[string]struct{REDACTED
+	user               *int64
+	cleareduser        bool
+	group              *int64
+	clearedgroup       bool
+	usage_logs         map[int64]struct{REDACTED
+	removedusage_logs  map[int64]struct{REDACTED
+	clearedusage_logs  bool
+	done               bool
+	oldValue           func(context.Context) (*APIKey, error)
+	predicates         []predicate.APIKey
 REDACTED
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -488,6 +496,136 @@ func (m *APIKeyMutation) ResetStatus() {
 	m.status = nil
 REDACTED
 
+// SetIPWhitelist sets the "ip_whitelist" field.
+func (m *APIKeyMutation) SetIPWhitelist(s []string) {
+	m.ip_whitelist = &s
+	m.appendip_whitelist = nil
+REDACTED
+
+// IPWhitelist returns the value of the "ip_whitelist" field in the mutation.
+func (m *APIKeyMutation) IPWhitelist() (r []string, exists bool) {
+	v := m.ip_whitelist
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldIPWhitelist returns the old "ip_whitelist" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldIPWhitelist(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIPWhitelist is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIPWhitelist requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIPWhitelist: %w", err)
+REDACTED
+	return oldValue.IPWhitelist, nil
+REDACTED
+
+// AppendIPWhitelist adds s to the "ip_whitelist" field.
+func (m *APIKeyMutation) AppendIPWhitelist(s []string) {
+	m.appendip_whitelist = append(m.appendip_whitelist, s...)
+REDACTED
+
+// AppendedIPWhitelist returns the list of values that were appended to the "ip_whitelist" field in this mutation.
+func (m *APIKeyMutation) AppendedIPWhitelist() ([]string, bool) {
+	if len(m.appendip_whitelist) == 0 {
+		return nil, false
+REDACTED
+	return m.appendip_whitelist, true
+REDACTED
+
+// ClearIPWhitelist clears the value of the "ip_whitelist" field.
+func (m *APIKeyMutation) ClearIPWhitelist() {
+	m.ip_whitelist = nil
+	m.appendip_whitelist = nil
+	m.clearedFields[apikey.FieldIPWhitelist] = struct{REDACTED{REDACTED
+REDACTED
+
+// IPWhitelistCleared returns if the "ip_whitelist" field was cleared in this mutation.
+func (m *APIKeyMutation) IPWhitelistCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldIPWhitelist]
+	return ok
+REDACTED
+
+// ResetIPWhitelist resets all changes to the "ip_whitelist" field.
+func (m *APIKeyMutation) ResetIPWhitelist() {
+	m.ip_whitelist = nil
+	m.appendip_whitelist = nil
+	delete(m.clearedFields, apikey.FieldIPWhitelist)
+REDACTED
+
+// SetIPBlacklist sets the "ip_blacklist" field.
+func (m *APIKeyMutation) SetIPBlacklist(s []string) {
+	m.ip_blacklist = &s
+	m.appendip_blacklist = nil
+REDACTED
+
+// IPBlacklist returns the value of the "ip_blacklist" field in the mutation.
+func (m *APIKeyMutation) IPBlacklist() (r []string, exists bool) {
+	v := m.ip_blacklist
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldIPBlacklist returns the old "ip_blacklist" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldIPBlacklist(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIPBlacklist is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIPBlacklist requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIPBlacklist: %w", err)
+REDACTED
+	return oldValue.IPBlacklist, nil
+REDACTED
+
+// AppendIPBlacklist adds s to the "ip_blacklist" field.
+func (m *APIKeyMutation) AppendIPBlacklist(s []string) {
+	m.appendip_blacklist = append(m.appendip_blacklist, s...)
+REDACTED
+
+// AppendedIPBlacklist returns the list of values that were appended to the "ip_blacklist" field in this mutation.
+func (m *APIKeyMutation) AppendedIPBlacklist() ([]string, bool) {
+	if len(m.appendip_blacklist) == 0 {
+		return nil, false
+REDACTED
+	return m.appendip_blacklist, true
+REDACTED
+
+// ClearIPBlacklist clears the value of the "ip_blacklist" field.
+func (m *APIKeyMutation) ClearIPBlacklist() {
+	m.ip_blacklist = nil
+	m.appendip_blacklist = nil
+	m.clearedFields[apikey.FieldIPBlacklist] = struct{REDACTED{REDACTED
+REDACTED
+
+// IPBlacklistCleared returns if the "ip_blacklist" field was cleared in this mutation.
+func (m *APIKeyMutation) IPBlacklistCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldIPBlacklist]
+	return ok
+REDACTED
+
+// ResetIPBlacklist resets all changes to the "ip_blacklist" field.
+func (m *APIKeyMutation) ResetIPBlacklist() {
+	m.ip_blacklist = nil
+	m.appendip_blacklist = nil
+	delete(m.clearedFields, apikey.FieldIPBlacklist)
+REDACTED
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -630,7 +768,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 10)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 REDACTED
@@ -654,6 +792,12 @@ REDACTED
 REDACTED
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
+REDACTED
+	if m.ip_whitelist != nil {
+		fields = append(fields, apikey.FieldIPWhitelist)
+REDACTED
+	if m.ip_blacklist != nil {
+		fields = append(fields, apikey.FieldIPBlacklist)
 REDACTED
 	return fields
 REDACTED
@@ -679,6 +823,10 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.GroupID()
 	case apikey.FieldStatus:
 		return m.Status()
+	case apikey.FieldIPWhitelist:
+		return m.IPWhitelist()
+	case apikey.FieldIPBlacklist:
+		return m.IPBlacklist()
 REDACTED
 	return nil, false
 REDACTED
@@ -704,6 +852,10 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldGroupID(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
+	case apikey.FieldIPWhitelist:
+		return m.OldIPWhitelist(ctx)
+	case apikey.FieldIPBlacklist:
+		return m.OldIPBlacklist(ctx)
 REDACTED
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 REDACTED
@@ -769,6 +921,20 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetStatus(v)
 		return nil
+	case apikey.FieldIPWhitelist:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetIPWhitelist(v)
+		return nil
+	case apikey.FieldIPBlacklist:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetIPBlacklist(v)
+		return nil
 REDACTED
 	return fmt.Errorf("unknown APIKey field %s", name)
 REDACTED
@@ -808,6 +974,12 @@ REDACTED
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 REDACTED
+	if m.FieldCleared(apikey.FieldIPWhitelist) {
+		fields = append(fields, apikey.FieldIPWhitelist)
+REDACTED
+	if m.FieldCleared(apikey.FieldIPBlacklist) {
+		fields = append(fields, apikey.FieldIPBlacklist)
+REDACTED
 	return fields
 REDACTED
 
@@ -827,6 +999,12 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case apikey.FieldIPWhitelist:
+		m.ClearIPWhitelist()
+		return nil
+	case apikey.FieldIPBlacklist:
+		m.ClearIPBlacklist()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown APIKey nullable field %s", name)
@@ -859,6 +1037,12 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case apikey.FieldIPWhitelist:
+		m.ResetIPWhitelist()
+		return nil
+	case apikey.FieldIPBlacklist:
+		m.ResetIPBlacklist()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -5846,6 +6030,1624 @@ REDACTED
 	return fmt.Errorf("unknown Group edge %s", name)
 REDACTED
 
+// PromoCodeMutation represents an operation that mutates the PromoCode nodes in the graph.
+type PromoCodeMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *int64
+	code                 *string
+	bonus_amount         *float64
+	addbonus_amount      *float64
+	max_uses             *int
+	addmax_uses          *int
+	used_count           *int
+	addused_count        *int
+	status               *string
+	expires_at           *time.Time
+	notes                *string
+	created_at           *time.Time
+	updated_at           *time.Time
+	clearedFields        map[string]struct{REDACTED
+	usage_records        map[int64]struct{REDACTED
+	removedusage_records map[int64]struct{REDACTED
+	clearedusage_records bool
+	done                 bool
+	oldValue             func(context.Context) (*PromoCode, error)
+	predicates           []predicate.PromoCode
+REDACTED
+
+var _ ent.Mutation = (*PromoCodeMutation)(nil)
+
+// promocodeOption allows management of the mutation configuration using functional options.
+type promocodeOption func(*PromoCodeMutation)
+
+// newPromoCodeMutation creates new mutation for the PromoCode entity.
+func newPromoCodeMutation(c config, op Op, opts ...promocodeOption) *PromoCodeMutation {
+	m := &PromoCodeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePromoCode,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withPromoCodeID sets the ID field of the mutation.
+func withPromoCodeID(id int64) promocodeOption {
+	return func(m *PromoCodeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PromoCode
+		)
+		m.oldValue = func(ctx context.Context) (*PromoCode, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().PromoCode.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withPromoCode sets the old PromoCode of the mutation.
+func withPromoCode(node *PromoCode) promocodeOption {
+	return func(m *PromoCodeMutation) {
+		m.oldValue = func(context.Context) (*PromoCode, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PromoCodeMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PromoCodeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PromoCodeMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PromoCodeMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PromoCode.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCode sets the "code" field.
+func (m *PromoCodeMutation) SetCode(s string) {
+	m.code = &s
+REDACTED
+
+// Code returns the value of the "code" field in the mutation.
+func (m *PromoCodeMutation) Code() (r string, exists bool) {
+	v := m.code
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCode returns the old "code" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCode is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCode requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCode: %w", err)
+REDACTED
+	return oldValue.Code, nil
+REDACTED
+
+// ResetCode resets all changes to the "code" field.
+func (m *PromoCodeMutation) ResetCode() {
+	m.code = nil
+REDACTED
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (m *PromoCodeMutation) SetBonusAmount(f float64) {
+	m.bonus_amount = &f
+	m.addbonus_amount = nil
+REDACTED
+
+// BonusAmount returns the value of the "bonus_amount" field in the mutation.
+func (m *PromoCodeMutation) BonusAmount() (r float64, exists bool) {
+	v := m.bonus_amount
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldBonusAmount returns the old "bonus_amount" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldBonusAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBonusAmount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBonusAmount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBonusAmount: %w", err)
+REDACTED
+	return oldValue.BonusAmount, nil
+REDACTED
+
+// AddBonusAmount adds f to the "bonus_amount" field.
+func (m *PromoCodeMutation) AddBonusAmount(f float64) {
+	if m.addbonus_amount != nil {
+		*m.addbonus_amount += f
+REDACTED else {
+		m.addbonus_amount = &f
+REDACTED
+REDACTED
+
+// AddedBonusAmount returns the value that was added to the "bonus_amount" field in this mutation.
+func (m *PromoCodeMutation) AddedBonusAmount() (r float64, exists bool) {
+	v := m.addbonus_amount
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetBonusAmount resets all changes to the "bonus_amount" field.
+func (m *PromoCodeMutation) ResetBonusAmount() {
+	m.bonus_amount = nil
+	m.addbonus_amount = nil
+REDACTED
+
+// SetMaxUses sets the "max_uses" field.
+func (m *PromoCodeMutation) SetMaxUses(i int) {
+	m.max_uses = &i
+	m.addmax_uses = nil
+REDACTED
+
+// MaxUses returns the value of the "max_uses" field in the mutation.
+func (m *PromoCodeMutation) MaxUses() (r int, exists bool) {
+	v := m.max_uses
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldMaxUses returns the old "max_uses" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldMaxUses(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxUses is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxUses requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxUses: %w", err)
+REDACTED
+	return oldValue.MaxUses, nil
+REDACTED
+
+// AddMaxUses adds i to the "max_uses" field.
+func (m *PromoCodeMutation) AddMaxUses(i int) {
+	if m.addmax_uses != nil {
+		*m.addmax_uses += i
+REDACTED else {
+		m.addmax_uses = &i
+REDACTED
+REDACTED
+
+// AddedMaxUses returns the value that was added to the "max_uses" field in this mutation.
+func (m *PromoCodeMutation) AddedMaxUses() (r int, exists bool) {
+	v := m.addmax_uses
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetMaxUses resets all changes to the "max_uses" field.
+func (m *PromoCodeMutation) ResetMaxUses() {
+	m.max_uses = nil
+	m.addmax_uses = nil
+REDACTED
+
+// SetUsedCount sets the "used_count" field.
+func (m *PromoCodeMutation) SetUsedCount(i int) {
+	m.used_count = &i
+	m.addused_count = nil
+REDACTED
+
+// UsedCount returns the value of the "used_count" field in the mutation.
+func (m *PromoCodeMutation) UsedCount() (r int, exists bool) {
+	v := m.used_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUsedCount returns the old "used_count" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldUsedCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsedCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsedCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsedCount: %w", err)
+REDACTED
+	return oldValue.UsedCount, nil
+REDACTED
+
+// AddUsedCount adds i to the "used_count" field.
+func (m *PromoCodeMutation) AddUsedCount(i int) {
+	if m.addused_count != nil {
+		*m.addused_count += i
+REDACTED else {
+		m.addused_count = &i
+REDACTED
+REDACTED
+
+// AddedUsedCount returns the value that was added to the "used_count" field in this mutation.
+func (m *PromoCodeMutation) AddedUsedCount() (r int, exists bool) {
+	v := m.addused_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetUsedCount resets all changes to the "used_count" field.
+func (m *PromoCodeMutation) ResetUsedCount() {
+	m.used_count = nil
+	m.addused_count = nil
+REDACTED
+
+// SetStatus sets the "status" field.
+func (m *PromoCodeMutation) SetStatus(s string) {
+	m.status = &s
+REDACTED
+
+// Status returns the value of the "status" field in the mutation.
+func (m *PromoCodeMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldStatus returns the old "status" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+REDACTED
+	return oldValue.Status, nil
+REDACTED
+
+// ResetStatus resets all changes to the "status" field.
+func (m *PromoCodeMutation) ResetStatus() {
+	m.status = nil
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *PromoCodeMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+REDACTED
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *PromoCodeMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldExpiresAt returns the old "expires_at" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+REDACTED
+	return oldValue.ExpiresAt, nil
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (m *PromoCodeMutation) ClearExpiresAt() {
+	m.expires_at = nil
+	m.clearedFields[promocode.FieldExpiresAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
+func (m *PromoCodeMutation) ExpiresAtCleared() bool {
+	_, ok := m.clearedFields[promocode.FieldExpiresAt]
+	return ok
+REDACTED
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *PromoCodeMutation) ResetExpiresAt() {
+	m.expires_at = nil
+	delete(m.clearedFields, promocode.FieldExpiresAt)
+REDACTED
+
+// SetNotes sets the "notes" field.
+func (m *PromoCodeMutation) SetNotes(s string) {
+	m.notes = &s
+REDACTED
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *PromoCodeMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldNotes returns the old "notes" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldNotes(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+REDACTED
+	return oldValue.Notes, nil
+REDACTED
+
+// ClearNotes clears the value of the "notes" field.
+func (m *PromoCodeMutation) ClearNotes() {
+	m.notes = nil
+	m.clearedFields[promocode.FieldNotes] = struct{REDACTED{REDACTED
+REDACTED
+
+// NotesCleared returns if the "notes" field was cleared in this mutation.
+func (m *PromoCodeMutation) NotesCleared() bool {
+	_, ok := m.clearedFields[promocode.FieldNotes]
+	return ok
+REDACTED
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *PromoCodeMutation) ResetNotes() {
+	m.notes = nil
+	delete(m.clearedFields, promocode.FieldNotes)
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PromoCodeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PromoCodeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PromoCodeMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *PromoCodeMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *PromoCodeMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the PromoCode entity.
+// If the PromoCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *PromoCodeMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// AddUsageRecordIDs adds the "usage_records" edge to the PromoCodeUsage entity by ids.
+func (m *PromoCodeMutation) AddUsageRecordIDs(ids ...int64) {
+	if m.usage_records == nil {
+		m.usage_records = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		m.usage_records[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// ClearUsageRecords clears the "usage_records" edge to the PromoCodeUsage entity.
+func (m *PromoCodeMutation) ClearUsageRecords() {
+	m.clearedusage_records = true
+REDACTED
+
+// UsageRecordsCleared reports if the "usage_records" edge to the PromoCodeUsage entity was cleared.
+func (m *PromoCodeMutation) UsageRecordsCleared() bool {
+	return m.clearedusage_records
+REDACTED
+
+// RemoveUsageRecordIDs removes the "usage_records" edge to the PromoCodeUsage entity by IDs.
+func (m *PromoCodeMutation) RemoveUsageRecordIDs(ids ...int64) {
+	if m.removedusage_records == nil {
+		m.removedusage_records = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		delete(m.usage_records, ids[i])
+		m.removedusage_records[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// RemovedUsageRecords returns the removed IDs of the "usage_records" edge to the PromoCodeUsage entity.
+func (m *PromoCodeMutation) RemovedUsageRecordsIDs() (ids []int64) {
+	for id := range m.removedusage_records {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// UsageRecordsIDs returns the "usage_records" edge IDs in the mutation.
+func (m *PromoCodeMutation) UsageRecordsIDs() (ids []int64) {
+	for id := range m.usage_records {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// ResetUsageRecords resets all changes to the "usage_records" edge.
+func (m *PromoCodeMutation) ResetUsageRecords() {
+	m.usage_records = nil
+	m.clearedusage_records = false
+	m.removedusage_records = nil
+REDACTED
+
+// Where appends a list predicates to the PromoCodeMutation builder.
+func (m *PromoCodeMutation) Where(ps ...predicate.PromoCode) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the PromoCodeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PromoCodeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PromoCode, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *PromoCodeMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *PromoCodeMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (PromoCode).
+func (m *PromoCodeMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PromoCodeMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.code != nil {
+		fields = append(fields, promocode.FieldCode)
+REDACTED
+	if m.bonus_amount != nil {
+		fields = append(fields, promocode.FieldBonusAmount)
+REDACTED
+	if m.max_uses != nil {
+		fields = append(fields, promocode.FieldMaxUses)
+REDACTED
+	if m.used_count != nil {
+		fields = append(fields, promocode.FieldUsedCount)
+REDACTED
+	if m.status != nil {
+		fields = append(fields, promocode.FieldStatus)
+REDACTED
+	if m.expires_at != nil {
+		fields = append(fields, promocode.FieldExpiresAt)
+REDACTED
+	if m.notes != nil {
+		fields = append(fields, promocode.FieldNotes)
+REDACTED
+	if m.created_at != nil {
+		fields = append(fields, promocode.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, promocode.FieldUpdatedAt)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PromoCodeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case promocode.FieldCode:
+		return m.Code()
+	case promocode.FieldBonusAmount:
+		return m.BonusAmount()
+	case promocode.FieldMaxUses:
+		return m.MaxUses()
+	case promocode.FieldUsedCount:
+		return m.UsedCount()
+	case promocode.FieldStatus:
+		return m.Status()
+	case promocode.FieldExpiresAt:
+		return m.ExpiresAt()
+	case promocode.FieldNotes:
+		return m.Notes()
+	case promocode.FieldCreatedAt:
+		return m.CreatedAt()
+	case promocode.FieldUpdatedAt:
+		return m.UpdatedAt()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PromoCodeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case promocode.FieldCode:
+		return m.OldCode(ctx)
+	case promocode.FieldBonusAmount:
+		return m.OldBonusAmount(ctx)
+	case promocode.FieldMaxUses:
+		return m.OldMaxUses(ctx)
+	case promocode.FieldUsedCount:
+		return m.OldUsedCount(ctx)
+	case promocode.FieldStatus:
+		return m.OldStatus(ctx)
+	case promocode.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case promocode.FieldNotes:
+		return m.OldNotes(ctx)
+	case promocode.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case promocode.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown PromoCode field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PromoCodeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case promocode.FieldCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCode(v)
+		return nil
+	case promocode.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetBonusAmount(v)
+		return nil
+	case promocode.FieldMaxUses:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetMaxUses(v)
+		return nil
+	case promocode.FieldUsedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUsedCount(v)
+		return nil
+	case promocode.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetStatus(v)
+		return nil
+	case promocode.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetExpiresAt(v)
+		return nil
+	case promocode.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetNotes(v)
+		return nil
+	case promocode.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case promocode.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCode field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PromoCodeMutation) AddedFields() []string {
+	var fields []string
+	if m.addbonus_amount != nil {
+		fields = append(fields, promocode.FieldBonusAmount)
+REDACTED
+	if m.addmax_uses != nil {
+		fields = append(fields, promocode.FieldMaxUses)
+REDACTED
+	if m.addused_count != nil {
+		fields = append(fields, promocode.FieldUsedCount)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PromoCodeMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case promocode.FieldBonusAmount:
+		return m.AddedBonusAmount()
+	case promocode.FieldMaxUses:
+		return m.AddedMaxUses()
+	case promocode.FieldUsedCount:
+		return m.AddedUsedCount()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PromoCodeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case promocode.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddBonusAmount(v)
+		return nil
+	case promocode.FieldMaxUses:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddMaxUses(v)
+		return nil
+	case promocode.FieldUsedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddUsedCount(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCode numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PromoCodeMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(promocode.FieldExpiresAt) {
+		fields = append(fields, promocode.FieldExpiresAt)
+REDACTED
+	if m.FieldCleared(promocode.FieldNotes) {
+		fields = append(fields, promocode.FieldNotes)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PromoCodeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PromoCodeMutation) ClearField(name string) error {
+	switch name {
+	case promocode.FieldExpiresAt:
+		m.ClearExpiresAt()
+		return nil
+	case promocode.FieldNotes:
+		m.ClearNotes()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCode nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PromoCodeMutation) ResetField(name string) error {
+	switch name {
+	case promocode.FieldCode:
+		m.ResetCode()
+		return nil
+	case promocode.FieldBonusAmount:
+		m.ResetBonusAmount()
+		return nil
+	case promocode.FieldMaxUses:
+		m.ResetMaxUses()
+		return nil
+	case promocode.FieldUsedCount:
+		m.ResetUsedCount()
+		return nil
+	case promocode.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case promocode.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case promocode.FieldNotes:
+		m.ResetNotes()
+		return nil
+	case promocode.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case promocode.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCode field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PromoCodeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.usage_records != nil {
+		edges = append(edges, promocode.EdgeUsageRecords)
+REDACTED
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PromoCodeMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case promocode.EdgeUsageRecords:
+		ids := make([]ent.Value, 0, len(m.usage_records))
+		for id := range m.usage_records {
+			ids = append(ids, id)
+	REDACTED
+		return ids
+REDACTED
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PromoCodeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedusage_records != nil {
+		edges = append(edges, promocode.EdgeUsageRecords)
+REDACTED
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PromoCodeMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case promocode.EdgeUsageRecords:
+		ids := make([]ent.Value, 0, len(m.removedusage_records))
+		for id := range m.removedusage_records {
+			ids = append(ids, id)
+	REDACTED
+		return ids
+REDACTED
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PromoCodeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedusage_records {
+		edges = append(edges, promocode.EdgeUsageRecords)
+REDACTED
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PromoCodeMutation) EdgeCleared(name string) bool {
+	switch name {
+	case promocode.EdgeUsageRecords:
+		return m.clearedusage_records
+REDACTED
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PromoCodeMutation) ClearEdge(name string) error {
+	switch name {
+REDACTED
+	return fmt.Errorf("unknown PromoCode unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PromoCodeMutation) ResetEdge(name string) error {
+	switch name {
+	case promocode.EdgeUsageRecords:
+		m.ResetUsageRecords()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCode edge %s", name)
+REDACTED
+
+// PromoCodeUsageMutation represents an operation that mutates the PromoCodeUsage nodes in the graph.
+type PromoCodeUsageMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *int64
+	bonus_amount      *float64
+	addbonus_amount   *float64
+	used_at           *time.Time
+	clearedFields     map[string]struct{REDACTED
+	promo_code        *int64
+	clearedpromo_code bool
+	user              *int64
+	cleareduser       bool
+	done              bool
+	oldValue          func(context.Context) (*PromoCodeUsage, error)
+	predicates        []predicate.PromoCodeUsage
+REDACTED
+
+var _ ent.Mutation = (*PromoCodeUsageMutation)(nil)
+
+// promocodeusageOption allows management of the mutation configuration using functional options.
+type promocodeusageOption func(*PromoCodeUsageMutation)
+
+// newPromoCodeUsageMutation creates new mutation for the PromoCodeUsage entity.
+func newPromoCodeUsageMutation(c config, op Op, opts ...promocodeusageOption) *PromoCodeUsageMutation {
+	m := &PromoCodeUsageMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePromoCodeUsage,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withPromoCodeUsageID sets the ID field of the mutation.
+func withPromoCodeUsageID(id int64) promocodeusageOption {
+	return func(m *PromoCodeUsageMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PromoCodeUsage
+		)
+		m.oldValue = func(ctx context.Context) (*PromoCodeUsage, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().PromoCodeUsage.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withPromoCodeUsage sets the old PromoCodeUsage of the mutation.
+func withPromoCodeUsage(node *PromoCodeUsage) promocodeusageOption {
+	return func(m *PromoCodeUsageMutation) {
+		m.oldValue = func(context.Context) (*PromoCodeUsage, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PromoCodeUsageMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PromoCodeUsageMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PromoCodeUsageMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PromoCodeUsageMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PromoCodeUsage.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetPromoCodeID sets the "promo_code_id" field.
+func (m *PromoCodeUsageMutation) SetPromoCodeID(i int64) {
+	m.promo_code = &i
+REDACTED
+
+// PromoCodeID returns the value of the "promo_code_id" field in the mutation.
+func (m *PromoCodeUsageMutation) PromoCodeID() (r int64, exists bool) {
+	v := m.promo_code
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldPromoCodeID returns the old "promo_code_id" field's value of the PromoCodeUsage entity.
+// If the PromoCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeUsageMutation) OldPromoCodeID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPromoCodeID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPromoCodeID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPromoCodeID: %w", err)
+REDACTED
+	return oldValue.PromoCodeID, nil
+REDACTED
+
+// ResetPromoCodeID resets all changes to the "promo_code_id" field.
+func (m *PromoCodeUsageMutation) ResetPromoCodeID() {
+	m.promo_code = nil
+REDACTED
+
+// SetUserID sets the "user_id" field.
+func (m *PromoCodeUsageMutation) SetUserID(i int64) {
+	m.user = &i
+REDACTED
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *PromoCodeUsageMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUserID returns the old "user_id" field's value of the PromoCodeUsage entity.
+// If the PromoCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeUsageMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+REDACTED
+	return oldValue.UserID, nil
+REDACTED
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *PromoCodeUsageMutation) ResetUserID() {
+	m.user = nil
+REDACTED
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (m *PromoCodeUsageMutation) SetBonusAmount(f float64) {
+	m.bonus_amount = &f
+	m.addbonus_amount = nil
+REDACTED
+
+// BonusAmount returns the value of the "bonus_amount" field in the mutation.
+func (m *PromoCodeUsageMutation) BonusAmount() (r float64, exists bool) {
+	v := m.bonus_amount
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldBonusAmount returns the old "bonus_amount" field's value of the PromoCodeUsage entity.
+// If the PromoCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeUsageMutation) OldBonusAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBonusAmount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBonusAmount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBonusAmount: %w", err)
+REDACTED
+	return oldValue.BonusAmount, nil
+REDACTED
+
+// AddBonusAmount adds f to the "bonus_amount" field.
+func (m *PromoCodeUsageMutation) AddBonusAmount(f float64) {
+	if m.addbonus_amount != nil {
+		*m.addbonus_amount += f
+REDACTED else {
+		m.addbonus_amount = &f
+REDACTED
+REDACTED
+
+// AddedBonusAmount returns the value that was added to the "bonus_amount" field in this mutation.
+func (m *PromoCodeUsageMutation) AddedBonusAmount() (r float64, exists bool) {
+	v := m.addbonus_amount
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetBonusAmount resets all changes to the "bonus_amount" field.
+func (m *PromoCodeUsageMutation) ResetBonusAmount() {
+	m.bonus_amount = nil
+	m.addbonus_amount = nil
+REDACTED
+
+// SetUsedAt sets the "used_at" field.
+func (m *PromoCodeUsageMutation) SetUsedAt(t time.Time) {
+	m.used_at = &t
+REDACTED
+
+// UsedAt returns the value of the "used_at" field in the mutation.
+func (m *PromoCodeUsageMutation) UsedAt() (r time.Time, exists bool) {
+	v := m.used_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUsedAt returns the old "used_at" field's value of the PromoCodeUsage entity.
+// If the PromoCodeUsage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PromoCodeUsageMutation) OldUsedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsedAt: %w", err)
+REDACTED
+	return oldValue.UsedAt, nil
+REDACTED
+
+// ResetUsedAt resets all changes to the "used_at" field.
+func (m *PromoCodeUsageMutation) ResetUsedAt() {
+	m.used_at = nil
+REDACTED
+
+// ClearPromoCode clears the "promo_code" edge to the PromoCode entity.
+func (m *PromoCodeUsageMutation) ClearPromoCode() {
+	m.clearedpromo_code = true
+	m.clearedFields[promocodeusage.FieldPromoCodeID] = struct{REDACTED{REDACTED
+REDACTED
+
+// PromoCodeCleared reports if the "promo_code" edge to the PromoCode entity was cleared.
+func (m *PromoCodeUsageMutation) PromoCodeCleared() bool {
+	return m.clearedpromo_code
+REDACTED
+
+// PromoCodeIDs returns the "promo_code" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// PromoCodeID instead. It exists only for internal usage by the builders.
+func (m *PromoCodeUsageMutation) PromoCodeIDs() (ids []int64) {
+	if id := m.promo_code; id != nil {
+		ids = append(ids, *id)
+REDACTED
+	return
+REDACTED
+
+// ResetPromoCode resets all changes to the "promo_code" edge.
+func (m *PromoCodeUsageMutation) ResetPromoCode() {
+	m.promo_code = nil
+	m.clearedpromo_code = false
+REDACTED
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *PromoCodeUsageMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[promocodeusage.FieldUserID] = struct{REDACTED{REDACTED
+REDACTED
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *PromoCodeUsageMutation) UserCleared() bool {
+	return m.cleareduser
+REDACTED
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *PromoCodeUsageMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+REDACTED
+	return
+REDACTED
+
+// ResetUser resets all changes to the "user" edge.
+func (m *PromoCodeUsageMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+REDACTED
+
+// Where appends a list predicates to the PromoCodeUsageMutation builder.
+func (m *PromoCodeUsageMutation) Where(ps ...predicate.PromoCodeUsage) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the PromoCodeUsageMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PromoCodeUsageMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PromoCodeUsage, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *PromoCodeUsageMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *PromoCodeUsageMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (PromoCodeUsage).
+func (m *PromoCodeUsageMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PromoCodeUsageMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.promo_code != nil {
+		fields = append(fields, promocodeusage.FieldPromoCodeID)
+REDACTED
+	if m.user != nil {
+		fields = append(fields, promocodeusage.FieldUserID)
+REDACTED
+	if m.bonus_amount != nil {
+		fields = append(fields, promocodeusage.FieldBonusAmount)
+REDACTED
+	if m.used_at != nil {
+		fields = append(fields, promocodeusage.FieldUsedAt)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PromoCodeUsageMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case promocodeusage.FieldPromoCodeID:
+		return m.PromoCodeID()
+	case promocodeusage.FieldUserID:
+		return m.UserID()
+	case promocodeusage.FieldBonusAmount:
+		return m.BonusAmount()
+	case promocodeusage.FieldUsedAt:
+		return m.UsedAt()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PromoCodeUsageMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case promocodeusage.FieldPromoCodeID:
+		return m.OldPromoCodeID(ctx)
+	case promocodeusage.FieldUserID:
+		return m.OldUserID(ctx)
+	case promocodeusage.FieldBonusAmount:
+		return m.OldBonusAmount(ctx)
+	case promocodeusage.FieldUsedAt:
+		return m.OldUsedAt(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown PromoCodeUsage field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PromoCodeUsageMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case promocodeusage.FieldPromoCodeID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetPromoCodeID(v)
+		return nil
+	case promocodeusage.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUserID(v)
+		return nil
+	case promocodeusage.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetBonusAmount(v)
+		return nil
+	case promocodeusage.FieldUsedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUsedAt(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCodeUsage field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PromoCodeUsageMutation) AddedFields() []string {
+	var fields []string
+	if m.addbonus_amount != nil {
+		fields = append(fields, promocodeusage.FieldBonusAmount)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PromoCodeUsageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case promocodeusage.FieldBonusAmount:
+		return m.AddedBonusAmount()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PromoCodeUsageMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case promocodeusage.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddBonusAmount(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCodeUsage numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PromoCodeUsageMutation) ClearedFields() []string {
+	return nil
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PromoCodeUsageMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PromoCodeUsageMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown PromoCodeUsage nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PromoCodeUsageMutation) ResetField(name string) error {
+	switch name {
+	case promocodeusage.FieldPromoCodeID:
+		m.ResetPromoCodeID()
+		return nil
+	case promocodeusage.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case promocodeusage.FieldBonusAmount:
+		m.ResetBonusAmount()
+		return nil
+	case promocodeusage.FieldUsedAt:
+		m.ResetUsedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCodeUsage field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PromoCodeUsageMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.promo_code != nil {
+		edges = append(edges, promocodeusage.EdgePromoCode)
+REDACTED
+	if m.user != nil {
+		edges = append(edges, promocodeusage.EdgeUser)
+REDACTED
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PromoCodeUsageMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case promocodeusage.EdgePromoCode:
+		if id := m.promo_code; id != nil {
+			return []ent.Value{*idREDACTED
+	REDACTED
+	case promocodeusage.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*idREDACTED
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PromoCodeUsageMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PromoCodeUsageMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PromoCodeUsageMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedpromo_code {
+		edges = append(edges, promocodeusage.EdgePromoCode)
+REDACTED
+	if m.cleareduser {
+		edges = append(edges, promocodeusage.EdgeUser)
+REDACTED
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PromoCodeUsageMutation) EdgeCleared(name string) bool {
+	switch name {
+	case promocodeusage.EdgePromoCode:
+		return m.clearedpromo_code
+	case promocodeusage.EdgeUser:
+		return m.cleareduser
+REDACTED
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PromoCodeUsageMutation) ClearEdge(name string) error {
+	switch name {
+	case promocodeusage.EdgePromoCode:
+		m.ClearPromoCode()
+		return nil
+	case promocodeusage.EdgeUser:
+		m.ClearUser()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCodeUsage unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PromoCodeUsageMutation) ResetEdge(name string) error {
+	switch name {
+	case promocodeusage.EdgePromoCode:
+		m.ResetPromoCode()
+		return nil
+	case promocodeusage.EdgeUser:
+		m.ResetUser()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown PromoCodeUsage edge %s", name)
+REDACTED
+
 // ProxyMutation represents an operation that mutates the Proxy nodes in the graph.
 type ProxyMutation struct {
 	config
@@ -8396,6 +10198,7 @@ type UsageLogMutation struct {
 	first_token_ms              *int
 	addfirst_token_ms           *int
 	user_agent                  *string
+	ip_address                  *string
 	image_count                 *int
 	addimage_count              *int
 	image_size                  *string
@@ -9801,6 +11604,55 @@ func (m *UsageLogMutation) ResetUserAgent() {
 	delete(m.clearedFields, usagelog.FieldUserAgent)
 REDACTED
 
+// SetIPAddress sets the "ip_address" field.
+func (m *UsageLogMutation) SetIPAddress(s string) {
+	m.ip_address = &s
+REDACTED
+
+// IPAddress returns the value of the "ip_address" field in the mutation.
+func (m *UsageLogMutation) IPAddress() (r string, exists bool) {
+	v := m.ip_address
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldIPAddress returns the old "ip_address" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldIPAddress(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIPAddress is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIPAddress requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIPAddress: %w", err)
+REDACTED
+	return oldValue.IPAddress, nil
+REDACTED
+
+// ClearIPAddress clears the value of the "ip_address" field.
+func (m *UsageLogMutation) ClearIPAddress() {
+	m.ip_address = nil
+	m.clearedFields[usagelog.FieldIPAddress] = struct{REDACTED{REDACTED
+REDACTED
+
+// IPAddressCleared returns if the "ip_address" field was cleared in this mutation.
+func (m *UsageLogMutation) IPAddressCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldIPAddress]
+	return ok
+REDACTED
+
+// ResetIPAddress resets all changes to the "ip_address" field.
+func (m *UsageLogMutation) ResetIPAddress() {
+	m.ip_address = nil
+	delete(m.clearedFields, usagelog.FieldIPAddress)
+REDACTED
+
 // SetImageCount sets the "image_count" field.
 func (m *UsageLogMutation) SetImageCount(i int) {
 	m.image_count = &i
@@ -10111,7 +11963,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 REDACTED
@@ -10187,6 +12039,9 @@ REDACTED
 	if m.user_agent != nil {
 		fields = append(fields, usagelog.FieldUserAgent)
 REDACTED
+	if m.ip_address != nil {
+		fields = append(fields, usagelog.FieldIPAddress)
+REDACTED
 	if m.image_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 REDACTED
@@ -10254,6 +12109,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.FirstTokenMs()
 	case usagelog.FieldUserAgent:
 		return m.UserAgent()
+	case usagelog.FieldIPAddress:
+		return m.IPAddress()
 	case usagelog.FieldImageCount:
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
@@ -10319,6 +12176,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldFirstTokenMs(ctx)
 	case usagelog.FieldUserAgent:
 		return m.OldUserAgent(ctx)
+	case usagelog.FieldIPAddress:
+		return m.OldIPAddress(ctx)
 	case usagelog.FieldImageCount:
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
@@ -10508,6 +12367,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetUserAgent(v)
+		return nil
+	case usagelog.FieldIPAddress:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetIPAddress(v)
 		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
@@ -10782,6 +12648,9 @@ REDACTED
 	if m.FieldCleared(usagelog.FieldUserAgent) {
 		fields = append(fields, usagelog.FieldUserAgent)
 REDACTED
+	if m.FieldCleared(usagelog.FieldIPAddress) {
+		fields = append(fields, usagelog.FieldIPAddress)
+REDACTED
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
 REDACTED
@@ -10813,6 +12682,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ClearUserAgent()
+		return nil
+	case usagelog.FieldIPAddress:
+		m.ClearIPAddress()
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
@@ -10899,6 +12771,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ResetUserAgent()
+		return nil
+	case usagelog.FieldIPAddress:
+		m.ResetIPAddress()
 		return nil
 	case usagelog.FieldImageCount:
 		m.ResetImageCount()
@@ -11100,6 +12975,9 @@ type UserMutation struct {
 	attribute_values              map[int64]struct{REDACTED
 	removedattribute_values       map[int64]struct{REDACTED
 	clearedattribute_values       bool
+	promo_code_usages             map[int64]struct{REDACTED
+	removedpromo_code_usages      map[int64]struct{REDACTED
+	clearedpromo_code_usages      bool
 	done                          bool
 	oldValue                      func(context.Context) (*User, error)
 	predicates                    []predicate.User
@@ -12030,6 +13908,60 @@ func (m *UserMutation) ResetAttributeValues() {
 	m.removedattribute_values = nil
 REDACTED
 
+// AddPromoCodeUsageIDs adds the "promo_code_usages" edge to the PromoCodeUsage entity by ids.
+func (m *UserMutation) AddPromoCodeUsageIDs(ids ...int64) {
+	if m.promo_code_usages == nil {
+		m.promo_code_usages = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		m.promo_code_usages[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// ClearPromoCodeUsages clears the "promo_code_usages" edge to the PromoCodeUsage entity.
+func (m *UserMutation) ClearPromoCodeUsages() {
+	m.clearedpromo_code_usages = true
+REDACTED
+
+// PromoCodeUsagesCleared reports if the "promo_code_usages" edge to the PromoCodeUsage entity was cleared.
+func (m *UserMutation) PromoCodeUsagesCleared() bool {
+	return m.clearedpromo_code_usages
+REDACTED
+
+// RemovePromoCodeUsageIDs removes the "promo_code_usages" edge to the PromoCodeUsage entity by IDs.
+func (m *UserMutation) RemovePromoCodeUsageIDs(ids ...int64) {
+	if m.removedpromo_code_usages == nil {
+		m.removedpromo_code_usages = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		delete(m.promo_code_usages, ids[i])
+		m.removedpromo_code_usages[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// RemovedPromoCodeUsages returns the removed IDs of the "promo_code_usages" edge to the PromoCodeUsage entity.
+func (m *UserMutation) RemovedPromoCodeUsagesIDs() (ids []int64) {
+	for id := range m.removedpromo_code_usages {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// PromoCodeUsagesIDs returns the "promo_code_usages" edge IDs in the mutation.
+func (m *UserMutation) PromoCodeUsagesIDs() (ids []int64) {
+	for id := range m.promo_code_usages {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// ResetPromoCodeUsages resets all changes to the "promo_code_usages" edge.
+func (m *UserMutation) ResetPromoCodeUsages() {
+	m.promo_code_usages = nil
+	m.clearedpromo_code_usages = false
+	m.removedpromo_code_usages = nil
+REDACTED
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -12369,7 +14301,7 @@ REDACTED
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -12390,6 +14322,9 @@ REDACTED
 REDACTED
 	if m.attribute_values != nil {
 		edges = append(edges, user.EdgeAttributeValues)
+REDACTED
+	if m.promo_code_usages != nil {
+		edges = append(edges, user.EdgePromoCodeUsages)
 REDACTED
 	return edges
 REDACTED
@@ -12440,13 +14375,19 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 	REDACTED
 		return ids
+	case user.EdgePromoCodeUsages:
+		ids := make([]ent.Value, 0, len(m.promo_code_usages))
+		for id := range m.promo_code_usages {
+			ids = append(ids, id)
+	REDACTED
+		return ids
 REDACTED
 	return nil
 REDACTED
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -12467,6 +14408,9 @@ REDACTED
 REDACTED
 	if m.removedattribute_values != nil {
 		edges = append(edges, user.EdgeAttributeValues)
+REDACTED
+	if m.removedpromo_code_usages != nil {
+		edges = append(edges, user.EdgePromoCodeUsages)
 REDACTED
 	return edges
 REDACTED
@@ -12517,13 +14461,19 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 	REDACTED
 		return ids
+	case user.EdgePromoCodeUsages:
+		ids := make([]ent.Value, 0, len(m.removedpromo_code_usages))
+		for id := range m.removedpromo_code_usages {
+			ids = append(ids, id)
+	REDACTED
+		return ids
 REDACTED
 	return nil
 REDACTED
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -12544,6 +14494,9 @@ REDACTED
 REDACTED
 	if m.clearedattribute_values {
 		edges = append(edges, user.EdgeAttributeValues)
+REDACTED
+	if m.clearedpromo_code_usages {
+		edges = append(edges, user.EdgePromoCodeUsages)
 REDACTED
 	return edges
 REDACTED
@@ -12566,6 +14519,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedusage_logs
 	case user.EdgeAttributeValues:
 		return m.clearedattribute_values
+	case user.EdgePromoCodeUsages:
+		return m.clearedpromo_code_usages
 REDACTED
 	return false
 REDACTED
@@ -12602,6 +14557,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeAttributeValues:
 		m.ResetAttributeValues()
+		return nil
+	case user.EdgePromoCodeUsages:
+		m.ResetPromoCodeUsages()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User edge %s", name)

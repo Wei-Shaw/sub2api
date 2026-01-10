@@ -17,6 +17,11 @@ type SystemSettings struct {
 	TurnstileSiteKey             string `json:"turnstile_site_key"`
 	TurnstileSecretKeyConfigured bool   `json:"turnstile_secret_key_configured"`
 
+	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
+	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`
+	LinuxDoConnectClientSecretConfigured bool   `json:"linuxdo_connect_client_secret_configured"`
+	LinuxDoConnectRedirectURL            string `json:"linuxdo_connect_redirect_url"`
+
 	SiteName     string `json:"site_name"`
 	SiteLogo     string `json:"site_logo"`
 	SiteSubtitle string `json:"site_subtitle"`
@@ -50,5 +55,6 @@ type PublicSettings struct {
 	APIBaseURL          string `json:"api_base_url"`
 	ContactInfo         string `json:"contact_info"`
 	DocURL              string `json:"doc_url"`
+	LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
 	Version             string `json:"version"`
 REDACTED

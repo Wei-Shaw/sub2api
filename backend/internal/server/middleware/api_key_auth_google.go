@@ -63,6 +63,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				Concurrency: apiKey.User.Concurrency,
 		REDACTED)
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+			setGroupContext(c, apiKey.Group)
 			c.Next()
 			return
 	REDACTED
@@ -102,6 +103,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			Concurrency: apiKey.User.Concurrency,
 	REDACTED)
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+		setGroupContext(c, apiKey.Group)
 		c.Next()
 REDACTED
 REDACTED

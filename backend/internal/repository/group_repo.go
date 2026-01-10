@@ -60,6 +60,17 @@ REDACTED
 REDACTED
 
 func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+	out, err := r.GetByIDLite(ctx, id)
+	if err != nil {
+		return nil, err
+REDACTED
+	count, _ := r.GetAccountCount(ctx, out.ID)
+	out.AccountCount = count
+	return out, nil
+REDACTED
+
+func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+	// AccountCount is intentionally not loaded here; use GetByID when needed.
 	m, err := r.client.Group.Query().
 		Where(group.IDEQ(id)).
 		Only(ctx)
@@ -67,10 +78,7 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 REDACTED
 
-	out := groupEntityToService(m)
-	count, _ := r.GetAccountCount(ctx, out.ID)
-	out.AccountCount = count
-	return out, nil
+	return groupEntityToService(m), nil
 REDACTED
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
@@ -112,10 +120,10 @@ func (r *groupRepository) Delete(ctx context.Context, id int64) error {
 REDACTED
 
 func (r *groupRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Group, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", nil)
+	return r.ListWithFilters(ctx, params, "", "", "", nil)
 REDACTED
 
-func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
+func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, status, search string, isExclusive *bool) ([]service.Group, *pagination.PaginationResult, error) {
 	q := r.client.Group.Query()
 
 	if platform != "" {
@@ -123,6 +131,12 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 REDACTED
 	if status != "" {
 		q = q.Where(group.StatusEQ(status))
+REDACTED
+	if search != "" {
+		q = q.Where(group.Or(
+			group.NameContainsFold(search),
+			group.DescriptionContainsFold(search),
+		))
 REDACTED
 	if isExclusive != nil {
 		q = q.Where(group.IsExclusiveEQ(*isExclusive))

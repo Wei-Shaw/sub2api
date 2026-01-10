@@ -100,6 +100,7 @@ REDACTED
 		emailService,
 		nil,
 		nil,
+		nil, // promoService
 	)
 REDACTED
 
@@ -108,6 +109,15 @@ func TestAuthService_Register_Disabled(t *testing.T) {
 	service := newAuthService(repo, map[string]string{
 		SettingKeyRegistrationEnabled: "false",
 REDACTED, nil)
+
+	_, _, err := service.Register(context.Background(), "user@test.com", "password")
+	require.ErrorIs(t, err, ErrRegDisabled)
+REDACTED
+
+func TestAuthService_Register_DisabledByDefault(t *testing.T) {
+	// 当 settings 为 nil（设置项不存在）时，注册应该默认关闭
+	repo := &userRepoStub{REDACTED
+	service := newAuthService(repo, nil, nil)
 
 	_, _, err := service.Register(context.Background(), "user@test.com", "password")
 	require.ErrorIs(t, err, ErrRegDisabled)
@@ -122,7 +132,7 @@ func TestAuthService_Register_EmailVerifyEnabledButServiceNotConfigured(t *testi
 REDACTED, nil)
 
 	// 应返回服务不可用错误，而不是允许绕过验证
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "any-code", "")
 	require.ErrorIs(t, err, ErrServiceUnavailable)
 REDACTED
 
@@ -134,7 +144,7 @@ func TestAuthService_Register_EmailVerifyRequired(t *testing.T) {
 		SettingKeyEmailVerifyEnabled:  "true",
 REDACTED, cache)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "", "")
 	require.ErrorIs(t, err, ErrEmailVerifyRequired)
 REDACTED
 
@@ -148,14 +158,16 @@ REDACTED
 		SettingKeyEmailVerifyEnabled:  "true",
 REDACTED, cache)
 
-	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "wrong")
+	_, _, err := service.RegisterWithVerification(context.Background(), "user@test.com", "password", "wrong", "")
 	require.ErrorIs(t, err, ErrInvalidVerifyCode)
 	require.ErrorContains(t, err, "verify code")
 REDACTED
 
 func TestAuthService_Register_EmailExists(t *testing.T) {
 	repo := &userRepoStub{exists: trueREDACTED
-	service := newAuthService(repo, nil, nil)
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil)
 
 	_, _, err := service.Register(context.Background(), "user@test.com", "password")
 	require.ErrorIs(t, err, ErrEmailExists)
@@ -163,23 +175,50 @@ REDACTED
 
 func TestAuthService_Register_CheckEmailError(t *testing.T) {
 	repo := &userRepoStub{existsErr: errors.New("db down")REDACTED
-	service := newAuthService(repo, nil, nil)
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil)
 
 	_, _, err := service.Register(context.Background(), "user@test.com", "password")
 	require.ErrorIs(t, err, ErrServiceUnavailable)
+REDACTED
+
+func TestAuthService_Register_ReservedEmail(t *testing.T) {
+	repo := &userRepoStub{REDACTED
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil)
+
+	_, _, err := service.Register(context.Background(), "linuxdo-123@linuxdo-connect.invalid", "password")
+	require.ErrorIs(t, err, ErrEmailReserved)
 REDACTED
 
 func TestAuthService_Register_CreateError(t *testing.T) {
 	repo := &userRepoStub{createErr: errors.New("create failed")REDACTED
-	service := newAuthService(repo, nil, nil)
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil)
 
 	_, _, err := service.Register(context.Background(), "user@test.com", "password")
 	require.ErrorIs(t, err, ErrServiceUnavailable)
 REDACTED
 
+func TestAuthService_Register_CreateEmailExistsRace(t *testing.T) {
+	// 模拟竞态条件：ExistsByEmail 返回 false，但 Create 时因唯一约束失败
+	repo := &userRepoStub{createErr: ErrEmailExistsREDACTED
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil)
+
+	_, _, err := service.Register(context.Background(), "user@test.com", "password")
+	require.ErrorIs(t, err, ErrEmailExists)
+REDACTED
+
 func TestAuthService_Register_Success(t *testing.T) {
 	repo := &userRepoStub{nextID: 5REDACTED
-	service := newAuthService(repo, nil, nil)
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+REDACTED, nil)
 
 	token, user, err := service.Register(context.Background(), "user@test.com", "password")
 REDACTED

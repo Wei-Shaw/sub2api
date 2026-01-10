@@ -455,6 +455,10 @@ func getOpenCodeCodexHeader() string {
 	return getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
 REDACTED
 
+func GetOpenCodeInstructions() string {
+	return getOpenCodeCodexHeader()
+REDACTED
+
 func filterCodexInput(input []any) []any {
 	filtered := make([]any, 0, len(input))
 	for _, item := range input {

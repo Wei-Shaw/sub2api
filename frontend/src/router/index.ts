@@ -67,6 +67,15 @@ const routes: RouteRecordRaw[] = [
       title: 'OAuth Callback'
     REDACTED
   REDACTED,
+  {
+    path: '/auth/linuxdo/callback',
+    name: 'LinuxDoOAuthCallback',
+    component: () => import('@/views/auth/LinuxDoCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'LinuxDo OAuth Callback'
+    REDACTED
+  REDACTED,
 
   // ==================== User Routes ====================
   {
@@ -233,6 +242,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Redeem Code Management',
       titleKey: 'admin.redeem.title',
       descriptionKey: 'admin.redeem.description'
+    REDACTED
+  REDACTED,
+  {
+    path: '/admin/promo-codes',
+    name: 'AdminPromoCodes',
+    component: () => import('@/views/admin/PromoCodesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Promo Code Management',
+      titleKey: 'admin.promo.title',
+      descriptionKey: 'admin.promo.description'
     REDACTED
   REDACTED,
   {

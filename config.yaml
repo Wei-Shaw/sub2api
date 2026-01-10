@@ -154,9 +154,9 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
-  # SSE max line size in bytes (default: 10MB)
-  # SSE 单行最大字节数（默认 10MB）
-  max_line_size: 10485760
+  # SSE max line size in bytes (default: 40MB)
+  # SSE 单行最大字节数（默认 40MB）
+  max_line_size: 41943040
   # Log upstream error response body summary (safe/truncated; does not log request content)
   # 记录上游错误响应体摘要（安全/截断；不记录请求内容）
   log_upstream_error_body: false

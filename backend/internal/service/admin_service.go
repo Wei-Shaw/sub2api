@@ -24,7 +24,7 @@ type AdminService interface {
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 
 	// Group management
-	ListGroups(ctx context.Context, page, pageSize int, platform, status string, isExclusive *bool) ([]Group, int64, error)
+	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error)
 	GetAllGroups(ctx context.Context) ([]Group, error)
 	GetAllGroupsByPlatform(ctx context.Context, platform string) ([]Group, error)
 	GetGroup(ctx context.Context, id int64) (*Group, error)
@@ -168,6 +168,7 @@ type BulkUpdateAccountsInput struct {
 	Concurrency *int
 	Priority    *int
 	Status      string
+	Schedulable *bool
 	GroupIDs    *[]int64
 	Credentials map[string]any
 	Extra       map[string]any
@@ -478,9 +479,9 @@ REDACTED, nil
 REDACTED
 
 // Group management implementations
-func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status string, isExclusive *bool) ([]Group, int64, error) {
+func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	groups, result, err := s.groupRepo.ListWithFilters(ctx, params, platform, status, isExclusive)
+	groups, result, err := s.groupRepo.ListWithFilters(ctx, params, platform, status, search, isExclusive)
 	if err != nil {
 		return nil, 0, err
 REDACTED
@@ -575,18 +576,33 @@ func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGro
 		return fmt.Errorf("cannot set self as fallback group")
 REDACTED
 
-	// 检查降级分组是否存在
-	fallbackGroup, err := s.groupRepo.GetByID(ctx, fallbackGroupID)
-	if err != nil {
-		return fmt.Errorf("fallback group not found: %w", err)
-REDACTED
+	visited := map[int64]struct{REDACTED{REDACTED
+	nextID := fallbackGroupID
+	for {
+		if _, seen := visited[nextID]; seen {
+			return fmt.Errorf("fallback group cycle detected")
+	REDACTED
+		visited[nextID] = struct{REDACTED{REDACTED
+		if currentGroupID > 0 && nextID == currentGroupID {
+			return fmt.Errorf("fallback group cycle detected")
+	REDACTED
 
-	// 降级分组不能启用 claude_code_only，否则会造成死循环
-	if fallbackGroup.ClaudeCodeOnly {
-		return fmt.Errorf("fallback group cannot have claude_code_only enabled")
-REDACTED
+		// 检查降级分组是否存在
+		fallbackGroup, err := s.groupRepo.GetByIDLite(ctx, nextID)
+		if err != nil {
+			return fmt.Errorf("fallback group not found: %w", err)
+	REDACTED
 
-	return nil
+		// 降级分组不能启用 claude_code_only，否则会造成死循环
+		if nextID == fallbackGroupID && fallbackGroup.ClaudeCodeOnly {
+			return fmt.Errorf("fallback group cannot have claude_code_only enabled")
+	REDACTED
+
+		if fallbackGroup.FallbackGroupID == nil {
+			return nil
+	REDACTED
+		nextID = *fallbackGroup.FallbackGroupID
+REDACTED
 REDACTED
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
@@ -909,6 +925,9 @@ REDACTED
 REDACTED
 	if input.Status != "" {
 		repoUpdates.Status = &input.Status
+REDACTED
+	if input.Schedulable != nil {
+		repoUpdates.Schedulable = input.Schedulable
 REDACTED
 
 	// Run bulk update for column/jsonb fields first.

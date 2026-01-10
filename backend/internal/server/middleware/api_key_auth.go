@@ -1,11 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"log"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -71,6 +74,17 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			return
 	REDACTED
 
+		// 检查 IP 限制（白名单/黑名单）
+		// 注意：错误信息故意模糊，避免暴露具体的 IP 限制机制
+		if len(apiKey.IPWhitelist) > 0 || len(apiKey.IPBlacklist) > 0 {
+			clientIP := ip.GetClientIP(c)
+			allowed, _ := ip.CheckIPRestriction(clientIP, apiKey.IPWhitelist, apiKey.IPBlacklist)
+			if !allowed {
+				AbortWithError(c, 403, "ACCESS_DENIED", "Access denied")
+				return
+		REDACTED
+	REDACTED
+
 		// 检查关联的用户
 		if apiKey.User == nil {
 			AbortWithError(c, 401, "USER_NOT_FOUND", "User associated with API key not found")
@@ -91,6 +105,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				Concurrency: apiKey.User.Concurrency,
 		REDACTED)
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+			setGroupContext(c, apiKey.Group)
 			c.Next()
 			return
 	REDACTED
@@ -149,6 +164,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			Concurrency: apiKey.User.Concurrency,
 	REDACTED)
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+		setGroupContext(c, apiKey.Group)
 
 		c.Next()
 REDACTED
@@ -172,4 +188,15 @@ func GetSubscriptionFromContext(c *gin.Context) (*service.UserSubscription, bool
 REDACTED
 	subscription, ok := value.(*service.UserSubscription)
 	return subscription, ok
+REDACTED
+
+func setGroupContext(c *gin.Context, group *service.Group) {
+	if !service.IsGroupContextValid(group) {
+		return
+REDACTED
+	if existing, ok := c.Request.Context().Value(ctxkey.Group).(*service.Group); ok && existing != nil && existing.ID == group.ID && service.IsGroupContextValid(existing) {
+		return
+REDACTED
+	ctx := context.WithValue(c.Request.Context(), ctxkey.Group, group)
+	c.Request = c.Request.WithContext(ctx)
 REDACTED

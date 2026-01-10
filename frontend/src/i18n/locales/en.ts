@@ -145,7 +145,8 @@ export default {
     copiedToClipboard: 'Copied to clipboard',
     copyFailed: 'Failed to copy',
     contactSupport: 'Contact Support',
-        selectOption: 'Select an option',
+    optional: 'optional',
+    selectOption: 'Select an option',
         searchPlaceholder: 'Search...', 
         noOptionsFound: 'No options found',
         noGroupsAvailable: 'No groups available',
@@ -177,6 +178,7 @@ export default {
     accounts: 'Accounts',
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
+    promoCodes: 'Promo Codes',
     settings: 'Settings',
     myAccount: 'My Account',
     lightMode: 'Light Mode',
@@ -229,6 +231,26 @@ export default {
     sendingCode: 'Sending...',
     clickToResend: 'Click to resend code',
     resendCode: 'Resend verification code',
+    promoCodeLabel: 'Promo Code',
+    promoCodePlaceholder: 'Enter promo code (optional)',
+    promoCodeValid: 'Valid! You will receive ${amountREDACTED bonus balance',
+    promoCodeInvalid: 'Invalid promo code',
+    promoCodeNotFound: 'Promo code not found',
+    promoCodeExpired: 'This promo code has expired',
+    promoCodeDisabled: 'This promo code is disabled',
+    promoCodeMaxUsed: 'This promo code has reached its usage limit',
+    promoCodeAlreadyUsed: 'You have already used this promo code',
+    promoCodeValidating: 'Promo code is being validated, please wait',
+    promoCodeInvalidCannotRegister: 'Invalid promo code. Please check and try again or clear the promo code field',
+    linuxdo: {
+      signIn: 'Continue with Linux.do',
+      orContinue: 'or continue with email',
+      callbackTitle: 'Signing you in',
+      callbackProcessing: 'Completing login, please wait...',
+      callbackHint: 'If you are not redirected automatically, go back to the login page and try again.',
+      callbackMissingToken: 'Missing login token, please try again.',
+      backToLogin: 'Back to Login'
+    REDACTED,
     oauth: {
       code: 'Code',
       state: 'State',
@@ -361,6 +383,14 @@ export default {
     customKeyTooShort: 'Custom key must be at least 16 characters',
     customKeyInvalidChars: 'Custom key can only contain letters, numbers, underscores, and hyphens',
     customKeyRequired: 'Please enter a custom key',
+    ipRestriction: 'IP Restriction',
+    ipWhitelist: 'IP Whitelist',
+    ipWhitelistPlaceholder: '192.168.1.100\n10.0.0.0/8',
+    ipWhitelistHint: 'One IP or CIDR per line. Only these IPs can use this key when set.',
+    ipBlacklist: 'IP Blacklist',
+    ipBlacklistPlaceholder: '1.2.3.4\n5.6.0.0/16',
+    ipBlacklistHint: 'One IP or CIDR per line. These IPs will be blocked from using this key.',
+    ipRestrictionEnabled: 'IP restriction enabled',
     ccSwitchNotInstalled: 'CC-Switch is not installed or the protocol handler is not registered. Please install CC-Switch first or manually copy the API key.',
     ccsClientSelect: {
       title: 'Select Client',
@@ -421,9 +451,6 @@ export default {
     exportFailed: 'Failed to export usage data',
     exportExcelSuccess: 'Usage data exported successfully (Excel format)',
     exportExcelFailed: 'Failed to export usage data',
-    billingType: 'Billing',
-    balance: 'Balance',
-    subscription: 'Subscription',
     imageUnit: ' images',
     userAgent: 'User-Agent'
   REDACTED,
@@ -1076,12 +1103,16 @@ export default {
       tokenRefreshed: 'Token refreshed successfully',
       accountDeleted: 'Account deleted successfully',
       rateLimitCleared: 'Rate limit cleared successfully',
+      bulkSchedulableEnabled: 'Successfully enabled scheduling for {countREDACTED account(s)',
+      bulkSchedulableDisabled: 'Successfully disabled scheduling for {countREDACTED account(s)',
       bulkActions: {
         selected: '{countREDACTED account(s) selected',
         selectCurrentPage: 'Select this page',
         clear: 'Clear selection',
         edit: 'Bulk Edit',
-        delete: 'Bulk Delete'
+        delete: 'Bulk Delete',
+        enableScheduling: 'Enable Scheduling',
+        disableScheduling: 'Disable Scheduling'
       REDACTED,
       bulkEdit: {
         title: 'Bulk Edit Accounts',
@@ -1486,6 +1517,7 @@ export default {
       testing: 'Testing...',
       retry: 'Retry',
       copyOutput: 'Copy output',
+      outputCopied: 'Output copied',
       startingTestForAccount: 'Starting test for account: {nameREDACTED',
       testAccountTypeLabel: 'Account type: {typeREDACTED',
       selectTestModel: 'Select Test Model',
@@ -1703,6 +1735,65 @@ export default {
       REDACTED
     REDACTED,
 
+    // Promo Codes
+    promo: {
+      title: 'Promo Code Management',
+      description: 'Create and manage registration promo codes',
+      createCode: 'Create Promo Code',
+      editCode: 'Edit Promo Code',
+      deleteCode: 'Delete Promo Code',
+      searchCodes: 'Search codes...',
+      allStatus: 'All Status',
+      columns: {
+        code: 'Code',
+        bonusAmount: 'Bonus Amount',
+        maxUses: 'Max Uses',
+        usedCount: 'Used',
+        usage: 'Usage',
+        status: 'Status',
+        expiresAt: 'Expires At',
+        createdAt: 'Created At',
+        actions: 'Actions'
+      REDACTED,
+      // Form labels (flat structure for template usage)
+      code: 'Promo Code',
+      autoGenerate: 'auto-generate if empty',
+      codePlaceholder: 'Enter promo code or leave empty',
+      bonusAmount: 'Bonus Amount ($)',
+      maxUses: 'Max Uses',
+      zeroUnlimited: '0 = unlimited',
+      expiresAt: 'Expires At',
+      notes: 'Notes',
+      notesPlaceholder: 'Optional notes for this code',
+      status: 'Status',
+      neverExpires: 'Never expires',
+      // Status labels
+      statusActive: 'Active',
+      statusDisabled: 'Disabled',
+      statusExpired: 'Expired',
+      statusMaxUsed: 'Used Up',
+      // Usage records
+      usageRecords: 'Usage Records',
+      viewUsages: 'View Usages',
+      noUsages: 'No usage records yet',
+      userPrefix: 'User #{idREDACTED',
+      copied: 'Copied!',
+      // Messages
+      noCodesYet: 'No promo codes yet',
+      createFirstCode: 'Create your first promo code to offer registration bonuses.',
+      codeCreated: 'Promo code created successfully',
+      codeUpdated: 'Promo code updated successfully',
+      codeDeleted: 'Promo code deleted successfully',
+      deleteCodeConfirm: 'Are you sure you want to delete this promo code? This action cannot be undone.',
+      copyRegisterLink: 'Copy register link',
+      registerLinkCopied: 'Register link copied to clipboard',
+      failedToLoad: 'Failed to load promo codes',
+      failedToCreate: 'Failed to create promo code',
+      failedToUpdate: 'Failed to update promo code',
+      failedToDelete: 'Failed to delete promo code',
+      failedToLoadUsages: 'Failed to load usage records'
+    REDACTED,
+
     // Usage Records
     usage: {
       title: 'Usage Records',
@@ -1721,7 +1812,6 @@ export default {
       allAccounts: 'All Accounts',
       allGroups: 'All Groups',
       allTypes: 'All Types',
-      allBillingTypes: 'All Billing',
       inputCost: 'Input Cost',
       outputCost: 'Output Cost',
       cacheCreationCost: 'Cache Creation Cost',
@@ -1730,7 +1820,8 @@ export default {
       outputTokens: 'Output Tokens',
       cacheCreationTokens: 'Cache Creation Tokens',
       cacheReadTokens: 'Cache Read Tokens',
-      failedToLoad: 'Failed to load usage records'
+      failedToLoad: 'Failed to load usage records',
+      ipAddress: 'IP'
     REDACTED,
 
     // Settings
@@ -1756,6 +1847,26 @@ export default {
         cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: 'Server-side verification key (keep this secret)',
         secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'      REDACTED,
+      linuxdo: {
+        title: 'LinuxDo Connect Login',
+        description: 'Configure LinuxDo Connect OAuth for Sub2API end-user login',
+        enable: 'Enable LinuxDo Login',
+        enableHint: 'Show LinuxDo login on the login/register pages',
+        clientId: 'Client ID',
+        clientIdPlaceholder: 'e.g., hprJ5pC3...',
+        clientIdHint: 'Get this from Connect.Linux.Do',
+        clientSecret: 'Client Secret',
+        clientSecretPlaceholder: '********',
+        clientSecretHint: 'Used by backend to exchange tokens (keep it secret)',
+        clientSecretConfiguredPlaceholder: '********',
+        clientSecretConfiguredHint: 'Secret configured. Leave empty to keep the current value.',
+        redirectUrl: 'Redirect URL',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/linuxdo/callback',
+        redirectUrlHint:
+          'Must match the redirect URL configured in Connect.Linux.Do (must be an absolute http(s) URL)',
+        quickSetCopy: 'Generate & Copy (current site)',
+        redirectUrlSetAndCopied: 'Redirect URL generated and copied to clipboard'
+      REDACTED,
       defaults: {
         title: 'Default User Settings',
         description: 'Default values for new users',
