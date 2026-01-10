@@ -261,6 +261,7 @@ func TestGeminiMessagesCompatService_GroupResolution_ReusesContextGroup(t *testi
 		ID:       groupID,
 REDACTED
 		Status:   StatusActive,
+		Hydrated: true,
 REDACTED
 	ctx = context.WithValue(ctx, ctxkey.Group, group)
 

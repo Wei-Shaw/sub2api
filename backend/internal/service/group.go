@@ -10,6 +10,7 @@ type Group struct {
 	RateMultiplier float64
 	IsExclusive    bool
 	Status         string
+	Hydrated       bool // indicates the group was loaded from a trusted repository source
 
 	SubscriptionType    string
 	DailyLimitUSD       *float64
@@ -79,6 +80,9 @@ func IsGroupContextValid(group *Group) bool {
 		return false
 REDACTED
 	if group.ID <= 0 {
+		return false
+REDACTED
+	if !group.Hydrated {
 		return false
 REDACTED
 	if group.Platform == "" || group.Status == "" {

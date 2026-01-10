@@ -1072,6 +1072,7 @@ func TestGatewayService_GroupResolution_ReusesContextGroup(t *testing.T) {
 		ID:       groupID,
 		Platform: PlatformAnthropic,
 		Status:   StatusActive,
+		Hydrated: true,
 REDACTED
 	ctx = context.WithValue(ctx, ctxkey.Group, group)
 
@@ -1106,8 +1107,9 @@ func TestGatewayService_GroupResolution_IgnoresInvalidContextGroup(t *testing.T)
 	ctx := context.Background()
 	groupID := int64(42)
 	ctxGroup := &Group{
-		ID:     groupID,
-		Status: StatusActive,
+		ID:       groupID,
+		Platform: PlatformAnthropic,
+		Status:   StatusActive,
 REDACTED
 	ctx = context.WithValue(ctx, ctxkey.Group, ctxGroup)
 
@@ -1153,6 +1155,7 @@ func TestGatewayService_GroupResolution_FallbackUsesLiteOnce(t *testing.T) {
 		Status:          StatusActive,
 		ClaudeCodeOnly:  true,
 		FallbackGroupID: &fallbackID,
+		Hydrated:        true,
 REDACTED
 	fallbackGroup := &Group{
 		ID:       fallbackID,
