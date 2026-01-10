@@ -24,9 +24,11 @@ type mockAccountRepoForPlatform struct {
 	accounts         []Account
 	accountsByID     map[int64]*Account
 	listPlatformFunc func(ctx context.Context, platform string) ([]Account, error)
+	getByIDCalls     int
 REDACTED
 
 func (m *mockAccountRepoForPlatform) GetByID(ctx context.Context, id int64) (*Account, error) {
+	m.getByIDCalls++
 	if acc, ok := m.accountsByID[id]; ok {
 		return acc, nil
 REDACTED
@@ -948,6 +950,74 @@ REDACTED
 	return m.accountWaitCounts[accountID], nil
 REDACTED
 
+type mockConcurrencyCache struct {
+	acquireAccountCalls int
+	loadBatchCalls      int
+REDACTED
+
+func (m *mockConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
+	m.acquireAccountCalls++
+	return true, nil
+REDACTED
+
+func (m *mockConcurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
+	return nil
+REDACTED
+
+func (m *mockConcurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
+	return 0, nil
+REDACTED
+
+func (m *mockConcurrencyCache) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {
+	return true, nil
+REDACTED
+
+func (m *mockConcurrencyCache) DecrementAccountWaitCount(ctx context.Context, accountID int64) error {
+	return nil
+REDACTED
+
+func (m *mockConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {
+	return 0, nil
+REDACTED
+
+func (m *mockConcurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+	return true, nil
+REDACTED
+
+func (m *mockConcurrencyCache) ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error {
+	return nil
+REDACTED
+
+func (m *mockConcurrencyCache) GetUserConcurrency(ctx context.Context, userID int64) (int, error) {
+	return 0, nil
+REDACTED
+
+func (m *mockConcurrencyCache) IncrementWaitCount(ctx context.Context, userID int64, maxWait int) (bool, error) {
+	return true, nil
+REDACTED
+
+func (m *mockConcurrencyCache) DecrementWaitCount(ctx context.Context, userID int64) error {
+	return nil
+REDACTED
+
+func (m *mockConcurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	m.loadBatchCalls++
+	result := make(map[int64]*AccountLoadInfo, len(accounts))
+	for _, acc := range accounts {
+		result[acc.ID] = &AccountLoadInfo{
+			AccountID:          acc.ID,
+			CurrentConcurrency: 0,
+			WaitingCount:       0,
+			LoadRate:           0,
+	REDACTED
+REDACTED
+	return result, nil
+REDACTED
+
+func (m *mockConcurrencyCache) CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error {
+	return nil
+REDACTED
+
 // TestGatewayService_SelectAccountWithLoadAwareness tests load-aware account selection
 func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 	ctx := context.Background()
@@ -1044,6 +1114,42 @@ REDACTED)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
 		require.Equal(t, int64(2), result.Account.ID, "不应选择被排除的账号")
+REDACTED)
+
+	t.Run("粘性命中-不调用GetByID", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{
+			sessionBindings: map[string]int64{"sticky": 1REDACTED,
+	REDACTED
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		concurrencyCache := &mockConcurrencyCache{REDACTED
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(concurrencyCache),
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(1), result.Account.ID)
+		require.Equal(t, 0, repo.getByIDCalls, "粘性命中不应调用GetByID")
+		require.Equal(t, 0, concurrencyCache.loadBatchCalls, "粘性命中应在负载批量查询前返回")
 REDACTED)
 
 	t.Run("无可用账号-返回错误", func(t *testing.T) {

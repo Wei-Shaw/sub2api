@@ -453,6 +453,11 @@ REDACTED
 		return nil, errors.New("no available accounts")
 REDACTED
 
+	accountByID := make(map[int64]*Account, len(accounts))
+	for i := range accounts {
+		accountByID[accounts[i].ID] = &accounts[i]
+REDACTED
+
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
 			return false
@@ -465,8 +470,8 @@ REDACTED
 	if sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
-			account, err := s.accountRepo.GetByID(ctx, accountID)
-			if err == nil && s.isAccountInGroup(account, groupID) &&
+			account, ok := accountByID[accountID]
+			if ok && s.isAccountInGroup(account, groupID) &&
 				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 				account.IsSchedulableForModel(requestedModel) &&
 				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
