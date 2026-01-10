@@ -38,6 +38,12 @@ const (
 	RedeemTypeSubscription = "subscription"
 )
 
+// PromoCode status constants
+const (
+	PromoCodeStatusActive   = "active"
+	PromoCodeStatusDisabled = "disabled"
+)
+
 // Admin adjustment type constants
 const (
 	AdjustmentTypeAdminBalance     = "admin_balance"     // 管理员调整余额

@@ -250,3 +250,28 @@ type BulkAssignResult struct {
 	Subscriptions []UserSubscription `json:"subscriptions"`
 	Errors        []string           `json:"errors"`
 REDACTED
+
+// PromoCode 注册优惠码
+type PromoCode struct {
+	ID          int64      `json:"id"`
+	Code        string     `json:"code"`
+	BonusAmount float64    `json:"bonus_amount"`
+	MaxUses     int        `json:"max_uses"`
+	UsedCount   int        `json:"used_count"`
+	Status      string     `json:"status"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	Notes       string     `json:"notes"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+REDACTED
+
+// PromoCodeUsage 优惠码使用记录
+type PromoCodeUsage struct {
+	ID          int64     `json:"id"`
+	PromoCodeID int64     `json:"promo_code_id"`
+	UserID      int64     `json:"user_id"`
+	BonusAmount float64   `json:"bonus_amount"`
+	UsedAt      time.Time `json:"used_at"`
+
+	User *User `json:"user,omitempty"`
+REDACTED

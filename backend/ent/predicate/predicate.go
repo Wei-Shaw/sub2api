@@ -18,6 +18,12 @@ type AccountGroup func(*sql.Selector)
 // Group is the predicate function for group builders.
 type Group func(*sql.Selector)
 
+// PromoCode is the predicate function for promocode builders.
+type PromoCode func(*sql.Selector)
+
+// PromoCodeUsage is the predicate function for promocodeusage builders.
+type PromoCodeUsage func(*sql.Selector)
+
 // Proxy is the predicate function for proxy builders.
 type Proxy func(*sql.Selector)
 
