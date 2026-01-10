@@ -26,6 +26,8 @@ func TestRedeemService_InvalidateRedeemCaches_AuthCache(t *testing.T) {
 
 	svc.invalidateRedeemCaches(context.Background(), 11, &RedeemCode{Type: RedeemTypeBalanceREDACTED)
 	svc.invalidateRedeemCaches(context.Background(), 11, &RedeemCode{Type: RedeemTypeConcurrencyREDACTED)
+	groupID := int64(3)
+	svc.invalidateRedeemCaches(context.Background(), 11, &RedeemCode{Type: RedeemTypeSubscription, GroupID: &groupIDREDACTED)
 
-	require.Equal(t, []int64{11, 11REDACTED, invalidator.userIDs)
+	require.Equal(t, []int64{11, 11, 11REDACTED, invalidator.userIDs)
 REDACTED
