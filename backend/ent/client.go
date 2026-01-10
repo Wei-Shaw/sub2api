@@ -19,6 +19,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/promocode"
+	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -45,6 +47,10 @@ type Client struct {
 	AccountGroup *AccountGroupClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
+	// PromoCode is the client for interacting with the PromoCode builders.
+	PromoCode *PromoCodeClient
+	// PromoCodeUsage is the client for interacting with the PromoCodeUsage builders.
+	PromoCodeUsage *PromoCodeUsageClient
 	// Proxy is the client for interacting with the Proxy builders.
 	Proxy *ProxyClient
 	// RedeemCode is the client for interacting with the RedeemCode builders.
@@ -78,6 +84,8 @@ func (c *Client) init() {
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Group = NewGroupClient(c.config)
+	c.PromoCode = NewPromoCodeClient(c.config)
+	c.PromoCodeUsage = NewPromoCodeUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.Setting = NewSettingClient(c.config)
@@ -183,6 +191,8 @@ REDACTED
 		Account:                 NewAccountClient(cfg),
 		AccountGroup:            NewAccountGroupClient(cfg),
 		Group:                   NewGroupClient(cfg),
+		PromoCode:               NewPromoCodeClient(cfg),
+		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
@@ -215,6 +225,8 @@ REDACTED
 		Account:                 NewAccountClient(cfg),
 		AccountGroup:            NewAccountGroupClient(cfg),
 		Group:                   NewGroupClient(cfg),
+		PromoCode:               NewPromoCodeClient(cfg),
+		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
@@ -253,9 +265,9 @@ REDACTED
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) REDACTED{
-		c.APIKey, c.Account, c.AccountGroup, c.Group, c.Proxy, c.RedeemCode, c.Setting,
-		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserSubscription,
+		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
+		c.Proxy, c.RedeemCode, c.Setting, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 REDACTED {
 		n.Use(hooks...)
 REDACTED
@@ -265,9 +277,9 @@ REDACTED
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) REDACTED{
-		c.APIKey, c.Account, c.AccountGroup, c.Group, c.Proxy, c.RedeemCode, c.Setting,
-		c.UsageLog, c.User, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserSubscription,
+		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
+		c.Proxy, c.RedeemCode, c.Setting, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 REDACTED {
 		n.Intercept(interceptors...)
 REDACTED
@@ -284,6 +296,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AccountGroup.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
+	case *PromoCodeMutation:
+		return c.PromoCode.mutate(ctx, m)
+	case *PromoCodeUsageMutation:
+		return c.PromoCodeUsage.mutate(ctx, m)
 	case *ProxyMutation:
 		return c.Proxy.mutate(ctx, m)
 	case *RedeemCodeMutation:
@@ -1065,6 +1081,320 @@ func (c *GroupClient) mutate(ctx context.Context, m *GroupMutation) (Value, erro
 		return (&GroupDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Group mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
+// PromoCodeClient is a client for the PromoCode schema.
+type PromoCodeClient struct {
+	config
+REDACTED
+
+// NewPromoCodeClient returns a client for the PromoCode from the given config.
+func NewPromoCodeClient(c config) *PromoCodeClient {
+	return &PromoCodeClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `promocode.Hooks(f(g(h())))`.
+func (c *PromoCodeClient) Use(hooks ...Hook) {
+	c.hooks.PromoCode = append(c.hooks.PromoCode, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `promocode.Intercept(f(g(h())))`.
+func (c *PromoCodeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PromoCode = append(c.inters.PromoCode, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a PromoCode entity.
+func (c *PromoCodeClient) Create() *PromoCodeCreate {
+	mutation := newPromoCodeMutation(c.config, OpCreate)
+	return &PromoCodeCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of PromoCode entities.
+func (c *PromoCodeClient) CreateBulk(builders ...*PromoCodeCreate) *PromoCodeCreateBulk {
+	return &PromoCodeCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PromoCodeClient) MapCreateBulk(slice any, setFunc func(*PromoCodeCreate, int)) *PromoCodeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PromoCodeCreateBulk{err: fmt.Errorf("calling to PromoCodeClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*PromoCodeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &PromoCodeCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for PromoCode.
+func (c *PromoCodeClient) Update() *PromoCodeUpdate {
+	mutation := newPromoCodeMutation(c.config, OpUpdate)
+	return &PromoCodeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PromoCodeClient) UpdateOne(_m *PromoCode) *PromoCodeUpdateOne {
+	mutation := newPromoCodeMutation(c.config, OpUpdateOne, withPromoCode(_m))
+	return &PromoCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PromoCodeClient) UpdateOneID(id int64) *PromoCodeUpdateOne {
+	mutation := newPromoCodeMutation(c.config, OpUpdateOne, withPromoCodeID(id))
+	return &PromoCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for PromoCode.
+func (c *PromoCodeClient) Delete() *PromoCodeDelete {
+	mutation := newPromoCodeMutation(c.config, OpDelete)
+	return &PromoCodeDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PromoCodeClient) DeleteOne(_m *PromoCode) *PromoCodeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PromoCodeClient) DeleteOneID(id int64) *PromoCodeDeleteOne {
+	builder := c.Delete().Where(promocode.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PromoCodeDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for PromoCode.
+func (c *PromoCodeClient) Query() *PromoCodeQuery {
+	return &PromoCodeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePromoCodeREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a PromoCode entity by its id.
+func (c *PromoCodeClient) Get(ctx context.Context, id int64) (*PromoCode, error) {
+	return c.Query().Where(promocode.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PromoCodeClient) GetX(ctx context.Context, id int64) *PromoCode {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// QueryUsageRecords queries the usage_records edge of a PromoCode.
+func (c *PromoCodeClient) QueryUsageRecords(_m *PromoCode) *PromoCodeUsageQuery {
+	query := (&PromoCodeUsageClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promocode.Table, promocode.FieldID, id),
+			sqlgraph.To(promocodeusage.Table, promocodeusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, promocode.UsageRecordsTable, promocode.UsageRecordsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *PromoCodeClient) Hooks() []Hook {
+	return c.hooks.PromoCode
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *PromoCodeClient) Interceptors() []Interceptor {
+	return c.inters.PromoCode
+REDACTED
+
+func (c *PromoCodeClient) mutate(ctx context.Context, m *PromoCodeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PromoCodeCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&PromoCodeUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&PromoCodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PromoCodeDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PromoCode mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
+// PromoCodeUsageClient is a client for the PromoCodeUsage schema.
+type PromoCodeUsageClient struct {
+	config
+REDACTED
+
+// NewPromoCodeUsageClient returns a client for the PromoCodeUsage from the given config.
+func NewPromoCodeUsageClient(c config) *PromoCodeUsageClient {
+	return &PromoCodeUsageClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `promocodeusage.Hooks(f(g(h())))`.
+func (c *PromoCodeUsageClient) Use(hooks ...Hook) {
+	c.hooks.PromoCodeUsage = append(c.hooks.PromoCodeUsage, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `promocodeusage.Intercept(f(g(h())))`.
+func (c *PromoCodeUsageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PromoCodeUsage = append(c.inters.PromoCodeUsage, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a PromoCodeUsage entity.
+func (c *PromoCodeUsageClient) Create() *PromoCodeUsageCreate {
+	mutation := newPromoCodeUsageMutation(c.config, OpCreate)
+	return &PromoCodeUsageCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of PromoCodeUsage entities.
+func (c *PromoCodeUsageClient) CreateBulk(builders ...*PromoCodeUsageCreate) *PromoCodeUsageCreateBulk {
+	return &PromoCodeUsageCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PromoCodeUsageClient) MapCreateBulk(slice any, setFunc func(*PromoCodeUsageCreate, int)) *PromoCodeUsageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PromoCodeUsageCreateBulk{err: fmt.Errorf("calling to PromoCodeUsageClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*PromoCodeUsageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &PromoCodeUsageCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for PromoCodeUsage.
+func (c *PromoCodeUsageClient) Update() *PromoCodeUsageUpdate {
+	mutation := newPromoCodeUsageMutation(c.config, OpUpdate)
+	return &PromoCodeUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PromoCodeUsageClient) UpdateOne(_m *PromoCodeUsage) *PromoCodeUsageUpdateOne {
+	mutation := newPromoCodeUsageMutation(c.config, OpUpdateOne, withPromoCodeUsage(_m))
+	return &PromoCodeUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PromoCodeUsageClient) UpdateOneID(id int64) *PromoCodeUsageUpdateOne {
+	mutation := newPromoCodeUsageMutation(c.config, OpUpdateOne, withPromoCodeUsageID(id))
+	return &PromoCodeUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for PromoCodeUsage.
+func (c *PromoCodeUsageClient) Delete() *PromoCodeUsageDelete {
+	mutation := newPromoCodeUsageMutation(c.config, OpDelete)
+	return &PromoCodeUsageDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PromoCodeUsageClient) DeleteOne(_m *PromoCodeUsage) *PromoCodeUsageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PromoCodeUsageClient) DeleteOneID(id int64) *PromoCodeUsageDeleteOne {
+	builder := c.Delete().Where(promocodeusage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PromoCodeUsageDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for PromoCodeUsage.
+func (c *PromoCodeUsageClient) Query() *PromoCodeUsageQuery {
+	return &PromoCodeUsageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePromoCodeUsageREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a PromoCodeUsage entity by its id.
+func (c *PromoCodeUsageClient) Get(ctx context.Context, id int64) (*PromoCodeUsage, error) {
+	return c.Query().Where(promocodeusage.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PromoCodeUsageClient) GetX(ctx context.Context, id int64) *PromoCodeUsage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// QueryPromoCode queries the promo_code edge of a PromoCodeUsage.
+func (c *PromoCodeUsageClient) QueryPromoCode(_m *PromoCodeUsage) *PromoCodeQuery {
+	query := (&PromoCodeClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promocodeusage.Table, promocodeusage.FieldID, id),
+			sqlgraph.To(promocode.Table, promocode.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, promocodeusage.PromoCodeTable, promocodeusage.PromoCodeColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryUser queries the user edge of a PromoCodeUsage.
+func (c *PromoCodeUsageClient) QueryUser(_m *PromoCodeUsage) *UserQuery {
+	query := (&UserClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promocodeusage.Table, promocodeusage.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, promocodeusage.UserTable, promocodeusage.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *PromoCodeUsageClient) Hooks() []Hook {
+	return c.hooks.PromoCodeUsage
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *PromoCodeUsageClient) Interceptors() []Interceptor {
+	return c.inters.PromoCodeUsage
+REDACTED
+
+func (c *PromoCodeUsageClient) mutate(ctx context.Context, m *PromoCodeUsageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PromoCodeUsageCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&PromoCodeUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&PromoCodeUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PromoCodeUsageDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PromoCodeUsage mutation op: %q", m.Op())
 REDACTED
 REDACTED
 
@@ -1950,6 +2280,22 @@ REDACTED
 	return query
 REDACTED
 
+// QueryPromoCodeUsages queries the promo_code_usages edge of a User.
+func (c *UserClient) QueryPromoCodeUsages(_m *User) *PromoCodeUsageQuery {
+	query := (&PromoCodeUsageClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(promocodeusage.Table, promocodeusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.PromoCodeUsagesTable, user.PromoCodeUsagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
 // QueryUserAllowedGroups queries the user_allowed_groups edge of a User.
 func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: c.configREDACTED).Query()
@@ -2627,14 +2973,14 @@ REDACTED
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Group, Proxy, RedeemCode, Setting, UsageLog,
-		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, Setting, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Hook
 REDACTED
 	inters struct {
-		APIKey, Account, AccountGroup, Group, Proxy, RedeemCode, Setting, UsageLog,
-		User, UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, Setting, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Interceptor
 REDACTED
 )
 

@@ -9,12 +9,14 @@ import (
 	"math"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -37,7 +39,9 @@ type UserQuery struct {
 	withAllowedGroups         *GroupQuery
 	withUsageLogs             *UsageLogQuery
 	withAttributeValues       *UserAttributeValueQuery
+	withPromoCodeUsages       *PromoCodeUsageQuery
 	withUserAllowedGroups     *UserAllowedGroupQuery
+	modifiers                 []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -221,6 +225,28 @@ func (_q *UserQuery) QueryAttributeValues() *UserAttributeValueQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(userattributevalue.Table, userattributevalue.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.AttributeValuesTable, user.AttributeValuesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryPromoCodeUsages chains the current query on the "promo_code_usages" edge.
+func (_q *UserQuery) QueryPromoCodeUsages() *PromoCodeUsageQuery {
+	query := (&PromoCodeUsageClient{config: _q.configREDACTED).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+	REDACTED
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+	REDACTED
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(promocodeusage.Table, promocodeusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.PromoCodeUsagesTable, user.PromoCodeUsagesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -449,6 +475,7 @@ REDACTED
 		withAllowedGroups:         _q.withAllowedGroups.Clone(),
 		withUsageLogs:             _q.withUsageLogs.Clone(),
 		withAttributeValues:       _q.withAttributeValues.Clone(),
+		withPromoCodeUsages:       _q.withPromoCodeUsages.Clone(),
 		withUserAllowedGroups:     _q.withUserAllowedGroups.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -530,6 +557,17 @@ func (_q *UserQuery) WithAttributeValues(opts ...func(*UserAttributeValueQuery))
 		opt(query)
 REDACTED
 	_q.withAttributeValues = query
+	return _q
+REDACTED
+
+// WithPromoCodeUsages tells the query-builder to eager-load the nodes that are connected to
+// the "promo_code_usages" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithPromoCodeUsages(opts ...func(*PromoCodeUsageQuery)) *UserQuery {
+	query := (&PromoCodeUsageClient{config: _q.configREDACTED).Query()
+	for _, opt := range opts {
+		opt(query)
+REDACTED
+	_q.withPromoCodeUsages = query
 	return _q
 REDACTED
 
@@ -622,7 +660,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{REDACTED
 		_spec       = _q.querySpec()
-		loadedTypes = [8]bool{
+		loadedTypes = [9]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
@@ -630,6 +668,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withAllowedGroups != nil,
 			_q.withUsageLogs != nil,
 			_q.withAttributeValues != nil,
+			_q.withPromoCodeUsages != nil,
 			_q.withUserAllowedGroups != nil,
 	REDACTED
 	)
@@ -641,6 +680,9 @@ REDACTED
 		nodes = append(nodes, node)
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
+REDACTED
+	if len(_q.modifiers) > 0 {
+		_spec.Modifiers = _q.modifiers
 REDACTED
 	for i := range hooks {
 		hooks[i](ctx, _spec)
@@ -699,6 +741,13 @@ REDACTED
 		if err := _q.loadAttributeValues(ctx, query, nodes,
 			func(n *User) { n.Edges.AttributeValues = []*UserAttributeValue{REDACTED REDACTED,
 			func(n *User, e *UserAttributeValue) { n.Edges.AttributeValues = append(n.Edges.AttributeValues, e) REDACTED); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if query := _q.withPromoCodeUsages; query != nil {
+		if err := _q.loadPromoCodeUsages(ctx, query, nodes,
+			func(n *User) { n.Edges.PromoCodeUsages = []*PromoCodeUsage{REDACTED REDACTED,
+			func(n *User, e *PromoCodeUsage) { n.Edges.PromoCodeUsages = append(n.Edges.PromoCodeUsages, e) REDACTED); err != nil {
 			return nil, err
 	REDACTED
 REDACTED
@@ -959,6 +1008,36 @@ REDACTED
 REDACTED
 	return nil
 REDACTED
+func (_q *UserQuery) loadPromoCodeUsages(ctx context.Context, query *PromoCodeUsageQuery, nodes []*User, init func(*User), assign func(*User, *PromoCodeUsage)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+	REDACTED
+REDACTED
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(promocodeusage.FieldUserID)
+REDACTED
+	query.Where(predicate.PromoCodeUsage(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.PromoCodeUsagesColumn), fks...))
+REDACTED))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+REDACTED
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+	REDACTED
+		assign(node, n)
+REDACTED
+	return nil
+REDACTED
 func (_q *UserQuery) loadUserAllowedGroups(ctx context.Context, query *UserAllowedGroupQuery, nodes []*User, init func(*User), assign func(*User, *UserAllowedGroup)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[int64]*User)
@@ -992,6 +1071,9 @@ REDACTED
 
 func (_q *UserQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
+	if len(_q.modifiers) > 0 {
+		_spec.Modifiers = _q.modifiers
+REDACTED
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
 		_spec.Unique = _q.ctx.Unique != nil && *_q.ctx.Unique
@@ -1054,6 +1136,9 @@ REDACTED
 	if _q.ctx.Unique != nil && *_q.ctx.Unique {
 		selector.Distinct()
 REDACTED
+	for _, m := range _q.modifiers {
+		m(selector)
+REDACTED
 	for _, p := range _q.predicates {
 		p(selector)
 REDACTED
@@ -1069,6 +1154,32 @@ REDACTED
 		selector.Limit(*limit)
 REDACTED
 	return selector
+REDACTED
+
+// ForUpdate locks the selected rows against concurrent updates, and prevent them from being
+// updated, deleted or "selected ... for update" by other sessions, until the transaction is
+// either committed or rolled-back.
+func (_q *UserQuery) ForUpdate(opts ...sql.LockOption) *UserQuery {
+	if _q.driver.Dialect() == dialect.Postgres {
+		_q.Unique(false)
+REDACTED
+	_q.modifiers = append(_q.modifiers, func(s *sql.Selector) {
+		s.ForUpdate(opts...)
+REDACTED)
+	return _q
+REDACTED
+
+// ForShare behaves similarly to ForUpdate, except that it acquires a shared mode lock
+// on any rows that are read. Other sessions can read the rows, but cannot modify them
+// until your transaction commits.
+func (_q *UserQuery) ForShare(opts ...sql.LockOption) *UserQuery {
+	if _q.driver.Dialect() == dialect.Postgres {
+		_q.Unique(false)
+REDACTED
+	_q.modifiers = append(_q.modifiers, func(s *sql.Selector) {
+		s.ForShare(opts...)
+REDACTED)
+	return _q
 REDACTED
 
 // UserGroupBy is the group-by builder for User entities.
