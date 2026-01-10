@@ -112,7 +112,7 @@ REDACTED
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection
 // This implements the web.PublicSettingsProvider interface
-func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (interface{REDACTED, error) {
+func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any, error) {
 	settings, err := s.GetPublicSettings(ctx)
 	if err != nil {
 		return nil, err
