@@ -172,11 +172,11 @@ func (s *GroupService) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("get group: %w", err)
 REDACTED
 
-	if err := s.groupRepo.Delete(ctx, id); err != nil {
-		return fmt.Errorf("delete group: %w", err)
-REDACTED
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
+REDACTED
+	if err := s.groupRepo.Delete(ctx, id); err != nil {
+		return fmt.Errorf("delete group: %w", err)
 REDACTED
 
 	return nil
