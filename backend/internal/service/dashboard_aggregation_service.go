@@ -134,12 +134,12 @@ REDACTED
 REDACTED
 
 	lookback := time.Duration(s.cfg.LookbackSeconds) * time.Second
-	start := last.Add(-lookback)
 	epoch := time.Unix(0, 0).UTC()
+	start := last.Add(-lookback)
 	if !last.After(epoch) {
-		start = now.Add(-lookback)
-REDACTED
-	if start.After(now) {
+		// 首次聚合覆盖当天，避免只统计最后一个窗口。
+		start = truncateToDayUTC(now)
+REDACTED else if start.After(now) {
 		start = now.Add(-lookback)
 REDACTED
 
@@ -204,17 +204,21 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 			return
 	REDACTED
 REDACTED
-	s.lastRetentionCleanup.Store(now)
 
 	hourlyCutoff := now.AddDate(0, 0, -s.cfg.Retention.HourlyDays)
 	dailyCutoff := now.AddDate(0, 0, -s.cfg.Retention.DailyDays)
 	usageCutoff := now.AddDate(0, 0, -s.cfg.Retention.UsageLogsDays)
 
-	if err := s.repo.CleanupAggregates(ctx, hourlyCutoff, dailyCutoff); err != nil {
-		log.Printf("[DashboardAggregation] 聚合保留清理失败: %v", err)
+	aggErr := s.repo.CleanupAggregates(ctx, hourlyCutoff, dailyCutoff)
+	if aggErr != nil {
+		log.Printf("[DashboardAggregation] 聚合保留清理失败: %v", aggErr)
 REDACTED
-	if err := s.repo.CleanupUsageLogs(ctx, usageCutoff); err != nil {
-		log.Printf("[DashboardAggregation] usage_logs 保留清理失败: %v", err)
+	usageErr := s.repo.CleanupUsageLogs(ctx, usageCutoff)
+	if usageErr != nil {
+		log.Printf("[DashboardAggregation] usage_logs 保留清理失败: %v", usageErr)
+REDACTED
+	if aggErr == nil && usageErr == nil {
+		s.lastRetentionCleanup.Store(now)
 REDACTED
 REDACTED
 

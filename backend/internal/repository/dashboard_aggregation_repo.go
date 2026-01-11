@@ -43,10 +43,11 @@ REDACTED
 		dayEnd = dayEnd.Add(24 * time.Hour)
 REDACTED
 
-	if err := r.insertHourlyActiveUsers(ctx, startUTC, endUTC); err != nil {
+	// 以桶边界聚合，允许覆盖 end 所在桶的剩余区间。
+	if err := r.insertHourlyActiveUsers(ctx, hourStart, hourEnd); err != nil {
 		return err
 REDACTED
-	if err := r.insertDailyActiveUsers(ctx, startUTC, endUTC); err != nil {
+	if err := r.insertDailyActiveUsers(ctx, hourStart, hourEnd); err != nil {
 		return err
 REDACTED
 	if err := r.upsertHourlyAggregates(ctx, hourStart, hourEnd); err != nil {
@@ -138,10 +139,10 @@ func (r *dashboardAggregationRepository) insertDailyActiveUsers(ctx context.Cont
 	query := `
 		INSERT INTO usage_dashboard_daily_users (bucket_date, user_id)
 		SELECT DISTINCT
-			(created_at AT TIME ZONE 'UTC')::date AS bucket_date,
+			(bucket_start AT TIME ZONE 'UTC')::date AS bucket_date,
 			user_id
-		FROM usage_logs
-		WHERE created_at >= $1 AND created_at < $2
+		FROM usage_dashboard_hourly_users
+		WHERE bucket_start >= $1 AND bucket_start < $2
 		ON CONFLICT DO NOTHING
 	`
 	_, err := r.sql.ExecContext(ctx, query, start.UTC(), end.UTC())
