@@ -177,6 +177,81 @@
         </div>
       </div>
 
+      <!-- Upstream errors -->
+      <div
+        v-if="detail.upstream_status_code || detail.upstream_error_message || detail.upstream_error_detail || detail.upstream_errors"
+        class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900"
+      >
+        <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">
+          {{ t('admin.ops.errorDetails.upstreamErrors') REDACTEDREDACTED
+        </h3>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <div class="text-xs font-bold uppercase text-gray-400">status</div>
+            <div class="mt-1 font-mono text-sm font-bold text-gray-900 dark:text-white">
+              {{ detail.upstream_status_code != null ? detail.upstream_status_code : '—' REDACTEDREDACTED
+            </div>
+          </div>
+          <div class="sm:col-span-2">
+            <div class="text-xs font-bold uppercase text-gray-400">message</div>
+            <div class="mt-1 break-words text-sm font-medium text-gray-900 dark:text-white">
+              {{ detail.upstream_error_message || '—' REDACTEDREDACTED
+            </div>
+          </div>
+        </div>
+
+        <div v-if="detail.upstream_error_detail" class="mt-4">
+          <div class="text-xs font-bold uppercase text-gray-400">detail</div>
+          <pre
+            class="mt-2 max-h-[240px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"
+          ><code>{{ prettyJSON(detail.upstream_error_detail) REDACTEDREDACTED</code></pre>
+        </div>
+
+        <div v-if="detail.upstream_errors" class="mt-5">
+          <div class="mb-2 text-xs font-bold uppercase text-gray-400">upstream_errors</div>
+
+          <div v-if="upstreamErrors.length" class="space-y-3">
+            <div
+              v-for="(ev, idx) in upstreamErrors"
+              :key="idx"
+              class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-xs font-black text-gray-800 dark:text-gray-100">
+                  #{{ idx + 1 REDACTEDREDACTED <span v-if="ev.kind" class="font-mono">{{ ev.kind REDACTEDREDACTED</span>
+                </div>
+                <div class="font-mono text-xs text-gray-500 dark:text-gray-400">
+                  {{ ev.at_unix_ms ? formatDateTime(new Date(ev.at_unix_ms)) : '' REDACTEDREDACTED
+                </div>
+              </div>
+
+              <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-3">
+                <div><span class="text-gray-400">account_id:</span> <span class="font-mono">{{ ev.account_id ?? '—' REDACTEDREDACTED</span></div>
+                <div><span class="text-gray-400">status:</span> <span class="font-mono">{{ ev.upstream_status_code ?? '—' REDACTEDREDACTED</span></div>
+                <div class="break-all">
+                  <span class="text-gray-400">request_id:</span> <span class="font-mono">{{ ev.upstream_request_id || '—' REDACTEDREDACTED</span>
+                </div>
+              </div>
+
+              <div v-if="ev.message" class="mt-2 break-words text-sm font-medium text-gray-900 dark:text-white">
+                {{ ev.message REDACTEDREDACTED
+              </div>
+
+              <pre
+                v-if="ev.detail"
+                class="mt-3 max-h-[240px] overflow-auto rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-100"
+              ><code>{{ prettyJSON(ev.detail) REDACTEDREDACTED</code></pre>
+            </div>
+          </div>
+
+          <pre
+            v-else
+            class="max-h-[420px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"
+          ><code>{{ prettyJSON(detail.upstream_errors) REDACTEDREDACTED</code></pre>
+        </div>
+      </div>
+
       <!-- Request body -->
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <div class="flex items-center justify-between">
@@ -258,6 +333,28 @@ const title = computed(() => {
 REDACTED)
 
 const emptyText = computed(() => 'No error selected.')
+
+type UpstreamErrorEvent = {
+  at_unix_ms?: number
+  platform?: string
+  account_id?: number
+  upstream_status_code?: number
+  upstream_request_id?: string
+  kind?: string
+  message?: string
+  detail?: string
+REDACTED
+
+const upstreamErrors = computed<UpstreamErrorEvent[]>(() => {
+  const raw = detail.value?.upstream_errors
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as UpstreamErrorEvent[]) : []
+  REDACTED catch {
+    return []
+  REDACTED
+REDACTED)
 
 function close() {
   emit('update:show', false)

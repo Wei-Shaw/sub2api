@@ -704,6 +704,12 @@ export interface OpsErrorDetail extends OpsErrorLog {
   error_body: string
   user_agent: string
 
+  // Upstream context (optional; enriched by gateway services)
+  upstream_status_code?: number | null
+  upstream_error_message?: string
+  upstream_error_detail?: string
+  upstream_errors?: string
+
   auth_latency_ms?: number | null
   routing_latency_ms?: number | null
   upstream_latency_ms?: number | null

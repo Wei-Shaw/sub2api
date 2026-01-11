@@ -159,7 +159,7 @@ gateway:
   max_line_size: 41943040
   # Log upstream error response body summary (safe/truncated; does not log request content)
   # 记录上游错误响应体摘要（安全/截断；不记录请求内容）
-  log_upstream_error_body: false
+  log_upstream_error_body: true
   # Max bytes to log from upstream error body
   # 记录上游错误响应体的最大字节数
   log_upstream_error_body_max_bytes: 2048
