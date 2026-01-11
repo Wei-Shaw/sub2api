@@ -136,7 +136,7 @@ async function save() {
     draft.value = null
     editingId.value = null
     await load()
-    appStore.showSuccess(t('common.success'))
+    appStore.showSuccess(t('admin.ops.alertRules.saveSuccess'))
   REDACTED catch (err: any) {
     console.error('[OpsAlertRulesCard] Failed to save rule', err)
     appStore.showError(err?.response?.data?.detail || t('admin.ops.alertRules.saveFailed'))
@@ -160,7 +160,7 @@ async function confirmDelete() {
     showDeleteConfirm.value = false
     pendingDelete.value = null
     await load()
-    appStore.showSuccess(t('common.success'))
+    appStore.showSuccess(t('admin.ops.alertRules.deleteSuccess'))
   REDACTED catch (err: any) {
     console.error('[OpsAlertRulesCard] Failed to delete rule', err)
     appStore.showError(err?.response?.data?.detail || t('admin.ops.alertRules.deleteFailed'))
