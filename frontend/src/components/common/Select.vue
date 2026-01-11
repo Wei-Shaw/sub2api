@@ -67,12 +67,13 @@
               :aria-selected="isSelected(option)"
               :aria-disabled="isOptionDisabled(option)"
               @click.stop="!isOptionDisabled(option) && selectOption(option)"
-              @mouseenter="focusedIndex = index"
+              @mouseenter="handleOptionMouseEnter(option, index)"
               :class="[
                 'select-option',
+                isGroupHeaderOption(option) && 'select-option-group',
                 isSelected(option) && 'select-option-selected',
-                isOptionDisabled(option) && 'select-option-disabled',
-                focusedIndex === index && 'select-option-focused'
+                isOptionDisabled(option) && !isGroupHeaderOption(option) && 'select-option-disabled',
+                focusedIndex === index && !isGroupHeaderOption(option) && 'select-option-focused'
               ]"
             >
               <slot name="option" :option="option" :selected="isSelected(option)">
@@ -201,6 +202,13 @@ const isOptionDisabled = (option: any): boolean => {
   return false
 REDACTED
 
+const isGroupHeaderOption = (option: any): boolean => {
+  if (typeof option === 'object' && option !== null) {
+    return option.kind === 'group'
+  REDACTED
+  return false
+REDACTED
+
 const selectedOption = computed(() => {
   return props.options.find((opt) => getOptionValue(opt) === props.modelValue) || null
 REDACTED)
@@ -223,6 +231,31 @@ REDACTED)
 
 const isSelected = (option: any): boolean => {
   return getOptionValue(option) === props.modelValue
+REDACTED
+
+const findNextEnabledIndex = (startIndex: number): number => {
+  const opts = filteredOptions.value
+  if (opts.length === 0) return -1
+  for (let offset = 0; offset < opts.length; offset++) {
+    const idx = (startIndex + offset) % opts.length
+    if (!isOptionDisabled(opts[idx])) return idx
+  REDACTED
+  return -1
+REDACTED
+
+const findPrevEnabledIndex = (startIndex: number): number => {
+  const opts = filteredOptions.value
+  if (opts.length === 0) return -1
+  for (let offset = 0; offset < opts.length; offset++) {
+    const idx = (startIndex - offset + opts.length) % opts.length
+    if (!isOptionDisabled(opts[idx])) return idx
+  REDACTED
+  return -1
+REDACTED
+
+const handleOptionMouseEnter = (option: any, index: number) => {
+  if (isOptionDisabled(option) || isGroupHeaderOption(option)) return
+  focusedIndex.value = index
 REDACTED
 
 // Update trigger rect periodically while open to follow scroll/resize
@@ -259,8 +292,15 @@ watch(isOpen, (open) => {
   if (open) {
     calculateDropdownPosition()
     // Reset focused index to current selection or first item
-    const selectedIdx = filteredOptions.value.findIndex(isSelected)
-    focusedIndex.value = selectedIdx >= 0 ? selectedIdx : 0
+    if (filteredOptions.value.length === 0) {
+      focusedIndex.value = -1
+    REDACTED else {
+      const selectedIdx = filteredOptions.value.findIndex(isSelected)
+      const initialIdx = selectedIdx >= 0 ? selectedIdx : 0
+      focusedIndex.value = isOptionDisabled(filteredOptions.value[initialIdx])
+        ? findNextEnabledIndex(initialIdx + 1)
+        : initialIdx
+    REDACTED
 
     if (props.searchable) {
       nextTick(() => searchInputRef.value?.focus())
@@ -295,13 +335,13 @@ const onDropdownKeyDown = (e: KeyboardEvent) => {
   switch (e.key) {
     case 'ArrowDown':
       e.preventDefault()
-      focusedIndex.value = (focusedIndex.value + 1) % filteredOptions.value.length
-      scrollToFocused()
+      focusedIndex.value = findNextEnabledIndex(focusedIndex.value + 1)
+      if (focusedIndex.value >= 0) scrollToFocused()
       break
     case 'ArrowUp':
       e.preventDefault()
-      focusedIndex.value = (focusedIndex.value - 1 + filteredOptions.value.length) % filteredOptions.value.length
-      scrollToFocused()
+      focusedIndex.value = findPrevEnabledIndex(focusedIndex.value - 1)
+      if (focusedIndex.value >= 0) scrollToFocused()
       break
     case 'Enter':
       e.preventDefault()
@@ -439,6 +479,17 @@ REDACTED
 
 .select-dropdown-portal .select-option-disabled {
   @apply cursor-not-allowed opacity-40;
+REDACTED
+
+.select-dropdown-portal .select-option-group {
+  @apply cursor-default select-none;
+  @apply bg-gray-50 dark:bg-dark-900;
+  @apply text-[11px] font-bold uppercase tracking-wider;
+  @apply text-gray-500 dark:text-gray-400;
+REDACTED
+
+.select-dropdown-portal .select-option-group:hover {
+  @apply bg-gray-50 dark:bg-dark-900;
 REDACTED
 
 .select-dropdown-portal .select-option-label {
