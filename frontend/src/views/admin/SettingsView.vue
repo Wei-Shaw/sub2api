@@ -462,6 +462,26 @@
                 </div>
               </div>
             </div>
+
+            <!-- Home Content -->
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.site.homeContent') REDACTEDREDACTED
+              </label>
+              <textarea
+                v-model="form.home_content"
+                rows="6"
+                class="input font-mono text-sm"
+                :placeholder="t('admin.settings.site.homeContentPlaceholder')"
+              ></textarea>
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.site.homeContentHint') REDACTEDREDACTED
+              </p>
+              <!-- iframe CSP Warning -->
+              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {{ t('admin.settings.site.homeContentIframeWarning') REDACTEDREDACTED
+              </p>
+            </div>
           </div>
         </div>
 
@@ -818,6 +838,7 @@ const form = reactive<SettingsForm>({
   api_base_url: '',
   contact_info: '',
   doc_url: '',
+  home_content: '',
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -923,6 +944,7 @@ async function saveSettings() {
       api_base_url: form.api_base_url,
       contact_info: form.contact_info,
       doc_url: form.doc_url,
+      home_content: form.home_content,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,

@@ -209,14 +209,12 @@ const durationP95Ms = computed(() => overview.value?.duration?.p95_ms ?? null)
 const durationP90Ms = computed(() => overview.value?.duration?.p90_ms ?? null)
 const durationP50Ms = computed(() => overview.value?.duration?.p50_ms ?? null)
 const durationAvgMs = computed(() => overview.value?.duration?.avg_ms ?? null)
-const durationMaxMs = computed(() => overview.value?.duration?.max_ms ?? null)
 
 const ttftP99Ms = computed(() => overview.value?.ttft?.p99_ms ?? null)
 const ttftP95Ms = computed(() => overview.value?.ttft?.p95_ms ?? null)
 const ttftP90Ms = computed(() => overview.value?.ttft?.p90_ms ?? null)
 const ttftP50Ms = computed(() => overview.value?.ttft?.p50_ms ?? null)
 const ttftAvgMs = computed(() => overview.value?.ttft?.avg_ms ?? null)
-const ttftMaxMs = computed(() => overview.value?.ttft?.max_ms ?? null)
 
 // --- WebSocket status ---
 
@@ -708,7 +706,7 @@ REDACTED
     </div>
 
     <div v-if="overview" class="grid grid-cols-1 gap-6 lg:grid-cols-12">
-      <!-- Left: Health + Realtime -->\
+      <!-- Left: Health + Realtime -->
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900 lg:col-span-5">
         <div class="grid grid-cols-1 gap-6 md:grid-cols-[200px_1fr] md:items-center">
           <!-- 1) Health Score -->
@@ -812,7 +810,7 @@ REDACTED
             </div>
           </div>
 
-          <!-- 2) Realtime Traffic -->\
+          <!-- 2) Realtime Traffic -->
           <div class="flex flex-col justify-center py-2">
             <div class="mb-3 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2">
@@ -976,7 +974,7 @@ REDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 space-y-1 text-xs">
+          <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">P95:</span>
               <span class="font-bold" :class="getLatencyColor(durationP95Ms)">{{ durationP95Ms ?? '-' REDACTEDREDACTEDms</span>
@@ -992,10 +990,6 @@ REDACTED
             <div class="flex justify-between">
               <span class="text-gray-500">Avg:</span>
               <span class="font-bold" :class="getLatencyColor(durationAvgMs)">{{ durationAvgMs ?? '-' REDACTEDREDACTEDms</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getLatencyColor(durationMaxMs)">{{ durationMaxMs ?? '-' REDACTEDREDACTEDms</span>
             </div>
           </div>
         </div>
@@ -1021,7 +1015,7 @@ REDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 space-y-1 text-xs">
+          <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">P95:</span>
               <span class="font-bold" :class="getLatencyColor(ttftP95Ms)">{{ ttftP95Ms ?? '-' REDACTEDREDACTEDms</span>
@@ -1037,10 +1031,6 @@ REDACTED
             <div class="flex justify-between">
               <span class="text-gray-500">Avg:</span>
               <span class="font-bold" :class="getLatencyColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTEDms</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftMaxMs)">{{ ttftMaxMs ?? '-' REDACTEDREDACTEDms</span>
             </div>
           </div>
         </div>

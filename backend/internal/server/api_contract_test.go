@@ -327,10 +327,7 @@ REDACTED{
 					"fallback_model_openai": "gpt-4o",
 					"enable_identity_patch": true,
 					"identity_patch_prompt": "",
-					"ops_monitoring_enabled": true,
-					"ops_realtime_monitoring_enabled": true,
-					"ops_query_mode_default": "auto",
-					"ops_metrics_interval_seconds": 60
+					"home_content": ""
 			REDACTED
 		REDACTED`,
 	REDACTED,
@@ -402,7 +399,7 @@ REDACTED
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil)
@@ -576,6 +573,10 @@ func (stubGroupRepo) Create(ctx context.Context, group *service.Group) error {
 REDACTED
 
 func (stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+	return nil, service.ErrGroupNotFound
+REDACTED
+
+func (stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
 	return nil, service.ErrGroupNotFound
 REDACTED
 

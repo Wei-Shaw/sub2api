@@ -38,6 +38,12 @@ const (
 	RedeemTypeSubscription = "subscription"
 )
 
+// PromoCode status constants
+const (
+	PromoCodeStatusActive   = "active"
+	PromoCodeStatusDisabled = "disabled"
+)
+
 // Admin adjustment type constants
 const (
 	AdjustmentTypeAdminBalance     = "admin_balance"     // 管理员调整余额
@@ -56,6 +62,9 @@ const (
 	SubscriptionStatusExpired   = "expired"
 	SubscriptionStatusSuspended = "suspended"
 )
+
+// LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。
+const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
 
 // Setting keys
 const (
@@ -90,6 +99,7 @@ const (
 	SettingKeyAPIBaseURL   = "api_base_url"  // API端点地址（用于客户端配置和导入）
 	SettingKeyContactInfo  = "contact_info"  // 客服联系方式
 	SettingKeyDocURL       = "doc_url"       // 文档链接
+	SettingKeyHomeContent  = "home_content"  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
 
 	// 默认配置
 	SettingKeyDefaultConcurrency = "default_concurrency" // 新用户默认并发量

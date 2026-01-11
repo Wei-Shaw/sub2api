@@ -294,6 +294,13 @@ type DatabaseConfig struct {
 REDACTED
 
 func (d *DatabaseConfig) DSN() string {
+	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
+	if d.Password == "" {
+		return fmt.Sprintf(
+			"host=%s port=%d user=%s dbname=%s sslmode=%s",
+			d.Host, d.Port, d.User, d.DBName, d.SSLMode,
+		)
+REDACTED
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode,
@@ -304,6 +311,13 @@ REDACTED
 func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 	if tz == "" {
 		tz = "Asia/Shanghai"
+REDACTED
+	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
+	if d.Password == "" {
+		return fmt.Sprintf(
+			"host=%s port=%d user=%s dbname=%s sslmode=%s TimeZone=%s",
+			d.Host, d.Port, d.User, d.DBName, d.SSLMode, tz,
+		)
 REDACTED
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
@@ -538,6 +552,22 @@ REDACTED)
 	// Turnstile
 	viper.SetDefault("turnstile.required", false)
 
+	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	viper.SetDefault("linuxdo_connect.enabled", false)
+	viper.SetDefault("linuxdo_connect.client_id", "")
+	viper.SetDefault("linuxdo_connect.client_secret", "")
+	viper.SetDefault("linuxdo_connect.authorize_url", "https://connect.linux.do/oauth2/authorize")
+	viper.SetDefault("linuxdo_connect.token_url", "https://connect.linux.do/oauth2/token")
+	viper.SetDefault("linuxdo_connect.userinfo_url", "https://connect.linux.do/api/user")
+	viper.SetDefault("linuxdo_connect.scopes", "user")
+	viper.SetDefault("linuxdo_connect.redirect_url", "")
+	viper.SetDefault("linuxdo_connect.frontend_redirect_url", "/auth/linuxdo/callback")
+	viper.SetDefault("linuxdo_connect.token_auth_method", "client_secret_post")
+	viper.SetDefault("linuxdo_connect.use_pkce", false)
+	viper.SetDefault("linuxdo_connect.userinfo_email_path", "")
+	viper.SetDefault("linuxdo_connect.userinfo_id_path", "")
+	viper.SetDefault("linuxdo_connect.userinfo_username_path", "")
+
 	// Database
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", 5432)
@@ -658,6 +688,61 @@ REDACTED
 REDACTED
 	if c.Security.CSP.Enabled && strings.TrimSpace(c.Security.CSP.Policy) == "" {
 		return fmt.Errorf("security.csp.policy is required when CSP is enabled")
+REDACTED
+	if c.LinuxDo.Enabled {
+		if strings.TrimSpace(c.LinuxDo.ClientID) == "" {
+			return fmt.Errorf("linuxdo_connect.client_id is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.AuthorizeURL) == "" {
+			return fmt.Errorf("linuxdo_connect.authorize_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.TokenURL) == "" {
+			return fmt.Errorf("linuxdo_connect.token_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.UserInfoURL) == "" {
+			return fmt.Errorf("linuxdo_connect.userinfo_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.RedirectURL) == "" {
+			return fmt.Errorf("linuxdo_connect.redirect_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+		method := strings.ToLower(strings.TrimSpace(c.LinuxDo.TokenAuthMethod))
+		switch method {
+		case "", "client_secret_post", "client_secret_basic", "none":
+		default:
+			return fmt.Errorf("linuxdo_connect.token_auth_method must be one of: client_secret_post/client_secret_basic/none")
+	REDACTED
+		if method == "none" && !c.LinuxDo.UsePKCE {
+			return fmt.Errorf("linuxdo_connect.use_pkce must be true when linuxdo_connect.token_auth_method=none")
+	REDACTED
+		if (method == "" || method == "client_secret_post" || method == "client_secret_basic") &&
+			strings.TrimSpace(c.LinuxDo.ClientSecret) == "" {
+			return fmt.Errorf("linuxdo_connect.client_secret is required when linuxdo_connect.enabled=true and token_auth_method is client_secret_post/client_secret_basic")
+	REDACTED
+		if strings.TrimSpace(c.LinuxDo.FrontendRedirectURL) == "" {
+			return fmt.Errorf("linuxdo_connect.frontend_redirect_url is required when linuxdo_connect.enabled=true")
+	REDACTED
+
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.AuthorizeURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.authorize_url invalid: %w", err)
+	REDACTED
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.TokenURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.token_url invalid: %w", err)
+	REDACTED
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.UserInfoURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.userinfo_url invalid: %w", err)
+	REDACTED
+		if err := ValidateAbsoluteHTTPURL(c.LinuxDo.RedirectURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.redirect_url invalid: %w", err)
+	REDACTED
+		if err := ValidateFrontendRedirectURL(c.LinuxDo.FrontendRedirectURL); err != nil {
+			return fmt.Errorf("linuxdo_connect.frontend_redirect_url invalid: %w", err)
+	REDACTED
+
+		warnIfInsecureURL("linuxdo_connect.authorize_url", c.LinuxDo.AuthorizeURL)
+		warnIfInsecureURL("linuxdo_connect.token_url", c.LinuxDo.TokenURL)
+		warnIfInsecureURL("linuxdo_connect.userinfo_url", c.LinuxDo.UserInfoURL)
+		warnIfInsecureURL("linuxdo_connect.redirect_url", c.LinuxDo.RedirectURL)
+		warnIfInsecureURL("linuxdo_connect.frontend_redirect_url", c.LinuxDo.FrontendRedirectURL)
 REDACTED
 	if c.Billing.CircuitBreaker.Enabled {
 		if c.Billing.CircuitBreaker.FailureThreshold <= 0 {
@@ -927,4 +1012,14 @@ REDACTED
 // isHTTPScheme 检查是否为 HTTP 或 HTTPS 协议
 func isHTTPScheme(scheme string) bool {
 	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
+REDACTED
+
+func warnIfInsecureURL(field, raw string) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return
+REDACTED
+	if strings.EqualFold(u.Scheme, "http") {
+		log.Printf("Warning: %s uses http scheme; use https in production to avoid token leakage.", field)
+REDACTED
 REDACTED

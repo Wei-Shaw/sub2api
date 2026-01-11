@@ -16,4 +16,6 @@ const (
 
 	// IsClaudeCodeClient 标识当前请求是否来自 Claude Code 客户端
 	IsClaudeCodeClient Key = "ctx_is_claude_code_client"
+	// Group 认证后的分组信息，由 API Key 认证中间件设置
+	Group Key = "ctx_group"
 )

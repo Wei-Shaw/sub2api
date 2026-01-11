@@ -148,8 +148,9 @@ export default {
     contactSupport: 'Contact Support',
     add: 'Add',
     invalidEmail: 'Please enter a valid email address',
-        selectOption: 'Select an option',
-        searchPlaceholder: 'Search...', 
+    optional: 'optional',
+    selectOption: 'Select an option',
+    searchPlaceholder: 'Search...', 
         noOptionsFound: 'No options found',
         noGroupsAvailable: 'No groups available',
         unknownError: 'Unknown error occurred',
@@ -181,6 +182,7 @@ export default {
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
+    promoCodes: 'Promo Codes',
     settings: 'Settings',
     myAccount: 'My Account',
     lightMode: 'Light Mode',
@@ -233,6 +235,17 @@ export default {
     sendingCode: 'Sending...',
     clickToResend: 'Click to resend code',
     resendCode: 'Resend verification code',
+    promoCodeLabel: 'Promo Code',
+    promoCodePlaceholder: 'Enter promo code (optional)',
+    promoCodeValid: 'Valid! You will receive ${amountREDACTED bonus balance',
+    promoCodeInvalid: 'Invalid promo code',
+    promoCodeNotFound: 'Promo code not found',
+    promoCodeExpired: 'This promo code has expired',
+    promoCodeDisabled: 'This promo code is disabled',
+    promoCodeMaxUsed: 'This promo code has reached its usage limit',
+    promoCodeAlreadyUsed: 'You have already used this promo code',
+    promoCodeValidating: 'Promo code is being validated, please wait',
+    promoCodeInvalidCannotRegister: 'Invalid promo code. Please check and try again or clear the promo code field',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',
@@ -1726,6 +1739,65 @@ export default {
       REDACTED
     REDACTED,
 
+    // Promo Codes
+    promo: {
+      title: 'Promo Code Management',
+      description: 'Create and manage registration promo codes',
+      createCode: 'Create Promo Code',
+      editCode: 'Edit Promo Code',
+      deleteCode: 'Delete Promo Code',
+      searchCodes: 'Search codes...',
+      allStatus: 'All Status',
+      columns: {
+        code: 'Code',
+        bonusAmount: 'Bonus Amount',
+        maxUses: 'Max Uses',
+        usedCount: 'Used',
+        usage: 'Usage',
+        status: 'Status',
+        expiresAt: 'Expires At',
+        createdAt: 'Created At',
+        actions: 'Actions'
+      REDACTED,
+      // Form labels (flat structure for template usage)
+      code: 'Promo Code',
+      autoGenerate: 'auto-generate if empty',
+      codePlaceholder: 'Enter promo code or leave empty',
+      bonusAmount: 'Bonus Amount ($)',
+      maxUses: 'Max Uses',
+      zeroUnlimited: '0 = unlimited',
+      expiresAt: 'Expires At',
+      notes: 'Notes',
+      notesPlaceholder: 'Optional notes for this code',
+      status: 'Status',
+      neverExpires: 'Never expires',
+      // Status labels
+      statusActive: 'Active',
+      statusDisabled: 'Disabled',
+      statusExpired: 'Expired',
+      statusMaxUsed: 'Used Up',
+      // Usage records
+      usageRecords: 'Usage Records',
+      viewUsages: 'View Usages',
+      noUsages: 'No usage records yet',
+      userPrefix: 'User #{idREDACTED',
+      copied: 'Copied!',
+      // Messages
+      noCodesYet: 'No promo codes yet',
+      createFirstCode: 'Create your first promo code to offer registration bonuses.',
+      codeCreated: 'Promo code created successfully',
+      codeUpdated: 'Promo code updated successfully',
+      codeDeleted: 'Promo code deleted successfully',
+      deleteCodeConfirm: 'Are you sure you want to delete this promo code? This action cannot be undone.',
+      copyRegisterLink: 'Copy register link',
+      registerLinkCopied: 'Register link copied to clipboard',
+      failedToLoad: 'Failed to load promo codes',
+      failedToCreate: 'Failed to create promo code',
+      failedToUpdate: 'Failed to update promo code',
+      failedToDelete: 'Failed to delete promo code',
+      failedToLoadUsages: 'Failed to load usage records'
+    REDACTED,
+
     // Usage Records
     usage: {
       title: 'Usage Records',
@@ -2147,6 +2219,7 @@ export default {
         loadFailed: 'Failed to load concurrency data'
       REDACTED,
       realtime: {
+        title: 'Realtime',
         connected: 'Realtime connected',
         connecting: 'Realtime connecting',
         reconnecting: 'Realtime reconnecting',
@@ -2270,7 +2343,11 @@ export default {
         logoHint: 'PNG, JPG, or SVG. Max 300KB. Recommended: 80x80px square image.',
         logoSizeError: 'Image size exceeds 300KB limit ({sizeREDACTEDKB)',
         logoTypeError: 'Please select an image file',
-        logoReadError: 'Failed to read the image file'
+        logoReadError: 'Failed to read the image file',
+        homeContent: 'Home Page Content',
+        homeContentPlaceholder: 'Enter custom content for the home page. Supports Markdown & HTML. If a URL is entered, it will be displayed as an iframe.',
+        homeContentHint: 'Customize the home page content. Supports Markdown/HTML. If you enter a URL (starting with http:// or https://), it will be used as an iframe src to embed an external page. When set, the default status information will no longer be displayed.',
+        homeContentIframeWarning: '⚠️ iframe mode note: Some websites have X-Frame-Options or CSP security policies that prevent embedding in iframes. If the page appears blank or shows an error, please verify the target website allows embedding, or consider using HTML mode to build your own content.'
       REDACTED,
       smtp: {
         title: 'SMTP Settings',

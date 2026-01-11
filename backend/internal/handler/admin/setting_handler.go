@@ -2,8 +2,10 @@ package admin
 
 import (
 	"log"
+	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -38,37 +40,42 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled:          settings.RegistrationEnabled,
-		EmailVerifyEnabled:           settings.EmailVerifyEnabled,
-		SMTPHost:                     settings.SMTPHost,
-		SMTPPort:                     settings.SMTPPort,
-		SMTPUsername:                 settings.SMTPUsername,
-		SMTPPasswordConfigured:       settings.SMTPPasswordConfigured,
-		SMTPFrom:                     settings.SMTPFrom,
-		SMTPFromName:                 settings.SMTPFromName,
-		SMTPUseTLS:                   settings.SMTPUseTLS,
-		TurnstileEnabled:             settings.TurnstileEnabled,
-		TurnstileSiteKey:             settings.TurnstileSiteKey,
-		TurnstileSecretKeyConfigured: settings.TurnstileSecretKeyConfigured,
-		SiteName:                     settings.SiteName,
-		SiteLogo:                     settings.SiteLogo,
-		SiteSubtitle:                 settings.SiteSubtitle,
-		APIBaseURL:                   settings.APIBaseURL,
-		ContactInfo:                  settings.ContactInfo,
-		DocURL:                       settings.DocURL,
-		DefaultConcurrency:           settings.DefaultConcurrency,
-		DefaultBalance:               settings.DefaultBalance,
-		EnableModelFallback:          settings.EnableModelFallback,
-		FallbackModelAnthropic:       settings.FallbackModelAnthropic,
-		FallbackModelOpenAI:          settings.FallbackModelOpenAI,
-		FallbackModelGemini:          settings.FallbackModelGemini,
-		FallbackModelAntigravity:     settings.FallbackModelAntigravity,
-		EnableIdentityPatch:          settings.EnableIdentityPatch,
-		IdentityPatchPrompt:          settings.IdentityPatchPrompt,
-		OpsMonitoringEnabled:         settings.OpsMonitoringEnabled,
-		OpsRealtimeMonitoringEnabled: settings.OpsRealtimeMonitoringEnabled,
-		OpsQueryModeDefault:          settings.OpsQueryModeDefault,
-		OpsMetricsIntervalSeconds:    settings.OpsMetricsIntervalSeconds,
+		RegistrationEnabled:                  settings.RegistrationEnabled,
+		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
+		SMTPHost:                             settings.SMTPHost,
+		SMTPPort:                             settings.SMTPPort,
+		SMTPUsername:                         settings.SMTPUsername,
+		SMTPPasswordConfigured:               settings.SMTPPasswordConfigured,
+		SMTPFrom:                             settings.SMTPFrom,
+		SMTPFromName:                         settings.SMTPFromName,
+		SMTPUseTLS:                           settings.SMTPUseTLS,
+		TurnstileEnabled:                     settings.TurnstileEnabled,
+		TurnstileSiteKey:                     settings.TurnstileSiteKey,
+		TurnstileSecretKeyConfigured:         settings.TurnstileSecretKeyConfigured,
+		LinuxDoConnectEnabled:                settings.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:               settings.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecretConfigured: settings.LinuxDoConnectClientSecretConfigured,
+		LinuxDoConnectRedirectURL:            settings.LinuxDoConnectRedirectURL,
+		SiteName:                             settings.SiteName,
+		SiteLogo:                             settings.SiteLogo,
+		SiteSubtitle:                         settings.SiteSubtitle,
+		APIBaseURL:                           settings.APIBaseURL,
+		ContactInfo:                          settings.ContactInfo,
+		DocURL:                               settings.DocURL,
+		HomeContent:                          settings.HomeContent,
+		DefaultConcurrency:                   settings.DefaultConcurrency,
+		DefaultBalance:                       settings.DefaultBalance,
+		EnableModelFallback:                  settings.EnableModelFallback,
+		FallbackModelAnthropic:               settings.FallbackModelAnthropic,
+		FallbackModelOpenAI:                  settings.FallbackModelOpenAI,
+		FallbackModelGemini:                  settings.FallbackModelGemini,
+		FallbackModelAntigravity:             settings.FallbackModelAntigravity,
+		EnableIdentityPatch:                  settings.EnableIdentityPatch,
+		IdentityPatchPrompt:                  settings.IdentityPatchPrompt,
+		OpsMonitoringEnabled:                 settings.OpsMonitoringEnabled,
+		OpsRealtimeMonitoringEnabled:         settings.OpsRealtimeMonitoringEnabled,
+		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
+		OpsMetricsIntervalSeconds:            settings.OpsMetricsIntervalSeconds,
 REDACTED)
 REDACTED
 
@@ -92,6 +99,12 @@ type UpdateSettingsRequest struct {
 	TurnstileSiteKey   string `json:"turnstile_site_key"`
 	TurnstileSecretKey string `json:"turnstile_secret_key"`
 
+	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	LinuxDoConnectEnabled      bool   `json:"linuxdo_connect_enabled"`
+	LinuxDoConnectClientID     string `json:"linuxdo_connect_client_id"`
+	LinuxDoConnectClientSecret string `json:"linuxdo_connect_client_secret"`
+	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
+
 	// OEM设置
 	SiteName     string `json:"site_name"`
 	SiteLogo     string `json:"site_logo"`
@@ -99,6 +112,7 @@ type UpdateSettingsRequest struct {
 	APIBaseURL   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
 	DocURL       string `json:"doc_url"`
+	HomeContent  string `json:"home_content"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
@@ -175,6 +189,35 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// LinuxDo Connect 参数验证
+	if req.LinuxDoConnectEnabled {
+		req.LinuxDoConnectClientID = strings.TrimSpace(req.LinuxDoConnectClientID)
+		req.LinuxDoConnectClientSecret = strings.TrimSpace(req.LinuxDoConnectClientSecret)
+		req.LinuxDoConnectRedirectURL = strings.TrimSpace(req.LinuxDoConnectRedirectURL)
+
+		if req.LinuxDoConnectClientID == "" {
+			response.BadRequest(c, "LinuxDo Client ID is required when enabled")
+			return
+	REDACTED
+		if req.LinuxDoConnectRedirectURL == "" {
+			response.BadRequest(c, "LinuxDo Redirect URL is required when enabled")
+			return
+	REDACTED
+		if err := config.ValidateAbsoluteHTTPURL(req.LinuxDoConnectRedirectURL); err != nil {
+			response.BadRequest(c, "LinuxDo Redirect URL must be an absolute http(s) URL")
+			return
+	REDACTED
+
+		// 如果未提供 client_secret，则保留现有值（如有）。
+		if req.LinuxDoConnectClientSecret == "" {
+			if previousSettings.LinuxDoConnectClientSecret == "" {
+				response.BadRequest(c, "LinuxDo Client Secret is required when enabled")
+				return
+		REDACTED
+			req.LinuxDoConnectClientSecret = previousSettings.LinuxDoConnectClientSecret
+	REDACTED
+REDACTED
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -188,33 +231,38 @@ REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:      req.RegistrationEnabled,
-		EmailVerifyEnabled:       req.EmailVerifyEnabled,
-		SMTPHost:                 req.SMTPHost,
-		SMTPPort:                 req.SMTPPort,
-		SMTPUsername:             req.SMTPUsername,
-		SMTPPassword:             req.SMTPPassword,
-		SMTPFrom:                 req.SMTPFrom,
-		SMTPFromName:             req.SMTPFromName,
-		SMTPUseTLS:               req.SMTPUseTLS,
-		TurnstileEnabled:         req.TurnstileEnabled,
-		TurnstileSiteKey:         req.TurnstileSiteKey,
-		TurnstileSecretKey:       req.TurnstileSecretKey,
-		SiteName:                 req.SiteName,
-		SiteLogo:                 req.SiteLogo,
-		SiteSubtitle:             req.SiteSubtitle,
-		APIBaseURL:               req.APIBaseURL,
-		ContactInfo:              req.ContactInfo,
-		DocURL:                   req.DocURL,
-		DefaultConcurrency:       req.DefaultConcurrency,
-		DefaultBalance:           req.DefaultBalance,
-		EnableModelFallback:      req.EnableModelFallback,
-		FallbackModelAnthropic:   req.FallbackModelAnthropic,
-		FallbackModelOpenAI:      req.FallbackModelOpenAI,
-		FallbackModelGemini:      req.FallbackModelGemini,
-		FallbackModelAntigravity: req.FallbackModelAntigravity,
-		EnableIdentityPatch:      req.EnableIdentityPatch,
-		IdentityPatchPrompt:      req.IdentityPatchPrompt,
+		RegistrationEnabled:        req.RegistrationEnabled,
+		EmailVerifyEnabled:         req.EmailVerifyEnabled,
+		SMTPHost:                   req.SMTPHost,
+		SMTPPort:                   req.SMTPPort,
+		SMTPUsername:               req.SMTPUsername,
+		SMTPPassword:               req.SMTPPassword,
+		SMTPFrom:                   req.SMTPFrom,
+		SMTPFromName:               req.SMTPFromName,
+		SMTPUseTLS:                 req.SMTPUseTLS,
+		TurnstileEnabled:           req.TurnstileEnabled,
+		TurnstileSiteKey:           req.TurnstileSiteKey,
+		TurnstileSecretKey:         req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:      req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:     req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret: req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:  req.LinuxDoConnectRedirectURL,
+		SiteName:                   req.SiteName,
+		SiteLogo:                   req.SiteLogo,
+		SiteSubtitle:               req.SiteSubtitle,
+		APIBaseURL:                 req.APIBaseURL,
+		ContactInfo:                req.ContactInfo,
+		DocURL:                     req.DocURL,
+		HomeContent:                req.HomeContent,
+		DefaultConcurrency:         req.DefaultConcurrency,
+		DefaultBalance:             req.DefaultBalance,
+		EnableModelFallback:        req.EnableModelFallback,
+		FallbackModelAnthropic:     req.FallbackModelAnthropic,
+		FallbackModelOpenAI:        req.FallbackModelOpenAI,
+		FallbackModelGemini:        req.FallbackModelGemini,
+		FallbackModelAntigravity:   req.FallbackModelAntigravity,
+		EnableIdentityPatch:        req.EnableIdentityPatch,
+		IdentityPatchPrompt:        req.IdentityPatchPrompt,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -256,37 +304,42 @@ REDACTED
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
-		RegistrationEnabled:          updatedSettings.RegistrationEnabled,
-		EmailVerifyEnabled:           updatedSettings.EmailVerifyEnabled,
-		SMTPHost:                     updatedSettings.SMTPHost,
-		SMTPPort:                     updatedSettings.SMTPPort,
-		SMTPUsername:                 updatedSettings.SMTPUsername,
-		SMTPPasswordConfigured:       updatedSettings.SMTPPasswordConfigured,
-		SMTPFrom:                     updatedSettings.SMTPFrom,
-		SMTPFromName:                 updatedSettings.SMTPFromName,
-		SMTPUseTLS:                   updatedSettings.SMTPUseTLS,
-		TurnstileEnabled:             updatedSettings.TurnstileEnabled,
-		TurnstileSiteKey:             updatedSettings.TurnstileSiteKey,
-		TurnstileSecretKeyConfigured: updatedSettings.TurnstileSecretKeyConfigured,
-		SiteName:                     updatedSettings.SiteName,
-		SiteLogo:                     updatedSettings.SiteLogo,
-		SiteSubtitle:                 updatedSettings.SiteSubtitle,
-		APIBaseURL:                   updatedSettings.APIBaseURL,
-		ContactInfo:                  updatedSettings.ContactInfo,
-		DocURL:                       updatedSettings.DocURL,
-		DefaultConcurrency:           updatedSettings.DefaultConcurrency,
-		DefaultBalance:               updatedSettings.DefaultBalance,
-		EnableModelFallback:          updatedSettings.EnableModelFallback,
-		FallbackModelAnthropic:       updatedSettings.FallbackModelAnthropic,
-		FallbackModelOpenAI:          updatedSettings.FallbackModelOpenAI,
-		FallbackModelGemini:          updatedSettings.FallbackModelGemini,
-		FallbackModelAntigravity:     updatedSettings.FallbackModelAntigravity,
-		EnableIdentityPatch:          updatedSettings.EnableIdentityPatch,
-		IdentityPatchPrompt:          updatedSettings.IdentityPatchPrompt,
-		OpsMonitoringEnabled:         updatedSettings.OpsMonitoringEnabled,
-		OpsRealtimeMonitoringEnabled: updatedSettings.OpsRealtimeMonitoringEnabled,
-		OpsQueryModeDefault:          updatedSettings.OpsQueryModeDefault,
-		OpsMetricsIntervalSeconds:    updatedSettings.OpsMetricsIntervalSeconds,
+		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
+		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
+		SMTPHost:                             updatedSettings.SMTPHost,
+		SMTPPort:                             updatedSettings.SMTPPort,
+		SMTPUsername:                         updatedSettings.SMTPUsername,
+		SMTPPasswordConfigured:               updatedSettings.SMTPPasswordConfigured,
+		SMTPFrom:                             updatedSettings.SMTPFrom,
+		SMTPFromName:                         updatedSettings.SMTPFromName,
+		SMTPUseTLS:                           updatedSettings.SMTPUseTLS,
+		TurnstileEnabled:                     updatedSettings.TurnstileEnabled,
+		TurnstileSiteKey:                     updatedSettings.TurnstileSiteKey,
+		TurnstileSecretKeyConfigured:         updatedSettings.TurnstileSecretKeyConfigured,
+		LinuxDoConnectEnabled:                updatedSettings.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:               updatedSettings.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecretConfigured: updatedSettings.LinuxDoConnectClientSecretConfigured,
+		LinuxDoConnectRedirectURL:            updatedSettings.LinuxDoConnectRedirectURL,
+		SiteName:                             updatedSettings.SiteName,
+		SiteLogo:                             updatedSettings.SiteLogo,
+		SiteSubtitle:                         updatedSettings.SiteSubtitle,
+		APIBaseURL:                           updatedSettings.APIBaseURL,
+		ContactInfo:                          updatedSettings.ContactInfo,
+		DocURL:                               updatedSettings.DocURL,
+		HomeContent:                          updatedSettings.HomeContent,
+		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
+		DefaultBalance:                       updatedSettings.DefaultBalance,
+		EnableModelFallback:                  updatedSettings.EnableModelFallback,
+		FallbackModelAnthropic:               updatedSettings.FallbackModelAnthropic,
+		FallbackModelOpenAI:                  updatedSettings.FallbackModelOpenAI,
+		FallbackModelGemini:                  updatedSettings.FallbackModelGemini,
+		FallbackModelAntigravity:             updatedSettings.FallbackModelAntigravity,
+		EnableIdentityPatch:                  updatedSettings.EnableIdentityPatch,
+		IdentityPatchPrompt:                  updatedSettings.IdentityPatchPrompt,
+		OpsMonitoringEnabled:                 updatedSettings.OpsMonitoringEnabled,
+		OpsRealtimeMonitoringEnabled:         updatedSettings.OpsRealtimeMonitoringEnabled,
+		OpsQueryModeDefault:                  updatedSettings.OpsQueryModeDefault,
+		OpsMetricsIntervalSeconds:            updatedSettings.OpsMetricsIntervalSeconds,
 REDACTED)
 REDACTED
 
@@ -348,6 +401,18 @@ REDACTED
 	if req.TurnstileSecretKey != "" {
 		changed = append(changed, "turnstile_secret_key")
 REDACTED
+	if before.LinuxDoConnectEnabled != after.LinuxDoConnectEnabled {
+		changed = append(changed, "linuxdo_connect_enabled")
+REDACTED
+	if before.LinuxDoConnectClientID != after.LinuxDoConnectClientID {
+		changed = append(changed, "linuxdo_connect_client_id")
+REDACTED
+	if req.LinuxDoConnectClientSecret != "" {
+		changed = append(changed, "linuxdo_connect_client_secret")
+REDACTED
+	if before.LinuxDoConnectRedirectURL != after.LinuxDoConnectRedirectURL {
+		changed = append(changed, "linuxdo_connect_redirect_url")
+REDACTED
 	if before.SiteName != after.SiteName {
 		changed = append(changed, "site_name")
 REDACTED
@@ -365,6 +430,9 @@ REDACTED
 REDACTED
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")
+REDACTED
+	if before.HomeContent != after.HomeContent {
+		changed = append(changed, "home_content")
 REDACTED
 	if before.DefaultConcurrency != after.DefaultConcurrency {
 		changed = append(changed, "default_concurrency")
@@ -386,6 +454,12 @@ REDACTED
 REDACTED
 	if before.FallbackModelAntigravity != after.FallbackModelAntigravity {
 		changed = append(changed, "fallback_model_antigravity")
+REDACTED
+	if before.EnableIdentityPatch != after.EnableIdentityPatch {
+		changed = append(changed, "enable_identity_patch")
+REDACTED
+	if before.IdentityPatchPrompt != after.IdentityPatchPrompt {
+		changed = append(changed, "identity_patch_prompt")
 REDACTED
 	if before.OpsMonitoringEnabled != after.OpsMonitoringEnabled {
 		changed = append(changed, "ops_monitoring_enabled")

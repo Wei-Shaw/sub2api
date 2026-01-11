@@ -145,6 +145,7 @@ export default {
     contactSupport: '联系客服',
     add: '添加',
     invalidEmail: '请输入有效的邮箱地址',
+    optional: '可选',
     selectOption: '请选择',
     searchPlaceholder: '搜索...',
     noOptionsFound: '无匹配选项',
@@ -179,6 +180,7 @@ export default {
     proxies: 'IP管理',
     redeemCodes: '兑换码',
     ops: '运维监控',
+    promoCodes: '优惠码',
     settings: '系统设置',
     myAccount: '我的账户',
     lightMode: '浅色模式',
@@ -231,6 +233,17 @@ export default {
     sendingCode: '发送中...',
     clickToResend: '点击重新发送验证码',
     resendCode: '重新发送验证码',
+    promoCodeLabel: '优惠码',
+    promoCodePlaceholder: '输入优惠码（可选）',
+    promoCodeValid: '有效！注册后将获得 ${amountREDACTED 赠送余额',
+    promoCodeInvalid: '无效的优惠码',
+    promoCodeNotFound: '优惠码不存在',
+    promoCodeExpired: '此优惠码已过期',
+    promoCodeDisabled: '此优惠码已被禁用',
+    promoCodeMaxUsed: '此优惠码已达到使用上限',
+    promoCodeAlreadyUsed: '您已使用过此优惠码',
+    promoCodeValidating: '优惠码正在验证中，请稍候',
+    promoCodeInvalidCannotRegister: '优惠码无效，请检查后重试或清空优惠码',
     linuxdo: {
       signIn: '使用 Linux.do 登录',
       orContinue: '或使用邮箱密码继续',
@@ -1871,6 +1884,65 @@ export default {
       failedToDelete: '删除兑换码失败'
     REDACTED,
 
+    // Promo Codes
+    promo: {
+      title: '优惠码管理',
+      description: '创建和管理注册优惠码',
+      createCode: '创建优惠码',
+      editCode: '编辑优惠码',
+      deleteCode: '删除优惠码',
+      searchCodes: '搜索优惠码...',
+      allStatus: '全部状态',
+      columns: {
+        code: '优惠码',
+        bonusAmount: '赠送金额',
+        maxUses: '最大使用次数',
+        usedCount: '已使用',
+        usage: '使用量',
+        status: '状态',
+        expiresAt: '过期时间',
+        createdAt: '创建时间',
+        actions: '操作'
+      REDACTED,
+      // 表单标签（扁平结构便于模板使用）
+      code: '优惠码',
+      autoGenerate: '留空自动生成',
+      codePlaceholder: '输入优惠码或留空',
+      bonusAmount: '赠送金额 ($)',
+      maxUses: '最大使用次数',
+      zeroUnlimited: '0 = 无限制',
+      expiresAt: '过期时间',
+      notes: '备注',
+      notesPlaceholder: '可选备注信息',
+      status: '状态',
+      neverExpires: '永不过期',
+      // 状态标签
+      statusActive: '启用',
+      statusDisabled: '禁用',
+      statusExpired: '已过期',
+      statusMaxUsed: '已用完',
+      // 使用记录
+      usageRecords: '使用记录',
+      viewUsages: '查看使用记录',
+      noUsages: '暂无使用记录',
+      userPrefix: '用户 #{idREDACTED',
+      copied: '已复制！',
+      // 消息
+      noCodesYet: '暂无优惠码',
+      createFirstCode: '创建您的第一个优惠码，为新用户提供注册奖励。',
+      codeCreated: '优惠码创建成功',
+      codeUpdated: '优惠码更新成功',
+      codeDeleted: '优惠码删除成功',
+      deleteCodeConfirm: '确定要删除此优惠码吗？此操作无法撤销。',
+      copyRegisterLink: '复制注册链接',
+      registerLinkCopied: '注册链接已复制到剪贴板',
+      failedToLoad: '加载优惠码失败',
+      failedToCreate: '创建优惠码失败',
+      failedToUpdate: '更新优惠码失败',
+      failedToDelete: '删除优惠码失败',
+      failedToLoadUsages: '加载使用记录失败'
+    REDACTED,
+
     // Usage Records
     usage: {
       title: '使用记录',
@@ -2292,6 +2364,7 @@ export default {
         loadFailed: '加载并发数据失败'
       REDACTED,
       realtime: {
+        title: '实时信息',
         connected: '实时已连接',
         connecting: '实时连接中',
         reconnecting: '实时重连中',
@@ -2413,7 +2486,11 @@ export default {
         logoHint: 'PNG、JPG 或 SVG 格式，最大 300KB。建议：80x80px 正方形图片。',
         logoSizeError: '图片大小超过 300KB 限制（{sizeREDACTEDKB）',
         logoTypeError: '请选择图片文件',
-        logoReadError: '读取图片文件失败'
+        logoReadError: '读取图片文件失败',
+        homeContent: '首页内容',
+        homeContentPlaceholder: '在此输入首页内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性。',
+        homeContentHint: '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
+        homeContentIframeWarning: '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。'
       REDACTED,
       smtp: {
         title: 'SMTP 设置',

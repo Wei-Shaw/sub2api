@@ -32,6 +32,8 @@ REDACTED
 type SettingService struct {
 	settingRepo SettingRepository
 	cfg         *config.Config
+	onUpdate    func() // Callback when settings are updated (for cache invalidation)
+	version     string // Application version
 REDACTED
 
 // NewSettingService 创建系统设置服务实例
@@ -65,11 +67,20 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
+		SettingKeyHomeContent,
+		SettingKeyLinuxDoConnectEnabled,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
 		return nil, fmt.Errorf("get public settings: %w", err)
+REDACTED
+
+	linuxDoEnabled := false
+	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok {
+		linuxDoEnabled = raw == "true"
+REDACTED else {
+		linuxDoEnabled = s.cfg != nil && s.cfg.LinuxDo.Enabled
 REDACTED
 
 	return &PublicSettings{
@@ -83,6 +94,59 @@ REDACTED
 		APIBaseURL:          settings[SettingKeyAPIBaseURL],
 		ContactInfo:         settings[SettingKeyContactInfo],
 		DocURL:              settings[SettingKeyDocURL],
+		HomeContent:         settings[SettingKeyHomeContent],
+		LinuxDoOAuthEnabled: linuxDoEnabled,
+REDACTED, nil
+REDACTED
+
+// SetOnUpdateCallback sets a callback function to be called when settings are updated
+// This is used for cache invalidation (e.g., HTML cache in frontend server)
+func (s *SettingService) SetOnUpdateCallback(callback func()) {
+	s.onUpdate = callback
+REDACTED
+
+// SetVersion sets the application version for injection into public settings
+func (s *SettingService) SetVersion(version string) {
+	s.version = version
+REDACTED
+
+// GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection
+// This implements the web.PublicSettingsProvider interface
+func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any, error) {
+	settings, err := s.GetPublicSettings(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// Return a struct that matches the frontend's expected format
+	return &struct {
+		RegistrationEnabled bool   `json:"registration_enabled"`
+		EmailVerifyEnabled  bool   `json:"email_verify_enabled"`
+		TurnstileEnabled    bool   `json:"turnstile_enabled"`
+		TurnstileSiteKey    string `json:"turnstile_site_key,omitempty"`
+		SiteName            string `json:"site_name"`
+		SiteLogo            string `json:"site_logo,omitempty"`
+		SiteSubtitle        string `json:"site_subtitle,omitempty"`
+		APIBaseURL          string `json:"api_base_url,omitempty"`
+		ContactInfo         string `json:"contact_info,omitempty"`
+		DocURL              string `json:"doc_url,omitempty"`
+		HomeContent         string `json:"home_content,omitempty"`
+		LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
+		Version             string `json:"version,omitempty"`
+REDACTED{
+		RegistrationEnabled: settings.RegistrationEnabled,
+		EmailVerifyEnabled:  settings.EmailVerifyEnabled,
+		TurnstileEnabled:    settings.TurnstileEnabled,
+		TurnstileSiteKey:    settings.TurnstileSiteKey,
+		SiteName:            settings.SiteName,
+		SiteLogo:            settings.SiteLogo,
+		SiteSubtitle:        settings.SiteSubtitle,
+		APIBaseURL:          settings.APIBaseURL,
+		ContactInfo:         settings.ContactInfo,
+		DocURL:              settings.DocURL,
+		HomeContent:         settings.HomeContent,
+		LinuxDoOAuthEnabled: settings.LinuxDoOAuthEnabled,
+		Version:             s.version,
 REDACTED, nil
 REDACTED
 
@@ -112,6 +176,14 @@ REDACTED
 		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
 REDACTED
 
+	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
+	updates[SettingKeyLinuxDoConnectClientID] = settings.LinuxDoConnectClientID
+	updates[SettingKeyLinuxDoConnectRedirectURL] = settings.LinuxDoConnectRedirectURL
+	if settings.LinuxDoConnectClientSecret != "" {
+		updates[SettingKeyLinuxDoConnectClientSecret] = settings.LinuxDoConnectClientSecret
+REDACTED
+
 	// OEM设置
 	updates[SettingKeySiteName] = settings.SiteName
 	updates[SettingKeySiteLogo] = settings.SiteLogo
@@ -119,6 +191,7 @@ REDACTED
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
+	updates[SettingKeyHomeContent] = settings.HomeContent
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -143,7 +216,11 @@ REDACTED
 		updates[SettingKeyOpsMetricsIntervalSeconds] = strconv.Itoa(settings.OpsMetricsIntervalSeconds)
 REDACTED
 
-	return s.settingRepo.SetMultiple(ctx, updates)
+	err := s.settingRepo.SetMultiple(ctx, updates)
+	if err == nil && s.onUpdate != nil {
+		s.onUpdate() // Invalidate cache after settings update
+REDACTED
+	return err
 REDACTED
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -260,6 +337,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		APIBaseURL:                   settings[SettingKeyAPIBaseURL],
 		ContactInfo:                  settings[SettingKeyContactInfo],
 		DocURL:                       settings[SettingKeyDocURL],
+		HomeContent:                  settings[SettingKeyHomeContent],
 REDACTED
 
 	// 解析整数类型
@@ -285,6 +363,38 @@ REDACTED
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]
 	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
+
+	// LinuxDo Connect 设置：
+	// - 兼容 config.yaml/env（避免老部署因为未迁移到数据库设置而被意外关闭）
+	// - 支持在后台“系统设置”中覆盖并持久化（存储于 DB）
+	linuxDoBase := config.LinuxDoConnectConfig{REDACTED
+	if s.cfg != nil {
+		linuxDoBase = s.cfg.LinuxDo
+REDACTED
+
+	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok {
+		result.LinuxDoConnectEnabled = raw == "true"
+REDACTED else {
+		result.LinuxDoConnectEnabled = linuxDoBase.Enabled
+REDACTED
+
+	if v, ok := settings[SettingKeyLinuxDoConnectClientID]; ok && strings.TrimSpace(v) != "" {
+		result.LinuxDoConnectClientID = strings.TrimSpace(v)
+REDACTED else {
+		result.LinuxDoConnectClientID = linuxDoBase.ClientID
+REDACTED
+
+	if v, ok := settings[SettingKeyLinuxDoConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		result.LinuxDoConnectRedirectURL = strings.TrimSpace(v)
+REDACTED else {
+		result.LinuxDoConnectRedirectURL = linuxDoBase.RedirectURL
+REDACTED
+
+	result.LinuxDoConnectClientSecret = strings.TrimSpace(settings[SettingKeyLinuxDoConnectClientSecret])
+	if result.LinuxDoConnectClientSecret == "" {
+		result.LinuxDoConnectClientSecret = strings.TrimSpace(linuxDoBase.ClientSecret)
+REDACTED
+	result.LinuxDoConnectClientSecretConfigured = result.LinuxDoConnectClientSecret != ""
 
 	// Model fallback settings
 	result.EnableModelFallback = settings[SettingKeyEnableModelFallback] == "true"
