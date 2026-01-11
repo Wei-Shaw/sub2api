@@ -4,7 +4,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import Select from '@/components/common/Select.vue'
+import Select, { type SelectOption REDACTED from '@/components/common/Select.vue'
 import { opsAPI REDACTED from '@/api/admin/ops'
 import type { AlertRule, MetricType, Operator REDACTED from '../types'
 import type { OpsSeverity REDACTED from '@/api/admin/ops'
@@ -42,17 +42,50 @@ const saving = ref(false)
 const editingId = ref<number | null>(null)
 const draft = ref<AlertRule | null>(null)
 
+type MetricGroup = 'system' | 'group' | 'account'
+
+const metricDefinitions = computed(() => {
+  return [
+    // System-level metrics
+    { type: 'success_rate' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.successRate') REDACTED,
+    { type: 'error_rate' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.errorRate') REDACTED,
+    { type: 'upstream_error_rate' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.upstreamErrorRate') REDACTED,
+    { type: 'p95_latency_ms' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.p95') REDACTED,
+    { type: 'p99_latency_ms' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.p99') REDACTED,
+    { type: 'cpu_usage_percent' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.cpu') REDACTED,
+    { type: 'memory_usage_percent' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.memory') REDACTED,
+    { type: 'concurrency_queue_depth' as MetricType, group: 'system' as const, label: t('admin.ops.alertRules.metrics.queueDepth') REDACTED,
+
+    // Group-level metrics (requires group_id filter)
+    { type: 'group_available_accounts' as MetricType, group: 'group' as const, label: t('admin.ops.alertRules.metrics.groupAvailableAccounts') REDACTED,
+    { type: 'group_available_ratio' as MetricType, group: 'group' as const, label: t('admin.ops.alertRules.metrics.groupAvailableRatio') REDACTED,
+    { type: 'group_rate_limit_ratio' as MetricType, group: 'group' as const, label: t('admin.ops.alertRules.metrics.groupRateLimitRatio') REDACTED,
+
+    // Account-level metrics
+    { type: 'account_rate_limited_count' as MetricType, group: 'account' as const, label: t('admin.ops.alertRules.metrics.accountRateLimitedCount') REDACTED,
+    { type: 'account_error_count' as MetricType, group: 'account' as const, label: t('admin.ops.alertRules.metrics.accountErrorCount') REDACTED,
+    { type: 'account_error_ratio' as MetricType, group: 'account' as const, label: t('admin.ops.alertRules.metrics.accountErrorRatio') REDACTED,
+    { type: 'overload_account_count' as MetricType, group: 'account' as const, label: t('admin.ops.alertRules.metrics.overloadAccountCount') REDACTED
+  ] satisfies Array<{ type: MetricType; group: MetricGroup; label: string REDACTED>
+REDACTED)
+
 const metricOptions = computed(() => {
-  const items: Array<{ value: MetricType; label: string REDACTED> = [
-    { value: 'success_rate', label: t('admin.ops.alertRules.metrics.successRate') REDACTED,
-    { value: 'error_rate', label: t('admin.ops.alertRules.metrics.errorRate') REDACTED,
-    { value: 'p95_latency_ms', label: t('admin.ops.alertRules.metrics.p95') REDACTED,
-    { value: 'p99_latency_ms', label: t('admin.ops.alertRules.metrics.p99') REDACTED,
-    { value: 'cpu_usage_percent', label: t('admin.ops.alertRules.metrics.cpu') REDACTED,
-    { value: 'memory_usage_percent', label: t('admin.ops.alertRules.metrics.memory') REDACTED,
-    { value: 'concurrency_queue_depth', label: t('admin.ops.alertRules.metrics.queueDepth') REDACTED
-  ]
-  return items
+  const buildGroup = (group: MetricGroup): SelectOption[] => {
+    const items = metricDefinitions.value.filter((m) => m.group === group)
+    if (items.length === 0) return []
+    const headerValue = `__group__${groupREDACTED`
+    return [
+      {
+        value: headerValue,
+        label: t(`admin.ops.alertRules.metricGroups.${groupREDACTED`),
+        disabled: true,
+        kind: 'group'
+      REDACTED,
+      ...items.map((m) => ({ value: m.type, label: m.label REDACTED))
+    ]
+  REDACTED
+
+  return [...buildGroup('system'), ...buildGroup('group'), ...buildGroup('account')]
 REDACTED)
 
 const operatorOptions = computed(() => {

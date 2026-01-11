@@ -838,3 +838,38 @@ REDACTED
 	l.sent = append(l.sent, now)
 	return true
 REDACTED
+
+// computeGroupAvailableRatio returns the available percentage for a group.
+// Formula: (AvailableCount / TotalAccounts) * 100.
+// Returns 0 when TotalAccounts is 0.
+func computeGroupAvailableRatio(group *GroupAvailability) float64 {
+	if group == nil || group.TotalAccounts <= 0 {
+		return 0
+REDACTED
+	return (float64(group.AvailableCount) / float64(group.TotalAccounts)) * 100
+REDACTED
+
+// computeGroupRateLimitRatio returns the rate-limited percentage for a group.
+// Formula: (RateLimitCount / TotalAccounts) * 100.
+// Returns 0 when TotalAccounts is 0.
+func computeGroupRateLimitRatio(group *GroupAvailability) float64 {
+	if group == nil || group.TotalAccounts <= 0 {
+		return 0
+REDACTED
+	return (float64(group.RateLimitCount) / float64(group.TotalAccounts)) * 100
+REDACTED
+
+// countAccountsByCondition counts accounts that satisfy the given condition.
+// It iterates over accounts and applies the predicate to each entry.
+func countAccountsByCondition(accounts map[int64]*AccountAvailability, condition func(*AccountAvailability) bool) int64 {
+	if len(accounts) == 0 || condition == nil {
+		return 0
+REDACTED
+	var count int64
+	for _, account := range accounts {
+		if account != nil && condition(account) {
+			count++
+	REDACTED
+REDACTED
+	return count
+REDACTED

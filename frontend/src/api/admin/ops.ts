@@ -592,6 +592,13 @@ export type MetricType =
   | 'cpu_usage_percent'
   | 'memory_usage_percent'
   | 'concurrency_queue_depth'
+  | 'group_available_accounts'
+  | 'group_available_ratio'
+  | 'group_rate_limit_ratio'
+  | 'account_rate_limited_count'
+  | 'account_error_count'
+  | 'account_error_ratio'
+  | 'overload_account_count'
 export type Operator = '>' | '>=' | '<' | '<=' | '==' | '!='
 
 export interface AlertRule {
