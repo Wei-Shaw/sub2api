@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -93,19 +94,23 @@ REDACTED
 		return
 REDACTED
 
-	// For non-Codex CLI requests, set default instructions
 	userAgent := c.GetHeader("User-Agent")
 
 	// 获取客户端 IP
 	clientIP := ip.GetClientIP(c)
 
 	if !openai.IsCodexCLIRequest(userAgent) {
-		reqBody["instructions"] = openai.DefaultInstructions
-		// Re-serialize body
-		body, err = json.Marshal(reqBody)
-		if err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to process request")
-			return
+		existingInstructions, _ := reqBody["instructions"].(string)
+		if strings.TrimSpace(existingInstructions) == "" {
+			if instructions := strings.TrimSpace(service.GetOpenCodeInstructions()); instructions != "" {
+				reqBody["instructions"] = instructions
+				// Re-serialize body
+				body, err = json.Marshal(reqBody)
+				if err != nil {
+					h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to process request")
+					return
+			REDACTED
+		REDACTED
 	REDACTED
 REDACTED
 

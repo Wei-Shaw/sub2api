@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
@@ -528,32 +530,37 @@ REDACTED
 	// Extract model and stream from parsed body
 	reqModel, _ := reqBody["model"].(string)
 	reqStream, _ := reqBody["stream"].(bool)
+	promptCacheKey := ""
+	if v, ok := reqBody["prompt_cache_key"].(string); ok {
+		promptCacheKey = strings.TrimSpace(v)
+REDACTED
 
 	// Track if body needs re-serialization
 	bodyModified := false
 	originalModel := reqModel
 
-	// Apply model mapping
-	mappedModel := account.GetMappedModel(reqModel)
-	if mappedModel != reqModel {
-		reqBody["model"] = mappedModel
-		bodyModified = true
+	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent"))
+
+	// Apply model mapping (skip for Codex CLI for transparent forwarding)
+	mappedModel := reqModel
+	if !isCodexCLI {
+		mappedModel = account.GetMappedModel(reqModel)
+		if mappedModel != reqModel {
+			reqBody["model"] = mappedModel
+			bodyModified = true
+	REDACTED
 REDACTED
 
-	// For OAuth accounts using ChatGPT internal API:
-	// 1. Add store: false
-	// 2. Normalize input format for Codex API compatibility
-	if account.Type == AccountTypeOAuth {
-		reqBody["store"] = false
-		// Codex 上游不接受 max_output_tokens 参数，需要在转发前移除。
-		delete(reqBody, "max_output_tokens")
-		bodyModified = true
-
-		// Normalize input format: convert AI SDK multi-part content format to simplified format
-		// AI SDK sends: {"content": [{"type": "input_text", "text": "..."REDACTED]REDACTED
-		// Codex API expects: {"content": "..."REDACTED
-		if normalizeInputForCodexAPI(reqBody) {
+	if account.Type == AccountTypeOAuth && !isCodexCLI {
+		codexResult := applyCodexOAuthTransform(reqBody)
+		if codexResult.Modified {
 			bodyModified = true
+	REDACTED
+		if codexResult.NormalizedModel != "" {
+			mappedModel = codexResult.NormalizedModel
+	REDACTED
+		if codexResult.PromptCacheKey != "" {
+			promptCacheKey = codexResult.PromptCacheKey
 	REDACTED
 REDACTED
 
@@ -573,7 +580,7 @@ REDACTED
 REDACTED
 
 	// Build upstream request
-	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, reqStream)
+	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -634,7 +641,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool) (*http.Request, error) {
+func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {
@@ -674,12 +681,6 @@ REDACTED
 		if chatgptAccountID != "" {
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 	REDACTED
-		// Set accept header based on stream mode
-		if isStream {
-			req.Header.Set("accept", "text/event-stream")
-	REDACTED else {
-			req.Header.Set("accept", "application/json")
-	REDACTED
 REDACTED
 
 	// Whitelist passthrough headers
@@ -689,6 +690,22 @@ REDACTED
 			for _, v := range values {
 				req.Header.Add(key, v)
 		REDACTED
+	REDACTED
+REDACTED
+	if account.Type == AccountTypeOAuth {
+		req.Header.Set("OpenAI-Beta", "responses=experimental")
+		if isCodexCLI {
+			req.Header.Set("originator", "codex_cli_rs")
+	REDACTED else {
+			req.Header.Set("originator", "opencode")
+	REDACTED
+		req.Header.Set("accept", "text/event-stream")
+		if promptCacheKey != "" {
+			req.Header.Set("conversation_id", promptCacheKey)
+			req.Header.Set("session_id", promptCacheKey)
+	REDACTED else {
+			req.Header.Del("conversation_id")
+			req.Header.Del("session_id")
 	REDACTED
 REDACTED
 
@@ -708,6 +725,7 @@ REDACTED
 
 func (s *OpenAIGatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*OpenAIForwardResult, error) {
 	body, _ := io.ReadAll(resp.Body)
+	logUpstreamErrorBody(account.ID, resp.StatusCode, body)
 
 	// Check custom error codes
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
@@ -764,6 +782,24 @@ REDACTED
 REDACTED)
 
 	return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+REDACTED
+
+func logUpstreamErrorBody(accountID int64, statusCode int, body []byte) {
+	if strings.ToLower(strings.TrimSpace(os.Getenv("GATEWAY_LOG_UPSTREAM_ERROR_BODY"))) != "true" {
+		return
+REDACTED
+
+	maxBytes := 2048
+	if rawMax := strings.TrimSpace(os.Getenv("GATEWAY_LOG_UPSTREAM_ERROR_BODY_MAX_BYTES")); rawMax != "" {
+		if parsed, err := strconv.Atoi(rawMax); err == nil && parsed > 0 {
+			maxBytes = parsed
+	REDACTED
+REDACTED
+	if len(body) > maxBytes {
+		body = body[:maxBytes]
+REDACTED
+
+	log.Printf("Upstream error body: account=%d status=%d body=%q", accountID, statusCode, string(body))
 REDACTED
 
 // openaiStreamingResult streaming response result
@@ -1018,6 +1054,13 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, err
 REDACTED
 
+	if account.Type == AccountTypeOAuth {
+		bodyLooksLikeSSE := bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:"))
+		if isEventStreamResponse(resp.Header) || bodyLooksLikeSSE {
+			return s.handleOAuthSSEToJSON(resp, c, body, originalModel, mappedModel)
+	REDACTED
+REDACTED
+
 	// Parse usage
 	var response struct {
 		Usage struct {
@@ -1057,6 +1100,110 @@ REDACTED
 	return usage, nil
 REDACTED
 
+func isEventStreamResponse(header http.Header) bool {
+	contentType := strings.ToLower(header.Get("Content-Type"))
+	return strings.Contains(contentType, "text/event-stream")
+REDACTED
+
+func (s *OpenAIGatewayService) handleOAuthSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*OpenAIUsage, error) {
+	bodyText := string(body)
+	finalResponse, ok := extractCodexFinalResponse(bodyText)
+
+	usage := &OpenAIUsage{REDACTED
+	if ok {
+		var response struct {
+			Usage struct {
+				InputTokens       int `json:"input_tokens"`
+				OutputTokens      int `json:"output_tokens"`
+				InputTokenDetails struct {
+					CachedTokens int `json:"cached_tokens"`
+			REDACTED `json:"input_tokens_details"`
+		REDACTED `json:"usage"`
+	REDACTED
+		if err := json.Unmarshal(finalResponse, &response); err == nil {
+			usage.InputTokens = response.Usage.InputTokens
+			usage.OutputTokens = response.Usage.OutputTokens
+			usage.CacheReadInputTokens = response.Usage.InputTokenDetails.CachedTokens
+	REDACTED
+		body = finalResponse
+		if originalModel != mappedModel {
+			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	REDACTED
+REDACTED else {
+		usage = s.parseSSEUsageFromBody(bodyText)
+		if originalModel != mappedModel {
+			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
+	REDACTED
+		body = []byte(bodyText)
+REDACTED
+
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
+
+	contentType := "application/json; charset=utf-8"
+	if !ok {
+		contentType = resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "text/event-stream"
+	REDACTED
+REDACTED
+	c.Data(resp.StatusCode, contentType, body)
+
+	return usage, nil
+REDACTED
+
+func extractCodexFinalResponse(body string) ([]byte, bool) {
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		if !openaiSSEDataRe.MatchString(line) {
+			continue
+	REDACTED
+		data := openaiSSEDataRe.ReplaceAllString(line, "")
+		if data == "" || data == "[DONE]" {
+			continue
+	REDACTED
+		var event struct {
+			Type     string          `json:"type"`
+			Response json.RawMessage `json:"response"`
+	REDACTED
+		if json.Unmarshal([]byte(data), &event) != nil {
+			continue
+	REDACTED
+		if event.Type == "response.done" || event.Type == "response.completed" {
+			if len(event.Response) > 0 {
+				return event.Response, true
+		REDACTED
+	REDACTED
+REDACTED
+	return nil, false
+REDACTED
+
+func (s *OpenAIGatewayService) parseSSEUsageFromBody(body string) *OpenAIUsage {
+	usage := &OpenAIUsage{REDACTED
+	lines := strings.Split(body, "\n")
+	for _, line := range lines {
+		if !openaiSSEDataRe.MatchString(line) {
+			continue
+	REDACTED
+		data := openaiSSEDataRe.ReplaceAllString(line, "")
+		if data == "" || data == "[DONE]" {
+			continue
+	REDACTED
+		s.parseSSEUsage(data, usage)
+REDACTED
+	return usage
+REDACTED
+
+func (s *OpenAIGatewayService) replaceModelInSSEBody(body, fromModel, toModel string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if !openaiSSEDataRe.MatchString(line) {
+			continue
+	REDACTED
+		lines[i] = s.replaceModelInSSELine(line, fromModel, toModel)
+REDACTED
+	return strings.Join(lines, "\n")
+REDACTED
+
 func (s *OpenAIGatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 	if s.cfg != nil && !s.cfg.Security.URLAllowlist.Enabled {
 		normalized, err := urlvalidator.ValidateURLFormat(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
@@ -1094,101 +1241,6 @@ REDACTED
 REDACTED
 
 	return newBody
-REDACTED
-
-// normalizeInputForCodexAPI converts AI SDK multi-part content format to simplified format
-// that the ChatGPT internal Codex API expects.
-//
-// AI SDK sends content as an array of typed objects:
-//
-//	{"content": [{"type": "input_text", "text": "hello"REDACTED]REDACTED
-//
-// ChatGPT Codex API expects content as a simple string:
-//
-//	{"content": "hello"REDACTED
-//
-// This function modifies reqBody in-place and returns true if any modification was made.
-func normalizeInputForCodexAPI(reqBody map[string]any) bool {
-	input, ok := reqBody["input"]
-	if !ok {
-		return false
-REDACTED
-
-	// Handle case where input is a simple string (already compatible)
-	if _, isString := input.(string); isString {
-		return false
-REDACTED
-
-	// Handle case where input is an array of messages
-	inputArray, ok := input.([]any)
-	if !ok {
-		return false
-REDACTED
-
-	modified := false
-	for _, item := range inputArray {
-		message, ok := item.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-
-		content, ok := message["content"]
-		if !ok {
-			continue
-	REDACTED
-
-		// If content is already a string, no conversion needed
-		if _, isString := content.(string); isString {
-			continue
-	REDACTED
-
-		// If content is an array (AI SDK format), convert to string
-		contentArray, ok := content.([]any)
-		if !ok {
-			continue
-	REDACTED
-
-		// Extract text from content array
-		var textParts []string
-		for _, part := range contentArray {
-			partMap, ok := part.(map[string]any)
-			if !ok {
-				continue
-		REDACTED
-
-			// Handle different content types
-			partType, _ := partMap["type"].(string)
-			switch partType {
-			case "input_text", "text":
-				// Extract text from input_text or text type
-				if text, ok := partMap["text"].(string); ok {
-					textParts = append(textParts, text)
-			REDACTED
-			case "input_image", "image":
-				// For images, we need to preserve the original format
-				// as ChatGPT Codex API may support images in a different way
-				// For now, skip image parts (they will be lost in conversion)
-				// TODO: Consider preserving image data or handling it separately
-				continue
-			case "input_file", "file":
-				// Similar to images, file inputs may need special handling
-				continue
-			default:
-				// For unknown types, try to extract text if available
-				if text, ok := partMap["text"].(string); ok {
-					textParts = append(textParts, text)
-			REDACTED
-		REDACTED
-	REDACTED
-
-		// Convert content array to string
-		if len(textParts) > 0 {
-			message["content"] = strings.Join(textParts, "\n")
-			modified = true
-	REDACTED
-REDACTED
-
-	return modified
 REDACTED
 
 // OpenAIRecordUsageInput input for recording usage

@@ -220,7 +220,7 @@ REDACTED
 REDACTED"base_url": "://invalid-url"REDACTED,
 REDACTED
 
-	_, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte("{REDACTED"), "token", false)
+	_, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte("{REDACTED"), "token", false, "", false)
 	if err == nil {
 		t.Fatalf("expected error for invalid base_url when allowlist disabled")
 REDACTED

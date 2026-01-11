@@ -31,6 +31,7 @@ type SystemSettings struct {
 	APIBaseURL   string
 	ContactInfo  string
 	DocURL       string
+	HomeContent  string
 
 	DefaultConcurrency int
 	DefaultBalance     float64
@@ -58,6 +59,7 @@ type PublicSettings struct {
 	APIBaseURL          string
 	ContactInfo         string
 	DocURL              string
+	HomeContent         string
 	LinuxDoOAuthEnabled bool
 	Version             string
 REDACTED

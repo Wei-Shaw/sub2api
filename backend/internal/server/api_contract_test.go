@@ -326,7 +326,8 @@ REDACTED{
 					"fallback_model_gemini": "gemini-2.5-pro",
 					"fallback_model_openai": "gpt-4o",
 					"enable_identity_patch": true,
-					"identity_patch_prompt": ""
+					"identity_patch_prompt": "",
+					"home_content": ""
 			REDACTED
 		REDACTED`,
 	REDACTED,
