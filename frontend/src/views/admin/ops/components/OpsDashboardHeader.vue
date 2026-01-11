@@ -287,6 +287,7 @@ interface DiagnosisItem {
   type: 'critical' | 'warning' | 'info'
   message: string
   impact: string
+  action?: string
 REDACTED
 
 const diagnosisReport = computed<DiagnosisItem[]>(() => {
@@ -304,63 +305,157 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
     return report
   REDACTED
 
-  const upstreamRatePct = (ov.upstream_error_rate ?? 0) * 100
-  if (upstreamRatePct > 10) {
+  // Resource diagnostics (highest priority)
+  const sm = ov.system_metrics
+  if (sm) {
+    if (sm.db_ok === false) {
+      report.push({
+        type: 'critical',
+        message: t('admin.ops.diagnosis.dbDown'),
+        impact: t('admin.ops.diagnosis.dbDownImpact'),
+        action: t('admin.ops.diagnosis.dbDownAction')
+      REDACTED)
+    REDACTED
+    if (sm.redis_ok === false) {
+      report.push({
+        type: 'warning',
+        message: t('admin.ops.diagnosis.redisDown'),
+        impact: t('admin.ops.diagnosis.redisDownImpact'),
+        action: t('admin.ops.diagnosis.redisDownAction')
+      REDACTED)
+    REDACTED
+
+    const cpuPct = sm.cpu_usage_percent ?? 0
+    if (cpuPct > 90) {
+      report.push({
+        type: 'critical',
+        message: t('admin.ops.diagnosis.cpuCritical', { usage: cpuPct.toFixed(1) REDACTED),
+        impact: t('admin.ops.diagnosis.cpuCriticalImpact'),
+        action: t('admin.ops.diagnosis.cpuCriticalAction')
+      REDACTED)
+    REDACTED else if (cpuPct > 80) {
+      report.push({
+        type: 'warning',
+        message: t('admin.ops.diagnosis.cpuHigh', { usage: cpuPct.toFixed(1) REDACTED),
+        impact: t('admin.ops.diagnosis.cpuHighImpact'),
+        action: t('admin.ops.diagnosis.cpuHighAction')
+      REDACTED)
+    REDACTED
+
+    const memPct = sm.memory_usage_percent ?? 0
+    if (memPct > 90) {
+      report.push({
+        type: 'critical',
+        message: t('admin.ops.diagnosis.memoryCritical', { usage: memPct.toFixed(1) REDACTED),
+        impact: t('admin.ops.diagnosis.memoryCriticalImpact'),
+        action: t('admin.ops.diagnosis.memoryCriticalAction')
+      REDACTED)
+    REDACTED else if (memPct > 85) {
+      report.push({
+        type: 'warning',
+        message: t('admin.ops.diagnosis.memoryHigh', { usage: memPct.toFixed(1) REDACTED),
+        impact: t('admin.ops.diagnosis.memoryHighImpact'),
+        action: t('admin.ops.diagnosis.memoryHighAction')
+      REDACTED)
+    REDACTED
+  REDACTED
+
+  // Latency diagnostics
+  const durationP99 = ov.duration?.p99_ms ?? 0
+  if (durationP99 > 2000) {
     report.push({
       type: 'critical',
-      message: t('admin.ops.diagnosis.upstreamCritical', { rate: upstreamRatePct.toFixed(2) REDACTED),
-      impact: t('admin.ops.diagnosis.upstreamCriticalImpact')
+      message: t('admin.ops.diagnosis.latencyCritical', { latency: durationP99.toFixed(0) REDACTED),
+      impact: t('admin.ops.diagnosis.latencyCriticalImpact'),
+      action: t('admin.ops.diagnosis.latencyCriticalAction')
     REDACTED)
-  REDACTED else if (upstreamRatePct > 3) {
+  REDACTED else if (durationP99 > 1000) {
     report.push({
       type: 'warning',
-      message: t('admin.ops.diagnosis.upstreamHigh', { rate: upstreamRatePct.toFixed(2) REDACTED),
-      impact: t('admin.ops.diagnosis.upstreamHighImpact')
+      message: t('admin.ops.diagnosis.latencyHigh', { latency: durationP99.toFixed(0) REDACTED),
+      impact: t('admin.ops.diagnosis.latencyHighImpact'),
+      action: t('admin.ops.diagnosis.latencyHighAction')
     REDACTED)
   REDACTED
 
+  const ttftP99 = ov.ttft?.p99_ms ?? 0
+  if (ttftP99 > 500) {
+    report.push({
+      type: 'warning',
+      message: t('admin.ops.diagnosis.ttftHigh', { ttft: ttftP99.toFixed(0) REDACTED),
+      impact: t('admin.ops.diagnosis.ttftHighImpact'),
+      action: t('admin.ops.diagnosis.ttftHighAction')
+    REDACTED)
+  REDACTED
+
+  // Error rate diagnostics (adjusted thresholds)
+  const upstreamRatePct = (ov.upstream_error_rate ?? 0) * 100
+  if (upstreamRatePct > 5) {
+    report.push({
+      type: 'critical',
+      message: t('admin.ops.diagnosis.upstreamCritical', { rate: upstreamRatePct.toFixed(2) REDACTED),
+      impact: t('admin.ops.diagnosis.upstreamCriticalImpact'),
+      action: t('admin.ops.diagnosis.upstreamCriticalAction')
+    REDACTED)
+  REDACTED else if (upstreamRatePct > 2) {
+    report.push({
+      type: 'warning',
+      message: t('admin.ops.diagnosis.upstreamHigh', { rate: upstreamRatePct.toFixed(2) REDACTED),
+      impact: t('admin.ops.diagnosis.upstreamHighImpact'),
+      action: t('admin.ops.diagnosis.upstreamHighAction')
+    REDACTED)
+  REDACTED
+
+  const errorPct = (ov.error_rate ?? 0) * 100
+  if (errorPct > 3) {
+    report.push({
+      type: 'critical',
+      message: t('admin.ops.diagnosis.errorHigh', { rate: errorPct.toFixed(2) REDACTED),
+      impact: t('admin.ops.diagnosis.errorHighImpact'),
+      action: t('admin.ops.diagnosis.errorHighAction')
+    REDACTED)
+  REDACTED else if (errorPct > 0.5) {
+    report.push({
+      type: 'warning',
+      message: t('admin.ops.diagnosis.errorElevated', { rate: errorPct.toFixed(2) REDACTED),
+      impact: t('admin.ops.diagnosis.errorElevatedImpact'),
+      action: t('admin.ops.diagnosis.errorElevatedAction')
+    REDACTED)
+  REDACTED
+
+  // SLA diagnostics
   const slaPct = (ov.sla ?? 0) * 100
   if (slaPct < 90) {
     report.push({
       type: 'critical',
       message: t('admin.ops.diagnosis.slaCritical', { sla: slaPct.toFixed(2) REDACTED),
-      impact: t('admin.ops.diagnosis.slaCriticalImpact')
+      impact: t('admin.ops.diagnosis.slaCriticalImpact'),
+      action: t('admin.ops.diagnosis.slaCriticalAction')
     REDACTED)
   REDACTED else if (slaPct < 98) {
     report.push({
       type: 'warning',
       message: t('admin.ops.diagnosis.slaLow', { sla: slaPct.toFixed(2) REDACTED),
-      impact: t('admin.ops.diagnosis.slaLowImpact')
+      impact: t('admin.ops.diagnosis.slaLowImpact'),
+      action: t('admin.ops.diagnosis.slaLowAction')
     REDACTED)
   REDACTED
 
-  const errorPct = (ov.error_rate ?? 0) * 100
-  if (errorPct > 5) {
-    report.push({
-      type: 'critical',
-      message: t('admin.ops.diagnosis.errorHigh', { rate: errorPct.toFixed(2) REDACTED),
-      impact: t('admin.ops.diagnosis.errorHighImpact')
-    REDACTED)
-  REDACTED else if (errorPct > 1) {
-    report.push({
-      type: 'warning',
-      message: t('admin.ops.diagnosis.errorElevated', { rate: errorPct.toFixed(2) REDACTED),
-      impact: t('admin.ops.diagnosis.errorElevatedImpact')
-    REDACTED)
-  REDACTED
-
+  // Health score diagnostics (lowest priority)
   if (healthScoreValue.value != null) {
     if (healthScoreValue.value < 60) {
       report.push({
         type: 'critical',
         message: t('admin.ops.diagnosis.healthCritical', { score: healthScoreValue.value REDACTED),
-        impact: t('admin.ops.diagnosis.healthCriticalImpact')
+        impact: t('admin.ops.diagnosis.healthCriticalImpact'),
+        action: t('admin.ops.diagnosis.healthCriticalAction')
       REDACTED)
     REDACTED else if (healthScoreValue.value < 90) {
       report.push({
         type: 'warning',
         message: t('admin.ops.diagnosis.healthLow', { score: healthScoreValue.value REDACTED),
-        impact: t('admin.ops.diagnosis.healthLowImpact')
+        impact: t('admin.ops.diagnosis.healthLowImpact'),
+        action: t('admin.ops.diagnosis.healthLowAction')
       REDACTED)
     REDACTED
   REDACTED
@@ -752,9 +847,12 @@ REDACTED
                         />
                       </svg>
                     </div>
-                    <div>
+                    <div class="flex-1">
                       <div class="text-xs font-semibold text-gray-900 dark:text-white">{{ item.message REDACTEDREDACTED</div>
                       <div class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{{ item.impact REDACTEDREDACTED</div>
+                      <div v-if="item.action" class="mt-1 text-[11px] text-blue-600 dark:text-blue-400">
+                        💡 {{ item.action REDACTEDREDACTED
+                      </div>
                     </div>
                   </div>
                 </div>
