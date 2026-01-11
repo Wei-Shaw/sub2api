@@ -83,7 +83,7 @@
         <tr
           v-else
           v-for="(row, index) in sortedData"
-          :key="index"
+          :key="resolveRowKey(row, index)"
           class="hover:bg-gray-50 dark:hover:bg-dark-800"
         >
           <td
@@ -210,6 +210,7 @@ interface Props {
   stickyActionsColumn?: boolean
   expandableActions?: boolean
   actionsCount?: number // 操作按钮总数，用于判断是否需要展开功能
+  rowKey?: string | ((row: any) => string | number)
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -222,6 +223,18 @@ REDACTED)
 const sortKey = ref<string>('')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const actionsExpanded = ref(false)
+const resolveRowKey = (row: any, index: number) => {
+  if (typeof props.rowKey === 'function') {
+    const key = props.rowKey(row)
+    return key ?? index
+  REDACTED
+  if (typeof props.rowKey === 'string' && props.rowKey) {
+    const key = row?.[props.rowKey]
+    return key ?? index
+  REDACTED
+  const key = row?.id
+  return key ?? index
+REDACTED
 
 // 数据/列变化时重新检查滚动状态
 // 注意：不能监听 actionsExpanded，因为 checkActionsColumnWidth 会临时修改它，会导致无限循环
