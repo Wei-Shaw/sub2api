@@ -991,14 +991,14 @@ REDACTED
 				REDACTED
 					platform = account.Platform
 			REDACTED
-			if err := s.checkMixedChannelRisk(ctx, accountID, platform, *input.GroupIDs); err != nil {
-				entry.Success = false
-				entry.Error = err.Error()
-				result.Failed++
-				result.FailedIDs = append(result.FailedIDs, accountID)
-				result.Results = append(result.Results, entry)
-				continue
-		REDACTED
+				if err := s.checkMixedChannelRisk(ctx, accountID, platform, *input.GroupIDs); err != nil {
+					entry.Success = false
+					entry.Error = err.Error()
+					result.Failed++
+					result.FailedIDs = append(result.FailedIDs, accountID)
+					result.Results = append(result.Results, entry)
+					continue
+			REDACTED
 		REDACTED
 
 			if err := s.accountRepo.BindGroups(ctx, accountID, *input.GroupIDs); err != nil {
