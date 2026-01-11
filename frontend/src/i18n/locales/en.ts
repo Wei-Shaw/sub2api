@@ -2067,14 +2067,49 @@ export default {
         editTitle: 'Edit Alert Rule',
         deleteConfirmTitle: 'Delete this rule?',
         deleteConfirmMessage: 'This will remove the rule and its related events. Continue?',
+        metricGroups: {
+          system: 'System Metrics',
+          group: 'Group-level Metrics (requires group_id)',
+          account: 'Account-level Metrics'
+        REDACTED,
         metrics: {
           successRate: 'Success Rate (%)',
           errorRate: 'Error Rate (%)',
+          upstreamErrorRate: 'Upstream Error Rate (%)',
           p95: 'P95 Latency (ms)',
           p99: 'P99 Latency (ms)',
           cpu: 'CPU Usage (%)',
           memory: 'Memory Usage (%)',
-          queueDepth: 'Concurrency Queue Depth'
+          queueDepth: 'Concurrency Queue Depth',
+          groupAvailableAccounts: 'Group Available Accounts',
+          groupAvailableRatio: 'Group Available Ratio (%)',
+          groupRateLimitRatio: 'Group Rate Limit Ratio (%)',
+          accountRateLimitedCount: 'Rate-limited Accounts',
+          accountErrorCount: 'Error Accounts (excluding temporarily unschedulable)',
+          accountErrorRatio: 'Error Account Ratio (%)',
+          overloadAccountCount: 'Overloaded Accounts'
+        REDACTED,
+        metricDescriptions: {
+          successRate: 'Percentage of successful requests in the window (0-100).',
+          errorRate: 'Percentage of failed requests in the window (0-100).',
+          upstreamErrorRate: 'Percentage of upstream failures in the window (0-100).',
+          p95: 'P95 request latency within the window (ms).',
+          p99: 'P99 request latency within the window (ms).',
+          cpu: 'Current instance CPU usage (0-100).',
+          memory: 'Current instance memory usage (0-100).',
+          queueDepth: 'Concurrency queue depth within the window (queued requests).',
+          groupAvailableAccounts: 'Number of available accounts in the selected group (requires group_id).',
+          groupAvailableRatio: 'Available account ratio in the selected group (0-100, requires group_id).',
+          groupRateLimitRatio: 'Rate-limited account ratio in the selected group (0-100, requires group_id).',
+          accountRateLimitedCount: 'Number of rate-limited accounts within the window.',
+          accountErrorCount: 'Number of error accounts within the window (excluding temporarily unschedulable).',
+          accountErrorRatio: 'Error account ratio within the window (0-100).',
+          overloadAccountCount: 'Number of overloaded accounts within the window.'
+        REDACTED,
+        hints: {
+          recommended: 'Recommended: operator {operatorREDACTED, threshold {thresholdREDACTED{unitREDACTED',
+          groupRequired: 'This is a group-level metric; selecting a group (group_id) is required.',
+          groupOptional: 'Optional: limit the rule to a specific group via group_id.'
         REDACTED,
         table: {
           name: 'Name',
@@ -2088,6 +2123,9 @@ export default {
           description: 'Description',
           metric: 'Metric',
           operator: 'Operator',
+          groupId: 'Group (group_id)',
+          groupPlaceholder: 'Select a group',
+          allGroups: 'All groups',
           threshold: 'Threshold',
           severity: 'Severity',
           window: 'Window (minutes)',
@@ -2101,6 +2139,7 @@ export default {
           invalid: 'Invalid rule',
           nameRequired: 'Name is required',
           metricRequired: 'Metric is required',
+          groupIdRequired: 'group_id is required for group-level metrics',
           operatorRequired: 'Operator is required',
           thresholdRequired: 'Threshold must be a number',
           windowRange: 'Window must be one of: 1, 5, 60 minutes',
