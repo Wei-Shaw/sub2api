@@ -92,6 +92,10 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			runtime.PUT("/alert", h.Admin.Ops.UpdateAlertRuntimeSettings)
 	REDACTED
 
+		// Advanced settings (DB-backed)
+		ops.GET("/advanced-settings", h.Admin.Ops.GetAdvancedSettings)
+		ops.PUT("/advanced-settings", h.Admin.Ops.UpdateAdvancedSettings)
+
 		// WebSocket realtime (QPS/TPS)
 		ws := ops.Group("/ws")
 		{

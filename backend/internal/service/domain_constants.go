@@ -143,6 +143,9 @@ const (
 
 	// SettingKeyOpsMetricsIntervalSeconds controls the ops metrics collector interval (>=60).
 	SettingKeyOpsMetricsIntervalSeconds = "ops_metrics_interval_seconds"
+
+	// SettingKeyOpsAdvancedSettings stores JSON config for ops advanced settings (data retention, aggregation).
+	SettingKeyOpsAdvancedSettings = "ops_advanced_settings"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
