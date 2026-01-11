@@ -311,7 +311,7 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 	now := time.Now().UTC()
 	todayStart := truncateToDayUTC(now)
 	rangeStart := todayStart.Add(-24 * time.Hour)
-	rangeEnd := now
+	rangeEnd := now.Add(1 * time.Second)
 
 	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u1@test.com"REDACTED)
 	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u2@test.com"REDACTED)

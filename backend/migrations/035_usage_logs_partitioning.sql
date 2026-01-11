@@ -1,6 +1,6 @@
 -- usage_logs monthly partition bootstrap.
--- Only converts to partitioned table when usage_logs is empty.
--- Existing installations with data require a manual migration plan.
+-- Only creates partitions when usage_logs is already partitioned.
+-- Converting usage_logs to a partitioned table requires a manual migration plan.
 
 DO $$
 DECLARE
@@ -20,8 +20,8 @@ BEGIN
     IF NOT is_partitioned THEN
         SELECT EXISTS(SELECT 1 FROM usage_logs LIMIT 1) INTO has_data;
         IF NOT has_data THEN
-            EXECUTE 'ALTER TABLE usage_logs PARTITION BY RANGE (created_at)';
-            is_partitioned := TRUE;
+            -- Automatic conversion is intentionally skipped; see manual migration plan.
+            RAISE NOTICE 'usage_logs is not partitioned; skip automatic partitioning';
         END IF;
     END IF;
 
