@@ -310,7 +310,9 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	if err != nil {
 		return err
 REDACTED
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+REDACTED()
 
 	cutoffMonth := truncateToMonthUTC(cutoff)
 	for rows.Next() {
