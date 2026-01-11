@@ -34,7 +34,7 @@ type dashboardStatsCacheEntry struct {
 	UpdatedAt int64                      `json:"updated_at"`
 REDACTED
 
-// DashboardService provides aggregated statistics for admin dashboard.
+// DashboardService 提供管理员仪表盘统计服务。
 type DashboardService struct {
 	usageRepo      UsageLogRepository
 	aggRepo        DashboardAggregationRepository
