@@ -96,9 +96,9 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
     </div>
 
     <div v-else class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
-      <div class="max-h-[600px] overflow-y-auto overflow-x-auto">
+      <div class="max-h-[600px] overflow-y-auto">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
-          <thead class="bg-gray-50 dark:bg-dark-900">
+          <thead class="sticky top-0 z-10 bg-gray-50 dark:bg-dark-900">
             <tr>
               <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 {{ t('admin.ops.alertEvents.table.time') REDACTEDREDACTED

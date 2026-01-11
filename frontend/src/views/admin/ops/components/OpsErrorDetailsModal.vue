@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch REDACTED from 'vue'
-import { onKeyStroke REDACTED from '@vueuse/core'
 import { useI18n REDACTED from 'vue-i18n'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import OpsErrorLogTable from './OpsErrorLogTable.vue'
 import { opsAPI, type OpsErrorLog REDACTED from '@/api/admin/ops'
@@ -26,7 +26,7 @@ const loading = ref(false)
 const rows = ref<OpsErrorLog[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(50)
+const pageSize = ref(20)
 
 const q = ref('')
 const statusCode = ref<number | null>(null)
@@ -69,10 +69,6 @@ REDACTED)
 function close() {
   emit('update:show', false)
 REDACTED
-
-onKeyStroke('Escape', () => {
-  if (props.show) close()
-REDACTED)
 
 async function fetchErrorLogs() {
   if (!props.show) return
@@ -122,7 +118,7 @@ watch(
   (open) => {
     if (!open) return
     page.value = 1
-    pageSize.value = 50
+    pageSize.value = 20
     resetFilters()
   REDACTED
 )
@@ -177,117 +173,70 @@ watch(
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-300 ease-out"
-      enter-from-class="opacity-0"
-      enter-to-class="opacity-100"
-      leave-active-class="transition duration-200 ease-in"
-      leave-from-class="opacity-100"
-      leave-to-class="opacity-0"
-    >
-      <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4" @click.self="close">
-        <Transition
-          enter-active-class="transition duration-300 ease-out"
-          enter-from-class="opacity-0 scale-95"
-          enter-to-class="opacity-100 scale-100"
-          leave-active-class="transition duration-200 ease-in"
-          leave-from-class="opacity-100 scale-100"
-          leave-to-class="opacity-0 scale-95"
-        >
-          <div v-if="show" class="relative flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-dark-800">
-            <!-- Header -->
-            <div class="flex items-center justify-between border-b border-gray-200 px-6 py-5 dark:border-dark-700">
-              <div class="flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-50 dark:bg-orange-900/20">
-                  <svg class="h-6 w-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 class="text-lg font-black text-gray-900 dark:text-white">{{ modalTitle REDACTEDREDACTED</h3>
-                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {{ t('admin.ops.errorDetails.total') REDACTEDREDACTED {{ total REDACTEDREDACTED
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                class="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700"
-                @click="close"
+  <BaseDialog :show="show" :title="modalTitle" width="full" @close="close">
+    <!-- Filters -->
+    <div class="border-b border-gray-200 pb-4 mb-4 dark:border-dark-700">
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <div class="lg:col-span-5">
+          <div class="relative group">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <svg
+                class="h-4 w-4 text-gray-400 transition-colors group-focus-within:text-blue-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
             </div>
-
-            <!-- Filters -->
-            <div class="border-b border-gray-200 px-6 py-4 dark:border-dark-700">
-              <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                <div class="lg:col-span-5">
-                  <div class="relative group">
-                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-                      <svg
-                        class="h-4 w-4 text-gray-400 transition-colors group-focus-within:text-blue-500"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    </div>
-                    <input
-                      v-model="q"
-                      type="text"
-                      class="w-full rounded-2xl border-gray-200 bg-gray-50/50 py-2 pl-10 pr-4 text-sm font-medium text-gray-700 transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:focus:bg-dark-800"
-                      :placeholder="t('admin.ops.errorDetails.searchPlaceholder')"
-                    />
-                  </div>
-                </div>
-
-                <div class="lg:col-span-2">
-                  <Select :model-value="statusCode" :options="statusCodeSelectOptions" class="w-full" @update:model-value="statusCode = $event as any" />
-                </div>
-
-                <div class="lg:col-span-2">
-                  <Select :model-value="phase" :options="phaseSelectOptions" class="w-full" @update:model-value="phase = String($event ?? '')" />
-                </div>
-
-                <div class="lg:col-span-2">
-                  <input
-                    v-model="accountIdInput"
-                    type="text"
-                    inputmode="numeric"
-                    class="input w-full text-sm"
-                    :placeholder="t('admin.ops.errorDetails.accountIdPlaceholder')"
-                  />
-                </div>
-
-                <div class="lg:col-span-1 flex items-center justify-end">
-                  <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
-                    {{ t('common.reset') REDACTEDREDACTED
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Body -->
-            <div class="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-              <OpsErrorLogTable
-                :rows="rows"
-                :total="total"
-                :loading="loading"
-                :page="page"
-                :page-size="pageSize"
-                @openErrorDetail="emit('openErrorDetail', $event)"
-                @update:page="page = $event"
-                @update:pageSize="pageSize = $event"
-              />
-            </div>
+            <input
+              v-model="q"
+              type="text"
+              class="w-full rounded-2xl border-gray-200 bg-gray-50/50 py-2 pl-10 pr-4 text-sm font-medium text-gray-700 transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:focus:bg-dark-800"
+              :placeholder="t('admin.ops.errorDetails.searchPlaceholder')"
+            />
           </div>
-        </Transition>
+        </div>
+
+        <div class="lg:col-span-2">
+          <Select :model-value="statusCode" :options="statusCodeSelectOptions" class="w-full" @update:model-value="statusCode = $event as any" />
+        </div>
+
+        <div class="lg:col-span-2">
+          <Select :model-value="phase" :options="phaseSelectOptions" class="w-full" @update:model-value="phase = String($event ?? '')" />
+        </div>
+
+        <div class="lg:col-span-2">
+          <input
+            v-model="accountIdInput"
+            type="text"
+            inputmode="numeric"
+            class="input w-full text-sm"
+            :placeholder="t('admin.ops.errorDetails.accountIdPlaceholder')"
+          />
+        </div>
+
+        <div class="lg:col-span-1 flex items-center justify-end">
+          <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
+            {{ t('common.reset') REDACTEDREDACTED
+          </button>
+        </div>
       </div>
-    </Transition>
-  </Teleport>
+    </div>
+
+    <!-- Body -->
+    <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+      {{ t('admin.ops.errorDetails.total') REDACTEDREDACTED {{ total REDACTEDREDACTED
+    </div>
+    <OpsErrorLogTable
+      :rows="rows"
+      :total="total"
+      :loading="loading"
+      :page="page"
+      :page-size="pageSize"
+      @openErrorDetail="emit('openErrorDetail', $event)"
+      @update:page="page = $event"
+      @update:pageSize="pageSize = $event"
+    />
+  </BaseDialog>
 </template>
