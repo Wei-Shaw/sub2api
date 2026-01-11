@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"strconv"
 	"time"
 
@@ -13,15 +14,17 @@ import (
 
 // DashboardHandler handles admin dashboard statistics
 type DashboardHandler struct {
-	dashboardService *service.DashboardService
-	startTime        time.Time // Server start time for uptime calculation
+	dashboardService   *service.DashboardService
+	aggregationService *service.DashboardAggregationService
+	startTime          time.Time // Server start time for uptime calculation
 REDACTED
 
 // NewDashboardHandler creates a new admin dashboard handler
-func NewDashboardHandler(dashboardService *service.DashboardService) *DashboardHandler {
+func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService) *DashboardHandler {
 	return &DashboardHandler{
-		dashboardService: dashboardService,
-		startTime:        time.Now(),
+		dashboardService:   dashboardService,
+		aggregationService: aggregationService,
+		startTime:          time.Now(),
 REDACTED
 REDACTED
 
@@ -114,6 +117,58 @@ REDACTED
 		// 性能指标
 		"rpm": stats.Rpm,
 		"tpm": stats.Tpm,
+
+		// 预聚合新鲜度
+		"hourly_active_users": stats.HourlyActiveUsers,
+		"stats_updated_at":    stats.StatsUpdatedAt,
+		"stats_stale":         stats.StatsStale,
+REDACTED)
+REDACTED
+
+type DashboardAggregationBackfillRequest struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+REDACTED
+
+// BackfillAggregation handles triggering aggregation backfill
+// POST /api/v1/admin/dashboard/aggregation/backfill
+func (h *DashboardHandler) BackfillAggregation(c *gin.Context) {
+	if h.aggregationService == nil {
+		response.InternalError(c, "Aggregation service not available")
+		return
+REDACTED
+
+	var req DashboardAggregationBackfillRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+REDACTED
+	start, err := time.Parse(time.RFC3339, req.Start)
+	if err != nil {
+		response.BadRequest(c, "Invalid start time")
+		return
+REDACTED
+	end, err := time.Parse(time.RFC3339, req.End)
+	if err != nil {
+		response.BadRequest(c, "Invalid end time")
+		return
+REDACTED
+
+	if err := h.aggregationService.TriggerBackfill(start, end); err != nil {
+		if errors.Is(err, service.ErrDashboardBackfillDisabled) {
+			response.Forbidden(c, "Backfill is disabled")
+			return
+	REDACTED
+		if errors.Is(err, service.ErrDashboardBackfillTooLarge) {
+			response.BadRequest(c, "Backfill range too large")
+			return
+	REDACTED
+		response.InternalError(c, "Failed to trigger backfill")
+		return
+REDACTED
+
+	response.Success(c, gin.H{
+		"status": "accepted",
 REDACTED)
 REDACTED
 
