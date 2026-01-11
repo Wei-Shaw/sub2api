@@ -12,7 +12,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
