@@ -368,6 +368,12 @@ export default {
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
       REDACTED,
+      cliTabs: {
+        claudeCode: 'Claude Code',
+        geminiCli: 'Gemini CLI',
+        codexCli: 'Codex CLI',
+        opencode: 'OpenCode',
+      REDACTED,
       antigravity: {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
         claudeCode: 'Claude Code',
@@ -379,6 +385,11 @@ export default {
         description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure Gemini CLI access.',
         modelComment: 'If you have Gemini 3 access, you can use: gemini-3-pro-preview',
         note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+      REDACTED,
+      opencode: {
+        title: 'OpenCode Example',
+        subtitle: 'opencode.json',
+        hint: 'This is a group configuration example. Adjust model and options as needed.',
       REDACTED,
     REDACTED,
     customKeyLabel: 'Custom Key',
@@ -1109,6 +1120,8 @@ export default {
       rateLimitCleared: 'Rate limit cleared successfully',
       bulkSchedulableEnabled: 'Successfully enabled scheduling for {countREDACTED account(s)',
       bulkSchedulableDisabled: 'Successfully disabled scheduling for {countREDACTED account(s)',
+      bulkSchedulablePartial: 'Scheduling updated partially: {successREDACTED succeeded, {failedREDACTED failed',
+      bulkSchedulableResultUnknown: 'Bulk scheduling result incomplete. Please retry or refresh.',
       bulkActions: {
         selected: '{countREDACTED account(s) selected',
         selectCurrentPage: 'Select this page',

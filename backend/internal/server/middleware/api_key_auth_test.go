@@ -256,8 +256,8 @@ func (r *stubApiKeyRepo) GetByID(ctx context.Context, id int64) (*service.APIKey
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubApiKeyRepo) GetOwnerID(ctx context.Context, id int64) (int64, error) {
-	return 0, errors.New("not implemented")
+func (r *stubApiKeyRepo) GetKeyAndOwnerID(ctx context.Context, id int64) (string, int64, error) {
+	return "", 0, errors.New("not implemented")
 REDACTED
 
 func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
@@ -265,6 +265,10 @@ func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.API
 		return r.getByKey(ctx, key)
 REDACTED
 	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
+	return r.GetByKey(ctx, key)
 REDACTED
 
 func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
@@ -305,6 +309,14 @@ REDACTED
 
 func (r *stubApiKeyRepo) CountByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
+REDACTED
+
+func (r *stubApiKeyRepo) ListKeysByUserID(ctx context.Context, userID int64) ([]string, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubApiKeyRepo) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
+	return nil, errors.New("not implemented")
 REDACTED
 
 type stubUserSubscriptionRepo struct {

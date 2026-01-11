@@ -28,8 +28,8 @@
           {{ platformDescription REDACTEDREDACTED
         </p>
 
-        <!-- Client Tabs (only for Antigravity platform) -->
-        <div v-if="platform === 'antigravity'" class="border-b border-gray-200 dark:border-dark-700">
+        <!-- Client Tabs -->
+        <div v-if="clientTabs.length" class="border-b border-gray-200 dark:border-dark-700">
           <nav class="-mb-px flex space-x-6" aria-label="Client">
             <button
               v-for="tab in clientTabs"
@@ -51,7 +51,7 @@
         </div>
 
         <!-- OS/Shell Tabs -->
-        <div class="border-b border-gray-200 dark:border-dark-700">
+        <div v-if="showShellTabs" class="border-b border-gray-200 dark:border-dark-700">
           <nav class="-mb-px flex space-x-4" aria-label="Tabs">
             <button
               v-for="tab in currentTabs"
@@ -111,7 +111,7 @@
         </div>
 
         <!-- Usage Note -->
-        <div class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
+        <div v-if="showPlatformNote" class="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">
           <Icon name="infoCircle" size="md" class="text-blue-500 flex-shrink-0 mt-0.5" />
           <p class="text-sm text-blue-700 dark:text-blue-300">
             {{ platformNote REDACTEDREDACTED
@@ -173,17 +173,28 @@ const { copyToClipboard: clipboardCopy REDACTED = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
 const activeTab = ref<string>('unix')
-const activeClientTab = ref<string>('claude')  // Level 1 tab for antigravity platform
+const activeClientTab = ref<string>('claude')
 
 // Reset tabs when platform changes
-watch(() => props.platform, (newPlatform) => {
-  activeTab.value = 'unix'
-  if (newPlatform === 'antigravity') {
-    activeClientTab.value = 'claude'
+const defaultClientTab = computed(() => {
+  switch (props.platform) {
+    case 'openai':
+      return 'codex'
+    case 'gemini':
+      return 'gemini'
+    case 'antigravity':
+      return 'claude'
+    default:
+      return 'claude'
   REDACTED
 REDACTED)
 
-// Reset shell tab when client changes (for antigravity)
+watch(() => props.platform, () => {
+  activeTab.value = 'unix'
+  activeClientTab.value = defaultClientTab.value
+REDACTED, { immediate: true REDACTED)
+
+// Reset shell tab when client changes
 watch(activeClientTab, () => {
   activeTab.value = 'unix'
 REDACTED)
@@ -251,11 +262,32 @@ const SparkleIcon = {
   REDACTED
 REDACTED
 
-// Client tabs for Antigravity platform (Level 1)
-const clientTabs = computed((): TabConfig[] => [
-  { id: 'claude', label: t('keys.useKeyModal.antigravity.claudeCode'), icon: TerminalIcon REDACTED,
-  { id: 'gemini', label: t('keys.useKeyModal.antigravity.geminiCli'), icon: SparkleIcon REDACTED
-])
+const clientTabs = computed((): TabConfig[] => {
+  if (!props.platform) return []
+  switch (props.platform) {
+    case 'openai':
+      return [
+        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon REDACTED,
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
+      ]
+    case 'gemini':
+      return [
+        { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon REDACTED,
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
+      ]
+    case 'antigravity':
+      return [
+        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon REDACTED,
+        { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon REDACTED,
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
+      ]
+    default:
+      return [
+        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon REDACTED,
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
+      ]
+  REDACTED
+REDACTED)
 
 // Shell tabs (3 types for environment variable based configs)
 const shellTabs: TabConfig[] = [
@@ -270,11 +302,13 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon REDACTED
 ]
 
+const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+
 const currentTabs = computed(() => {
+  if (!showShellTabs.value) return []
   if (props.platform === 'openai') {
-    return openaiTabs  // 2 tabs: unix, windows
+    return openaiTabs
   REDACTED
-  // All other platforms (anthropic, gemini, antigravity) use shell tabs
   return shellTabs
 REDACTED)
 
@@ -308,6 +342,8 @@ const platformNote = computed(() => {
   REDACTED
 REDACTED)
 
+const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
+
 const escapeHtml = (value: string) => value
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -329,6 +365,35 @@ const comment = (value: string) => wrapToken('text-slate-500', value)
 const currentFiles = computed((): FileConfig[] => {
   const baseUrl = props.baseUrl || window.location.origin
   const apiKey = props.apiKey
+  const baseRoot = baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
+  const ensureV1 = (value: string) => {
+    const trimmed = value.replace(/\/+$/, '')
+    return trimmed.endsWith('/v1') ? trimmed : `${trimmedREDACTED/v1`
+  REDACTED
+  const apiBase = ensureV1(baseRoot)
+  const antigravityBase = ensureV1(`${baseRootREDACTED/antigravity`)
+  const antigravityGeminiBase = (() => {
+    const trimmed = `${baseRootREDACTED/antigravity`.replace(/\/+$/, '')
+    return trimmed.endsWith('/v1beta') ? trimmed : `${trimmedREDACTED/v1beta`
+  REDACTED)()
+
+  if (activeClientTab.value === 'opencode') {
+    switch (props.platform) {
+      case 'anthropic':
+        return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
+      case 'openai':
+        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+      case 'gemini':
+        return [generateOpenCodeConfig('gemini', apiBase, apiKey)]
+      case 'antigravity':
+        return [
+          generateOpenCodeConfig('antigravity-claude', antigravityBase, apiKey, 'opencode.json (Claude)'),
+          generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
+        ]
+      default:
+        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+    REDACTED
+  REDACTED
 
   switch (props.platform) {
     case 'openai':
@@ -336,12 +401,11 @@ const currentFiles = computed((): FileConfig[] => {
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]
     case 'antigravity':
-      // Both Claude Code and Gemini CLI need /antigravity suffix for antigravity platform
-      if (activeClientTab.value === 'claude') {
-        return generateAnthropicFiles(`${baseUrlREDACTED/antigravity`, apiKey)
+      if (activeClientTab.value === 'gemini') {
+        return [generateGeminiCliContent(`${baseUrlREDACTED/antigravity`, apiKey)]
       REDACTED
-      return [generateGeminiCliContent(`${baseUrlREDACTED/antigravity`, apiKey)]
-    default: // anthropic
+      return generateAnthropicFiles(`${baseUrlREDACTED/antigravity`, apiKey)
+    default:
       return generateAnthropicFiles(baseUrl, apiKey)
   REDACTED
 REDACTED)
@@ -454,6 +518,76 @@ REDACTED`
       content: authContent
     REDACTED
   ]
+REDACTED
+
+function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
+  const provider: Record<string, any> = {
+    [platform]: {
+      options: {
+        baseURL: baseUrl,
+        apiKey,
+        ...(platform === 'openai' ? { store: false REDACTED : {REDACTED)
+      REDACTED
+    REDACTED
+  REDACTED
+  const openaiModels = {
+    'gpt-5.2-codex': {
+      name: 'GPT-5.2 Codex',
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED
+      REDACTED
+    REDACTED
+  REDACTED
+  const geminiModels = {
+    'gemini-3-pro-high': { name: 'Gemini 3 Pro High' REDACTED,
+    'gemini-3-pro-low': { name: 'Gemini 3 Pro Low' REDACTED,
+    'gemini-3-pro-preview': { name: 'Gemini 3 Pro Preview' REDACTED,
+    'gemini-3-pro-image': { name: 'Gemini 3 Pro Image' REDACTED,
+    'gemini-3-flash': { name: 'Gemini 3 Flash' REDACTED,
+    'gemini-2.5-flash-thinking': { name: 'Gemini 2.5 Flash Thinking' REDACTED,
+    'gemini-2.5-flash': { name: 'Gemini 2.5 Flash' REDACTED,
+    'gemini-2.5-flash-lite': { name: 'Gemini 2.5 Flash Lite' REDACTED
+  REDACTED
+  const claudeModels = {
+    'claude-opus-4-5-thinking': { name: 'Claude Opus 4.5 Thinking' REDACTED,
+    'claude-sonnet-4-5-thinking': { name: 'Claude Sonnet 4.5 Thinking' REDACTED,
+    'claude-sonnet-4-5': { name: 'Claude Sonnet 4.5' REDACTED
+  REDACTED
+
+  if (platform === 'gemini') {
+    provider[platform].npm = '@ai-sdk/google'
+    provider[platform].models = geminiModels
+  REDACTED else if (platform === 'anthropic') {
+    provider[platform].npm = '@ai-sdk/anthropic'
+  REDACTED else if (platform === 'antigravity-claude') {
+    provider[platform].npm = '@ai-sdk/anthropic'
+    provider[platform].name = 'Antigravity (Claude)'
+    provider[platform].models = claudeModels
+  REDACTED else if (platform === 'antigravity-gemini') {
+    provider[platform].npm = '@ai-sdk/google'
+    provider[platform].name = 'Antigravity (Gemini)'
+    provider[platform].models = geminiModels
+  REDACTED else if (platform === 'openai') {
+    provider[platform].models = openaiModels
+  REDACTED
+
+  const content = JSON.stringify(
+    {
+      provider,
+      $schema: 'https://opencode.ai/config.json'
+    REDACTED,
+    null,
+    2
+  )
+
+  return {
+    path: pathLabel ?? 'opencode.json',
+    content,
+    hint: t('keys.useKeyModal.opencode.hint')
+  REDACTED
 REDACTED
 
 const copyContent = async (content: string, index: number) => {

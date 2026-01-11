@@ -366,6 +366,12 @@ export default {
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows: '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。',
       REDACTED,
+      cliTabs: {
+        claudeCode: 'Claude Code',
+        geminiCli: 'Gemini CLI',
+        codexCli: 'Codex CLI',
+        opencode: 'OpenCode',
+      REDACTED,
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
         claudeCode: 'Claude Code',
@@ -377,6 +383,11 @@ export default {
         description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
         modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
         note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+      REDACTED,
+      opencode: {
+        title: 'OpenCode 配置示例',
+        subtitle: 'opencode.json',
+        hint: '示例仅用于演示分组配置，模型与选项可按需调整。',
       REDACTED,
     REDACTED,
     customKeyLabel: '自定义密钥',
@@ -1246,6 +1257,8 @@ export default {
       accountDeletedSuccess: '账号删除成功',
       bulkSchedulableEnabled: '成功启用 {countREDACTED 个账号的调度',
       bulkSchedulableDisabled: '成功停止 {countREDACTED 个账号的调度',
+      bulkSchedulablePartial: '部分调度更新成功：成功 {successREDACTED 个，失败 {failedREDACTED 个',
+      bulkSchedulableResultUnknown: '批量调度结果不完整，请稍后重试或刷新列表',
       bulkActions: {
         selected: '已选择 {countREDACTED 个账号',
         selectCurrentPage: '本页全选',

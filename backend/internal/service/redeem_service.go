@@ -68,12 +68,13 @@ REDACTED
 
 // RedeemService 兑换码服务
 type RedeemService struct {
-	redeemRepo          RedeemCodeRepository
-	userRepo            UserRepository
-	subscriptionService *SubscriptionService
-	cache               RedeemCache
-	billingCacheService *BillingCacheService
-	entClient           *dbent.Client
+	redeemRepo           RedeemCodeRepository
+	userRepo             UserRepository
+	subscriptionService  *SubscriptionService
+	cache                RedeemCache
+	billingCacheService  *BillingCacheService
+	entClient            *dbent.Client
+	authCacheInvalidator APIKeyAuthCacheInvalidator
 REDACTED
 
 // NewRedeemService 创建兑换码服务实例
@@ -84,14 +85,16 @@ func NewRedeemService(
 	cache RedeemCache,
 	billingCacheService *BillingCacheService,
 	entClient *dbent.Client,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
 ) *RedeemService {
 	return &RedeemService{
-		redeemRepo:          redeemRepo,
-		userRepo:            userRepo,
-		subscriptionService: subscriptionService,
-		cache:               cache,
-		billingCacheService: billingCacheService,
-		entClient:           entClient,
+		redeemRepo:           redeemRepo,
+		userRepo:             userRepo,
+		subscriptionService:  subscriptionService,
+		cache:                cache,
+		billingCacheService:  billingCacheService,
+		entClient:            entClient,
+		authCacheInvalidator: authCacheInvalidator,
 REDACTED
 REDACTED
 
@@ -324,18 +327,33 @@ REDACTED
 
 // invalidateRedeemCaches 失效兑换相关的缓存
 func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64, redeemCode *RedeemCode) {
-	if s.billingCacheService == nil {
-		return
-REDACTED
-
 	switch redeemCode.Type {
 	case RedeemTypeBalance:
+		if s.authCacheInvalidator != nil {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	REDACTED
+		if s.billingCacheService == nil {
+			return
+	REDACTED
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = s.billingCacheService.InvalidateUserBalance(cacheCtx, userID)
 	REDACTED()
+	case RedeemTypeConcurrency:
+		if s.authCacheInvalidator != nil {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	REDACTED
+		if s.billingCacheService == nil {
+			return
+	REDACTED
 	case RedeemTypeSubscription:
+		if s.authCacheInvalidator != nil {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	REDACTED
+		if s.billingCacheService == nil {
+			return
+	REDACTED
 		if redeemCode.GroupID != nil {
 			groupID := *redeemCode.GroupID
 			go func() {

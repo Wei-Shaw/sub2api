@@ -171,6 +171,87 @@ gateway:
   failover_on_400: false
 
 # =============================================================================
+# API Key Auth Cache Configuration
+# API Key 认证缓存配置
+# =============================================================================
+api_key_auth_cache:
+  # L1 cache size (entries), in-process LRU/TTL cache
+  # L1 缓存容量（条目数），进程内 LRU/TTL 缓存
+  l1_size: 65535
+  # L1 cache TTL (seconds)
+  # L1 缓存 TTL（秒）
+  l1_ttl_seconds: 15
+  # L2 cache TTL (seconds), stored in Redis
+  # L2 缓存 TTL（秒），Redis 中存储
+  l2_ttl_seconds: 300
+  # Negative cache TTL (seconds)
+  # 负缓存 TTL（秒）
+  negative_ttl_seconds: 30
+  # TTL jitter percent (0-100)
+  # TTL 抖动百分比（0-100）
+  jitter_percent: 10
+  # Enable singleflight for cache misses
+  # 缓存未命中时启用 singleflight 合并回源
+  singleflight: true
+
+# =============================================================================
+# Dashboard Cache Configuration
+# 仪表盘缓存配置
+# =============================================================================
+dashboard_cache:
+  # Enable dashboard cache
+  # 启用仪表盘缓存
+  enabled: true
+  # Redis key prefix for multi-environment isolation
+  # Redis key 前缀，用于多环境隔离
+  key_prefix: "sub2api:"
+  # Fresh TTL (seconds); within this window cached stats are considered fresh
+  # 新鲜阈值（秒）；命中后处于该窗口视为新鲜数据
+  stats_fresh_ttl_seconds: 15
+  # Cache TTL (seconds) stored in Redis
+  # Redis 缓存 TTL（秒）
+  stats_ttl_seconds: 30
+  # Async refresh timeout (seconds)
+  # 异步刷新超时（秒）
+  stats_refresh_timeout_seconds: 30
+
+# =============================================================================
+# Dashboard Aggregation Configuration
+# 仪表盘预聚合配置（重启生效）
+# =============================================================================
+dashboard_aggregation:
+  # Enable aggregation job
+  # 启用聚合作业
+  enabled: true
+  # Refresh interval (seconds)
+  # 刷新间隔（秒）
+  interval_seconds: 60
+  # Lookback window (seconds) for late-arriving data
+  # 回看窗口（秒），处理迟到数据
+  lookback_seconds: 120
+  # Allow manual backfill
+  # 允许手动回填
+  backfill_enabled: false
+  # Backfill max range (days)
+  # 回填最大跨度（天）
+  backfill_max_days: 31
+  # Recompute recent N days on startup
+  # 启动时重算最近 N 天
+  recompute_days: 2
+  # Retention windows (days)
+  # 保留窗口（天）
+  retention:
+    # Raw usage_logs retention
+    # 原始 usage_logs 保留天数
+    usage_logs_days: 90
+    # Hourly aggregation retention
+    # 小时聚合保留天数
+    hourly_days: 180
+    # Daily aggregation retention
+    # 日聚合保留天数
+    daily_days: 730
+
+# =============================================================================
 # Concurrency Wait Configuration
 # 并发等待配置
 # =============================================================================
