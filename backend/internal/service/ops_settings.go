@@ -359,9 +359,9 @@ REDACTED
 func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 	return &OpsAdvancedSettings{
 		DataRetention: OpsDataRetentionSettings{
-			CleanupEnabled:            false,
-			CleanupSchedule:           "0 2 * * *",
-			ErrorLogRetentionDays:     30,
+			CleanupEnabled:             false,
+			CleanupSchedule:            "0 2 * * *",
+			ErrorLogRetentionDays:      30,
 			MinuteMetricsRetentionDays: 30,
 			HourlyMetricsRetentionDays: 30,
 	REDACTED,
@@ -463,4 +463,3 @@ REDACTED
 	_ = json.Unmarshal(raw, updated)
 	return updated, nil
 REDACTED
-

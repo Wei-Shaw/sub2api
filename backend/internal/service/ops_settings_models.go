@@ -75,14 +75,13 @@ type OpsAdvancedSettings struct {
 REDACTED
 
 type OpsDataRetentionSettings struct {
-	CleanupEnabled            bool   `json:"cleanup_enabled"`
-	CleanupSchedule           string `json:"cleanup_schedule"`
-	ErrorLogRetentionDays     int    `json:"error_log_retention_days"`
-	MinuteMetricsRetentionDays int   `json:"minute_metrics_retention_days"`
-	HourlyMetricsRetentionDays int   `json:"hourly_metrics_retention_days"`
+	CleanupEnabled             bool   `json:"cleanup_enabled"`
+	CleanupSchedule            string `json:"cleanup_schedule"`
+	ErrorLogRetentionDays      int    `json:"error_log_retention_days"`
+	MinuteMetricsRetentionDays int    `json:"minute_metrics_retention_days"`
+	HourlyMetricsRetentionDays int    `json:"hourly_metrics_retention_days"`
 REDACTED
 
 type OpsAggregationSettings struct {
 	AggregationEnabled bool `json:"aggregation_enabled"`
 REDACTED
-

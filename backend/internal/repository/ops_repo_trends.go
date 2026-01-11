@@ -265,7 +265,7 @@ LIMIT $4`
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	items := make([]*service.OpsThroughputGroupBreakdownItem, 0, limit)
 	for rows.Next() {
@@ -431,7 +431,7 @@ ORDER BY 1 ASC`
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	points := make([]*service.OpsErrorTrendPoint, 0, 256)
 	for rows.Next() {
@@ -542,7 +542,7 @@ LIMIT 20`
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	items := make([]*service.OpsErrorDistributionItem, 0, 16)
 	var total int64

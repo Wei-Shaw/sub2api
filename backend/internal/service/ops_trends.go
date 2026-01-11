@@ -24,4 +24,3 @@ REDACTED
 REDACTED
 	return s.opsRepo.GetThroughputTrend(ctx, filter, bucketSeconds)
 REDACTED
-
