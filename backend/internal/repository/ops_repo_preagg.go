@@ -75,7 +75,7 @@ error_base AS (
     group_id AS group_id,
     is_business_limited AS is_business_limited,
     error_owner AS error_owner,
-    status_code AS status_code
+    COALESCE(upstream_status_code, status_code) AS status_code
   FROM ops_error_logs
   WHERE created_at >= $1 AND created_at < $2
 ),
@@ -356,4 +356,3 @@ REDACTED
 	t := value.Time.UTC()
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), true, nil
 REDACTED
-
