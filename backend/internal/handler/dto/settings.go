@@ -28,6 +28,7 @@ type SystemSettings struct {
 	APIBaseURL   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
 	DocURL       string `json:"doc_url"`
+	HomeContent  string `json:"home_content"`
 
 	DefaultConcurrency int     `json:"default_concurrency"`
 	DefaultBalance     float64 `json:"default_balance"`
@@ -55,6 +56,7 @@ type PublicSettings struct {
 	APIBaseURL          string `json:"api_base_url"`
 	ContactInfo         string `json:"contact_info"`
 	DocURL              string `json:"doc_url"`
+	HomeContent         string `json:"home_content"`
 	LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
 	Version             string `json:"version"`
 REDACTED

@@ -62,6 +62,7 @@ REDACTED
 		APIBaseURL:                           settings.APIBaseURL,
 		ContactInfo:                          settings.ContactInfo,
 		DocURL:                               settings.DocURL,
+		HomeContent:                          settings.HomeContent,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		EnableModelFallback:                  settings.EnableModelFallback,
@@ -107,6 +108,7 @@ type UpdateSettingsRequest struct {
 	APIBaseURL   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
 	DocURL       string `json:"doc_url"`
+	HomeContent  string `json:"home_content"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
@@ -229,6 +231,7 @@ REDACTED
 		APIBaseURL:                 req.APIBaseURL,
 		ContactInfo:                req.ContactInfo,
 		DocURL:                     req.DocURL,
+		HomeContent:                req.HomeContent,
 		DefaultConcurrency:         req.DefaultConcurrency,
 		DefaultBalance:             req.DefaultBalance,
 		EnableModelFallback:        req.EnableModelFallback,
@@ -277,6 +280,7 @@ REDACTED
 		APIBaseURL:                           updatedSettings.APIBaseURL,
 		ContactInfo:                          updatedSettings.ContactInfo,
 		DocURL:                               updatedSettings.DocURL,
+		HomeContent:                          updatedSettings.HomeContent,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		EnableModelFallback:                  updatedSettings.EnableModelFallback,
@@ -376,6 +380,9 @@ REDACTED
 REDACTED
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")
+REDACTED
+	if before.HomeContent != after.HomeContent {
+		changed = append(changed, "home_content")
 REDACTED
 	if before.DefaultConcurrency != after.DefaultConcurrency {
 		changed = append(changed, "default_concurrency")

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"log"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -21,6 +23,7 @@ func SetupRouter(
 	apiKeyAuth middleware2.APIKeyAuthMiddleware,
 	apiKeyService *service.APIKeyService,
 	subscriptionService *service.SubscriptionService,
+	settingService *service.SettingService,
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) *gin.Engine {
@@ -29,9 +32,17 @@ func SetupRouter(
 	r.Use(middleware2.CORS(cfg.CORS))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP))
 
-	// Serve embedded frontend if available
+	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
-		r.Use(web.ServeEmbeddedFrontend())
+		frontendServer, err := web.NewFrontendServer(settingService)
+		if err != nil {
+			log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
+			r.Use(web.ServeEmbeddedFrontend())
+	REDACTED else {
+			// Register cache invalidation callback
+			settingService.SetOnUpdateCallback(frontendServer.InvalidateCache)
+			r.Use(frontendServer.Middleware())
+	REDACTED
 REDACTED
 
 	// 注册路由
