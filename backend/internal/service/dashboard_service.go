@@ -26,6 +26,7 @@ var ErrDashboardStatsCacheMiss = errors.New("仪表盘缓存未命中")
 type DashboardStatsCache interface {
 	GetDashboardStats(ctx context.Context) (string, error)
 	SetDashboardStats(ctx context.Context, data string, ttl time.Duration) error
+	DeleteDashboardStats(ctx context.Context) error
 REDACTED
 
 type dashboardStatsCacheEntry struct {
@@ -115,10 +116,12 @@ REDACTED
 
 	var entry dashboardStatsCacheEntry
 	if err := json.Unmarshal([]byte(data), &entry); err != nil {
-		return nil, false, err
+		s.evictDashboardStatsCache(err)
+		return nil, false, ErrDashboardStatsCacheMiss
 REDACTED
 	if entry.Stats == nil {
-		return nil, false, errors.New("仪表盘缓存缺少统计数据")
+		s.evictDashboardStatsCache(errors.New("仪表盘缓存缺少统计数据"))
+		return nil, false, ErrDashboardStatsCacheMiss
 REDACTED
 
 	age := time.Since(time.Unix(entry.UpdatedAt, 0))
@@ -130,7 +133,9 @@ func (s *DashboardService) refreshDashboardStats(ctx context.Context) (*usagesta
 	if err != nil {
 		return nil, err
 REDACTED
-	s.saveDashboardStatsCache(ctx, stats)
+	cacheCtx, cancel := s.cacheOperationContext()
+	defer cancel()
+	s.saveDashboardStatsCache(cacheCtx, stats)
 	return stats, nil
 REDACTED
 
@@ -153,7 +158,9 @@ REDACTED
 			log.Printf("[Dashboard] 仪表盘缓存异步刷新失败: %v", err)
 			return
 	REDACTED
-		s.saveDashboardStatsCache(ctx, stats)
+		cacheCtx, cancel := s.cacheOperationContext()
+		defer cancel()
+		s.saveDashboardStatsCache(cacheCtx, stats)
 REDACTED()
 REDACTED
 
@@ -175,6 +182,25 @@ REDACTED
 	if err := s.cache.SetDashboardStats(ctx, string(data), s.cacheTTL); err != nil {
 		log.Printf("[Dashboard] 仪表盘缓存写入失败: %v", err)
 REDACTED
+REDACTED
+
+func (s *DashboardService) evictDashboardStatsCache(reason error) {
+	if s.cache == nil {
+		return
+REDACTED
+	cacheCtx, cancel := s.cacheOperationContext()
+	defer cancel()
+
+	if err := s.cache.DeleteDashboardStats(cacheCtx); err != nil {
+		log.Printf("[Dashboard] 仪表盘缓存清理失败: %v", err)
+REDACTED
+	if reason != nil {
+		log.Printf("[Dashboard] 仪表盘缓存异常，已清理: %v", reason)
+REDACTED
+REDACTED
+
+func (s *DashboardService) cacheOperationContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), s.refreshTimeout)
 REDACTED
 
 func (s *DashboardService) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {
