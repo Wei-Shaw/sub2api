@@ -13,4 +13,7 @@ const (
 
 	// RetryCount 表示当前请求在网关层的重试次数（用于 Ops 记录与排障）。
 	RetryCount Key = "ctx_retry_count"
+
+	// IsClaudeCodeClient 标识当前请求是否来自 Claude Code 客户端
+	IsClaudeCodeClient Key = "ctx_is_claude_code_client"
 )

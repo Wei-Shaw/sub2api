@@ -1844,41 +1844,12 @@ export default {
       healthyStatus: 'Healthy',
       riskyStatus: 'At Risk',
       idleStatus: 'Idle',
-      realtime: {
-        title: 'Realtime',
-        connected: 'Connected',
-        connecting: 'Connecting',
-        reconnecting: 'Reconnecting',
-        offline: 'Offline',
-        closed: 'Closed',
-        reconnectIn: 'Reconnect in {secondsREDACTEDs'
-      REDACTED,
-      tooltips: {
-        qps: 'Queries per second - real-time request rate',
-        sla: 'Service Level Agreement - percentage of requests within acceptable latency',
-        latency: 'Request duration from start to finish',
-        ttft: 'Time to First Token - latency until first response token',
-        errors: 'Request errors within SLA scope',
-        upstreamErrors: 'Errors from upstream services (excluding rate limits)',
-        totalRequests: 'Total requests and tokens consumed in this time window',
-        cpu: 'CPU usage percentage',
-        memory: 'Memory usage percentage',
-        db: 'Database connection pool status',
-        redis: 'Redis connection pool status',
-        goroutines: 'Go routine count (concurrent tasks)',
-        jobs: 'Background job health status'
-      REDACTED,
       timeRange: {
         '5m': 'Last 5 minutes',
         '30m': 'Last 30 minutes',
         '1h': 'Last 1 hour',
         '6h': 'Last 6 hours',
         '24h': 'Last 24 hours'
-      REDACTED,
-      queryMode: {
-        auto: 'Auto',
-        raw: 'Raw Query',
-        preagg: 'Pre-aggregated'
       REDACTED,
       diagnosis: {
         title: 'Smart Diagnosis',

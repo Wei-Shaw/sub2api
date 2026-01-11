@@ -1989,41 +1989,12 @@ export default {
       healthyStatus: '健康',
       riskyStatus: '风险',
       idleStatus: '待机',
-      realtime: {
-        title: '实时信息',
-        connected: '已连接',
-        connecting: '连接中',
-        reconnecting: '重连中',
-        offline: '离线',
-        closed: '已关闭',
-        reconnectIn: '{secondsREDACTED秒后重连'
-      REDACTED,
-      tooltips: {
-        qps: '每秒查询数 - 实时请求速率',
-        sla: '服务等级协议 - 可接受延迟范围内的请求百分比',
-        latency: '从开始到结束的请求持续时间',
-        ttft: '首字延迟 - 直到第一个响应令牌的延迟',
-        errors: 'SLA 范围内的请求错误',
-        upstreamErrors: '上游服务错误（不包括速率限制）',
-        totalRequests: '此时间窗口内的总请求数和消耗的令牌数',
-        cpu: 'CPU 使用率',
-        memory: '内存使用率',
-        db: '数据库连接池状态',
-        redis: 'Redis 连接池状态',
-        goroutines: 'Go 协程数（并发任务）',
-        jobs: '后台任务健康状态'
-      REDACTED,
       timeRange: {
         '5m': '近5分钟',
         '30m': '近30分钟',
         '1h': '近1小时',
         '6h': '近6小时',
         '24h': '近24小时'
-      REDACTED,
-      queryMode: {
-        auto: '自动',
-        raw: '原始查询',
-        preagg: '预聚合'
       REDACTED,
       diagnosis: {
         title: '智能诊断',

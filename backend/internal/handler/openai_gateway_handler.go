@@ -227,7 +227,7 @@ REDACTED
 				h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
 				accountWaitCounted = false
 		REDACTED
-			if err := h.gatewayService.BindStickySession(c.Request.Context(), sessionHash, account.ID); err != nil {
+			if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, account.ID); err != nil {
 				log.Printf("Bind sticky session failed: %v", err)
 		REDACTED
 	REDACTED

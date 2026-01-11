@@ -35,6 +35,9 @@ var (
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
 const maxTokenLength = 8192
 
+// LinuxDoConnectSyntheticEmailDomain LinuxDo Connect 生成的合成邮箱域名后缀
+const LinuxDoConnectSyntheticEmailDomain = "@linuxdo.synthetic"
+
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
 	UserID       int64  `json:"user_id"`

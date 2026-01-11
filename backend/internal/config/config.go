@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -35,24 +36,26 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig       `mapstructure:"server"`
-	CORS         CORSConfig         `mapstructure:"cors"`
-	Security     SecurityConfig     `mapstructure:"security"`
-	Billing      BillingConfig      `mapstructure:"billing"`
-	Turnstile    TurnstileConfig    `mapstructure:"turnstile"`
-	Database     DatabaseConfig     `mapstructure:"database"`
-	Redis        RedisConfig        `mapstructure:"redis"`
-	Ops          OpsConfig          `mapstructure:"ops"`
-	JWT          JWTConfig          `mapstructure:"jwt"`
-	Default      DefaultConfig      `mapstructure:"default"`
-	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
-	Pricing      PricingConfig      `mapstructure:"pricing"`
-	Gateway      GatewayConfig      `mapstructure:"gateway"`
-	Concurrency  ConcurrencyConfig  `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig `mapstructure:"token_refresh"`
-	RunMode      string             `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string             `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig       `mapstructure:"gemini"`
+	Server       ServerConfig         `mapstructure:"server"`
+	CORS         CORSConfig           `mapstructure:"cors"`
+	Security     SecurityConfig       `mapstructure:"security"`
+	Billing      BillingConfig        `mapstructure:"billing"`
+	Turnstile    TurnstileConfig      `mapstructure:"turnstile"`
+	Database     DatabaseConfig       `mapstructure:"database"`
+	Redis        RedisConfig          `mapstructure:"redis"`
+	Ops          OpsConfig            `mapstructure:"ops"`
+	JWT          JWTConfig            `mapstructure:"jwt"`
+	LinuxDo      LinuxDoConnectConfig `mapstructure:"linuxdo_connect"`
+	Default      DefaultConfig        `mapstructure:"default"`
+	RateLimit    RateLimitConfig      `mapstructure:"rate_limit"`
+	Pricing      PricingConfig        `mapstructure:"pricing"`
+	Gateway      GatewayConfig        `mapstructure:"gateway"`
+	Concurrency  ConcurrencyConfig    `mapstructure:"concurrency"`
+	TokenRefresh TokenRefreshConfig   `mapstructure:"token_refresh"`
+	RunMode      string               `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone     string               `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini       GeminiConfig         `mapstructure:"gemini"`
+	Update       UpdateConfig         `mapstructure:"update"`
 REDACTED
 
 type GeminiConfig struct {
@@ -75,6 +78,33 @@ type GeminiTierQuotaConfig struct {
 	ProRPD          *int64 `mapstructure:"pro_rpd" json:"pro_rpd"`
 	FlashRPD        *int64 `mapstructure:"flash_rpd" json:"flash_rpd"`
 	CooldownMinutes *int   `mapstructure:"cooldown_minutes" json:"cooldown_minutes"`
+REDACTED
+
+type UpdateConfig struct {
+	// ProxyURL 用于访问 GitHub 的代理地址
+	// 支持 http/https/socks5/socks5h 协议
+	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
+	ProxyURL string `mapstructure:"proxy_url"`
+REDACTED
+
+type LinuxDoConnectConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	ClientID            string `mapstructure:"client_id"`
+	ClientSecret        string `mapstructure:"client_secret"`
+	AuthorizeURL        string `mapstructure:"authorize_url"`
+	TokenURL            string `mapstructure:"token_url"`
+	UserInfoURL         string `mapstructure:"userinfo_url"`
+	Scopes              string `mapstructure:"scopes"`
+	RedirectURL         string `mapstructure:"redirect_url"`          // 后端回调地址（需在提供方后台登记）
+	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认：/auth/linuxdo/callback）
+	TokenAuthMethod     string `mapstructure:"token_auth_method"`     // client_secret_post / client_secret_basic / none
+	UsePKCE             bool   `mapstructure:"use_pkce"`
+
+	// 可选：用于从 userinfo JSON 中提取字段的 gjson 路径。
+	// 为空时，服务端会尝试一组常见字段名。
+	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
+	UserInfoIDPath       string `mapstructure:"userinfo_id_path"`
+	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
 REDACTED
 
 // TokenRefreshConfig OAuth token自动刷新配置
@@ -833,4 +863,68 @@ func GetServerAddress() string {
 	host := v.GetString("server.host")
 	port := v.GetInt("server.port")
 	return fmt.Sprintf("%s:%d", host, port)
+REDACTED
+
+// ValidateAbsoluteHTTPURL 验证是否为有效的绝对 HTTP(S) URL
+func ValidateAbsoluteHTTPURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("empty url")
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+REDACTED
+	if !u.IsAbs() {
+		return fmt.Errorf("must be absolute")
+REDACTED
+	if !isHTTPScheme(u.Scheme) {
+		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
+REDACTED
+	if strings.TrimSpace(u.Host) == "" {
+		return fmt.Errorf("missing host")
+REDACTED
+	if u.Fragment != "" {
+		return fmt.Errorf("must not include fragment")
+REDACTED
+	return nil
+REDACTED
+
+// ValidateFrontendRedirectURL 验证前端重定向 URL（可以是绝对 URL 或相对路径）
+func ValidateFrontendRedirectURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("empty url")
+REDACTED
+	if strings.ContainsAny(raw, "\r\n") {
+		return fmt.Errorf("contains invalid characters")
+REDACTED
+	if strings.HasPrefix(raw, "/") {
+		if strings.HasPrefix(raw, "//") {
+			return fmt.Errorf("must not start with //")
+	REDACTED
+		return nil
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+REDACTED
+	if !u.IsAbs() {
+		return fmt.Errorf("must be absolute http(s) url or relative path")
+REDACTED
+	if !isHTTPScheme(u.Scheme) {
+		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
+REDACTED
+	if strings.TrimSpace(u.Host) == "" {
+		return fmt.Errorf("missing host")
+REDACTED
+	if u.Fragment != "" {
+		return fmt.Errorf("must not include fragment")
+REDACTED
+	return nil
+REDACTED
+
+// isHTTPScheme 检查是否为 HTTP 或 HTTPS 协议
+func isHTTPScheme(scheme string) bool {
+	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
 REDACTED
