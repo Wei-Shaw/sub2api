@@ -150,11 +150,10 @@ REDACTED
 <template>
   <BaseDialog :show="modelValue" :title="props.preset.title || t('admin.ops.requestDetails.title')" width="full" @close="close">
     <template #default>
-      <div class="text-xs text-gray-500 dark:text-gray-400 mb-4">
-        {{ t('admin.ops.requestDetails.rangeLabel', { range: rangeLabel REDACTED) REDACTEDREDACTED
-      </div>
-
-      <div class="flex justify-end mb-4">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.ops.requestDetails.rangeLabel', { range: rangeLabel REDACTED) REDACTEDREDACTED
+        </div>
         <button
           type="button"
           class="btn btn-secondary btn-sm"
