@@ -186,9 +186,11 @@ REDACTED
 
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
 type BulkUpdateAccountsResult struct {
-	Success int                       `json:"success"`
-	Failed  int                       `json:"failed"`
-	Results []BulkUpdateAccountResult `json:"results"`
+	Success    int                       `json:"success"`
+	Failed     int                       `json:"failed"`
+	SuccessIDs []int64                   `json:"success_ids"`
+	FailedIDs  []int64                   `json:"failed_ids"`
+	Results    []BulkUpdateAccountResult `json:"results"`
 REDACTED
 
 type CreateProxyInput struct {
@@ -917,7 +919,9 @@ REDACTED
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	result := &BulkUpdateAccountsResult{
-		Results: make([]BulkUpdateAccountResult, 0, len(input.AccountIDs)),
+		SuccessIDs: make([]int64, 0, len(input.AccountIDs)),
+		FailedIDs:  make([]int64, 0, len(input.AccountIDs)),
+		Results:    make([]BulkUpdateAccountResult, 0, len(input.AccountIDs)),
 REDACTED
 
 	if len(input.AccountIDs) == 0 {
@@ -981,6 +985,7 @@ REDACTED
 						entry.Success = false
 						entry.Error = err.Error()
 						result.Failed++
+						result.FailedIDs = append(result.FailedIDs, accountID)
 						result.Results = append(result.Results, entry)
 						continue
 				REDACTED
@@ -990,6 +995,7 @@ REDACTED
 					entry.Success = false
 					entry.Error = err.Error()
 					result.Failed++
+					result.FailedIDs = append(result.FailedIDs, accountID)
 					result.Results = append(result.Results, entry)
 					continue
 			REDACTED
@@ -999,6 +1005,7 @@ REDACTED
 				entry.Success = false
 				entry.Error = err.Error()
 				result.Failed++
+				result.FailedIDs = append(result.FailedIDs, accountID)
 				result.Results = append(result.Results, entry)
 				continue
 		REDACTED
@@ -1006,6 +1013,7 @@ REDACTED
 
 		entry.Success = true
 		result.Success++
+		result.SuccessIDs = append(result.SuccessIDs, accountID)
 		result.Results = append(result.Results, entry)
 REDACTED
 
