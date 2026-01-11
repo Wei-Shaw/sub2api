@@ -204,7 +204,7 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 
 	userToday := mustCreateUser(s.T(), s.client, &service.User{
 		Email:     "today@example.com",
-		CreatedAt: maxTime(todayStart.Add(10*time.Second), now.Add(-10*time.Second)),
+		CreatedAt: testMaxTime(todayStart.Add(10*time.Second), now.Add(-10*time.Second)),
 		UpdatedAt: now,
 REDACTED)
 	userOld := mustCreateUser(s.T(), s.client, &service.User{
@@ -237,7 +237,7 @@ REDACTED)
 		TotalCost:           1.5,
 		ActualCost:          1.2,
 		DurationMs:          &d1,
-		CreatedAt:           maxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
+		CreatedAt:           testMaxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
 REDACTED
 	_, err = s.repo.Create(s.ctx, logToday)
 	s.Require().NoError(err, "Create logToday")
@@ -621,7 +621,7 @@ func (s *UsageLogRepoSuite) TestGetGlobalStats() {
 	s.Require().Equal(int64(45), stats.TotalOutputTokens)
 REDACTED
 
-func maxTime(a, b time.Time) time.Time {
+func testMaxTime(a, b time.Time) time.Time {
 	if a.After(b) {
 		return a
 REDACTED

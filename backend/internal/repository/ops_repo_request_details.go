@@ -187,7 +187,7 @@ LIMIT $%d OFFSET $%d
 	if err != nil {
 		return nil, 0, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	toIntPtr := func(v sql.NullInt64) *int {
 		if !v.Valid {

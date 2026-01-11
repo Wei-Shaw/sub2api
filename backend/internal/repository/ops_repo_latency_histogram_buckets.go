@@ -47,18 +47,18 @@ REDACTED
 
 func latencyHistogramRangeOrderCaseExpr(column string) string {
 	var sb strings.Builder
-	sb.WriteString("CASE\n")
+	_, _ = sb.WriteString("CASE\n")
 
 	order := 1
 	for _, b := range latencyHistogramBuckets {
 		if b.upperMs <= 0 {
 			continue
 	REDACTED
-		sb.WriteString(fmt.Sprintf("\tWHEN %s < %d THEN %d\n", column, b.upperMs, order))
+		_, _ = sb.WriteString(fmt.Sprintf("\tWHEN %s < %d THEN %d\n", column, b.upperMs, order))
 		order++
 REDACTED
 
-	sb.WriteString(fmt.Sprintf("\tELSE %d\n", order))
-	sb.WriteString("END")
+	_, _ = sb.WriteString(fmt.Sprintf("\tELSE %d\n", order))
+	_, _ = sb.WriteString("END")
 	return sb.String()
 REDACTED

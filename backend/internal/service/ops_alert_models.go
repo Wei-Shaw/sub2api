@@ -72,4 +72,3 @@ type OpsAlertEventFilter struct {
 	Platform string
 	GroupID  *int64
 REDACTED
-
