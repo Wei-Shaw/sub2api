@@ -44,6 +44,9 @@ type OpsMetricsCollector struct {
 	settingRepo SettingRepository
 	cfg         *config.Config
 
+	accountRepo        AccountRepository
+	concurrencyService *ConcurrencyService
+
 	db          *sql.DB
 	redisClient *redis.Client
 	instanceID  string
@@ -62,17 +65,21 @@ REDACTED
 func NewOpsMetricsCollector(
 	opsRepo OpsRepository,
 	settingRepo SettingRepository,
+	accountRepo AccountRepository,
+	concurrencyService *ConcurrencyService,
 	db *sql.DB,
 	redisClient *redis.Client,
 	cfg *config.Config,
 ) *OpsMetricsCollector {
 	return &OpsMetricsCollector{
-		opsRepo:     opsRepo,
-		settingRepo: settingRepo,
-		cfg:         cfg,
-		db:          db,
-		redisClient: redisClient,
-		instanceID:  uuid.NewString(),
+		opsRepo:            opsRepo,
+		settingRepo:        settingRepo,
+		cfg:                cfg,
+		accountRepo:        accountRepo,
+		concurrencyService: concurrencyService,
+		db:                 db,
+		redisClient:        redisClient,
+		instanceID:         uuid.NewString(),
 REDACTED
 REDACTED
 
@@ -287,6 +294,7 @@ REDACTED
 	tps := float64(tokenConsumed) / windowSeconds
 
 	goroutines := runtime.NumGoroutine()
+	concurrencyQueueDepth := c.collectConcurrencyQueueDepth(ctx)
 
 	input := &OpsInsertSystemMetricsInput{
 		CreatedAt:     windowEnd,
@@ -340,12 +348,77 @@ REDACTED
 			return intPtr(redisIdle)
 	REDACTED(),
 
-		DBConnActive:   intPtr(active),
-		DBConnIdle:     intPtr(idle),
-		GoroutineCount: intPtr(goroutines),
+		DBConnActive:          intPtr(active),
+		DBConnIdle:            intPtr(idle),
+		GoroutineCount:        intPtr(goroutines),
+		ConcurrencyQueueDepth: concurrencyQueueDepth,
 REDACTED
 
 	return c.opsRepo.InsertSystemMetrics(ctx, input)
+REDACTED
+
+func (c *OpsMetricsCollector) collectConcurrencyQueueDepth(parentCtx context.Context) *int {
+	if c == nil || c.accountRepo == nil || c.concurrencyService == nil {
+		return nil
+REDACTED
+	if parentCtx == nil {
+		parentCtx = context.Background()
+REDACTED
+
+	// Best-effort: never let concurrency sampling break the metrics collector.
+	ctx, cancel := context.WithTimeout(parentCtx, 2*time.Second)
+	defer cancel()
+
+	accounts, err := c.accountRepo.ListSchedulable(ctx)
+	if err != nil {
+		return nil
+REDACTED
+	if len(accounts) == 0 {
+		zero := 0
+		return &zero
+REDACTED
+
+	batch := make([]AccountWithConcurrency, 0, len(accounts))
+	for _, acc := range accounts {
+		if acc.ID <= 0 {
+			continue
+	REDACTED
+		maxConc := acc.Concurrency
+		if maxConc < 0 {
+			maxConc = 0
+	REDACTED
+		batch = append(batch, AccountWithConcurrency{
+			ID:             acc.ID,
+			MaxConcurrency: maxConc,
+	REDACTED)
+REDACTED
+	if len(batch) == 0 {
+		zero := 0
+		return &zero
+REDACTED
+
+	loadMap, err := c.concurrencyService.GetAccountsLoadBatch(ctx, batch)
+	if err != nil {
+		return nil
+REDACTED
+
+	var total int64
+	for _, info := range loadMap {
+		if info == nil || info.WaitingCount <= 0 {
+			continue
+	REDACTED
+		total += int64(info.WaitingCount)
+REDACTED
+	if total < 0 {
+		total = 0
+REDACTED
+
+	maxInt := int64(^uint(0) >> 1)
+	if total > maxInt {
+		total = maxInt
+REDACTED
+	v := int(total)
+	return &v
 REDACTED
 
 type opsCollectedPercentiles struct {
@@ -459,9 +532,9 @@ SELECT
   COALESCE(COUNT(*), 0) AS error_total,
   COALESCE(COUNT(*) FILTER (WHERE is_business_limited), 0) AS business_limited,
   COALESCE(COUNT(*) FILTER (WHERE NOT is_business_limited), 0) AS error_sla,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(status_code, 0) = 429), 0) AS upstream_429,
-  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(status_code, 0) = 529), 0) AS upstream_529
+  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
+  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
+  COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529
 FROM ops_error_logs
 WHERE created_at >= $1 AND created_at < $2`
 
