@@ -19,14 +19,16 @@ type SettingHandler struct {
 	settingService   *service.SettingService
 	emailService     *service.EmailService
 	turnstileService *service.TurnstileService
+	opsService       *service.OpsService
 REDACTED
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService) *SettingHandler {
 	return &SettingHandler{
 		settingService:   settingService,
 		emailService:     emailService,
 		turnstileService: turnstileService,
+		opsService:       opsService,
 REDACTED
 REDACTED
 
@@ -38,6 +40,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+
+	// Check if ops monitoring is enabled (respects config.ops.enabled)
+	opsEnabled := h.opsService != nil && h.opsService.IsMonitoringEnabled(c.Request.Context())
 
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  settings.RegistrationEnabled,
@@ -72,7 +77,7 @@ REDACTED
 		FallbackModelAntigravity:             settings.FallbackModelAntigravity,
 		EnableIdentityPatch:                  settings.EnableIdentityPatch,
 		IdentityPatchPrompt:                  settings.IdentityPatchPrompt,
-		OpsMonitoringEnabled:                 settings.OpsMonitoringEnabled,
+		OpsMonitoringEnabled:                 opsEnabled && settings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:         settings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
 		OpsMetricsIntervalSeconds:            settings.OpsMetricsIntervalSeconds,

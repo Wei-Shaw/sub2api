@@ -222,6 +222,19 @@ redis:
   db: 0
 
 # =============================================================================
+# Ops Monitoring (Optional)
+# 运维监控 (可选)
+# =============================================================================
+ops:
+  # Enable ops monitoring features (background jobs and APIs)
+  # 是否启用运维监控功能（后台任务和接口）
+  # Set to false to hide ops menu in sidebar and disable all ops features
+  # 设置为 false 可在左侧栏隐藏运维监控菜单并禁用所有运维监控功能
+  # Other detailed settings (cleanup, aggregation, etc.) are configured in ops settings dialog
+  # 其他详细设置（数据清理、预聚合等）在运维监控设置对话框中配置
+  enabled: true
+
+# =============================================================================
 # JWT Configuration
 # JWT 配置
 # =============================================================================
