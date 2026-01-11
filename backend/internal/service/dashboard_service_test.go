@@ -16,10 +16,15 @@ import (
 
 type usageRepoStub struct {
 	UsageLogRepository
-	stats  *usagestats.DashboardStats
-	err    error
-	calls  int32
-	onCall chan struct{REDACTED
+	stats      *usagestats.DashboardStats
+	rangeStats *usagestats.DashboardStats
+	err        error
+	rangeErr   error
+	calls      int32
+	rangeCalls int32
+	rangeStart time.Time
+	rangeEnd   time.Time
+	onCall     chan struct{REDACTED
 REDACTED
 
 func (s *usageRepoStub) GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error) {
@@ -32,6 +37,19 @@ func (s *usageRepoStub) GetDashboardStats(ctx context.Context) (*usagestats.Dash
 REDACTED
 	if s.err != nil {
 		return nil, s.err
+REDACTED
+	return s.stats, nil
+REDACTED
+
+func (s *usageRepoStub) GetDashboardStatsWithRange(ctx context.Context, start, end time.Time) (*usagestats.DashboardStats, error) {
+	atomic.AddInt32(&s.rangeCalls, 1)
+	s.rangeStart = start
+	s.rangeEnd = end
+	if s.rangeErr != nil {
+		return nil, s.rangeErr
+REDACTED
+	if s.rangeStats != nil {
+		return s.rangeStats, nil
 REDACTED
 	return s.stats, nil
 REDACTED
@@ -140,7 +158,12 @@ REDACTED
 		stats: &usagestats.DashboardStats{TotalUsers: 99REDACTED,
 REDACTED
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
-	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled: true,
+	REDACTED,
+REDACTED
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
@@ -164,7 +187,12 @@ REDACTED
 REDACTED
 	repo := &usageRepoStub{stats: statsREDACTED
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
-	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled: true,
+	REDACTED,
+REDACTED
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
@@ -191,7 +219,12 @@ REDACTED
 REDACTED
 	repo := &usageRepoStub{stats: statsREDACTED
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
-	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: falseREDACTEDREDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: falseREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled: true,
+	REDACTED,
+REDACTED
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
@@ -226,7 +259,12 @@ REDACTED
 		onCall: refreshCh,
 REDACTED
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
-	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled: true,
+	REDACTED,
+REDACTED
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
@@ -252,7 +290,12 @@ REDACTED
 	stats := &usagestats.DashboardStats{TotalUsers: 9REDACTED
 	repo := &usageRepoStub{stats: statsREDACTED
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
-	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled: true,
+	REDACTED,
+REDACTED
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
@@ -270,7 +313,12 @@ func TestDashboardService_CacheParseError_RepoFailure(t *testing.T) {
 REDACTED
 	repo := &usageRepoStub{err: errors.New("db down")REDACTED
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
-	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled: true,
+	REDACTED,
+REDACTED
 	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	_, err := svc.GetDashboardStats(context.Background())
@@ -310,4 +358,30 @@ REDACTED
 REDACTED
 	require.Equal(t, aggNow.Format(time.RFC3339), got.StatsUpdatedAt)
 	require.False(t, got.StatsStale)
+REDACTED
+
+func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
+	expected := &usagestats.DashboardStats{TotalUsers: 42REDACTED
+	repo := &usageRepoStub{
+		rangeStats: expected,
+		err:        errors.New("should not call aggregated stats"),
+REDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: falseREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled: false,
+			Retention: config.DashboardAggregationRetentionConfig{
+				UsageLogsDays: 7,
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewDashboardService(repo, nil, nil, cfg)
+
+	got, err := svc.GetDashboardStats(context.Background())
+REDACTED
+	require.Equal(t, int64(42), got.TotalUsers)
+	require.Equal(t, int32(0), atomic.LoadInt32(&repo.calls))
+	require.Equal(t, int32(1), atomic.LoadInt32(&repo.rangeCalls))
+	require.False(t, repo.rangeEnd.IsZero())
+	require.Equal(t, truncateToDayUTC(repo.rangeEnd.AddDate(0, 0, -7)), repo.rangeStart)
 REDACTED

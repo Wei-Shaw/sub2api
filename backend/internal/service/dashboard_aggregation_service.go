@@ -19,6 +19,8 @@ const (
 var (
 	// ErrDashboardBackfillDisabled 当配置禁用回填时返回。
 	ErrDashboardBackfillDisabled = errors.New("仪表盘聚合回填已禁用")
+	// ErrDashboardBackfillTooLarge 当回填跨度超过限制时返回。
+	ErrDashboardBackfillTooLarge = errors.New("回填时间跨度过大")
 )
 
 // DashboardAggregationRepository 定义仪表盘预聚合仓储接口。
@@ -76,6 +78,9 @@ REDACTED
 		s.runScheduledAggregation()
 REDACTED)
 	log.Printf("[DashboardAggregation] 聚合作业启动 (interval=%v, lookback=%ds)", interval, s.cfg.LookbackSeconds)
+	if !s.cfg.BackfillEnabled {
+		log.Printf("[DashboardAggregation] 回填已禁用，如需补齐保留窗口以外历史数据请手动回填")
+REDACTED
 REDACTED
 
 // TriggerBackfill 触发回填（异步）。
@@ -89,6 +94,12 @@ REDACTED
 REDACTED
 	if !end.After(start) {
 		return errors.New("回填时间范围无效")
+REDACTED
+	if s.cfg.BackfillMaxDays > 0 {
+		maxRange := time.Duration(s.cfg.BackfillMaxDays) * 24 * time.Hour
+		if end.Sub(start) > maxRange {
+			return ErrDashboardBackfillTooLarge
+	REDACTED
 REDACTED
 
 	go func() {
@@ -137,8 +148,11 @@ REDACTED
 	epoch := time.Unix(0, 0).UTC()
 	start := last.Add(-lookback)
 	if !last.After(epoch) {
-		// 首次聚合覆盖当天，避免只统计最后一个窗口。
-		start = truncateToDayUTC(now)
+		retentionDays := s.cfg.Retention.UsageLogsDays
+		if retentionDays <= 0 {
+			retentionDays = 1
+	REDACTED
+		start = truncateToDayUTC(now.AddDate(0, 0, -retentionDays))
 REDACTED else if start.After(now) {
 		start = now.Add(-lookback)
 REDACTED

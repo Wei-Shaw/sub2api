@@ -232,6 +232,9 @@ dashboard_aggregation:
   # Allow manual backfill
   # 允许手动回填
   backfill_enabled: false
+  # Backfill max range (days)
+  # 回填最大跨度（天）
+  backfill_max_days: 31
   # Recompute recent N days on startup
   # 启动时重算最近 N 天
   recompute_days: 2

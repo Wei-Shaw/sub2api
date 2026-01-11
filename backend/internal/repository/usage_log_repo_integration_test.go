@@ -308,6 +308,80 @@ REDACTED
 	s.Require().Equal(wantTpm, stats.Tpm, "Tpm mismatch")
 REDACTED
 
+func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
+	now := time.Now().UTC()
+	todayStart := truncateToDayUTC(now)
+	rangeStart := todayStart.Add(-24 * time.Hour)
+	rangeEnd := now
+
+	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u1@test.com"REDACTED)
+	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u2@test.com"REDACTED)
+	apiKey1 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user1.ID, Key: "sk-range-1", Name: "k1"REDACTED)
+	apiKey2 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user2.ID, Key: "sk-range-2", Name: "k2"REDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-range"REDACTED)
+
+	d1, d2, d3 := 100, 200, 300
+	logOutside := &service.UsageLog{
+		UserID:       user1.ID,
+		APIKeyID:     apiKey1.ID,
+		AccountID:    account.ID,
+		Model:        "claude-3",
+		InputTokens:  7,
+		OutputTokens: 8,
+		TotalCost:    0.8,
+		ActualCost:   0.7,
+		DurationMs:   &d3,
+		CreatedAt:    rangeStart.Add(-1 * time.Hour),
+REDACTED
+	_, err := s.repo.Create(s.ctx, logOutside)
+	s.Require().NoError(err)
+
+	logRange := &service.UsageLog{
+		UserID:              user1.ID,
+		APIKeyID:            apiKey1.ID,
+		AccountID:           account.ID,
+		Model:               "claude-3",
+		InputTokens:         10,
+		OutputTokens:        20,
+		CacheCreationTokens: 1,
+		CacheReadTokens:     2,
+		TotalCost:           1.0,
+		ActualCost:          0.9,
+		DurationMs:          &d1,
+		CreatedAt:           rangeStart.Add(2 * time.Hour),
+REDACTED
+	_, err = s.repo.Create(s.ctx, logRange)
+	s.Require().NoError(err)
+
+	logToday := &service.UsageLog{
+		UserID:          user2.ID,
+		APIKeyID:        apiKey2.ID,
+		AccountID:       account.ID,
+		Model:           "claude-3",
+		InputTokens:     5,
+		OutputTokens:    6,
+		CacheReadTokens: 1,
+		TotalCost:       0.5,
+		ActualCost:      0.5,
+		DurationMs:      &d2,
+		CreatedAt:       now,
+REDACTED
+	_, err = s.repo.Create(s.ctx, logToday)
+	s.Require().NoError(err)
+
+	stats, err := s.repo.GetDashboardStatsWithRange(s.ctx, rangeStart, rangeEnd)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), stats.TotalRequests)
+	s.Require().Equal(int64(15), stats.TotalInputTokens)
+	s.Require().Equal(int64(26), stats.TotalOutputTokens)
+	s.Require().Equal(int64(1), stats.TotalCacheCreationTokens)
+	s.Require().Equal(int64(3), stats.TotalCacheReadTokens)
+	s.Require().Equal(int64(45), stats.TotalTokens)
+	s.Require().Equal(1.5, stats.TotalCost)
+	s.Require().Equal(1.4, stats.TotalActualCost)
+	s.Require().InEpsilon(150.0, stats.AverageDurationMs, 0.0001)
+REDACTED
+
 // --- GetUserDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestGetUserDashboardStats() {

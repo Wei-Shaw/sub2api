@@ -159,6 +159,10 @@ REDACTED
 			response.Forbidden(c, "Backfill is disabled")
 			return
 	REDACTED
+		if errors.Is(err, service.ErrDashboardBackfillTooLarge) {
+			response.BadRequest(c, "Backfill range too large")
+			return
+	REDACTED
 		response.InternalError(c, "Failed to trigger backfill")
 		return
 REDACTED

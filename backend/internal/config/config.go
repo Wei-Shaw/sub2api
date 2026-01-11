@@ -398,6 +398,8 @@ type DashboardAggregationConfig struct {
 	LookbackSeconds int `mapstructure:"lookback_seconds"`
 	// BackfillEnabled: 是否允许全量回填
 	BackfillEnabled bool `mapstructure:"backfill_enabled"`
+	// BackfillMaxDays: 回填最大跨度（天）
+	BackfillMaxDays int `mapstructure:"backfill_max_days"`
 	// Retention: 各表保留窗口（天）
 	Retention DashboardAggregationRetentionConfig `mapstructure:"retention"`
 	// RecomputeDays: 启动时重算最近 N 天
@@ -726,6 +728,7 @@ REDACTED)
 	viper.SetDefault("dashboard_aggregation.interval_seconds", 60)
 	viper.SetDefault("dashboard_aggregation.lookback_seconds", 120)
 	viper.SetDefault("dashboard_aggregation.backfill_enabled", false)
+	viper.SetDefault("dashboard_aggregation.backfill_max_days", 31)
 	viper.SetDefault("dashboard_aggregation.retention.usage_logs_days", 90)
 	viper.SetDefault("dashboard_aggregation.retention.hourly_days", 180)
 	viper.SetDefault("dashboard_aggregation.retention.daily_days", 730)
@@ -920,6 +923,12 @@ REDACTED
 		if c.DashboardAgg.LookbackSeconds < 0 {
 			return fmt.Errorf("dashboard_aggregation.lookback_seconds must be non-negative")
 	REDACTED
+		if c.DashboardAgg.BackfillMaxDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.backfill_max_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.BackfillEnabled && c.DashboardAgg.BackfillMaxDays == 0 {
+			return fmt.Errorf("dashboard_aggregation.backfill_max_days must be positive")
+	REDACTED
 		if c.DashboardAgg.Retention.UsageLogsDays <= 0 {
 			return fmt.Errorf("dashboard_aggregation.retention.usage_logs_days must be positive")
 	REDACTED
@@ -938,6 +947,9 @@ REDACTED else {
 	REDACTED
 		if c.DashboardAgg.LookbackSeconds < 0 {
 			return fmt.Errorf("dashboard_aggregation.lookback_seconds must be non-negative")
+	REDACTED
+		if c.DashboardAgg.BackfillMaxDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.backfill_max_days must be non-negative")
 	REDACTED
 		if c.DashboardAgg.Retention.UsageLogsDays < 0 {
 			return fmt.Errorf("dashboard_aggregation.retention.usage_logs_days must be non-negative")

@@ -226,6 +226,9 @@ REDACTED
 	if cfg.DashboardAgg.BackfillEnabled {
 		t.Fatalf("DashboardAgg.BackfillEnabled = true, want false")
 REDACTED
+	if cfg.DashboardAgg.BackfillMaxDays != 31 {
+		t.Fatalf("DashboardAgg.BackfillMaxDays = %d, want 31", cfg.DashboardAgg.BackfillMaxDays)
+REDACTED
 	if cfg.DashboardAgg.Retention.UsageLogsDays != 90 {
 		t.Fatalf("DashboardAgg.Retention.UsageLogsDays = %d, want 90", cfg.DashboardAgg.Retention.UsageLogsDays)
 REDACTED
@@ -256,5 +259,24 @@ REDACTED
 REDACTED
 	if !strings.Contains(err.Error(), "dashboard_aggregation.interval_seconds") {
 		t.Fatalf("Validate() expected interval_seconds error, got: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateDashboardAggregationBackfillMaxDays(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.DashboardAgg.BackfillEnabled = true
+	cfg.DashboardAgg.BackfillMaxDays = 0
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for dashboard_aggregation.backfill_max_days, got nil")
+REDACTED
+	if !strings.Contains(err.Error(), "dashboard_aggregation.backfill_max_days") {
+		t.Fatalf("Validate() expected backfill_max_days error, got: %v", err)
 REDACTED
 REDACTED
