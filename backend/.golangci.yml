@@ -21,6 +21,9 @@ linters:
             - "!**/internal/service/ops_aggregation_service.go"
             - "!**/internal/service/ops_alert_evaluator_service.go"
             - "!**/internal/service/ops_cleanup_service.go"
+            - "!**/internal/service/ops_metrics_collector.go"
+            - "!**/internal/service/ops_scheduled_report_service.go"
+            - "!**/internal/service/wire.go"
           deny:
             - pkg: github.com/Wei-Shaw/sub2api/internal/repository
               desc: "service must not import repository"

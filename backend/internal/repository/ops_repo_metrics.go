@@ -348,7 +348,7 @@ ORDER BY job_name ASC`
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	out := make([]*service.OpsJobHeartbeat, 0, 8)
 	for rows.Next() {

@@ -42,7 +42,7 @@ ORDER BY 3 ASC`
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	counts := make(map[string]int64, len(latencyHistogramOrderedRanges))
 	var total int64
