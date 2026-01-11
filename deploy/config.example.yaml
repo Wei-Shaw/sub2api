@@ -195,6 +195,27 @@ api_key_auth_cache:
   singleflight: true
 
 # =============================================================================
+# Dashboard Cache Configuration
+# 仪表盘缓存配置
+# =============================================================================
+dashboard_cache:
+  # Enable dashboard cache
+  # 启用仪表盘缓存
+  enabled: true
+  # Redis key prefix for multi-environment isolation
+  # Redis key 前缀，用于多环境隔离
+  key_prefix: "sub2api:"
+  # Fresh TTL (seconds); within this window cached stats are considered fresh
+  # 新鲜阈值（秒）；命中后处于该窗口视为新鲜数据
+  stats_fresh_ttl_seconds: 15
+  # Cache TTL (seconds) stored in Redis
+  # Redis 缓存 TTL（秒）
+  stats_ttl_seconds: 30
+  # Async refresh timeout (seconds)
+  # 异步刷新超时（秒）
+  stats_refresh_timeout_seconds: 30
+
+# =============================================================================
 # Concurrency Wait Configuration
 # 并发等待配置
 # =============================================================================

@@ -141,3 +141,67 @@ REDACTED
 		t.Fatalf("Validate() expected use_pkce error, got: %v", err)
 REDACTED
 REDACTED
+
+func TestLoadDefaultDashboardCacheConfig(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if !cfg.Dashboard.Enabled {
+		t.Fatalf("Dashboard.Enabled = false, want true")
+REDACTED
+	if cfg.Dashboard.KeyPrefix != "sub2api:" {
+		t.Fatalf("Dashboard.KeyPrefix = %q, want %q", cfg.Dashboard.KeyPrefix, "sub2api:")
+REDACTED
+	if cfg.Dashboard.StatsFreshTTLSeconds != 15 {
+		t.Fatalf("Dashboard.StatsFreshTTLSeconds = %d, want 15", cfg.Dashboard.StatsFreshTTLSeconds)
+REDACTED
+	if cfg.Dashboard.StatsTTLSeconds != 30 {
+		t.Fatalf("Dashboard.StatsTTLSeconds = %d, want 30", cfg.Dashboard.StatsTTLSeconds)
+REDACTED
+	if cfg.Dashboard.StatsRefreshTimeoutSeconds != 30 {
+		t.Fatalf("Dashboard.StatsRefreshTimeoutSeconds = %d, want 30", cfg.Dashboard.StatsRefreshTimeoutSeconds)
+REDACTED
+REDACTED
+
+func TestValidateDashboardCacheConfigEnabled(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.Dashboard.Enabled = true
+	cfg.Dashboard.StatsFreshTTLSeconds = 10
+	cfg.Dashboard.StatsTTLSeconds = 5
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for stats_fresh_ttl_seconds > stats_ttl_seconds, got nil")
+REDACTED
+	if !strings.Contains(err.Error(), "dashboard_cache.stats_fresh_ttl_seconds") {
+		t.Fatalf("Validate() expected stats_fresh_ttl_seconds error, got: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateDashboardCacheConfigDisabled(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.Dashboard.Enabled = false
+	cfg.Dashboard.StatsTTLSeconds = -1
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for negative stats_ttl_seconds, got nil")
+REDACTED
+	if !strings.Contains(err.Error(), "dashboard_cache.stats_ttl_seconds") {
+		t.Fatalf("Validate() expected stats_ttl_seconds error, got: %v", err)
+REDACTED
+REDACTED

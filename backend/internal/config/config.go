@@ -50,6 +50,7 @@ type Config struct {
 	Pricing      PricingConfig         `mapstructure:"pricing"`
 	Gateway      GatewayConfig         `mapstructure:"gateway"`
 	APIKeyAuth   APIKeyAuthCacheConfig `mapstructure:"api_key_auth_cache"`
+	Dashboard    DashboardCacheConfig  `mapstructure:"dashboard_cache"`
 	Concurrency  ConcurrencyConfig     `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig    `mapstructure:"token_refresh"`
 	RunMode      string                `mapstructure:"run_mode" yaml:"run_mode"`
@@ -372,6 +373,20 @@ type APIKeyAuthCacheConfig struct {
 	Singleflight       bool `mapstructure:"singleflight"`
 REDACTED
 
+// DashboardCacheConfig 仪表盘统计缓存配置
+type DashboardCacheConfig struct {
+	// Enabled: 是否启用仪表盘缓存
+	Enabled bool `mapstructure:"enabled"`
+	// KeyPrefix: Redis key 前缀，用于多环境隔离
+	KeyPrefix string `mapstructure:"key_prefix"`
+	// StatsFreshTTLSeconds: 缓存命中认为“新鲜”的时间窗口（秒）
+	StatsFreshTTLSeconds int `mapstructure:"stats_fresh_ttl_seconds"`
+	// StatsTTLSeconds: Redis 缓存总 TTL（秒）
+	StatsTTLSeconds int `mapstructure:"stats_ttl_seconds"`
+	// StatsRefreshTimeoutSeconds: 异步刷新超时（秒）
+	StatsRefreshTimeoutSeconds int `mapstructure:"stats_refresh_timeout_seconds"`
+REDACTED
+
 func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
@@ -437,6 +452,7 @@ REDACTED
 	cfg.LinuxDo.UserInfoEmailPath = strings.TrimSpace(cfg.LinuxDo.UserInfoEmailPath)
 	cfg.LinuxDo.UserInfoIDPath = strings.TrimSpace(cfg.LinuxDo.UserInfoIDPath)
 	cfg.LinuxDo.UserInfoUsernamePath = strings.TrimSpace(cfg.LinuxDo.UserInfoUsernamePath)
+	cfg.Dashboard.KeyPrefix = strings.TrimSpace(cfg.Dashboard.KeyPrefix)
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
@@ -674,6 +690,13 @@ REDACTED)
 	viper.SetDefault("api_key_auth_cache.jitter_percent", 10)
 	viper.SetDefault("api_key_auth_cache.singleflight", true)
 
+	// Dashboard cache
+	viper.SetDefault("dashboard_cache.enabled", true)
+	viper.SetDefault("dashboard_cache.key_prefix", "sub2api:")
+	viper.SetDefault("dashboard_cache.stats_fresh_ttl_seconds", 15)
+	viper.SetDefault("dashboard_cache.stats_ttl_seconds", 30)
+	viper.SetDefault("dashboard_cache.stats_refresh_timeout_seconds", 30)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", false)
@@ -831,6 +854,30 @@ REDACTED
 REDACTED
 	if c.Redis.MinIdleConns > c.Redis.PoolSize {
 		return fmt.Errorf("redis.min_idle_conns cannot exceed redis.pool_size")
+REDACTED
+	if c.Dashboard.Enabled {
+		if c.Dashboard.StatsFreshTTLSeconds <= 0 {
+			return fmt.Errorf("dashboard_cache.stats_fresh_ttl_seconds must be positive")
+	REDACTED
+		if c.Dashboard.StatsTTLSeconds <= 0 {
+			return fmt.Errorf("dashboard_cache.stats_ttl_seconds must be positive")
+	REDACTED
+		if c.Dashboard.StatsRefreshTimeoutSeconds <= 0 {
+			return fmt.Errorf("dashboard_cache.stats_refresh_timeout_seconds must be positive")
+	REDACTED
+		if c.Dashboard.StatsFreshTTLSeconds > c.Dashboard.StatsTTLSeconds {
+			return fmt.Errorf("dashboard_cache.stats_fresh_ttl_seconds must be <= dashboard_cache.stats_ttl_seconds")
+	REDACTED
+REDACTED else {
+		if c.Dashboard.StatsFreshTTLSeconds < 0 {
+			return fmt.Errorf("dashboard_cache.stats_fresh_ttl_seconds must be non-negative")
+	REDACTED
+		if c.Dashboard.StatsTTLSeconds < 0 {
+			return fmt.Errorf("dashboard_cache.stats_ttl_seconds must be non-negative")
+	REDACTED
+		if c.Dashboard.StatsRefreshTimeoutSeconds < 0 {
+			return fmt.Errorf("dashboard_cache.stats_refresh_timeout_seconds must be non-negative")
+	REDACTED
 REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
