@@ -529,9 +529,9 @@ func (c *OpsMetricsCollector) queryErrorCounts(ctx context.Context, start, end t
 ) {
 	q := `
 SELECT
-  COALESCE(COUNT(*), 0) AS error_total,
-  COALESCE(COUNT(*) FILTER (WHERE is_business_limited), 0) AS business_limited,
-  COALESCE(COUNT(*) FILTER (WHERE NOT is_business_limited), 0) AS error_sla,
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400), 0) AS error_total,
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND is_business_limited), 0) AS business_limited,
+  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND NOT is_business_limited), 0) AS error_sla,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529

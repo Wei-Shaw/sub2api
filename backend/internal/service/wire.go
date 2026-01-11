@@ -132,6 +132,19 @@ func ProvideOpsCleanupService(
 	return svc
 REDACTED
 
+// ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
+func ProvideOpsScheduledReportService(
+	opsService *OpsService,
+	userService *UserService,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsScheduledReportService {
+	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -169,6 +182,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,
 	ProvideOpsCleanupService,
+	ProvideOpsScheduledReportService,
 	NewEmailService,
 	ProvideEmailQueueService,
 	NewTurnstileService,

@@ -131,6 +131,7 @@ WITH combined AS (
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
   WHERE o.created_at >= $1 AND o.created_at < $2
+    AND COALESCE(o.status_code, 0) >= 400
 )
 `
 

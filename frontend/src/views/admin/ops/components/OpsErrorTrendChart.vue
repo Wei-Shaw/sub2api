@@ -45,10 +45,25 @@ const colors = computed(() => ({
   text: isDarkMode.value ? '#9ca3af' : '#6b7280'
 REDACTED))
 
-const totalErrors = computed(() => sumNumbers(props.points.map((p) => p.error_count_sla ?? 0)))
+const totalRequestErrors = computed(() =>
+  sumNumbers(props.points.map((p) => (p.error_count_sla ?? 0) + (p.business_limited_count ?? 0)))
+)
+
+const totalUpstreamErrors = computed(() =>
+  sumNumbers(
+    props.points.map((p) => (p.upstream_error_count_excl_429_529 ?? 0) + (p.upstream_429_count ?? 0) + (p.upstream_529_count ?? 0))
+  )
+)
+
+const totalDisplayed = computed(() =>
+  sumNumbers(props.points.map((p) => (p.error_count_sla ?? 0) + (p.upstream_error_count_excl_429_529 ?? 0) + (p.business_limited_count ?? 0)))
+)
+
+const hasRequestErrors = computed(() => totalRequestErrors.value > 0)
+const hasUpstreamErrors = computed(() => totalUpstreamErrors.value > 0)
 
 const chartData = computed(() => {
-  if (!props.points.length || totalErrors.value <= 0) return null
+  if (!props.points.length || totalDisplayed.value <= 0) return null
   return {
     labels: props.points.map((p) => formatHistoryLabel(p.bucket_start, props.timeRange)),
     datasets: [
@@ -158,7 +173,7 @@ REDACTED)
         <button
           type="button"
           class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
-          :disabled="state !== 'ready'"
+          :disabled="!hasRequestErrors"
           @click="emit('openRequestErrors')"
         >
           {{ t('admin.ops.errorDetails.requestErrors') REDACTEDREDACTED
@@ -166,7 +181,7 @@ REDACTED)
         <button
           type="button"
           class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
-          :disabled="state !== 'ready'"
+          :disabled="!hasUpstreamErrors"
           @click="emit('openUpstreamErrors')"
         >
           {{ t('admin.ops.errorDetails.upstreamErrors') REDACTEDREDACTED

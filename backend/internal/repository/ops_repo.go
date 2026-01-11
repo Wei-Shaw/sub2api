@@ -149,7 +149,7 @@ SELECT
   error_phase,
   error_type,
   severity,
-  COALESCE(status_code, 0),
+  COALESCE(upstream_status_code, status_code, 0),
   COALESCE(platform, ''),
   COALESCE(model, ''),
   duration_ms,
@@ -261,7 +261,7 @@ SELECT
   error_phase,
   error_type,
   severity,
-  COALESCE(status_code, 0),
+  COALESCE(upstream_status_code, status_code, 0),
   COALESCE(platform, ''),
   COALESCE(model, ''),
   duration_ms,
@@ -605,6 +605,17 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	args := make([]any, 0, 8)
 	clauses = append(clauses, "1=1")
 
+	phaseFilter := ""
+	if filter != nil {
+		phaseFilter = strings.TrimSpace(strings.ToLower(filter.Phase))
+REDACTED
+	// ops_error_logs primarily stores client-visible error requests (status>=400),
+	// but we also persist "recovered" upstream errors (status<400) for upstream health visibility.
+	// By default, keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
+	if phaseFilter != "upstream" {
+		clauses = append(clauses, "COALESCE(status_code, 0) >= 400")
+REDACTED
+
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
 		args = append(args, filter.StartTime.UTC())
 		clauses = append(clauses, "created_at >= $"+itoa(len(args)))
@@ -626,13 +637,13 @@ REDACTED
 		args = append(args, *filter.AccountID)
 		clauses = append(clauses, "account_id = $"+itoa(len(args)))
 REDACTED
-	if phase := strings.TrimSpace(filter.Phase); phase != "" {
+	if phase := phaseFilter; phase != "" {
 		args = append(args, phase)
 		clauses = append(clauses, "error_phase = $"+itoa(len(args)))
 REDACTED
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))
-		clauses = append(clauses, "status_code = ANY($"+itoa(len(args))+")")
+		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+")")
 REDACTED
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"

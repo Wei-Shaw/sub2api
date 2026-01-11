@@ -53,6 +53,7 @@ error_buckets AS (
          COUNT(*) AS error_count
   FROM ops_error_logs
   ` + errorWhere + `
+    AND COALESCE(status_code, 0) >= 400
   GROUP BY 1
 ),
 combined AS (
@@ -168,6 +169,7 @@ error_totals AS (
          COUNT(*) AS error_count
   FROM ops_error_logs
   WHERE created_at >= $1 AND created_at < $2
+    AND COALESCE(status_code, 0) >= 400
   GROUP BY 1
 ),
 combined AS (
@@ -240,6 +242,7 @@ error_totals AS (
   WHERE created_at >= $1 AND created_at < $2
     AND platform = $3
     AND group_id IS NOT NULL
+    AND COALESCE(status_code, 0) >= 400
   GROUP BY 1
 ),
 combined AS (
@@ -413,9 +416,9 @@ REDACTED
 	q := `
 SELECT
   ` + bucketExpr + ` AS bucket,
-  COUNT(*) AS error_total,
-  COUNT(*) FILTER (WHERE is_business_limited) AS business_limited,
-  COUNT(*) FILTER (WHERE NOT is_business_limited) AS error_sla,
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400) AS error_total,
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND is_business_limited) AS business_limited,
+  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND NOT is_business_limited) AS error_sla,
   COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)) AS upstream_excl,
   COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429) AS upstream_429,
   COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529) AS upstream_529
@@ -524,12 +527,13 @@ REDACTED
 
 	q := `
 SELECT
-  COALESCE(status_code, 0) AS status_code,
+  COALESCE(upstream_status_code, status_code, 0) AS status_code,
   COUNT(*) AS total,
   COUNT(*) FILTER (WHERE NOT is_business_limited) AS sla,
   COUNT(*) FILTER (WHERE is_business_limited) AS business_limited
 FROM ops_error_logs
 ` + where + `
+  AND COALESCE(status_code, 0) >= 400
 GROUP BY 1
 ORDER BY total DESC
 LIMIT 20`
