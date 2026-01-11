@@ -228,12 +228,14 @@ const durationP95Ms = computed(() => overview.value?.duration?.p95_ms ?? null)
 const durationP90Ms = computed(() => overview.value?.duration?.p90_ms ?? null)
 const durationP50Ms = computed(() => overview.value?.duration?.p50_ms ?? null)
 const durationAvgMs = computed(() => overview.value?.duration?.avg_ms ?? null)
+const durationMaxMs = computed(() => overview.value?.duration?.max_ms ?? null)
 
 const ttftP99Ms = computed(() => overview.value?.ttft?.p99_ms ?? null)
 const ttftP95Ms = computed(() => overview.value?.ttft?.p95_ms ?? null)
 const ttftP90Ms = computed(() => overview.value?.ttft?.p90_ms ?? null)
 const ttftP50Ms = computed(() => overview.value?.ttft?.p50_ms ?? null)
 const ttftAvgMs = computed(() => overview.value?.ttft?.avg_ms ?? null)
+const ttftMaxMs = computed(() => overview.value?.ttft?.max_ms ?? null)
 
 // --- WebSocket status ---
 
@@ -883,23 +885,36 @@ REDACTED
                 </div>
               </div>
 
-              <!-- Average QPS/TPS -->
+              <!-- Average QPS/TPS with Animated Pulse Line -->
               <div class="col-span-2">
-                <!-- Sparkline -->
-                <svg v-if="qpsHistory.length > 1" class="mb-2 h-8 w-full" viewBox="0 0 200 32" preserveAspectRatio="none">
-                  <polyline
-                    :points="qpsHistory.map((v, i) => `${(i / (qpsHistory.length - 1)) * 200REDACTED,${32 - (v / Math.max(...qpsHistory, 1)) * 28REDACTED`).join(' ')"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    class="text-blue-500"
-                  />
-                </svg>
                 <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.average') REDACTEDREDACTED</div>
                 <div class="mt-1 flex items-center gap-4 text-sm font-medium text-gray-600 dark:text-gray-400">
                   <span>QPS: <span class="font-bold">{{ qpsAvgLabel REDACTEDREDACTED</span></span>
                   <span class="h-1 w-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
                   <span>TPS: <span class="font-bold">{{ tpsAvgLabel REDACTEDREDACTED</span></span>
+                </div>
+
+                <!-- Animated Pulse Line (Heart Beat Animation) -->
+                <div class="mt-2 h-8 w-full overflow-hidden opacity-50">
+                  <svg class="h-full w-full" viewBox="0 0 280 32" preserveAspectRatio="none">
+                    <path
+                      d="M0 16 Q 20 16, 40 16 T 80 16 T 120 10 T 160 22 T 200 16 T 240 16 T 280 16"
+                      fill="none"
+                      stroke="#3b82f6"
+                      stroke-width="2"
+                      vector-effect="non-scaling-stroke"
+                    >
+                      <animate
+                        attributeName="d"
+                        dur="2s"
+                        repeatCount="indefinite"
+                        values="M0 16 Q 20 16, 40 16 T 80 16 T 120 10 T 160 22 T 200 16 T 240 16 T 280 16;
+                                M0 16 Q 20 16, 40 16 T 80 16 T 120 16 T 160 16 T 200 10 T 240 22 T 280 16;
+                                M0 16 Q 20 16, 40 16 T 80 16 T 120 16 T 160 16 T 200 16 T 240 16 T 280 16"
+                        keyTimes="0;0.5;1"
+                      />
+                    </path>
+                  </svg>
                 </div>
               </div>
             </div>
