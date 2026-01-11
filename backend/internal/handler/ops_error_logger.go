@@ -392,6 +392,39 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			CreatedAt:   time.Now(),
 	REDACTED
 
+		// Capture upstream error context set by gateway services (if present).
+		// This does NOT affect the client response; it enriches Ops troubleshooting data.
+		{
+			if v, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
+				switch t := v.(type) {
+				case int:
+					if t > 0 {
+						code := t
+						entry.UpstreamStatusCode = &code
+				REDACTED
+				case int64:
+					if t > 0 {
+						code := int(t)
+						entry.UpstreamStatusCode = &code
+				REDACTED
+			REDACTED
+		REDACTED
+			if v, ok := c.Get(service.OpsUpstreamErrorMessageKey); ok {
+				if s, ok := v.(string); ok {
+					if msg := strings.TrimSpace(s); msg != "" {
+						entry.UpstreamErrorMessage = &msg
+				REDACTED
+			REDACTED
+		REDACTED
+			if v, ok := c.Get(service.OpsUpstreamErrorDetailKey); ok {
+				if s, ok := v.(string); ok {
+					if detail := strings.TrimSpace(s); detail != "" {
+						entry.UpstreamErrorDetail = &detail
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
 		if apiKey != nil {
 			entry.APIKeyID = &apiKey.ID
 			if apiKey.User != nil {

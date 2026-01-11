@@ -135,6 +135,34 @@ REDACTED
 		entry.ErrorBody = sanitized
 REDACTED
 
+	// Sanitize upstream error context if provided by gateway services.
+	if entry.UpstreamStatusCode != nil && *entry.UpstreamStatusCode <= 0 {
+		entry.UpstreamStatusCode = nil
+REDACTED
+	if entry.UpstreamErrorMessage != nil {
+		msg := strings.TrimSpace(*entry.UpstreamErrorMessage)
+		msg = sanitizeUpstreamErrorMessage(msg)
+		msg = truncateString(msg, 2048)
+		if strings.TrimSpace(msg) == "" {
+			entry.UpstreamErrorMessage = nil
+	REDACTED else {
+			entry.UpstreamErrorMessage = &msg
+	REDACTED
+REDACTED
+	if entry.UpstreamErrorDetail != nil {
+		detail := strings.TrimSpace(*entry.UpstreamErrorDetail)
+		if detail == "" {
+			entry.UpstreamErrorDetail = nil
+	REDACTED else {
+			sanitized, _ := sanitizeErrorBodyForStorage(detail, opsMaxStoredErrorBodyBytes)
+			if strings.TrimSpace(sanitized) == "" {
+				entry.UpstreamErrorDetail = nil
+		REDACTED else {
+				entry.UpstreamErrorDetail = &sanitized
+		REDACTED
+	REDACTED
+REDACTED
+
 	if _, err := s.opsRepo.InsertErrorLog(ctx, entry); err != nil {
 		// Never bubble up to gateway; best-effort logging.
 		log.Printf("[Ops] RecordError failed: %v", err)

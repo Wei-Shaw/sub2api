@@ -162,6 +162,25 @@ const displayRealTimeTps = computed(() => {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
 REDACTED)
 
+// Sparkline history (keep last 60 data points)
+const qpsHistory = ref<number[]>([])
+const tpsHistory = ref<number[]>([])
+const MAX_HISTORY_POINTS = 60
+
+watch([displayRealTimeQps, displayRealTimeTps], ([newQps, newTps]) => {
+  // Add new data points
+  qpsHistory.value.push(newQps)
+  tpsHistory.value.push(newTps)
+
+  // Keep only last N points
+  if (qpsHistory.value.length > MAX_HISTORY_POINTS) {
+    qpsHistory.value.shift()
+  REDACTED
+  if (tpsHistory.value.length > MAX_HISTORY_POINTS) {
+    tpsHistory.value.shift()
+  REDACTED
+REDACTED)
+
 const qpsPeakLabel = computed(() => {
   const v = overview.value?.qps?.peak
   if (typeof v !== 'number') return '-'
@@ -866,6 +885,16 @@ REDACTED
 
               <!-- Average QPS/TPS -->
               <div class="col-span-2">
+                <!-- Sparkline -->
+                <svg v-if="qpsHistory.length > 1" class="mb-2 h-8 w-full" viewBox="0 0 200 32" preserveAspectRatio="none">
+                  <polyline
+                    :points="qpsHistory.map((v, i) => `${(i / (qpsHistory.length - 1)) * 200REDACTED,${32 - (v / Math.max(...qpsHistory, 1)) * 28REDACTED`).join(' ')"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    class="text-blue-500"
+                  />
+                </svg>
                 <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.average') REDACTEDREDACTED</div>
                 <div class="mt-1 flex items-center gap-4 text-sm font-medium text-gray-600 dark:text-gray-400">
                   <span>QPS: <span class="font-bold">{{ qpsAvgLabel REDACTEDREDACTED</span></span>
@@ -974,7 +1003,7 @@ REDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <div class="mt-3 grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">P95:</span>
               <span class="font-bold" :class="getLatencyColor(durationP95Ms)">{{ durationP95Ms ?? '-' REDACTEDREDACTEDms</span>
@@ -990,6 +1019,10 @@ REDACTED
             <div class="flex justify-between">
               <span class="text-gray-500">Avg:</span>
               <span class="font-bold" :class="getLatencyColor(durationAvgMs)">{{ durationAvgMs ?? '-' REDACTEDREDACTEDms</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Max:</span>
+              <span class="font-bold" :class="getLatencyColor(durationMaxMs)">{{ durationMaxMs ?? '-' REDACTEDREDACTEDms</span>
             </div>
           </div>
         </div>
@@ -1015,7 +1048,7 @@ REDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <div class="mt-3 grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
             <div class="flex justify-between">
               <span class="text-gray-500">P95:</span>
               <span class="font-bold" :class="getLatencyColor(ttftP95Ms)">{{ ttftP95Ms ?? '-' REDACTEDREDACTEDms</span>
@@ -1031,6 +1064,10 @@ REDACTED
             <div class="flex justify-between">
               <span class="text-gray-500">Avg:</span>
               <span class="font-bold" :class="getLatencyColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTEDms</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Max:</span>
+              <span class="font-bold" :class="getLatencyColor(ttftMaxMs)">{{ ttftMaxMs ?? '-' REDACTEDREDACTEDms</span>
             </div>
           </div>
         </div>

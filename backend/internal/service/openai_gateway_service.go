@@ -587,7 +587,16 @@ REDACTED
 	// Send request
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
-		return nil, fmt.Errorf("upstream request failed: %w", err)
+		// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error": gin.H{
+				"type":    "upstream_error",
+				"message": "Upstream request failed",
+		REDACTED,
+	REDACTED)
+		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
@@ -707,7 +716,30 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*OpenAIForwardResult, error) {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+	REDACTED
+		upstreamDetail = truncateString(string(body), maxBytes)
+REDACTED
+	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		log.Printf(
+			"OpenAI upstream error %d (account=%d platform=%s type=%s): %s",
+			resp.StatusCode,
+			account.ID,
+			account.Platform,
+			account.Type,
+			truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+		)
+REDACTED
 
 	// Check custom error codes
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
@@ -717,7 +749,10 @@ func (s *OpenAIGatewayService) handleErrorResponse(ctx context.Context, resp *ht
 				"message": "Upstream gateway error",
 		REDACTED,
 	REDACTED)
-		return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 	// Handle upstream error (mark account status)
@@ -763,7 +798,10 @@ REDACTED
 	REDACTED,
 REDACTED)
 
-	return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+	if upstreamMsg == "" {
+		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+REDACTED
+	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 // openaiStreamingResult streaming response result

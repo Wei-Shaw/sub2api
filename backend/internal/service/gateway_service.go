@@ -1399,7 +1399,17 @@ REDACTED
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 		REDACTED
-			return nil, fmt.Errorf("upstream request failed: %w", err)
+			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			setOpsUpstreamError(c, 0, safeErr, "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream request failed",
+			REDACTED,
+		REDACTED)
+			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	REDACTED
 
 		// 优先检测thinking block签名错误（400）并重试一次
@@ -1859,7 +1869,21 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	// Enrich Ops error logs with upstream status + message, and optionally a truncated body snippet.
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+	REDACTED
+		upstreamDetail = truncateString(string(body), maxBytes)
+REDACTED
+	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 
 	// 处理上游错误，标记账号状态
 	shouldDisable := false
@@ -1870,24 +1894,33 @@ REDACTED
 		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 REDACTED
 
+	// 记录上游错误响应体摘要便于排障（可选：由配置控制；不回显到客户端）
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		log.Printf(
+			"Upstream error %d (account=%d platform=%s type=%s): %s",
+			resp.StatusCode,
+			account.ID,
+			account.Platform,
+			account.Type,
+			truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+		)
+REDACTED
+
 	// 根据状态码返回适当的自定义错误响应（不透传上游详细信息）
 	var errType, errMsg string
 	var statusCode int
 
 	switch resp.StatusCode {
 	case 400:
-		// 仅记录上游错误摘要（避免输出请求内容）；需要时可通过配置打开
-		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			log.Printf(
-				"Upstream 400 error (account=%d platform=%s type=%s): %s",
-				account.ID,
-				account.Platform,
-				account.Type,
-				truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
-			)
-	REDACTED
 		c.Data(http.StatusBadRequest, "application/json", body)
-		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+		summary := upstreamMsg
+		if summary == "" {
+			summary = truncateForLog(body, 512)
+	REDACTED
+		if summary == "" {
+			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
@@ -1923,7 +1956,10 @@ REDACTED
 	REDACTED,
 REDACTED)
 
-	return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+	if upstreamMsg == "" {
+		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+REDACTED
+	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, resp *http.Response, account *Account) {
@@ -1949,7 +1985,35 @@ REDACTED
 // OAuth 403：标记账号异常
 // API Key 未配置错误码：仅返回错误，不标记账号
 func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
+	// Capture upstream error body before side-effects consume the stream.
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
 	s.handleRetryExhaustedSideEffects(ctx, resp, account)
+
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+	REDACTED
+		upstreamDetail = truncateString(string(respBody), maxBytes)
+REDACTED
+	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		log.Printf(
+			"Upstream error %d retries_exhausted (account=%d platform=%s type=%s): %s",
+			resp.StatusCode,
+			account.ID,
+			account.Platform,
+			account.Type,
+			truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+		)
+REDACTED
 
 	// 返回统一的重试耗尽错误响应
 	c.JSON(http.StatusBadGateway, gin.H{
@@ -1960,7 +2024,10 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	REDACTED,
 REDACTED)
 
-	return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
+	if upstreamMsg == "" {
+		return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
+REDACTED
+	return nil, fmt.Errorf("upstream error: %d (retries exhausted) message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 // streamingResult 流式响应结果
