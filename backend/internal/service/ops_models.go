@@ -36,12 +36,18 @@ type OpsErrorLogDetail struct {
 	ErrorBody string `json:"error_body"`
 	UserAgent string `json:"user_agent"`
 
+	// Upstream context (optional)
+	UpstreamStatusCode   *int   `json:"upstream_status_code,omitempty"`
+	UpstreamErrorMessage string `json:"upstream_error_message,omitempty"`
+	UpstreamErrorDetail  string `json:"upstream_error_detail,omitempty"`
+	UpstreamErrors       string `json:"upstream_errors,omitempty"` // JSON array (string) for display/parsing
+
 	// Timings (optional)
-	AuthLatencyMs       *int64 `json:"auth_latency_ms"`
-	RoutingLatencyMs    *int64 `json:"routing_latency_ms"`
-	UpstreamLatencyMs   *int64 `json:"upstream_latency_ms"`
-	ResponseLatencyMs   *int64 `json:"response_latency_ms"`
-	TimeToFirstTokenMs  *int64 `json:"time_to_first_token_ms"`
+	AuthLatencyMs      *int64 `json:"auth_latency_ms"`
+	RoutingLatencyMs   *int64 `json:"routing_latency_ms"`
+	UpstreamLatencyMs  *int64 `json:"upstream_latency_ms"`
+	ResponseLatencyMs  *int64 `json:"response_latency_ms"`
+	TimeToFirstTokenMs *int64 `json:"time_to_first_token_ms"`
 
 	// Retry context
 	RequestBody          string `json:"request_body"`
@@ -57,8 +63,8 @@ type OpsErrorLogFilter struct {
 	StartTime *time.Time
 	EndTime   *time.Time
 
-	Platform string
-	GroupID  *int64
+	Platform  string
+	GroupID   *int64
 	AccountID *int64
 
 	StatusCodes []int
@@ -71,9 +77,9 @@ REDACTED
 
 type OpsErrorLogList struct {
 	Errors   []*OpsErrorLog `json:"errors"`
-	Total    int           `json:"total"`
-	Page     int           `json:"page"`
-	PageSize int           `json:"page_size"`
+	Total    int            `json:"total"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"page_size"`
 REDACTED
 
 type OpsRetryAttempt struct {
@@ -97,18 +103,18 @@ type OpsRetryAttempt struct {
 REDACTED
 
 type OpsRetryResult struct {
-	AttemptID int64 `json:"attempt_id"`
+	AttemptID int64  `json:"attempt_id"`
 	Mode      string `json:"mode"`
 	Status    string `json:"status"`
 
 	PinnedAccountID *int64 `json:"pinned_account_id"`
 	UsedAccountID   *int64 `json:"used_account_id"`
 
-	HTTPStatusCode int    `json:"http_status_code"`
+	HTTPStatusCode    int    `json:"http_status_code"`
 	UpstreamRequestID string `json:"upstream_request_id"`
 
-	ResponsePreview     string `json:"response_preview"`
-	ResponseTruncated   bool   `json:"response_truncated"`
+	ResponsePreview   string `json:"response_preview"`
+	ResponseTruncated bool   `json:"response_truncated"`
 
 	ErrorMessage string `json:"error_message"`
 

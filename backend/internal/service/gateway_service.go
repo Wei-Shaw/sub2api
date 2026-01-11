@@ -1402,6 +1402,13 @@ REDACTED
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				UpstreamStatusCode: 0,
+				Kind:               "request_error",
+				Message:            safeErr,
+		REDACTED)
 			c.JSON(http.StatusBadGateway, gin.H{
 				"type": "error",
 				"error": gin.H{
@@ -1419,6 +1426,21 @@ REDACTED
 				_ = resp.Body.Close()
 
 				if s.isThinkingBlockSignatureError(respBody) {
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						Kind:               "signature_error",
+						Message:            extractUpstreamErrorMessage(respBody),
+						Detail: func() string {
+							if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+								return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+						REDACTED
+							return ""
+					REDACTED(),
+				REDACTED)
+
 					looksLikeToolSignatureError := func(msg string) bool {
 						m := strings.ToLower(msg)
 						return strings.Contains(m, "tool_use") ||
@@ -1455,6 +1477,20 @@ REDACTED
 							retryRespBody, retryReadErr := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
 							_ = retryResp.Body.Close()
 							if retryReadErr == nil && retryResp.StatusCode == 400 && s.isThinkingBlockSignatureError(retryRespBody) {
+								appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+									Platform:           account.Platform,
+									AccountID:          account.ID,
+									UpstreamStatusCode: retryResp.StatusCode,
+									UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
+									Kind:               "signature_retry_thinking",
+									Message:            extractUpstreamErrorMessage(retryRespBody),
+									Detail: func() string {
+										if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+											return truncateString(string(retryRespBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+									REDACTED
+										return ""
+								REDACTED(),
+							REDACTED)
 								msg2 := extractUpstreamErrorMessage(retryRespBody)
 								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
 									log.Printf("Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
@@ -1469,6 +1505,13 @@ REDACTED
 										if retryResp2 != nil && retryResp2.Body != nil {
 											_ = retryResp2.Body.Close()
 									REDACTED
+										appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+											Platform:           account.Platform,
+											AccountID:          account.ID,
+											UpstreamStatusCode: 0,
+											Kind:               "signature_retry_tools_request_error",
+											Message:            sanitizeUpstreamErrorMessage(retryErr2.Error()),
+									REDACTED)
 										log.Printf("Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
 								REDACTED else {
 										log.Printf("Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
@@ -1518,9 +1561,24 @@ REDACTED
 					break
 			REDACTED
 
+				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+				_ = resp.Body.Close()
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "retry",
+					Message:            extractUpstreamErrorMessage(respBody),
+					Detail: func() string {
+						if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+							return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+					REDACTED
+						return ""
+				REDACTED(),
+			REDACTED)
 				log.Printf("Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
-				_ = resp.Body.Close()
 				if err := sleepWithContext(ctx, delay); err != nil {
 					return nil, err
 			REDACTED
@@ -1548,7 +1606,25 @@ REDACTED
 	// 处理重试耗尽的情况
 	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
 			s.handleRetryExhaustedSideEffects(ctx, resp, account)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				Kind:               "retry_exhausted_failover",
+				Message:            extractUpstreamErrorMessage(respBody),
+				Detail: func() string {
+					if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+						return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+				REDACTED
+					return ""
+			REDACTED(),
+		REDACTED)
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 	REDACTED
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
@@ -1556,7 +1632,25 @@ REDACTED
 
 	// 处理可切换账号的错误
 	if resp.StatusCode >= 400 && s.shouldFailoverUpstreamError(resp.StatusCode) {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
 		s.handleFailoverSideEffects(ctx, resp, account)
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "failover",
+			Message:            extractUpstreamErrorMessage(respBody),
+			Detail: func() string {
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+			REDACTED
+				return ""
+		REDACTED(),
+	REDACTED)
 		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 REDACTED
 
@@ -1573,6 +1667,26 @@ REDACTED
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 			if s.shouldFailoverOn400(respBody) {
+				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "failover_on_400",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+
 				if s.cfg.Gateway.LogUpstreamErrorBody {
 					log.Printf(
 						"Account %d: 400 error, attempting failover: %s",
@@ -1884,6 +1998,15 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		upstreamDetail = truncateString(string(body), maxBytes)
 REDACTED
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		UpstreamStatusCode: resp.StatusCode,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               "http_error",
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+REDACTED)
 
 	// 处理上游错误，标记账号状态
 	shouldDisable := false
@@ -1963,7 +2086,7 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, resp *http.Response, account *Account) {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	statusCode := resp.StatusCode
 
 	// OAuth/Setup Token 账号的 403：标记账号异常
@@ -1977,7 +2100,7 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 REDACTED
 
@@ -2003,6 +2126,15 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		upstreamDetail = truncateString(string(respBody), maxBytes)
 REDACTED
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		UpstreamStatusCode: resp.StatusCode,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               "retry_exhausted",
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+REDACTED)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		log.Printf(
@@ -2557,6 +2689,7 @@ REDACTED
 	// 发送请求
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
+		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 REDACTED
@@ -2594,6 +2727,18 @@ REDACTED
 		// 标记账号状态（429/529等）
 		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		upstreamDetail := ""
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			if maxBytes <= 0 {
+				maxBytes = 2048
+		REDACTED
+			upstreamDetail = truncateString(string(respBody), maxBytes)
+	REDACTED
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
 		// 记录上游错误摘要便于排障（不回显请求内容）
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 			log.Printf(
@@ -2615,7 +2760,10 @@ REDACTED
 			errMsg = "Service overloaded"
 	REDACTED
 		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
-		return fmt.Errorf("upstream error: %d", resp.StatusCode)
+		if upstreamMsg == "" {
+			return fmt.Errorf("upstream error: %d", resp.StatusCode)
+	REDACTED
+		return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 	// 透传成功响应

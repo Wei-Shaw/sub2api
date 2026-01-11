@@ -81,6 +81,12 @@ type OpsInsertErrorLogInput struct {
 	UpstreamStatusCode   *int
 	UpstreamErrorMessage *string
 	UpstreamErrorDetail  *string
+	// UpstreamErrors captures all upstream error attempts observed during handling this request.
+	// It is populated during request processing (gin context) and sanitized+serialized by OpsService.
+	UpstreamErrors []*OpsUpstreamErrorEvent
+	// UpstreamErrorsJSON is the sanitized JSON string stored into ops_error_logs.upstream_errors.
+	// It is set by OpsService.RecordError before persisting.
+	UpstreamErrorsJSON *string
 
 	DurationMs         *int
 	TimeToFirstTokenMs *int64

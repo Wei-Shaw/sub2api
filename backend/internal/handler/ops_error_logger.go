@@ -423,6 +423,27 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				REDACTED
 			REDACTED
 		REDACTED
+			if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
+				if events, ok := v.([]*service.OpsUpstreamErrorEvent); ok && len(events) > 0 {
+					entry.UpstreamErrors = events
+					// Best-effort backfill the single upstream fields from the last event when missing.
+					last := events[len(events)-1]
+					if last != nil {
+						if entry.UpstreamStatusCode == nil && last.UpstreamStatusCode > 0 {
+							code := last.UpstreamStatusCode
+							entry.UpstreamStatusCode = &code
+					REDACTED
+						if entry.UpstreamErrorMessage == nil && strings.TrimSpace(last.Message) != "" {
+							msg := strings.TrimSpace(last.Message)
+							entry.UpstreamErrorMessage = &msg
+					REDACTED
+						if entry.UpstreamErrorDetail == nil && strings.TrimSpace(last.Detail) != "" {
+							detail := strings.TrimSpace(last.Detail)
+							entry.UpstreamErrorDetail = &detail
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
 	REDACTED
 
 		if apiKey != nil {

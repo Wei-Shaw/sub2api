@@ -53,6 +53,7 @@ INSERT INTO ops_error_logs (
   upstream_status_code,
   upstream_error_message,
   upstream_error_detail,
+  upstream_errors,
   duration_ms,
   time_to_first_token_ms,
   request_body,
@@ -63,7 +64,7 @@ INSERT INTO ops_error_logs (
   retry_count,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
 ) RETURNING id`
 
 	var id int64
@@ -94,6 +95,7 @@ INSERT INTO ops_error_logs (
 		opsNullInt(input.UpstreamStatusCode),
 		opsNullString(input.UpstreamErrorMessage),
 		opsNullString(input.UpstreamErrorDetail),
+		opsNullString(input.UpstreamErrorsJSON),
 		opsNullInt(input.DurationMs),
 		opsNullInt64(input.TimeToFirstTokenMs),
 		opsNullString(input.RequestBodyJSON),
@@ -267,6 +269,10 @@ SELECT
   COALESCE(request_id, ''),
   COALESCE(error_message, ''),
   COALESCE(error_body, ''),
+  upstream_status_code,
+  COALESCE(upstream_error_message, ''),
+  COALESCE(upstream_error_detail, ''),
+  COALESCE(upstream_errors::text, ''),
   is_business_limited,
   user_id,
   api_key_id,
@@ -292,6 +298,7 @@ LIMIT 1`
 	var out service.OpsErrorLogDetail
 	var latency sql.NullInt64
 	var statusCode sql.NullInt64
+	var upstreamStatusCode sql.NullInt64
 	var clientIP sql.NullString
 	var userID sql.NullInt64
 	var apiKeyID sql.NullInt64
@@ -318,6 +325,10 @@ LIMIT 1`
 		&out.RequestID,
 		&out.Message,
 		&out.ErrorBody,
+		&upstreamStatusCode,
+		&out.UpstreamErrorMessage,
+		&out.UpstreamErrorDetail,
+		&out.UpstreamErrors,
 		&out.IsBusinessLimited,
 		&userID,
 		&apiKeyID,
@@ -349,6 +360,10 @@ REDACTED
 	if clientIP.Valid {
 		s := clientIP.String
 		out.ClientIP = &s
+REDACTED
+	if upstreamStatusCode.Valid && upstreamStatusCode.Int64 > 0 {
+		v := int(upstreamStatusCode.Int64)
+		out.UpstreamStatusCode = &v
 REDACTED
 	if userID.Valid {
 		v := userID.Int64
@@ -400,6 +415,11 @@ REDACTED
 	out.RequestHeaders = strings.TrimSpace(out.RequestHeaders)
 	if out.RequestHeaders == "null" {
 		out.RequestHeaders = ""
+REDACTED
+	// Normalize upstream_errors to empty string when stored as JSON null.
+	out.UpstreamErrors = strings.TrimSpace(out.UpstreamErrors)
+	if out.UpstreamErrors == "null" {
+		out.UpstreamErrors = ""
 REDACTED
 
 	return &out, nil
