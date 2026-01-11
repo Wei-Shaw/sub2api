@@ -833,9 +833,9 @@ REDACTED
 
           <!-- 2) Realtime Traffic -->
           <div class="flex flex-col justify-center py-2">
-            <div class="mb-3 flex items-center justify-between gap-2">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-2">
-                <div class="relative flex h-3 w-3">
+                <div class="relative flex h-3 w-3 shrink-0">
                   <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
                   <span class="relative inline-flex h-3 w-3 rounded-full bg-blue-500"></span>
                 </div>
@@ -844,12 +844,12 @@ REDACTED
               </div>
 
               <!-- Time Window Selector -->
-              <div class="flex gap-1">
+              <div class="flex flex-wrap gap-1">
                 <button
                   v-for="window in (['1min', '5min', '30min', '1h'] as RealtimeWindow[])"
                   :key="window"
                   type="button"
-                  class="rounded px-2 py-0.5 text-[10px] font-bold transition-colors"
+                  class="rounded px-1.5 py-0.5 text-[9px] font-bold transition-colors sm:px-2 sm:text-[10px]"
                   :class="realtimeWindow === window
                     ? 'bg-blue-500 text-white'
                     : 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'"
@@ -860,62 +860,76 @@ REDACTED
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-              <!-- Current QPS/TPS -->
+            <div class="space-y-3">
+              <!-- Row 1: Current -->
               <div>
                 <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.current') REDACTEDREDACTED</div>
-                <div class="mt-1 flex items-baseline gap-2">
-                  <span class="text-2xl font-black text-gray-900 dark:text-white">{{ displayRealTimeQps.toFixed(1) REDACTEDREDACTED</span>
-                  <span class="text-xs font-bold text-gray-500">QPS</span>
-                </div>
-                <div class="mt-0.5 text-xs font-medium text-gray-500">
-                  TPS: {{ displayRealTimeTps.toFixed(1) REDACTEDREDACTED
-                </div>
-              </div>
-
-              <!-- Peak QPS/TPS -->
-              <div>
-                <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.peak') REDACTEDREDACTED</div>
-                <div class="mt-1 flex items-baseline gap-2">
-                  <span class="text-2xl font-black text-gray-900 dark:text-white">{{ qpsPeakLabel REDACTEDREDACTED</span>
-                  <span class="text-xs font-bold text-gray-500">QPS</span>
-                </div>
-                <div class="mt-0.5 text-xs font-medium text-gray-500">
-                  TPS: {{ tpsPeakLabel REDACTEDREDACTED
+                <div class="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-2">
+                  <div class="flex items-baseline gap-1.5">
+                    <span class="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">{{ displayRealTimeQps.toFixed(1) REDACTEDREDACTED</span>
+                    <span class="text-xs font-bold text-gray-500">QPS</span>
+                  </div>
+                  <div class="flex items-baseline gap-1.5">
+                    <span class="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">{{ displayRealTimeTps.toFixed(1) REDACTEDREDACTED</span>
+                    <span class="text-xs font-bold text-gray-500">TPS</span>
+                  </div>
                 </div>
               </div>
 
-              <!-- Average QPS/TPS with Animated Pulse Line -->
-              <div class="col-span-2">
-                <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.average') REDACTEDREDACTED</div>
-                <div class="mt-1 flex items-center gap-4 text-sm font-medium text-gray-600 dark:text-gray-400">
-                  <span>QPS: <span class="font-bold">{{ qpsAvgLabel REDACTEDREDACTED</span></span>
-                  <span class="h-1 w-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
-                  <span>TPS: <span class="font-bold">{{ tpsAvgLabel REDACTEDREDACTED</span></span>
+              <!-- Row 2: Peak + Average -->
+              <div class="grid grid-cols-2 gap-3">
+                <!-- Peak -->
+                <div>
+                  <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.peak') REDACTEDREDACTED</div>
+                  <div class="mt-1 space-y-0.5 text-sm font-medium text-gray-600 dark:text-gray-400">
+                    <div class="flex items-baseline gap-1.5">
+                      <span class="font-black text-gray-900 dark:text-white">{{ qpsPeakLabel REDACTEDREDACTED</span>
+                      <span class="text-xs">QPS</span>
+                    </div>
+                    <div class="flex items-baseline gap-1.5">
+                      <span class="font-black text-gray-900 dark:text-white">{{ tpsPeakLabel REDACTEDREDACTED</span>
+                      <span class="text-xs">TPS</span>
+                    </div>
+                  </div>
                 </div>
 
-                <!-- Animated Pulse Line (Heart Beat Animation) -->
-                <div class="mt-2 h-8 w-full overflow-hidden opacity-50">
-                  <svg class="h-full w-full" viewBox="0 0 280 32" preserveAspectRatio="none">
-                    <path
-                      d="M0 16 Q 20 16, 40 16 T 80 16 T 120 10 T 160 22 T 200 16 T 240 16 T 280 16"
-                      fill="none"
-                      stroke="#3b82f6"
-                      stroke-width="2"
-                      vector-effect="non-scaling-stroke"
-                    >
-                      <animate
-                        attributeName="d"
-                        dur="2s"
-                        repeatCount="indefinite"
-                        values="M0 16 Q 20 16, 40 16 T 80 16 T 120 10 T 160 22 T 200 16 T 240 16 T 280 16;
-                                M0 16 Q 20 16, 40 16 T 80 16 T 120 16 T 160 16 T 200 10 T 240 22 T 280 16;
-                                M0 16 Q 20 16, 40 16 T 80 16 T 120 16 T 160 16 T 200 16 T 240 16 T 280 16"
-                        keyTimes="0;0.5;1"
-                      />
-                    </path>
-                  </svg>
+                <!-- Average -->
+                <div>
+                  <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.average') REDACTEDREDACTED</div>
+                  <div class="mt-1 space-y-0.5 text-sm font-medium text-gray-600 dark:text-gray-400">
+                    <div class="flex items-baseline gap-1.5">
+                      <span class="font-black text-gray-900 dark:text-white">{{ qpsAvgLabel REDACTEDREDACTED</span>
+                      <span class="text-xs">QPS</span>
+                    </div>
+                    <div class="flex items-baseline gap-1.5">
+                      <span class="font-black text-gray-900 dark:text-white">{{ tpsAvgLabel REDACTEDREDACTED</span>
+                      <span class="text-xs">TPS</span>
+                    </div>
+                  </div>
                 </div>
+              </div>
+
+              <!-- Animated Pulse Line (Heart Beat Animation) -->
+              <div class="h-8 w-full overflow-hidden opacity-50">
+                <svg class="h-full w-full" viewBox="0 0 280 32" preserveAspectRatio="none">
+                  <path
+                    d="M0 16 Q 20 16, 40 16 T 80 16 T 120 10 T 160 22 T 200 16 T 240 16 T 280 16"
+                    fill="none"
+                    stroke="#3b82f6"
+                    stroke-width="2"
+                    vector-effect="non-scaling-stroke"
+                  >
+                    <animate
+                      attributeName="d"
+                      dur="2s"
+                      repeatCount="indefinite"
+                      values="M0 16 Q 20 16, 40 16 T 80 16 T 120 10 T 160 22 T 200 16 T 240 16 T 280 16;
+                              M0 16 Q 20 16, 40 16 T 80 16 T 120 16 T 160 16 T 200 10 T 240 22 T 280 16;
+                              M0 16 Q 20 16, 40 16 T 80 16 T 120 16 T 160 16 T 200 16 T 240 16 T 280 16"
+                      keyTimes="0;0.5;1"
+                    />
+                  </path>
+                </svg>
               </div>
             </div>
           </div>
@@ -924,11 +938,11 @@ REDACTED
 
       <!-- Right: 6 cards (3 cols x 2 rows) -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-7 lg:grid-cols-3">
-        <!-- Card 1: Total Requests -->
+        <!-- Card 1: Requests -->
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
-              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.totalRequests') REDACTEDREDACTED</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requests') REDACTEDREDACTED</span>
               <HelpTooltip :content="t('admin.ops.tooltips.totalRequests')" />
             </div>
             <button
@@ -941,11 +955,11 @@ REDACTED
           </div>
           <div class="mt-2 space-y-2 text-xs">
             <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.requests') REDACTEDREDACTED:</span>
+              <span class="text-gray-500">请求数:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ totalRequestsLabel REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.tokens') REDACTEDREDACTED:</span>
+              <span class="text-gray-500">Token:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ totalTokensLabel REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
@@ -955,14 +969,6 @@ REDACTED
             <div class="flex justify-between">
               <span class="text-gray-500">{{ t('admin.ops.avgTps') REDACTEDREDACTED:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ tpsAvgLabel REDACTEDREDACTED</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.avgLatency') REDACTEDREDACTED:</span>
-              <span class="font-bold" :class="getLatencyColor(durationAvgMs)">{{ durationAvgMs ?? '-' REDACTEDREDACTEDms</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500">{{ t('admin.ops.avgTtft') REDACTEDREDACTED:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTEDms</span>
             </div>
           </div>
         </div>
@@ -1018,26 +1024,31 @@ REDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
-            <div class="flex justify-between">
+          <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold" :class="getLatencyColor(durationP95Ms)">{{ durationP95Ms ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(durationP95Ms)">{{ durationP95Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold" :class="getLatencyColor(durationP90Ms)">{{ durationP90Ms ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(durationP90Ms)">{{ durationP90Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold" :class="getLatencyColor(durationP50Ms)">{{ durationP50Ms ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(durationP50Ms)">{{ durationP50Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold" :class="getLatencyColor(durationAvgMs)">{{ durationAvgMs ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(durationAvgMs)">{{ durationAvgMs ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getLatencyColor(durationMaxMs)">{{ durationMaxMs ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(durationMaxMs)">{{ durationMaxMs ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
           </div>
         </div>
@@ -1063,26 +1074,31 @@ REDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 grid grid-cols-3 gap-x-3 gap-y-1 text-xs">
-            <div class="flex justify-between">
+          <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftP95Ms)">{{ ttftP95Ms ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(ttftP95Ms)">{{ ttftP95Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftP90Ms)">{{ ttftP90Ms ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(ttftP90Ms)">{{ ttftP90Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftP50Ms)">{{ ttftP50Ms ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(ttftP50Ms)">{{ ttftP50Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex justify-between">
+            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftMaxMs)">{{ ttftMaxMs ?? '-' REDACTEDREDACTEDms</span>
+              <span class="font-bold" :class="getLatencyColor(ttftMaxMs)">{{ ttftMaxMs ?? '-' REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
           </div>
         </div>
