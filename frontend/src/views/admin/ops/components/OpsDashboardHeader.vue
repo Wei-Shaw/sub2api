@@ -34,6 +34,8 @@ interface Emits {
   (e: 'refresh'): void
   (e: 'openRequestDetails', preset?: OpsRequestDetailsPreset): void
   (e: 'openErrorDetails', kind: 'request' | 'upstream'): void
+  (e: 'openSettings'): void
+  (e: 'openAlertRules'): void
 REDACTED
 
 const props = defineProps<Props>()
@@ -723,6 +725,33 @@ REDACTED
             />
           </svg>
         </button>
+
+        <div class="mx-1 hidden h-4 w-[1px] bg-gray-200 dark:bg-dark-700 sm:block"></div>
+
+        <button
+          type="button"
+          class="flex h-8 items-center gap-1.5 rounded-lg bg-blue-100 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
+          :title="t('admin.ops.alertRules.title')"
+          @click="emit('openAlertRules')"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span class="hidden sm:inline">{{ t('admin.ops.alertRules.manage') REDACTEDREDACTED</span>
+        </button>
+
+        <button
+          type="button"
+          class="flex h-8 items-center gap-1.5 rounded-lg bg-gray-100 px-3 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+          :title="t('admin.ops.settings.title')"
+          @click="emit('openSettings')"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span class="hidden sm:inline">{{ t('common.settings') REDACTEDREDACTED</span>
+        </button>
       </div>
     </div>
 
@@ -955,11 +984,11 @@ REDACTED
           </div>
           <div class="mt-2 space-y-2 text-xs">
             <div class="flex justify-between">
-              <span class="text-gray-500">请求数:</span>
+              <span class="text-gray-500">{{ t('admin.ops.requests') REDACTEDREDACTED:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ totalRequestsLabel REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">Token:</span>
+              <span class="text-gray-500">{{ t('admin.ops.tokens') REDACTEDREDACTED:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ totalTokensLabel REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">

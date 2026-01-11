@@ -676,6 +676,23 @@ export interface OpsAlertRuntimeSettings {
   REDACTED
 REDACTED
 
+export interface OpsAdvancedSettings {
+  data_retention: OpsDataRetentionSettings
+  aggregation: OpsAggregationSettings
+REDACTED
+
+export interface OpsDataRetentionSettings {
+  cleanup_enabled: boolean
+  cleanup_schedule: string
+  error_log_retention_days: number
+  minute_metrics_retention_days: number
+  hourly_metrics_retention_days: number
+REDACTED
+
+export interface OpsAggregationSettings {
+  aggregation_enabled: boolean
+REDACTED
+
 export interface OpsErrorLog {
   id: number
   created_at: string
@@ -894,6 +911,17 @@ export async function updateAlertRuntimeSettings(config: OpsAlertRuntimeSettings
   return data
 REDACTED
 
+// Advanced settings (DB-backed)
+export async function getAdvancedSettings(): Promise<OpsAdvancedSettings> {
+  const { data REDACTED = await apiClient.get<OpsAdvancedSettings>('/admin/ops/advanced-settings')
+  return data
+REDACTED
+
+export async function updateAdvancedSettings(config: OpsAdvancedSettings): Promise<OpsAdvancedSettings> {
+  const { data REDACTED = await apiClient.put<OpsAdvancedSettings>('/admin/ops/advanced-settings', config)
+  return data
+REDACTED
+
 export const opsAPI = {
   getDashboardOverview,
   getThroughputTrend,
@@ -915,7 +943,9 @@ export const opsAPI = {
   getEmailNotificationConfig,
   updateEmailNotificationConfig,
   getAlertRuntimeSettings,
-  updateAlertRuntimeSettings
+  updateAlertRuntimeSettings,
+  getAdvancedSettings,
+  updateAdvancedSettings
 REDACTED
 
 export default opsAPI

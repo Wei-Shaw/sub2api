@@ -31,6 +31,8 @@
         @refresh="fetchData"
         @open-request-details="handleOpenRequestDetails"
         @open-error-details="openErrorDetails"
+        @open-settings="showSettingsDialog = true"
+        @open-alert-rules="showAlertRulesCard = true"
       />
 
       <!-- Row: Concurrency + Throughput -->
@@ -72,6 +74,14 @@
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && !(loading && !hasLoadedOnce)" />
 
+      <!-- Settings Dialog -->
+      <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="fetchData" />
+
+      <!-- Alert Rules Dialog -->
+      <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
+        <OpsAlertRulesCard />
+      </BaseDialog>
+
       <OpsErrorDetailsModal
         :show="showErrorDetails"
         :time-range="timeRange"
@@ -102,6 +112,7 @@ import { useDebounceFn REDACTED from '@vueuse/core'
 import { useI18n REDACTED from 'vue-i18n'
 import { useRoute, useRouter REDACTED from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import {
   opsAPI,
   OPS_WS_CLOSE_CODES,
@@ -124,6 +135,8 @@ import OpsLatencyChart from './components/OpsLatencyChart.vue'
 import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset REDACTED from './components/OpsRequestDetailsModal.vue'
+import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
+import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -326,6 +339,9 @@ const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
   kind: 'all',
   sort: 'created_at_desc'
 REDACTED)
+
+const showSettingsDialog = ref(false)
+const showAlertRulesCard = ref(false)
 
 function handleThroughputSelectPlatform(nextPlatform: string) {
   platform.value = nextPlatform || ''
