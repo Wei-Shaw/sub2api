@@ -205,3 +205,56 @@ REDACTED
 		t.Fatalf("Validate() expected stats_ttl_seconds error, got: %v", err)
 REDACTED
 REDACTED
+
+func TestLoadDefaultDashboardAggregationConfig(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if !cfg.DashboardAgg.Enabled {
+		t.Fatalf("DashboardAgg.Enabled = false, want true")
+REDACTED
+	if cfg.DashboardAgg.IntervalSeconds != 60 {
+		t.Fatalf("DashboardAgg.IntervalSeconds = %d, want 60", cfg.DashboardAgg.IntervalSeconds)
+REDACTED
+	if cfg.DashboardAgg.LookbackSeconds != 120 {
+		t.Fatalf("DashboardAgg.LookbackSeconds = %d, want 120", cfg.DashboardAgg.LookbackSeconds)
+REDACTED
+	if cfg.DashboardAgg.BackfillEnabled {
+		t.Fatalf("DashboardAgg.BackfillEnabled = true, want false")
+REDACTED
+	if cfg.DashboardAgg.Retention.UsageLogsDays != 90 {
+		t.Fatalf("DashboardAgg.Retention.UsageLogsDays = %d, want 90", cfg.DashboardAgg.Retention.UsageLogsDays)
+REDACTED
+	if cfg.DashboardAgg.Retention.HourlyDays != 180 {
+		t.Fatalf("DashboardAgg.Retention.HourlyDays = %d, want 180", cfg.DashboardAgg.Retention.HourlyDays)
+REDACTED
+	if cfg.DashboardAgg.Retention.DailyDays != 730 {
+		t.Fatalf("DashboardAgg.Retention.DailyDays = %d, want 730", cfg.DashboardAgg.Retention.DailyDays)
+REDACTED
+	if cfg.DashboardAgg.RecomputeDays != 2 {
+		t.Fatalf("DashboardAgg.RecomputeDays = %d, want 2", cfg.DashboardAgg.RecomputeDays)
+REDACTED
+REDACTED
+
+func TestValidateDashboardAggregationConfigDisabled(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.DashboardAgg.Enabled = false
+	cfg.DashboardAgg.IntervalSeconds = -1
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for negative dashboard_aggregation.interval_seconds, got nil")
+REDACTED
+	if !strings.Contains(err.Error(), "dashboard_aggregation.interval_seconds") {
+		t.Fatalf("Validate() expected interval_seconds error, got: %v", err)
+REDACTED
+REDACTED

@@ -37,17 +37,24 @@ REDACTED
 // DashboardService provides aggregated statistics for admin dashboard.
 type DashboardService struct {
 	usageRepo      UsageLogRepository
+	aggRepo        DashboardAggregationRepository
 	cache          DashboardStatsCache
 	cacheFreshTTL  time.Duration
 	cacheTTL       time.Duration
 	refreshTimeout time.Duration
 	refreshing     int32
+	aggEnabled     bool
+	aggInterval    time.Duration
+	aggLookback    time.Duration
 REDACTED
 
-func NewDashboardService(usageRepo UsageLogRepository, cache DashboardStatsCache, cfg *config.Config) *DashboardService {
+func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregationRepository, cache DashboardStatsCache, cfg *config.Config) *DashboardService {
 	freshTTL := defaultDashboardStatsFreshTTL
 	cacheTTL := defaultDashboardStatsCacheTTL
 	refreshTimeout := defaultDashboardStatsRefreshTimeout
+	aggEnabled := true
+	aggInterval := time.Minute
+	aggLookback := 2 * time.Minute
 	if cfg != nil {
 		if !cfg.Dashboard.Enabled {
 			cache = nil
@@ -61,13 +68,24 @@ func NewDashboardService(usageRepo UsageLogRepository, cache DashboardStatsCache
 		if cfg.Dashboard.StatsRefreshTimeoutSeconds > 0 {
 			refreshTimeout = time.Duration(cfg.Dashboard.StatsRefreshTimeoutSeconds) * time.Second
 	REDACTED
+		aggEnabled = cfg.DashboardAgg.Enabled
+		if cfg.DashboardAgg.IntervalSeconds > 0 {
+			aggInterval = time.Duration(cfg.DashboardAgg.IntervalSeconds) * time.Second
+	REDACTED
+		if cfg.DashboardAgg.LookbackSeconds > 0 {
+			aggLookback = time.Duration(cfg.DashboardAgg.LookbackSeconds) * time.Second
+	REDACTED
 REDACTED
 	return &DashboardService{
 		usageRepo:      usageRepo,
+		aggRepo:        aggRepo,
 		cache:          cache,
 		cacheFreshTTL:  freshTTL,
 		cacheTTL:       cacheTTL,
 		refreshTimeout: refreshTimeout,
+		aggEnabled:     aggEnabled,
+		aggInterval:    aggInterval,
+		aggLookback:    aggLookback,
 REDACTED
 REDACTED
 
@@ -75,6 +93,7 @@ func (s *DashboardService) GetDashboardStats(ctx context.Context) (*usagestats.D
 	if s.cache != nil {
 		cached, fresh, err := s.getCachedDashboardStats(ctx)
 		if err == nil && cached != nil {
+			s.refreshAggregationStaleness(cached)
 			if !fresh {
 				s.refreshDashboardStatsAsync()
 		REDACTED
@@ -133,6 +152,7 @@ func (s *DashboardService) refreshDashboardStats(ctx context.Context) (*usagesta
 	if err != nil {
 		return nil, err
 REDACTED
+	s.applyAggregationStatus(ctx, stats)
 	cacheCtx, cancel := s.cacheOperationContext()
 	defer cancel()
 	s.saveDashboardStatsCache(cacheCtx, stats)
@@ -158,6 +178,7 @@ REDACTED
 			log.Printf("[Dashboard] 仪表盘缓存异步刷新失败: %v", err)
 			return
 	REDACTED
+		s.applyAggregationStatus(ctx, stats)
 		cacheCtx, cancel := s.cacheOperationContext()
 		defer cancel()
 		s.saveDashboardStatsCache(cacheCtx, stats)
@@ -201,6 +222,61 @@ REDACTED
 
 func (s *DashboardService) cacheOperationContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), s.refreshTimeout)
+REDACTED
+
+func (s *DashboardService) applyAggregationStatus(ctx context.Context, stats *usagestats.DashboardStats) {
+	if stats == nil {
+		return
+REDACTED
+	updatedAt := s.fetchAggregationUpdatedAt(ctx)
+	stats.StatsUpdatedAt = updatedAt.UTC().Format(time.RFC3339)
+	stats.StatsStale = s.isAggregationStale(updatedAt, time.Now().UTC())
+REDACTED
+
+func (s *DashboardService) refreshAggregationStaleness(stats *usagestats.DashboardStats) {
+	if stats == nil {
+		return
+REDACTED
+	updatedAt := parseStatsUpdatedAt(stats.StatsUpdatedAt)
+	stats.StatsStale = s.isAggregationStale(updatedAt, time.Now().UTC())
+REDACTED
+
+func (s *DashboardService) fetchAggregationUpdatedAt(ctx context.Context) time.Time {
+	if s.aggRepo == nil {
+		return time.Unix(0, 0).UTC()
+REDACTED
+	updatedAt, err := s.aggRepo.GetAggregationWatermark(ctx)
+	if err != nil {
+		log.Printf("[Dashboard] 读取聚合水位失败: %v", err)
+		return time.Unix(0, 0).UTC()
+REDACTED
+	if updatedAt.IsZero() {
+		return time.Unix(0, 0).UTC()
+REDACTED
+	return updatedAt.UTC()
+REDACTED
+
+func (s *DashboardService) isAggregationStale(updatedAt, now time.Time) bool {
+	if !s.aggEnabled {
+		return true
+REDACTED
+	epoch := time.Unix(0, 0).UTC()
+	if !updatedAt.After(epoch) {
+		return true
+REDACTED
+	threshold := s.aggInterval + s.aggLookback
+	return now.Sub(updatedAt) > threshold
+REDACTED
+
+func parseStatsUpdatedAt(raw string) time.Time {
+	if raw == "" {
+		return time.Unix(0, 0).UTC()
+REDACTED
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Unix(0, 0).UTC()
+REDACTED
+	return parsed.UTC()
 REDACTED
 
 func (s *DashboardService) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {

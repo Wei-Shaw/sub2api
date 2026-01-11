@@ -74,6 +74,38 @@ REDACTED
 	return nil
 REDACTED
 
+type dashboardAggregationRepoStub struct {
+	watermark time.Time
+	err       error
+REDACTED
+
+func (s *dashboardAggregationRepoStub) AggregateRange(ctx context.Context, start, end time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardAggregationRepoStub) GetAggregationWatermark(ctx context.Context) (time.Time, error) {
+	if s.err != nil {
+		return time.Time{REDACTED, s.err
+REDACTED
+	return s.watermark, nil
+REDACTED
+
+func (s *dashboardAggregationRepoStub) UpdateAggregationWatermark(ctx context.Context, aggregatedAt time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardAggregationRepoStub) CleanupAggregates(ctx context.Context, hourlyCutoff, dailyCutoff time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardAggregationRepoStub) CleanupUsageLogs(ctx context.Context, cutoff time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardAggregationRepoStub) EnsureUsageLogsPartitions(ctx context.Context, now time.Time) error {
+	return nil
+REDACTED
+
 func (c *dashboardCacheStub) readLastEntry(t *testing.T) dashboardStatsCacheEntry {
 REDACTED
 	c.lastSetMu.Lock()
@@ -88,7 +120,9 @@ REDACTED
 
 func TestDashboardService_CacheHitFresh(t *testing.T) {
 	stats := &usagestats.DashboardStats{
-		TotalUsers: 10,
+		TotalUsers:     10,
+		StatsUpdatedAt: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		StatsStale:     true,
 REDACTED
 	entry := dashboardStatsCacheEntry{
 		Stats:     stats,
@@ -105,8 +139,9 @@ REDACTED
 	repo := &usageRepoStub{
 		stats: &usagestats.DashboardStats{TotalUsers: 99REDACTED,
 REDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
-	svc := NewDashboardService(repo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 REDACTED
@@ -118,7 +153,9 @@ REDACTED
 
 func TestDashboardService_CacheMiss_StoresCache(t *testing.T) {
 	stats := &usagestats.DashboardStats{
-		TotalUsers: 7,
+		TotalUsers:     7,
+		StatsUpdatedAt: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		StatsStale:     true,
 REDACTED
 	cache := &dashboardCacheStub{
 		get: func(ctx context.Context) (string, error) {
@@ -126,8 +163,9 @@ REDACTED
 	REDACTED,
 REDACTED
 	repo := &usageRepoStub{stats: statsREDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
-	svc := NewDashboardService(repo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 REDACTED
@@ -142,7 +180,9 @@ REDACTED
 
 func TestDashboardService_CacheDisabled_SkipsCache(t *testing.T) {
 	stats := &usagestats.DashboardStats{
-		TotalUsers: 3,
+		TotalUsers:     3,
+		StatsUpdatedAt: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		StatsStale:     true,
 REDACTED
 	cache := &dashboardCacheStub{
 		get: func(ctx context.Context) (string, error) {
@@ -150,8 +190,9 @@ REDACTED
 	REDACTED,
 REDACTED
 	repo := &usageRepoStub{stats: statsREDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: falseREDACTEDREDACTED
-	svc := NewDashboardService(repo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 REDACTED
@@ -163,7 +204,9 @@ REDACTED
 
 func TestDashboardService_CacheHitStale_TriggersAsyncRefresh(t *testing.T) {
 	staleStats := &usagestats.DashboardStats{
-		TotalUsers: 11,
+		TotalUsers:     11,
+		StatsUpdatedAt: time.Unix(0, 0).UTC().Format(time.RFC3339),
+		StatsStale:     true,
 REDACTED
 	entry := dashboardStatsCacheEntry{
 		Stats:     staleStats,
@@ -182,8 +225,9 @@ REDACTED
 		stats:  &usagestats.DashboardStats{TotalUsers: 22REDACTED,
 		onCall: refreshCh,
 REDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
-	svc := NewDashboardService(repo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 REDACTED
@@ -207,8 +251,9 @@ func TestDashboardService_CacheParseError_EvictsAndRefetches(t *testing.T) {
 REDACTED
 	stats := &usagestats.DashboardStats{TotalUsers: 9REDACTED
 	repo := &usageRepoStub{stats: statsREDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
-	svc := NewDashboardService(repo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 REDACTED
@@ -224,10 +269,45 @@ func TestDashboardService_CacheParseError_RepoFailure(t *testing.T) {
 	REDACTED,
 REDACTED
 	repo := &usageRepoStub{err: errors.New("db down")REDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: trueREDACTEDREDACTED
-	svc := NewDashboardService(repo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, cfg)
 
 	_, err := svc.GetDashboardStats(context.Background())
 REDACTED
 	require.Equal(t, int32(1), atomic.LoadInt32(&cache.delCalls))
+REDACTED
+
+func TestDashboardService_StatsUpdatedAtEpochWhenMissing(t *testing.T) {
+	stats := &usagestats.DashboardStats{REDACTED
+	repo := &usageRepoStub{stats: statsREDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()REDACTED
+	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: falseREDACTEDREDACTED
+	svc := NewDashboardService(repo, aggRepo, nil, cfg)
+
+	got, err := svc.GetDashboardStats(context.Background())
+REDACTED
+	require.Equal(t, "1970-01-01T00:00:00Z", got.StatsUpdatedAt)
+	require.True(t, got.StatsStale)
+REDACTED
+
+func TestDashboardService_StatsStaleFalseWhenFresh(t *testing.T) {
+	aggNow := time.Now().UTC().Truncate(time.Second)
+	stats := &usagestats.DashboardStats{REDACTED
+	repo := &usageRepoStub{stats: statsREDACTED
+	aggRepo := &dashboardAggregationRepoStub{watermark: aggNowREDACTED
+	cfg := &config.Config{
+		Dashboard: config.DashboardCacheConfig{Enabled: falseREDACTED,
+		DashboardAgg: config.DashboardAggregationConfig{
+			Enabled:         true,
+			IntervalSeconds: 60,
+			LookbackSeconds: 120,
+	REDACTED,
+REDACTED
+	svc := NewDashboardService(repo, aggRepo, nil, cfg)
+
+	got, err := svc.GetDashboardStats(context.Background())
+REDACTED
+	require.Equal(t, aggNow.Format(time.RFC3339), got.StatsUpdatedAt)
+	require.False(t, got.StatsStale)
 REDACTED

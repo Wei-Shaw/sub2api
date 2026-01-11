@@ -36,27 +36,28 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig          `mapstructure:"server"`
-	CORS         CORSConfig            `mapstructure:"cors"`
-	Security     SecurityConfig        `mapstructure:"security"`
-	Billing      BillingConfig         `mapstructure:"billing"`
-	Turnstile    TurnstileConfig       `mapstructure:"turnstile"`
-	Database     DatabaseConfig        `mapstructure:"database"`
-	Redis        RedisConfig           `mapstructure:"redis"`
-	JWT          JWTConfig             `mapstructure:"jwt"`
-	LinuxDo      LinuxDoConnectConfig  `mapstructure:"linuxdo_connect"`
-	Default      DefaultConfig         `mapstructure:"default"`
-	RateLimit    RateLimitConfig       `mapstructure:"rate_limit"`
-	Pricing      PricingConfig         `mapstructure:"pricing"`
-	Gateway      GatewayConfig         `mapstructure:"gateway"`
-	APIKeyAuth   APIKeyAuthCacheConfig `mapstructure:"api_key_auth_cache"`
-	Dashboard    DashboardCacheConfig  `mapstructure:"dashboard_cache"`
-	Concurrency  ConcurrencyConfig     `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig    `mapstructure:"token_refresh"`
-	RunMode      string                `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string                `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig          `mapstructure:"gemini"`
-	Update       UpdateConfig          `mapstructure:"update"`
+	Server       ServerConfig               `mapstructure:"server"`
+	CORS         CORSConfig                 `mapstructure:"cors"`
+	Security     SecurityConfig             `mapstructure:"security"`
+	Billing      BillingConfig              `mapstructure:"billing"`
+	Turnstile    TurnstileConfig            `mapstructure:"turnstile"`
+	Database     DatabaseConfig             `mapstructure:"database"`
+	Redis        RedisConfig                `mapstructure:"redis"`
+	JWT          JWTConfig                  `mapstructure:"jwt"`
+	LinuxDo      LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
+	Default      DefaultConfig              `mapstructure:"default"`
+	RateLimit    RateLimitConfig            `mapstructure:"rate_limit"`
+	Pricing      PricingConfig              `mapstructure:"pricing"`
+	Gateway      GatewayConfig              `mapstructure:"gateway"`
+	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
+	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
+	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
+	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
+	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
+	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini       GeminiConfig               `mapstructure:"gemini"`
+	Update       UpdateConfig               `mapstructure:"update"`
 REDACTED
 
 // UpdateConfig 在线更新相关配置
@@ -387,6 +388,29 @@ type DashboardCacheConfig struct {
 	StatsRefreshTimeoutSeconds int `mapstructure:"stats_refresh_timeout_seconds"`
 REDACTED
 
+// DashboardAggregationConfig 仪表盘预聚合配置
+type DashboardAggregationConfig struct {
+	// Enabled: 是否启用预聚合作业
+	Enabled bool `mapstructure:"enabled"`
+	// IntervalSeconds: 聚合刷新间隔（秒）
+	IntervalSeconds int `mapstructure:"interval_seconds"`
+	// LookbackSeconds: 回看窗口（秒）
+	LookbackSeconds int `mapstructure:"lookback_seconds"`
+	// BackfillEnabled: 是否允许全量回填
+	BackfillEnabled bool `mapstructure:"backfill_enabled"`
+	// Retention: 各表保留窗口（天）
+	Retention DashboardAggregationRetentionConfig `mapstructure:"retention"`
+	// RecomputeDays: 启动时重算最近 N 天
+	RecomputeDays int `mapstructure:"recompute_days"`
+REDACTED
+
+// DashboardAggregationRetentionConfig 预聚合保留窗口
+type DashboardAggregationRetentionConfig struct {
+	UsageLogsDays int `mapstructure:"usage_logs_days"`
+	HourlyDays    int `mapstructure:"hourly_days"`
+	DailyDays     int `mapstructure:"daily_days"`
+REDACTED
+
 func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
@@ -697,6 +721,16 @@ REDACTED)
 	viper.SetDefault("dashboard_cache.stats_ttl_seconds", 30)
 	viper.SetDefault("dashboard_cache.stats_refresh_timeout_seconds", 30)
 
+	// Dashboard aggregation
+	viper.SetDefault("dashboard_aggregation.enabled", true)
+	viper.SetDefault("dashboard_aggregation.interval_seconds", 60)
+	viper.SetDefault("dashboard_aggregation.lookback_seconds", 120)
+	viper.SetDefault("dashboard_aggregation.backfill_enabled", false)
+	viper.SetDefault("dashboard_aggregation.retention.usage_logs_days", 90)
+	viper.SetDefault("dashboard_aggregation.retention.hourly_days", 180)
+	viper.SetDefault("dashboard_aggregation.retention.daily_days", 730)
+	viper.SetDefault("dashboard_aggregation.recompute_days", 2)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", false)
@@ -877,6 +911,45 @@ REDACTED else {
 	REDACTED
 		if c.Dashboard.StatsRefreshTimeoutSeconds < 0 {
 			return fmt.Errorf("dashboard_cache.stats_refresh_timeout_seconds must be non-negative")
+	REDACTED
+REDACTED
+	if c.DashboardAgg.Enabled {
+		if c.DashboardAgg.IntervalSeconds <= 0 {
+			return fmt.Errorf("dashboard_aggregation.interval_seconds must be positive")
+	REDACTED
+		if c.DashboardAgg.LookbackSeconds < 0 {
+			return fmt.Errorf("dashboard_aggregation.lookback_seconds must be non-negative")
+	REDACTED
+		if c.DashboardAgg.Retention.UsageLogsDays <= 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.usage_logs_days must be positive")
+	REDACTED
+		if c.DashboardAgg.Retention.HourlyDays <= 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.hourly_days must be positive")
+	REDACTED
+		if c.DashboardAgg.Retention.DailyDays <= 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.daily_days must be positive")
+	REDACTED
+		if c.DashboardAgg.RecomputeDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.recompute_days must be non-negative")
+	REDACTED
+REDACTED else {
+		if c.DashboardAgg.IntervalSeconds < 0 {
+			return fmt.Errorf("dashboard_aggregation.interval_seconds must be non-negative")
+	REDACTED
+		if c.DashboardAgg.LookbackSeconds < 0 {
+			return fmt.Errorf("dashboard_aggregation.lookback_seconds must be non-negative")
+	REDACTED
+		if c.DashboardAgg.Retention.UsageLogsDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.usage_logs_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.Retention.HourlyDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.hourly_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.Retention.DailyDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.daily_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.RecomputeDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.recompute_days must be non-negative")
 	REDACTED
 REDACTED
 	if c.Gateway.MaxBodySize <= 0 {

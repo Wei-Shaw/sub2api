@@ -216,6 +216,39 @@ dashboard_cache:
   stats_refresh_timeout_seconds: 30
 
 # =============================================================================
+# Dashboard Aggregation Configuration
+# 仪表盘预聚合配置（重启生效）
+# =============================================================================
+dashboard_aggregation:
+  # Enable aggregation job
+  # 启用聚合作业
+  enabled: true
+  # Refresh interval (seconds)
+  # 刷新间隔（秒）
+  interval_seconds: 60
+  # Lookback window (seconds) for late-arriving data
+  # 回看窗口（秒），处理迟到数据
+  lookback_seconds: 120
+  # Allow manual backfill
+  # 允许手动回填
+  backfill_enabled: false
+  # Recompute recent N days on startup
+  # 启动时重算最近 N 天
+  recompute_days: 2
+  # Retention windows (days)
+  # 保留窗口（天）
+  retention:
+    # Raw usage_logs retention
+    # 原始 usage_logs 保留天数
+    usage_logs_days: 90
+    # Hourly aggregation retention
+    # 小时聚合保留天数
+    hourly_days: 180
+    # Daily aggregation retention
+    # 日聚合保留天数
+    daily_days: 730
+
+# =============================================================================
 # Concurrency Wait Configuration
 # 并发等待配置
 # =============================================================================
