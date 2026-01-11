@@ -80,18 +80,6 @@ REDACTED
 	c.Set(OpsUpstreamErrorsKey, existing)
 REDACTED
 
-func getOpsUpstreamErrors(c *gin.Context) []*OpsUpstreamErrorEvent {
-	if c == nil {
-		return nil
-REDACTED
-	if v, ok := c.Get(OpsUpstreamErrorsKey); ok {
-		if arr, ok := v.([]*OpsUpstreamErrorEvent); ok {
-			return arr
-	REDACTED
-REDACTED
-	return nil
-REDACTED
-
 func marshalOpsUpstreamErrors(events []*OpsUpstreamErrorEvent) *string {
 	if len(events) == 0 {
 		return nil

@@ -44,8 +44,7 @@ type OpsCleanupService struct {
 
 	instanceID string
 
-	cron    *cron.Cron
-	entryID cron.EntryID
+	cron *cron.Cron
 
 	startOnce sync.Once
 	stopOnce  sync.Once

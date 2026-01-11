@@ -28,4 +28,3 @@ func ClientRequestID() gin.HandlerFunc {
 		c.Next()
 REDACTED
 REDACTED
-

@@ -344,12 +344,12 @@ REDACTED
 		if platform != "" {
 			where += fmt.Sprintf(" AND platform = $%d", idx)
 			args = append(args, platform)
-			idx++
+			// idx++ removed - not used after this
 	REDACTED
 	case platform != "":
 		where += fmt.Sprintf(" AND platform = $%d AND group_id IS NULL", idx)
 		args = append(args, platform)
-		idx++
+		// idx++ removed - not used after this
 	default:
 		where += " AND platform IS NULL AND group_id IS NULL"
 REDACTED

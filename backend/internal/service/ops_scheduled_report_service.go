@@ -62,10 +62,7 @@ func NewOpsScheduledReportService(
 	redisClient *redis.Client,
 	cfg *config.Config,
 ) *OpsScheduledReportService {
-	lockOn := true
-	if cfg != nil && strings.TrimSpace(cfg.RunMode) == config.RunModeSimple {
-		lockOn = false
-REDACTED
+	lockOn := cfg == nil || strings.TrimSpace(cfg.RunMode) != config.RunModeSimple
 
 	loc := time.Local
 	if cfg != nil && strings.TrimSpace(cfg.Timezone) != "" {

@@ -41,7 +41,7 @@ ORDER BY id DESC`
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	out := []*service.OpsAlertRule{REDACTED
 	for rows.Next() {
@@ -361,7 +361,7 @@ LIMIT ` + limitArg
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	out := []*service.OpsAlertEvent{REDACTED
 	for rows.Next() {

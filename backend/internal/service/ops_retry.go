@@ -51,7 +51,6 @@ const (
 
 type limitedResponseWriter struct {
 	header      http.Header
-	status      int
 	wroteHeader bool
 
 	limit        int

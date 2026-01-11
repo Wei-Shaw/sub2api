@@ -391,7 +391,7 @@ func tryAcquireOpsWSIPSlot(clientIP string, limit int32) bool {
 REDACTED
 
 	v, _ := wsConnCountByIP.LoadOrStore(clientIP, &atomic.Int32{REDACTED)
-	counter := v.(*atomic.Int32)
+	counter, ok := v.(*atomic.Int32); if !ok { return REDACTED
 
 	for {
 		current := counter.Load()
@@ -413,7 +413,7 @@ REDACTED
 	if !ok {
 		return
 REDACTED
-	counter := v.(*atomic.Int32)
+	counter, ok := v.(*atomic.Int32); if !ok { return REDACTED
 	next := counter.Add(-1)
 	if next <= 0 {
 		// Best-effort cleanup; safe even if a new slot was acquired concurrently.
