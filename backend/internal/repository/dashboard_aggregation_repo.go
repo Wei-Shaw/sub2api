@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -17,11 +18,26 @@ REDACTED
 
 // NewDashboardAggregationRepository 创建仪表盘预聚合仓储。
 func NewDashboardAggregationRepository(sqlDB *sql.DB) service.DashboardAggregationRepository {
+	if sqlDB == nil {
+		return nil
+REDACTED
+	if !isPostgresDriver(sqlDB) {
+		log.Printf("[DashboardAggregation] 检测到非 PostgreSQL 驱动，已自动禁用预聚合")
+		return nil
+REDACTED
 	return newDashboardAggregationRepositoryWithSQL(sqlDB)
 REDACTED
 
 func newDashboardAggregationRepositoryWithSQL(sqlq sqlExecutor) *dashboardAggregationRepository {
 	return &dashboardAggregationRepository{sql: sqlqREDACTED
+REDACTED
+
+func isPostgresDriver(db *sql.DB) bool {
+	if db == nil {
+		return false
+REDACTED
+	_, ok := db.Driver().(*pq.Driver)
+	return ok
 REDACTED
 
 func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, start, end time.Time) error {
