@@ -62,10 +62,10 @@ type OpsAlertSilencingSettings struct {
 REDACTED
 
 type OpsMetricThresholds struct {
-	SLAPercentMin               *float64 `json:"sla_percent_min,omitempty"`                // SLA低于此值变红
-	LatencyP99MsMax             *float64 `json:"latency_p99_ms_max,omitempty"`             // 延迟P99高于此值变红
-	TTFTp99MsMax                *float64 `json:"ttft_p99_ms_max,omitempty"`                // TTFT P99高于此值变红
-	RequestErrorRatePercentMax  *float64 `json:"request_error_rate_percent_max,omitempty"` // 请求错误率高于此值变红
+	SLAPercentMin               *float64 `json:"sla_percent_min,omitempty"`                 // SLA低于此值变红
+	LatencyP99MsMax             *float64 `json:"latency_p99_ms_max,omitempty"`              // 延迟P99高于此值变红
+	TTFTp99MsMax                *float64 `json:"ttft_p99_ms_max,omitempty"`                 // TTFT P99高于此值变红
+	RequestErrorRatePercentMax  *float64 `json:"request_error_rate_percent_max,omitempty"`  // 请求错误率高于此值变红
 	UpstreamErrorRatePercentMax *float64 `json:"upstream_error_rate_percent_max,omitempty"` // 上游错误率高于此值变红
 REDACTED
 
