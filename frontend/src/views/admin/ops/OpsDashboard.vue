@@ -24,6 +24,7 @@
         :query-mode="queryMode"
         :loading="loading"
         :last-updated="lastUpdated"
+        :thresholds="metricThresholds"
         @update:time-range="onTimeRangeChange"
         @update:platform="onPlatformChange"
         @update:group="onGroupChange"
@@ -75,7 +76,7 @@
       <OpsAlertEventsCard v-if="opsEnabled && !(loading && !hasLoadedOnce)" />
 
       <!-- Settings Dialog -->
-      <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="fetchData" />
+      <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
 
       <!-- Alert Rules Dialog -->
       <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
@@ -121,7 +122,8 @@ import {
   type OpsErrorDistributionResponse,
   type OpsErrorTrendResponse,
   type OpsLatencyHistogramResponse,
-  type OpsThroughputTrendResponse
+  type OpsThroughputTrendResponse,
+  type OpsMetricThresholds
 REDACTED from '@/api/admin/ops'
 import { useAdminSettingsStore, useAppStore REDACTED from '@/stores'
 import OpsDashboardHeader from './components/OpsDashboardHeader.vue'
@@ -314,6 +316,7 @@ const syncQueryToRoute = useDebounceFn(async () => {
 REDACTED, 250)
 
 const overview = ref<OpsDashboardOverview | null>(null)
+const metricThresholds = ref<OpsMetricThresholds | null>(null)
 
 const throughputTrend = ref<OpsThroughputTrendResponse | null>(null)
 const loadingTrend = ref(false)
@@ -374,6 +377,11 @@ function onTimeRangeChange(v: string | number | boolean | null) {
   if (typeof v !== 'string') return
   if (!allowedTimeRanges.has(v as TimeRange)) return
   timeRange.value = v as TimeRange
+REDACTED
+
+function onSettingsSaved() {
+  loadThresholds()
+  fetchData()
 REDACTED
 
 function onPlatformChange(v: string | number | boolean | null) {
@@ -615,6 +623,9 @@ onMounted(async () => {
     return
   REDACTED
 
+  // Load thresholds configuration
+  loadThresholds()
+
   if (adminSettingsStore.opsRealtimeMonitoringEnabled) {
     startQPSSubscription()
   REDACTED else {
@@ -625,6 +636,16 @@ onMounted(async () => {
     await fetchData()
   REDACTED
 REDACTED)
+
+async function loadThresholds() {
+  try {
+    const settings = await opsAPI.getAlertRuntimeSettings()
+    metricThresholds.value = settings.thresholds || null
+  REDACTED catch (err) {
+    console.warn('[OpsDashboard] Failed to load thresholds', err)
+    metricThresholds.value = null
+  REDACTED
+REDACTED
 
 onUnmounted(() => {
   stopQPSSubscription()

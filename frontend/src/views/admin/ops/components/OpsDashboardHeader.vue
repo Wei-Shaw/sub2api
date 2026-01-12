@@ -4,8 +4,9 @@ import { useI18n REDACTED from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { adminAPI REDACTED from '@/api'
-import type { OpsDashboardOverview, OpsWSStatus REDACTED from '@/api/admin/ops'
+import type { OpsDashboardOverview, OpsWSStatus, OpsMetricThresholds REDACTED from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset REDACTED from './OpsRequestDetailsModal.vue'
 import { formatNumber REDACTED from '@/utils/format'
 
@@ -24,6 +25,7 @@ interface Props {
   queryMode: string
   loading: boolean
   lastUpdated: Date | null
+  thresholds?: OpsMetricThresholds | null // 阈值配置
 REDACTED
 
 interface Emits {
@@ -141,6 +143,42 @@ function getLatencyColor(ms: number | null | undefined): string {
   if (ms < 1000) return 'text-yellow-600 dark:text-yellow-400'
   if (ms < 2000) return 'text-orange-600 dark:text-orange-400'
   return 'text-red-600 dark:text-red-400'
+REDACTED
+
+// --- Threshold checking helpers ---
+function isSLABelowThreshold(slaPercent: number | null): boolean {
+  if (slaPercent == null) return false
+  const threshold = props.thresholds?.sla_percent_min
+  if (threshold == null) return false
+  return slaPercent < threshold
+REDACTED
+
+function isLatencyAboveThreshold(latencyP99Ms: number | null): boolean {
+  if (latencyP99Ms == null) return false
+  const threshold = props.thresholds?.latency_p99_ms_max
+  if (threshold == null) return false
+  return latencyP99Ms > threshold
+REDACTED
+
+function isTTFTAboveThreshold(ttftP99Ms: number | null): boolean {
+  if (ttftP99Ms == null) return false
+  const threshold = props.thresholds?.ttft_p99_ms_max
+  if (threshold == null) return false
+  return ttftP99Ms > threshold
+REDACTED
+
+function isRequestErrorRateAboveThreshold(errorRatePercent: number | null): boolean {
+  if (errorRatePercent == null) return false
+  const threshold = props.thresholds?.request_error_rate_percent_max
+  if (threshold == null) return false
+  return errorRatePercent > threshold
+REDACTED
+
+function isUpstreamErrorRateAboveThreshold(upstreamErrorRatePercent: number | null): boolean {
+  if (upstreamErrorRatePercent == null) return false
+  const threshold = props.thresholds?.upstream_error_rate_percent_max
+  if (threshold == null) return false
+  return upstreamErrorRatePercent > threshold
 REDACTED
 
 // --- Realtime / Overview labels ---
@@ -818,8 +856,9 @@ REDACTED
               class="pointer-events-none absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 md:left-full md:top-0 md:ml-2 md:mt-0 md:translate-x-0"
             >
               <div class="rounded-xl bg-white p-4 shadow-xl ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/10">
-                <h4 class="mb-3 border-b border-gray-100 pb-2 text-sm font-bold text-gray-900 dark:border-gray-700 dark:text-white">
-                  🧠 {{ t('admin.ops.diagnosis.title') REDACTEDREDACTED
+                <h4 class="mb-3 border-b border-gray-100 pb-2 text-sm font-bold text-gray-900 dark:border-gray-700 dark:text-white flex items-center gap-2">
+                  <Icon name="brain" size="sm" class="text-blue-500" />
+                  {{ t('admin.ops.diagnosis.title') REDACTEDREDACTED
                 </h4>
 
                 <div class="space-y-3">
@@ -850,8 +889,9 @@ REDACTED
                     <div class="flex-1">
                       <div class="text-xs font-semibold text-gray-900 dark:text-white">{{ item.message REDACTEDREDACTED</div>
                       <div class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{{ item.impact REDACTEDREDACTED</div>
-                      <div v-if="item.action" class="mt-1 text-[11px] text-blue-600 dark:text-blue-400">
-                        💡 {{ item.action REDACTEDREDACTED
+                      <div v-if="item.action" class="mt-1 text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <Icon name="lightbulb" size="xs" />
+                        {{ item.action REDACTEDREDACTED
                       </div>
                     </div>
                   </div>
@@ -1061,7 +1101,7 @@ REDACTED
             <div class="flex items-center gap-2">
               <span class="text-[10px] font-bold uppercase text-gray-400">SLA</span>
               <HelpTooltip :content="t('admin.ops.tooltips.sla')" />
-              <span class="h-1.5 w-1.5 rounded-full" :class="(slaPercent ?? 0) >= 99.5 ? 'bg-green-500' : 'bg-yellow-500'"></span>
+              <span class="h-1.5 w-1.5 rounded-full" :class="isSLABelowThreshold(slaPercent) ? 'bg-red-500' : (slaPercent ?? 0) >= 99.5 ? 'bg-green-500' : 'bg-yellow-500'"></span>
             </div>
             <button
               class="text-[10px] font-bold text-blue-500 hover:underline"
@@ -1071,11 +1111,11 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black text-gray-900 dark:text-white">
+          <div class="mt-2 text-3xl font-black" :class="isSLABelowThreshold(slaPercent) ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'">
             {{ slaPercent == null ? '-' : `${slaPercent.toFixed(3)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
-            <div class="h-full bg-green-500 transition-all" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10REDACTED%` REDACTED"></div>
+            <div class="h-full transition-all" :class="isSLABelowThreshold(slaPercent) ? 'bg-red-500' : 'bg-green-500'" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10REDACTED%` REDACTED"></div>
           </div>
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
@@ -1101,7 +1141,7 @@ REDACTED
             </button>
           </div>
           <div class="mt-2 flex items-baseline gap-2">
-            <div class="text-3xl font-black" :class="getLatencyColor(durationP99Ms)">
+            <div class="text-3xl font-black" :class="isLatencyAboveThreshold(durationP99Ms) ? 'text-red-600 dark:text-red-400' : getLatencyColor(durationP99Ms)">
               {{ durationP99Ms ?? '-' REDACTEDREDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
@@ -1151,7 +1191,7 @@ REDACTED
             </button>
           </div>
           <div class="mt-2 flex items-baseline gap-2">
-            <div class="text-3xl font-black" :class="getLatencyColor(ttftP99Ms)">
+            <div class="text-3xl font-black" :class="isTTFTAboveThreshold(ttftP99Ms) ? 'text-red-600 dark:text-red-400' : getLatencyColor(ttftP99Ms)">
               {{ ttftP99Ms ?? '-' REDACTEDREDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
@@ -1196,7 +1236,7 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="(errorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="isRequestErrorRateAboveThreshold(errorRatePercent) ? 'text-red-600 dark:text-red-400' : (errorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
             {{ errorRatePercent == null ? '-' : `${errorRatePercent.toFixed(2)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 space-y-1 text-xs">
@@ -1222,7 +1262,7 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="(upstreamErrorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="isUpstreamErrorRateAboveThreshold(upstreamErrorRatePercent) ? 'text-red-600 dark:text-red-400' : (upstreamErrorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
             {{ upstreamErrorRatePercent == null ? '-' : `${upstreamErrorRatePercent.toFixed(2)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 space-y-1 text-xs">
