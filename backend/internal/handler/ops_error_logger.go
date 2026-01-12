@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -522,7 +523,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		REDACTED
 
 			var clientIP string
-			if ip := strings.TrimSpace(c.ClientIP()); ip != "" {
+			if ip := strings.TrimSpace(ip.GetClientIP(c)); ip != "" {
 				clientIP = ip
 				entry.ClientIP = &clientIP
 		REDACTED
@@ -682,7 +683,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 	REDACTED
 
 		var clientIP string
-		if ip := strings.TrimSpace(c.ClientIP()); ip != "" {
+		if ip := strings.TrimSpace(ip.GetClientIP(c)); ip != "" {
 			clientIP = ip
 			entry.ClientIP = &clientIP
 	REDACTED

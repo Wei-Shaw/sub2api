@@ -387,7 +387,7 @@ export default {
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
-        hint: '示例仅用于演示分组配置，模型与选项可按需调整。',
+        hint: '配置文件路径：~/.config/opencode/opencode.json，不存在需手动创建。示例仅供参考，模型与选项可按需调整。',
       REDACTED,
     REDACTED,
     customKeyLabel: '自定义密钥',
