@@ -1203,6 +1203,10 @@ export default {
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
         'Only selected error codes will stop scheduling. Other errors will return 500.',
+      customErrorCodes429Warning:
+        '429 already has built-in rate limit handling. Adding it to custom error codes will disable the account instead of temporary rate limiting. Are you sure?',
+      customErrorCodes529Warning:
+        '529 already has built-in overload handling. Adding it to custom error codes will disable the account instead of temporary overload marking. Are you sure?',
       selectedErrorCodes: 'Selected',
       noneSelectedUsesDefault: 'None selected (uses default policy)',
       enterErrorCode: 'Enter error code (100-599)',
