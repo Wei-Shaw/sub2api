@@ -183,23 +183,6 @@
                 v-if="streamTimeoutForm.enabled"
                 class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
               >
-                <!-- Timeout Seconds -->
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.streamTimeout.timeoutSeconds') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model.number="streamTimeoutForm.timeout_seconds"
-                    type="number"
-                    min="30"
-                    max="300"
-                    class="input w-32"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.streamTimeout.timeoutSecondsHint') REDACTEDREDACTED
-                  </p>
-                </div>
-
                 <!-- Action -->
                 <div>
                   <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1000,7 +983,6 @@ const streamTimeoutLoading = ref(true)
 const streamTimeoutSaving = ref(false)
 const streamTimeoutForm = reactive({
   enabled: true,
-  timeout_seconds: 60,
   action: 'temp_unsched' as 'temp_unsched' | 'error' | 'none',
   temp_unsched_minutes: 5,
   threshold_count: 3,
@@ -1314,7 +1296,6 @@ async function saveStreamTimeoutSettings() {
   try {
     const updated = await adminAPI.settings.updateStreamTimeoutSettings({
       enabled: streamTimeoutForm.enabled,
-      timeout_seconds: streamTimeoutForm.timeout_seconds,
       action: streamTimeoutForm.action,
       temp_unsched_minutes: streamTimeoutForm.temp_unsched_minutes,
       threshold_count: streamTimeoutForm.threshold_count,
