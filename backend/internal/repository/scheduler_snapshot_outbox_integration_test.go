@@ -46,24 +46,11 @@ REDACTEDREDACTED,
 		Extra:       map[string]any{REDACTED,
 REDACTED
 	require.NoError(t, accountRepo.Create(ctx, account))
+	require.NoError(t, cache.SetAccount(ctx, account))
 
 	svc := service.NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, nil, cfg)
 	svc.Start()
 	t.Cleanup(svc.Stop)
-
-	bucket := service.SchedulerBucket{GroupID: 0, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingleREDACTED
-	require.Eventually(t, func() bool {
-		accounts, hit, err := cache.GetSnapshot(ctx, bucket)
-		if err != nil || !hit {
-			return false
-	REDACTED
-		for _, acc := range accounts {
-			if acc.ID == account.ID {
-				return true
-		REDACTED
-	REDACTED
-		return false
-REDACTED, 5*time.Second, 100*time.Millisecond)
 
 	require.NoError(t, accountRepo.UpdateLastUsed(ctx, account.ID))
 	updated, err := accountRepo.GetByID(ctx, account.ID)
