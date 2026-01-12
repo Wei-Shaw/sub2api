@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"strconv"
 	"time"
 
@@ -115,6 +116,9 @@ REDACTED
 	account.ID = created.ID
 	account.CreatedAt = created.CreatedAt
 	account.UpdatedAt = created.UpdatedAt
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue account create failed: account=%d err=%v", account.ID, err)
+REDACTED
 	return nil
 REDACTED
 
@@ -341,10 +345,17 @@ REDACTED
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 REDACTED
 	account.UpdatedAt = updated.UpdatedAt
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue account update failed: account=%d err=%v", account.ID, err)
+REDACTED
 	return nil
 REDACTED
 
 func (r *accountRepository) Delete(ctx context.Context, id int64) error {
+	groupIDs, err := r.loadAccountGroupIDs(ctx, id)
+	if err != nil {
+		return err
+REDACTED
 	// 使用事务保证账号与关联分组的删除原子性
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
@@ -368,7 +379,12 @@ REDACTED
 REDACTED
 
 	if tx != nil {
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return err
+	REDACTED
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue account delete failed: account=%d err=%v", id, err)
 REDACTED
 	return nil
 REDACTED
@@ -455,7 +471,18 @@ func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error 
 		Where(dbaccount.IDEQ(id)).
 		SetLastUsedAt(now).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	payload := map[string]any{
+		"last_used": map[string]int64{
+			strconv.FormatInt(id, 10): now.Unix(),
+	REDACTED,
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountLastUsed, &id, nil, payload); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue last used failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -479,7 +506,18 @@ REDACTED
 	args = append(args, pq.Array(ids))
 
 	_, err := r.sql.ExecContext(ctx, caseSQL, args...)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	lastUsedPayload := make(map[string]int64, len(updates))
+	for id, ts := range updates {
+		lastUsedPayload[strconv.FormatInt(id, 10)] = ts.Unix()
+REDACTED
+	payload := map[string]any{"last_used": lastUsedPayloadREDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountLastUsed, nil, nil, payload); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue batch last used failed: err=%v", err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
@@ -488,7 +526,13 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 		SetStatus(service.StatusError).
 		SetErrorMessage(errorMsg).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue set error failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID int64, priority int) error {
@@ -497,7 +541,14 @@ func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID i
 		SetGroupID(groupID).
 		SetPriority(priority).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	payload := buildSchedulerGroupPayload([]int64{groupIDREDACTED)
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue add to group failed: account=%d group=%d err=%v", accountID, groupID, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) RemoveFromGroup(ctx context.Context, accountID, groupID int64) error {
@@ -507,7 +558,14 @@ func (r *accountRepository) RemoveFromGroup(ctx context.Context, accountID, grou
 			dbaccountgroup.GroupIDEQ(groupID),
 		).
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	payload := buildSchedulerGroupPayload([]int64{groupIDREDACTED)
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue remove from group failed: account=%d group=%d err=%v", accountID, groupID, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) GetGroups(ctx context.Context, accountID int64) ([]service.Group, error) {
@@ -528,6 +586,10 @@ REDACTED
 REDACTED
 
 func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
+	if err != nil {
+		return err
+REDACTED
 	// 使用事务保证删除旧绑定与创建新绑定的原子性
 	tx, err := r.client.Tx(ctx)
 	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
@@ -568,7 +630,13 @@ REDACTED
 REDACTED
 
 	if tx != nil {
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return err
+	REDACTED
+REDACTED
+	payload := buildSchedulerGroupPayload(mergeGroupIDs(existingGroupIDs, groupIDs))
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountGroupsChanged, &accountID, nil, payload); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue bind groups failed: account=%d err=%v", accountID, err)
 REDACTED
 	return nil
 REDACTED
@@ -672,7 +740,13 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 		SetRateLimitedAt(now).
 		SetRateLimitResetAt(resetAt).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope service.AntigravityQuotaScope, resetAt time.Time) error {
@@ -706,6 +780,9 @@ REDACTED
 	if affected == 0 {
 		return service.ErrAccountNotFound
 REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue quota scope failed: account=%d err=%v", id, err)
+REDACTED
 	return nil
 REDACTED
 
@@ -714,7 +791,13 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 		Where(dbaccount.IDEQ(id)).
 		SetOverloadUntil(until).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue overload failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
@@ -727,7 +810,13 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 			AND deleted_at IS NULL
 			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < $1)
 	`, until, reason, id)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64) error {
@@ -739,7 +828,13 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 		WHERE id = $1
 			AND deleted_at IS NULL
 	`, id)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue clear temp unschedulable failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error {
@@ -749,7 +844,13 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 		ClearRateLimitResetAt().
 		ClearOverloadUntil().
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue clear rate limit failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
@@ -769,6 +870,9 @@ REDACTED
 REDACTED
 	if affected == 0 {
 		return service.ErrAccountNotFound
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue clear quota scopes failed: account=%d err=%v", id, err)
 REDACTED
 	return nil
 REDACTED
@@ -792,7 +896,13 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 		Where(dbaccount.IDEQ(id)).
 		SetSchedulable(schedulable).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now time.Time) (int64, error) {
@@ -812,6 +922,11 @@ REDACTED
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, err
+REDACTED
+	if rows > 0 {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventFullRebuild, nil, nil, nil); err != nil {
+			log.Printf("[SchedulerOutbox] enqueue auto pause rebuild failed: err=%v", err)
+	REDACTED
 REDACTED
 	return rows, nil
 REDACTED
@@ -843,6 +958,9 @@ REDACTED
 REDACTED
 	if affected == 0 {
 		return service.ErrAccountNotFound
+REDACTED
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
 REDACTED
 	return nil
 REDACTED
@@ -927,6 +1045,12 @@ REDACTED
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, err
+REDACTED
+	if rows > 0 {
+		payload := map[string]any{"account_ids": idsREDACTED
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			log.Printf("[SchedulerOutbox] enqueue bulk update failed: err=%v", err)
+	REDACTED
 REDACTED
 	return rows, nil
 REDACTED
@@ -1168,6 +1292,54 @@ REDACTED
 REDACTED
 
 	return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
+REDACTED
+
+func (r *accountRepository) loadAccountGroupIDs(ctx context.Context, accountID int64) ([]int64, error) {
+	entries, err := r.client.AccountGroup.
+		Query().
+		Where(dbaccountgroup.AccountIDEQ(accountID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	ids := make([]int64, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.GroupID)
+REDACTED
+	return ids, nil
+REDACTED
+
+func mergeGroupIDs(a []int64, b []int64) []int64 {
+	seen := make(map[int64]struct{REDACTED, len(a)+len(b))
+	out := make([]int64, 0, len(a)+len(b))
+	for _, id := range a {
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		out = append(out, id)
+REDACTED
+	for _, id := range b {
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		out = append(out, id)
+REDACTED
+	return out
+REDACTED
+
+func buildSchedulerGroupPayload(groupIDs []int64) map[string]any {
+	if len(groupIDs) == 0 {
+		return nil
+REDACTED
+	return map[string]any{"group_ids": groupIDsREDACTED
 REDACTED
 
 func accountEntityToService(m *dbent.Account) *service.Account {

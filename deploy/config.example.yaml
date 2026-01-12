@@ -169,6 +169,45 @@ gateway:
   # Allow failover on selected 400 errors (default: off)
   # 允许在特定 400 错误时进行故障转移（默认：关闭）
   failover_on_400: false
+  # Scheduling configuration
+  # 调度配置
+  scheduling:
+    # Sticky session max waiting queue size
+    # 粘性会话最大排队长度
+    sticky_session_max_waiting: 3
+    # Sticky session wait timeout (duration)
+    # 粘性会话等待超时（时间段）
+    sticky_session_wait_timeout: 120s
+    # Fallback wait timeout (duration)
+    # 兜底排队等待超时（时间段）
+    fallback_wait_timeout: 30s
+    # Fallback max waiting queue size
+    # 兜底最大排队长度
+    fallback_max_waiting: 100
+    # Enable batch load calculation for scheduling
+    # 启用调度批量负载计算
+    load_batch_enabled: true
+    # Slot cleanup interval (duration)
+    # 并发槽位清理周期（时间段）
+    slot_cleanup_interval: 30s
+    # 是否允许受控回源到 DB（默认 true，保持现有行为）
+    db_fallback_enabled: true
+    # 受控回源超时（秒），0 表示不额外收紧超时
+    db_fallback_timeout_seconds: 0
+    # 受控回源限流（实例级 QPS），0 表示不限制
+    db_fallback_max_qps: 0
+    # outbox 轮询周期（秒）
+    outbox_poll_interval_seconds: 1
+    # outbox 滞后告警阈值（秒）
+    outbox_lag_warn_seconds: 5
+    # outbox 触发强制重建阈值（秒）
+    outbox_lag_rebuild_seconds: 10
+    # outbox 连续滞后触发次数
+    outbox_lag_rebuild_failures: 3
+    # outbox 积压触发重建阈值（行数）
+    outbox_backlog_rebuild_rows: 10000
+    # 全量重建周期（秒），0 表示禁用
+    full_rebuild_interval_seconds: 300
 
 # =============================================================================
 # API Key Auth Cache Configuration
