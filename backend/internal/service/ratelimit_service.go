@@ -55,19 +55,36 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 REDACTED
 
 	tempMatched := s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	if upstreamMsg != "" {
+		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
+REDACTED
 
 	switch statusCode {
 	case 401:
 		// 认证失败：停止调度，记录错误
-		s.handleAuthError(ctx, account, "Authentication failed (401): invalid or expired credentials")
+		msg := "Authentication failed (401): invalid or expired credentials"
+		if upstreamMsg != "" {
+			msg = "Authentication failed (401): " + upstreamMsg
+	REDACTED
+		s.handleAuthError(ctx, account, msg)
 		shouldDisable = true
 	case 402:
 		// 支付要求：余额不足或计费问题，停止调度
-		s.handleAuthError(ctx, account, "Payment required (402): insufficient balance or billing issue")
+		msg := "Payment required (402): insufficient balance or billing issue"
+		if upstreamMsg != "" {
+			msg = "Payment required (402): " + upstreamMsg
+	REDACTED
+		s.handleAuthError(ctx, account, msg)
 		shouldDisable = true
 	case 403:
 		// 禁止访问：停止调度，记录错误
-		s.handleAuthError(ctx, account, "Access forbidden (403): account may be suspended or lack permissions")
+		msg := "Access forbidden (403): account may be suspended or lack permissions"
+		if upstreamMsg != "" {
+			msg = "Access forbidden (403): " + upstreamMsg
+	REDACTED
+		s.handleAuthError(ctx, account, msg)
 		shouldDisable = true
 	case 429:
 		s.handle429(ctx, account, headers)

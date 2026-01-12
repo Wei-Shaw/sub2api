@@ -261,106 +261,6 @@
           </div>
         </div>
 
-        <!-- LinuxDo Connect OAuth 登录 -->
-        <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.linuxdo.title') REDACTEDREDACTED
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.linuxdo.description') REDACTEDREDACTED
-            </p>
-          </div>
-          <div class="space-y-5 p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="font-medium text-gray-900 dark:text-white">{{
-                  t('admin.settings.linuxdo.enable')
-                REDACTEDREDACTED</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.linuxdo.enableHint') REDACTEDREDACTED
-                </p>
-              </div>
-              <Toggle v-model="form.linuxdo_connect_enabled" />
-            </div>
-
-            <div
-              v-if="form.linuxdo_connect_enabled"
-              class="border-t border-gray-100 pt-4 dark:border-dark-700"
-            >
-              <div class="grid grid-cols-1 gap-6">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.linuxdo.clientId') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.linuxdo_connect_client_id"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.linuxdo.clientIdPlaceholder')"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.linuxdo.clientIdHint') REDACTEDREDACTED
-                  </p>
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.linuxdo.clientSecret') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.linuxdo_connect_client_secret"
-                    type="password"
-                    class="input font-mono text-sm"
-                    :placeholder="
-                      form.linuxdo_connect_client_secret_configured
-                        ? t('admin.settings.linuxdo.clientSecretConfiguredPlaceholder')
-                        : t('admin.settings.linuxdo.clientSecretPlaceholder')
-                    "
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{
-                      form.linuxdo_connect_client_secret_configured
-                        ? t('admin.settings.linuxdo.clientSecretConfiguredHint')
-                        : t('admin.settings.linuxdo.clientSecretHint')
-                    REDACTEDREDACTED
-                  </p>
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.linuxdo.redirectUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.linuxdo_connect_redirect_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.linuxdo.redirectUrlPlaceholder')"
-                  />
-                  <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <button
-                      type="button"
-                      class="btn btn-secondary btn-sm w-fit"
-                      @click="setAndCopyLinuxdoRedirectUrl"
-                    >
-                      {{ t('admin.settings.linuxdo.quickSetCopy') REDACTEDREDACTED
-                    </button>
-                    <code
-                      v-if="linuxdoRedirectUrlSuggestion"
-                      class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
-                    >
-                      {{ linuxdoRedirectUrlSuggestion REDACTEDREDACTED
-                    </code>
-                  </div>
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.linuxdo.redirectUrlHint') REDACTEDREDACTED
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Default Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -812,19 +712,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted REDACTED from 'vue'
+import { ref, reactive, onMounted, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api'
 import type { SystemSettings, UpdateSettingsRequest REDACTED from '@/api/admin/settings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Toggle from '@/components/common/Toggle.vue'
-import { useClipboard REDACTED from '@/composables/useClipboard'
-import { useAppStore REDACTED from '@/stores'
+import Select from '@/components/common/Select.vue'
+import { useAdminSettingsStore, useAppStore REDACTED from '@/stores'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
-const { copyToClipboard REDACTED = useClipboard()
+const adminSettingsStore = useAdminSettingsStore()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -843,7 +743,6 @@ const newAdminApiKey = ref('')
 type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
-  linuxdo_connect_client_secret: string
 REDACTED
 
 const form = reactive<SettingsForm>({
@@ -871,31 +770,16 @@ const form = reactive<SettingsForm>({
   turnstile_site_key: '',
   turnstile_secret_key: '',
   turnstile_secret_key_configured: false,
-  // LinuxDo Connect OAuth（终端用户登录）
-  linuxdo_connect_enabled: false,
-  linuxdo_connect_client_id: '',
-  linuxdo_connect_client_secret: '',
-  linuxdo_connect_client_secret_configured: false,
-  linuxdo_connect_redirect_url: '',
+  // Model fallback
+  enable_model_fallback: false,
+  fallback_model_anthropic: 'claude-3-5-sonnet-20241022',
+  fallback_model_openai: 'gpt-4o',
+  fallback_model_gemini: 'gemini-2.5-pro',
+  fallback_model_antigravity: 'gemini-2.5-pro',
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: ''
 REDACTED)
-
-const linuxdoRedirectUrlSuggestion = computed(() => {
-  if (typeof window === 'undefined') return ''
-  const origin =
-    window.location.origin || `${window.location.protocolREDACTED//${window.location.hostREDACTED`
-  return `${originREDACTED/api/v1/auth/oauth/linuxdo/callback`
-REDACTED)
-
-async function setAndCopyLinuxdoRedirectUrl() {
-  const url = linuxdoRedirectUrlSuggestion.value
-  if (!url) return
-
-  form.linuxdo_connect_redirect_url = url
-  await copyToClipboard(url, t('admin.settings.linuxdo.redirectUrlSetAndCopied'))
-REDACTED
 
 function handleLogoUpload(event: Event) {
   const input = event.target as HTMLInputElement
@@ -942,7 +826,6 @@ async function loadSettings() {
     Object.assign(form, settings)
     form.smtp_password = ''
     form.turnstile_secret_key = ''
-    form.linuxdo_connect_client_secret = ''
   REDACTED catch (error: any) {
     appStore.showError(
       t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError'))
@@ -977,16 +860,18 @@ async function saveSettings() {
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
-      linuxdo_connect_enabled: form.linuxdo_connect_enabled,
-      linuxdo_connect_client_id: form.linuxdo_connect_client_id,
-      linuxdo_connect_client_secret: form.linuxdo_connect_client_secret || undefined,
-      linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url
+      enable_model_fallback: form.enable_model_fallback,
+      fallback_model_anthropic: form.fallback_model_anthropic,
+      fallback_model_openai: form.fallback_model_openai,
+      fallback_model_gemini: form.fallback_model_gemini,
+      fallback_model_antigravity: form.fallback_model_antigravity,
+      enable_identity_patch: form.enable_identity_patch,
+      identity_patch_prompt: form.identity_patch_prompt
     REDACTED
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)
     form.smtp_password = ''
     form.turnstile_secret_key = ''
-    form.linuxdo_connect_client_secret = ''
     // Refresh cached public settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))

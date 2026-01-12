@@ -1,0 +1,705 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/robfig/cron/v3"
+)
+
+const (
+	opsScheduledReportJobName = "ops_scheduled_reports"
+
+	opsScheduledReportLeaderLockKeyDefault = "ops:scheduled_reports:leader"
+	opsScheduledReportLeaderLockTTLDefault = 5 * time.Minute
+
+	opsScheduledReportLastRunKeyPrefix = "ops:scheduled_reports:last_run:"
+
+	opsScheduledReportTickInterval = 1 * time.Minute
+)
+
+var opsScheduledReportCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+var opsScheduledReportReleaseScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
+type OpsScheduledReportService struct {
+	opsService   *OpsService
+	userService  *UserService
+	emailService *EmailService
+	redisClient  *redis.Client
+	cfg          *config.Config
+
+	instanceID string
+	loc        *time.Location
+
+	distributedLockOn bool
+	warnNoRedisOnce   sync.Once
+
+	startOnce sync.Once
+	stopOnce  sync.Once
+	stopCtx   context.Context
+	stop      context.CancelFunc
+	wg        sync.WaitGroup
+REDACTED
+
+func NewOpsScheduledReportService(
+	opsService *OpsService,
+	userService *UserService,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsScheduledReportService {
+	lockOn := cfg == nil || strings.TrimSpace(cfg.RunMode) != config.RunModeSimple
+
+	loc := time.Local
+	if cfg != nil && strings.TrimSpace(cfg.Timezone) != "" {
+		if parsed, err := time.LoadLocation(strings.TrimSpace(cfg.Timezone)); err == nil && parsed != nil {
+			loc = parsed
+	REDACTED
+REDACTED
+	return &OpsScheduledReportService{
+		opsService:   opsService,
+		userService:  userService,
+		emailService: emailService,
+		redisClient:  redisClient,
+		cfg:          cfg,
+
+		instanceID:        uuid.NewString(),
+		loc:               loc,
+		distributedLockOn: lockOn,
+		warnNoRedisOnce:   sync.Once{REDACTED,
+		startOnce:         sync.Once{REDACTED,
+		stopOnce:          sync.Once{REDACTED,
+		stopCtx:           nil,
+		stop:              nil,
+		wg:                sync.WaitGroup{REDACTED,
+REDACTED
+REDACTED
+
+func (s *OpsScheduledReportService) Start() {
+	s.StartWithContext(context.Background())
+REDACTED
+
+func (s *OpsScheduledReportService) StartWithContext(ctx context.Context) {
+	if s == nil {
+		return
+REDACTED
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	if s.cfg != nil && !s.cfg.Ops.Enabled {
+		return
+REDACTED
+	if s.opsService == nil || s.emailService == nil {
+		return
+REDACTED
+
+	s.startOnce.Do(func() {
+		s.stopCtx, s.stop = context.WithCancel(ctx)
+		s.wg.Add(1)
+		go s.run()
+REDACTED)
+REDACTED
+
+func (s *OpsScheduledReportService) Stop() {
+	if s == nil {
+		return
+REDACTED
+	s.stopOnce.Do(func() {
+		if s.stop != nil {
+			s.stop()
+	REDACTED
+REDACTED)
+	s.wg.Wait()
+REDACTED
+
+func (s *OpsScheduledReportService) run() {
+	defer s.wg.Done()
+
+	ticker := time.NewTicker(opsScheduledReportTickInterval)
+	defer ticker.Stop()
+
+	s.runOnce()
+	for {
+		select {
+		case <-ticker.C:
+			s.runOnce()
+		case <-s.stopCtx.Done():
+			return
+	REDACTED
+REDACTED
+REDACTED
+
+func (s *OpsScheduledReportService) runOnce() {
+	if s == nil || s.opsService == nil || s.emailService == nil {
+		return
+REDACTED
+
+	startedAt := time.Now().UTC()
+	runAt := startedAt
+
+	ctx, cancel := context.WithTimeout(s.stopCtx, 60*time.Second)
+	defer cancel()
+
+	// Respect ops monitoring enabled switch.
+	if !s.opsService.IsMonitoringEnabled(ctx) {
+		return
+REDACTED
+
+	release, ok := s.tryAcquireLeaderLock(ctx)
+	if !ok {
+		return
+REDACTED
+	if release != nil {
+		defer release()
+REDACTED
+
+	now := time.Now()
+	if s.loc != nil {
+		now = now.In(s.loc)
+REDACTED
+
+	reports := s.listScheduledReports(ctx, now)
+	if len(reports) == 0 {
+		return
+REDACTED
+
+	for _, report := range reports {
+		if report == nil || !report.Enabled {
+			continue
+	REDACTED
+		if report.NextRunAt.After(now) {
+			continue
+	REDACTED
+
+		if err := s.runReport(ctx, report, now); err != nil {
+			s.recordHeartbeatError(runAt, time.Since(startedAt), err)
+			return
+	REDACTED
+REDACTED
+
+	s.recordHeartbeatSuccess(runAt, time.Since(startedAt))
+REDACTED
+
+type opsScheduledReport struct {
+	Name       string
+	ReportType string
+	Schedule   string
+	Enabled    bool
+
+	TimeRange time.Duration
+
+	Recipients []string
+
+	ErrorDigestMinCount             int
+	AccountHealthErrorRateThreshold float64
+
+	LastRunAt *time.Time
+	NextRunAt time.Time
+REDACTED
+
+func (s *OpsScheduledReportService) listScheduledReports(ctx context.Context, now time.Time) []*opsScheduledReport {
+	if s == nil || s.opsService == nil {
+		return nil
+REDACTED
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+
+	emailCfg, err := s.opsService.GetEmailNotificationConfig(ctx)
+	if err != nil || emailCfg == nil {
+		return nil
+REDACTED
+	if !emailCfg.Report.Enabled {
+		return nil
+REDACTED
+
+	recipients := normalizeEmails(emailCfg.Report.Recipients)
+
+	type reportDef struct {
+		enabled   bool
+		name      string
+		kind      string
+		timeRange time.Duration
+		schedule  string
+REDACTED
+
+	defs := []reportDef{
+		{enabled: emailCfg.Report.DailySummaryEnabled, name: "日报", kind: "daily_summary", timeRange: 24 * time.Hour, schedule: emailCfg.Report.DailySummaryScheduleREDACTED,
+		{enabled: emailCfg.Report.WeeklySummaryEnabled, name: "周报", kind: "weekly_summary", timeRange: 7 * 24 * time.Hour, schedule: emailCfg.Report.WeeklySummaryScheduleREDACTED,
+		{enabled: emailCfg.Report.ErrorDigestEnabled, name: "错误摘要", kind: "error_digest", timeRange: 24 * time.Hour, schedule: emailCfg.Report.ErrorDigestScheduleREDACTED,
+		{enabled: emailCfg.Report.AccountHealthEnabled, name: "账号健康", kind: "account_health", timeRange: 24 * time.Hour, schedule: emailCfg.Report.AccountHealthScheduleREDACTED,
+REDACTED
+
+	out := make([]*opsScheduledReport, 0, len(defs))
+	for _, d := range defs {
+		if !d.enabled {
+			continue
+	REDACTED
+		spec := strings.TrimSpace(d.schedule)
+		if spec == "" {
+			continue
+	REDACTED
+		sched, err := opsScheduledReportCronParser.Parse(spec)
+		if err != nil {
+			log.Printf("[OpsScheduledReport] invalid cron spec=%q for report=%s: %v", spec, d.kind, err)
+			continue
+	REDACTED
+
+		lastRun := s.getLastRunAt(ctx, d.kind)
+		base := lastRun
+		if base.IsZero() {
+			// Allow a schedule matching the current minute to trigger right after startup.
+			base = now.Add(-1 * time.Minute)
+	REDACTED
+		next := sched.Next(base)
+		if next.IsZero() {
+			continue
+	REDACTED
+
+		var lastRunPtr *time.Time
+		if !lastRun.IsZero() {
+			lastCopy := lastRun
+			lastRunPtr = &lastCopy
+	REDACTED
+
+		out = append(out, &opsScheduledReport{
+			Name:       d.name,
+			ReportType: d.kind,
+			Schedule:   spec,
+			Enabled:    true,
+
+			TimeRange: d.timeRange,
+
+			Recipients: recipients,
+
+			ErrorDigestMinCount:             emailCfg.Report.ErrorDigestMinCount,
+			AccountHealthErrorRateThreshold: emailCfg.Report.AccountHealthErrorRateThreshold,
+
+			LastRunAt: lastRunPtr,
+			NextRunAt: next,
+	REDACTED)
+REDACTED
+
+	return out
+REDACTED
+
+func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsScheduledReport, now time.Time) error {
+	if s == nil || s.opsService == nil || s.emailService == nil || report == nil {
+		return nil
+REDACTED
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+
+	// Mark as "run" up-front so a broken SMTP config doesn't spam retries every minute.
+	s.setLastRunAt(ctx, report.ReportType, now)
+
+	content, err := s.generateReportHTML(ctx, report, now)
+	if err != nil {
+		return err
+REDACTED
+	if strings.TrimSpace(content) == "" {
+		// Skip sending when the report decides not to emit content (e.g., digest below min count).
+		return nil
+REDACTED
+
+	recipients := report.Recipients
+	if len(recipients) == 0 && s.userService != nil {
+		admin, err := s.userService.GetFirstAdmin(ctx)
+		if err == nil && admin != nil && strings.TrimSpace(admin.Email) != "" {
+			recipients = []string{strings.TrimSpace(admin.Email)REDACTED
+	REDACTED
+REDACTED
+	if len(recipients) == 0 {
+		return nil
+REDACTED
+
+	subject := fmt.Sprintf("[Ops Report] %s", strings.TrimSpace(report.Name))
+
+	for _, to := range recipients {
+		addr := strings.TrimSpace(to)
+		if addr == "" {
+			continue
+	REDACTED
+		if err := s.emailService.SendEmail(ctx, addr, subject, content); err != nil {
+			// Ignore per-recipient failures; continue best-effort.
+			continue
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func (s *OpsScheduledReportService) generateReportHTML(ctx context.Context, report *opsScheduledReport, now time.Time) (string, error) {
+	if s == nil || s.opsService == nil || report == nil {
+		return "", fmt.Errorf("service not initialized")
+REDACTED
+	if report.TimeRange <= 0 {
+		return "", fmt.Errorf("invalid time range")
+REDACTED
+
+	end := now.UTC()
+	start := end.Add(-report.TimeRange)
+
+	switch strings.TrimSpace(report.ReportType) {
+	case "daily_summary", "weekly_summary":
+		overview, err := s.opsService.GetDashboardOverview(ctx, &OpsDashboardFilter{
+			StartTime: start,
+			EndTime:   end,
+			Platform:  "",
+			GroupID:   nil,
+			QueryMode: OpsQueryModeAuto,
+	REDACTED)
+		if err != nil {
+			// If pre-aggregation isn't ready but the report is requested, fall back to raw.
+			if strings.TrimSpace(report.ReportType) == "daily_summary" || strings.TrimSpace(report.ReportType) == "weekly_summary" {
+				overview, err = s.opsService.GetDashboardOverview(ctx, &OpsDashboardFilter{
+					StartTime: start,
+					EndTime:   end,
+					Platform:  "",
+					GroupID:   nil,
+					QueryMode: OpsQueryModeRaw,
+			REDACTED)
+		REDACTED
+			if err != nil {
+				return "", err
+		REDACTED
+	REDACTED
+		return buildOpsSummaryEmailHTML(report.Name, start, end, overview), nil
+	case "error_digest":
+		// Lightweight digest: list recent errors (status>=400) and breakdown by type.
+		startTime := start
+		endTime := end
+		filter := &OpsErrorLogFilter{
+			StartTime: &startTime,
+			EndTime:   &endTime,
+			Page:      1,
+			PageSize:  100,
+	REDACTED
+		out, err := s.opsService.GetErrorLogs(ctx, filter)
+		if err != nil {
+			return "", err
+	REDACTED
+		if report.ErrorDigestMinCount > 0 && out != nil && out.Total < report.ErrorDigestMinCount {
+			return "", nil
+	REDACTED
+		return buildOpsErrorDigestEmailHTML(report.Name, start, end, out), nil
+	case "account_health":
+		// Best-effort: use account availability (not error rate yet).
+		avail, err := s.opsService.GetAccountAvailability(ctx, "", nil)
+		if err != nil {
+			return "", err
+	REDACTED
+		_ = report.AccountHealthErrorRateThreshold // reserved for future per-account error rate report
+		return buildOpsAccountHealthEmailHTML(report.Name, start, end, avail), nil
+	default:
+		return "", fmt.Errorf("unknown report type: %s", report.ReportType)
+REDACTED
+REDACTED
+
+func buildOpsSummaryEmailHTML(title string, start, end time.Time, overview *OpsDashboardOverview) string {
+	if overview == nil {
+		return fmt.Sprintf("<h2>%s</h2><p>No data.</p>", htmlEscape(title))
+REDACTED
+
+	latP50 := "-"
+	latP99 := "-"
+	if overview.Duration.P50 != nil {
+		latP50 = fmt.Sprintf("%dms", *overview.Duration.P50)
+REDACTED
+	if overview.Duration.P99 != nil {
+		latP99 = fmt.Sprintf("%dms", *overview.Duration.P99)
+REDACTED
+
+	ttftP50 := "-"
+	ttftP99 := "-"
+	if overview.TTFT.P50 != nil {
+		ttftP50 = fmt.Sprintf("%dms", *overview.TTFT.P50)
+REDACTED
+	if overview.TTFT.P99 != nil {
+		ttftP99 = fmt.Sprintf("%dms", *overview.TTFT.P99)
+REDACTED
+
+	return fmt.Sprintf(`
+<h2>%s</h2>
+<p><b>Period</b>: %s ~ %s (UTC)</p>
+<ul>
+  <li><b>Total Requests</b>: %d</li>
+  <li><b>Success</b>: %d</li>
+  <li><b>Errors (SLA)</b>: %d</li>
+  <li><b>Business Limited</b>: %d</li>
+  <li><b>SLA</b>: %.2f%%</li>
+  <li><b>Error Rate</b>: %.2f%%</li>
+  <li><b>Upstream Error Rate (excl 429/529)</b>: %.2f%%</li>
+  <li><b>Upstream Errors</b>: excl429/529=%d, 429=%d, 529=%d</li>
+  <li><b>Latency</b>: p50=%s, p99=%s</li>
+  <li><b>TTFT</b>: p50=%s, p99=%s</li>
+  <li><b>Tokens</b>: %d</li>
+  <li><b>QPS</b>: current=%.1f, peak=%.1f, avg=%.1f</li>
+  <li><b>TPS</b>: current=%.1f, peak=%.1f, avg=%.1f</li>
+</ul>
+`,
+		htmlEscape(strings.TrimSpace(title)),
+		htmlEscape(start.UTC().Format(time.RFC3339)),
+		htmlEscape(end.UTC().Format(time.RFC3339)),
+		overview.RequestCountTotal,
+		overview.SuccessCount,
+		overview.ErrorCountSLA,
+		overview.BusinessLimitedCount,
+		overview.SLA*100,
+		overview.ErrorRate*100,
+		overview.UpstreamErrorRate*100,
+		overview.UpstreamErrorCountExcl429529,
+		overview.Upstream429Count,
+		overview.Upstream529Count,
+		htmlEscape(latP50),
+		htmlEscape(latP99),
+		htmlEscape(ttftP50),
+		htmlEscape(ttftP99),
+		overview.TokenConsumed,
+		overview.QPS.Current,
+		overview.QPS.Peak,
+		overview.QPS.Avg,
+		overview.TPS.Current,
+		overview.TPS.Peak,
+		overview.TPS.Avg,
+	)
+REDACTED
+
+func buildOpsErrorDigestEmailHTML(title string, start, end time.Time, list *OpsErrorLogList) string {
+	total := 0
+	recent := []*OpsErrorLog{REDACTED
+	if list != nil {
+		total = list.Total
+		recent = list.Errors
+REDACTED
+	if len(recent) > 10 {
+		recent = recent[:10]
+REDACTED
+
+	rows := ""
+	for _, item := range recent {
+		if item == nil {
+			continue
+	REDACTED
+		rows += fmt.Sprintf(
+			"<tr><td>%s</td><td>%s</td><td>%d</td><td>%s</td></tr>",
+			htmlEscape(item.CreatedAt.UTC().Format(time.RFC3339)),
+			htmlEscape(item.Platform),
+			item.StatusCode,
+			htmlEscape(truncateString(item.Message, 180)),
+		)
+REDACTED
+	if rows == "" {
+		rows = "<tr><td colspan=\"4\">No recent errors.</td></tr>"
+REDACTED
+
+	return fmt.Sprintf(`
+<h2>%s</h2>
+<p><b>Period</b>: %s ~ %s (UTC)</p>
+<p><b>Total Errors</b>: %d</p>
+<h3>Recent</h3>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+  <thead><tr><th>Time</th><th>Platform</th><th>Status</th><th>Message</th></tr></thead>
+  <tbody>%s</tbody>
+</table>
+`,
+		htmlEscape(strings.TrimSpace(title)),
+		htmlEscape(start.UTC().Format(time.RFC3339)),
+		htmlEscape(end.UTC().Format(time.RFC3339)),
+		total,
+		rows,
+	)
+REDACTED
+
+func buildOpsAccountHealthEmailHTML(title string, start, end time.Time, avail *OpsAccountAvailability) string {
+	total := 0
+	available := 0
+	rateLimited := 0
+	hasError := 0
+
+	if avail != nil && avail.Accounts != nil {
+		for _, a := range avail.Accounts {
+			if a == nil {
+				continue
+		REDACTED
+			total++
+			if a.IsAvailable {
+				available++
+		REDACTED
+			if a.IsRateLimited {
+				rateLimited++
+		REDACTED
+			if a.HasError {
+				hasError++
+		REDACTED
+	REDACTED
+REDACTED
+
+	return fmt.Sprintf(`
+<h2>%s</h2>
+<p><b>Period</b>: %s ~ %s (UTC)</p>
+<ul>
+  <li><b>Total Accounts</b>: %d</li>
+  <li><b>Available</b>: %d</li>
+  <li><b>Rate Limited</b>: %d</li>
+  <li><b>Error</b>: %d</li>
+</ul>
+<p>Note: This report currently reflects account availability status only.</p>
+`,
+		htmlEscape(strings.TrimSpace(title)),
+		htmlEscape(start.UTC().Format(time.RFC3339)),
+		htmlEscape(end.UTC().Format(time.RFC3339)),
+		total,
+		available,
+		rateLimited,
+		hasError,
+	)
+REDACTED
+
+func (s *OpsScheduledReportService) tryAcquireLeaderLock(ctx context.Context) (func(), bool) {
+	if s == nil || !s.distributedLockOn {
+		return nil, true
+REDACTED
+	if s.redisClient == nil {
+		s.warnNoRedisOnce.Do(func() {
+			log.Printf("[OpsScheduledReport] redis not configured; running without distributed lock")
+	REDACTED)
+		return nil, true
+REDACTED
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+
+	key := opsScheduledReportLeaderLockKeyDefault
+	ttl := opsScheduledReportLeaderLockTTLDefault
+	if strings.TrimSpace(key) == "" {
+		key = "ops:scheduled_reports:leader"
+REDACTED
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+REDACTED
+
+	ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
+	if err != nil {
+		// Prefer fail-closed to avoid duplicate report sends when Redis is flaky.
+		log.Printf("[OpsScheduledReport] leader lock SetNX failed; skipping this cycle: %v", err)
+		return nil, false
+REDACTED
+	if !ok {
+		return nil, false
+REDACTED
+	return func() {
+		_, _ = opsScheduledReportReleaseScript.Run(ctx, s.redisClient, []string{keyREDACTED, s.instanceID).Result()
+REDACTED, true
+REDACTED
+
+func (s *OpsScheduledReportService) getLastRunAt(ctx context.Context, reportType string) time.Time {
+	if s == nil || s.redisClient == nil {
+		return time.Time{REDACTED
+REDACTED
+	kind := strings.TrimSpace(reportType)
+	if kind == "" {
+		return time.Time{REDACTED
+REDACTED
+	key := opsScheduledReportLastRunKeyPrefix + kind
+
+	raw, err := s.redisClient.Get(ctx, key).Result()
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return time.Time{REDACTED
+REDACTED
+	sec, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || sec <= 0 {
+		return time.Time{REDACTED
+REDACTED
+	last := time.Unix(sec, 0)
+	// Cron schedules are interpreted in the configured timezone (s.loc). Ensure the base time
+	// passed into cron.Next() uses the same location; otherwise the job will drift by timezone
+	// offset (e.g. Asia/Shanghai default would run 8h later after the first execution).
+	if s.loc != nil {
+		return last.In(s.loc)
+REDACTED
+	return last.UTC()
+REDACTED
+
+func (s *OpsScheduledReportService) setLastRunAt(ctx context.Context, reportType string, t time.Time) {
+	if s == nil || s.redisClient == nil {
+		return
+REDACTED
+	kind := strings.TrimSpace(reportType)
+	if kind == "" {
+		return
+REDACTED
+	if t.IsZero() {
+		t = time.Now().UTC()
+REDACTED
+	key := opsScheduledReportLastRunKeyPrefix + kind
+	_ = s.redisClient.Set(ctx, key, strconv.FormatInt(t.UTC().Unix(), 10), 14*24*time.Hour).Err()
+REDACTED
+
+func (s *OpsScheduledReportService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration) {
+	if s == nil || s.opsService == nil || s.opsService.opsRepo == nil {
+		return
+REDACTED
+	now := time.Now().UTC()
+	durMs := duration.Milliseconds()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = s.opsService.opsRepo.UpsertJobHeartbeat(ctx, &OpsUpsertJobHeartbeatInput{
+		JobName:        opsScheduledReportJobName,
+		LastRunAt:      &runAt,
+		LastSuccessAt:  &now,
+		LastDurationMs: &durMs,
+REDACTED)
+REDACTED
+
+func (s *OpsScheduledReportService) recordHeartbeatError(runAt time.Time, duration time.Duration, err error) {
+	if s == nil || s.opsService == nil || s.opsService.opsRepo == nil || err == nil {
+		return
+REDACTED
+	now := time.Now().UTC()
+	durMs := duration.Milliseconds()
+	msg := truncateString(err.Error(), 2048)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = s.opsService.opsRepo.UpsertJobHeartbeat(ctx, &OpsUpsertJobHeartbeatInput{
+		JobName:        opsScheduledReportJobName,
+		LastRunAt:      &runAt,
+		LastErrorAt:    &now,
+		LastError:      &msg,
+		LastDurationMs: &durMs,
+REDACTED)
+REDACTED
+
+func normalizeEmails(in []string) []string {
+	if len(in) == 0 {
+		return nil
+REDACTED
+	seen := make(map[string]struct{REDACTED, len(in))
+	out := make([]string, 0, len(in))
+	for _, raw := range in {
+		addr := strings.ToLower(strings.TrimSpace(raw))
+		if addr == "" {
+			continue
+	REDACTED
+		if _, ok := seen[addr]; ok {
+			continue
+	REDACTED
+		seen[addr] = struct{REDACTED{REDACTED
+		out = append(out, addr)
+REDACTED
+	return out
+REDACTED

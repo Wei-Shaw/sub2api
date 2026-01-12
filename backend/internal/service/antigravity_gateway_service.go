@@ -564,6 +564,14 @@ urlFallbackLoop:
 
 			resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 			if err != nil {
+				safeErr := sanitizeUpstreamErrorMessage(err.Error())
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: 0,
+					Kind:               "request_error",
+					Message:            safeErr,
+			REDACTED)
 				// 检查是否应触发 URL 降级
 				if shouldAntigravityFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
 					antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
@@ -579,6 +587,7 @@ urlFallbackLoop:
 					continue
 			REDACTED
 				log.Printf("%s status=request_failed retries_exhausted error=%v", prefix, err)
+				setOpsUpstreamError(c, 0, safeErr, "")
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 		REDACTED
 
@@ -586,6 +595,26 @@ urlFallbackLoop:
 			if resp.StatusCode == http.StatusTooManyRequests && urlIdx < len(availableURLs)-1 {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
+				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+				maxBytes := 2048
+				if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+					maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			REDACTED
+				upstreamDetail := ""
+				if logBody {
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "retry",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
 				antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
 				log.Printf("%s URL fallback (HTTP 429): %s -> %s body=%s", prefix, baseURL, availableURLs[urlIdx+1], truncateForLog(respBody, 200))
 				continue urlFallbackLoop
@@ -596,6 +625,26 @@ urlFallbackLoop:
 				_ = resp.Body.Close()
 
 				if attempt < antigravityMaxRetries {
+					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+					logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+					maxBytes := 2048
+					if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+						maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+				REDACTED
+					upstreamDetail := ""
+					if logBody {
+						upstreamDetail = truncateString(string(respBody), maxBytes)
+				REDACTED
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						Kind:               "retry",
+						Message:            upstreamMsg,
+						Detail:             upstreamDetail,
+				REDACTED)
 					log.Printf("%s status=%d retry=%d/%d body=%s", prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 500))
 					if !sleepAntigravityBackoffWithContext(ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", prefix)
@@ -628,6 +677,27 @@ REDACTED
 		// Antigravity /v1internal 链路在部分场景会对 thought/thinking signature 做严格校验，
 		// 当历史消息携带的 signature 不合法时会直接 400；去除 thinking 后可继续完成请求。
 		if resp.StatusCode == http.StatusBadRequest && isSignatureRelatedError(respBody) {
+			upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+			logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+			maxBytes := 2048
+			if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+				maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		REDACTED
+			upstreamDetail := ""
+			if logBody {
+				upstreamDetail = truncateString(string(respBody), maxBytes)
+		REDACTED
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				Kind:               "signature_error",
+				Message:            upstreamMsg,
+				Detail:             upstreamDetail,
+		REDACTED)
+
 			// Conservative two-stage fallback:
 			// 1) Disable top-level thinking + thinking->text
 			// 2) Only if still signature-related 400: also downgrade tool_use/tool_result to text.
@@ -661,6 +731,13 @@ REDACTED
 			REDACTED
 				retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
 				if retryErr != nil {
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						UpstreamStatusCode: 0,
+						Kind:               "signature_retry_request_error",
+						Message:            sanitizeUpstreamErrorMessage(retryErr.Error()),
+				REDACTED)
 					log.Printf("Antigravity account %d: signature retry request failed (%s): %v", account.ID, stage.name, retryErr)
 					continue
 			REDACTED
@@ -674,6 +751,25 @@ REDACTED
 
 				retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
 				_ = retryResp.Body.Close()
+				kind := "signature_retry"
+				if strings.TrimSpace(stage.name) != "" {
+					kind = "signature_retry_" + strings.ReplaceAll(stage.name, "+", "_")
+			REDACTED
+				retryUpstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(retryBody))
+				retryUpstreamMsg = sanitizeUpstreamErrorMessage(retryUpstreamMsg)
+				retryUpstreamDetail := ""
+				if logBody {
+					retryUpstreamDetail = truncateString(string(retryBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: retryResp.StatusCode,
+					UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
+					Kind:               kind,
+					Message:            retryUpstreamMsg,
+					Detail:             retryUpstreamDetail,
+			REDACTED)
 
 				// If this stage fixed the signature issue, we stop; otherwise we may try the next stage.
 				if retryResp.StatusCode != http.StatusBadRequest || !isSignatureRelatedError(retryBody) {
@@ -701,10 +797,30 @@ REDACTED
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 
 			if s.shouldFailoverUpstreamError(resp.StatusCode) {
+				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+				maxBytes := 2048
+				if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+					maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			REDACTED
+				upstreamDetail := ""
+				if logBody {
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "failover",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
 				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 		REDACTED
 
-			return nil, s.writeMappedClaudeError(c, resp.StatusCode, respBody)
+			return nil, s.writeMappedClaudeError(c, account, resp.StatusCode, resp.Header.Get("x-request-id"), respBody)
 	REDACTED
 REDACTED
 
@@ -1108,6 +1224,14 @@ urlFallbackLoop:
 
 			resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 			if err != nil {
+				safeErr := sanitizeUpstreamErrorMessage(err.Error())
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: 0,
+					Kind:               "request_error",
+					Message:            safeErr,
+			REDACTED)
 				// 检查是否应触发 URL 降级
 				if shouldAntigravityFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
 					antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
@@ -1123,6 +1247,7 @@ urlFallbackLoop:
 					continue
 			REDACTED
 				log.Printf("%s status=request_failed retries_exhausted error=%v", prefix, err)
+				setOpsUpstreamError(c, 0, safeErr, "")
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
 		REDACTED
 
@@ -1130,6 +1255,26 @@ urlFallbackLoop:
 			if resp.StatusCode == http.StatusTooManyRequests && urlIdx < len(availableURLs)-1 {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
+				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+				maxBytes := 2048
+				if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+					maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			REDACTED
+				upstreamDetail := ""
+				if logBody {
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "retry",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
 				antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
 				log.Printf("%s URL fallback (HTTP 429): %s -> %s body=%s", prefix, baseURL, availableURLs[urlIdx+1], truncateForLog(respBody, 200))
 				continue urlFallbackLoop
@@ -1140,6 +1285,26 @@ urlFallbackLoop:
 				_ = resp.Body.Close()
 
 				if attempt < antigravityMaxRetries {
+					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+					logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+					maxBytes := 2048
+					if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+						maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+				REDACTED
+					upstreamDetail := ""
+					if logBody {
+						upstreamDetail = truncateString(string(respBody), maxBytes)
+				REDACTED
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						Kind:               "retry",
+						Message:            upstreamMsg,
+						Detail:             upstreamDetail,
+				REDACTED)
 					log.Printf("%s status=%d retry=%d/%d", prefix, resp.StatusCode, attempt, antigravityMaxRetries)
 					if !sleepAntigravityBackoffWithContext(ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", prefix)
@@ -1205,21 +1370,59 @@ REDACTED()
 
 		s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
-	REDACTED
-
-		// 解包并返回错误
 		requestID := resp.Header.Get("x-request-id")
 		if requestID != "" {
 			c.Header("x-request-id", requestID)
 	REDACTED
-		unwrapped, _ := s.unwrapV1InternalResponse(respBody)
+
+		unwrapped, unwrapErr := s.unwrapV1InternalResponse(respBody)
+		unwrappedForOps := unwrapped
+		if unwrapErr != nil || len(unwrappedForOps) == 0 {
+			unwrappedForOps = respBody
+	REDACTED
+		upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(unwrappedForOps))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+		logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+		maxBytes := 2048
+		if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+			maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+	REDACTED
+		upstreamDetail := ""
+		if logBody {
+			upstreamDetail = truncateString(string(unwrappedForOps), maxBytes)
+	REDACTED
+
+		// Always record upstream context for Ops error logs, even when we will failover.
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  requestID,
+				Kind:               "failover",
+				Message:            upstreamMsg,
+				Detail:             upstreamDetail,
+		REDACTED)
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+	REDACTED
+
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
 			contentType = "application/json"
 	REDACTED
-		c.Data(resp.StatusCode, contentType, unwrapped)
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  requestID,
+			Kind:               "http_error",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+	REDACTED)
+		c.Data(resp.StatusCode, contentType, unwrappedForOps)
 		return nil, fmt.Errorf("antigravity upstream error: %d", resp.StatusCode)
 REDACTED
 
@@ -1674,9 +1877,35 @@ REDACTED)
 	return fmt.Errorf("%s", message)
 REDACTED
 
-func (s *AntigravityGatewayService) writeMappedClaudeError(c *gin.Context, upstreamStatus int, body []byte) error {
-	// 记录上游错误详情便于调试
-	log.Printf("[antigravity-Forward] upstream_error status=%d body=%s", upstreamStatus, string(body))
+func (s *AntigravityGatewayService) writeMappedClaudeError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+	maxBytes := 2048
+	if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+		maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+REDACTED
+
+	upstreamDetail := ""
+	if logBody {
+		upstreamDetail = truncateString(string(body), maxBytes)
+REDACTED
+	setOpsUpstreamError(c, upstreamStatus, upstreamMsg, upstreamDetail)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		UpstreamStatusCode: upstreamStatus,
+		UpstreamRequestID:  upstreamRequestID,
+		Kind:               "http_error",
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+REDACTED)
+
+	// 记录上游错误详情便于排障（可选：由配置控制；不回显到客户端）
+	if logBody {
+		log.Printf("[antigravity-Forward] upstream_error status=%d body=%s", upstreamStatus, truncateForLog(body, maxBytes))
+REDACTED
 
 	var statusCode int
 	var errType, errMsg string
@@ -1712,7 +1941,10 @@ REDACTED
 		"type":  "error",
 		"error": gin.H{"type": errType, "message": errMsgREDACTED,
 REDACTED)
-	return fmt.Errorf("upstream error: %d", upstreamStatus)
+	if upstreamMsg == "" {
+		return fmt.Errorf("upstream error: %d", upstreamStatus)
+REDACTED
+	return fmt.Errorf("upstream error: %d message=%s", upstreamStatus, upstreamMsg)
 REDACTED
 
 func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int, message string) error {

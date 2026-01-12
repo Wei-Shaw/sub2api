@@ -1,10 +1,12 @@
 package service
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/google/wire"
+	"github.com/redis/go-redis/v9"
 )
 
 // BuildInfo contains build information
@@ -84,6 +86,72 @@ REDACTED
 	return svc
 REDACTED
 
+// ProvideOpsMetricsCollector creates and starts OpsMetricsCollector.
+func ProvideOpsMetricsCollector(
+	opsRepo OpsRepository,
+	settingRepo SettingRepository,
+	accountRepo AccountRepository,
+	concurrencyService *ConcurrencyService,
+	db *sql.DB,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsMetricsCollector {
+	collector := NewOpsMetricsCollector(opsRepo, settingRepo, accountRepo, concurrencyService, db, redisClient, cfg)
+	collector.Start()
+	return collector
+REDACTED
+
+// ProvideOpsAggregationService creates and starts OpsAggregationService (hourly/daily pre-aggregation).
+func ProvideOpsAggregationService(
+	opsRepo OpsRepository,
+	settingRepo SettingRepository,
+	db *sql.DB,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsAggregationService {
+	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideOpsAlertEvaluatorService creates and starts OpsAlertEvaluatorService.
+func ProvideOpsAlertEvaluatorService(
+	opsService *OpsService,
+	opsRepo OpsRepository,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsAlertEvaluatorService {
+	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideOpsCleanupService creates and starts OpsCleanupService (cron scheduled).
+func ProvideOpsCleanupService(
+	opsRepo OpsRepository,
+	db *sql.DB,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsCleanupService {
+	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
+func ProvideOpsScheduledReportService(
+	opsService *OpsService,
+	userService *UserService,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *OpsScheduledReportService {
+	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideAPIKeyAuthCacheInvalidator 提供 API Key 认证缓存失效能力
 func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthCacheInvalidator {
 	return apiKeyService
@@ -122,6 +190,12 @@ var ProviderSet = wire.NewSet(
 	NewAccountUsageService,
 	NewAccountTestService,
 	NewSettingService,
+	NewOpsService,
+	ProvideOpsMetricsCollector,
+	ProvideOpsAggregationService,
+	ProvideOpsAlertEvaluatorService,
+	ProvideOpsCleanupService,
+	ProvideOpsScheduledReportService,
 	NewEmailService,
 	ProvideEmailQueueService,
 	NewTurnstileService,
