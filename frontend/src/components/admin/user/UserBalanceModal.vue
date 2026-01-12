@@ -35,14 +35,22 @@ const emit = defineEmits(['close', 'success']); const { t REDACTED = useI18n(); 
 const submitting = ref(false); const form = reactive({ amount: 0, notes: '' REDACTED)
 watch(() => props.show, (v) => { if(v) { form.amount = 0; form.notes = '' REDACTED REDACTED)
 
-const calculateNewBalance = () => (props.user ? (props.operation === 'add' ? props.user.balance + form.amount : props.user.balance - form.amount) : 0)
+const calculateNewBalance = () => {
+  if (!props.user) return 0
+  const result = props.operation === 'add' ? props.user.balance + form.amount : props.user.balance - form.amount
+  // 避免浮点数精度问题导致的 -0.00 显示
+  return result === 0 || Object.is(result, -0) ? 0 : result
+REDACTED
 const handleBalanceSubmit = async () => {
   if (!props.user) return
   if (!form.amount || form.amount <= 0) {
     appStore.showError(t('admin.users.amountRequired'))
     return
   REDACTED
-  if (props.operation === 'subtract' && form.amount > props.user.balance) {
+  // 使用小数点后两位精度比较，避免浮点数精度问题
+  const amount = Math.round(form.amount * 100) / 100
+  const balance = Math.round(props.user.balance * 100) / 100
+  if (props.operation === 'subtract' && amount > balance) {
     appStore.showError(t('admin.users.insufficientBalance'))
     return
   REDACTED
