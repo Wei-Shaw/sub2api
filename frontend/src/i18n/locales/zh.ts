@@ -1339,6 +1339,10 @@ export default {
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',
+      customErrorCodes429Warning:
+        '429 已有内置的限流处理机制。添加到自定义错误码后，将直接停止调度而非临时限流。确定要添加吗？',
+      customErrorCodes529Warning:
+        '529 已有内置的过载处理机制。添加到自定义错误码后，将直接停止调度而非临时标记过载。确定要添加吗？',
       selectedErrorCodes: '已选择',
       noneSelectedUsesDefault: '未选择（使用默认策略）',
       enterErrorCode: '输入错误码 (100-599)',
