@@ -176,7 +176,7 @@ REDACTED
 		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
 REDACTED
 
-	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	// LinuxDo Connect OAuth 登录
 	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
 	updates[SettingKeyLinuxDoConnectClientID] = settings.LinuxDoConnectClientID
 	updates[SettingKeyLinuxDoConnectRedirectURL] = settings.LinuxDoConnectRedirectURL
@@ -227,8 +227,8 @@ REDACTED
 func (s *SettingService) IsRegistrationEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEnabled)
 	if err != nil {
-		// 默认开放注册
-		return true
+		// 安全默认：如果设置不存在或查询出错，默认关闭注册
+		return false
 REDACTED
 	return value == "true"
 REDACTED

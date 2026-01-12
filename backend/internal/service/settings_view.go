@@ -18,7 +18,7 @@ type SystemSettings struct {
 	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
 
-	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
 	LinuxDoConnectClientID               string
 	LinuxDoConnectClientSecret           string

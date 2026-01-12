@@ -36,6 +36,12 @@ export interface SystemSettings {
   turnstile_site_key: string
   turnstile_secret_key_configured: boolean
 
+  // LinuxDo Connect OAuth settings
+  linuxdo_connect_enabled: boolean
+  linuxdo_connect_client_id: string
+  linuxdo_connect_client_secret_configured: boolean
+  linuxdo_connect_redirect_url: string
+
   // Model fallback configuration
   enable_model_fallback: boolean
   fallback_model_anthropic: string
@@ -76,6 +82,10 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean
   turnstile_site_key?: string
   turnstile_secret_key?: string
+  linuxdo_connect_enabled?: boolean
+  linuxdo_connect_client_id?: string
+  linuxdo_connect_client_secret?: string
+  linuxdo_connect_redirect_url?: string
   enable_model_fallback?: boolean
   fallback_model_anthropic?: string
   fallback_model_openai?: string

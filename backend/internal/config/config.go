@@ -617,7 +617,7 @@ REDACTED)
 	// Turnstile
 	viper.SetDefault("turnstile.required", false)
 
-	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	// LinuxDo Connect OAuth 登录
 	viper.SetDefault("linuxdo_connect.enabled", false)
 	viper.SetDefault("linuxdo_connect.client_id", "")
 	viper.SetDefault("linuxdo_connect.client_secret", "")
