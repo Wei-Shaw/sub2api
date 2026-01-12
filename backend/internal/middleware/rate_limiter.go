@@ -2,7 +2,10 @@ package middleware
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,15 +28,34 @@ REDACTED
 var rateLimitScript = redis.NewScript(`
 local current = redis.call('INCR', KEYS[1])
 local ttl = redis.call('PTTL', KEYS[1])
-if current == 1 or ttl == -1 then
+local repaired = 0
+if current == 1 then
   redis.call('PEXPIRE', KEYS[1], ARGV[1])
+elseif ttl == -1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+  repaired = 1
 end
-return current
+return {current, repairedREDACTED
 `)
 
 // rateLimitRun 允许测试覆写脚本执行逻辑
-var rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, error) {
-	return rateLimitScript.Run(ctx, client, []string{keyREDACTED, windowMillis).Int64()
+var rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+	values, err := rateLimitScript.Run(ctx, client, []string{keyREDACTED, windowMillis).Slice()
+	if err != nil {
+		return 0, false, err
+REDACTED
+	if len(values) < 2 {
+		return 0, false, fmt.Errorf("rate limit script returned %d values", len(values))
+REDACTED
+	count, err := parseInt64(values[0])
+	if err != nil {
+		return 0, false, err
+REDACTED
+	repaired, err := parseInt64(values[1])
+	if err != nil {
+		return 0, false, err
+REDACTED
+	return count, repaired == 1, nil
 REDACTED
 
 // RateLimiter Redis 速率限制器
@@ -74,8 +96,9 @@ REDACTED
 		windowMillis := windowTTLMillis(window)
 
 		// 使用 Lua 脚本原子操作增加计数并设置过期
-		count, err := rateLimitRun(ctx, r.redis, redisKey, windowMillis)
+		count, repaired, err := rateLimitRun(ctx, r.redis, redisKey, windowMillis)
 		if err != nil {
+			log.Printf("[RateLimit] redis error: key=%s mode=%s err=%v", redisKey, failureModeLabel(failureMode), err)
 			if failureMode == RateLimitFailClose {
 				abortRateLimit(c)
 				return
@@ -83,6 +106,9 @@ REDACTED
 			// Redis 错误时放行，避免影响正常服务
 			c.Next()
 			return
+	REDACTED
+		if repaired {
+			log.Printf("[RateLimit] ttl repaired: key=%s window_ms=%d", redisKey, windowMillis)
 	REDACTED
 
 		// 超过限制
@@ -108,4 +134,28 @@ func abortRateLimit(c *gin.Context) {
 		"error":   "rate limit exceeded",
 		"message": "Too many requests, please try again later",
 REDACTED)
+REDACTED
+
+func failureModeLabel(mode RateLimitFailureMode) string {
+	if mode == RateLimitFailClose {
+		return "fail-close"
+REDACTED
+	return "fail-open"
+REDACTED
+
+func parseInt64(value any) (int64, error) {
+	switch v := value.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case string:
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return 0, err
+	REDACTED
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("unexpected value type %T", value)
+REDACTED
 REDACTED
