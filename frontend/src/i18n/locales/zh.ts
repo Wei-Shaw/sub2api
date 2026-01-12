@@ -2047,7 +2047,7 @@ export default {
       avg: 'avg',
       max: 'max',
       qps: 'QPS',
-      requests: '请求数',
+      requests: '请求',
       upstream: '上游',
       client: '客户端',
       system: '系统',
