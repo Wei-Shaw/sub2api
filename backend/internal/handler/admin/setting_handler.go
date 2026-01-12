@@ -654,3 +654,68 @@ REDACTED
 
 	response.Success(c, gin.H{"message": "Admin API key deleted"REDACTED)
 REDACTED
+
+// GetStreamTimeoutSettings 获取流超时处理配置
+// GET /api/v1/admin/settings/stream-timeout
+func (h *SettingHandler) GetStreamTimeoutSettings(c *gin.Context) {
+	settings, err := h.settingService.GetStreamTimeoutSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, dto.StreamTimeoutSettings{
+		Enabled:                settings.Enabled,
+		Action:                 settings.Action,
+		TempUnschedMinutes:     settings.TempUnschedMinutes,
+		ThresholdCount:         settings.ThresholdCount,
+		ThresholdWindowMinutes: settings.ThresholdWindowMinutes,
+REDACTED)
+REDACTED
+
+// UpdateStreamTimeoutSettingsRequest 更新流超时配置请求
+type UpdateStreamTimeoutSettingsRequest struct {
+	Enabled                bool   `json:"enabled"`
+	Action                 string `json:"action"`
+	TempUnschedMinutes     int    `json:"temp_unsched_minutes"`
+	ThresholdCount         int    `json:"threshold_count"`
+	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
+REDACTED
+
+// UpdateStreamTimeoutSettings 更新流超时处理配置
+// PUT /api/v1/admin/settings/stream-timeout
+func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
+	var req UpdateStreamTimeoutSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	settings := &service.StreamTimeoutSettings{
+		Enabled:                req.Enabled,
+		Action:                 req.Action,
+		TempUnschedMinutes:     req.TempUnschedMinutes,
+		ThresholdCount:         req.ThresholdCount,
+		ThresholdWindowMinutes: req.ThresholdWindowMinutes,
+REDACTED
+
+	if err := h.settingService.SetStreamTimeoutSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+
+	// 重新获取设置返回
+	updatedSettings, err := h.settingService.GetStreamTimeoutSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, dto.StreamTimeoutSettings{
+		Enabled:                updatedSettings.Enabled,
+		Action:                 updatedSettings.Action,
+		TempUnschedMinutes:     updatedSettings.TempUnschedMinutes,
+		ThresholdCount:         updatedSettings.ThresholdCount,
+		ThresholdWindowMinutes: updatedSettings.ThresholdWindowMinutes,
+REDACTED)
+REDACTED

@@ -66,3 +66,12 @@ type PublicSettings struct {
 	LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
 	Version             string `json:"version"`
 REDACTED
+
+// StreamTimeoutSettings 流超时处理配置 DTO
+type StreamTimeoutSettings struct {
+	Enabled                bool   `json:"enabled"`
+	Action                 string `json:"action"`
+	TempUnschedMinutes     int    `json:"temp_unsched_minutes"`
+	ThresholdCount         int    `json:"threshold_count"`
+	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
+REDACTED

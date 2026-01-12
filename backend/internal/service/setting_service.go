@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -674,4 +675,85 @@ REDACTED
 REDACTED
 
 	return effective, nil
+REDACTED
+
+// GetStreamTimeoutSettings 获取流超时处理配置
+func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamTimeoutSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyStreamTimeoutSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultStreamTimeoutSettings(), nil
+	REDACTED
+		return nil, fmt.Errorf("get stream timeout settings: %w", err)
+REDACTED
+	if value == "" {
+		return DefaultStreamTimeoutSettings(), nil
+REDACTED
+
+	var settings StreamTimeoutSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultStreamTimeoutSettings(), nil
+REDACTED
+
+	// 验证并修正配置值
+	if settings.TempUnschedMinutes < 1 {
+		settings.TempUnschedMinutes = 1
+REDACTED
+	if settings.TempUnschedMinutes > 60 {
+		settings.TempUnschedMinutes = 60
+REDACTED
+	if settings.ThresholdCount < 1 {
+		settings.ThresholdCount = 1
+REDACTED
+	if settings.ThresholdCount > 10 {
+		settings.ThresholdCount = 10
+REDACTED
+	if settings.ThresholdWindowMinutes < 1 {
+		settings.ThresholdWindowMinutes = 1
+REDACTED
+	if settings.ThresholdWindowMinutes > 60 {
+		settings.ThresholdWindowMinutes = 60
+REDACTED
+
+	// 验证 action
+	switch settings.Action {
+	case StreamTimeoutActionTempUnsched, StreamTimeoutActionError, StreamTimeoutActionNone:
+		// valid
+	default:
+		settings.Action = StreamTimeoutActionTempUnsched
+REDACTED
+
+	return &settings, nil
+REDACTED
+
+// SetStreamTimeoutSettings 设置流超时处理配置
+func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings *StreamTimeoutSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+REDACTED
+
+	// 验证配置值
+	if settings.TempUnschedMinutes < 1 || settings.TempUnschedMinutes > 60 {
+		return fmt.Errorf("temp_unsched_minutes must be between 1-60")
+REDACTED
+	if settings.ThresholdCount < 1 || settings.ThresholdCount > 10 {
+		return fmt.Errorf("threshold_count must be between 1-10")
+REDACTED
+	if settings.ThresholdWindowMinutes < 1 || settings.ThresholdWindowMinutes > 60 {
+		return fmt.Errorf("threshold_window_minutes must be between 1-60")
+REDACTED
+
+	switch settings.Action {
+	case StreamTimeoutActionTempUnsched, StreamTimeoutActionError, StreamTimeoutActionNone:
+		// valid
+	default:
+		return fmt.Errorf("invalid action: %s", settings.Action)
+REDACTED
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal stream timeout settings: %w", err)
+REDACTED
+
+	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 REDACTED
