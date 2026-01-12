@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 )
 
 // TempUnschedState 临时不可调度状态
@@ -19,4 +20,17 @@ type TempUnschedCache interface {
 	SetTempUnsched(ctx context.Context, accountID int64, state *TempUnschedState) error
 	GetTempUnsched(ctx context.Context, accountID int64) (*TempUnschedState, error)
 	DeleteTempUnsched(ctx context.Context, accountID int64) error
+REDACTED
+
+// TimeoutCounterCache 超时计数器缓存接口
+type TimeoutCounterCache interface {
+	// IncrementTimeoutCount 增加账户的超时计数，返回当前计数值
+	// windowMinutes 是计数窗口时间（分钟），超过此时间计数器会自动重置
+	IncrementTimeoutCount(ctx context.Context, accountID int64, windowMinutes int) (int64, error)
+	// GetTimeoutCount 获取账户当前的超时计数
+	GetTimeoutCount(ctx context.Context, accountID int64) (int64, error)
+	// ResetTimeoutCount 重置账户的超时计数
+	ResetTimeoutCount(ctx context.Context, accountID int64) error
+	// GetTimeoutCountTTL 获取计数器剩余过期时间
+	GetTimeoutCountTTL(ctx context.Context, accountID int64) (time.Duration, error)
 REDACTED

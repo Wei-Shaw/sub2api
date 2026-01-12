@@ -69,3 +69,38 @@ type PublicSettings struct {
 	LinuxDoOAuthEnabled bool
 	Version             string
 REDACTED
+
+// StreamTimeoutSettings 流超时处理配置
+type StreamTimeoutSettings struct {
+	// Enabled 是否启用流超时处理
+	Enabled bool `json:"enabled"`
+	// TimeoutSeconds 流数据间隔超时阈值（秒），0表示禁用
+	TimeoutSeconds int `json:"timeout_seconds"`
+	// Action 超时后的处理方式: "temp_unsched" | "error" | "none"
+	Action string `json:"action"`
+	// TempUnschedMinutes 临时不可调度持续时间（分钟）
+	TempUnschedMinutes int `json:"temp_unsched_minutes"`
+	// ThresholdCount 触发阈值次数（累计多少次超时才触发）
+	ThresholdCount int `json:"threshold_count"`
+	// ThresholdWindowMinutes 阈值窗口时间（分钟）
+	ThresholdWindowMinutes int `json:"threshold_window_minutes"`
+REDACTED
+
+// StreamTimeoutAction 流超时处理方式常量
+const (
+	StreamTimeoutActionTempUnsched = "temp_unsched" // 临时不可调度
+	StreamTimeoutActionError       = "error"        // 标记为错误状态
+	StreamTimeoutActionNone        = "none"         // 不处理
+)
+
+// DefaultStreamTimeoutSettings 返回默认的流超时配置
+func DefaultStreamTimeoutSettings() *StreamTimeoutSettings {
+	return &StreamTimeoutSettings{
+		Enabled:                true,
+		TimeoutSeconds:         60,
+		Action:                 StreamTimeoutActionTempUnsched,
+		TempUnschedMinutes:     5,
+		ThresholdCount:         3,
+		ThresholdWindowMinutes: 10,
+REDACTED
+REDACTED
