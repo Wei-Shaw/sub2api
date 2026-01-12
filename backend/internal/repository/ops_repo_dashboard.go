@@ -964,8 +964,8 @@ func buildErrorWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 REDACTED
 
 	idx := startIndex
-	clauses := make([]string, 0, 4)
-	args = make([]any, 0, 4)
+	clauses := make([]string, 0, 5)
+	args = make([]any, 0, 5)
 
 	args = append(args, start)
 	clauses = append(clauses, fmt.Sprintf("created_at >= $%d", idx))
@@ -973,6 +973,8 @@ REDACTED
 	args = append(args, end)
 	clauses = append(clauses, fmt.Sprintf("created_at < $%d", idx))
 	idx++
+
+	clauses = append(clauses, "is_count_tokens = FALSE")
 
 	if groupID != nil && *groupID > 0 {
 		args = append(args, *groupID)

@@ -487,6 +487,48 @@ REDACTED
               <Toggle v-model="advancedSettings.aggregation.aggregation_enabled" />
             </div>
           </div>
+
+          <!-- 错误过滤 -->
+          <div class="space-y-3">
+            <h5 class="text-xs font-semibold text-gray-700 dark:text-gray-300">错误过滤</h5>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">忽略 count_tokens 错误</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  启用后，count_tokens 请求的错误将不计入运维监控的统计和告警中（但仍会存储在数据库中）
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.ignore_count_tokens_errors" />
+            </div>
+          </div>
+
+          <!-- 自动刷新 -->
+          <div class="space-y-3">
+            <h5 class="text-xs font-semibold text-gray-700 dark:text-gray-300">自动刷新</h5>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">启用自动刷新</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  自动刷新仪表板数据，启用后会定期拉取最新数据
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.auto_refresh_enabled" />
+            </div>
+
+            <div v-if="advancedSettings.auto_refresh_enabled">
+              <label class="input-label">刷新间隔</label>
+              <Select
+                v-model="advancedSettings.auto_refresh_interval_seconds"
+                :options="[
+                  { value: 15, label: '15 秒' REDACTED,
+                  { value: 30, label: '30 秒' REDACTED,
+                  { value: 60, label: '60 秒' REDACTED
+                ]"
+              />
+            </div>
+          </div>
         </div>
       </details>
     </div>
