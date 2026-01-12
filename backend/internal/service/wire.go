@@ -86,6 +86,19 @@ REDACTED
 	return svc
 REDACTED
 
+// ProvideSchedulerSnapshotService creates and starts SchedulerSnapshotService.
+func ProvideSchedulerSnapshotService(
+	cache SchedulerCache,
+	outboxRepo SchedulerOutboxRepository,
+	accountRepo AccountRepository,
+	groupRepo GroupRepository,
+	cfg *config.Config,
+) *SchedulerSnapshotService {
+	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideOpsMetricsCollector creates and starts OpsMetricsCollector.
 func ProvideOpsMetricsCollector(
 	opsRepo OpsRepository,
@@ -201,6 +214,7 @@ var ProviderSet = wire.NewSet(
 	NewTurnstileService,
 	NewSubscriptionService,
 	ProvideConcurrencyService,
+	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,
 	ProvideUpdateService,

@@ -270,6 +270,29 @@ type GatewaySchedulingConfig struct {
 
 	// 过期槽位清理周期（0 表示禁用）
 	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
+
+	// 受控回源配置
+	DbFallbackEnabled bool `mapstructure:"db_fallback_enabled"`
+	// 受控回源超时（秒），0 表示不额外收紧超时
+	DbFallbackTimeoutSeconds int `mapstructure:"db_fallback_timeout_seconds"`
+	// 受控回源限流（实例级 QPS），0 表示不限制
+	DbFallbackMaxQPS int `mapstructure:"db_fallback_max_qps"`
+
+	// Outbox 轮询与滞后阈值配置
+	// Outbox 轮询周期（秒）
+	OutboxPollIntervalSeconds int `mapstructure:"outbox_poll_interval_seconds"`
+	// Outbox 滞后告警阈值（秒）
+	OutboxLagWarnSeconds int `mapstructure:"outbox_lag_warn_seconds"`
+	// Outbox 触发强制重建阈值（秒）
+	OutboxLagRebuildSeconds int `mapstructure:"outbox_lag_rebuild_seconds"`
+	// Outbox 连续滞后触发次数
+	OutboxLagRebuildFailures int `mapstructure:"outbox_lag_rebuild_failures"`
+	// Outbox 积压触发重建阈值（行数）
+	OutboxBacklogRebuildRows int `mapstructure:"outbox_backlog_rebuild_rows"`
+
+	// 全量重建周期配置
+	// 全量重建周期（秒），0 表示禁用
+	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
 REDACTED
 
 func (s *ServerConfig) Address() string {
@@ -749,6 +772,15 @@ REDACTED)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
+	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
+	viper.SetDefault("gateway.scheduling.db_fallback_timeout_seconds", 0)
+	viper.SetDefault("gateway.scheduling.db_fallback_max_qps", 0)
+	viper.SetDefault("gateway.scheduling.outbox_poll_interval_seconds", 1)
+	viper.SetDefault("gateway.scheduling.outbox_lag_warn_seconds", 5)
+	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_seconds", 10)
+	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
+	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
+	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh
@@ -1020,6 +1052,35 @@ REDACTED
 REDACTED
 	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
 		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.DbFallbackTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.db_fallback_timeout_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.DbFallbackMaxQPS < 0 {
+		return fmt.Errorf("gateway.scheduling.db_fallback_max_qps must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxPollIntervalSeconds <= 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_poll_interval_seconds must be positive")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagWarnSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_warn_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagRebuildSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagRebuildFailures <= 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_failures must be positive")
+REDACTED
+	if c.Gateway.Scheduling.OutboxBacklogRebuildRows < 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_backlog_rebuild_rows must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.FullRebuildIntervalSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.full_rebuild_interval_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagWarnSeconds > 0 &&
+		c.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 &&
+		c.Gateway.Scheduling.OutboxLagRebuildSeconds < c.Gateway.Scheduling.OutboxLagWarnSeconds {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_seconds must be >= outbox_lag_warn_seconds")
 REDACTED
 	if c.Ops.MetricsCollectorCache.TTL < 0 {
 		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")
