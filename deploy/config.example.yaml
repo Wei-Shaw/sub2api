@@ -159,7 +159,7 @@ gateway:
   max_line_size: 41943040
   # Log upstream error response body summary (safe/truncated; does not log request content)
   # 记录上游错误响应体摘要（安全/截断；不记录请求内容）
-  log_upstream_error_body: false
+  log_upstream_error_body: true
   # Max bytes to log from upstream error body
   # 记录上游错误响应体的最大字节数
   log_upstream_error_body_max_bytes: 2048
@@ -301,6 +301,19 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
+
+# =============================================================================
+# Ops Monitoring (Optional)
+# 运维监控 (可选)
+# =============================================================================
+ops:
+  # Enable ops monitoring features (background jobs and APIs)
+  # 是否启用运维监控功能（后台任务和接口）
+  # Set to false to hide ops menu in sidebar and disable all ops features
+  # 设置为 false 可在左侧栏隐藏运维监控菜单并禁用所有运维监控功能
+  # Other detailed settings (cleanup, aggregation, etc.) are configured in ops settings dialog
+  # 其他详细设置（数据清理、预聚合等）在运维监控设置对话框中配置
+  enabled: true
 
 # =============================================================================
 # JWT Configuration

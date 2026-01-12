@@ -63,6 +63,9 @@ const (
 	SubscriptionStatusSuspended = "suspended"
 )
 
+// LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。
+const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
+
 // Setting keys
 const (
 	// 注册设置
@@ -82,6 +85,12 @@ const (
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证
 	SettingKeyTurnstileSiteKey   = "turnstile_site_key"   // Turnstile Site Key
 	SettingKeyTurnstileSecretKey = "turnstile_secret_key" // Turnstile Secret Key
+
+	// LinuxDo Connect OAuth 登录设置
+	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"
+	SettingKeyLinuxDoConnectClientID     = "linuxdo_connect_client_id"
+	SettingKeyLinuxDoConnectClientSecret = "linuxdo_connect_client_secret"
+	SettingKeyLinuxDoConnectRedirectURL  = "linuxdo_connect_redirect_url"
 
 	// OEM设置
 	SettingKeySiteName     = "site_name"     // 网站名称
@@ -113,16 +122,31 @@ const (
 	SettingKeyEnableIdentityPatch = "enable_identity_patch"
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
 
-	// LinuxDo Connect OAuth 登录（终端用户 SSO）
-	SettingKeyLinuxDoConnectEnabled      = "linuxdo_connect_enabled"
-	SettingKeyLinuxDoConnectClientID     = "linuxdo_connect_client_id"
-	SettingKeyLinuxDoConnectClientSecret = "linuxdo_connect_client_secret"
-	SettingKeyLinuxDoConnectRedirectURL  = "linuxdo_connect_redirect_url"
-)
+	// =========================
+	// Ops Monitoring (vNext)
+	// =========================
 
-// LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。
-// 目的：避免第三方登录返回的用户标识与本地真实邮箱发生碰撞，进而造成账号被接管的风险。
-const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
+	// SettingKeyOpsMonitoringEnabled is a DB-backed soft switch to enable/disable ops module at runtime.
+	SettingKeyOpsMonitoringEnabled = "ops_monitoring_enabled"
+
+	// SettingKeyOpsRealtimeMonitoringEnabled controls realtime features (e.g. WS/QPS push).
+	SettingKeyOpsRealtimeMonitoringEnabled = "ops_realtime_monitoring_enabled"
+
+	// SettingKeyOpsQueryModeDefault controls the default query mode for ops dashboard (auto/raw/preagg).
+	SettingKeyOpsQueryModeDefault = "ops_query_mode_default"
+
+	// SettingKeyOpsEmailNotificationConfig stores JSON config for ops email notifications.
+	SettingKeyOpsEmailNotificationConfig = "ops_email_notification_config"
+
+	// SettingKeyOpsAlertRuntimeSettings stores JSON config for ops alert evaluator runtime settings.
+	SettingKeyOpsAlertRuntimeSettings = "ops_alert_runtime_settings"
+
+	// SettingKeyOpsMetricsIntervalSeconds controls the ops metrics collector interval (>=60).
+	SettingKeyOpsMetricsIntervalSeconds = "ops_metrics_interval_seconds"
+
+	// SettingKeyOpsAdvancedSettings stores JSON config for ops advanced settings (data retention, aggregation).
+	SettingKeyOpsAdvancedSettings = "ops_advanced_settings"
+)
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
 const AdminAPIKeyPrefix = "admin-"

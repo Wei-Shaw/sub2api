@@ -204,7 +204,7 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 
 	userToday := mustCreateUser(s.T(), s.client, &service.User{
 		Email:     "today@example.com",
-		CreatedAt: maxTime(todayStart.Add(10*time.Second), now.Add(-10*time.Second)),
+		CreatedAt: testMaxTime(todayStart.Add(10*time.Second), now.Add(-10*time.Second)),
 		UpdatedAt: now,
 REDACTED)
 	userOld := mustCreateUser(s.T(), s.client, &service.User{
@@ -237,7 +237,7 @@ REDACTED)
 		TotalCost:           1.5,
 		ActualCost:          1.2,
 		DurationMs:          &d1,
-		CreatedAt:           maxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
+		CreatedAt:           testMaxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
 REDACTED
 	_, err = s.repo.Create(s.ctx, logToday)
 	s.Require().NoError(err, "Create logToday")
@@ -413,9 +413,17 @@ REDACTED
 
 func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	now := time.Now().UTC().Truncate(time.Second)
-	hour1 := now.Add(-90 * time.Minute).Truncate(time.Hour)
-	hour2 := now.Add(-30 * time.Minute).Truncate(time.Hour)
+	// 使用固定的时间偏移确保 hour1 和 hour2 在同一天且都在过去
+	// 选择当天 02:00 和 03:00 作为测试时间点（基于 now 的日期）
 	dayStart := truncateToDayUTC(now)
+	hour1 := dayStart.Add(2 * time.Hour)  // 当天 02:00
+	hour2 := dayStart.Add(3 * time.Hour)  // 当天 03:00
+	// 如果当前时间早于 hour2，则使用昨天的时间
+	if now.Before(hour2.Add(time.Hour)) {
+		dayStart = dayStart.Add(-24 * time.Hour)
+		hour1 = dayStart.Add(2 * time.Hour)
+		hour2 = dayStart.Add(3 * time.Hour)
+REDACTED
 
 	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "agg-u1@test.com"REDACTED)
 	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "agg-u2@test.com"REDACTED)
@@ -473,7 +481,7 @@ REDACTED
 
 	aggRepo := newDashboardAggregationRepositoryWithSQL(s.tx)
 	aggStart := hour1.Add(-5 * time.Minute)
-	aggEnd := now.Add(5 * time.Minute)
+	aggEnd := hour2.Add(time.Hour) // 确保覆盖 hour2 的所有数据
 	s.Require().NoError(aggRepo.AggregateRange(s.ctx, aggStart, aggEnd))
 
 	type hourlyRow struct {
@@ -621,7 +629,7 @@ func (s *UsageLogRepoSuite) TestGetGlobalStats() {
 	s.Require().Equal(int64(45), stats.TotalOutputTokens)
 REDACTED
 
-func maxTime(a, b time.Time) time.Time {
+func testMaxTime(a, b time.Time) time.Time {
 	if a.After(b) {
 		return a
 REDACTED

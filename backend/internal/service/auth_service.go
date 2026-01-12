@@ -357,7 +357,7 @@ REDACTED
 // - 如果邮箱已存在：直接登录（不需要本地密码）
 // - 如果邮箱不存在：创建新用户并登录
 //
-// 注意：该函数用于“终端用户登录 Sub2API 本身”的场景（不同于上游账号的 OAuth，例如 OpenAI/Gemini）。
+// 注意：该函数用于 LinuxDo OAuth 登录场景（不同于上游账号的 OAuth，例如 Claude/OpenAI/Gemini）。
 // 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
 func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
 	email = strings.TrimSpace(email)
@@ -376,8 +376,8 @@ REDACTED
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			// OAuth 首次登录视为注册。
-			if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
+			// OAuth 首次登录视为注册（fail-close：settingService 未配置时不允许注册）
+			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 				return "", nil, ErrRegDisabled
 		REDACTED
 

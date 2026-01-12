@@ -144,10 +144,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref REDACTED from 'vue'
+import { computed, h, onMounted, ref, watch REDACTED from 'vue'
 import { useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
-import { useAppStore, useAuthStore, useOnboardingStore REDACTED from '@/stores'
+import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore REDACTED from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 
 const { t REDACTED = useI18n()
@@ -156,6 +156,7 @@ const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
+const adminSettingsStore = useAdminSettingsStore()
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
@@ -442,6 +443,9 @@ REDACTED)
 const adminNavItems = computed(() => {
   const baseItems = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
+    ...(adminSettingsStore.opsMonitoringEnabled
+      ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon REDACTED]
+      : []),
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true REDACTED,
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true REDACTED,
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
@@ -511,6 +515,23 @@ if (
   isDark.value = true
   document.documentElement.classList.add('dark')
 REDACTED
+
+// Fetch admin settings (for feature-gated nav items like Ops).
+watch(
+  isAdmin,
+  (v) => {
+    if (v) {
+      adminSettingsStore.fetch()
+    REDACTED
+  REDACTED,
+  { immediate: true REDACTED
+)
+
+onMounted(() => {
+  if (isAdmin.value) {
+    adminSettingsStore.fetch()
+  REDACTED
+REDACTED)
 </script>
 
 <style scoped>

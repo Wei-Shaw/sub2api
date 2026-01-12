@@ -30,6 +30,20 @@ func adminAuth(
 	settingService *service.SettingService,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// WebSocket upgrade requests cannot set Authorization headers in browsers.
+		// For admin WebSocket endpoints (e.g. Ops realtime), allow passing the JWT via
+		// Sec-WebSocket-Protocol (subprotocol list) using a prefixed token item:
+		//   Sec-WebSocket-Protocol: sub2api-admin, jwt.<token>
+		if isWebSocketUpgradeRequest(c) {
+			if token := extractJWTFromWebSocketSubprotocol(c); token != "" {
+				if !validateJWTForAdmin(c, token, authService, userService) {
+					return
+			REDACTED
+				c.Next()
+				return
+		REDACTED
+	REDACTED
+
 		// 检查 x-api-key header（Admin API Key 认证）
 		apiKey := c.GetHeader("x-api-key")
 		if apiKey != "" {
@@ -56,6 +70,44 @@ func adminAuth(
 		// 无有效认证信息
 		AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
 REDACTED
+REDACTED
+
+func isWebSocketUpgradeRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+REDACTED
+	// RFC6455 handshake uses:
+	//   Connection: Upgrade
+	//   Upgrade: websocket
+	upgrade := strings.ToLower(strings.TrimSpace(c.GetHeader("Upgrade")))
+	if upgrade != "websocket" {
+		return false
+REDACTED
+	connection := strings.ToLower(c.GetHeader("Connection"))
+	return strings.Contains(connection, "upgrade")
+REDACTED
+
+func extractJWTFromWebSocketSubprotocol(c *gin.Context) string {
+	if c == nil {
+		return ""
+REDACTED
+	raw := strings.TrimSpace(c.GetHeader("Sec-WebSocket-Protocol"))
+	if raw == "" {
+		return ""
+REDACTED
+
+	// The header is a comma-separated list of tokens. We reserve the prefix "jwt."
+	// for carrying the admin JWT.
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if strings.HasPrefix(p, "jwt.") {
+			token := strings.TrimSpace(strings.TrimPrefix(p, "jwt."))
+			if token != "" {
+				return token
+		REDACTED
+	REDACTED
+REDACTED
+	return ""
 REDACTED
 
 // validateAdminAPIKey 验证管理员 API Key
