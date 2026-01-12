@@ -73,6 +73,7 @@ type OpsInsertErrorLogInput struct {
 	Severity          string
 	StatusCode        int
 	IsBusinessLimited bool
+	IsCountTokens     bool // 是否为 count_tokens 请求
 
 	ErrorMessage string
 	ErrorBody    string
