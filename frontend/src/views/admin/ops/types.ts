@@ -14,6 +14,7 @@ export type {
   EmailNotificationConfig,
   OpsDistributedLockSettings,
   OpsAlertRuntimeSettings,
+  OpsMetricThresholds,
   OpsAdvancedSettings,
   OpsDataRetentionSettings,
   OpsAggregationSettings
