@@ -13,17 +13,13 @@
       <OpsDashboardHeader
         v-else-if="opsEnabled"
         :overview="overview"
-        :ws-status="wsStatus"
-        :ws-reconnect-in-ms="wsReconnectInMs"
-        :ws-has-data="wsHasData"
-        :real-time-qps="realTimeQPS"
-        :real-time-tps="realTimeTPS"
         :platform="platform"
         :group-id="groupId"
         :time-range="timeRange"
         :query-mode="queryMode"
         :loading="loading"
         :last-updated="lastUpdated"
+        :thresholds="metricThresholds"
         @update:time-range="onTimeRangeChange"
         @update:platform="onPlatformChange"
         @update:group="onGroupChange"
@@ -75,7 +71,7 @@
       <OpsAlertEventsCard v-if="opsEnabled && !(loading && !hasLoadedOnce)" />
 
       <!-- Settings Dialog -->
-      <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="fetchData" />
+      <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
 
       <!-- Alert Rules Dialog -->
       <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
@@ -115,13 +111,12 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import {
   opsAPI,
-  OPS_WS_CLOSE_CODES,
-  type OpsWSStatus,
   type OpsDashboardOverview,
   type OpsErrorDistributionResponse,
   type OpsErrorTrendResponse,
   type OpsLatencyHistogramResponse,
-  type OpsThroughputTrendResponse
+  type OpsThroughputTrendResponse,
+  type OpsMetricThresholds
 REDACTED from '@/api/admin/ops'
 import { useAdminSettingsStore, useAppStore REDACTED from '@/stores'
 import OpsDashboardHeader from './components/OpsDashboardHeader.vue'
@@ -172,14 +167,6 @@ REDACTED as const
 const isApplyingRouteQuery = ref(false)
 const isSyncingRouteQuery = ref(false)
 
-// WebSocket for realtime QPS/TPS
-const realTimeQPS = ref(0)
-const realTimeTPS = ref(0)
-const wsStatus = ref<OpsWSStatus>('closed')
-const wsReconnectInMs = ref<number | null>(null)
-const wsHasData = ref(false)
-let unsubscribeQPS: (() => void) | null = null
-
 let dashboardFetchController: AbortController | null = null
 let dashboardFetchSeq = 0
 
@@ -197,50 +184,6 @@ function abortDashboardFetch() {
     dashboardFetchController.abort()
     dashboardFetchController = null
   REDACTED
-REDACTED
-
-function stopQPSSubscription(options?: { resetMetrics?: boolean REDACTED) {
-  wsStatus.value = 'closed'
-  wsReconnectInMs.value = null
-  if (unsubscribeQPS) unsubscribeQPS()
-  unsubscribeQPS = null
-
-  if (options?.resetMetrics) {
-    realTimeQPS.value = 0
-    realTimeTPS.value = 0
-    wsHasData.value = false
-  REDACTED
-REDACTED
-
-function startQPSSubscription() {
-  stopQPSSubscription()
-  unsubscribeQPS = opsAPI.subscribeQPS(
-    (payload) => {
-      if (payload && typeof payload === 'object' && payload.type === 'qps_update' && payload.data) {
-        realTimeQPS.value = payload.data.qps || 0
-        realTimeTPS.value = payload.data.tps || 0
-        wsHasData.value = true
-      REDACTED
-    REDACTED,
-    {
-      onStatusChange: (status) => {
-        wsStatus.value = status
-        if (status === 'connected') wsReconnectInMs.value = null
-      REDACTED,
-      onReconnectScheduled: ({ delayMs REDACTED) => {
-        wsReconnectInMs.value = delayMs
-      REDACTED,
-      onFatalClose: (event) => {
-        // Server-side feature flag says realtime is disabled; keep UI consistent and avoid reconnect loops.
-        if (event && event.code === OPS_WS_CLOSE_CODES.REALTIME_DISABLED) {
-          adminSettingsStore.setOpsRealtimeMonitoringEnabledLocal(false)
-          stopQPSSubscription({ resetMetrics: true REDACTED)
-        REDACTED
-      REDACTED,
-      // QPS updates may be sparse in idle periods; keep the timeout conservative.
-      staleTimeoutMs: 180_000
-    REDACTED
-  )
 REDACTED
 
 const readQueryString = (key: string): string => {
@@ -314,6 +257,7 @@ const syncQueryToRoute = useDebounceFn(async () => {
 REDACTED, 250)
 
 const overview = ref<OpsDashboardOverview | null>(null)
+const metricThresholds = ref<OpsMetricThresholds | null>(null)
 
 const throughputTrend = ref<OpsThroughputTrendResponse | null>(null)
 const loadingTrend = ref(false)
@@ -374,6 +318,11 @@ function onTimeRangeChange(v: string | number | boolean | null) {
   if (typeof v !== 'string') return
   if (!allowedTimeRanges.has(v as TimeRange)) return
   timeRange.value = v as TimeRange
+REDACTED
+
+function onSettingsSaved() {
+  loadThresholds()
+  fetchData()
 REDACTED
 
 function onPlatformChange(v: string | number | boolean | null) {
@@ -615,31 +564,25 @@ onMounted(async () => {
     return
   REDACTED
 
-  if (adminSettingsStore.opsRealtimeMonitoringEnabled) {
-    startQPSSubscription()
-  REDACTED else {
-    stopQPSSubscription({ resetMetrics: true REDACTED)
-  REDACTED
+  // Load thresholds configuration
+  loadThresholds()
 
   if (opsEnabled.value) {
     await fetchData()
   REDACTED
 REDACTED)
 
+async function loadThresholds() {
+  try {
+    const settings = await opsAPI.getAlertRuntimeSettings()
+    metricThresholds.value = settings.thresholds || null
+  REDACTED catch (err) {
+    console.warn('[OpsDashboard] Failed to load thresholds', err)
+    metricThresholds.value = null
+  REDACTED
+REDACTED
+
 onUnmounted(() => {
-  stopQPSSubscription()
   abortDashboardFetch()
 REDACTED)
-
-watch(
-  () => adminSettingsStore.opsRealtimeMonitoringEnabled,
-  (enabled) => {
-    if (!opsEnabled.value) return
-    if (enabled) {
-      startQPSSubscription()
-    REDACTED else {
-      stopQPSSubscription({ resetMetrics: true REDACTED)
-    REDACTED
-  REDACTED
-)
 </script>

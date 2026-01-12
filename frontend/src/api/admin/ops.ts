@@ -362,6 +362,45 @@ export async function getAccountAvailabilityStats(platform?: string, groupId?: n
   return data
 REDACTED
 
+export interface OpsRateSummary {
+  current: number
+  peak: number
+  avg: number
+REDACTED
+
+export interface OpsRealtimeTrafficSummary {
+  window: string
+  start_time: string
+  end_time: string
+  platform: string
+  group_id?: number | null
+  qps: OpsRateSummary
+  tps: OpsRateSummary
+REDACTED
+
+export interface OpsRealtimeTrafficSummaryResponse {
+  enabled: boolean
+  summary: OpsRealtimeTrafficSummary | null
+  timestamp?: string
+REDACTED
+
+export async function getRealtimeTrafficSummary(
+  window: string,
+  platform?: string,
+  groupId?: number | null
+): Promise<OpsRealtimeTrafficSummaryResponse> {
+  const params: Record<string, any> = { window REDACTED
+  if (platform) {
+    params.platform = platform
+  REDACTED
+  if (typeof groupId === 'number' && groupId > 0) {
+    params.group_id = groupId
+  REDACTED
+
+  const { data REDACTED = await apiClient.get<OpsRealtimeTrafficSummaryResponse>('/admin/ops/realtime-traffic', { params REDACTED)
+  return data
+REDACTED
+
 /**
  * Subscribe to realtime QPS updates via WebSocket.
  *
@@ -661,6 +700,14 @@ export interface EmailNotificationConfig {
   REDACTED
 REDACTED
 
+export interface OpsMetricThresholds {
+  sla_percent_min?: number | null                // SLA低于此值变红
+  latency_p99_ms_max?: number | null             // 延迟P99高于此值变红
+  ttft_p99_ms_max?: number | null                // TTFT P99高于此值变红
+  request_error_rate_percent_max?: number | null // 请求错误率高于此值变红
+  upstream_error_rate_percent_max?: number | null // 上游错误率高于此值变红
+REDACTED
+
 export interface OpsDistributedLockSettings {
   enabled: boolean
   key: string
@@ -681,6 +728,7 @@ export interface OpsAlertRuntimeSettings {
       reason: string
     REDACTED>
   REDACTED
+  thresholds: OpsMetricThresholds // 指标阈值配置
 REDACTED
 
 export interface OpsAdvancedSettings {
@@ -929,6 +977,17 @@ export async function updateAdvancedSettings(config: OpsAdvancedSettings): Promi
   return data
 REDACTED
 
+// ==================== Metric Thresholds ====================
+
+async function getMetricThresholds(): Promise<OpsMetricThresholds> {
+  const { data REDACTED = await apiClient.get<OpsMetricThresholds>('/admin/ops/settings/metric-thresholds')
+  return data
+REDACTED
+
+async function updateMetricThresholds(thresholds: OpsMetricThresholds): Promise<void> {
+  await apiClient.put('/admin/ops/settings/metric-thresholds', thresholds)
+REDACTED
+
 export const opsAPI = {
   getDashboardOverview,
   getThroughputTrend,
@@ -937,6 +996,7 @@ export const opsAPI = {
   getErrorDistribution,
   getConcurrencyStats,
   getAccountAvailabilityStats,
+  getRealtimeTrafficSummary,
   subscribeQPS,
   listErrorLogs,
   getErrorLogDetail,
@@ -952,7 +1012,9 @@ export const opsAPI = {
   getAlertRuntimeSettings,
   updateAlertRuntimeSettings,
   getAdvancedSettings,
-  updateAdvancedSettings
+  updateAdvancedSettings,
+  getMetricThresholds,
+  updateMetricThresholds
 REDACTED
 
 export default opsAPI

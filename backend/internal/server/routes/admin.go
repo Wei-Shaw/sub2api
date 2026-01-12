@@ -73,6 +73,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Realtime ops signals
 		ops.GET("/concurrency", h.Admin.Ops.GetConcurrencyStats)
 		ops.GET("/account-availability", h.Admin.Ops.GetAccountAvailability)
+		ops.GET("/realtime-traffic", h.Admin.Ops.GetRealtimeTrafficSummary)
 
 		// Alerts (rules + events)
 		ops.GET("/alert-rules", h.Admin.Ops.ListAlertRules)
@@ -95,6 +96,13 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Advanced settings (DB-backed)
 		ops.GET("/advanced-settings", h.Admin.Ops.GetAdvancedSettings)
 		ops.PUT("/advanced-settings", h.Admin.Ops.UpdateAdvancedSettings)
+
+		// Settings group (DB-backed)
+		settings := ops.Group("/settings")
+		{
+			settings.GET("/metric-thresholds", h.Admin.Ops.GetMetricThresholds)
+			settings.PUT("/metric-thresholds", h.Admin.Ops.UpdateMetricThresholds)
+	REDACTED
 
 		// WebSocket realtime (QPS/TPS)
 		ws := ops.Group("/ws")
