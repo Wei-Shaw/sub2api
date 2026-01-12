@@ -1099,6 +1099,7 @@ export default {
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
+      allGroups: '共 {countREDACTED 个分组',
       columns: {
         name: '名称',
         platformType: '平台/类型',
