@@ -146,6 +146,13 @@ const (
 
 	// SettingKeyOpsAdvancedSettings stores JSON config for ops advanced settings (data retention, aggregation).
 	SettingKeyOpsAdvancedSettings = "ops_advanced_settings"
+
+	// =========================
+	// Stream Timeout Handling
+	// =========================
+
+	// SettingKeyStreamTimeoutSettings stores JSON config for stream timeout handling.
+	SettingKeyStreamTimeoutSettings = "stream_timeout_settings"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
