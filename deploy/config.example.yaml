@@ -172,6 +172,24 @@ gateway:
   # Scheduling configuration
   # 调度配置
   scheduling:
+    # Sticky session max waiting queue size
+    # 粘性会话最大排队长度
+    sticky_session_max_waiting: 3
+    # Sticky session wait timeout (duration)
+    # 粘性会话等待超时（时间段）
+    sticky_session_wait_timeout: 120s
+    # Fallback wait timeout (duration)
+    # 兜底排队等待超时（时间段）
+    fallback_wait_timeout: 30s
+    # Fallback max waiting queue size
+    # 兜底最大排队长度
+    fallback_max_waiting: 100
+    # Enable batch load calculation for scheduling
+    # 启用调度批量负载计算
+    load_batch_enabled: true
+    # Slot cleanup interval (duration)
+    # 并发槽位清理周期（时间段）
+    slot_cleanup_interval: 30s
     # 是否允许受控回源到 DB（默认 true，保持现有行为）
     db_fallback_enabled: true
     # 受控回源超时（秒），0 表示不额外收紧超时
