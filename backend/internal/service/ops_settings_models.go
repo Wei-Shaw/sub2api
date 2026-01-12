@@ -79,11 +79,11 @@ REDACTED
 
 // OpsAdvancedSettings stores advanced ops configuration (data retention, aggregation).
 type OpsAdvancedSettings struct {
-	DataRetention            OpsDataRetentionSettings `json:"data_retention"`
-	Aggregation              OpsAggregationSettings   `json:"aggregation"`
-	IgnoreCountTokensErrors  bool                     `json:"ignore_count_tokens_errors"`
-	AutoRefreshEnabled       bool                     `json:"auto_refresh_enabled"`
-	AutoRefreshIntervalSec   int                      `json:"auto_refresh_interval_seconds"`
+	DataRetention           OpsDataRetentionSettings `json:"data_retention"`
+	Aggregation             OpsAggregationSettings   `json:"aggregation"`
+	IgnoreCountTokensErrors bool                     `json:"ignore_count_tokens_errors"`
+	AutoRefreshEnabled      bool                     `json:"auto_refresh_enabled"`
+	AutoRefreshIntervalSec  int                      `json:"auto_refresh_interval_seconds"`
 REDACTED
 
 type OpsDataRetentionSettings struct {
