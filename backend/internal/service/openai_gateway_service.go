@@ -545,14 +545,12 @@ REDACTED
 
 	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent"))
 
-	// Apply model mapping (skip for Codex CLI for transparent forwarding)
-	mappedModel := reqModel
-	if !isCodexCLI {
-		mappedModel = account.GetMappedModel(reqModel)
-		if mappedModel != reqModel {
-			reqBody["model"] = mappedModel
-			bodyModified = true
-	REDACTED
+	// Apply model mapping for all requests (including Codex CLI)
+	mappedModel := account.GetMappedModel(reqModel)
+	if mappedModel != reqModel {
+		log.Printf("[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, mappedModel, account.Name, isCodexCLI)
+		reqBody["model"] = mappedModel
+		bodyModified = true
 REDACTED
 
 	if account.Type == AccountTypeOAuth && !isCodexCLI {
