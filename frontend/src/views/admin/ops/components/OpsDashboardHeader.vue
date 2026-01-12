@@ -25,6 +25,7 @@ interface Props {
   thresholds?: OpsMetricThresholds | null // 阈值配置
   autoRefreshEnabled?: boolean
   autoRefreshCountdown?: number
+  fullscreen?: boolean
 REDACTED
 
 interface Emits {
@@ -37,6 +38,8 @@ interface Emits {
   (e: 'openErrorDetails', kind: 'request' | 'upstream'): void
   (e: 'openSettings'): void
   (e: 'openAlertRules'): void
+  (e: 'enterFullscreen'): void
+  (e: 'exitFullscreen'): void
 REDACTED
 
 const props = defineProps<Props>()
@@ -391,15 +394,15 @@ const healthScoreClass = computed(() => {
   return 'text-red-500'
 REDACTED)
 
-const circleSize = 100
-const strokeWidth = 8
-const radius = (circleSize - strokeWidth) / 2
-const circumference = 2 * Math.PI * radius
+const circleSize = computed(() => props.fullscreen ? 140 : 100)
+const strokeWidth = computed(() => props.fullscreen ? 10 : 8)
+const radius = computed(() => (circleSize.value - strokeWidth.value) / 2)
+const circumference = computed(() => 2 * Math.PI * radius.value)
 const dashOffset = computed(() => {
   if (isSystemIdle.value) return 0
   if (healthScoreValue.value == null) return 0
   const score = Math.max(0, Math.min(100, healthScoreValue.value))
-  return circumference - (score / 100) * circumference
+  return circumference.value - (score / 100) * circumference.value
 REDACTED)
 
 interface DiagnosisItem {
@@ -814,7 +817,7 @@ REDACTED
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+  <div :class="['flex flex-col gap-4 rounded-3xl bg-white shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700', props.fullscreen ? 'p-8' : 'p-6']">
     <!-- Top Toolbar -->
     <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4 dark:border-dark-700">
       <div>
@@ -830,7 +833,7 @@ REDACTED
           {{ t('admin.ops.title') REDACTEDREDACTED
         </h1>
 
-        <div class="mt-1 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+        <div v-if="!props.fullscreen" class="mt-1 flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
           <span class="flex items-center gap-1.5" :title="props.loading ? t('admin.ops.loadingText') : t('admin.ops.ready')">
             <span class="relative flex h-2 w-2">
               <span class="relative inline-flex h-2 w-2 rounded-full" :class="props.loading ? 'bg-gray-400' : 'bg-green-500'"></span>
@@ -863,28 +866,30 @@ REDACTED
       </div>
 
       <div class="flex flex-wrap items-center gap-3">
-        <Select
-          :model-value="platform"
-          :options="platformOptions"
-          class="w-full sm:w-[140px]"
-          @update:model-value="handlePlatformChange"
-        />
+        <template v-if="!props.fullscreen">
+          <Select
+            :model-value="platform"
+            :options="platformOptions"
+            class="w-full sm:w-[140px]"
+            @update:model-value="handlePlatformChange"
+          />
 
-        <Select
-          :model-value="groupId"
-          :options="groupOptions"
-          class="w-full sm:w-[160px]"
-          @update:model-value="handleGroupChange"
-        />
+          <Select
+            :model-value="groupId"
+            :options="groupOptions"
+            class="w-full sm:w-[160px]"
+            @update:model-value="handleGroupChange"
+          />
 
-        <div class="mx-1 hidden h-4 w-[1px] bg-gray-200 dark:bg-dark-700 sm:block"></div>
+          <div class="mx-1 hidden h-4 w-[1px] bg-gray-200 dark:bg-dark-700 sm:block"></div>
 
-        <Select
-          :model-value="timeRange"
-          :options="timeRangeOptions"
-          class="relative w-full sm:w-[150px]"
-          @update:model-value="handleTimeRangeChange"
-        />
+          <Select
+            :model-value="timeRange"
+            :options="timeRangeOptions"
+            class="relative w-full sm:w-[150px]"
+            @update:model-value="handleTimeRangeChange"
+          />
+        </template>
 
         <Select
           v-if="false"
@@ -895,6 +900,7 @@ REDACTED
         />
 
         <button
+          v-if="!props.fullscreen"
           type="button"
           class="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600"
           :disabled="loading"
@@ -911,9 +917,11 @@ REDACTED
           </svg>
         </button>
 
-        <div class="mx-1 hidden h-4 w-[1px] bg-gray-200 dark:bg-dark-700 sm:block"></div>
+        <div v-if="!props.fullscreen" class="mx-1 hidden h-4 w-[1px] bg-gray-200 dark:bg-dark-700 sm:block"></div>
 
+        <!-- Alert Rules Button (hidden in fullscreen) -->
         <button
+          v-if="!props.fullscreen"
           type="button"
           class="flex h-8 items-center gap-1.5 rounded-lg bg-blue-100 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
           :title="t('admin.ops.alertRules.title')"
@@ -925,7 +933,9 @@ REDACTED
           <span class="hidden sm:inline">{{ t('admin.ops.alertRules.manage') REDACTEDREDACTED</span>
         </button>
 
+        <!-- Settings Button (hidden in fullscreen) -->
         <button
+          v-if="!props.fullscreen"
           type="button"
           class="flex h-8 items-center gap-1.5 rounded-lg bg-gray-100 px-3 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
           :title="t('admin.ops.settings.title')"
@@ -937,13 +947,26 @@ REDACTED
           </svg>
           <span class="hidden sm:inline">{{ t('common.settings') REDACTEDREDACTED</span>
         </button>
+
+        <!-- Enter Fullscreen Button (hidden in fullscreen mode) -->
+        <button
+          v-if="!props.fullscreen"
+          type="button"
+          class="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+          :title="t('admin.ops.fullscreen.enter')"
+          @click="emit('enterFullscreen')"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
+        </button>
       </div>
     </div>
 
     <div v-if="overview" class="grid grid-cols-1 gap-6 lg:grid-cols-12">
       <!-- Left: Health + Realtime -->
-      <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900 lg:col-span-5">
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-[200px_1fr] md:items-center">
+      <div :class="['rounded-2xl bg-gray-50 dark:bg-dark-900 lg:col-span-5', props.fullscreen ? 'p-6' : 'p-4']">
+        <div class="grid h-full grid-cols-1 gap-6 md:grid-cols-[200px_1fr] md:items-center">
           <!-- 1) Health Score -->
           <div
             class="group relative flex cursor-pointer flex-col items-center justify-center rounded-xl py-2 transition-all hover:bg-white/60 dark:hover:bg-dark-800/60 md:border-r md:border-gray-200 md:pr-6 dark:md:border-dark-700"
@@ -1026,14 +1049,14 @@ REDACTED
               </svg>
 
               <div class="absolute flex flex-col items-center">
-                <span class="text-3xl font-black" :class="healthScoreClass">
+                <span :class="[props.fullscreen ? 'text-5xl' : 'text-3xl', 'font-black', healthScoreClass]">
                   {{ isSystemIdle ? t('admin.ops.idleStatus') : (overview.health_score ?? '--') REDACTEDREDACTED
                 </span>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.health') REDACTEDREDACTED</span>
+                <span :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase tracking-wider text-gray-400']">{{ t('admin.ops.health') REDACTEDREDACTED</span>
               </div>
             </div>
 
-            <div class="mt-4 text-center">
+            <div class="mt-4 text-center" v-if="!props.fullscreen">
               <div class="flex items-center justify-center gap-1 text-xs font-medium text-gray-500">
                 {{ t('admin.ops.healthCondition') REDACTEDREDACTED
                 <HelpTooltip :content="t('admin.ops.healthHelp')" />
@@ -1051,7 +1074,7 @@ REDACTED
           </div>
 
           <!-- 2) Realtime Traffic -->
-          <div class="flex flex-col justify-center py-2">
+          <div class="flex h-full flex-col justify-center py-2">
             <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-2">
                 <div class="relative flex h-3 w-3 shrink-0">
@@ -1059,7 +1082,7 @@ REDACTED
                   <span class="relative inline-flex h-3 w-3 rounded-full bg-blue-500"></span>
                 </div>
                 <h3 class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.realtime.title') REDACTEDREDACTED</h3>
-                <HelpTooltip :content="t('admin.ops.tooltips.qps')" />
+                <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.qps')" />
               </div>
 
               <!-- Time Window Selector -->
@@ -1079,18 +1102,18 @@ REDACTED
               </div>
             </div>
 
-            <div class="space-y-3">
+            <div :class="props.fullscreen ? 'space-y-4' : 'space-y-3'">
               <!-- Row 1: Current -->
               <div>
-                <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.current') REDACTEDREDACTED</div>
+                <div :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase text-gray-400']">{{ t('admin.ops.current') REDACTEDREDACTED</div>
                 <div class="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-2">
                   <div class="flex items-baseline gap-1.5">
-                    <span class="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">{{ displayRealTimeQps.toFixed(1) REDACTEDREDACTED</span>
-                    <span class="text-xs font-bold text-gray-500">QPS</span>
+                    <span :class="[props.fullscreen ? 'text-4xl' : 'text-xl sm:text-2xl', 'font-black text-gray-900 dark:text-white']">{{ displayRealTimeQps.toFixed(1) REDACTEDREDACTED</span>
+                    <span :class="[props.fullscreen ? 'text-sm' : 'text-xs', 'font-bold text-gray-500']">QPS</span>
                   </div>
                   <div class="flex items-baseline gap-1.5">
-                    <span class="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">{{ displayRealTimeTps.toFixed(1) REDACTEDREDACTED</span>
-                    <span class="text-xs font-bold text-gray-500">TPS</span>
+                    <span :class="[props.fullscreen ? 'text-4xl' : 'text-xl sm:text-2xl', 'font-black text-gray-900 dark:text-white']">{{ displayRealTimeTps.toFixed(1) REDACTEDREDACTED</span>
+                    <span :class="[props.fullscreen ? 'text-sm' : 'text-xs', 'font-bold text-gray-500']">TPS</span>
                   </div>
                 </div>
               </div>
@@ -1099,8 +1122,8 @@ REDACTED
               <div class="grid grid-cols-2 gap-3">
                 <!-- Peak -->
                 <div>
-                  <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.peak') REDACTEDREDACTED</div>
-                  <div class="mt-1 space-y-0.5 text-sm font-medium text-gray-600 dark:text-gray-400">
+                  <div :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase text-gray-400']">{{ t('admin.ops.peak') REDACTEDREDACTED</div>
+                  <div :class="[props.fullscreen ? 'text-base' : 'text-sm', 'mt-1 space-y-0.5 font-medium text-gray-600 dark:text-gray-400']">
                     <div class="flex items-baseline gap-1.5">
                       <span class="font-black text-gray-900 dark:text-white">{{ realtimeQpsPeakLabel REDACTEDREDACTED</span>
                       <span class="text-xs">QPS</span>
@@ -1114,8 +1137,8 @@ REDACTED
 
                 <!-- Average -->
                 <div>
-                  <div class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.average') REDACTEDREDACTED</div>
-                  <div class="mt-1 space-y-0.5 text-sm font-medium text-gray-600 dark:text-gray-400">
+                  <div :class="[props.fullscreen ? 'text-xs' : 'text-[10px]', 'font-bold uppercase text-gray-400']">{{ t('admin.ops.average') REDACTEDREDACTED</div>
+                  <div :class="[props.fullscreen ? 'text-base' : 'text-sm', 'mt-1 space-y-0.5 font-medium text-gray-600 dark:text-gray-400']">
                     <div class="flex items-baseline gap-1.5">
                       <span class="font-black text-gray-900 dark:text-white">{{ realtimeQpsAvgLabel REDACTEDREDACTED</span>
                       <span class="text-xs">QPS</span>
@@ -1156,15 +1179,16 @@ REDACTED
       </div>
 
       <!-- Right: 6 cards (3 cols x 2 rows) -->
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-7 lg:grid-cols-3">
+      <div class="grid h-full grid-cols-1 content-center gap-4 sm:grid-cols-2 lg:col-span-7 lg:grid-cols-3">
         <!-- Card 1: Requests -->
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestsTitle') REDACTEDREDACTED</span>
-              <HelpTooltip :content="t('admin.ops.tooltips.totalRequests')" />
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.totalRequests')" />
             </div>
             <button
+              v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
               @click="openDetails({ title: t('admin.ops.requestDetails.title') REDACTED)"
@@ -1197,10 +1221,11 @@ REDACTED
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="text-[10px] font-bold uppercase text-gray-400">SLA</span>
-              <HelpTooltip :content="t('admin.ops.tooltips.sla')" />
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.sla')" />
               <span class="h-1.5 w-1.5 rounded-full" :class="isSLABelowThreshold(slaPercent) ? 'bg-red-500' : (slaPercent ?? 0) >= 99.5 ? 'bg-green-500' : 'bg-yellow-500'"></span>
             </div>
             <button
+              v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
               @click="openDetails({ title: t('admin.ops.requestDetails.title'), kind: 'error' REDACTED)"
@@ -1227,9 +1252,10 @@ REDACTED
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.latencyDuration') REDACTEDREDACTED</span>
-              <HelpTooltip :content="t('admin.ops.tooltips.latency')" />
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.latency')" />
             </div>
             <button
+              v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
               @click="openDetails({ title: t('admin.ops.latencyDuration'), sort: 'duration_desc', min_duration_ms: Math.max(Number(durationP99Ms ?? 0), 0) REDACTED)"
@@ -1277,9 +1303,10 @@ REDACTED
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">TTFT</span>
-              <HelpTooltip :content="t('admin.ops.tooltips.ttft')" />
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.ttft')" />
             </div>
             <button
+              v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
               @click="openDetails({ title: 'TTFT', sort: 'duration_desc' REDACTED)"
@@ -1327,9 +1354,9 @@ REDACTED
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestErrors') REDACTEDREDACTED</span>
-              <HelpTooltip :content="t('admin.ops.tooltips.errors')" />
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.errors')" />
             </div>
-            <button class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('request')">
+            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('request')">
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
@@ -1353,9 +1380,9 @@ REDACTED
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.upstreamErrors') REDACTEDREDACTED</span>
-              <HelpTooltip :content="t('admin.ops.tooltips.upstreamErrors')" />
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.upstreamErrors')" />
             </div>
-            <button class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('upstream')">
+            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('upstream')">
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
@@ -1383,12 +1410,12 @@ REDACTED
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
             <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">CPU</div>
-            <HelpTooltip :content="t('admin.ops.tooltips.cpu')" />
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.cpu')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="cpuPercentClass">
             {{ cpuPercentValue == null ? '-' : `${cpuPercentValue.toFixed(1)REDACTED%` REDACTEDREDACTED
           </div>
-          <div class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('common.warning') REDACTEDREDACTED 80% · {{ t('common.critical') REDACTEDREDACTED 95%
           </div>
         </div>
@@ -1397,12 +1424,12 @@ REDACTED
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
             <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">MEM</div>
-            <HelpTooltip :content="t('admin.ops.tooltips.memory')" />
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.memory')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="memPercentClass">
             {{ memPercentValue == null ? '-' : `${memPercentValue.toFixed(1)REDACTED%` REDACTEDREDACTED
           </div>
-          <div class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{
               systemMetrics?.memory_used_mb == null || systemMetrics?.memory_total_mb == null
                 ? '-'
@@ -1415,12 +1442,12 @@ REDACTED
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
             <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">DB</div>
-            <HelpTooltip :content="t('admin.ops.tooltips.db')" />
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.db')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="dbMiddleClass">
             {{ dbMiddleLabel REDACTEDREDACTED
           </div>
-          <div class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('admin.ops.conns') REDACTEDREDACTED {{ dbConnOpenValue ?? '-' REDACTEDREDACTED / {{ dbMaxOpenConnsValue ?? '-' REDACTEDREDACTED
             · {{ t('admin.ops.active') REDACTEDREDACTED {{ dbConnActiveValue ?? '-' REDACTEDREDACTED
             · {{ t('admin.ops.idle') REDACTEDREDACTED {{ dbConnIdleValue ?? '-' REDACTEDREDACTED
@@ -1432,12 +1459,12 @@ REDACTED
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
             <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Redis</div>
-            <HelpTooltip :content="t('admin.ops.tooltips.redis')" />
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.redis')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="redisMiddleClass">
             {{ redisMiddleLabel REDACTEDREDACTED
           </div>
-          <div class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('admin.ops.conns') REDACTEDREDACTED {{ redisConnTotalValue ?? '-' REDACTEDREDACTED / {{ redisPoolSizeValue ?? '-' REDACTEDREDACTED
             <span v-if="redisConnActiveValue != null"> · {{ t('admin.ops.active') REDACTEDREDACTED {{ redisConnActiveValue REDACTEDREDACTED </span>
             <span v-if="redisConnIdleValue != null"> · {{ t('admin.ops.idle') REDACTEDREDACTED {{ redisConnIdleValue REDACTEDREDACTED </span>
@@ -1448,12 +1475,12 @@ REDACTED
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
             <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.goroutines') REDACTEDREDACTED</div>
-            <HelpTooltip :content="t('admin.ops.tooltips.goroutines')" />
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.goroutines')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="goroutineStatusClass">
             {{ goroutineStatusLabel REDACTEDREDACTED
           </div>
-          <div class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('admin.ops.current') REDACTEDREDACTED <span class="font-mono">{{ goroutineCountValue ?? '-' REDACTEDREDACTED</span>
             · {{ t('common.warning') REDACTEDREDACTED <span class="font-mono">{{ goroutinesWarnThreshold REDACTEDREDACTED</span>
             · {{ t('common.critical') REDACTEDREDACTED <span class="font-mono">{{ goroutinesCriticalThreshold REDACTEDREDACTED</span>
@@ -1468,9 +1495,9 @@ REDACTED
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-1">
               <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.jobs') REDACTEDREDACTED</div>
-              <HelpTooltip :content="t('admin.ops.tooltips.jobs')" />
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.jobs')" />
             </div>
-            <button class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openJobsDetails">
+            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openJobsDetails">
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
@@ -1479,7 +1506,7 @@ REDACTED
             {{ jobsStatusLabel REDACTEDREDACTED
           </div>
 
-          <div class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
             {{ t('common.total') REDACTEDREDACTED <span class="font-mono">{{ jobHeartbeats.length REDACTEDREDACTED</span>
             · {{ t('common.warning') REDACTEDREDACTED <span class="font-mono">{{ jobsWarnCount REDACTEDREDACTED</span>
           </div>

@@ -1,6 +1,6 @@
 <template>
-  <AppLayout>
-    <div class="space-y-6 pb-12">
+  <component :is="isFullscreen ? 'div' : AppLayout" :class="isFullscreen ? 'flex min-h-screen flex-col justify-center bg-gray-50 dark:bg-dark-950' : ''">
+    <div :class="[isFullscreen ? 'p-4 md:p-6' : '', 'space-y-6 pb-12']">
       <div
         v-if="errorMessage"
         class="rounded-2xl bg-red-50 p-4 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400"
@@ -22,6 +22,7 @@
         :thresholds="metricThresholds"
         :auto-refresh-enabled="autoRefreshEnabled"
         :auto-refresh-countdown="autoRefreshCountdown"
+        :fullscreen="isFullscreen"
         @update:time-range="onTimeRangeChange"
         @update:platform="onPlatformChange"
         @update:group="onGroupChange"
@@ -31,6 +32,8 @@
         @open-error-details="openErrorDetails"
         @open-settings="showSettingsDialog = true"
         @open-alert-rules="showAlertRulesCard = true"
+        @enter-fullscreen="enterFullscreen"
+        @exit-fullscreen="exitFullscreen"
       />
 
       <!-- Row: Concurrency + Throughput -->
@@ -45,6 +48,7 @@
             :top-groups="throughputTrend?.top_groups ?? []"
             :loading="loadingTrend"
             :time-range="timeRange"
+            :fullscreen="isFullscreen"
             @select-platform="handleThroughputSelectPlatform"
             @select-group="handleThroughputSelectGroup"
             @open-details="handleOpenRequestDetails"
@@ -72,36 +76,37 @@
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && !(loading && !hasLoadedOnce)" />
 
-      <!-- Settings Dialog -->
-      <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
+      <!-- Settings Dialog (hidden in fullscreen mode) -->
+      <template v-if="!isFullscreen">
+        <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
 
-      <!-- Alert Rules Dialog -->
-      <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
-        <OpsAlertRulesCard />
-      </BaseDialog>
+        <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
+          <OpsAlertRulesCard />
+        </BaseDialog>
 
-      <OpsErrorDetailsModal
-        :show="showErrorDetails"
-        :time-range="timeRange"
-        :platform="platform"
-        :group-id="groupId"
-        :error-type="errorDetailsType"
-        @update:show="showErrorDetails = $event"
-        @openErrorDetail="openError"
-      />
+        <OpsErrorDetailsModal
+          :show="showErrorDetails"
+          :time-range="timeRange"
+          :platform="platform"
+          :group-id="groupId"
+          :error-type="errorDetailsType"
+          @update:show="showErrorDetails = $event"
+          @openErrorDetail="openError"
+        />
 
-      <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" />
+        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" />
 
-      <OpsRequestDetailsModal
-        v-model="showRequestDetails"
-        :time-range="timeRange"
-        :preset="requestDetailsPreset"
-        :platform="platform"
-        :group-id="groupId"
-        @openErrorDetail="openError"
-      />
+        <OpsRequestDetailsModal
+          v-model="showRequestDetails"
+          :time-range="timeRange"
+          :preset="requestDetailsPreset"
+          :platform="platform"
+          :group-id="groupId"
+          @openErrorDetail="openError"
+        />
+      </template>
     </div>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -163,11 +168,35 @@ const QUERY_KEYS = {
   timeRange: 'tr',
   platform: 'platform',
   groupId: 'group_id',
-  queryMode: 'mode'
+  queryMode: 'mode',
+  fullscreen: 'fullscreen'
 REDACTED as const
 
 const isApplyingRouteQuery = ref(false)
 const isSyncingRouteQuery = ref(false)
+
+// Fullscreen mode
+const isFullscreen = computed(() => {
+  const val = route.query[QUERY_KEYS.fullscreen]
+  return val === '1' || val === 'true'
+REDACTED)
+
+function exitFullscreen() {
+  const nextQuery = { ...route.query REDACTED
+  delete nextQuery[QUERY_KEYS.fullscreen]
+  router.replace({ query: nextQuery REDACTED)
+REDACTED
+
+function enterFullscreen() {
+  const nextQuery = { ...route.query, [QUERY_KEYS.fullscreen]: '1' REDACTED
+  router.replace({ query: nextQuery REDACTED)
+REDACTED
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isFullscreen.value) {
+    exitFullscreen()
+  REDACTED
+REDACTED
 
 let dashboardFetchController: AbortController | null = null
 let dashboardFetchSeq = 0
@@ -603,6 +632,9 @@ watch(
 )
 
 onMounted(async () => {
+  // Fullscreen mode: listen for ESC key
+  window.addEventListener('keydown', handleKeydown)
+
   await adminSettingsStore.fetch()
   if (!adminSettingsStore.opsMonitoringEnabled) {
     await router.replace('/admin/settings')
@@ -637,6 +669,7 @@ async function loadThresholds() {
 REDACTED
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
   abortDashboardFetch()
   pauseAutoRefresh()
   pauseCountdown()
