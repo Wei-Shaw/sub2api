@@ -738,9 +738,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			if err != nil {
 				return nil, err
 		REDACTED
-			// Remove /chat/completions suffix if present, then add /responses
-			validatedURL = strings.TrimSuffix(validatedURL, "/")
-			validatedURL = strings.TrimSuffix(validatedURL, "/chat/completions")
 			targetURL = validatedURL + "/responses"
 	REDACTED
 	default:
