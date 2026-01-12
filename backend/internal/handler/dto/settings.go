@@ -70,7 +70,6 @@ REDACTED
 // StreamTimeoutSettings 流超时处理配置 DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`
-	TimeoutSeconds         int    `json:"timeout_seconds"`
 	Action                 string `json:"action"`
 	TempUnschedMinutes     int    `json:"temp_unsched_minutes"`
 	ThresholdCount         int    `json:"threshold_count"`
