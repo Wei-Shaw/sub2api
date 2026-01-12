@@ -18,7 +18,7 @@ type SystemSettings struct {
 	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
 
-	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
 	LinuxDoConnectClientID               string
 	LinuxDoConnectClientSecret           string
@@ -46,6 +46,12 @@ type SystemSettings struct {
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
+
+	// Ops monitoring (vNext)
+	OpsMonitoringEnabled         bool
+	OpsRealtimeMonitoringEnabled bool
+	OpsQueryModeDefault          string
+	OpsMetricsIntervalSeconds    int
 REDACTED
 
 type PublicSettings struct {

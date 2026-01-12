@@ -115,12 +115,6 @@ REDACTED
 	existingInstructions = strings.TrimSpace(existingInstructions)
 
 	if instructions != "" {
-		if existingInstructions != "" && existingInstructions != instructions {
-			if input, ok := reqBody["input"].([]any); ok {
-				reqBody["input"] = prependSystemInstruction(input, existingInstructions)
-				result.Modified = true
-		REDACTED
-	REDACTED
 		if existingInstructions != instructions {
 			reqBody["instructions"] = instructions
 			result.Modified = true
@@ -129,7 +123,6 @@ REDACTED
 
 	if input, ok := reqBody["input"].([]any); ok {
 		input = filterCodexInput(input)
-		input = normalizeOrphanedToolOutputs(input)
 		reqBody["input"] = input
 		result.Modified = true
 REDACTED
@@ -266,19 +259,6 @@ REDACTED
 	return filtered
 REDACTED
 
-func prependSystemInstruction(input []any, instructions string) []any {
-	message := map[string]any{
-		"role": "system",
-		"content": []any{
-			map[string]any{
-				"type": "input_text",
-				"text": instructions,
-		REDACTED,
-	REDACTED,
-REDACTED
-	return append([]any{messageREDACTED, input...)
-REDACTED
-
 func normalizeCodexTools(reqBody map[string]any) bool {
 	rawTools, ok := reqBody["tools"]
 	if !ok || rawTools == nil {
@@ -339,110 +319,6 @@ REDACTED
 REDACTED
 
 	return modified
-REDACTED
-
-func normalizeOrphanedToolOutputs(input []any) []any {
-	functionCallIDs := map[string]bool{REDACTED
-	localShellCallIDs := map[string]bool{REDACTED
-	customToolCallIDs := map[string]bool{REDACTED
-
-	for _, item := range input {
-		m, ok := item.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		callID := getCallID(m)
-		if callID == "" {
-			continue
-	REDACTED
-		switch m["type"] {
-		case "function_call":
-			functionCallIDs[callID] = true
-		case "local_shell_call":
-			localShellCallIDs[callID] = true
-		case "custom_tool_call":
-			customToolCallIDs[callID] = true
-	REDACTED
-REDACTED
-
-	output := make([]any, 0, len(input))
-	for _, item := range input {
-		m, ok := item.(map[string]any)
-		if !ok {
-			output = append(output, item)
-			continue
-	REDACTED
-		switch m["type"] {
-		case "function_call_output":
-			callID := getCallID(m)
-			if callID == "" || (!functionCallIDs[callID] && !localShellCallIDs[callID]) {
-				output = append(output, convertOrphanedOutputToMessage(m, callID))
-				continue
-		REDACTED
-		case "custom_tool_call_output":
-			callID := getCallID(m)
-			if callID == "" || !customToolCallIDs[callID] {
-				output = append(output, convertOrphanedOutputToMessage(m, callID))
-				continue
-		REDACTED
-		case "local_shell_call_output":
-			callID := getCallID(m)
-			if callID == "" || !localShellCallIDs[callID] {
-				output = append(output, convertOrphanedOutputToMessage(m, callID))
-				continue
-		REDACTED
-	REDACTED
-		output = append(output, m)
-REDACTED
-	return output
-REDACTED
-
-func getCallID(item map[string]any) string {
-	raw, ok := item["call_id"]
-	if !ok {
-		return ""
-REDACTED
-	callID, ok := raw.(string)
-	if !ok {
-		return ""
-REDACTED
-	callID = strings.TrimSpace(callID)
-	if callID == "" {
-		return ""
-REDACTED
-	return callID
-REDACTED
-
-func convertOrphanedOutputToMessage(item map[string]any, callID string) map[string]any {
-	toolName := "tool"
-	if name, ok := item["name"].(string); ok && name != "" {
-		toolName = name
-REDACTED
-	labelID := callID
-	if labelID == "" {
-		labelID = "unknown"
-REDACTED
-	text := stringifyOutput(item["output"])
-	if len(text) > 16000 {
-		text = text[:16000] + "\n...[truncated]"
-REDACTED
-	return map[string]any{
-		"type":    "message",
-		"role":    "assistant",
-		"content": fmt.Sprintf("[Previous %s result; call_id=%s]: %s", toolName, labelID, text),
-REDACTED
-REDACTED
-
-func stringifyOutput(output any) string {
-	switch v := output.(type) {
-	case string:
-		return v
-	default:
-		if data, err := json.Marshal(v); err == nil {
-			return string(data)
-	REDACTED
-		return fmt.Sprintf("%v", v)
-REDACTED
 REDACTED
 
 func codexCachePath(filename string) string {

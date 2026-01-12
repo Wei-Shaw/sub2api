@@ -262,11 +262,11 @@ REDACTED{
 			name: "GET /api/v1/admin/settings",
 			setup: func(t *testing.T, deps *contractDeps) {
 			REDACTED
-				deps.settingRepo.SetAll(map[string]string{
-					service.SettingKeyRegistrationEnabled: "true",
-					service.SettingKeyEmailVerifyEnabled:  "false",
+					deps.settingRepo.SetAll(map[string]string{
+						service.SettingKeyRegistrationEnabled: "true",
+						service.SettingKeyEmailVerifyEnabled:  "false",
 
-					service.SettingKeySMTPHost:     "smtp.example.com",
+						service.SettingKeySMTPHost:     "smtp.example.com",
 					service.SettingKeySMTPPort:     "587",
 					service.SettingKeySMTPUsername: "user",
 					service.SettingKeySMTPPassword: "secret",
@@ -285,10 +285,15 @@ REDACTED{
 					service.SettingKeyContactInfo:  "support",
 					service.SettingKeyDocURL:       "https://docs.example.com",
 
-					service.SettingKeyDefaultConcurrency: "5",
-					service.SettingKeyDefaultBalance:     "1.25",
-			REDACTED)
-		REDACTED,
+						service.SettingKeyDefaultConcurrency: "5",
+						service.SettingKeyDefaultBalance:     "1.25",
+
+						service.SettingKeyOpsMonitoringEnabled:         "false",
+						service.SettingKeyOpsRealtimeMonitoringEnabled: "true",
+						service.SettingKeyOpsQueryModeDefault:          "auto",
+						service.SettingKeyOpsMetricsIntervalSeconds:    "60",
+				REDACTED)
+			REDACTED,
 			method:     http.MethodGet,
 			path:       "/api/v1/admin/settings",
 			wantStatus: http.StatusOK,
@@ -309,13 +314,17 @@ REDACTED{
 					"turnstile_site_key": "site-key",
 					"turnstile_secret_key_configured": true,
 					"linuxdo_connect_enabled": false,
-					"linuxdo_connect_client_id": "",
-					"linuxdo_connect_client_secret_configured": false,
-					"linuxdo_connect_redirect_url": "",
-					"site_name": "Sub2API",
-					"site_logo": "",
-					"site_subtitle": "Subtitle",
-					"api_base_url": "https://api.example.com",
+						"linuxdo_connect_client_id": "",
+						"linuxdo_connect_client_secret_configured": false,
+						"linuxdo_connect_redirect_url": "",
+						"ops_monitoring_enabled": false,
+						"ops_realtime_monitoring_enabled": true,
+						"ops_query_mode_default": "auto",
+						"ops_metrics_interval_seconds": 60,
+						"site_name": "Sub2API",
+						"site_logo": "",
+						"site_subtitle": "Subtitle",
+						"api_base_url": "https://api.example.com",
 					"contact_info": "support",
 					"doc_url": "https://docs.example.com",
 					"default_concurrency": 5,
@@ -430,7 +439,7 @@ REDACTED
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {

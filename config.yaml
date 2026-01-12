@@ -159,7 +159,7 @@ gateway:
   max_line_size: 41943040
   # Log upstream error response body summary (safe/truncated; does not log request content)
   # 记录上游错误响应体摘要（安全/截断；不记录请求内容）
-  log_upstream_error_body: false
+  log_upstream_error_body: true
   # Max bytes to log from upstream error body
   # 记录上游错误响应体的最大字节数
   log_upstream_error_body_max_bytes: 2048
@@ -301,6 +301,41 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
+
+# =============================================================================
+# Ops Monitoring (Optional)
+# 运维监控 (可选)
+# =============================================================================
+ops:
+  # Hard switch: disable all ops background jobs and APIs when false
+  # 硬开关：为 false 时禁用所有 Ops 后台任务与接口
+  enabled: true
+
+  # Prefer pre-aggregated tables (ops_metrics_hourly/ops_metrics_daily) for long-window dashboard queries.
+  # 优先使用预聚合表（用于长时间窗口查询性能）
+  use_preaggregated_tables: false
+
+  # Data cleanup configuration
+  # 数据清理配置（vNext 默认统一保留 30 天）
+  cleanup:
+    enabled: true
+    # Cron expression (minute hour dom month dow), e.g. "0 2 * * *" = daily at 2 AM
+    # Cron 表达式（分 时 日 月 周），例如 "0 2 * * *" = 每天凌晨 2 点
+    schedule: "0 2 * * *"
+    error_log_retention_days: 30
+    minute_metrics_retention_days: 30
+    hourly_metrics_retention_days: 30
+
+  # Pre-aggregation configuration
+  # 预聚合任务配置
+  aggregation:
+    enabled: true
+
+  # OpsMetricsCollector Redis cache (reduces duplicate expensive window aggregation in multi-replica deployments)
+  # 指标采集 Redis 缓存（多副本部署时减少重复计算）
+  metrics_collector_cache:
+    enabled: true
+    ttl: 65s
 
 # =============================================================================
 # JWT Configuration

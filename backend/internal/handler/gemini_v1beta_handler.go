@@ -12,7 +12,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -162,14 +161,10 @@ REDACTED
 		return
 REDACTED
 
+	setOpsRequestContext(c, modelName, stream, body)
+
 	// Get subscription (may be nil)
 	subscription, _ := middleware.GetSubscriptionFromContext(c)
-
-	// 获取 User-Agent
-	userAgent := c.Request.UserAgent()
-
-	// 获取客户端 IP
-	clientIP := ip.GetClientIP(c)
 
 	// For Gemini native API, do not send Claude-style ping frames.
 	geminiConcurrency := NewConcurrencyHelper(h.concurrencyHelper.concurrencyService, SSEPingFormatNone, 0)
@@ -177,13 +172,21 @@ REDACTED
 	// 0) wait queue check
 	maxWait := service.CalculateMaxWait(authSubject.Concurrency)
 	canWait, err := geminiConcurrency.IncrementWaitCount(c.Request.Context(), authSubject.UserID, maxWait)
+	waitCounted := false
 	if err != nil {
 		log.Printf("Increment wait count failed: %v", err)
 REDACTED else if !canWait {
 		googleError(c, http.StatusTooManyRequests, "Too many pending requests, please retry later")
 		return
 REDACTED
-	defer geminiConcurrency.DecrementWaitCount(c.Request.Context(), authSubject.UserID)
+	if err == nil && canWait {
+		waitCounted = true
+REDACTED
+	defer func() {
+		if waitCounted {
+			geminiConcurrency.DecrementWaitCount(c.Request.Context(), authSubject.UserID)
+	REDACTED
+REDACTED()
 
 	// 1) user concurrency slot
 	streamStarted := false
@@ -191,6 +194,10 @@ REDACTED
 	if err != nil {
 		googleError(c, http.StatusTooManyRequests, err.Error())
 		return
+REDACTED
+	if waitCounted {
+		geminiConcurrency.DecrementWaitCount(c.Request.Context(), authSubject.UserID)
+		waitCounted = false
 REDACTED
 	// 确保请求取消时也会释放槽位，避免长连接被动中断造成泄漏
 	userReleaseFunc = wrapReleaseOnDone(c.Request.Context(), userReleaseFunc)
@@ -207,10 +214,6 @@ REDACTED
 
 	// 3) select account (sticky session based on request body)
 	parsedReq, _ := service.ParseGatewayRequest(body)
-
-	// 设置 Claude Code 客户端标识到 context（用于分组限制检查）
-	SetClaudeCodeClientContext(c, body)
-
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 	sessionKey := sessionHash
 	if sessionHash != "" {
@@ -232,15 +235,16 @@ REDACTED
 			return
 	REDACTED
 		account := selection.Account
+		setOpsSelectedAccount(c, account.ID)
 
 		// 4) account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc
-		var accountWaitRelease func()
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts")
 				return
 		REDACTED
+			accountWaitCounted := false
 			canWait, err := geminiConcurrency.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 			if err != nil {
 				log.Printf("Increment account wait count failed: %v", err)
@@ -248,12 +252,15 @@ REDACTED
 				log.Printf("Account wait queue full: account=%d", account.ID)
 				googleError(c, http.StatusTooManyRequests, "Too many pending requests, please retry later")
 				return
-		REDACTED else {
-				// Only set release function if increment succeeded
-				accountWaitRelease = func() {
+		REDACTED
+			if err == nil && canWait {
+				accountWaitCounted = true
+		REDACTED
+			defer func() {
+				if accountWaitCounted {
 					geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), account.ID)
 			REDACTED
-		REDACTED
+		REDACTED()
 
 			accountReleaseFunc, err = geminiConcurrency.AcquireAccountSlotWithWaitTimeout(
 				c,
@@ -264,11 +271,12 @@ REDACTED
 				&streamStarted,
 			)
 			if err != nil {
-				if accountWaitRelease != nil {
-					accountWaitRelease()
-			REDACTED
 				googleError(c, http.StatusTooManyRequests, err.Error())
 				return
+		REDACTED
+			if accountWaitCounted {
+				geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+				accountWaitCounted = false
 		REDACTED
 			if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID); err != nil {
 				log.Printf("Bind sticky session failed: %v", err)
@@ -276,7 +284,6 @@ REDACTED
 	REDACTED
 		// 账号槽位/等待计数需要在超时或断开时安全回收
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
-		accountWaitRelease = wrapReleaseOnDone(c.Request.Context(), accountWaitRelease)
 
 		// 5) forward (根据平台分流)
 		var result *service.ForwardResult
@@ -287,9 +294,6 @@ REDACTED
 	REDACTED
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
-	REDACTED
-		if accountWaitRelease != nil {
-			accountWaitRelease()
 	REDACTED
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
@@ -311,7 +315,7 @@ REDACTED
 	REDACTED
 
 		// 6) record usage async
-		go func(result *service.ForwardResult, usedAccount *service.Account, ua string, cip string) {
+		go func(result *service.ForwardResult, usedAccount *service.Account) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -320,12 +324,10 @@ REDACTED
 				User:         apiKey.User,
 				Account:      usedAccount,
 				Subscription: subscription,
-				UserAgent:    ua,
-				IPAddress:    cip,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account, userAgent, clientIP)
+	REDACTED(result, account)
 		return
 REDACTED
 REDACTED
