@@ -295,7 +295,7 @@ const autoRefreshIntervalMs = ref(30000) // default 30 seconds
 const autoRefreshCountdown = ref(0)
 
 // Auto refresh timer
-const { pause: pauseAutoRefresh, resume: resumeAutoRefresh, isActive: isAutoRefreshActive REDACTED = useIntervalFn(
+const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useIntervalFn(
   () => {
     if (autoRefreshEnabled.value && opsEnabled.value && !loading.value) {
       fetchData()
