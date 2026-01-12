@@ -134,6 +134,7 @@ func (s *DashboardAggregationService) runScheduledAggregation() {
 REDACTED
 	defer atomic.StoreInt32(&s.running, 0)
 
+	jobStart := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationTimeout)
 	defer cancel()
 
@@ -162,9 +163,16 @@ REDACTED
 		return
 REDACTED
 
-	if err := s.repo.UpdateAggregationWatermark(ctx, now); err != nil {
-		log.Printf("[DashboardAggregation] 更新水位失败: %v", err)
+	updateErr := s.repo.UpdateAggregationWatermark(ctx, now)
+	if updateErr != nil {
+		log.Printf("[DashboardAggregation] 更新水位失败: %v", updateErr)
 REDACTED
+	log.Printf("[DashboardAggregation] 聚合完成 (start=%s end=%s duration=%s watermark_updated=%t)",
+		start.Format(time.RFC3339),
+		now.Format(time.RFC3339),
+		time.Since(jobStart).String(),
+		updateErr == nil,
+	)
 
 	s.maybeCleanupRetention(ctx, now)
 REDACTED
@@ -175,6 +183,7 @@ func (s *DashboardAggregationService) backfillRange(ctx context.Context, start, 
 REDACTED
 	defer atomic.StoreInt32(&s.running, 0)
 
+	jobStart := time.Now().UTC()
 	startUTC := start.UTC()
 	endUTC := end.UTC()
 	if !endUTC.After(startUTC) {
@@ -193,9 +202,16 @@ REDACTED
 		cursor = windowEnd
 REDACTED
 
-	if err := s.repo.UpdateAggregationWatermark(ctx, endUTC); err != nil {
-		log.Printf("[DashboardAggregation] 更新水位失败: %v", err)
+	updateErr := s.repo.UpdateAggregationWatermark(ctx, endUTC)
+	if updateErr != nil {
+		log.Printf("[DashboardAggregation] 更新水位失败: %v", updateErr)
 REDACTED
+	log.Printf("[DashboardAggregation] 回填聚合完成 (start=%s end=%s duration=%s watermark_updated=%t)",
+		startUTC.Format(time.RFC3339),
+		endUTC.Format(time.RFC3339),
+		time.Since(jobStart).String(),
+		updateErr == nil,
+	)
 
 	s.maybeCleanupRetention(ctx, endUTC)
 	return nil
