@@ -83,13 +83,21 @@ func (r *dashboardAggregationRepository) UpdateAggregationWatermark(ctx context.
 REDACTED
 
 func (r *dashboardAggregationRepository) CleanupAggregates(ctx context.Context, hourlyCutoff, dailyCutoff time.Time) error {
-	_, err := r.sql.ExecContext(ctx, `
-		DELETE FROM usage_dashboard_hourly WHERE bucket_start < $1;
-		DELETE FROM usage_dashboard_hourly_users WHERE bucket_start < $1;
-		DELETE FROM usage_dashboard_daily WHERE bucket_date < $2::date;
-		DELETE FROM usage_dashboard_daily_users WHERE bucket_date < $2::date;
-	`, hourlyCutoff.UTC(), dailyCutoff.UTC())
-	return err
+	hourlyCutoffUTC := hourlyCutoff.UTC()
+	dailyCutoffUTC := dailyCutoff.UTC()
+	if _, err := r.sql.ExecContext(ctx, "DELETE FROM usage_dashboard_hourly WHERE bucket_start < $1", hourlyCutoffUTC); err != nil {
+		return err
+REDACTED
+	if _, err := r.sql.ExecContext(ctx, "DELETE FROM usage_dashboard_hourly_users WHERE bucket_start < $1", hourlyCutoffUTC); err != nil {
+		return err
+REDACTED
+	if _, err := r.sql.ExecContext(ctx, "DELETE FROM usage_dashboard_daily WHERE bucket_date < $1::date", dailyCutoffUTC); err != nil {
+		return err
+REDACTED
+	if _, err := r.sql.ExecContext(ctx, "DELETE FROM usage_dashboard_daily_users WHERE bucket_date < $1::date", dailyCutoffUTC); err != nil {
+		return err
+REDACTED
+	return nil
 REDACTED
 
 func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, cutoff time.Time) error {
