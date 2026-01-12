@@ -1717,6 +1717,7 @@ REDACTED
 				continue
 		REDACTED
 			log.Printf("Stream data interval timeout (antigravity)")
+			// 注意：此函数没有 account 上下文，无法调用 HandleStreamTimeout
 			sendErrorEvent("stream_timeout")
 			return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
 	REDACTED
@@ -2271,6 +2272,7 @@ REDACTED
 				continue
 		REDACTED
 			log.Printf("Stream data interval timeout (antigravity)")
+			// 注意：此函数没有 account 上下文，无法调用 HandleStreamTimeout
 			sendErrorEvent("stream_timeout")
 			return &antigravityStreamResult{usage: convertUsage(nil), firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
 	REDACTED
