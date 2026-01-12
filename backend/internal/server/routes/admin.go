@@ -96,6 +96,13 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/advanced-settings", h.Admin.Ops.GetAdvancedSettings)
 		ops.PUT("/advanced-settings", h.Admin.Ops.UpdateAdvancedSettings)
 
+		// Settings group (DB-backed)
+		settings := ops.Group("/settings")
+		{
+			settings.GET("/metric-thresholds", h.Admin.Ops.GetMetricThresholds)
+			settings.PUT("/metric-thresholds", h.Admin.Ops.UpdateMetricThresholds)
+	REDACTED
+
 		// WebSocket realtime (QPS/TPS)
 		ws := ops.Group("/ws")
 		{
