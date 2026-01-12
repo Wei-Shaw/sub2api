@@ -183,7 +183,8 @@ export default {
     expand: '展开',
     logout: '退出登录',
     github: 'GitHub',
-    mySubscriptions: '我的订阅'
+    mySubscriptions: '我的订阅',
+    docs: '文档'
   REDACTED,
 
   // Auth
