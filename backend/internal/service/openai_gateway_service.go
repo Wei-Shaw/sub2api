@@ -42,6 +42,7 @@ var openaiSSEDataRe = regexp.MustCompile(`^data:\s*`)
 var openaiAllowedHeaders = map[string]bool{
 	"accept-language": true,
 	"content-type":    true,
+	"conversation_id": true,
 	"user-agent":      true,
 	"originator":      true,
 	"session_id":      true,
@@ -545,12 +546,33 @@ REDACTED
 
 	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent"))
 
-	// Apply model mapping for all requests (including Codex CLI)
+	// 对所有请求执行模型映射（包含 Codex CLI）。
 	mappedModel := account.GetMappedModel(reqModel)
 	if mappedModel != reqModel {
 		log.Printf("[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, mappedModel, account.Name, isCodexCLI)
 		reqBody["model"] = mappedModel
 		bodyModified = true
+REDACTED
+
+	// 针对所有 OpenAI 账号执行 Codex 模型名规范化，确保上游识别一致。
+	if model, ok := reqBody["model"].(string); ok {
+		normalizedModel := normalizeCodexModel(model)
+		if normalizedModel != "" && normalizedModel != model {
+			log.Printf("[OpenAI] Codex model normalization: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
+				model, normalizedModel, account.Name, account.Type, isCodexCLI)
+			reqBody["model"] = normalizedModel
+			mappedModel = normalizedModel
+			bodyModified = true
+	REDACTED
+REDACTED
+
+	// 规范化 reasoning.effort 参数（minimal -> none），与上游允许值对齐。
+	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+		if effort, ok := reasoning["effort"].(string); ok && effort == "minimal" {
+			reasoning["effort"] = "none"
+			bodyModified = true
+			log.Printf("[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
+	REDACTED
 REDACTED
 
 	if account.Type == AccountTypeOAuth && !isCodexCLI {
@@ -783,9 +805,6 @@ REDACTED
 		if promptCacheKey != "" {
 			req.Header.Set("conversation_id", promptCacheKey)
 			req.Header.Set("session_id", promptCacheKey)
-	REDACTED else {
-			req.Header.Del("conversation_id")
-			req.Header.Del("session_id")
 	REDACTED
 REDACTED
 

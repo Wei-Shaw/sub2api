@@ -1,6 +1,7 @@
 package service
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,9 @@ const (
 	opencodeCodexHeaderURL = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex_header.txt"
 	codexCacheTTL          = 15 * time.Minute
 )
+
+//go:embed prompts/codex_cli_instructions.md
+var codexCLIInstructions string
 
 var codexModelMap = map[string]string{
 	"gpt-5.1-codex":             "gpt-5.1-codex",
@@ -127,6 +131,13 @@ REDACTED
 	if instructions != "" {
 		if existingInstructions != instructions {
 			reqBody["instructions"] = instructions
+			result.Modified = true
+	REDACTED
+REDACTED else if existingInstructions == "" {
+		// 未获取到 opencode 指令时，回退使用 Codex CLI 指令。
+		codexInstructions := strings.TrimSpace(getCodexCLIInstructions())
+		if codexInstructions != "" {
+			reqBody["instructions"] = codexInstructions
 			result.Modified = true
 	REDACTED
 REDACTED
@@ -246,11 +257,70 @@ REDACTED
 REDACTED
 
 func getOpenCodeCodexHeader() string {
-	return getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
+	// 优先从 opencode 仓库缓存获取指令。
+	opencodeInstructions := getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
+
+	// 若 opencode 指令可用，直接返回。
+	if opencodeInstructions != "" {
+		return opencodeInstructions
+REDACTED
+
+	// 否则回退使用本地 Codex CLI 指令。
+	return getCodexCLIInstructions()
+REDACTED
+
+func getCodexCLIInstructions() string {
+	return codexCLIInstructions
 REDACTED
 
 func GetOpenCodeInstructions() string {
 	return getOpenCodeCodexHeader()
+REDACTED
+
+// GetCodexCLIInstructions 返回内置的 Codex CLI 指令内容。
+func GetCodexCLIInstructions() string {
+	return getCodexCLIInstructions()
+REDACTED
+
+// ReplaceWithCodexInstructions 将请求 instructions 替换为内置 Codex 指令（必要时）。
+func ReplaceWithCodexInstructions(reqBody map[string]any) bool {
+	codexInstructions := strings.TrimSpace(getCodexCLIInstructions())
+	if codexInstructions == "" {
+		return false
+REDACTED
+
+	existingInstructions, _ := reqBody["instructions"].(string)
+	if strings.TrimSpace(existingInstructions) != codexInstructions {
+		reqBody["instructions"] = codexInstructions
+		return true
+REDACTED
+
+	return false
+REDACTED
+
+// IsInstructionError 判断错误信息是否与指令格式/系统提示相关。
+func IsInstructionError(errorMessage string) bool {
+	if errorMessage == "" {
+		return false
+REDACTED
+
+	lowerMsg := strings.ToLower(errorMessage)
+	instructionKeywords := []string{
+		"instruction",
+		"instructions",
+		"system prompt",
+		"system message",
+		"invalid prompt",
+		"prompt format",
+REDACTED
+
+	for _, keyword := range instructionKeywords {
+		if strings.Contains(lowerMsg, keyword) {
+			return true
+	REDACTED
+REDACTED
+
+	return false
 REDACTED
 
 // filterCodexInput 按需过滤 item_reference 与 id。
@@ -263,22 +333,60 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 			filtered = append(filtered, item)
 			continue
 	REDACTED
-		if typ, ok := m["type"].(string); ok && typ == "item_reference" {
+		typ, _ := m["type"].(string)
+		if typ == "item_reference" {
 			if !preserveReferences {
 				continue
 		REDACTED
+			newItem := make(map[string]any, len(m))
+			for key, value := range m {
+				newItem[key] = value
+		REDACTED
+			filtered = append(filtered, newItem)
+			continue
 	REDACTED
+
 		newItem := m
-		if !preserveReferences {
+		copied := false
+		// 仅在需要修改字段时创建副本，避免直接改写原始输入。
+		ensureCopy := func() {
+			if copied {
+				return
+		REDACTED
 			newItem = make(map[string]any, len(m))
 			for key, value := range m {
 				newItem[key] = value
 		REDACTED
-			delete(newItem, "id")
+			copied = true
 	REDACTED
+
+		if isCodexToolCallItemType(typ) {
+			if callID, ok := m["call_id"].(string); !ok || strings.TrimSpace(callID) == "" {
+				if id, ok := m["id"].(string); ok && strings.TrimSpace(id) != "" {
+					ensureCopy()
+					newItem["call_id"] = id
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if !preserveReferences {
+			ensureCopy()
+			delete(newItem, "id")
+			if !isCodexToolCallItemType(typ) {
+				delete(newItem, "call_id")
+		REDACTED
+	REDACTED
+
 		filtered = append(filtered, newItem)
 REDACTED
 	return filtered
+REDACTED
+
+func isCodexToolCallItemType(typ string) bool {
+	if typ == "" {
+		return false
+REDACTED
+	return strings.HasSuffix(typ, "_call") || strings.HasSuffix(typ, "_call_output")
 REDACTED
 
 func normalizeCodexTools(reqBody map[string]any) bool {
