@@ -19,6 +19,7 @@ interface Props {
   timeRange: string
   byPlatform?: OpsThroughputPlatformBreakdownItem[]
   topGroups?: OpsThroughputGroupBreakdownItem[]
+  fullscreen?: boolean
 REDACTED
 
 const props = defineProps<Props>()
@@ -179,38 +180,40 @@ REDACTED
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
         </svg>
         {{ t('admin.ops.throughputTrend') REDACTEDREDACTED
-        <HelpTooltip :content="t('admin.ops.tooltips.throughputTrend')" />
+        <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.throughputTrend')" />
       </h3>
       <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
         <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-blue-500"></span>{{ t('admin.ops.qps') REDACTEDREDACTED</span>
         <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-green-500"></span>{{ t('admin.ops.tpsK') REDACTEDREDACTED</span>
-        <button
-          type="button"
-          class="ml-2 inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
-          :disabled="state !== 'ready'"
-          :title="t('admin.ops.requestDetails.title')"
-          @click="emit('openDetails')"
-        >
-          {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
-        </button>
-        <button
-          type="button"
-          class="ml-2 inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
-          :disabled="state !== 'ready'"
-          :title="t('admin.ops.charts.resetZoomHint')"
-          @click="resetZoom"
-        >
-          {{ t('admin.ops.charts.resetZoom') REDACTEDREDACTED
-        </button>
-        <button
-          type="button"
-          class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
-          :disabled="state !== 'ready'"
-          :title="t('admin.ops.charts.downloadChartHint')"
-          @click="downloadChart"
-        >
-          {{ t('admin.ops.charts.downloadChart') REDACTEDREDACTED
-        </button>
+        <template v-if="!props.fullscreen">
+          <button
+            type="button"
+            class="ml-2 inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
+            :disabled="state !== 'ready'"
+            :title="t('admin.ops.requestDetails.title')"
+            @click="emit('openDetails')"
+          >
+            {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
+          </button>
+          <button
+            type="button"
+            class="ml-2 inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
+            :disabled="state !== 'ready'"
+            :title="t('admin.ops.charts.resetZoomHint')"
+            @click="resetZoom"
+          >
+            {{ t('admin.ops.charts.resetZoom') REDACTEDREDACTED
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
+            :disabled="state !== 'ready'"
+            :title="t('admin.ops.charts.downloadChartHint')"
+            @click="downloadChart"
+          >
+            {{ t('admin.ops.charts.downloadChart') REDACTEDREDACTED
+          </button>
+        </template>
       </div>
     </div>
 

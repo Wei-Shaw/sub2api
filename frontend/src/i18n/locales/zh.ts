@@ -2088,6 +2088,9 @@ export default {
         '6h': '近6小时',
         '24h': '近24小时'
       REDACTED,
+      fullscreen: {
+        enter: '进入全屏'
+      REDACTED,
       diagnosis: {
         title: '智能诊断',
         footer: '基于当前指标的自动诊断建议',

@@ -19,7 +19,22 @@
     @apply min-h-screen;
   REDACTED
 
-  /* 自定义滚动条 */
+  /* 自定义滚动条 - 默认隐藏，悬停或滚动时显示 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  REDACTED
+
+  *:hover,
+  *:focus-within {
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  REDACTED
+
+  .dark *:hover,
+  .dark *:focus-within {
+    scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+  REDACTED
+
   ::-webkit-scrollbar {
     @apply h-2 w-2;
   REDACTED
@@ -29,10 +44,15 @@
   REDACTED
 
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-gray-300 dark:bg-dark-600;
+    @apply rounded-full bg-transparent;
+    transition: background-color 0.2s ease;
   REDACTED
 
-  ::-webkit-scrollbar-thumb:hover {
+  *:hover::-webkit-scrollbar-thumb {
+    @apply bg-gray-300/50 dark:bg-dark-600/50;
+  REDACTED
+
+  *:hover::-webkit-scrollbar-thumb:hover {
     @apply bg-gray-400 dark:bg-dark-500;
   REDACTED
 
