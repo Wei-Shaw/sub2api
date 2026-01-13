@@ -33,11 +33,15 @@ REDACTED
 	require.True(t, ok)
 	require.Len(t, input, 2)
 
-	first := input[0].(map[string]any)
+	// 校验 input[0] 为 map，避免断言失败导致测试中断。
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "item_reference", first["type"])
 	require.Equal(t, "ref1", first["id"])
 
-	second := input[1].(map[string]any)
+	// 校验 input[1] 为 map，确保后续字段断言安全。
+	second, ok := input[1].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "o1", second["id"])
 REDACTED
 
@@ -82,7 +86,9 @@ REDACTED
 	input, ok := reqBody["input"].([]any)
 	require.True(t, ok)
 	require.Len(t, input, 1)
-	item := input[0].(map[string]any)
+	// 校验 input[0] 为 map，避免类型不匹配触发 errcheck。
+	item, ok := input[0].(map[string]any)
+	require.True(t, ok)
 	_, hasID := item["id"]
 	require.False(t, hasID)
 REDACTED
@@ -95,7 +101,9 @@ REDACTED
 
 	filtered := filterCodexInput(input, false)
 	require.Len(t, filtered, 1)
-	item := filtered[0].(map[string]any)
+	// 校验 filtered[0] 为 map，确保字段检查可靠。
+	item, ok := filtered[0].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "text", item["type"])
 	_, hasID := item["id"]
 	require.False(t, hasID)
