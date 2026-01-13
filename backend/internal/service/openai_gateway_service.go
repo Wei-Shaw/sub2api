@@ -42,6 +42,7 @@ var openaiSSEDataRe = regexp.MustCompile(`^data:\s*`)
 var openaiAllowedHeaders = map[string]bool{
 	"accept-language": true,
 	"content-type":    true,
+	"conversation_id": true,
 	"user-agent":      true,
 	"originator":      true,
 	"session_id":      true,
@@ -553,6 +554,27 @@ REDACTED
 		bodyModified = true
 REDACTED
 
+	// Apply Codex model normalization for all OpenAI accounts
+	if model, ok := reqBody["model"].(string); ok {
+		normalizedModel := normalizeCodexModel(model)
+		if normalizedModel != "" && normalizedModel != model {
+			log.Printf("[OpenAI] Codex model normalization: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
+				model, normalizedModel, account.Name, account.Type, isCodexCLI)
+			reqBody["model"] = normalizedModel
+			mappedModel = normalizedModel
+			bodyModified = true
+	REDACTED
+REDACTED
+
+	// Normalize reasoning.effort parameter (minimal -> none)
+	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+		if effort, ok := reasoning["effort"].(string); ok && effort == "minimal" {
+			reasoning["effort"] = "none"
+			bodyModified = true
+			log.Printf("[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
+	REDACTED
+REDACTED
+
 	if account.Type == AccountTypeOAuth && !isCodexCLI {
 		codexResult := applyCodexOAuthTransform(reqBody)
 		if codexResult.Modified {
@@ -783,9 +805,6 @@ REDACTED
 		if promptCacheKey != "" {
 			req.Header.Set("conversation_id", promptCacheKey)
 			req.Header.Set("session_id", promptCacheKey)
-	REDACTED else {
-			req.Header.Del("conversation_id")
-			req.Header.Del("session_id")
 	REDACTED
 REDACTED
 
