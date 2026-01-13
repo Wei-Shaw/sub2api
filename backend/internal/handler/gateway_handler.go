@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -87,6 +88,9 @@ REDACTED
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
 REDACTED
+
+	// 检查是否为 Claude Code 客户端，设置到 context 中
+	SetClaudeCodeClientContext(c, body)
 
 	setOpsRequestContext(c, "", false, body)
 
@@ -271,12 +275,11 @@ REDACTED
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+					lastFailoverStatus = failoverErr.StatusCode
 					if switchCount >= maxAccountSwitches {
-						lastFailoverStatus = failoverErr.StatusCode
 						h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
 						return
 				REDACTED
-					lastFailoverStatus = failoverErr.StatusCode
 					switchCount++
 					log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
 					continue
@@ -286,8 +289,12 @@ REDACTED
 				return
 		REDACTED
 
+			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
+			userAgent := c.GetHeader("User-Agent")
+			clientIP := ip.GetClientIP(c)
+
 			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account) {
+			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string) {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -296,10 +303,12 @@ REDACTED
 					User:         apiKey.User,
 					Account:      usedAccount,
 					Subscription: subscription,
+					UserAgent:    ua,
+					IPAddress:    clientIP,
 			REDACTED); err != nil {
 					log.Printf("Record usage failed: %v", err)
 			REDACTED
-		REDACTED(result, account)
+		REDACTED(result, account, userAgent, clientIP)
 			return
 	REDACTED
 REDACTED
@@ -399,12 +408,11 @@ REDACTED
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+				lastFailoverStatus = failoverErr.StatusCode
 				if switchCount >= maxAccountSwitches {
-					lastFailoverStatus = failoverErr.StatusCode
 					h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
 					return
 			REDACTED
-				lastFailoverStatus = failoverErr.StatusCode
 				switchCount++
 				log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
 				continue
@@ -414,8 +422,12 @@ REDACTED
 			return
 	REDACTED
 
+		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
+		userAgent := c.GetHeader("User-Agent")
+		clientIP := ip.GetClientIP(c)
+
 		// 异步记录使用量（subscription已在函数开头获取）
-		go func(result *service.ForwardResult, usedAccount *service.Account) {
+		go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -424,10 +436,12 @@ REDACTED
 				User:         apiKey.User,
 				Account:      usedAccount,
 				Subscription: subscription,
+				UserAgent:    ua,
+				IPAddress:    clientIP,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account)
+	REDACTED(result, account, userAgent, clientIP)
 		return
 REDACTED
 REDACTED

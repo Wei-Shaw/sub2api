@@ -1976,6 +1976,16 @@ REDACTED
 const toggleErrorCode = (code: number) => {
   const index = selectedErrorCodes.value.indexOf(code)
   if (index === -1) {
+    // Adding code - check for 429/529 warning
+    if (code === 429) {
+      if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
+        return
+      REDACTED
+    REDACTED else if (code === 529) {
+      if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
+        return
+      REDACTED
+    REDACTED
     selectedErrorCodes.value.push(code)
   REDACTED else {
     selectedErrorCodes.value.splice(index, 1)
@@ -1992,6 +2002,16 @@ const addCustomErrorCode = () => {
   if (selectedErrorCodes.value.includes(code)) {
     appStore.showInfo(t('admin.accounts.errorCodeExists'))
     return
+  REDACTED
+  // Check for 429/529 warning
+  if (code === 429) {
+    if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
+      return
+    REDACTED
+  REDACTED else if (code === 529) {
+    if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
+      return
+    REDACTED
   REDACTED
   selectedErrorCodes.value.push(code)
   customErrorCodeInput.value = null
@@ -2462,6 +2482,7 @@ const handleCookieAuth = async (sessionKey: string) => {
 
         await adminAPI.accounts.create({
           name: accountName,
+          notes: form.notes,
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
@@ -2469,6 +2490,8 @@ const handleCookieAuth = async (sessionKey: string) => {
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           priority: form.priority,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         REDACTED)
 

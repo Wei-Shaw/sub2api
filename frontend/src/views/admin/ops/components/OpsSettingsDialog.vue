@@ -6,7 +6,7 @@ import { opsAPI REDACTED from '@/api/admin/ops'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
-import type { OpsAlertRuntimeSettings, EmailNotificationConfig, AlertSeverity, OpsAdvancedSettings REDACTED from '../types'
+import type { OpsAlertRuntimeSettings, EmailNotificationConfig, AlertSeverity, OpsAdvancedSettings, OpsMetricThresholds REDACTED from '../types'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -29,19 +29,38 @@ const runtimeSettings = ref<OpsAlertRuntimeSettings | null>(null)
 const emailConfig = ref<EmailNotificationConfig | null>(null)
 // 高级设置
 const advancedSettings = ref<OpsAdvancedSettings | null>(null)
+// 指标阈值配置
+const metricThresholds = ref<OpsMetricThresholds>({
+  sla_percent_min: 99.5,
+  latency_p99_ms_max: 2000,
+  ttft_p99_ms_max: 500,
+  request_error_rate_percent_max: 5,
+  upstream_error_rate_percent_max: 5
+REDACTED)
 
 // 加载所有配置
 async function loadAllSettings() {
   loading.value = true
   try {
-    const [runtime, email, advanced] = await Promise.all([
+    const [runtime, email, advanced, thresholds] = await Promise.all([
       opsAPI.getAlertRuntimeSettings(),
       opsAPI.getEmailNotificationConfig(),
-      opsAPI.getAdvancedSettings()
+      opsAPI.getAdvancedSettings(),
+      opsAPI.getMetricThresholds()
     ])
     runtimeSettings.value = runtime
     emailConfig.value = email
     advancedSettings.value = advanced
+    // 如果后端返回了阈值，使用后端的值；否则保持默认值
+    if (thresholds && Object.keys(thresholds).length > 0) {
+      metricThresholds.value = {
+        sla_percent_min: thresholds.sla_percent_min ?? 99.5,
+        latency_p99_ms_max: thresholds.latency_p99_ms_max ?? 2000,
+        ttft_p99_ms_max: thresholds.ttft_p99_ms_max ?? 500,
+        request_error_rate_percent_max: thresholds.request_error_rate_percent_max ?? 5,
+        upstream_error_rate_percent_max: thresholds.upstream_error_rate_percent_max ?? 5
+      REDACTED
+    REDACTED
   REDACTED catch (err: any) {
     console.error('[OpsSettingsDialog] Failed to load settings', err)
     appStore.showError(err?.response?.data?.detail || t('admin.ops.settings.loadFailed'))
@@ -138,6 +157,23 @@ const validation = computed(() => {
     REDACTED
   REDACTED
 
+  // 验证指标阈值
+  if (metricThresholds.value.sla_percent_min != null && (metricThresholds.value.sla_percent_min < 0 || metricThresholds.value.sla_percent_min > 100)) {
+    errors.push('SLA最低百分比必须在0-100之间')
+  REDACTED
+  if (metricThresholds.value.latency_p99_ms_max != null && metricThresholds.value.latency_p99_ms_max < 0) {
+    errors.push('延迟P99最大值必须大于等于0')
+  REDACTED
+  if (metricThresholds.value.ttft_p99_ms_max != null && metricThresholds.value.ttft_p99_ms_max < 0) {
+    errors.push('TTFT P99最大值必须大于等于0')
+  REDACTED
+  if (metricThresholds.value.request_error_rate_percent_max != null && (metricThresholds.value.request_error_rate_percent_max < 0 || metricThresholds.value.request_error_rate_percent_max > 100)) {
+    errors.push('请求错误率最大值必须在0-100之间')
+  REDACTED
+  if (metricThresholds.value.upstream_error_rate_percent_max != null && (metricThresholds.value.upstream_error_rate_percent_max < 0 || metricThresholds.value.upstream_error_rate_percent_max > 100)) {
+    errors.push('上游错误率最大值必须在0-100之间')
+  REDACTED
+
   return { valid: errors.length === 0, errors REDACTED
 REDACTED)
 
@@ -153,14 +189,15 @@ async function saveAllSettings() {
     await Promise.all([
       runtimeSettings.value ? opsAPI.updateAlertRuntimeSettings(runtimeSettings.value) : Promise.resolve(),
       emailConfig.value ? opsAPI.updateEmailNotificationConfig(emailConfig.value) : Promise.resolve(),
-      advancedSettings.value ? opsAPI.updateAdvancedSettings(advancedSettings.value) : Promise.resolve()
+      advancedSettings.value ? opsAPI.updateAdvancedSettings(advancedSettings.value) : Promise.resolve(),
+      opsAPI.updateMetricThresholds(metricThresholds.value)
     ])
     appStore.showSuccess(t('admin.ops.settings.saveSuccess'))
     emit('saved')
     emit('close')
   REDACTED catch (err: any) {
     console.error('[OpsSettingsDialog] Failed to save settings', err)
-    appStore.showError(err?.response?.data?.detail || t('admin.ops.settings.saveFailed'))
+    appStore.showError(err?.response?.data?.message || err?.response?.data?.detail || t('admin.ops.settings.saveFailed'))
   REDACTED finally {
     saving.value = false
   REDACTED
@@ -306,6 +343,77 @@ REDACTED
         </div>
       </div>
 
+      <!-- 指标阈值配置 -->
+      <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
+        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.settings.metricThresholds') REDACTEDREDACTED</h4>
+        <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.settings.metricThresholdsHint') REDACTEDREDACTED</p>
+
+        <div class="space-y-4">
+          <div>
+            <label class="input-label">{{ t('admin.ops.settings.slaMinPercent') REDACTEDREDACTED</label>
+            <input
+              v-model.number="metricThresholds.sla_percent_min"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.slaMinPercentHint') REDACTEDREDACTED</p>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.ops.settings.latencyP99MaxMs') REDACTEDREDACTED</label>
+            <input
+              v-model.number="metricThresholds.latency_p99_ms_max"
+              type="number"
+              min="0"
+              step="100"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.latencyP99MaxMsHint') REDACTEDREDACTED</p>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.ops.settings.ttftP99MaxMs') REDACTEDREDACTED</label>
+            <input
+              v-model.number="metricThresholds.ttft_p99_ms_max"
+              type="number"
+              min="0"
+              step="50"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.ttftP99MaxMsHint') REDACTEDREDACTED</p>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.ops.settings.requestErrorRateMaxPercent') REDACTEDREDACTED</label>
+            <input
+              v-model.number="metricThresholds.request_error_rate_percent_max"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.requestErrorRateMaxPercentHint') REDACTEDREDACTED</p>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.ops.settings.upstreamErrorRateMaxPercent') REDACTEDREDACTED</label>
+            <input
+              v-model.number="metricThresholds.upstream_error_rate_percent_max"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.upstreamErrorRateMaxPercentHint') REDACTEDREDACTED</p>
+          </div>
+        </div>
+      </div>
+
       <!-- 高级设置 -->
       <details class="rounded-2xl bg-gray-50 dark:bg-dark-700/50">
         <summary class="cursor-pointer p-4 text-sm font-semibold text-gray-900 dark:text-white">
@@ -377,6 +485,48 @@ REDACTED
                 <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.aggregationHint') REDACTEDREDACTED</p>
               </div>
               <Toggle v-model="advancedSettings.aggregation.aggregation_enabled" />
+            </div>
+          </div>
+
+          <!-- 错误过滤 -->
+          <div class="space-y-3">
+            <h5 class="text-xs font-semibold text-gray-700 dark:text-gray-300">错误过滤</h5>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">忽略 count_tokens 错误</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  启用后，count_tokens 请求的错误将不计入运维监控的统计和告警中（但仍会存储在数据库中）
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.ignore_count_tokens_errors" />
+            </div>
+          </div>
+
+          <!-- 自动刷新 -->
+          <div class="space-y-3">
+            <h5 class="text-xs font-semibold text-gray-700 dark:text-gray-300">自动刷新</h5>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">启用自动刷新</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  自动刷新仪表板数据，启用后会定期拉取最新数据
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.auto_refresh_enabled" />
+            </div>
+
+            <div v-if="advancedSettings.auto_refresh_enabled">
+              <label class="input-label">刷新间隔</label>
+              <Select
+                v-model="advancedSettings.auto_refresh_interval_seconds"
+                :options="[
+                  { value: 15, label: '15 秒' REDACTED,
+                  { value: 30, label: '30 秒' REDACTED,
+                  { value: 60, label: '60 秒' REDACTED
+                ]"
+              />
             </div>
           </div>
         </div>

@@ -174,69 +174,75 @@ watch(
 
 <template>
   <BaseDialog :show="show" :title="modalTitle" width="full" @close="close">
-    <!-- Filters -->
-    <div class="border-b border-gray-200 pb-4 mb-4 dark:border-dark-700">
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <div class="lg:col-span-5">
-          <div class="relative group">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <svg
-                class="h-4 w-4 text-gray-400 transition-colors group-focus-within:text-blue-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+    <div class="flex h-full min-h-0 flex-col">
+      <!-- Filters -->
+      <div class="mb-4 flex-shrink-0 border-b border-gray-200 pb-4 dark:border-dark-700">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <div class="lg:col-span-5">
+            <div class="relative group">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <svg
+                  class="h-4 w-4 text-gray-400 transition-colors group-focus-within:text-blue-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <input
+                v-model="q"
+                type="text"
+                class="w-full rounded-2xl border-gray-200 bg-gray-50/50 py-2 pl-10 pr-4 text-sm font-medium text-gray-700 transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:focus:bg-dark-800"
+                :placeholder="t('admin.ops.errorDetails.searchPlaceholder')"
+              />
             </div>
+          </div>
+
+          <div class="lg:col-span-2">
+            <Select :model-value="statusCode" :options="statusCodeSelectOptions" class="w-full" @update:model-value="statusCode = $event as any" />
+          </div>
+
+          <div class="lg:col-span-2">
+            <Select :model-value="phase" :options="phaseSelectOptions" class="w-full" @update:model-value="phase = String($event ?? '')" />
+          </div>
+
+          <div class="lg:col-span-2">
             <input
-              v-model="q"
+              v-model="accountIdInput"
               type="text"
-              class="w-full rounded-2xl border-gray-200 bg-gray-50/50 py-2 pl-10 pr-4 text-sm font-medium text-gray-700 transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:focus:bg-dark-800"
-              :placeholder="t('admin.ops.errorDetails.searchPlaceholder')"
+              inputmode="numeric"
+              class="input w-full text-sm"
+              :placeholder="t('admin.ops.errorDetails.accountIdPlaceholder')"
             />
           </div>
-        </div>
 
-        <div class="lg:col-span-2">
-          <Select :model-value="statusCode" :options="statusCodeSelectOptions" class="w-full" @update:model-value="statusCode = $event as any" />
-        </div>
-
-        <div class="lg:col-span-2">
-          <Select :model-value="phase" :options="phaseSelectOptions" class="w-full" @update:model-value="phase = String($event ?? '')" />
-        </div>
-
-        <div class="lg:col-span-2">
-          <input
-            v-model="accountIdInput"
-            type="text"
-            inputmode="numeric"
-            class="input w-full text-sm"
-            :placeholder="t('admin.ops.errorDetails.accountIdPlaceholder')"
-          />
-        </div>
-
-        <div class="lg:col-span-1 flex items-center justify-end">
-          <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
-            {{ t('common.reset') REDACTEDREDACTED
-          </button>
+          <div class="lg:col-span-1 flex items-center justify-end">
+            <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
+              {{ t('common.reset') REDACTEDREDACTED
+            </button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Body -->
-    <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-      {{ t('admin.ops.errorDetails.total') REDACTEDREDACTED {{ total REDACTEDREDACTED
+      <!-- Body -->
+      <div class="flex min-h-0 flex-1 flex-col">
+        <div class="mb-2 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.ops.errorDetails.total') REDACTEDREDACTED {{ total REDACTEDREDACTED
+        </div>
+
+        <OpsErrorLogTable
+          class="min-h-0 flex-1"
+          :rows="rows"
+          :total="total"
+          :loading="loading"
+          :page="page"
+          :page-size="pageSize"
+          @openErrorDetail="emit('openErrorDetail', $event)"
+          @update:page="page = $event"
+          @update:pageSize="pageSize = $event"
+        />
+      </div>
     </div>
-    <OpsErrorLogTable
-      :rows="rows"
-      :total="total"
-      :loading="loading"
-      :page="page"
-      :page-size="pageSize"
-      @openErrorDetail="emit('openErrorDetail', $event)"
-      @update:page="page = $event"
-      @update:pageSize="pageSize = $event"
-    />
   </BaseDialog>
 </template>

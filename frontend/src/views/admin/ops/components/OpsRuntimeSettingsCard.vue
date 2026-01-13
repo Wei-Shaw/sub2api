@@ -45,6 +45,36 @@ function validateRuntimeSettings(settings: OpsAlertRuntimeSettings): ValidationR
     errors.push(t('admin.ops.runtime.validation.evalIntervalRange'))
   REDACTED
 
+  // Thresholds validation
+  const thresholds = settings.thresholds
+  if (thresholds) {
+    if (thresholds.sla_percent_min != null) {
+      if (!Number.isFinite(thresholds.sla_percent_min) || thresholds.sla_percent_min < 0 || thresholds.sla_percent_min > 100) {
+        errors.push('SLA 最低值必须在 0-100 之间')
+      REDACTED
+    REDACTED
+    if (thresholds.latency_p99_ms_max != null) {
+      if (!Number.isFinite(thresholds.latency_p99_ms_max) || thresholds.latency_p99_ms_max < 0) {
+        errors.push('延迟 P99 最大值必须大于或等于 0')
+      REDACTED
+    REDACTED
+    if (thresholds.ttft_p99_ms_max != null) {
+      if (!Number.isFinite(thresholds.ttft_p99_ms_max) || thresholds.ttft_p99_ms_max < 0) {
+        errors.push('TTFT P99 最大值必须大于或等于 0')
+      REDACTED
+    REDACTED
+    if (thresholds.request_error_rate_percent_max != null) {
+      if (!Number.isFinite(thresholds.request_error_rate_percent_max) || thresholds.request_error_rate_percent_max < 0 || thresholds.request_error_rate_percent_max > 100) {
+        errors.push('请求错误率最大值必须在 0-100 之间')
+      REDACTED
+    REDACTED
+    if (thresholds.upstream_error_rate_percent_max != null) {
+      if (!Number.isFinite(thresholds.upstream_error_rate_percent_max) || thresholds.upstream_error_rate_percent_max < 0 || thresholds.upstream_error_rate_percent_max > 100) {
+        errors.push('上游错误率最大值必须在 0-100 之间')
+      REDACTED
+    REDACTED
+  REDACTED
+
   const lock = settings.distributed_lock
   if (lock?.enabled) {
     if (!lock.key || lock.key.trim().length < 3) {
@@ -129,6 +159,15 @@ function openAlertEditor() {
     REDACTED
     if (!Array.isArray(draftAlert.value.silencing.entries)) {
       draftAlert.value.silencing.entries = []
+    REDACTED
+    if (!draftAlert.value.thresholds) {
+      draftAlert.value.thresholds = {
+        sla_percent_min: 99.5,
+        latency_p99_ms_max: 2000,
+        ttft_p99_ms_max: 500,
+        request_error_rate_percent_max: 5,
+        upstream_error_rate_percent_max: 5
+      REDACTED
     REDACTED
   REDACTED
 
@@ -293,6 +332,81 @@ REDACTED)
           :aria-invalid="!alertValidation.valid"
         />
         <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.runtime.evalIntervalHint') REDACTEDREDACTED</p>
+      </div>
+
+      <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
+        <div class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">指标阈值配置</div>
+        <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">配置各项指标的告警阈值。超出阈值的指标将在看板上以红色显示。</p>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">SLA 最低值 (%)</div>
+            <input
+              v-model.number="draftAlert.thresholds.sla_percent_min"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+              placeholder="99.5"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">SLA 低于此值时将显示为红色</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">延迟 P99 最大值 (ms)</div>
+            <input
+              v-model.number="draftAlert.thresholds.latency_p99_ms_max"
+              type="number"
+              min="0"
+              step="100"
+              class="input"
+              placeholder="2000"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">延迟 P99 高于此值时将显示为红色</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">TTFT P99 最大值 (ms)</div>
+            <input
+              v-model.number="draftAlert.thresholds.ttft_p99_ms_max"
+              type="number"
+              min="0"
+              step="100"
+              class="input"
+              placeholder="500"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">TTFT P99 高于此值时将显示为红色</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">请求错误率最大值 (%)</div>
+            <input
+              v-model.number="draftAlert.thresholds.request_error_rate_percent_max"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+              placeholder="5"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">请求错误率高于此值时将显示为红色</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">上游错误率最大值 (%)</div>
+            <input
+              v-model.number="draftAlert.thresholds.upstream_error_rate_percent_max"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+              placeholder="5"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">上游错误率高于此值时将显示为红色</p>
+          </div>
+        </div>
       </div>
 
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">

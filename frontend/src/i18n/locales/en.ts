@@ -156,6 +156,7 @@ export default {
         unknownError: 'Unknown error occurred',
         saving: 'Saving...', 
         selectedCount: '({countREDACTED selected)',    refresh: 'Refresh',
+    settings: 'Settings',
     notAvailable: 'N/A',
     now: 'Now',
     unknown: 'Unknown',
@@ -389,7 +390,7 @@ export default {
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
-        hint: 'This is a group configuration example. Adjust model and options as needed.',
+        hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.',
       REDACTED,
     REDACTED,
     customKeyLabel: 'Custom Key',
@@ -1021,6 +1022,7 @@ export default {
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
+      allGroups: '{countREDACTED groups total',
       platforms: {
         anthropic: 'Anthropic',
         claude: 'Claude',
@@ -1203,6 +1205,10 @@ export default {
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
         'Only selected error codes will stop scheduling. Other errors will return 500.',
+      customErrorCodes429Warning:
+        '429 already has built-in rate limit handling. Adding it to custom error codes will disable the account instead of temporary rate limiting. Are you sure?',
+      customErrorCodes529Warning:
+        '529 already has built-in overload handling. Adding it to custom error codes will disable the account instead of temporary overload marking. Are you sure?',
       selectedErrorCodes: 'Selected',
       noneSelectedUsesDefault: 'None selected (uses default policy)',
       enterErrorCode: 'Enter error code (100-599)',
@@ -1902,6 +1908,7 @@ export default {
       max: 'max:',
       qps: 'QPS',
       requests: 'Requests',
+      requestsTitle: 'Requests',
       upstream: 'Upstream',
       client: 'Client',
       system: 'System',
@@ -1935,6 +1942,9 @@ export default {
         '1h': 'Last 1 hour',
         '6h': 'Last 6 hours',
         '24h': 'Last 24 hours'
+      REDACTED,
+      fullscreen: {
+        enter: 'Enter Fullscreen'
       REDACTED,
       diagnosis: {
         title: 'Smart Diagnosis',
@@ -2114,7 +2124,10 @@ export default {
         empty: 'No alert rules',
         loadFailed: 'Failed to load alert rules',
         saveFailed: 'Failed to save alert rule',
+        saveSuccess: 'Alert rule saved successfully',
         deleteFailed: 'Failed to delete alert rule',
+        deleteSuccess: 'Alert rule deleted successfully',
+        manage: 'Manage Alert Rules',
         create: 'Create Rule',
         createTitle: 'Create Alert Rule',
         editTitle: 'Edit Alert Rule',
@@ -2297,6 +2310,54 @@ export default {
           accountHealthThresholdRange: 'Account health threshold must be between 0 and 100'
         REDACTED
       REDACTED,
+      settings: {
+        title: 'Ops Monitoring Settings',
+        loadFailed: 'Failed to load settings',
+        saveSuccess: 'Ops monitoring settings saved successfully',
+        saveFailed: 'Failed to save settings',
+        dataCollection: 'Data Collection',
+        evaluationInterval: 'Evaluation Interval (seconds)',
+        evaluationIntervalHint: 'Frequency of detection tasks, recommended to keep default',
+        alertConfig: 'Alert Configuration',
+        enableAlert: 'Enable Alerts',
+        alertRecipients: 'Alert Recipient Emails',
+        emailPlaceholder: 'Enter email address',
+        recipientsHint: 'If empty, the system will use the first admin email as default recipient',
+        minSeverity: 'Minimum Severity',
+        reportConfig: 'Report Configuration',
+        enableReport: 'Enable Reports',
+        reportRecipients: 'Report Recipient Emails',
+        dailySummary: 'Daily Summary',
+        weeklySummary: 'Weekly Summary',
+        metricThresholds: 'Metric Thresholds',
+        metricThresholdsHint: 'Configure alert thresholds for metrics, values exceeding thresholds will be displayed in red',
+        slaMinPercent: 'SLA Minimum Percentage',
+        slaMinPercentHint: 'SLA below this value will be displayed in red (default: 99.5%)',
+        latencyP99MaxMs: 'Latency P99 Maximum (ms)',
+        latencyP99MaxMsHint: 'Latency P99 above this value will be displayed in red (default: 2000ms)',
+        ttftP99MaxMs: 'TTFT P99 Maximum (ms)',
+        ttftP99MaxMsHint: 'TTFT P99 above this value will be displayed in red (default: 500ms)',
+        requestErrorRateMaxPercent: 'Request Error Rate Maximum (%)',
+        requestErrorRateMaxPercentHint: 'Request error rate above this value will be displayed in red (default: 5%)',
+        upstreamErrorRateMaxPercent: 'Upstream Error Rate Maximum (%)',
+        upstreamErrorRateMaxPercentHint: 'Upstream error rate above this value will be displayed in red (default: 5%)',
+        advancedSettings: 'Advanced Settings',
+        dataRetention: 'Data Retention Policy',
+        enableCleanup: 'Enable Data Cleanup',
+        cleanupSchedule: 'Cleanup Schedule (Cron)',
+        cleanupScheduleHint: 'Example: 0 2 * * * means 2 AM daily',
+        errorLogRetentionDays: 'Error Log Retention Days',
+        minuteMetricsRetentionDays: 'Minute Metrics Retention Days',
+        hourlyMetricsRetentionDays: 'Hourly Metrics Retention Days',
+        retentionDaysHint: 'Recommended 7-90 days, longer periods will consume more storage',
+        aggregation: 'Pre-aggregation Tasks',
+        enableAggregation: 'Enable Pre-aggregation',
+        aggregationHint: 'Pre-aggregation improves query performance for long time windows',
+        validation: {
+          title: 'Please fix the following issues',
+          retentionDaysRange: 'Retention days must be between 1-365 days'
+        REDACTED
+      REDACTED,
       concurrency: {
         title: 'Concurrency / Queue',
         byPlatform: 'By Platform',
@@ -2330,12 +2391,13 @@ export default {
         accountError: 'Error'
       REDACTED,
       tooltips: {
+        totalRequests: 'Total number of requests (including both successful and failed requests) in the selected time window.',
         throughputTrend: 'Requests/QPS + Tokens/TPS in the selected window.',
         latencyHistogram: 'Latency distribution (duration_ms) for successful requests.',
         errorTrend: 'Error counts over time (SLA scope excludes business limits; upstream excludes 429/529).',
         errorDistribution: 'Error distribution by status code.',
         goroutines:
-          'Number of Go runtime goroutines (lightweight threads). There is no absolute “safe” number—use your historical baseline. Heuristic: <2k is common; 2k–8k watch; >8k plus rising queue/latency often suggests blocking/leaks.',
+          'Number of Go runtime goroutines (lightweight threads). There is no absolute "safe" number—use your historical baseline. Heuristic: <2k is common; 2k–8k watch; >8k plus rising queue/latency often suggests blocking/leaks.',
         cpu: 'CPU usage percentage, showing system processor load.',
         memory: 'Memory usage, including used and total available memory.',
         db: 'Database connection pool status, including active, idle, and waiting connections.',
@@ -2345,6 +2407,7 @@ export default {
         tokens: 'Total number of tokens processed in the current time window.',
         sla: 'Service Level Agreement success rate, excluding business limits (e.g., insufficient balance, quota exceeded).',
         errors: 'Error statistics, including total errors, error rate, and upstream error rate.',
+        upstreamErrors: 'Upstream error statistics, excluding rate limit errors (429/529).',
         latency: 'Request latency statistics, including p50, p90, p95, p99 percentiles.',
         ttft: 'Time To First Token, measuring the speed of first byte return in streaming responses.',
         health: 'System health score (0-100), considering SLA, error rate, and resource usage.'

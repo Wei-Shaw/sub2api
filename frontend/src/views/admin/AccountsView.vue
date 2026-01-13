@@ -56,10 +56,7 @@
             <AccountTodayStatsCell :account="row" />
           </template>
           <template #cell-groups="{ row REDACTED">
-            <div v-if="row.groups && row.groups.length > 0" class="flex flex-wrap gap-1.5">
-              <GroupBadge v-for="group in row.groups" :key="group.id" :name="group.name" :platform="group.platform" :subscription-type="group.subscription_type" :rate-multiplier="group.rate_multiplier" :show-rate="false" />
-            </div>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <AccountGroupsCell :groups="row.groups" :max-display="4" />
           </template>
           <template #cell-usage="{ row REDACTED">
             <AccountUsageCell :account="row" />
@@ -145,7 +142,7 @@ import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
-import GroupBadge from '@/components/common/GroupBadge.vue'
+import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import type { Account, Proxy, Group REDACTED from '@/types'

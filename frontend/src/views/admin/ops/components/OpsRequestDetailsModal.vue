@@ -95,6 +95,7 @@ watch(
   (open) => {
     if (open) {
       page.value = 1
+      pageSize.value = 20
       fetchData()
     REDACTED
   REDACTED
@@ -150,45 +151,46 @@ REDACTED
 <template>
   <BaseDialog :show="modelValue" :title="props.preset.title || t('admin.ops.requestDetails.title')" width="full" @close="close">
     <template #default>
-      <div class="flex items-center justify-between mb-4">
-        <div class="text-xs text-gray-500 dark:text-gray-400">
-          {{ t('admin.ops.requestDetails.rangeLabel', { range: rangeLabel REDACTED) REDACTEDREDACTED
-        </div>
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm"
-          @click="fetchData"
-        >
-          {{ t('common.refresh') REDACTEDREDACTED
-        </button>
-      </div>
-
-      <!-- Loading -->
-      <div v-if="loading" class="flex items-center justify-center py-16">
-        <div class="flex flex-col items-center gap-3">
-          <svg class="h-8 w-8 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <span class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('common.loading') REDACTEDREDACTED</span>
-        </div>
-      </div>
-
-      <!-- Table -->
-      <div v-else>
-        <div v-if="items.length === 0" class="rounded-xl border border-dashed border-gray-200 p-10 text-center dark:border-dark-700">
-          <div class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.requestDetails.empty') REDACTEDREDACTED</div>
-          <div class="mt-1 text-xs text-gray-400">{{ t('admin.ops.requestDetails.emptyHint') REDACTEDREDACTED</div>
+      <div class="flex h-full min-h-0 flex-col">
+        <div class="mb-4 flex flex-shrink-0 items-center justify-between">
+          <div class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.ops.requestDetails.rangeLabel', { range: rangeLabel REDACTED) REDACTEDREDACTED
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            @click="fetchData"
+          >
+            {{ t('common.refresh') REDACTEDREDACTED
+          </button>
         </div>
 
-        <div v-else class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
-              <thead class="bg-gray-50 dark:bg-dark-900">
+        <!-- Loading -->
+        <div v-if="loading" class="flex flex-1 items-center justify-center py-16">
+          <div class="flex flex-col items-center gap-3">
+            <svg class="h-8 w-8 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('common.loading') REDACTEDREDACTED</span>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div v-else class="flex min-h-0 flex-1 flex-col">
+          <div v-if="items.length === 0" class="rounded-xl border border-dashed border-gray-200 p-10 text-center dark:border-dark-700">
+            <div class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.requestDetails.empty') REDACTEDREDACTED</div>
+            <div class="mt-1 text-xs text-gray-400">{{ t('admin.ops.requestDetails.emptyHint') REDACTEDREDACTED</div>
+          </div>
+
+          <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
+            <div class="min-h-0 flex-1 overflow-auto">
+              <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+                <thead class="sticky top-0 z-10 bg-gray-50 dark:bg-dark-900">
                 <tr>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {{ t('admin.ops.requestDetails.table.time') REDACTEDREDACTED
@@ -265,15 +267,16 @@ REDACTED
                 </tr>
               </tbody>
             </table>
-          </div>
+            </div>
 
-          <Pagination
-            :total="total"
-            :page="page"
-            :page-size="pageSize"
-            @update:page="handlePageChange"
-            @update:pageSize="handlePageSizeChange"
-          />
+            <Pagination
+              :total="total"
+              :page="page"
+              :page-size="pageSize"
+              @update:page="handlePageChange"
+              @update:pageSize="handlePageSizeChange"
+            />
+          </div>
         </div>
       </div>
     </template>

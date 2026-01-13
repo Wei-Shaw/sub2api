@@ -17,6 +17,8 @@ type OpsRepository interface {
 
 	// Lightweight window stats (for realtime WS / quick sampling).
 	GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error)
+	// Lightweight realtime traffic summary (for the Ops dashboard header card).
+	GetRealtimeTrafficSummary(ctx context.Context, filter *OpsDashboardFilter) (*OpsRealtimeTrafficSummary, error)
 
 	GetDashboardOverview(ctx context.Context, filter *OpsDashboardFilter) (*OpsDashboardOverview, error)
 	GetThroughputTrend(ctx context.Context, filter *OpsDashboardFilter, bucketSeconds int) (*OpsThroughputTrendResponse, error)
@@ -71,6 +73,7 @@ type OpsInsertErrorLogInput struct {
 	Severity          string
 	StatusCode        int
 	IsBusinessLimited bool
+	IsCountTokens     bool // 是否为 count_tokens 请求
 
 	ErrorMessage string
 	ErrorBody    string

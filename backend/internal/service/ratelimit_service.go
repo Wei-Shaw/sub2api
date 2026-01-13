@@ -61,6 +61,7 @@ REDACTED
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
 	// apikey 类型账号：检查自定义错误码配置
 	// 如果启用且错误码不在列表中，则不处理（不停止调度、不标记限流/过载）
+	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 	if !account.ShouldHandleErrorCode(statusCode) {
 		log.Printf("Account %d: error %d skipped (not in custom error codes)", account.ID, statusCode)
 		return false
@@ -105,11 +106,19 @@ REDACTED
 		s.handle529(ctx, account)
 		shouldDisable = false
 	default:
-		// 其他5xx错误：记录但不停止调度
-		if statusCode >= 500 {
+		// 自定义错误码启用时：在列表中的错误码都应该停止调度
+		if customErrorCodesEnabled {
+			msg := "Custom error code triggered"
+			if upstreamMsg != "" {
+				msg = upstreamMsg
+		REDACTED
+			s.handleCustomErrorCode(ctx, account, statusCode, msg)
+			shouldDisable = true
+	REDACTED else if statusCode >= 500 {
+			// 未启用自定义错误码时：仅记录5xx错误
 			log.Printf("Account %d received upstream error %d", account.ID, statusCode)
+			shouldDisable = false
 	REDACTED
-		shouldDisable = false
 REDACTED
 
 	if tempMatched {
@@ -283,6 +292,16 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 		return
 REDACTED
 	log.Printf("Account %d disabled due to auth error: %s", account.ID, errorMsg)
+REDACTED
+
+// handleCustomErrorCode 处理自定义错误码，停止账号调度
+func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *Account, statusCode int, errorMsg string) {
+	msg := "Custom error code " + strconv.Itoa(statusCode) + ": " + errorMsg
+	if err := s.accountRepo.SetError(ctx, account.ID, msg); err != nil {
+		log.Printf("SetError failed for account %d: %v", account.ID, err)
+		return
+REDACTED
+	log.Printf("Account %d disabled due to custom error code %d: %s", account.ID, statusCode, errorMsg)
 REDACTED
 
 // handle429 处理429限流错误

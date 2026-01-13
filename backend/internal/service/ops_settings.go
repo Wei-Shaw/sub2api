@@ -368,6 +368,9 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		Aggregation: OpsAggregationSettings{
 			AggregationEnabled: false,
 	REDACTED,
+		IgnoreCountTokensErrors: false,
+		AutoRefreshEnabled:      false,
+		AutoRefreshIntervalSec:  30,
 REDACTED
 REDACTED
 
@@ -388,6 +391,10 @@ REDACTED
 	if cfg.DataRetention.HourlyMetricsRetentionDays <= 0 {
 		cfg.DataRetention.HourlyMetricsRetentionDays = 30
 REDACTED
+	// Normalize auto refresh interval (default 30 seconds)
+	if cfg.AutoRefreshIntervalSec <= 0 {
+		cfg.AutoRefreshIntervalSec = 30
+REDACTED
 REDACTED
 
 func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
@@ -402,6 +409,9 @@ REDACTED
 REDACTED
 	if cfg.DataRetention.HourlyMetricsRetentionDays < 1 || cfg.DataRetention.HourlyMetricsRetentionDays > 365 {
 		return errors.New("hourly_metrics_retention_days must be between 1 and 365")
+REDACTED
+	if cfg.AutoRefreshIntervalSec < 15 || cfg.AutoRefreshIntervalSec > 300 {
+		return errors.New("auto_refresh_interval_seconds must be between 15 and 300")
 REDACTED
 	return nil
 REDACTED
@@ -460,6 +470,96 @@ REDACTED
 REDACTED
 
 	updated := &OpsAdvancedSettings{REDACTED
+	_ = json.Unmarshal(raw, updated)
+	return updated, nil
+REDACTED
+
+// =========================
+// Metric thresholds
+// =========================
+
+const SettingKeyOpsMetricThresholds = "ops_metric_thresholds"
+
+func defaultOpsMetricThresholds() *OpsMetricThresholds {
+	slaMin := 99.5
+	latencyMax := 2000.0
+	ttftMax := 500.0
+	reqErrMax := 5.0
+	upstreamErrMax := 5.0
+	return &OpsMetricThresholds{
+		SLAPercentMin:               &slaMin,
+		LatencyP99MsMax:             &latencyMax,
+		TTFTp99MsMax:                &ttftMax,
+		RequestErrorRatePercentMax:  &reqErrMax,
+		UpstreamErrorRatePercentMax: &upstreamErrMax,
+REDACTED
+REDACTED
+
+func (s *OpsService) GetMetricThresholds(ctx context.Context) (*OpsMetricThresholds, error) {
+	defaultCfg := defaultOpsMetricThresholds()
+	if s == nil || s.settingRepo == nil {
+		return defaultCfg, nil
+REDACTED
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsMetricThresholds)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			if b, mErr := json.Marshal(defaultCfg); mErr == nil {
+				_ = s.settingRepo.Set(ctx, SettingKeyOpsMetricThresholds, string(b))
+		REDACTED
+			return defaultCfg, nil
+	REDACTED
+		return nil, err
+REDACTED
+
+	cfg := &OpsMetricThresholds{REDACTED
+	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
+		return defaultCfg, nil
+REDACTED
+
+	return cfg, nil
+REDACTED
+
+func (s *OpsService) UpdateMetricThresholds(ctx context.Context, cfg *OpsMetricThresholds) (*OpsMetricThresholds, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, errors.New("setting repository not initialized")
+REDACTED
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	if cfg == nil {
+		return nil, errors.New("invalid config")
+REDACTED
+
+	// Validate thresholds
+	if cfg.SLAPercentMin != nil && (*cfg.SLAPercentMin < 0 || *cfg.SLAPercentMin > 100) {
+		return nil, errors.New("sla_percent_min must be between 0 and 100")
+REDACTED
+	if cfg.LatencyP99MsMax != nil && *cfg.LatencyP99MsMax < 0 {
+		return nil, errors.New("latency_p99_ms_max must be >= 0")
+REDACTED
+	if cfg.TTFTp99MsMax != nil && *cfg.TTFTp99MsMax < 0 {
+		return nil, errors.New("ttft_p99_ms_max must be >= 0")
+REDACTED
+	if cfg.RequestErrorRatePercentMax != nil && (*cfg.RequestErrorRatePercentMax < 0 || *cfg.RequestErrorRatePercentMax > 100) {
+		return nil, errors.New("request_error_rate_percent_max must be between 0 and 100")
+REDACTED
+	if cfg.UpstreamErrorRatePercentMax != nil && (*cfg.UpstreamErrorRatePercentMax < 0 || *cfg.UpstreamErrorRatePercentMax > 100) {
+		return nil, errors.New("upstream_error_rate_percent_max must be between 0 and 100")
+REDACTED
+
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, err
+REDACTED
+	if err := s.settingRepo.Set(ctx, SettingKeyOpsMetricThresholds, string(raw)); err != nil {
+		return nil, err
+REDACTED
+
+	updated := &OpsMetricThresholds{REDACTED
 	_ = json.Unmarshal(raw, updated)
 	return updated, nil
 REDACTED

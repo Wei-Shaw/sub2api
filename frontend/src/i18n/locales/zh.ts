@@ -387,7 +387,7 @@ export default {
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
-        hint: '示例仅用于演示分组配置，模型与选项可按需调整。',
+        hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。',
       REDACTED,
     REDACTED,
     customKeyLabel: '自定义密钥',
@@ -1099,6 +1099,7 @@ export default {
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
+      allGroups: '共 {countREDACTED 个分组',
       columns: {
         name: '名称',
         platformType: '平台/类型',
@@ -1339,6 +1340,10 @@ export default {
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',
+      customErrorCodes429Warning:
+        '429 已有内置的限流处理机制。添加到自定义错误码后，将直接停止调度而非临时限流。确定要添加吗？',
+      customErrorCodes529Warning:
+        '529 已有内置的过载处理机制。添加到自定义错误码后，将直接停止调度而非临时标记过载。确定要添加吗？',
       selectedErrorCodes: '已选择',
       noneSelectedUsesDefault: '未选择（使用默认策略）',
       enterErrorCode: '输入错误码 (100-599)',
@@ -2018,7 +2023,7 @@ export default {
       ready: '就绪',
       requestsTotal: '请求（总计）',
       slaScope: 'SLA 范围：',
-      tokens: 'Token',
+      tokens: 'Token数',
       tps: 'TPS',
       current: '当前',
       peak: '峰值',
@@ -2047,7 +2052,8 @@ export default {
       avg: 'avg',
       max: 'max',
       qps: 'QPS',
-      requests: '请求',
+      requests: '请求数',
+      requestsTitle: '请求',
       upstream: '上游',
       client: '客户端',
       system: '系统',
@@ -2081,6 +2087,9 @@ export default {
         '1h': '近1小时',
         '6h': '近6小时',
         '24h': '近24小时'
+      REDACTED,
+      fullscreen: {
+        enter: '进入全屏'
       REDACTED,
       diagnosis: {
         title: '智能诊断',
@@ -2465,6 +2474,18 @@ export default {
         reportRecipients: '评估报告接收邮箱',
         dailySummary: '每日摘要',
         weeklySummary: '每周摘要',
+        metricThresholds: '指标阈值配置',
+        metricThresholdsHint: '配置各项指标的告警阈值，超出阈值时将以红色显示',
+        slaMinPercent: 'SLA最低百分比',
+        slaMinPercentHint: 'SLA低于此值时显示为红色（默认：99.5%）',
+        latencyP99MaxMs: '延迟P99最大值（毫秒）',
+        latencyP99MaxMsHint: '延迟P99高于此值时显示为红色（默认：2000ms）',
+        ttftP99MaxMs: 'TTFT P99最大值（毫秒）',
+        ttftP99MaxMsHint: 'TTFT P99高于此值时显示为红色（默认：500ms）',
+        requestErrorRateMaxPercent: '请求错误率最大值（%）',
+        requestErrorRateMaxPercentHint: '请求错误率高于此值时显示为红色（默认：5%）',
+        upstreamErrorRateMaxPercent: '上游错误率最大值（%）',
+        upstreamErrorRateMaxPercentHint: '上游错误率高于此值时显示为红色（默认：5%）',
         advancedSettings: '高级设置',
         dataRetention: '数据保留策略',
         enableCleanup: '启用数据清理',

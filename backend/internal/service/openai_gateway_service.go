@@ -545,14 +545,12 @@ REDACTED
 
 	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent"))
 
-	// Apply model mapping (skip for Codex CLI for transparent forwarding)
-	mappedModel := reqModel
-	if !isCodexCLI {
-		mappedModel = account.GetMappedModel(reqModel)
-		if mappedModel != reqModel {
-			reqBody["model"] = mappedModel
-			bodyModified = true
-	REDACTED
+	// Apply model mapping for all requests (including Codex CLI)
+	mappedModel := account.GetMappedModel(reqModel)
+	if mappedModel != reqModel {
+		log.Printf("[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, mappedModel, account.Name, isCodexCLI)
+		reqBody["model"] = mappedModel
+		bodyModified = true
 REDACTED
 
 	if account.Type == AccountTypeOAuth && !isCodexCLI {
@@ -565,6 +563,44 @@ REDACTED
 	REDACTED
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
+	REDACTED
+REDACTED
+
+	// Handle max_output_tokens based on platform and account type
+	if !isCodexCLI {
+		if maxOutputTokens, hasMaxOutputTokens := reqBody["max_output_tokens"]; hasMaxOutputTokens {
+			switch account.Platform {
+			case PlatformOpenAI:
+				// For OpenAI API Key, remove max_output_tokens (not supported)
+				// For OpenAI OAuth (Responses API), keep it (supported)
+				if account.Type == AccountTypeAPIKey {
+					delete(reqBody, "max_output_tokens")
+					bodyModified = true
+			REDACTED
+			case PlatformAnthropic:
+				// For Anthropic (Claude), convert to max_tokens
+				delete(reqBody, "max_output_tokens")
+				if _, hasMaxTokens := reqBody["max_tokens"]; !hasMaxTokens {
+					reqBody["max_tokens"] = maxOutputTokens
+			REDACTED
+				bodyModified = true
+			case PlatformGemini:
+				// For Gemini, remove (will be handled by Gemini-specific transform)
+				delete(reqBody, "max_output_tokens")
+				bodyModified = true
+			default:
+				// For unknown platforms, remove to be safe
+				delete(reqBody, "max_output_tokens")
+				bodyModified = true
+		REDACTED
+	REDACTED
+
+		// Also handle max_completion_tokens (similar logic)
+		if _, hasMaxCompletionTokens := reqBody["max_completion_tokens"]; hasMaxCompletionTokens {
+			if account.Type == AccountTypeAPIKey || account.Platform != PlatformOpenAI {
+				delete(reqBody, "max_completion_tokens")
+				bodyModified = true
+		REDACTED
 	REDACTED
 REDACTED
 

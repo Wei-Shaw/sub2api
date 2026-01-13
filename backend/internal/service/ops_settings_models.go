@@ -61,17 +61,29 @@ type OpsAlertSilencingSettings struct {
 	Entries []OpsAlertSilenceEntry `json:"entries,omitempty"`
 REDACTED
 
+type OpsMetricThresholds struct {
+	SLAPercentMin               *float64 `json:"sla_percent_min,omitempty"`                 // SLA低于此值变红
+	LatencyP99MsMax             *float64 `json:"latency_p99_ms_max,omitempty"`              // 延迟P99高于此值变红
+	TTFTp99MsMax                *float64 `json:"ttft_p99_ms_max,omitempty"`                 // TTFT P99高于此值变红
+	RequestErrorRatePercentMax  *float64 `json:"request_error_rate_percent_max,omitempty"`  // 请求错误率高于此值变红
+	UpstreamErrorRatePercentMax *float64 `json:"upstream_error_rate_percent_max,omitempty"` // 上游错误率高于此值变红
+REDACTED
+
 type OpsAlertRuntimeSettings struct {
 	EvaluationIntervalSeconds int `json:"evaluation_interval_seconds"`
 
 	DistributedLock OpsDistributedLockSettings `json:"distributed_lock"`
 	Silencing       OpsAlertSilencingSettings  `json:"silencing"`
+	Thresholds      OpsMetricThresholds        `json:"thresholds"` // 指标阈值配置
 REDACTED
 
 // OpsAdvancedSettings stores advanced ops configuration (data retention, aggregation).
 type OpsAdvancedSettings struct {
-	DataRetention OpsDataRetentionSettings `json:"data_retention"`
-	Aggregation   OpsAggregationSettings   `json:"aggregation"`
+	DataRetention           OpsDataRetentionSettings `json:"data_retention"`
+	Aggregation             OpsAggregationSettings   `json:"aggregation"`
+	IgnoreCountTokensErrors bool                     `json:"ignore_count_tokens_errors"`
+	AutoRefreshEnabled      bool                     `json:"auto_refresh_enabled"`
+	AutoRefreshIntervalSec  int                      `json:"auto_refresh_interval_seconds"`
 REDACTED
 
 type OpsDataRetentionSettings struct {

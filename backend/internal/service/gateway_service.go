@@ -1227,6 +1227,9 @@ func enforceCacheControlLimit(body []byte) []byte {
 		return body
 REDACTED
 
+	// 清理 thinking 块中的非法 cache_control（thinking 块不支持该字段）
+	removeCacheControlFromThinkingBlocks(data)
+
 	// 计算当前 cache_control 块数量
 	count := countCacheControlBlocks(data)
 	if count <= maxCacheControlBlocks {
@@ -1254,6 +1257,7 @@ REDACTED
 REDACTED
 
 // countCacheControlBlocks 统计 system 和 messages 中的 cache_control 块数量
+// 注意：thinking 块不支持 cache_control，统计时跳过
 func countCacheControlBlocks(data map[string]any) int {
 	count := 0
 
@@ -1261,6 +1265,10 @@ func countCacheControlBlocks(data map[string]any) int {
 	if system, ok := data["system"].([]any); ok {
 		for _, item := range system {
 			if m, ok := item.(map[string]any); ok {
+				// thinking 块不支持 cache_control，跳过
+				if blockType, _ := m["type"].(string); blockType == "thinking" {
+					continue
+			REDACTED
 				if _, has := m["cache_control"]; has {
 					count++
 			REDACTED
@@ -1275,6 +1283,10 @@ REDACTED
 				if content, ok := msgMap["content"].([]any); ok {
 					for _, item := range content {
 						if m, ok := item.(map[string]any); ok {
+							// thinking 块不支持 cache_control，跳过
+							if blockType, _ := m["type"].(string); blockType == "thinking" {
+								continue
+						REDACTED
 							if _, has := m["cache_control"]; has {
 								count++
 						REDACTED
@@ -1290,6 +1302,7 @@ REDACTED
 
 // removeCacheControlFromMessages 从 messages 中移除一个 cache_control（从头开始）
 // 返回 true 表示成功移除，false 表示没有可移除的
+// 注意：跳过 thinking 块（它不支持 cache_control）
 func removeCacheControlFromMessages(data map[string]any) bool {
 	messages, ok := data["messages"].([]any)
 	if !ok {
@@ -1307,6 +1320,10 @@ REDACTED
 	REDACTED
 		for _, item := range content {
 			if m, ok := item.(map[string]any); ok {
+				// thinking 块不支持 cache_control，跳过
+				if blockType, _ := m["type"].(string); blockType == "thinking" {
+					continue
+			REDACTED
 				if _, has := m["cache_control"]; has {
 					delete(m, "cache_control")
 					return true
@@ -1319,6 +1336,7 @@ REDACTED
 
 // removeCacheControlFromSystem 从 system 中移除一个 cache_control（从尾部开始，保护注入的 prompt）
 // 返回 true 表示成功移除，false 表示没有可移除的
+// 注意：跳过 thinking 块（它不支持 cache_control）
 func removeCacheControlFromSystem(data map[string]any) bool {
 	system, ok := data["system"].([]any)
 	if !ok {
@@ -1328,6 +1346,10 @@ REDACTED
 	// 从尾部开始移除，保护开头注入的 Claude Code prompt
 	for i := len(system) - 1; i >= 0; i-- {
 		if m, ok := system[i].(map[string]any); ok {
+			// thinking 块不支持 cache_control，跳过
+			if blockType, _ := m["type"].(string); blockType == "thinking" {
+				continue
+		REDACTED
 			if _, has := m["cache_control"]; has {
 				delete(m, "cache_control")
 				return true
@@ -1335,6 +1357,44 @@ REDACTED
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+// removeCacheControlFromThinkingBlocks 强制清理所有 thinking 块中的非法 cache_control
+// thinking 块不支持 cache_control 字段，这个函数确保所有 thinking 块都不含该字段
+func removeCacheControlFromThinkingBlocks(data map[string]any) {
+	// 清理 system 中的 thinking 块
+	if system, ok := data["system"].([]any); ok {
+		for _, item := range system {
+			if m, ok := item.(map[string]any); ok {
+				if blockType, _ := m["type"].(string); blockType == "thinking" {
+					if _, has := m["cache_control"]; has {
+						delete(m, "cache_control")
+						log.Printf("[Warning] Removed illegal cache_control from thinking block in system")
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 清理 messages 中的 thinking 块
+	if messages, ok := data["messages"].([]any); ok {
+		for msgIdx, msg := range messages {
+			if msgMap, ok := msg.(map[string]any); ok {
+				if content, ok := msgMap["content"].([]any); ok {
+					for contentIdx, item := range content {
+						if m, ok := item.(map[string]any); ok {
+							if blockType, _ := m["type"].(string); blockType == "thinking" {
+								if _, has := m["cache_control"]; has {
+									delete(m, "cache_control")
+									log.Printf("[Warning] Removed illegal cache_control from thinking block in messages[%d].content[%d]", msgIdx, contentIdx)
+							REDACTED
+						REDACTED
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
 REDACTED
 
 // Forward 转发请求到Claude API
