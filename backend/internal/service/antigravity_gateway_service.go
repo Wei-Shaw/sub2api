@@ -1522,7 +1522,7 @@ REDACTED
 REDACTED
 
 // handleGeminiStreamToNonStreaming 读取上游流式响应，合并为非流式响应返回给客户端
-// Gemini 流式响应中每个 chunk 都包含累积的完整文本，只需保留最后一个有效响应
+// Gemini 流式响应是增量的，需要累积所有 chunk 的内容
 func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -1536,6 +1536,7 @@ REDACTED
 	var last map[string]any
 	var lastWithParts map[string]any
 	var collectedImageParts []map[string]any // 收集所有包含图片的 parts
+	var collectedTextParts []string          // 收集所有文本片段
 
 	type scanEvent struct {
 		line string
@@ -1638,11 +1639,14 @@ REDACTED
 			// 保留最后一个有 parts 的响应
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
-				// 收集包含图片的 parts
+				// 收集包含图片和文本的 parts
 				for _, part := range parts {
 					if inlineData, ok := part["inlineData"].(map[string]any); ok {
 						collectedImageParts = append(collectedImageParts, part)
 						_ = inlineData // 避免 unused 警告
+				REDACTED
+					if text, ok := part["text"].(string); ok && text != "" {
+						collectedTextParts = append(collectedTextParts, text)
 				REDACTED
 			REDACTED
 		REDACTED
@@ -1669,6 +1673,11 @@ REDACTED
 	// 如果收集到了图片 parts，需要合并到最终响应中
 	if len(collectedImageParts) > 0 {
 		finalResponse = mergeImagePartsToResponse(finalResponse, collectedImageParts)
+REDACTED
+
+	// 如果收集到了文本，需要合并到最终响应中
+	if len(collectedTextParts) > 0 {
+		finalResponse = mergeTextPartsToResponse(finalResponse, collectedTextParts)
 REDACTED
 
 	respBody, err := json.Marshal(finalResponse)
@@ -1738,6 +1747,82 @@ REDACTED
 		content["parts"] = existingParts
 REDACTED
 
+	result["candidates"] = candidates
+	return result
+REDACTED
+
+// mergeTextPartsToResponse 将收集到的文本合并到 Gemini 响应中
+// 流式响应是增量的，需要累积所有文本片段
+func mergeTextPartsToResponse(response map[string]any, textParts []string) map[string]any {
+	if len(textParts) == 0 {
+		return response
+REDACTED
+
+	// 合并所有文本
+	mergedText := strings.Join(textParts, "")
+
+	// 深拷贝 response 避免修改原始数据
+	result := make(map[string]any)
+	for k, v := range response {
+		result[k] = v
+REDACTED
+
+	// 获取或创建 candidates
+	candidates, ok := result["candidates"].([]any)
+	if !ok || len(candidates) == 0 {
+		candidates = []any{map[string]any{REDACTEDREDACTED
+REDACTED
+
+	// 获取第一个 candidate
+	candidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		candidate = make(map[string]any)
+		candidates[0] = candidate
+REDACTED
+
+	// 获取或创建 content
+	content, ok := candidate["content"].(map[string]any)
+	if !ok {
+		content = map[string]any{"role": "model"REDACTED
+		candidate["content"] = content
+REDACTED
+
+	// 获取现有 parts
+	existingParts, ok := content["parts"].([]any)
+	if !ok {
+		existingParts = []any{REDACTED
+REDACTED
+
+	// 查找并更新第一个 text part，或创建新的
+	textUpdated := false
+	newParts := make([]any, 0, len(existingParts)+1)
+	for _, p := range existingParts {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			newParts = append(newParts, p)
+			continue
+	REDACTED
+		// 跳过空文本的 part（可能只有 thoughtSignature）
+		if _, hasText := pm["text"]; hasText && !textUpdated {
+			// 用累积的文本替换
+			newPart := make(map[string]any)
+			for k, v := range pm {
+				newPart[k] = v
+		REDACTED
+			newPart["text"] = mergedText
+			newParts = append(newParts, newPart)
+			textUpdated = true
+	REDACTED else {
+			newParts = append(newParts, pm)
+	REDACTED
+REDACTED
+
+	// 如果没有找到 text part，添加一个新的
+	if !textUpdated {
+		newParts = append([]any{map[string]any{"text": mergedTextREDACTEDREDACTED, newParts...)
+REDACTED
+
+	content["parts"] = newParts
 	result["candidates"] = candidates
 	return result
 REDACTED
