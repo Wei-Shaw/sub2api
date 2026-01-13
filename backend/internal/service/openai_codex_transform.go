@@ -1,6 +1,7 @@
 package service
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,9 @@ const (
 	opencodeCodexHeaderURL = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex_header.txt"
 	codexCacheTTL          = 15 * time.Minute
 )
+
+//go:embed prompts/codex_cli_instructions.md
+var codexCLIInstructions string
 
 var codexModelMap = map[string]string{
 	"gpt-5.1-codex":             "gpt-5.1-codex",
@@ -117,6 +121,13 @@ REDACTED
 	if instructions != "" {
 		if existingInstructions != instructions {
 			reqBody["instructions"] = instructions
+			result.Modified = true
+	REDACTED
+REDACTED else if existingInstructions == "" {
+		// If no opencode instructions available, try codex CLI instructions
+		codexInstructions := strings.TrimSpace(getCodexCLIInstructions())
+		if codexInstructions != "" {
+			reqBody["instructions"] = codexInstructions
 			result.Modified = true
 	REDACTED
 REDACTED
@@ -235,11 +246,67 @@ REDACTED
 REDACTED
 
 func getOpenCodeCodexHeader() string {
-	return getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
+	// Try to get from opencode repository first
+	opencodeInstructions := getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
+
+	// If opencode instructions are available, return them
+	if opencodeInstructions != "" {
+		return opencodeInstructions
+REDACTED
+
+	// Fallback to local codex CLI instructions
+	return getCodexCLIInstructions()
+REDACTED
+
+func getCodexCLIInstructions() string {
+	return codexCLIInstructions
 REDACTED
 
 func GetOpenCodeInstructions() string {
 	return getOpenCodeCodexHeader()
+REDACTED
+
+func GetCodexCLIInstructions() string {
+	return getCodexCLIInstructions()
+REDACTED
+
+func ReplaceWithCodexInstructions(reqBody map[string]any) bool {
+	codexInstructions := strings.TrimSpace(getCodexCLIInstructions())
+	if codexInstructions == "" {
+		return false
+REDACTED
+
+	existingInstructions, _ := reqBody["instructions"].(string)
+	if strings.TrimSpace(existingInstructions) != codexInstructions {
+		reqBody["instructions"] = codexInstructions
+		return true
+REDACTED
+
+	return false
+REDACTED
+
+func IsInstructionError(errorMessage string) bool {
+	if errorMessage == "" {
+		return false
+REDACTED
+
+	lowerMsg := strings.ToLower(errorMessage)
+	instructionKeywords := []string{
+		"instruction",
+		"instructions",
+		"system prompt",
+		"system message",
+		"invalid prompt",
+		"prompt format",
+REDACTED
+
+	for _, keyword := range instructionKeywords {
+		if strings.Contains(lowerMsg, keyword) {
+			return true
+	REDACTED
+REDACTED
+
+	return false
 REDACTED
 
 func filterCodexInput(input []any) []any {
