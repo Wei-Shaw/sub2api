@@ -1689,120 +1689,93 @@ REDACTED
 	return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 REDACTED
 
+// getOrCreateGeminiParts 获取 Gemini 响应的 parts 结构，返回深拷贝和更新回调
+func getOrCreateGeminiParts(response map[string]any) (result map[string]any, existingParts []any, setParts func([]any)) {
+	// 深拷贝 response
+	result = make(map[string]any)
+	for k, v := range response {
+		result[k] = v
+REDACTED
+
+	// 获取或创建 candidates
+	candidates, ok := result["candidates"].([]any)
+	if !ok || len(candidates) == 0 {
+		candidates = []any{map[string]any{REDACTEDREDACTED
+REDACTED
+
+	// 获取第一个 candidate
+	candidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		candidate = make(map[string]any)
+		candidates[0] = candidate
+REDACTED
+
+	// 获取或创建 content
+	content, ok := candidate["content"].(map[string]any)
+	if !ok {
+		content = map[string]any{"role": "model"REDACTED
+		candidate["content"] = content
+REDACTED
+
+	// 获取现有 parts
+	existingParts, ok = content["parts"].([]any)
+	if !ok {
+		existingParts = []any{REDACTED
+REDACTED
+
+	// 返回更新回调
+	setParts = func(newParts []any) {
+		content["parts"] = newParts
+		result["candidates"] = candidates
+REDACTED
+
+	return result, existingParts, setParts
+REDACTED
+
 // mergeImagePartsToResponse 将收集到的图片 parts 合并到 Gemini 响应中
-// 这是因为流式响应中，图片可能在某个 chunk 返回，而最终 chunk 可能不包含图片
 func mergeImagePartsToResponse(response map[string]any, imageParts []map[string]any) map[string]any {
 	if len(imageParts) == 0 {
 		return response
 REDACTED
 
-	// 深拷贝 response 避免修改原始数据
-	result := make(map[string]any)
-	for k, v := range response {
-		result[k] = v
-REDACTED
-
-	// 获取或创建 candidates
-	candidates, ok := result["candidates"].([]any)
-	if !ok || len(candidates) == 0 {
-		candidates = []any{map[string]any{REDACTEDREDACTED
-REDACTED
-
-	// 获取第一个 candidate
-	candidate, ok := candidates[0].(map[string]any)
-	if !ok {
-		candidate = make(map[string]any)
-		candidates[0] = candidate
-REDACTED
-
-	// 获取或创建 content
-	content, ok := candidate["content"].(map[string]any)
-	if !ok {
-		content = map[string]any{"role": "model"REDACTED
-		candidate["content"] = content
-REDACTED
-
-	// 获取现有 parts
-	existingParts, ok := content["parts"].([]any)
-	if !ok {
-		existingParts = []any{REDACTED
-REDACTED
+	result, existingParts, setParts := getOrCreateGeminiParts(response)
 
 	// 检查现有 parts 中是否已经有图片
-	hasExistingImage := false
 	for _, p := range existingParts {
 		if pm, ok := p.(map[string]any); ok {
 			if _, hasInline := pm["inlineData"]; hasInline {
-				hasExistingImage = true
-				break
+				return result // 已有图片，不重复添加
 		REDACTED
 	REDACTED
 REDACTED
 
-	// 如果没有现有图片，添加收集到的图片 parts
-	if !hasExistingImage {
-		for _, imgPart := range imageParts {
-			existingParts = append(existingParts, imgPart)
-	REDACTED
-		content["parts"] = existingParts
+	// 添加收集到的图片 parts
+	for _, imgPart := range imageParts {
+		existingParts = append(existingParts, imgPart)
 REDACTED
-
-	result["candidates"] = candidates
+	setParts(existingParts)
 	return result
 REDACTED
 
 // mergeTextPartsToResponse 将收集到的文本合并到 Gemini 响应中
-// 流式响应是增量的，需要累积所有文本片段
 func mergeTextPartsToResponse(response map[string]any, textParts []string) map[string]any {
 	if len(textParts) == 0 {
 		return response
 REDACTED
 
-	// 合并所有文本
 	mergedText := strings.Join(textParts, "")
-
-	// 深拷贝 response 避免修改原始数据
-	result := make(map[string]any)
-	for k, v := range response {
-		result[k] = v
-REDACTED
-
-	// 获取或创建 candidates
-	candidates, ok := result["candidates"].([]any)
-	if !ok || len(candidates) == 0 {
-		candidates = []any{map[string]any{REDACTEDREDACTED
-REDACTED
-
-	// 获取第一个 candidate
-	candidate, ok := candidates[0].(map[string]any)
-	if !ok {
-		candidate = make(map[string]any)
-		candidates[0] = candidate
-REDACTED
-
-	// 获取或创建 content
-	content, ok := candidate["content"].(map[string]any)
-	if !ok {
-		content = map[string]any{"role": "model"REDACTED
-		candidate["content"] = content
-REDACTED
-
-	// 获取现有 parts
-	existingParts, ok := content["parts"].([]any)
-	if !ok {
-		existingParts = []any{REDACTED
-REDACTED
+	result, existingParts, setParts := getOrCreateGeminiParts(response)
 
 	// 查找并更新第一个 text part，或创建新的
-	textUpdated := false
 	newParts := make([]any, 0, len(existingParts)+1)
+	textUpdated := false
+
 	for _, p := range existingParts {
 		pm, ok := p.(map[string]any)
 		if !ok {
 			newParts = append(newParts, p)
 			continue
 	REDACTED
-		// 跳过空文本的 part（可能只有 thoughtSignature）
 		if _, hasText := pm["text"]; hasText && !textUpdated {
 			// 用累积的文本替换
 			newPart := make(map[string]any)
@@ -1817,13 +1790,11 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 如果没有找到 text part，添加一个新的
 	if !textUpdated {
 		newParts = append([]any{map[string]any{"text": mergedTextREDACTEDREDACTED, newParts...)
 REDACTED
 
-	content["parts"] = newParts
-	result["candidates"] = candidates
+	setParts(newParts)
 	return result
 REDACTED
 
