@@ -57,6 +57,13 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 
 ---
 
+## OpenAI Responses 兼容注意事项
+
+- 当请求包含 `function_call_output` 时，需要携带 `previous_response_id`，或在 `input` 中包含带 `call_id` 的 `tool_call`/`function_call`，或带非空 `id` 且与 `function_call_output.call_id` 匹配的 `item_reference`。
+- 若依赖上游历史记录，网关会强制 `store=true` 并需要复用 `previous_response_id`，以避免出现 “No tool call found for function call output” 错误。
+
+---
+
 ## 部署方式
 
 ### 方式一：脚本安装（推荐）

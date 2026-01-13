@@ -114,6 +114,26 @@ REDACTED
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 
+	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
+	// 要求 previous_response_id，或 input 内存在带 call_id 的 tool_call/function_call，
+	// 或带 id 且与 call_id 匹配的 item_reference。
+	if service.HasFunctionCallOutput(reqBody) {
+		previousResponseID, _ := reqBody["previous_response_id"].(string)
+		if strings.TrimSpace(previousResponseID) == "" && !service.HasToolCallContext(reqBody) {
+			if service.HasFunctionCallOutputMissingCallID(reqBody) {
+				log.Printf("[OpenAI Handler] function_call_output 缺少 call_id: model=%s", reqModel)
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id or previous_response_id; if relying on history, ensure store=true and reuse previous_response_id")
+				return
+		REDACTED
+			callIDs := service.FunctionCallOutputCallIDs(reqBody)
+			if !service.HasItemReferenceForCallIDs(reqBody, callIDs) {
+				log.Printf("[OpenAI Handler] function_call_output 缺少匹配的 item_reference: model=%s", reqModel)
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id, or previous_response_id/tool_call context; if relying on history, ensure store=true and reuse previous_response_id")
+				return
+		REDACTED
+	REDACTED
+REDACTED
+
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
 
