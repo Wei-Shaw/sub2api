@@ -31,6 +31,8 @@ const pageSize = ref(20)
 const q = ref('')
 const statusCode = ref<number | null>(null)
 const phase = ref<string>('')
+const errorOwner = ref<string>('')
+const resolvedStatus = ref<string>('unresolved')
 const accountIdInput = ref<string>('')
 
 const accountId = computed<number | null>(() => {
@@ -52,15 +54,31 @@ const statusCodeSelectOptions = computed(() => {
   ]
 REDACTED)
 
+const ownerSelectOptions = computed(() => {
+  return [
+    { value: '', label: t('common.all') REDACTED,
+    { value: 'provider', label: 'provider' REDACTED,
+    { value: 'client', label: 'client' REDACTED,
+    { value: 'platform', label: 'platform' REDACTED
+  ]
+REDACTED)
+
+const resolvedSelectOptions = computed(() => {
+  return [
+    { value: 'unresolved', label: t('admin.ops.errorDetails.unresolved') || 'unresolved' REDACTED,
+    { value: 'all', label: t('common.all') REDACTED,
+    { value: 'resolved', label: t('admin.ops.errorDetails.resolved') || 'resolved' REDACTED
+  ]
+REDACTED)
+
 const phaseSelectOptions = computed(() => {
   const options = [
     { value: '', label: t('common.all') REDACTED,
+    { value: 'request', label: 'request' REDACTED,
+    { value: 'auth', label: 'auth' REDACTED,
+    { value: 'routing', label: 'routing' REDACTED,
     { value: 'upstream', label: 'upstream' REDACTED,
     { value: 'network', label: 'network' REDACTED,
-    { value: 'routing', label: 'routing' REDACTED,
-    { value: 'auth', label: 'auth' REDACTED,
-    { value: 'billing', label: 'billing' REDACTED,
-    { value: 'concurrency', label: 'concurrency' REDACTED,
     { value: 'internal', label: 'internal' REDACTED
   ]
   return options
@@ -92,6 +110,14 @@ async function fetchErrorLogs() {
     const phaseVal = String(phase.value || '').trim()
     if (phaseVal) params.phase = phaseVal
 
+    const ownerVal = String(errorOwner.value || '').trim()
+    if (ownerVal) params.error_owner = ownerVal
+
+    const resolvedVal = String(resolvedStatus.value || '').trim()
+    if (resolvedVal === 'resolved') params.resolved = 'true'
+    else if (resolvedVal === 'unresolved') params.resolved = 'false'
+    // 'all' -> omit
+
     const res = await opsAPI.listErrorLogs(params)
     rows.value = res.items || []
     total.value = res.total || 0
@@ -108,6 +134,8 @@ function resetFilters() {
   q.value = ''
   statusCode.value = null
   phase.value = props.errorType === 'upstream' ? 'upstream' : ''
+  errorOwner.value = ''
+  resolvedStatus.value = 'unresolved'
   accountIdInput.value = ''
   page.value = 1
   fetchErrorLogs()
@@ -154,7 +182,7 @@ watch(
 )
 
 watch(
-  () => [statusCode.value, phase.value] as const,
+  () => [statusCode.value, phase.value, errorOwner.value, resolvedStatus.value] as const,
   () => {
     if (!props.show) return
     page.value = 1
@@ -177,8 +205,8 @@ watch(
     <div class="flex h-full min-h-0 flex-col">
       <!-- Filters -->
       <div class="mb-4 flex-shrink-0 border-b border-gray-200 pb-4 dark:border-dark-700">
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <div class="lg:col-span-5">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-14">
+          <div class="lg:col-span-4">
             <div class="relative group">
               <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
                 <svg
@@ -208,6 +236,14 @@ watch(
           </div>
 
           <div class="lg:col-span-2">
+            <Select :model-value="errorOwner" :options="ownerSelectOptions" class="w-full" @update:model-value="errorOwner = String($event ?? '')" />
+          </div>
+
+          <div class="lg:col-span-2">
+            <Select :model-value="resolvedStatus" :options="resolvedSelectOptions" class="w-full" @update:model-value="resolvedStatus = String($event ?? 'unresolved')" />
+          </div>
+
+          <div class="lg:col-span-1">
             <input
               v-model="accountIdInput"
               type="text"

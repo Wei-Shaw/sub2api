@@ -169,7 +169,13 @@ const QUERY_KEYS = {
   platform: 'platform',
   groupId: 'group_id',
   queryMode: 'mode',
-  fullscreen: 'fullscreen'
+  fullscreen: 'fullscreen',
+
+  // Deep links
+  openErrorDetails: 'open_error_details',
+  errorType: 'error_type',
+  alertRuleId: 'alert_rule_id',
+  openAlertRules: 'open_alert_rules'
 REDACTED as const
 
 const isApplyingRouteQuery = ref(false)
@@ -248,6 +254,24 @@ const applyRouteQueryToState = () => {
   REDACTED else {
     const fallback = adminSettingsStore.opsQueryModeDefault || 'auto'
     queryMode.value = allowedQueryModes.has(fallback as QueryMode) ? (fallback as QueryMode) : 'auto'
+  REDACTED
+
+  // Deep links
+  const openRules = readQueryString(QUERY_KEYS.openAlertRules)
+  if (openRules === '1' || openRules === 'true') {
+    showAlertRulesCard.value = true
+  REDACTED
+
+  const ruleID = readQueryNumber(QUERY_KEYS.alertRuleId)
+  if (typeof ruleID === 'number' && ruleID > 0) {
+    showAlertRulesCard.value = true
+  REDACTED
+
+  const openErr = readQueryString(QUERY_KEYS.openErrorDetails)
+  if (openErr === '1' || openErr === 'true') {
+    const typ = readQueryString(QUERY_KEYS.errorType)
+    errorDetailsType.value = typ === 'upstream' ? 'upstream' : 'request'
+    showErrorDetails.value = true
   REDACTED
 REDACTED
 

@@ -19,6 +19,12 @@
                 scope="col"
                 class="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-dark-400"
               >
+                {{ t('admin.ops.errorLog.type') REDACTEDREDACTED
+              </th>
+              <th
+                scope="col"
+                class="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-dark-400"
+              >
                 {{ t('admin.ops.errorLog.context') REDACTEDREDACTED
               </th>
               <th
@@ -49,7 +55,7 @@
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
             <tr v-if="rows.length === 0" class="bg-white dark:bg-dark-900">
-              <td colspan="6" class="py-16 text-center text-sm text-gray-400 dark:text-dark-500">
+              <td colspan="7" class="py-16 text-center text-sm text-gray-400 dark:text-dark-500">
                 {{ t('admin.ops.errorLog.noErrors') REDACTEDREDACTED
               </td>
             </tr>
@@ -76,6 +82,30 @@
                   >
                     {{ (log.request_id || log.client_request_id || '').substring(0, 12) REDACTEDREDACTED
                   </span>
+                </div>
+              </td>
+
+              <!-- Type -->
+              <td class="px-6 py-4">
+                <div class="flex flex-col gap-1">
+                  <span
+                    :class="[
+                      'inline-flex items-center rounded-lg px-2 py-1 text-xs font-black ring-1 ring-inset shadow-sm',
+                      getTypeBadge(log).className
+                    ]"
+                  >
+                    {{ getTypeBadge(log).label REDACTEDREDACTED
+                  </span>
+                  <div class="flex flex-wrap gap-x-3 gap-y-1">
+                    <div v-if="(log as any).error_owner" class="flex items-center gap-1">
+                      <span class="h-1 w-1 rounded-full bg-gray-300"></span>
+                      <span class="text-[9px] font-black uppercase tracking-tighter text-gray-400">{{ (log as any).error_owner REDACTEDREDACTED</span>
+                    </div>
+                    <div v-if="(log as any).error_source" class="flex items-center gap-1">
+                      <span class="h-1 w-1 rounded-full bg-gray-300"></span>
+                      <span class="text-[9px] font-black uppercase tracking-tighter text-gray-400">{{ (log as any).error_source REDACTEDREDACTED</span>
+                    </div>
+                  </div>
                 </div>
               </td>
 
@@ -181,6 +211,37 @@ import { useI18n REDACTED from 'vue-i18n'
 import Pagination from '@/components/common/Pagination.vue'
 import type { OpsErrorLog REDACTED from '@/api/admin/ops'
 import { getSeverityClass, formatDateTime REDACTED from '../utils/opsFormatters'
+
+function getTypeBadge(log: OpsErrorLog): { label: string; className: string REDACTED {
+  const phase = String(log.phase || '').toLowerCase()
+  const owner = String((log as any).error_owner || '').toLowerCase()
+
+  // Mapping aligned with the design:
+  // - upstream/provider => 🔴 上游
+  // - request/client => 🟡 请求
+  // - auth/client => 🔵 认证
+  // - routing/platform => 🟣 路由
+  // - internal/platform => ⚫ 内部
+  if (phase === 'upstream' && owner === 'provider') {
+    return { label: '🔴 上游', className: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/30' REDACTED
+  REDACTED
+  if (phase === 'request' && owner === 'client') {
+    return { label: '🟡 请求', className: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/30' REDACTED
+  REDACTED
+  if (phase === 'auth' && owner === 'client') {
+    return { label: '🔵 认证', className: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-500/30' REDACTED
+  REDACTED
+  if (phase === 'routing' && owner === 'platform') {
+    return { label: '🟣 路由', className: 'bg-purple-50 text-purple-700 ring-purple-600/20 dark:bg-purple-900/30 dark:text-purple-400 dark:ring-purple-500/30' REDACTED
+  REDACTED
+  if (phase === 'internal' && owner === 'platform') {
+    return { label: '⚫ 内部', className: 'bg-gray-100 text-gray-800 ring-gray-600/20 dark:bg-dark-700 dark:text-gray-200 dark:ring-dark-500/40' REDACTED
+  REDACTED
+
+  // Fallback: show phase/owner for unknown combos.
+  const fallback = phase || owner || 'unknown'
+  return { label: fallback, className: 'bg-gray-50 text-gray-700 ring-gray-600/10 dark:bg-dark-900 dark:text-gray-300 dark:ring-dark-700' REDACTED
+REDACTED
 
 const { t REDACTED = useI18n()
 
