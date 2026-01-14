@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -372,8 +374,135 @@ REDACTED
 	response.Success(c, gin.H{"deleted": trueREDACTED)
 REDACTED
 
+// GetAlertEvent returns a single ops alert event.
+// GET /api/v1/admin/ops/alert-events/:id
+func (h *OpsHandler) GetAlertEvent(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid event ID")
+		return
+REDACTED
+
+	ev, err := h.opsService.GetAlertEventByID(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, ev)
+REDACTED
+
+// UpdateAlertEventStatus updates an ops alert event status.
+// PUT /api/v1/admin/ops/alert-events/:id/status
+func (h *OpsHandler) UpdateAlertEventStatus(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid event ID")
+		return
+REDACTED
+
+	var payload struct {
+		Status string `json:"status"`
+REDACTED
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+REDACTED
+	payload.Status = strings.TrimSpace(payload.Status)
+	if payload.Status == "" {
+		response.BadRequest(c, "Invalid status")
+		return
+REDACTED
+	if payload.Status != service.OpsAlertStatusResolved && payload.Status != service.OpsAlertStatusManualResolved {
+		response.BadRequest(c, "Invalid status")
+		return
+REDACTED
+
+	var resolvedAt *time.Time
+	if payload.Status == service.OpsAlertStatusResolved || payload.Status == service.OpsAlertStatusManualResolved {
+		now := time.Now().UTC()
+		resolvedAt = &now
+REDACTED
+	if err := h.opsService.UpdateAlertEventStatus(c.Request.Context(), id, payload.Status, resolvedAt); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, gin.H{"updated": trueREDACTED)
+REDACTED
+
 // ListAlertEvents lists recent ops alert events.
 // GET /api/v1/admin/ops/alert-events
+// CreateAlertSilence creates a scoped silence for ops alerts.
+// POST /api/v1/admin/ops/alert-silences
+func (h *OpsHandler) CreateAlertSilence(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	var payload struct {
+		RuleID   int64   `json:"rule_id"`
+		Platform string  `json:"platform"`
+		GroupID  *int64  `json:"group_id"`
+		Region   *string `json:"region"`
+		Until    string  `json:"until"`
+		Reason   string  `json:"reason"`
+REDACTED
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+REDACTED
+	until, err := time.Parse(time.RFC3339, strings.TrimSpace(payload.Until))
+	if err != nil {
+		response.BadRequest(c, "Invalid until")
+		return
+REDACTED
+
+	createdBy := (*int64)(nil)
+	if subject, ok := middleware.GetAuthSubjectFromContext(c); ok {
+		uid := subject.UserID
+		createdBy = &uid
+REDACTED
+
+	silence := &service.OpsAlertSilence{
+		RuleID:    payload.RuleID,
+		Platform:  strings.TrimSpace(payload.Platform),
+		GroupID:   payload.GroupID,
+		Region:    payload.Region,
+		Until:     until,
+		Reason:    strings.TrimSpace(payload.Reason),
+		CreatedBy: createdBy,
+REDACTED
+
+	created, err := h.opsService.CreateAlertSilence(c.Request.Context(), silence)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, created)
+REDACTED
+
 func (h *OpsHandler) ListAlertEvents(c *gin.Context) {
 	if h.opsService == nil {
 		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
@@ -384,7 +513,7 @@ REDACTED
 		return
 REDACTED
 
-	limit := 100
+	limit := 20
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n <= 0 {
@@ -398,6 +527,43 @@ REDACTED
 		Limit:    limit,
 		Status:   strings.TrimSpace(c.Query("status")),
 		Severity: strings.TrimSpace(c.Query("severity")),
+REDACTED
+
+	if v := strings.TrimSpace(c.Query("email_sent")); v != "" {
+		vv := strings.ToLower(v)
+		switch vv {
+		case "true", "1":
+			b := true
+			filter.EmailSent = &b
+		case "false", "0":
+			b := false
+			filter.EmailSent = &b
+		default:
+			response.BadRequest(c, "Invalid email_sent")
+			return
+	REDACTED
+REDACTED
+
+	// Cursor pagination
+	if rawTS := strings.TrimSpace(c.Query("before_fired_at")); rawTS != "" {
+		ts, err := time.Parse(time.RFC3339Nano, rawTS)
+		if err != nil {
+			if t2, err2 := time.Parse(time.RFC3339, rawTS); err2 == nil {
+				ts = t2
+		REDACTED else {
+				response.BadRequest(c, "Invalid before_fired_at")
+				return
+		REDACTED
+	REDACTED
+		filter.BeforeFiredAt = &ts
+REDACTED
+	if rawID := strings.TrimSpace(c.Query("before_id")); rawID != "" {
+		id, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "Invalid before_id")
+			return
+	REDACTED
+		filter.BeforeID = &id
 REDACTED
 
 	// Optional global filter support (platform/group/time range).

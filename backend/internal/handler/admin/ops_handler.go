@@ -80,6 +80,25 @@ REDACTED
 	if phase := strings.TrimSpace(c.Query("phase")); phase != "" {
 		filter.Phase = phase
 REDACTED
+	if owner := strings.TrimSpace(c.Query("error_owner")); owner != "" {
+		filter.Owner = owner
+REDACTED
+	if source := strings.TrimSpace(c.Query("error_source")); source != "" {
+		filter.Source = source
+REDACTED
+	if v := strings.TrimSpace(c.Query("resolved")); v != "" {
+		switch strings.ToLower(v) {
+		case "1", "true", "yes":
+			b := true
+			filter.Resolved = &b
+		case "0", "false", "no":
+			b := false
+			filter.Resolved = &b
+		default:
+			response.BadRequest(c, "Invalid resolved")
+			return
+	REDACTED
+REDACTED
 	if q := strings.TrimSpace(c.Query("q")); q != "" {
 		filter.Query = q
 REDACTED
@@ -242,6 +261,11 @@ REDACTED
 type opsRetryRequest struct {
 	Mode            string `json:"mode"`
 	PinnedAccountID *int64 `json:"pinned_account_id"`
+	Force           bool   `json:"force"`
+REDACTED
+
+type opsResolveRequest struct {
+	Resolved bool `json:"resolved"`
 REDACTED
 
 // RetryErrorRequest retries a failed request using stored request_body.
@@ -278,6 +302,8 @@ REDACTED
 		req.Mode = service.OpsRetryModeClient
 REDACTED
 
+	// Force flag is currently a UI-level acknowledgement. Server may still enforce safety constraints.
+	_ = req.Force
 	result, err := h.opsService.RetryError(c.Request.Context(), subject.UserID, id, req.Mode, req.PinnedAccountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -285,6 +311,81 @@ REDACTED
 REDACTED
 
 	response.Success(c, result)
+REDACTED
+
+// ListRetryAttempts lists retry attempts for an error log.
+// GET /api/v1/admin/ops/errors/:id/retries
+func (h *OpsHandler) ListRetryAttempts(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	idStr := strings.TrimSpace(c.Param("id"))
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid error id")
+		return
+REDACTED
+
+	limit := 50
+	if v := strings.TrimSpace(c.Query("limit")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			response.BadRequest(c, "Invalid limit")
+			return
+	REDACTED
+		limit = n
+REDACTED
+
+	items, err := h.opsService.ListRetryAttemptsByErrorID(c.Request.Context(), id, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, items)
+REDACTED
+
+// UpdateErrorResolution allows manual resolve/unresolve.
+// PUT /api/v1/admin/ops/errors/:id/resolve
+func (h *OpsHandler) UpdateErrorResolution(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+REDACTED
+
+	idStr := strings.TrimSpace(c.Param("id"))
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid error id")
+		return
+REDACTED
+
+	var req opsResolveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+	uid := subject.UserID
+	if err := h.opsService.UpdateErrorResolution(c.Request.Context(), id, req.Resolved, &uid, nil); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, gin.H{"ok": trueREDACTED)
 REDACTED
 
 func parseOpsTimeRange(c *gin.Context, defaultRange string) (time.Time, time.Time, error) {
@@ -358,6 +459,10 @@ func parseOpsDuration(v string) (time.Duration, bool) {
 		return 6 * time.Hour, true
 	case "24h":
 		return 24 * time.Hour, true
+	case "7d":
+		return 7 * 24 * time.Hour, true
+	case "30d":
+		return 30 * 24 * time.Hour, true
 	default:
 		return 0, false
 REDACTED
