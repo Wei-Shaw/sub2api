@@ -2002,10 +2002,8 @@ export default {
       noSystemMetrics: '尚未收集系统指标。',
       collectedAt: '采集时间：',
       window: '窗口',
-      cpu: 'CPU',
       memory: '内存',
       db: '数据库',
-      redis: 'Redis',
       goroutines: '协程',
       jobs: '后台任务',
       jobsHelp: '点击“明细”查看任务心跳与报错信息',
@@ -2051,7 +2049,6 @@ export default {
       p99: 'p99',
       avg: 'avg',
       max: 'max',
-      qps: 'QPS',
       requests: '请求数',
       requestsTitle: '请求',
       upstream: '上游',
@@ -2205,7 +2202,6 @@ export default {
         REDACTED,
         total: '总计：',
         searchPlaceholder: '搜索 request_id / client_request_id / message',
-        accountIdPlaceholder: 'account_id'
       REDACTED,
       // Error Detail Modal
       errorDetail: {
@@ -2240,7 +2236,6 @@ export default {
           requestId: '请求ID'
         REDACTED,
         retryMeta: {
-          http: 'HTTP',
           used: '使用账号',
           success: '成功',
           pinned: '固定账号'
@@ -2257,7 +2252,6 @@ export default {
         group: '分组',
         account: '账号',
         latency: '请求时长',
-        ttft: 'TTFT',
         businessLimited: '业务限制',
         requestPath: '请求路径',
         timings: '时序信息',
@@ -2278,7 +2272,6 @@ export default {
         confirmRetry: '确认重试',
         retrySuccess: '重试成功',
         retryFailed: '重试失败',
-        na: 'N/A',
         retryHint: '重试将使用相同的请求参数重新发送请求',
         retryClientHint: '使用客户端重试（不固定账号）',
         retryUpstreamHint: '使用上游固定重试（固定到错误的账号）',
@@ -2501,7 +2494,6 @@ export default {
           title: '告警静默（维护模式）',
           enabled: '启用静默',
           globalUntil: '静默截止时间（RFC3339）',
-          untilPlaceholder: '2026-01-05T00:00:00Z',
           untilHint: '建议填写截止时间，避免忘记关闭静默。',
           reason: '原因',
           reasonPlaceholder: '例如：计划维护',

@@ -407,7 +407,7 @@ REDACTED)
               v-model="draftAlert.silencing.global_until_rfc3339"
               type="text"
               class="input font-mono text-sm"
-              :placeholder="t('admin.ops.runtime.silencing.untilPlaceholder')"
+                      placeholder="2026-01-05T00:00:00Z"
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.silencing.untilHint') REDACTEDREDACTED</p>
           </div>
@@ -479,7 +479,7 @@ REDACTED)
                       v-model="(entry as any).until_rfc3339"
                       type="text"
                       class="input font-mono text-sm"
-                      :placeholder="t('admin.ops.runtime.silencing.untilPlaceholder')"
+              placeholder="2026-01-05T00:00:00Z"
                     />
                   </div>
 

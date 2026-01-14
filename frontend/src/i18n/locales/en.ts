@@ -1858,10 +1858,8 @@ export default {
       noSystemMetrics: 'No system metrics collected yet.',
       collectedAt: 'Collected at:',
       window: 'window',
-      cpu: 'CPU',
       memory: 'Memory',
       db: 'DB',
-      redis: 'Redis',
       goroutines: 'Goroutines',
       jobs: 'Jobs',
       jobsHelp: 'Click “Details” to view job heartbeats and recent errors',
@@ -1907,7 +1905,6 @@ export default {
       p99: 'p99:',
       avg: 'avg:',
       max: 'max:',
-      qps: 'QPS',
       requests: 'Requests',
       requestsTitle: 'Requests',
       upstream: 'Upstream',
@@ -2061,7 +2058,6 @@ export default {
         REDACTED,
         total: 'Total:',
         searchPlaceholder: 'Search request_id / client_request_id / message',
-        accountIdPlaceholder: 'account_id'
       REDACTED,
       // Error Detail Modal
       errorDetail: {
@@ -2096,7 +2092,6 @@ export default {
           requestId: 'Request ID'
         REDACTED,
         retryMeta: {
-          http: 'HTTP',
           used: 'Used',
           success: 'Success',
           pinned: 'Pinned'
@@ -2113,7 +2108,6 @@ export default {
         group: 'Group',
         account: 'Account',
         latency: 'Request Duration',
-        ttft: 'TTFT',
         businessLimited: 'Business Limited',
         requestPath: 'Request Path',
         timings: 'Timings',
@@ -2134,7 +2128,6 @@ export default {
         confirmRetry: 'Confirm Retry',
         retrySuccess: 'Retry succeeded',
         retryFailed: 'Retry failed',
-        na: 'N/A',
         retryHint: 'Retry will resend the request with the same parameters',
         retryClientHint: 'Use client retry (no account pinning)',
         retryUpstreamHint: 'Use upstream pinned retry (pin to the error account)',
@@ -2357,7 +2350,6 @@ export default {
           title: 'Alert Silencing (Maintenance Mode)',
           enabled: 'Enable silencing',
           globalUntil: 'Silence until (RFC3339)',
-          untilPlaceholder: '2026-01-05T00:00:00Z',
           untilHint: 'Leave empty to only toggle silencing without an expiry (not recommended).',
           reason: 'Reason',
           reasonPlaceholder: 'e.g., planned maintenance',
