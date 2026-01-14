@@ -984,6 +984,26 @@ REDACTED
 		args = append(args, *resolvedFilter)
 		clauses = append(clauses, "COALESCE(resolved,false) = $"+itoa(len(args)))
 REDACTED
+
+	// View filter: errors vs excluded vs all.
+	// Excluded = upstream 429/529 and business-limited (quota/concurrency/billing) errors.
+	view := ""
+	if filter != nil {
+		view = strings.ToLower(strings.TrimSpace(filter.View))
+REDACTED
+	switch view {
+	case "", "errors":
+		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)")
+	case "excluded":
+		clauses = append(clauses, "(COALESCE(is_business_limited,false) = true OR COALESCE(upstream_status_code, status_code, 0) IN (429, 529))")
+	case "all":
+		// no-op
+	default:
+		// treat unknown as default 'errors'
+		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)")
+REDACTED
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))
 		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+")")
