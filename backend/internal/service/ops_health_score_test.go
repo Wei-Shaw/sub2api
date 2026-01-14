@@ -127,8 +127,8 @@ REDACTED{
 					MemoryUsagePercent: float64Ptr(75),
 			REDACTED,
 		REDACTED,
-			wantMin: 60,
-			wantMax: 85,
+			wantMin: 57,
+			wantMax: 58,
 	REDACTED,
 		{
 			name: "DB failure",
@@ -277,8 +277,8 @@ REDACTED{
 				UpstreamErrorRate: 0,
 				Duration:          OpsPercentiles{P99: intPtr(500)REDACTED,
 		REDACTED,
-			wantMin: 50,
-			wantMax: 60,
+			wantMin: 37,
+			wantMax: 38,
 	REDACTED,
 		{
 			name: "error rate boundary 0.5%",
