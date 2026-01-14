@@ -98,7 +98,6 @@ type OpsInsertErrorLogInput struct {
 	// It is set by OpsService.RecordError before persisting.
 	UpstreamErrorsJSON *string
 
-	DurationMs         *int
 	TimeToFirstTokenMs *int64
 
 	RequestBodyJSON      *string // sanitized json string (not raw bytes)

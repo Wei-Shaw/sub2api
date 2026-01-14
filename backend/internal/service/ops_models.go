@@ -22,14 +22,13 @@ type OpsErrorLog struct {
 	Platform   string `json:"platform"`
 	Model      string `json:"model"`
 
-	LatencyMs *int `json:"latency_ms"`
-
 	IsRetryable bool `json:"is_retryable"`
 	RetryCount  int  `json:"retry_count"`
 
 	Resolved          bool       `json:"resolved"`
 	ResolvedAt        *time.Time `json:"resolved_at"`
 	ResolvedByUserID  *int64     `json:"resolved_by_user_id"`
+	ResolvedByUserName string     `json:"resolved_by_user_name"`
 	ResolvedRetryID   *int64     `json:"resolved_retry_id"`
 	ResolvedStatusRaw string     `json:"-"`
 
@@ -37,10 +36,13 @@ type OpsErrorLog struct {
 	RequestID       string `json:"request_id"`
 	Message         string `json:"message"`
 
-	UserID    *int64 `json:"user_id"`
-	APIKeyID  *int64 `json:"api_key_id"`
-	AccountID *int64 `json:"account_id"`
-	GroupID   *int64 `json:"group_id"`
+	UserID      *int64 `json:"user_id"`
+	UserEmail   string `json:"user_email"`
+	APIKeyID    *int64 `json:"api_key_id"`
+	AccountID   *int64 `json:"account_id"`
+	AccountName string `json:"account_name"`
+	GroupID     *int64 `json:"group_id"`
+	GroupName   string `json:"group_name"`
 
 	ClientIP    *string `json:"client_ip"`
 	RequestPath string  `json:"request_path"`
@@ -110,6 +112,7 @@ type OpsRetryAttempt struct {
 	SourceErrorID     int64  `json:"source_error_id"`
 	Mode              string `json:"mode"`
 	PinnedAccountID   *int64 `json:"pinned_account_id"`
+	PinnedAccountName string `json:"pinned_account_name"`
 
 	Status     string     `json:"status"`
 	StartedAt  *time.Time `json:"started_at"`
@@ -121,6 +124,7 @@ type OpsRetryAttempt struct {
 	HTTPStatusCode    *int    `json:"http_status_code"`
 	UpstreamRequestID *string `json:"upstream_request_id"`
 	UsedAccountID     *int64  `json:"used_account_id"`
+	UsedAccountName   string  `json:"used_account_name"`
 	ResponsePreview   *string `json:"response_preview"`
 	ResponseTruncated *bool   `json:"response_truncated"`
 

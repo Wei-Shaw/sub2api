@@ -368,9 +368,11 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		Aggregation: OpsAggregationSettings{
 			AggregationEnabled: false,
 	REDACTED,
-		IgnoreCountTokensErrors: false,
-		AutoRefreshEnabled:      false,
-		AutoRefreshIntervalSec:  30,
+		IgnoreCountTokensErrors:   false,
+		IgnoreContextCanceled:     true,  // Default to true - client disconnects are not errors
+		IgnoreNoAvailableAccounts: false, // Default to false - this is a real routing issue
+		AutoRefreshEnabled:        false,
+		AutoRefreshIntervalSec:    30,
 REDACTED
 REDACTED
 

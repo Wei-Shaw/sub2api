@@ -38,8 +38,9 @@ type OpsUpstreamErrorEvent struct {
 	AtUnixMs int64 `json:"at_unix_ms,omitempty"`
 
 	// Context
-	Platform  string `json:"platform,omitempty"`
-	AccountID int64  `json:"account_id,omitempty"`
+	Platform    string `json:"platform,omitempty"`
+	AccountID   int64  `json:"account_id,omitempty"`
+	AccountName string `json:"account_name,omitempty"`
 
 	// Outcome
 	UpstreamStatusCode int    `json:"upstream_status_code,omitempty"`

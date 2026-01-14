@@ -81,6 +81,8 @@ type OpsAdvancedSettings struct {
 	DataRetention           OpsDataRetentionSettings `json:"data_retention"`
 	Aggregation             OpsAggregationSettings   `json:"aggregation"`
 	IgnoreCountTokensErrors bool                     `json:"ignore_count_tokens_errors"`
+	IgnoreContextCanceled   bool                     `json:"ignore_context_canceled"`
+	IgnoreNoAvailableAccounts bool                   `json:"ignore_no_available_accounts"`
 	AutoRefreshEnabled      bool                     `json:"auto_refresh_enabled"`
 	AutoRefreshIntervalSec  int                      `json:"auto_refresh_interval_seconds"`
 REDACTED
