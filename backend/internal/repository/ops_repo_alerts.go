@@ -354,7 +354,7 @@ SELECT
   created_at
 FROM ops_alert_events
 ` + where + `
-ORDER BY fired_at DESC
+ORDER BY fired_at DESC, id DESC
 LIMIT ` + limitArg
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
@@ -411,6 +411,43 @@ REDACTED
 		return nil, err
 REDACTED
 	return out, nil
+REDACTED
+
+func (r *opsRepository) GetAlertEventByID(ctx context.Context, eventID int64) (*service.OpsAlertEvent, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+REDACTED
+	if eventID <= 0 {
+		return nil, fmt.Errorf("invalid event id")
+REDACTED
+
+	q := `
+SELECT
+  id,
+  COALESCE(rule_id, 0),
+  COALESCE(severity, ''),
+  COALESCE(status, ''),
+  COALESCE(title, ''),
+  COALESCE(description, ''),
+  metric_value,
+  threshold_value,
+  dimensions,
+  fired_at,
+  resolved_at,
+  email_sent,
+  created_at
+FROM ops_alert_events
+WHERE id = $1`
+
+	row := r.db.QueryRowContext(ctx, q, eventID)
+	ev, err := scanOpsAlertEvent(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+	REDACTED
+		return nil, err
+REDACTED
+	return ev, nil
 REDACTED
 
 func (r *opsRepository) GetActiveAlertEvent(ctx context.Context, ruleID int64) (*service.OpsAlertEvent, error) {
@@ -591,6 +628,121 @@ type opsAlertEventRow interface {
 	Scan(dest ...any) error
 REDACTED
 
+func (r *opsRepository) CreateAlertSilence(ctx context.Context, input *service.OpsAlertSilence) (*service.OpsAlertSilence, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+REDACTED
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
+REDACTED
+	if input.RuleID <= 0 {
+		return nil, fmt.Errorf("invalid rule_id")
+REDACTED
+	platform := strings.TrimSpace(input.Platform)
+	if platform == "" {
+		return nil, fmt.Errorf("invalid platform")
+REDACTED
+	if input.Until.IsZero() {
+		return nil, fmt.Errorf("invalid until")
+REDACTED
+
+	q := `
+INSERT INTO ops_alert_silences (
+  rule_id,
+  platform,
+  group_id,
+  region,
+  until,
+  reason,
+  created_by,
+  created_at
+) VALUES (
+  $1,$2,$3,$4,$5,$6,$7,NOW()
+)
+RETURNING id, rule_id, platform, group_id, region, until, COALESCE(reason,''), created_by, created_at`
+
+	row := r.db.QueryRowContext(
+		ctx,
+		q,
+		input.RuleID,
+		platform,
+		opsNullInt64(input.GroupID),
+		opsNullString(input.Region),
+		input.Until,
+		opsNullString(input.Reason),
+		opsNullInt64(input.CreatedBy),
+	)
+
+	var out service.OpsAlertSilence
+	var groupID sql.NullInt64
+	var region sql.NullString
+	var createdBy sql.NullInt64
+	if err := row.Scan(
+		&out.ID,
+		&out.RuleID,
+		&out.Platform,
+		&groupID,
+		&region,
+		&out.Until,
+		&out.Reason,
+		&createdBy,
+		&out.CreatedAt,
+	); err != nil {
+		return nil, err
+REDACTED
+	if groupID.Valid {
+		v := groupID.Int64
+		out.GroupID = &v
+REDACTED
+	if region.Valid {
+		v := strings.TrimSpace(region.String)
+		if v != "" {
+			out.Region = &v
+	REDACTED
+REDACTED
+	if createdBy.Valid {
+		v := createdBy.Int64
+		out.CreatedBy = &v
+REDACTED
+	return &out, nil
+REDACTED
+
+func (r *opsRepository) IsAlertSilenced(ctx context.Context, ruleID int64, platform string, groupID *int64, region *string, now time.Time) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, fmt.Errorf("nil ops repository")
+REDACTED
+	if ruleID <= 0 {
+		return false, fmt.Errorf("invalid rule id")
+REDACTED
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return false, nil
+REDACTED
+	if now.IsZero() {
+		now = time.Now().UTC()
+REDACTED
+
+	q := `
+SELECT 1
+FROM ops_alert_silences
+WHERE rule_id = $1
+  AND platform = $2
+  AND (group_id IS NOT DISTINCT FROM $3)
+  AND (region IS NOT DISTINCT FROM $4)
+  AND until > $5
+LIMIT 1`
+
+	var dummy int
+	err := r.db.QueryRowContext(ctx, q, ruleID, platform, opsNullInt64(groupID), opsNullString(region), now).Scan(&dummy)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+	REDACTED
+		return false, err
+REDACTED
+	return true, nil
+REDACTED
+
 func scanOpsAlertEvent(row opsAlertEventRow) (*service.OpsAlertEvent, error) {
 	var ev service.OpsAlertEvent
 	var metricValue sql.NullFloat64
@@ -652,6 +804,10 @@ REDACTED
 		args = append(args, severity)
 		clauses = append(clauses, "severity = $"+itoa(len(args)))
 REDACTED
+	if filter.EmailSent != nil {
+		args = append(args, *filter.EmailSent)
+		clauses = append(clauses, "email_sent = $"+itoa(len(args)))
+REDACTED
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
 		args = append(args, *filter.StartTime)
 		clauses = append(clauses, "fired_at >= $"+itoa(len(args)))
@@ -661,6 +817,14 @@ REDACTED
 		clauses = append(clauses, "fired_at < $"+itoa(len(args)))
 REDACTED
 
+	// Cursor pagination (descending by fired_at, then id)
+	if filter.BeforeFiredAt != nil && !filter.BeforeFiredAt.IsZero() && filter.BeforeID != nil && *filter.BeforeID > 0 {
+		args = append(args, *filter.BeforeFiredAt)
+		tsArg := "$" + itoa(len(args))
+		args = append(args, *filter.BeforeID)
+		idArg := "$" + itoa(len(args))
+		clauses = append(clauses, fmt.Sprintf("(fired_at < %s OR (fired_at = %s AND id < %s))", tsArg, tsArg, idArg))
+REDACTED
 	// Dimensions are stored in JSONB. We filter best-effort without requiring GIN indexes.
 	if platform := strings.TrimSpace(filter.Platform); platform != "" {
 		args = append(args, platform)

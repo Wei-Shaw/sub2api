@@ -134,6 +134,7 @@ REDACTED
 		pageSize = 500
 REDACTED
 
+	// buildOpsErrorLogsWhere may mutate filter (default resolved filter).
 	where, args := buildOpsErrorLogsWhere(filter)
 	countSQL := "SELECT COUNT(*) FROM ops_error_logs " + where
 
@@ -150,11 +151,19 @@ SELECT
   created_at,
   error_phase,
   error_type,
+  COALESCE(error_owner, ''),
+  COALESCE(error_source, ''),
   severity,
   COALESCE(upstream_status_code, status_code, 0),
   COALESCE(platform, ''),
   COALESCE(model, ''),
   duration_ms,
+  COALESCE(is_retryable, false),
+  COALESCE(retry_count, 0),
+  COALESCE(resolved, false),
+  resolved_at,
+  resolved_by_user_id,
+  resolved_retry_id,
   COALESCE(client_request_id, ''),
   COALESCE(request_id, ''),
   COALESCE(error_message, ''),
@@ -186,16 +195,27 @@ REDACTED
 		var apiKeyID sql.NullInt64
 		var accountID sql.NullInt64
 		var groupID sql.NullInt64
+		var resolvedAt sql.NullTime
+		var resolvedBy sql.NullInt64
+		var resolvedRetryID sql.NullInt64
 		if err := rows.Scan(
 			&item.ID,
 			&item.CreatedAt,
 			&item.Phase,
 			&item.Type,
+			&item.Owner,
+			&item.Source,
 			&item.Severity,
 			&statusCode,
 			&item.Platform,
 			&item.Model,
 			&latency,
+			&item.IsRetryable,
+			&item.RetryCount,
+			&item.Resolved,
+			&resolvedAt,
+			&resolvedBy,
+			&resolvedRetryID,
 			&item.ClientRequestID,
 			&item.RequestID,
 			&item.Message,
@@ -208,6 +228,18 @@ REDACTED
 			&item.Stream,
 		); err != nil {
 			return nil, err
+	REDACTED
+		if resolvedAt.Valid {
+			t := resolvedAt.Time
+			item.ResolvedAt = &t
+	REDACTED
+		if resolvedBy.Valid {
+			v := resolvedBy.Int64
+			item.ResolvedByUserID = &v
+	REDACTED
+		if resolvedRetryID.Valid {
+			v := resolvedRetryID.Int64
+			item.ResolvedRetryID = &v
 	REDACTED
 		if latency.Valid {
 			v := int(latency.Int64)
@@ -262,11 +294,19 @@ SELECT
   created_at,
   error_phase,
   error_type,
+  COALESCE(error_owner, ''),
+  COALESCE(error_source, ''),
   severity,
   COALESCE(upstream_status_code, status_code, 0),
   COALESCE(platform, ''),
   COALESCE(model, ''),
   duration_ms,
+  COALESCE(is_retryable, false),
+  COALESCE(retry_count, 0),
+  COALESCE(resolved, false),
+  resolved_at,
+  resolved_by_user_id,
+  resolved_retry_id,
   COALESCE(client_request_id, ''),
   COALESCE(request_id, ''),
   COALESCE(error_message, ''),
@@ -301,6 +341,9 @@ LIMIT 1`
 	var latency sql.NullInt64
 	var statusCode sql.NullInt64
 	var upstreamStatusCode sql.NullInt64
+	var resolvedAt sql.NullTime
+	var resolvedBy sql.NullInt64
+	var resolvedRetryID sql.NullInt64
 	var clientIP sql.NullString
 	var userID sql.NullInt64
 	var apiKeyID sql.NullInt64
@@ -318,11 +361,19 @@ LIMIT 1`
 		&out.CreatedAt,
 		&out.Phase,
 		&out.Type,
+		&out.Owner,
+		&out.Source,
 		&out.Severity,
 		&statusCode,
 		&out.Platform,
 		&out.Model,
 		&latency,
+		&out.IsRetryable,
+		&out.RetryCount,
+		&out.Resolved,
+		&resolvedAt,
+		&resolvedBy,
+		&resolvedRetryID,
 		&out.ClientRequestID,
 		&out.RequestID,
 		&out.Message,
@@ -358,6 +409,18 @@ REDACTED
 	if latency.Valid {
 		v := int(latency.Int64)
 		out.LatencyMs = &v
+REDACTED
+	if resolvedAt.Valid {
+		t := resolvedAt.Time
+		out.ResolvedAt = &t
+REDACTED
+	if resolvedBy.Valid {
+		v := resolvedBy.Int64
+		out.ResolvedByUserID = &v
+REDACTED
+	if resolvedRetryID.Valid {
+		v := resolvedRetryID.Int64
+		out.ResolvedRetryID = &v
 REDACTED
 	if clientIP.Valid {
 		s := clientIP.String
@@ -487,9 +550,15 @@ SET
   status = $2,
   finished_at = $3,
   duration_ms = $4,
-  result_request_id = $5,
-  result_error_id = $6,
-  error_message = $7
+  success = $5,
+  http_status_code = $6,
+  upstream_request_id = $7,
+  used_account_id = $8,
+  response_preview = $9,
+  response_truncated = $10,
+  result_request_id = $11,
+  result_error_id = $12,
+  error_message = $13
 WHERE id = $1`
 
 	_, err := r.db.ExecContext(
@@ -499,8 +568,14 @@ WHERE id = $1`
 		strings.TrimSpace(input.Status),
 		nullTime(input.FinishedAt),
 		input.DurationMs,
+		nullBool(input.Success),
+		nullInt(input.HTTPStatusCode),
+		opsNullString(input.UpstreamRequestID),
+		nullInt64(input.UsedAccountID),
+		opsNullString(input.ResponsePreview),
+		nullBool(input.ResponseTruncated),
 		opsNullString(input.ResultRequestID),
-		opsNullInt64(input.ResultErrorID),
+		nullInt64(input.ResultErrorID),
 		opsNullString(input.ErrorMessage),
 	)
 	return err
@@ -526,6 +601,12 @@ SELECT
   started_at,
   finished_at,
   duration_ms,
+  success,
+  http_status_code,
+  upstream_request_id,
+  used_account_id,
+  response_preview,
+  response_truncated,
   result_request_id,
   result_error_id,
   error_message
@@ -540,6 +621,12 @@ LIMIT 1`
 	var startedAt sql.NullTime
 	var finishedAt sql.NullTime
 	var durationMs sql.NullInt64
+	var success sql.NullBool
+	var httpStatusCode sql.NullInt64
+	var upstreamRequestID sql.NullString
+	var usedAccountID sql.NullInt64
+	var responsePreview sql.NullString
+	var responseTruncated sql.NullBool
 	var resultRequestID sql.NullString
 	var resultErrorID sql.NullInt64
 	var errorMessage sql.NullString
@@ -555,6 +642,12 @@ LIMIT 1`
 		&startedAt,
 		&finishedAt,
 		&durationMs,
+		&success,
+		&httpStatusCode,
+		&upstreamRequestID,
+		&usedAccountID,
+		&responsePreview,
+		&responseTruncated,
 		&resultRequestID,
 		&resultErrorID,
 		&errorMessage,
@@ -579,6 +672,30 @@ REDACTED
 		v := durationMs.Int64
 		out.DurationMs = &v
 REDACTED
+	if success.Valid {
+		v := success.Bool
+		out.Success = &v
+REDACTED
+	if httpStatusCode.Valid {
+		v := int(httpStatusCode.Int64)
+		out.HTTPStatusCode = &v
+REDACTED
+	if upstreamRequestID.Valid {
+		s := upstreamRequestID.String
+		out.UpstreamRequestID = &s
+REDACTED
+	if usedAccountID.Valid {
+		v := usedAccountID.Int64
+		out.UsedAccountID = &v
+REDACTED
+	if responsePreview.Valid {
+		s := responsePreview.String
+		out.ResponsePreview = &s
+REDACTED
+	if responseTruncated.Valid {
+		v := responseTruncated.Bool
+		out.ResponseTruncated = &v
+REDACTED
 	if resultRequestID.Valid {
 		s := resultRequestID.String
 		out.ResultRequestID = &s
@@ -602,18 +719,217 @@ REDACTED
 	return sql.NullTime{Time: t, Valid: trueREDACTED
 REDACTED
 
+func nullBool(v *bool) sql.NullBool {
+	if v == nil {
+		return sql.NullBool{REDACTED
+REDACTED
+	return sql.NullBool{Bool: *v, Valid: trueREDACTED
+REDACTED
+
+func (r *opsRepository) ListRetryAttemptsByErrorID(ctx context.Context, sourceErrorID int64, limit int) ([]*service.OpsRetryAttempt, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+REDACTED
+	if sourceErrorID <= 0 {
+		return nil, fmt.Errorf("invalid source_error_id")
+REDACTED
+	if limit <= 0 {
+		limit = 50
+REDACTED
+	if limit > 200 {
+		limit = 200
+REDACTED
+
+	q := `
+SELECT
+  id,
+  created_at,
+  COALESCE(requested_by_user_id, 0),
+  source_error_id,
+  COALESCE(mode, ''),
+  pinned_account_id,
+  COALESCE(status, ''),
+  started_at,
+  finished_at,
+  duration_ms,
+  success,
+  http_status_code,
+  upstream_request_id,
+  used_account_id,
+  response_preview,
+  response_truncated,
+  result_request_id,
+  result_error_id,
+  error_message
+FROM ops_retry_attempts
+WHERE source_error_id = $1
+ORDER BY created_at DESC
+LIMIT $2`
+
+	rows, err := r.db.QueryContext(ctx, q, sourceErrorID, limit)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	out := make([]*service.OpsRetryAttempt, 0, 16)
+	for rows.Next() {
+		var item service.OpsRetryAttempt
+		var pinnedAccountID sql.NullInt64
+		var requestedBy sql.NullInt64
+		var startedAt sql.NullTime
+		var finishedAt sql.NullTime
+		var durationMs sql.NullInt64
+		var success sql.NullBool
+		var httpStatusCode sql.NullInt64
+		var upstreamRequestID sql.NullString
+		var usedAccountID sql.NullInt64
+		var responsePreview sql.NullString
+		var responseTruncated sql.NullBool
+		var resultRequestID sql.NullString
+		var resultErrorID sql.NullInt64
+		var errorMessage sql.NullString
+
+		if err := rows.Scan(
+			&item.ID,
+			&item.CreatedAt,
+			&requestedBy,
+			&item.SourceErrorID,
+			&item.Mode,
+			&pinnedAccountID,
+			&item.Status,
+			&startedAt,
+			&finishedAt,
+			&durationMs,
+			&success,
+			&httpStatusCode,
+			&upstreamRequestID,
+			&usedAccountID,
+			&responsePreview,
+			&responseTruncated,
+			&resultRequestID,
+			&resultErrorID,
+			&errorMessage,
+		); err != nil {
+			return nil, err
+	REDACTED
+
+		item.RequestedByUserID = requestedBy.Int64
+		if pinnedAccountID.Valid {
+			v := pinnedAccountID.Int64
+			item.PinnedAccountID = &v
+	REDACTED
+		if startedAt.Valid {
+			t := startedAt.Time
+			item.StartedAt = &t
+	REDACTED
+		if finishedAt.Valid {
+			t := finishedAt.Time
+			item.FinishedAt = &t
+	REDACTED
+		if durationMs.Valid {
+			v := durationMs.Int64
+			item.DurationMs = &v
+	REDACTED
+		if success.Valid {
+			v := success.Bool
+			item.Success = &v
+	REDACTED
+		if httpStatusCode.Valid {
+			v := int(httpStatusCode.Int64)
+			item.HTTPStatusCode = &v
+	REDACTED
+		if upstreamRequestID.Valid {
+			s := upstreamRequestID.String
+			item.UpstreamRequestID = &s
+	REDACTED
+		if usedAccountID.Valid {
+			v := usedAccountID.Int64
+			item.UsedAccountID = &v
+	REDACTED
+		if responsePreview.Valid {
+			s := responsePreview.String
+			item.ResponsePreview = &s
+	REDACTED
+		if responseTruncated.Valid {
+			v := responseTruncated.Bool
+			item.ResponseTruncated = &v
+	REDACTED
+		if resultRequestID.Valid {
+			s := resultRequestID.String
+			item.ResultRequestID = &s
+	REDACTED
+		if resultErrorID.Valid {
+			v := resultErrorID.Int64
+			item.ResultErrorID = &v
+	REDACTED
+		if errorMessage.Valid {
+			s := errorMessage.String
+			item.ErrorMessage = &s
+	REDACTED
+
+		out = append(out, &item)
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return out, nil
+REDACTED
+
+func (r *opsRepository) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64, resolvedAt *time.Time) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+REDACTED
+	if errorID <= 0 {
+		return fmt.Errorf("invalid error id")
+REDACTED
+
+	q := `
+UPDATE ops_error_logs
+SET
+  resolved = $2,
+  resolved_at = $3,
+  resolved_by_user_id = $4,
+  resolved_retry_id = $5
+WHERE id = $1`
+
+	at := sql.NullTime{REDACTED
+	if resolvedAt != nil && !resolvedAt.IsZero() {
+		at = sql.NullTime{Time: resolvedAt.UTC(), Valid: trueREDACTED
+REDACTED else if resolved {
+		now := time.Now().UTC()
+		at = sql.NullTime{Time: now, Valid: trueREDACTED
+REDACTED
+
+	_, err := r.db.ExecContext(
+		ctx,
+		q,
+		errorID,
+		resolved,
+		at,
+		nullInt64(resolvedByUserID),
+		nullInt64(resolvedRetryID),
+	)
+	return err
+REDACTED
+
 func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
-	clauses := make([]string, 0, 8)
-	args := make([]any, 0, 8)
+	clauses := make([]string, 0, 12)
+	args := make([]any, 0, 12)
 	clauses = append(clauses, "1=1")
 
 	phaseFilter := ""
 	if filter != nil {
 		phaseFilter = strings.TrimSpace(strings.ToLower(filter.Phase))
 REDACTED
-	// ops_error_logs primarily stores client-visible error requests (status>=400),
+	// ops_error_logs stores client-visible error requests (status>=400),
 	// but we also persist "recovered" upstream errors (status<400) for upstream health visibility.
-	// By default, keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
+	// By default, keep list endpoints scoped to unresolved records if the caller didn't specify.
+	if filter != nil && filter.Resolved == nil {
+		f := false
+		filter.Resolved = &f
+REDACTED
+	// Keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
 	if phaseFilter != "upstream" {
 		clauses = append(clauses, "COALESCE(status_code, 0) >= 400")
 REDACTED
@@ -642,6 +958,18 @@ REDACTED
 	if phase := phaseFilter; phase != "" {
 		args = append(args, phase)
 		clauses = append(clauses, "error_phase = $"+itoa(len(args)))
+REDACTED
+	if owner := strings.TrimSpace(strings.ToLower(filter.Owner)); owner != "" {
+		args = append(args, owner)
+		clauses = append(clauses, "LOWER(COALESCE(error_owner,'')) = $"+itoa(len(args)))
+REDACTED
+	if source := strings.TrimSpace(strings.ToLower(filter.Source)); source != "" {
+		args = append(args, source)
+		clauses = append(clauses, "LOWER(COALESCE(error_source,'')) = $"+itoa(len(args)))
+REDACTED
+	if filter.Resolved != nil {
+		args = append(args, *filter.Resolved)
+		clauses = append(clauses, "COALESCE(resolved,false) = $"+itoa(len(args)))
 REDACTED
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))
