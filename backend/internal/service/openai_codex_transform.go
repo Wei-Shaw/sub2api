@@ -90,17 +90,11 @@ REDACTED
 		result.NormalizedModel = normalizedModel
 REDACTED
 
-	// 续链场景强制启用 store；非续链仍按原策略强制关闭存储。
-	if needsToolContinuation {
-		if v, ok := reqBody["store"].(bool); !ok || !v {
-			reqBody["store"] = true
-			result.Modified = true
-	REDACTED
-REDACTED else {
-		if v, ok := reqBody["store"].(bool); !ok || v {
-			reqBody["store"] = false
-			result.Modified = true
-	REDACTED
+	// OAuth 走 ChatGPT internal API 时，store 必须为 false；显式 true 也会强制覆盖。
+	// 避免上游返回 "Store must be set to false"。
+	if v, ok := reqBody["store"].(bool); !ok || v {
+		reqBody["store"] = false
+		result.Modified = true
 REDACTED
 	if v, ok := reqBody["stream"].(bool); !ok || !v {
 		reqBody["stream"] = true
