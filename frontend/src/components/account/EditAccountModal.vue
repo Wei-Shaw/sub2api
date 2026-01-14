@@ -549,7 +549,7 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input" />
@@ -563,6 +563,11 @@
             class="input"
             data-tour="account-form-priority"
           />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') REDACTEDREDACTED</label>
+          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.01" class="input" />
+          <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') REDACTEDREDACTED</p>
         </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -807,6 +812,7 @@ const form = reactive({
   proxy_id: null as number | null,
   concurrency: 1,
   priority: 1,
+  rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive',
   group_ids: [] as number[],
   expires_at: null as number | null
@@ -834,6 +840,7 @@ watch(
       form.proxy_id = newAccount.proxy_id
       form.concurrency = newAccount.concurrency
       form.priority = newAccount.priority
+      form.rate_multiplier = newAccount.rate_multiplier ?? 1
       form.status = newAccount.status as 'active' | 'inactive'
       form.group_ids = newAccount.group_ids || []
       form.expires_at = newAccount.expires_at ?? null

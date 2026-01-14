@@ -9,16 +9,19 @@ import (
 )
 
 type Account struct {
-	ID                 int64
-	Name               string
-	Notes              *string
-	Platform           string
-	Type               string
-	Credentials        map[string]any
-	Extra              map[string]any
-	ProxyID            *int64
-	Concurrency        int
-	Priority           int
+	ID          int64
+	Name        string
+	Notes       *string
+	Platform    string
+	Type        string
+	Credentials map[string]any
+	Extra       map[string]any
+	ProxyID     *int64
+	Concurrency int
+	Priority    int
+	// RateMultiplier 账号计费倍率（>=0，允许 0 表示该账号计费为 0）。
+	// 使用指针用于兼容旧版本调度缓存（Redis）中缺字段的情况：nil 表示按 1.0 处理。
+	RateMultiplier     *float64
 	Status             string
 	ErrorMessage       string
 	LastUsedAt         *time.Time
@@ -55,6 +58,20 @@ REDACTED
 
 func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
+REDACTED
+
+// BillingRateMultiplier 返回账号计费倍率。
+// - nil 表示未配置/旧缓存缺字段，按 1.0 处理
+// - 允许 0，表示该账号计费为 0
+// - 负数属于非法数据，出于安全考虑按 1.0 处理
+func (a *Account) BillingRateMultiplier() float64 {
+	if a == nil || a.RateMultiplier == nil {
+		return 1.0
+REDACTED
+	if *a.RateMultiplier < 0 {
+		return 1.0
+REDACTED
+	return *a.RateMultiplier
 REDACTED
 
 func (a *Account) IsSchedulable() bool {

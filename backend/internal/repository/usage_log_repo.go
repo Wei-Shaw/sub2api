@@ -22,7 +22,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, created_at"
 
 type usageLogRepository struct {
 	client *dbent.Client
@@ -105,6 +105,7 @@ REDACTED
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			account_rate_multiplier,
 			billing_type,
 			stream,
 			duration_ms,
@@ -120,7 +121,7 @@ REDACTED
 			$8, $9, $10, $11,
 			$12, $13,
 			$14, $15, $16, $17, $18, $19,
-			$20, $21, $22, $23, $24, $25, $26, $27, $28, $29
+			$20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -160,6 +161,7 @@ REDACTED
 		log.TotalCost,
 		log.ActualCost,
 		rateMultiplier,
+		log.AccountRateMultiplier,
 		log.BillingType,
 		log.Stream,
 		duration,
@@ -835,7 +837,9 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 		SELECT
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
-			COALESCE(SUM(actual_cost), 0) as cost
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as cost,
+			COALESCE(SUM(total_cost), 0) as standard_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = $1 AND created_at >= $2
 	`
@@ -849,6 +853,8 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 		&stats.Requests,
 		&stats.Tokens,
 		&stats.Cost,
+		&stats.StandardCost,
+		&stats.UserCost,
 	); err != nil {
 		return nil, err
 REDACTED
@@ -861,7 +867,9 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 		SELECT
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
-			COALESCE(SUM(actual_cost), 0) as cost
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as cost,
+			COALESCE(SUM(total_cost), 0) as standard_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = $1 AND created_at >= $2
 	`
@@ -875,6 +883,8 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 		&stats.Requests,
 		&stats.Tokens,
 		&stats.Cost,
+		&stats.StandardCost,
+		&stats.UserCost,
 	); err != nil {
 		return nil, err
 REDACTED
@@ -1454,7 +1464,13 @@ REDACTED
 
 // GetModelStatsWithFilters returns model statistics with optional user/api_key filters
 func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) (results []ModelStat, err error) {
-	query := `
+	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
+	// 当仅按 account_id 聚合时，实际费用使用账号倍率（total_cost * account_rate_multiplier）。
+	if accountID > 0 && userID == 0 && apiKeyID == 0 {
+		actualCostExpr = "COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
+REDACTED
+
+	query := fmt.Sprintf(`
 		SELECT
 			model,
 			COUNT(*) as requests,
@@ -1462,10 +1478,10 @@ func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, start
 			COALESCE(SUM(output_tokens), 0) as output_tokens,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
 			COALESCE(SUM(total_cost), 0) as cost,
-			COALESCE(SUM(actual_cost), 0) as actual_cost
+			%s
 		FROM usage_logs
 		WHERE created_at >= $1 AND created_at < $2
-	`
+	`, actualCostExpr)
 
 	args := []any{startTime, endTimeREDACTED
 	if userID > 0 {
@@ -1587,12 +1603,14 @@ REDACTED
 			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
 			COALESCE(SUM(total_cost), 0) as total_cost,
 			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as total_account_cost,
 			COALESCE(AVG(duration_ms), 0) as avg_duration_ms
 		FROM usage_logs
 		%s
 	`, buildWhere(conditions))
 
 	stats := &UsageStats{REDACTED
+	var totalAccountCost float64
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
@@ -1604,9 +1622,13 @@ REDACTED
 		&stats.TotalCacheTokens,
 		&stats.TotalCost,
 		&stats.TotalActualCost,
+		&totalAccountCost,
 		&stats.AverageDurationMs,
 	); err != nil {
 		return nil, err
+REDACTED
+	if filters.AccountID > 0 {
+		stats.TotalAccountCost = &totalAccountCost
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
 	return stats, nil
@@ -1634,7 +1656,8 @@ REDACTED
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
 			COALESCE(SUM(total_cost), 0) as cost,
-			COALESCE(SUM(actual_cost), 0) as actual_cost
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = $1 AND created_at >= $2 AND created_at < $3
 		GROUP BY date
@@ -1661,7 +1684,8 @@ REDACTED()
 		var tokens int64
 		var cost float64
 		var actualCost float64
-		if err = rows.Scan(&date, &requests, &tokens, &cost, &actualCost); err != nil {
+		var userCost float64
+		if err = rows.Scan(&date, &requests, &tokens, &cost, &actualCost, &userCost); err != nil {
 			return nil, err
 	REDACTED
 		t, _ := time.Parse("2006-01-02", date)
@@ -1672,19 +1696,21 @@ REDACTED()
 			Tokens:     tokens,
 			Cost:       cost,
 			ActualCost: actualCost,
+			UserCost:   userCost,
 	REDACTED)
 REDACTED
 	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
-	var totalActualCost, totalStandardCost float64
+	var totalAccountCost, totalUserCost, totalStandardCost float64
 	var totalRequests, totalTokens int64
 	var highestCostDay, highestRequestDay *AccountUsageHistory
 
 	for i := range history {
 		h := &history[i]
-		totalActualCost += h.ActualCost
+		totalAccountCost += h.ActualCost
+		totalUserCost += h.UserCost
 		totalStandardCost += h.Cost
 		totalRequests += h.Requests
 		totalTokens += h.Tokens
@@ -1711,11 +1737,13 @@ REDACTED
 	summary := AccountUsageSummary{
 		Days:              daysCount,
 		ActualDaysUsed:    actualDaysUsed,
-		TotalCost:         totalActualCost,
+		TotalCost:         totalAccountCost,
+		TotalUserCost:     totalUserCost,
 		TotalStandardCost: totalStandardCost,
 		TotalRequests:     totalRequests,
 		TotalTokens:       totalTokens,
-		AvgDailyCost:      totalActualCost / float64(actualDaysUsed),
+		AvgDailyCost:      totalAccountCost / float64(actualDaysUsed),
+		AvgDailyUserCost:  totalUserCost / float64(actualDaysUsed),
 		AvgDailyRequests:  float64(totalRequests) / float64(actualDaysUsed),
 		AvgDailyTokens:    float64(totalTokens) / float64(actualDaysUsed),
 		AvgDurationMs:     avgDuration,
@@ -1727,11 +1755,13 @@ REDACTED
 			summary.Today = &struct {
 				Date     string  `json:"date"`
 				Cost     float64 `json:"cost"`
+				UserCost float64 `json:"user_cost"`
 				Requests int64   `json:"requests"`
 				Tokens   int64   `json:"tokens"`
 		REDACTED{
 				Date:     history[i].Date,
 				Cost:     history[i].ActualCost,
+				UserCost: history[i].UserCost,
 				Requests: history[i].Requests,
 				Tokens:   history[i].Tokens,
 		REDACTED
@@ -1744,11 +1774,13 @@ REDACTED
 			Date     string  `json:"date"`
 			Label    string  `json:"label"`
 			Cost     float64 `json:"cost"`
+			UserCost float64 `json:"user_cost"`
 			Requests int64   `json:"requests"`
 	REDACTED{
 			Date:     highestCostDay.Date,
 			Label:    highestCostDay.Label,
 			Cost:     highestCostDay.ActualCost,
+			UserCost: highestCostDay.UserCost,
 			Requests: highestCostDay.Requests,
 	REDACTED
 REDACTED
@@ -1759,11 +1791,13 @@ REDACTED
 			Label    string  `json:"label"`
 			Requests int64   `json:"requests"`
 			Cost     float64 `json:"cost"`
+			UserCost float64 `json:"user_cost"`
 	REDACTED{
 			Date:     highestRequestDay.Date,
 			Label:    highestRequestDay.Label,
 			Requests: highestRequestDay.Requests,
 			Cost:     highestRequestDay.ActualCost,
+			UserCost: highestRequestDay.UserCost,
 	REDACTED
 REDACTED
 
@@ -1994,36 +2028,37 @@ REDACTED
 
 func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.UsageLog, error) {
 	var (
-		id                  int64
-		userID              int64
-		apiKeyID            int64
-		accountID           int64
-		requestID           sql.NullString
-		model               string
-		groupID             sql.NullInt64
-		subscriptionID      sql.NullInt64
-		inputTokens         int
-		outputTokens        int
-		cacheCreationTokens int
-		cacheReadTokens     int
-		cacheCreation5m     int
-		cacheCreation1h     int
-		inputCost           float64
-		outputCost          float64
-		cacheCreationCost   float64
-		cacheReadCost       float64
-		totalCost           float64
-		actualCost          float64
-		rateMultiplier      float64
-		billingType         int16
-		stream              bool
-		durationMs          sql.NullInt64
-		firstTokenMs        sql.NullInt64
-		userAgent           sql.NullString
-		ipAddress           sql.NullString
-		imageCount          int
-		imageSize           sql.NullString
-		createdAt           time.Time
+		id                    int64
+		userID                int64
+		apiKeyID              int64
+		accountID             int64
+		requestID             sql.NullString
+		model                 string
+		groupID               sql.NullInt64
+		subscriptionID        sql.NullInt64
+		inputTokens           int
+		outputTokens          int
+		cacheCreationTokens   int
+		cacheReadTokens       int
+		cacheCreation5m       int
+		cacheCreation1h       int
+		inputCost             float64
+		outputCost            float64
+		cacheCreationCost     float64
+		cacheReadCost         float64
+		totalCost             float64
+		actualCost            float64
+		rateMultiplier        float64
+		accountRateMultiplier sql.NullFloat64
+		billingType           int16
+		stream                bool
+		durationMs            sql.NullInt64
+		firstTokenMs          sql.NullInt64
+		userAgent             sql.NullString
+		ipAddress             sql.NullString
+		imageCount            int
+		imageSize             sql.NullString
+		createdAt             time.Time
 	)
 
 	if err := scanner.Scan(
@@ -2048,6 +2083,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		&totalCost,
 		&actualCost,
 		&rateMultiplier,
+		&accountRateMultiplier,
 		&billingType,
 		&stream,
 		&durationMs,
@@ -2080,6 +2116,7 @@ REDACTED
 		TotalCost:             totalCost,
 		ActualCost:            actualCost,
 		RateMultiplier:        rateMultiplier,
+		AccountRateMultiplier: nullFloat64Ptr(accountRateMultiplier),
 		BillingType:           int8(billingType),
 		Stream:                stream,
 		ImageCount:            imageCount,
@@ -2184,6 +2221,14 @@ func nullInt(v *int) sql.NullInt64 {
 		return sql.NullInt64{REDACTED
 REDACTED
 	return sql.NullInt64{Int64: int64(*v), Valid: trueREDACTED
+REDACTED
+
+func nullFloat64Ptr(v sql.NullFloat64) *float64 {
+	if !v.Valid {
+		return nil
+REDACTED
+	out := v.Float64
+	return &out
 REDACTED
 
 func nullString(v *string) sql.NullString {

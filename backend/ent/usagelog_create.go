@@ -267,6 +267,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
+func (_c *UsageLogCreate) SetAccountRateMultiplier(v float64) *UsageLogCreate {
+	_c.mutation.SetAccountRateMultiplier(v)
+	return _c
+REDACTED
+
+// SetNillableAccountRateMultiplier sets the "account_rate_multiplier" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableAccountRateMultiplier(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetAccountRateMultiplier(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetBillingType sets the "billing_type" field.
 func (_c *UsageLogCreate) SetBillingType(v int8) *UsageLogCreate {
 	_c.mutation.SetBillingType(v)
@@ -711,6 +725,10 @@ REDACTED
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 		_node.RateMultiplier = value
+REDACTED
+	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
+		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
+		_node.AccountRateMultiplier = &value
 REDACTED
 	if value, ok := _c.mutation.BillingType(); ok {
 		_spec.SetField(usagelog.FieldBillingType, field.TypeInt8, value)
@@ -1212,6 +1230,30 @@ REDACTED
 // AddRateMultiplier adds v to the "rate_multiplier" field.
 func (u *UsageLogUpsert) AddRateMultiplier(v float64) *UsageLogUpsert {
 	u.Add(usagelog.FieldRateMultiplier, v)
+	return u
+REDACTED
+
+// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
+func (u *UsageLogUpsert) SetAccountRateMultiplier(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldAccountRateMultiplier, v)
+	return u
+REDACTED
+
+// UpdateAccountRateMultiplier sets the "account_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateAccountRateMultiplier() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldAccountRateMultiplier)
+	return u
+REDACTED
+
+// AddAccountRateMultiplier adds v to the "account_rate_multiplier" field.
+func (u *UsageLogUpsert) AddAccountRateMultiplier(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldAccountRateMultiplier, v)
+	return u
+REDACTED
+
+// ClearAccountRateMultiplier clears the value of the "account_rate_multiplier" field.
+func (u *UsageLogUpsert) ClearAccountRateMultiplier() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldAccountRateMultiplier)
 	return u
 REDACTED
 
@@ -1792,6 +1834,34 @@ REDACTED
 func (u *UsageLogUpsertOne) UpdateRateMultiplier() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+REDACTED)
+REDACTED
+
+// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
+func (u *UsageLogUpsertOne) SetAccountRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAccountRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// AddAccountRateMultiplier adds v to the "account_rate_multiplier" field.
+func (u *UsageLogUpsertOne) AddAccountRateMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAccountRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// UpdateAccountRateMultiplier sets the "account_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateAccountRateMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAccountRateMultiplier()
+REDACTED)
+REDACTED
+
+// ClearAccountRateMultiplier clears the value of the "account_rate_multiplier" field.
+func (u *UsageLogUpsertOne) ClearAccountRateMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAccountRateMultiplier()
 REDACTED)
 REDACTED
 
@@ -2563,6 +2633,34 @@ REDACTED
 func (u *UsageLogUpsertBulk) UpdateRateMultiplier() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateRateMultiplier()
+REDACTED)
+REDACTED
+
+// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) SetAccountRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetAccountRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// AddAccountRateMultiplier adds v to the "account_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) AddAccountRateMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddAccountRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// UpdateAccountRateMultiplier sets the "account_rate_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateAccountRateMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateAccountRateMultiplier()
+REDACTED)
+REDACTED
+
+// ClearAccountRateMultiplier clears the value of the "account_rate_multiplier" field.
+func (u *UsageLogUpsertBulk) ClearAccountRateMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearAccountRateMultiplier()
 REDACTED)
 REDACTED
 
