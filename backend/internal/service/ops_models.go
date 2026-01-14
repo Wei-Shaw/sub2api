@@ -94,6 +94,10 @@ type OpsErrorLogFilter struct {
 	Resolved         *bool
 	Query            string
 
+	// Optional correlation keys for exact matching.
+	RequestID       string
+	ClientRequestID string
+
 	// View controls error categorization for list endpoints.
 	// - errors: show actionable errors (exclude business-limited / 429 / 529)
 	// - excluded: only show excluded errors

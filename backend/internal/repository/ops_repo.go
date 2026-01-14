@@ -1008,6 +1008,16 @@ REDACTED else if filter.StatusCodesOther {
 		args = append(args, pq.Array(known))
 		clauses = append(clauses, "NOT (COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+"))")
 REDACTED
+	// Exact correlation keys (preferred for request↔upstream linkage).
+	if rid := strings.TrimSpace(filter.RequestID); rid != "" {
+		args = append(args, rid)
+		clauses = append(clauses, "COALESCE(request_id,'') = $"+itoa(len(args)))
+REDACTED
+	if crid := strings.TrimSpace(filter.ClientRequestID); crid != "" {
+		args = append(args, crid)
+		clauses = append(clauses, "COALESCE(client_request_id,'') = $"+itoa(len(args)))
+REDACTED
+
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"
 		args = append(args, like)

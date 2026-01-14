@@ -129,6 +129,8 @@ export default {
     all: 'All',
     none: 'None',
     noData: 'No data',
+    expand: 'Expand',
+    collapse: 'Collapse',
     success: 'Success',
     error: 'Error',
     critical: 'Critical',
@@ -2093,6 +2095,10 @@ export default {
           account: 'Account',
           status: 'Status',
           requestId: 'Request ID'
+        REDACTED,
+        responsePreview: {
+          expand: 'Response (click to expand)',
+          collapse: 'Response (click to collapse)'
         REDACTED,
         retryMeta: {
           used: 'Used',

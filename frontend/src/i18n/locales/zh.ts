@@ -126,6 +126,8 @@ export default {
     all: '全部',
     none: '无',
     noData: '暂无数据',
+    expand: '展开',
+    collapse: '收起',
     success: '成功',
     error: '错误',
     critical: '严重',
@@ -2237,6 +2239,10 @@ export default {
           account: '账号',
           status: '状态码',
           requestId: '请求ID'
+        REDACTED,
+        responsePreview: {
+          expand: '响应内容（点击展开）',
+          collapse: '响应内容（点击收起）'
         REDACTED,
         retryMeta: {
           used: '使用账号',
