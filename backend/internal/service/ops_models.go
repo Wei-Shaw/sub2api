@@ -25,12 +25,12 @@ type OpsErrorLog struct {
 	IsRetryable bool `json:"is_retryable"`
 	RetryCount  int  `json:"retry_count"`
 
-	Resolved          bool       `json:"resolved"`
-	ResolvedAt        *time.Time `json:"resolved_at"`
-	ResolvedByUserID  *int64     `json:"resolved_by_user_id"`
+	Resolved           bool       `json:"resolved"`
+	ResolvedAt         *time.Time `json:"resolved_at"`
+	ResolvedByUserID   *int64     `json:"resolved_by_user_id"`
 	ResolvedByUserName string     `json:"resolved_by_user_name"`
-	ResolvedRetryID   *int64     `json:"resolved_retry_id"`
-	ResolvedStatusRaw string     `json:"-"`
+	ResolvedRetryID    *int64     `json:"resolved_retry_id"`
+	ResolvedStatusRaw  string     `json:"-"`
 
 	ClientRequestID string `json:"client_request_id"`
 	RequestID       string `json:"request_id"`
@@ -92,6 +92,12 @@ type OpsErrorLogFilter struct {
 	Source      string
 	Resolved    *bool
 	Query       string
+
+	// View controls error categorization for list endpoints.
+	// - errors: show actionable errors (exclude business-limited / 429 / 529)
+	// - excluded: only show excluded errors
+	// - all: show everything
+	View string
 
 	Page     int
 	PageSize int
