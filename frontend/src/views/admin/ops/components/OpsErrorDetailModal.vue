@@ -101,7 +101,7 @@
       </div>
 
       <!-- Suggestion -->
-      <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
+      <div v-if="handlingSuggestion" class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.suggestion') || 'Suggestion' REDACTEDREDACTED</h3>
         <div class="text-sm font-medium text-gray-800 dark:text-gray-200 break-words">
           {{ handlingSuggestion REDACTEDREDACTED
@@ -150,29 +150,6 @@
           </div>
         </div>
 
-        <!-- Retry summary -->
-        <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
-          <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.retrySummary') || 'Retry Summary' REDACTEDREDACTED</h3>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <div class="text-xs font-bold uppercase text-gray-400">total</div>
-              <div class="mt-1 text-sm font-bold text-gray-900 dark:text-white">{{ retryHistory.length REDACTEDREDACTED</div>
-            </div>
-            <div>
-              <div class="text-xs font-bold uppercase text-gray-400">succeeded</div>
-              <div class="mt-1 text-sm font-bold text-gray-900 dark:text-white">{{ retryHistory.filter(r => r.success === true).length REDACTEDREDACTED</div>
-            </div>
-            <div>
-              <div class="text-xs font-bold uppercase text-gray-400">failed</div>
-              <div class="mt-1 text-sm font-bold text-gray-900 dark:text-white">{{ retryHistory.filter(r => r.success === false).length REDACTEDREDACTED</div>
-            </div>
-            <div>
-              <div class="text-xs font-bold uppercase text-gray-400">last</div>
-              <div class="mt-1 font-mono text-xs text-gray-700 dark:text-gray-200">{{ retryHistory[0]?.created_at || '—' REDACTEDREDACTED</div>
-            </div>
-          </div>
-        </div>
-
         <!-- Basic Info -->
         <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
           <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.basicInfo') REDACTEDREDACTED</h3>
@@ -186,9 +163,21 @@
             <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">{{ detail.model || '—' REDACTEDREDACTED</div>
           </div>
           <div>
-            <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.latency') REDACTEDREDACTED</div>
-            <div class="mt-1 font-mono text-sm font-bold text-gray-900 dark:text-white">
-              {{ detail.latency_ms != null ? `${detail.latency_msREDACTEDms` : '—' REDACTEDREDACTED
+            <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.group') REDACTEDREDACTED</div>
+            <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+              <el-tooltip v-if="detail.group_id" :content="'ID: ' + detail.group_id" placement="top">
+                <span>{{ detail.group_name || detail.group_id REDACTEDREDACTED</span>
+              </el-tooltip>
+              <span v-else>—</span>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.account') REDACTEDREDACTED</div>
+            <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+              <el-tooltip v-if="detail.account_id" :content="'ID: ' + detail.account_id" placement="top">
+                <span>{{ detail.account_name || detail.account_id REDACTEDREDACTED</span>
+              </el-tooltip>
+              <span v-else>—</span>
             </div>
           </div>
           <div>
@@ -203,7 +192,7 @@
               {{ detail.is_business_limited ? 'true' : 'false' REDACTEDREDACTED
             </div>
           </div>
-          <div>
+          <div class="lg:col-span-2">
             <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.requestPath') REDACTEDREDACTED</div>
             <div class="mt-1 font-mono text-xs text-gray-700 dark:text-gray-200 break-all">
               {{ detail.request_path || '—' REDACTEDREDACTED
@@ -343,11 +332,17 @@
                 </div>
               </div>
 
-              <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-3">
-                <div><span class="text-gray-400">account_id:</span> <span class="font-mono">{{ ev.account_id ?? '—' REDACTEDREDACTED</span></div>
-                <div><span class="text-gray-400">status:</span> <span class="font-mono">{{ ev.upstream_status_code ?? '—' REDACTEDREDACTED</span></div>
-                <div class="break-all">
-                  <span class="text-gray-400">request_id:</span> <span class="font-mono">{{ ev.upstream_request_id || '—' REDACTEDREDACTED</span>
+              <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                <div>
+                  <span class="text-gray-400">account:</span> 
+                  <el-tooltip v-if="ev.account_id" :content="'ID: ' + ev.account_id" placement="top">
+                    <span class="font-medium text-gray-900 dark:text-white ml-1">{{ ev.account_name || ev.account_id REDACTEDREDACTED</span>
+                  </el-tooltip>
+                  <span v-else class="ml-1">—</span>
+                </div>
+                <div><span class="text-gray-400">status:</span> <span class="font-mono ml-1">{{ ev.upstream_status_code ?? '—' REDACTEDREDACTED</span></div>
+                <div class="sm:col-span-2 break-all">
+                  <span class="text-gray-400">request_id:</span> <span class="font-mono ml-1">{{ ev.upstream_request_id || '—' REDACTEDREDACTED</span>
                 </div>
               </div>
 
@@ -426,13 +421,29 @@
             <div v-if="selectedA || selectedB" class="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="text-xs font-black text-gray-900 dark:text-white">{{ selectedA ? `#${selectedA.idREDACTED · ${selectedA.modeREDACTED · ${selectedA.statusREDACTED` : '—' REDACTEDREDACTED</div>
-                <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">http: <span class="font-mono">{{ selectedA?.http_status_code ?? '—' REDACTEDREDACTED</span> · used: <span class="font-mono">{{ selectedA?.used_account_id ?? '—' REDACTEDREDACTED</span></div>
+                <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                  http: <span class="font-mono">{{ selectedA?.http_status_code ?? '—' REDACTEDREDACTED</span> · 
+                  used: <span class="font-mono">
+                    <el-tooltip v-if="selectedA?.used_account_id" :content="'ID: ' + selectedA.used_account_id" placement="top">
+                      <span class="font-medium">{{ selectedA.used_account_name || selectedA.used_account_id REDACTEDREDACTED</span>
+                    </el-tooltip>
+                    <span v-else>—</span>
+                  </span>
+                </div>
                 <pre class="mt-3 max-h-[320px] overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-800 dark:bg-dark-900 dark:text-gray-100"><code>{{ selectedA?.response_preview || '' REDACTEDREDACTED</code></pre>
                 <div v-if="selectedA?.error_message" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ selectedA.error_message REDACTEDREDACTED</div>
               </div>
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="text-xs font-black text-gray-900 dark:text-white">{{ selectedB ? `#${selectedB.idREDACTED · ${selectedB.modeREDACTED · ${selectedB.statusREDACTED` : '—' REDACTEDREDACTED</div>
-                <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">http: <span class="font-mono">{{ selectedB?.http_status_code ?? '—' REDACTEDREDACTED</span> · used: <span class="font-mono">{{ selectedB?.used_account_id ?? '—' REDACTEDREDACTED</span></div>
+                <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                  http: <span class="font-mono">{{ selectedB?.http_status_code ?? '—' REDACTEDREDACTED</span> · 
+                  used: <span class="font-mono">
+                    <el-tooltip v-if="selectedB?.used_account_id" :content="'ID: ' + selectedB.used_account_id" placement="top">
+                      <span class="font-medium">{{ selectedB.used_account_name || selectedB.used_account_id REDACTEDREDACTED</span>
+                    </el-tooltip>
+                    <span v-else>—</span>
+                  </span>
+                </div>
                 <pre class="mt-3 max-h-[320px] overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-800 dark:bg-dark-900 dark:text-gray-100"><code>{{ selectedB?.response_preview || '' REDACTEDREDACTED</code></pre>
                 <div v-if="selectedB?.error_message" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ selectedB.error_message REDACTEDREDACTED</div>
               </div>
@@ -447,8 +458,20 @@
                 <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-4">
                   <div><span class="text-gray-400">success:</span> <span class="font-mono">{{ a.success ?? '—' REDACTEDREDACTED</span></div>
                   <div><span class="text-gray-400">http:</span> <span class="font-mono">{{ a.http_status_code ?? '—' REDACTEDREDACTED</span></div>
-                  <div><span class="text-gray-400">pinned:</span> <span class="font-mono">{{ a.pinned_account_id ?? '—' REDACTEDREDACTED</span></div>
-                  <div><span class="text-gray-400">used:</span> <span class="font-mono">{{ a.used_account_id ?? '—' REDACTEDREDACTED</span></div>
+                  <div>
+                    <span class="text-gray-400">pinned:</span>
+                    <el-tooltip v-if="a.pinned_account_id" :content="'ID: ' + a.pinned_account_id" placement="top">
+                      <span class="font-mono ml-1">{{ a.pinned_account_name || a.pinned_account_id REDACTEDREDACTED</span>
+                    </el-tooltip>
+                    <span v-else class="font-mono ml-1">—</span>
+                  </div>
+                  <div>
+                    <span class="text-gray-400">used:</span>
+                    <el-tooltip v-if="a.used_account_id" :content="'ID: ' + a.used_account_id" placement="top">
+                      <span class="font-mono ml-1">{{ a.used_account_name || a.used_account_id REDACTEDREDACTED</span>
+                    </el-tooltip>
+                    <span v-else class="font-mono ml-1">—</span>
+                  </div>
                 </div>
                 <pre v-if="a.response_preview" class="mt-3 max-h-[240px] overflow-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-800 dark:bg-dark-900 dark:text-gray-100"><code>{{ a.response_preview REDACTEDREDACTED</code></pre>
                 <div v-if="a.error_message" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ a.error_message REDACTEDREDACTED</div>
@@ -558,6 +581,7 @@ type UpstreamErrorEvent = {
   at_unix_ms?: number
   platform?: string
   account_id?: number
+  account_name?: string
   upstream_status_code?: number
   upstream_request_id?: string
   kind?: string

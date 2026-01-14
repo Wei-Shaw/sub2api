@@ -33,14 +33,6 @@ const statusCode = ref<number | null>(null)
 const phase = ref<string>('')
 const errorOwner = ref<string>('')
 const resolvedStatus = ref<string>('unresolved')
-const accountIdInput = ref<string>('')
-
-const accountId = computed<number | null>(() => {
-  const raw = String(accountIdInput.value || '').trim()
-  if (!raw) return null
-  const n = Number.parseInt(raw, 10)
-  return Number.isFinite(n) && n > 0 ? n : null
-REDACTED)
 
 const modalTitle = computed(() => {
   return props.errorType === 'upstream' ? t('admin.ops.errorDetails.upstreamErrors') : t('admin.ops.errorDetails.requestErrors')
@@ -105,7 +97,6 @@ async function fetchErrorLogs() {
 
     if (q.value.trim()) params.q = q.value.trim()
     if (typeof statusCode.value === 'number') params.status_codes = String(statusCode.value)
-    if (typeof accountId.value === 'number') params.account_id = accountId.value
 
     const phaseVal = String(phase.value || '').trim()
     if (phaseVal) params.phase = phaseVal
@@ -136,7 +127,6 @@ function resetFilters() {
   phase.value = props.errorType === 'upstream' ? 'upstream' : ''
   errorOwner.value = ''
   resolvedStatus.value = 'unresolved'
-  accountIdInput.value = ''
   page.value = 1
   fetchErrorLogs()
 REDACTED
@@ -189,15 +179,6 @@ watch(
     fetchErrorLogs()
   REDACTED
 )
-
-watch(
-  () => accountId.value,
-  () => {
-    if (!props.show) return
-    page.value = 1
-    fetchErrorLogs()
-  REDACTED
-)
 </script>
 
 <template>
@@ -205,10 +186,9 @@ watch(
     <div class="flex h-full min-h-0 flex-col">
       <!-- Filters -->
       <div class="mb-4 flex-shrink-0 border-b border-gray-200 pb-4 dark:border-dark-700">
-        <div class="flex flex-col gap-2">
-          <!-- 第一行: 搜索框 -->
-          <div class="flex items-center gap-2">
-            <div class="relative flex-1 group">
+        <div class="grid grid-cols-7 gap-2">
+          <div class="col-span-2 compact-select">
+            <div class="relative group">
               <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 transition-colors group-focus-within:text-blue-500"
@@ -228,39 +208,26 @@ watch(
             </div>
           </div>
 
-          <!-- 第二行: 筛选选项 -->
-          <div class="grid grid-cols-6 gap-2">
-            <div class="col-span-1">
-              <Select :model-value="statusCode" :options="statusCodeSelectOptions" size="sm" @update:model-value="statusCode = $event as any" />
-            </div>
+          <div class="compact-select">
+            <Select :model-value="statusCode" :options="statusCodeSelectOptions" @update:model-value="statusCode = $event as any" />
+          </div>
 
-            <div class="col-span-1">
-              <Select :model-value="phase" :options="phaseSelectOptions" size="sm" @update:model-value="phase = String($event ?? '')" />
-            </div>
+          <div class="compact-select">
+            <Select :model-value="phase" :options="phaseSelectOptions" @update:model-value="phase = String($event ?? '')" />
+          </div>
 
-            <div class="col-span-1">
-              <Select :model-value="errorOwner" :options="ownerSelectOptions" size="sm" @update:model-value="errorOwner = String($event ?? '')" />
-            </div>
+          <div class="compact-select">
+            <Select :model-value="errorOwner" :options="ownerSelectOptions" @update:model-value="errorOwner = String($event ?? '')" />
+          </div>
 
-            <div class="col-span-1">
-              <Select :model-value="resolvedStatus" :options="resolvedSelectOptions" size="sm" @update:model-value="resolvedStatus = String($event ?? 'unresolved')" />
-            </div>
+          <div class="compact-select">
+            <Select :model-value="resolvedStatus" :options="resolvedSelectOptions" @update:model-value="resolvedStatus = String($event ?? 'unresolved')" />
+          </div>
 
-            <div class="col-span-1">
-              <input
-                v-model="accountIdInput"
-                type="text"
-                inputmode="numeric"
-                class="w-full rounded-lg border-gray-200 bg-gray-50/50 py-1.5 px-3 text-xs font-medium text-gray-700 transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:focus:bg-dark-800"
-                :placeholder="t('admin.ops.errorDetails.accountIdPlaceholder')"
-              />
-            </div>
-
-            <div class="col-span-1 flex items-center justify-end">
-              <button type="button" class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600" @click="resetFilters">
-                {{ t('common.reset') REDACTEDREDACTED
-              </button>
-            </div>
+          <div class="flex items-center justify-end">
+            <button type="button" class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600" @click="resetFilters">
+              {{ t('common.reset') REDACTEDREDACTED
+            </button>
           </div>
         </div>
       </div>
@@ -286,3 +253,9 @@ watch(
     </div>
   </BaseDialog>
 </template>
+
+<style>
+.compact-select .select-trigger {
+  @apply py-1.5 px-3 text-xs rounded-lg;
+REDACTED
+</style>

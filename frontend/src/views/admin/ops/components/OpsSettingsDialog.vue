@@ -480,10 +480,30 @@ REDACTED
               <div>
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">忽略 count_tokens 错误</label>
                 <p class="mt-1 text-xs text-gray-500">
-                  启用后，count_tokens 请求的错误将不计入运维监控的统计和告警中（但仍会存储在数据库中）
+                  启用后，count_tokens 请求的错误将不会写入错误日志
                 </p>
               </div>
               <Toggle v-model="advancedSettings.ignore_count_tokens_errors" />
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">忽略客户端断连错误</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  启用后，客户端主动断开连接（context canceled）的错误将不会写入错误日志
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.ignore_context_canceled" />
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">忽略无可用账号错误</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  启用后，"No available accounts" 错误将不会写入错误日志（不推荐，这通常是配置问题）
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.ignore_no_available_accounts" />
             </div>
           </div>
 
