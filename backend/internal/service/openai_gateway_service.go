@@ -631,6 +631,11 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
+	// Capture upstream request body for ops retry of this attempt.
+	if c != nil {
+		c.Set(OpsUpstreamRequestBodyKey, string(body))
+REDACTED
+
 	// Send request
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
@@ -640,7 +645,7 @@ REDACTED
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,
-		AccountName:        account.Name,
+			AccountName:        account.Name,
 			UpstreamStatusCode: 0,
 			Kind:               "request_error",
 			Message:            safeErr,
@@ -675,7 +680,7 @@ REDACTED
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
-		AccountName:        account.Name,
+				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  resp.Header.Get("x-request-id"),
 				Kind:               "failover",
@@ -836,7 +841,7 @@ REDACTED
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,
-		AccountName:        account.Name,
+			AccountName:        account.Name,
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRequestID:  resp.Header.Get("x-request-id"),
 			Kind:               "http_error",

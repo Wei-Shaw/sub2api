@@ -545,13 +545,19 @@ REDACTED
 	REDACTED
 		requestIDHeader = idHeader
 
+		// Capture upstream request body for ops retry of this attempt.
+		if c != nil {
+			// In this code path `body` is already the JSON sent to upstream.
+			c.Set(OpsUpstreamRequestBodyKey, string(body))
+	REDACTED
+
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
-		AccountName:        account.Name,
+				AccountName:        account.Name,
 				UpstreamStatusCode: 0,
 				Kind:               "request_error",
 				Message:            safeErr,
@@ -589,7 +595,7 @@ REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
-		AccountName:        account.Name,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  upstreamReqID,
 					Kind:               "signature_error",
@@ -664,7 +670,7 @@ REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
-		AccountName:        account.Name,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  upstreamReqID,
 					Kind:               "retry",
@@ -714,7 +720,7 @@ REDACTED
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
-		AccountName:        account.Name,
+				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  upstreamReqID,
 				Kind:               "failover",
@@ -741,7 +747,7 @@ REDACTED
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
-		AccountName:        account.Name,
+				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  upstreamReqID,
 				Kind:               "failover",
@@ -977,13 +983,19 @@ REDACTED
 	REDACTED
 		requestIDHeader = idHeader
 
+		// Capture upstream request body for ops retry of this attempt.
+		if c != nil {
+			// In this code path `body` is already the JSON sent to upstream.
+			c.Set(OpsUpstreamRequestBodyKey, string(body))
+	REDACTED
+
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
-		AccountName:        account.Name,
+				AccountName:        account.Name,
 				UpstreamStatusCode: 0,
 				Kind:               "request_error",
 				Message:            safeErr,
@@ -1042,7 +1054,7 @@ REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
-		AccountName:        account.Name,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  upstreamReqID,
 					Kind:               "retry",
@@ -1127,7 +1139,7 @@ REDACTED
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
-		AccountName:        account.Name,
+				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  requestID,
 				Kind:               "failover",
@@ -1151,7 +1163,7 @@ REDACTED
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
-		AccountName:        account.Name,
+				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  requestID,
 				Kind:               "failover",
@@ -1177,7 +1189,7 @@ REDACTED
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,
-		AccountName:        account.Name,
+			AccountName:        account.Name,
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRequestID:  requestID,
 			Kind:               "http_error",

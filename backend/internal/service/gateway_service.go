@@ -1450,6 +1450,9 @@ REDACTED
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel)
+		// Capture upstream request body for ops retry of this attempt.
+		c.Set(OpsUpstreamRequestBodyKey, string(body))
+
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -1491,7 +1494,7 @@ REDACTED
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						Platform:           account.Platform,
 						AccountID:          account.ID,
-				AccountName:        account.Name,
+						AccountName:        account.Name,
 						UpstreamStatusCode: resp.StatusCode,
 						UpstreamRequestID:  resp.Header.Get("x-request-id"),
 						Kind:               "signature_error",
@@ -1543,7 +1546,7 @@ REDACTED
 								appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 									Platform:           account.Platform,
 									AccountID:          account.ID,
-				AccountName:        account.Name,
+									AccountName:        account.Name,
 									UpstreamStatusCode: retryResp.StatusCode,
 									UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
 									Kind:               "signature_retry_thinking",
@@ -1572,7 +1575,7 @@ REDACTED
 										appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 											Platform:           account.Platform,
 											AccountID:          account.ID,
-				AccountName:        account.Name,
+											AccountName:        account.Name,
 											UpstreamStatusCode: 0,
 											Kind:               "signature_retry_tools_request_error",
 											Message:            sanitizeUpstreamErrorMessage(retryErr2.Error()),
@@ -1631,7 +1634,7 @@ REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
-				AccountName:        account.Name,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
 					Kind:               "retry",
@@ -1747,7 +1750,7 @@ REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
-				AccountName:        account.Name,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
 					Kind:               "failover_on_400",
