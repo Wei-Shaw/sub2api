@@ -1242,33 +1242,33 @@ REDACTED
             <div class="text-3xl font-black text-gray-900 dark:text-white">
               {{ durationP99Ms ?? '-' REDACTEDREDACTED
             </div>
-            <span class="text-xs font-bold text-gray-400">{{ t('admin.ops.msP99') REDACTEDREDACTED</span>
+            <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
           <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">{{ t('admin.ops.p95') REDACTEDREDACTED</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationP95Ms ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">{{ t('admin.ops.p90') REDACTEDREDACTED</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationP90Ms ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">{{ t('admin.ops.p50') REDACTEDREDACTED</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationP50Ms ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationAvgMs ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationMaxMs ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
           </div>
         </div>
@@ -1277,7 +1277,7 @@ REDACTED
         <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 5;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
-              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.ttft') REDACTEDREDACTED</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">TTFT</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.ttft')" />
             </div>
             <button
@@ -1293,33 +1293,33 @@ REDACTED
             <div class="text-3xl font-black" :class="isTTFTAboveThreshold(ttftP99Ms) ? 'text-red-600 dark:text-red-400' : getTTFTColor(ttftP99Ms)">
               {{ ttftP99Ms ?? '-' REDACTEDREDACTED
             </div>
-            <span class="text-xs font-bold text-gray-400">{{ t('admin.ops.msP99') REDACTEDREDACTED</span>
+            <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
           <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">{{ t('admin.ops.p95') REDACTEDREDACTED</span>
               <span class="font-bold" :class="getTTFTColor(ttftP95Ms)">{{ ttftP95Ms ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">{{ t('admin.ops.p90') REDACTEDREDACTED</span>
               <span class="font-bold" :class="getTTFTColor(ttftP90Ms)">{{ ttftP90Ms ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">{{ t('admin.ops.p50') REDACTEDREDACTED</span>
               <span class="font-bold" :class="getTTFTColor(ttftP50Ms)">{{ ttftP50Ms ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
               <span class="font-bold" :class="getTTFTColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
             <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
               <span class="font-bold" :class="getTTFTColor(ttftMaxMs)">{{ ttftMaxMs ?? '-' REDACTEDREDACTED</span>
-              <span class="text-gray-400">{{ t('admin.ops.ms') REDACTEDREDACTED</span>
+              <span class="text-gray-400">ms</span>
             </div>
           </div>
         </div>
