@@ -27,7 +27,7 @@
                 {{ t('admin.ops.errorLog.group') REDACTEDREDACTED
               </th>
               <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
-                {{ t('admin.ops.errorLog.account') REDACTEDREDACTED
+                {{ t('admin.ops.errorLog.user') REDACTEDREDACTED
               </th>
               <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
                 {{ t('admin.ops.errorLog.status') REDACTEDREDACTED
@@ -101,11 +101,10 @@
                 <span v-else class="text-xs text-gray-400">-</span>
               </td>
 
-              <!-- Account -->
-              <td class="px-4 py-2">
-                 <el-tooltip v-if="log.account_id" :content="t('admin.ops.errorLog.id') + ' ' + log.account_id" placement="top" :show-after="500">
+              <!-- User -->\n              <td class="px-4 py-2">
+                 <el-tooltip v-if="log.user_id" :content="t('admin.ops.errorLog.userId') + ' ' + log.user_id" placement="top" :show-after="500">
                   <span class="max-w-[100px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
-                    {{ log.account_name || '-' REDACTEDREDACTED
+                    {{ log.user_email || '-' REDACTEDREDACTED
                   </span>
                 </el-tooltip>
                 <span v-else class="text-xs text-gray-400">-</span>
