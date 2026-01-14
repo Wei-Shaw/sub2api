@@ -326,6 +326,7 @@ SELECT
   COALESCE(e.upstream_errors::text, ''),
   e.is_business_limited,
   e.user_id,
+  COALESCE(u.email, ''),
   e.api_key_id,
   e.account_id,
   COALESCE(a.name, ''),
@@ -345,6 +346,7 @@ SELECT
   e.request_body_bytes,
   COALESCE(e.request_headers::text, '')
 FROM ops_error_logs e
+LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN accounts a ON e.account_id = a.id
 LEFT JOIN groups g ON e.group_id = g.id
 WHERE e.id = $1
@@ -395,6 +397,7 @@ LIMIT 1`
 		&out.UpstreamErrors,
 		&out.IsBusinessLimited,
 		&userID,
+		&out.UserEmail,
 		&apiKeyID,
 		&accountID,
 		&out.AccountName,
@@ -1031,6 +1034,13 @@ REDACTED
 		args = append(args, like)
 		n := itoa(len(args))
 		clauses = append(clauses, "(request_id ILIKE $"+n+" OR client_request_id ILIKE $"+n+" OR error_message ILIKE $"+n+")")
+REDACTED
+
+	if userQuery := strings.TrimSpace(filter.UserQuery); userQuery != "" {
+		like := "%" + userQuery + "%"
+		args = append(args, like)
+		n := itoa(len(args))
+		clauses = append(clauses, "u.email ILIKE $"+n)
 REDACTED
 
 	return "WHERE " + strings.Join(clauses, " AND "), args

@@ -111,6 +111,7 @@ REDACTED
 	filter.Owner = strings.TrimSpace(c.Query("error_owner"))
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
+	filter.UserQuery = strings.TrimSpace(c.Query("user_query"))
 
 	// Force request errors: client-visible status >= 400.
 	// buildOpsErrorLogsWhere already applies this for non-upstream phase.
@@ -211,6 +212,7 @@ REDACTED
 	filter.Owner = strings.TrimSpace(c.Query("error_owner"))
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
+	filter.UserQuery = strings.TrimSpace(c.Query("user_query"))
 
 	// Force request errors: client-visible status >= 400.
 	// buildOpsErrorLogsWhere already applies this for non-upstream phase.

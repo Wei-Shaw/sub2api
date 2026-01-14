@@ -93,6 +93,7 @@ type OpsErrorLogFilter struct {
 	Source           string
 	Resolved         *bool
 	Query            string
+	UserQuery        string // Search by user email
 
 	// Optional correlation keys for exact matching.
 	RequestID       string
