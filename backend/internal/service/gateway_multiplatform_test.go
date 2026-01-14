@@ -1211,6 +1211,72 @@ REDACTED)
 		require.Nil(t, result)
 		require.Contains(t, err.Error(), "no available accounts")
 REDACTED)
+
+	t.Run("过滤不可调度账号-限流账号被跳过", func(t *testing.T) {
+		now := time.Now()
+		resetAt := now.Add(10 * time.Minute)
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, RateLimitResetAt: &resetAtREDACTED,
+				{ID: 2, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{REDACTED
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: nil,
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "应跳过限流账号，选择可用账号")
+REDACTED)
+
+	t.Run("过滤不可调度账号-过载账号被跳过", func(t *testing.T) {
+		now := time.Now()
+		overloadUntil := now.Add(10 * time.Minute)
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, OverloadUntil: &overloadUntilREDACTED,
+				{ID: 2, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 5REDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{REDACTED
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: nil,
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "应跳过过载账号，选择可用账号")
+REDACTED)
 REDACTED
 
 func TestGatewayService_GroupResolution_ReusesContextGroup(t *testing.T) {

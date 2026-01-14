@@ -511,6 +511,12 @@ REDACTED
 		if isExcluded(acc.ID) {
 			continue
 	REDACTED
+		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
+		// re-check schedulability here so recently rate-limited/overloaded accounts
+		// are not selected again before the bucket is rebuilt.
+		if !acc.IsSchedulable() {
+			continue
+	REDACTED
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
 			continue
 	REDACTED
@@ -893,6 +899,11 @@ REDACTED
 		if _, excluded := excludedIDs[acc.ID]; excluded {
 			continue
 	REDACTED
+		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+		// avoid selecting accounts that were recently rate-limited/overloaded.
+		if !acc.IsSchedulable() {
+			continue
+	REDACTED
 		if !acc.IsSchedulableForModel(requestedModel) {
 			continue
 	REDACTED
@@ -975,6 +986,11 @@ REDACTED
 	for i := range accounts {
 		acc := &accounts[i]
 		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+		// avoid selecting accounts that were recently rate-limited/overloaded.
+		if !acc.IsSchedulable() {
 			continue
 	REDACTED
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
