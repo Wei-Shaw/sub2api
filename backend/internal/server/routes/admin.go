@@ -250,6 +250,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		proxies.POST("/:id/test", h.Admin.Proxy.Test)
 		proxies.GET("/:id/stats", h.Admin.Proxy.GetStats)
 		proxies.GET("/:id/accounts", h.Admin.Proxy.GetProxyAccounts)
+		proxies.POST("/batch-delete", h.Admin.Proxy.BatchDelete)
 		proxies.POST("/batch", h.Admin.Proxy.BatchCreate)
 REDACTED
 REDACTED

@@ -34,7 +34,10 @@ REDACTED
 REDACTED
 REDACTED
 
-const defaultIPInfoURL = "https://ipinfo.io/json"
+const (
+	defaultIPInfoURL         = "https://ipinfo.io/json"
+	defaultProxyProbeTimeout = 30 * time.Second
+)
 
 type proxyProbeService struct {
 	ipInfoURL          string
@@ -46,7 +49,7 @@ REDACTED
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
 	client, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
-		Timeout:            15 * time.Second,
+		Timeout:            defaultProxyProbeTimeout,
 		InsecureSkipVerify: s.insecureSkipVerify,
 		ProxyStrict:        true,
 		ValidateResolvedIP: s.validateResolvedIP,

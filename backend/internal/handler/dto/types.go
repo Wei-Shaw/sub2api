@@ -129,7 +129,18 @@ REDACTED
 
 type ProxyWithAccountCount struct {
 	Proxy
-	AccountCount int64 `json:"account_count"`
+	AccountCount   int64  `json:"account_count"`
+	LatencyMs      *int64 `json:"latency_ms,omitempty"`
+	LatencyStatus  string `json:"latency_status,omitempty"`
+	LatencyMessage string `json:"latency_message,omitempty"`
+REDACTED
+
+type ProxyAccountSummary struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Platform string  `json:"platform"`
+	Type     string  `json:"type"`
+	Notes    *string `json:"notes,omitempty"`
 REDACTED
 
 type RedeemCode struct {
