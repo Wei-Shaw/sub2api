@@ -658,6 +658,14 @@ REDACTED
 
 	// Force flag is currently a UI-level acknowledgement. Server may still enforce safety constraints.
 	_ = req.Force
+
+	// Legacy endpoint safety: only allow retrying the client request here.
+	// Upstream retries must go through the split endpoints.
+	if strings.EqualFold(strings.TrimSpace(req.Mode), service.OpsRetryModeUpstream) {
+		response.BadRequest(c, "upstream retry is not supported on this endpoint")
+		return
+REDACTED
+
 	result, err := h.opsService.RetryError(c.Request.Context(), subject.UserID, id, req.Mode, req.PinnedAccountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
