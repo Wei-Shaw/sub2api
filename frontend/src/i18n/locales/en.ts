@@ -2009,8 +2009,13 @@ export default {
       // Error Log
       errorLog: {
         timeId: 'Time / ID',
+        time: 'Time',
         type: 'Type',
         context: 'Context',
+        platform: 'Platform',
+        model: 'Model',
+        group: 'Group',
+        account: 'Account',
         status: 'Status',
         message: 'Message',
         latency: 'Request Duration',
@@ -2019,7 +2024,13 @@ export default {
         grp: 'GRP:',
         acc: 'ACC:',
         details: 'Details',
-        phase: 'Phase'
+        phase: 'Phase',
+        id: 'ID:',
+        typeUpstream: 'Upstream',
+        typeRequest: 'Request',
+        typeAuth: 'Auth',
+        typeRouting: 'Routing',
+        typeInternal: 'Internal'
       REDACTED,
       // Error Details Modal
       errorDetails: {

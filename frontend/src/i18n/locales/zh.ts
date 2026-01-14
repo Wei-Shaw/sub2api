@@ -2153,17 +2153,28 @@ export default {
       // Error Log
       errorLog: {
         timeId: '时间 / ID',
+        time: '时间',
         type: '类型',
         context: '上下文',
+        platform: '平台',
+        model: '模型',
+        group: '分组',
+        account: '账号',
         status: '状态码',
-        message: '消息',
+        message: '响应内容',
         latency: '请求时长',
         action: '操作',
         noErrors: '该窗口内暂无错误。',
         grp: 'GRP：',
         acc: 'ACC：',
         details: '详情',
-        phase: '阶段'
+        phase: '阶段',
+        id: 'ID：',
+        typeUpstream: '上游',
+        typeRequest: '请求',
+        typeAuth: '认证',
+        typeRouting: '路由',
+        typeInternal: '内部'
       REDACTED,
       // Error Details Modal
       errorDetails: {

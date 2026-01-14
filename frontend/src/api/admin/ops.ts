@@ -25,8 +25,9 @@ export interface OpsRetryAttempt {
   created_at: string
   requested_by_user_id: number
   source_error_id: number
-  mode: OpsRetryMode | string
+  mode: string
   pinned_account_id?: number | null
+  pinned_account_name?: string
 
   status: string
   started_at?: string | null
@@ -37,13 +38,25 @@ export interface OpsRetryAttempt {
   http_status_code?: number | null
   upstream_request_id?: string | null
   used_account_id?: number | null
+  used_account_name?: string
   response_preview?: string | null
   response_truncated?: boolean | null
 
   result_request_id?: string | null
   result_error_id?: number | null
-
   error_message?: string | null
+REDACTED
+
+export type OpsUpstreamErrorEvent = {
+  at_unix_ms?: number
+  platform?: string
+  account_id?: number
+  account_name?: string
+  upstream_status_code?: number
+  upstream_request_id?: string
+  kind?: string
+  message?: string
+  detail?: string
 REDACTED
 
 export interface OpsRetryResult {
@@ -759,6 +772,8 @@ export interface OpsAdvancedSettings {
   data_retention: OpsDataRetentionSettings
   aggregation: OpsAggregationSettings
   ignore_count_tokens_errors: boolean
+  ignore_context_canceled: boolean
+  ignore_no_available_accounts: boolean
   auto_refresh_enabled: boolean
   auto_refresh_interval_seconds: number
 REDACTED
@@ -789,7 +804,6 @@ export interface OpsErrorLog {
   status_code: number
   platform: string
   model: string
-  latency_ms?: number | null
 
   is_retryable: boolean
   retry_count: number
@@ -806,7 +820,9 @@ export interface OpsErrorLog {
   user_id?: number | null
   api_key_id?: number | null
   account_id?: number | null
+  account_name: string
   group_id?: number | null
+  group_name: string
 
   client_ip?: string | null
   request_path?: string
