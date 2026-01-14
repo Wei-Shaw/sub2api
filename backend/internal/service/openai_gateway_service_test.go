@@ -3,6 +3,7 @@ package service
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +15,129 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 )
+
+type stubOpenAIAccountRepo struct {
+	AccountRepository
+	accounts []Account
+REDACTED
+
+func (r stubOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	return append([]Account(nil), r.accounts...), nil
+REDACTED
+
+func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	return append([]Account(nil), r.accounts...), nil
+REDACTED
+
+type stubConcurrencyCache struct {
+	ConcurrencyCache
+REDACTED
+
+func (c stubConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
+	return true, nil
+REDACTED
+
+func (c stubConcurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
+	return nil
+REDACTED
+
+func (c stubConcurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error) {
+	out := make(map[int64]*AccountLoadInfo, len(accounts))
+	for _, acc := range accounts {
+		out[acc.ID] = &AccountLoadInfo{AccountID: acc.ID, LoadRate: 0REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
+	now := time.Now()
+	resetAt := now.Add(10 * time.Minute)
+	groupID := int64(1)
+
+	rateLimited := Account{
+		ID:               1,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeAPIKey,
+		Status:           StatusActive,
+		Schedulable:      true,
+		Concurrency:      1,
+		Priority:         0,
+		RateLimitResetAt: &resetAt,
+REDACTED
+	available := Account{
+		ID:          2,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+REDACTED
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{rateLimited, availableREDACTEDREDACTED,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-5.2", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+REDACTED
+	if selection == nil || selection.Account == nil {
+		t.Fatalf("expected selection with account")
+REDACTED
+	if selection.Account.ID != available.ID {
+		t.Fatalf("expected account %d, got %d", available.ID, selection.Account.ID)
+REDACTED
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+REDACTED
+REDACTED
+
+func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulableWhenNoConcurrencyService(t *testing.T) {
+	now := time.Now()
+	resetAt := now.Add(10 * time.Minute)
+	groupID := int64(1)
+
+	rateLimited := Account{
+		ID:               1,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeAPIKey,
+		Status:           StatusActive,
+		Schedulable:      true,
+		Concurrency:      1,
+		Priority:         0,
+		RateLimitResetAt: &resetAt,
+REDACTED
+	available := Account{
+		ID:          2,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    1,
+REDACTED
+
+	svc := &OpenAIGatewayService{
+		accountRepo: stubOpenAIAccountRepo{accounts: []Account{rateLimited, availableREDACTEDREDACTED,
+		// concurrencyService is nil, forcing the non-load-batch selection path.
+REDACTED
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-5.2", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+REDACTED
+	if selection == nil || selection.Account == nil {
+		t.Fatalf("expected selection with account")
+REDACTED
+	if selection.Account.ID != available.ID {
+		t.Fatalf("expected account %d, got %d", available.ID, selection.Account.ID)
+REDACTED
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+REDACTED
+REDACTED
 
 func TestOpenAIStreamingTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
