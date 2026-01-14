@@ -1941,7 +1941,9 @@ export default {
         '30m': 'Last 30 minutes',
         '1h': 'Last 1 hour',
         '6h': 'Last 6 hours',
-        '24h': 'Last 24 hours'
+        '24h': 'Last 24 hours',
+        '7d': 'Last 7 days',
+        '30d': 'Last 30 days'
       REDACTED,
       fullscreen: {
         enter: 'Enter Fullscreen'
@@ -2013,6 +2015,7 @@ export default {
       // Error Log
       errorLog: {
         timeId: 'Time / ID',
+        type: 'Type',
         context: 'Context',
         status: 'Status',
         message: 'Message',
@@ -2028,6 +2031,8 @@ export default {
       errorDetails: {
         upstreamErrors: 'Upstream Errors',
         requestErrors: 'Request Errors',
+        unresolved: 'Unresolved',
+        resolved: 'Resolved',
         total: 'Total:',
         searchPlaceholder: 'Search request_id / client_request_id / message',
         accountIdPlaceholder: 'account_id'
@@ -2052,6 +2057,8 @@ export default {
         routing: 'Routing',
         upstream: 'Upstream',
         response: 'Response',
+        classification: 'Classification',
+        notRetryable: 'Not recommended to retry',
         retry: 'Retry',
         retryClient: 'Retry (Client)',
         retryUpstream: 'Retry (Upstream pinned)',
@@ -2072,7 +2079,31 @@ export default {
         retryNote2: 'If the original request failed due to account issues, pinned retry may still fail',
         retryNote3: 'Client retry will reselect an account',
         confirmRetryMessage: 'Confirm retry this request?',
-        confirmRetryHint: 'Will resend with the same request parameters'
+        confirmRetryHint: 'Will resend with the same request parameters',
+        forceRetry: 'I understand and want to force retry',
+        forceRetryHint: 'This error usually cannot be fixed by retry; check to proceed',
+        forceRetryNeedAck: 'Please check to force retry',
+        markResolved: 'Mark resolved',
+        markUnresolved: 'Mark unresolved',
+        viewRetries: 'Retry history',
+        retryHistory: 'Retry History',
+        tabOverview: 'Overview',
+        tabRetries: 'Retries',
+        tabRequest: 'Request',
+        tabResponse: 'Response',
+        responseBody: 'Response',
+        compareA: 'Compare A',
+        compareB: 'Compare B',
+        retrySummary: 'Retry Summary',
+        responseHintSucceeded: 'Showing succeeded retry response_preview (#{idREDACTED)',
+        responseHintFallback: 'No succeeded retry found; showing stored error_body',
+        suggestion: 'Suggestion',
+        suggestUpstreamResolved: '✓ Upstream error resolved by retry; no action needed',
+        suggestUpstream: 'Upstream instability: check account status, consider switching accounts, or retry',
+        suggestRequest: 'Client request error: ask customer to fix request parameters',
+        suggestAuth: 'Auth failed: verify API key/credentials',
+        suggestPlatform: 'Platform error: prioritize investigation and fix',
+        suggestGeneric: 'See details for more context'
       REDACTED,
       requestDetails: {
         title: 'Request Details',
@@ -2108,13 +2139,46 @@ export default {
         loading: 'Loading...',
         empty: 'No alert events',
         loadFailed: 'Failed to load alert events',
+        status: {
+          firing: 'FIRING',
+          resolved: 'RESOLVED',
+          manualResolved: 'MANUAL RESOLVED'
+        REDACTED,
+        detail: {
+          title: 'Alert Detail',
+          loading: 'Loading detail...',
+          empty: 'No detail',
+          loadFailed: 'Failed to load alert detail',
+          manualResolve: 'Mark as Resolved',
+          manualResolvedSuccess: 'Marked as manually resolved',
+          manualResolvedFailed: 'Failed to mark as manually resolved',
+          silence: 'Ignore Alert',
+          silenceSuccess: 'Alert silenced',
+          silenceFailed: 'Failed to silence alert',
+          viewRule: 'View Rule',
+          viewLogs: 'View Logs',
+          firedAt: 'Fired At',
+          resolvedAt: 'Resolved At',
+          ruleId: 'Rule ID',
+          dimensions: 'Dimensions',
+          historyTitle: 'History',
+          historyHint: 'Recent events with same rule + dimensions',
+          historyLoading: 'Loading history...',
+          historyEmpty: 'No history'
+        REDACTED,
         table: {
           time: 'Time',
           status: 'Status',
           severity: 'Severity',
+          platform: 'Platform',
+          ruleId: 'Rule ID',
           title: 'Title',
+          duration: 'Duration',
           metric: 'Metric / Threshold',
-          email: 'Email Sent'
+          dimensions: 'Dimensions',
+          email: 'Email Sent',
+          emailSent: 'Sent',
+          emailIgnored: 'Ignored'
         REDACTED
       REDACTED,
       alertRules: {
