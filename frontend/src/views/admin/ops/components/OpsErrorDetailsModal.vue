@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import { useAppStore REDACTED from '@/stores'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import OpsErrorLogTable from './OpsErrorLogTable.vue'
@@ -21,19 +22,36 @@ const emit = defineEmits<{
 REDACTED>()
 
 const { t REDACTED = useI18n()
+const appStore = useAppStore()
+
+const retryingUpstream = ref<number | null>(null)
+async function retryUpstreamError(id: number) {
+  try {
+    retryingUpstream.value = id
+    const res = await opsAPI.retryUpstreamError(id)
+    const summary = res.status === 'succeeded' ? t('admin.ops.errorDetail.retrySuccess') : t('admin.ops.errorDetail.retryFailed')
+    appStore.showSuccess(summary)
+    page.value = 1
+    await fetchErrorLogs()
+  REDACTED catch (err: any) {
+    appStore.showError(err?.message || t('admin.ops.retryFailed'))
+  REDACTED finally {
+    retryingUpstream.value = null
+  REDACTED
+REDACTED
 
 const loading = ref(false)
 const rows = ref<OpsErrorLog[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 
 const q = ref('')
 const statusCode = ref<number | 'other' | null>(null)
 const phase = ref<string>('')
 const errorOwner = ref<string>('')
-  const resolvedStatus = ref<string>('unresolved')
-  const viewMode = ref<'errors' | 'excluded' | 'all'>('errors')
+const resolvedStatus = ref<string>('unresolved')
+const viewMode = ref<'errors' | 'excluded' | 'all'>('errors')
 
 
 const modalTitle = computed(() => {
@@ -153,7 +171,7 @@ watch(
   (open) => {
     if (!open) return
     page.value = 1
-    pageSize.value = 20
+    pageSize.value = 10
     resetFilters()
   REDACTED
 )
@@ -259,17 +277,19 @@ watch(
           {{ t('admin.ops.errorDetails.total') REDACTEDREDACTED {{ total REDACTEDREDACTED
         </div>
 
-        <OpsErrorLogTable
-          class="min-h-0 flex-1"
-          :rows="rows"
-          :total="total"
-          :loading="loading"
-          :page="page"
-          :page-size="pageSize"
-          @openErrorDetail="emit('openErrorDetail', $event)"
-          @update:page="page = $event"
-          @update:pageSize="pageSize = $event"
-        />
+          <OpsErrorLogTable
+            class="min-h-0 flex-1"
+            :rows="rows"
+            :total="total"
+            :loading="loading"
+            :page="page"
+            :page-size="pageSize"
+            @openErrorDetail="emit('openErrorDetail', $event)"
+            @retryUpstream="retryUpstreamError"
+            @update:page="page = $event"
+            @update:pageSize="pageSize = $event"
+          />
+
       </div>
     </div>
   </BaseDialog>

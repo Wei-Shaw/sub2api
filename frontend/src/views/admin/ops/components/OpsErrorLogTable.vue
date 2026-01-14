@@ -142,9 +142,11 @@
 
               <!-- Actions -->
               <td class="whitespace-nowrap px-4 py-2 text-right" @click.stop>
-                <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400 text-xs font-bold" @click="emit('openErrorDetail', log.id)">
-                  {{ t('admin.ops.errorLog.details') REDACTEDREDACTED
-                </button>
+                <div class="flex items-center justify-end gap-3">
+                  <button type="button" class="text-primary-600 hover:text-primary-700 dark:text-primary-400 text-xs font-bold" @click="emit('openErrorDetail', log.id)">
+                    {{ t('admin.ops.errorLog.details') REDACTEDREDACTED
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -158,7 +160,7 @@
           :total="total"
           :page="page"
           :page-size="pageSize"
-          :page-size-options="[10, 20, 50, 100, 200, 500]"
+          :page-size-options="[10]"
           @update:page="emit('update:page', $event)"
           @update:pageSize="emit('update:pageSize', $event)"
         />
@@ -175,11 +177,17 @@ import { getSeverityClass, formatDateTime REDACTED from '../utils/opsFormatters'
 
 const { t REDACTED = useI18n()
 
+function isUpstreamRow(log: OpsErrorLog): boolean {
+  const phase = String(log.phase || '').toLowerCase()
+  const owner = String(log.error_owner || '').toLowerCase()
+  return phase === 'upstream' && owner === 'provider'
+REDACTED
+
 function getTypeBadge(log: OpsErrorLog): { label: string; className: string REDACTED {
   const phase = String(log.phase || '').toLowerCase()
   const owner = String(log.error_owner || '').toLowerCase()
 
-  if (phase === 'upstream' && owner === 'provider') {
+  if (isUpstreamRow(log)) {
     return { label: t('admin.ops.errorLog.typeUpstream'), className: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-500/30' REDACTED
   REDACTED
   if (phase === 'request' && owner === 'client') {
@@ -238,10 +246,11 @@ function formatSmartMessage(msg: string): string {
     REDACTED
   REDACTED
 
-    if (msg.includes('context deadline exceeded')) return t('admin.ops.errorLog.commonErrors.contextDeadlineExceeded')
-    if (msg.includes('connection refused')) return t('admin.ops.errorLog.commonErrors.connectionRefused')
-    if (msg.toLowerCase().includes('rate limit')) return t('admin.ops.errorLog.commonErrors.rateLimit')
+  if (msg.includes('context deadline exceeded')) return t('admin.ops.errorLog.commonErrors.contextDeadlineExceeded')
+  if (msg.includes('connection refused')) return t('admin.ops.errorLog.commonErrors.connectionRefused')
+  if (msg.toLowerCase().includes('rate limit')) return t('admin.ops.errorLog.commonErrors.rateLimit')
 
   return msg.length > 200 ? msg.substring(0, 200) + '...' : msg
+
 REDACTED
 </script>

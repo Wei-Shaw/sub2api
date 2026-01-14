@@ -12,7 +12,7 @@ import { formatDateTime REDACTED from '../utils/opsFormatters'
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 const loading = ref(false)
 const loadingMore = ref(false)
