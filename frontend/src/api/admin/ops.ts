@@ -17,6 +17,33 @@ REDACTED
 export interface OpsRetryRequest {
   mode: OpsRetryMode
   pinned_account_id?: number
+  force?: boolean
+REDACTED
+
+export interface OpsRetryAttempt {
+  id: number
+  created_at: string
+  requested_by_user_id: number
+  source_error_id: number
+  mode: OpsRetryMode | string
+  pinned_account_id?: number | null
+
+  status: string
+  started_at?: string | null
+  finished_at?: string | null
+  duration_ms?: number | null
+
+  success?: boolean | null
+  http_status_code?: number | null
+  upstream_request_id?: string | null
+  used_account_id?: number | null
+  response_preview?: string | null
+  response_truncated?: boolean | null
+
+  result_request_id?: string | null
+  result_error_id?: number | null
+
+  error_message?: string | null
 REDACTED
 
 export interface OpsRetryResult {
@@ -663,7 +690,7 @@ export interface AlertEvent {
   id: number
   rule_id: number
   severity: OpsSeverity | string
-  status: 'firing' | 'resolved' | string
+  status: 'firing' | 'resolved' | 'manual_resolved' | string
   title?: string
   description?: string
   metric_value?: number
@@ -701,10 +728,10 @@ export interface EmailNotificationConfig {
 REDACTED
 
 export interface OpsMetricThresholds {
-  sla_percent_min?: number | null                // SLA低于此值变红
-  latency_p99_ms_max?: number | null             // 延迟P99高于此值变红
-  ttft_p99_ms_max?: number | null                // TTFT P99高于此值变红
-  request_error_rate_percent_max?: number | null // 请求错误率高于此值变红
+  sla_percent_min?: number | null                 // SLA低于此值变红
+  latency_p99_ms_max?: number | null              // 延迟 P99 高于此值变红
+  ttft_p99_ms_max?: number | null                 // TTFT P99高于此值变红
+  request_error_rate_percent_max?: number | null  // 请求错误率高于此值变红
   upstream_error_rate_percent_max?: number | null // 上游错误率高于此值变红
 REDACTED
 
@@ -754,13 +781,27 @@ REDACTED
 export interface OpsErrorLog {
   id: number
   created_at: string
+
+  // Standardized classification
   phase: OpsPhase
   type: string
+  error_owner: 'client' | 'provider' | 'platform' | string
+  error_source: 'client_request' | 'upstream_http' | 'gateway' | string
+
   severity: OpsSeverity
   status_code: number
   platform: string
   model: string
   latency_ms?: number | null
+
+  is_retryable: boolean
+  retry_count: number
+
+  resolved: boolean
+  resolved_at?: string | null
+  resolved_by_user_id?: number | null
+  resolved_retry_id?: number | null
+
   client_request_id: string
   request_id: string
   message: string
@@ -899,7 +940,12 @@ export async function listErrorLogs(params: {
   platform?: string
   group_id?: number | null
   account_id?: number | null
+
   phase?: string
+  error_owner?: string
+  error_source?: string
+  resolved?: string
+
   q?: string
   status_codes?: string
 REDACTED): Promise<OpsErrorLogsResponse> {
@@ -915,6 +961,15 @@ REDACTED
 export async function retryErrorRequest(id: number, req: OpsRetryRequest): Promise<OpsRetryResult> {
   const { data REDACTED = await apiClient.post<OpsRetryResult>(`/admin/ops/errors/${idREDACTED/retry`, req)
   return data
+REDACTED
+
+export async function listRetryAttempts(errorId: number, limit = 50): Promise<OpsRetryAttempt[]> {
+  const { data REDACTED = await apiClient.get<OpsRetryAttempt[]>(`/admin/ops/errors/${errorIdREDACTED/retries`, { params: { limit REDACTED REDACTED)
+  return data
+REDACTED
+
+export async function updateErrorResolved(errorId: number, resolved: boolean): Promise<void> {
+  await apiClient.put(`/admin/ops/errors/${errorIdREDACTED/resolve`, { resolved REDACTED)
 REDACTED
 
 export async function listRequestDetails(params: OpsRequestDetailsParams): Promise<OpsRequestDetailsResponse> {
@@ -942,9 +997,43 @@ export async function deleteAlertRule(id: number): Promise<void> {
   await apiClient.delete(`/admin/ops/alert-rules/${idREDACTED`)
 REDACTED
 
-export async function listAlertEvents(limit = 100): Promise<AlertEvent[]> {
-  const { data REDACTED = await apiClient.get<AlertEvent[]>('/admin/ops/alert-events', { params: { limit REDACTED REDACTED)
+export interface AlertEventsQuery {
+  limit?: number
+  status?: string
+  severity?: string
+  email_sent?: boolean
+  time_range?: string
+  start_time?: string
+  end_time?: string
+  before_fired_at?: string
+  before_id?: number
+  platform?: string
+  group_id?: number
+REDACTED
+
+export async function listAlertEvents(params: AlertEventsQuery = {REDACTED): Promise<AlertEvent[]> {
+  const { data REDACTED = await apiClient.get<AlertEvent[]>('/admin/ops/alert-events', { params REDACTED)
   return data
+REDACTED
+
+export async function getAlertEvent(id: number): Promise<AlertEvent> {
+  const { data REDACTED = await apiClient.get<AlertEvent>(`/admin/ops/alert-events/${idREDACTED`)
+  return data
+REDACTED
+
+export async function updateAlertEventStatus(id: number, status: 'resolved' | 'manual_resolved'): Promise<void> {
+  await apiClient.put(`/admin/ops/alert-events/${idREDACTED/status`, { status REDACTED)
+REDACTED
+
+export async function createAlertSilence(payload: {
+  rule_id: number
+  platform: string
+  group_id?: number | null
+  region?: string | null
+  until: string
+  reason?: string
+REDACTED): Promise<void> {
+  await apiClient.post('/admin/ops/alert-silences', payload)
 REDACTED
 
 // Email notification config
@@ -1004,12 +1093,17 @@ export const opsAPI = {
   listErrorLogs,
   getErrorLogDetail,
   retryErrorRequest,
+  listRetryAttempts,
+  updateErrorResolved,
   listRequestDetails,
   listAlertRules,
   createAlertRule,
   updateAlertRule,
   deleteAlertRule,
   listAlertEvents,
+  getAlertEvent,
+  updateAlertEventStatus,
+  createAlertSilence,
   getEmailNotificationConfig,
   updateEmailNotificationConfig,
   getAlertRuntimeSettings,
