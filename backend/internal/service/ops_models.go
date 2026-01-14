@@ -6,8 +6,16 @@ type OpsErrorLog struct {
 	ID        int64     `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 
-	Phase    string `json:"phase"`
-	Type     string `json:"type"`
+	// Standardized classification
+	// - phase: request|auth|routing|upstream|network|internal
+	// - owner: client|provider|platform
+	// - source: client_request|upstream_http|gateway
+	Phase string `json:"phase"`
+	Type  string `json:"type"`
+
+	Owner  string `json:"error_owner"`
+	Source string `json:"error_source"`
+
 	Severity string `json:"severity"`
 
 	StatusCode int    `json:"status_code"`
@@ -15,6 +23,15 @@ type OpsErrorLog struct {
 	Model      string `json:"model"`
 
 	LatencyMs *int `json:"latency_ms"`
+
+	IsRetryable bool `json:"is_retryable"`
+	RetryCount  int  `json:"retry_count"`
+
+	Resolved          bool       `json:"resolved"`
+	ResolvedAt        *time.Time `json:"resolved_at"`
+	ResolvedByUserID  *int64     `json:"resolved_by_user_id"`
+	ResolvedRetryID   *int64     `json:"resolved_retry_id"`
+	ResolvedStatusRaw string     `json:"-"`
 
 	ClientRequestID string `json:"client_request_id"`
 	RequestID       string `json:"request_id"`
@@ -69,6 +86,9 @@ type OpsErrorLogFilter struct {
 
 	StatusCodes []int
 	Phase       string
+	Owner       string
+	Source      string
+	Resolved    *bool
 	Query       string
 
 	Page     int
@@ -96,6 +116,15 @@ type OpsRetryAttempt struct {
 	FinishedAt *time.Time `json:"finished_at"`
 	DurationMs *int64     `json:"duration_ms"`
 
+	// Persisted execution results (best-effort)
+	Success           *bool   `json:"success"`
+	HTTPStatusCode    *int    `json:"http_status_code"`
+	UpstreamRequestID *string `json:"upstream_request_id"`
+	UsedAccountID     *int64  `json:"used_account_id"`
+	ResponsePreview   *string `json:"response_preview"`
+	ResponseTruncated *bool   `json:"response_truncated"`
+
+	// Optional correlation
 	ResultRequestID *string `json:"result_request_id"`
 	ResultErrorID   *int64  `json:"result_error_id"`
 
