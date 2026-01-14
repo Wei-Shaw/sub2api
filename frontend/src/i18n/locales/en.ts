@@ -2009,6 +2009,11 @@ export default {
       // Error Log
       errorLog: {
         timeId: 'Time / ID',
+        commonErrors: {
+          contextDeadlineExceeded: 'context deadline exceeded',
+          connectionRefused: 'connection refused',
+          rateLimit: 'rate limit'
+        REDACTED,
         time: 'Time',
         type: 'Type',
         context: 'Context',
@@ -2038,12 +2043,64 @@ export default {
         requestErrors: 'Request Errors',
         unresolved: 'Unresolved',
         resolved: 'Resolved',
+        viewErrors: 'Errors',
+        viewExcluded: 'Excluded',
+        statusCodeOther: 'Other',
+        owner: {
+          provider: 'Provider',
+          client: 'Client',
+          platform: 'Platform'
+        REDACTED,
+        phase: {
+          request: 'Request',
+          auth: 'Auth',
+          routing: 'Routing',
+          upstream: 'Upstream',
+          network: 'Network',
+          internal: 'Internal'
+        REDACTED,
         total: 'Total:',
         searchPlaceholder: 'Search request_id / client_request_id / message',
         accountIdPlaceholder: 'account_id'
       REDACTED,
       // Error Detail Modal
       errorDetail: {
+        title: 'Error Detail',
+        titleWithId: 'Error #{idREDACTED',
+        noErrorSelected: 'No error selected.',
+        resolution: 'Resolved:',
+        pinnedToOriginalAccountId: 'Pinned to original account_id',
+        missingUpstreamRequestBody: 'Missing upstream request body',
+        failedToLoadRetryHistory: 'Failed to load retry history',
+        failedToUpdateResolvedStatus: 'Failed to update resolved status',
+        unsupportedRetryMode: 'Unsupported retry mode',
+        classificationKeys: {
+          phase: 'Phase',
+          owner: 'Owner',
+          source: 'Source',
+          retryable: 'Retryable',
+          resolvedAt: 'Resolved At',
+          resolvedBy: 'Resolved By',
+          resolvedRetryId: 'Resolved Retry',
+          retryCount: 'Retry Count'
+        REDACTED,
+        upstreamKeys: {
+          status: 'Status',
+          message: 'Message',
+          detail: 'Detail',
+          upstreamErrors: 'Upstream Errors'
+        REDACTED,
+        upstreamEvent: {
+          account: 'Account',
+          status: 'Status',
+          requestId: 'Request ID'
+        REDACTED,
+        retryMeta: {
+          http: 'HTTP',
+          used: 'Used',
+          success: 'Success',
+          pinned: 'Pinned'
+        REDACTED,
         loading: 'Loading…',
         requestId: 'Request ID',
         time: 'Time',
@@ -2053,6 +2110,8 @@ export default {
         basicInfo: 'Basic Info',
         platform: 'Platform',
         model: 'Model',
+        group: 'Group',
+        account: 'Account',
         latency: 'Request Duration',
         ttft: 'TTFT',
         businessLimited: 'Business Limited',
@@ -2083,6 +2142,7 @@ export default {
         retryNote1: 'Retry will use the same request body and parameters',
         retryNote2: 'If the original request failed due to account issues, pinned retry may still fail',
         retryNote3: 'Client retry will reselect an account',
+        retryNote4: 'You can force retry for non-retryable errors, but it is not recommended',
         confirmRetryMessage: 'Confirm retry this request?',
         confirmRetryHint: 'Will resend with the same request parameters',
         forceRetry: 'I understand and want to force retry',
@@ -2337,7 +2397,11 @@ export default {
           lockKeyRequired: 'Distributed lock key is required when lock is enabled',
           lockKeyPrefix: 'Distributed lock key must start with "{prefixREDACTED"',
           lockKeyHint: 'Recommended: start with "{prefixREDACTED" to avoid conflicts',
-          lockTtlRange: 'Distributed lock TTL must be between 1 and 86400 seconds'
+          lockTtlRange: 'Distributed lock TTL must be between 1 and 86400 seconds',
+          slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
+          ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
+          requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
+          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
         REDACTED
       REDACTED,
       email: {
@@ -2420,9 +2484,28 @@ export default {
         aggregation: 'Pre-aggregation Tasks',
         enableAggregation: 'Enable Pre-aggregation',
         aggregationHint: 'Pre-aggregation improves query performance for long time windows',
+        errorFiltering: 'Error Filtering',
+        ignoreCountTokensErrors: 'Ignore count_tokens errors',
+        ignoreCountTokensErrorsHint: 'When enabled, errors from count_tokens requests will not be written to the error log.',
+        ignoreContextCanceled: 'Ignore client disconnect errors',
+        ignoreContextCanceledHint: 'When enabled, client disconnect (context canceled) errors will not be written to the error log.',
+        ignoreNoAvailableAccounts: 'Ignore no available accounts errors',
+        ignoreNoAvailableAccountsHint: 'When enabled, "No available accounts" errors will not be written to the error log (not recommended; usually a config issue).',
+        autoRefresh: 'Auto Refresh',
+        enableAutoRefresh: 'Enable auto refresh',
+        enableAutoRefreshHint: 'Automatically refresh dashboard data at a fixed interval.',
+        refreshInterval: 'Refresh Interval',
+        refreshInterval15s: '15 seconds',
+        refreshInterval30s: '30 seconds',
+        refreshInterval60s: '60 seconds',
+        autoRefreshCountdown: 'Auto refresh: {secondsREDACTEDs',
         validation: {
           title: 'Please fix the following issues',
-          retentionDaysRange: 'Retention days must be between 1-365 days'
+          retentionDaysRange: 'Retention days must be between 1-365 days',
+          slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
+          ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
+          requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
+          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
         REDACTED
       REDACTED,
       concurrency: {

@@ -2153,6 +2153,11 @@ export default {
       // Error Log
       errorLog: {
         timeId: '时间 / ID',
+        commonErrors: {
+          contextDeadlineExceeded: '请求超时',
+          connectionRefused: '连接被拒绝',
+          rateLimit: '触发限流'
+        REDACTED,
         time: '时间',
         type: '类型',
         context: '上下文',
@@ -2182,12 +2187,64 @@ export default {
         requestErrors: '请求错误',
         unresolved: '未解决',
         resolved: '已解决',
+        viewErrors: '错误',
+        viewExcluded: '排除项',
+        statusCodeOther: '其他',
+        owner: {
+          provider: '服务商',
+          client: '客户端',
+          platform: '平台'
+        REDACTED,
+        phase: {
+          request: '请求',
+          auth: '认证',
+          routing: '路由',
+          upstream: '上游',
+          network: '网络',
+          internal: '内部'
+        REDACTED,
         total: '总计：',
         searchPlaceholder: '搜索 request_id / client_request_id / message',
         accountIdPlaceholder: 'account_id'
       REDACTED,
       // Error Detail Modal
       errorDetail: {
+        title: '错误详情',
+        titleWithId: '错误 #{idREDACTED',
+        noErrorSelected: '未选择错误。',
+        resolution: '已解决：',
+        pinnedToOriginalAccountId: '固定到原 account_id',
+        missingUpstreamRequestBody: '缺少上游请求体',
+        failedToLoadRetryHistory: '加载重试历史失败',
+        failedToUpdateResolvedStatus: '更新解决状态失败',
+        unsupportedRetryMode: '不支持的重试模式',
+        classificationKeys: {
+          phase: '阶段',
+          owner: '归属方',
+          source: '来源',
+          retryable: '可重试',
+          resolvedAt: '解决时间',
+          resolvedBy: '解决人',
+          resolvedRetryId: '解决重试ID',
+          retryCount: '重试次数'
+        REDACTED,
+        upstreamKeys: {
+          status: '状态码',
+          message: '消息',
+          detail: '详情',
+          upstreamErrors: '上游错误列表'
+        REDACTED,
+        upstreamEvent: {
+          account: '账号',
+          status: '状态码',
+          requestId: '请求ID'
+        REDACTED,
+        retryMeta: {
+          http: 'HTTP',
+          used: '使用账号',
+          success: '成功',
+          pinned: '固定账号'
+        REDACTED,
         loading: '加载中…',
         requestId: '请求 ID',
         time: '时间',
@@ -2197,6 +2254,8 @@ export default {
         basicInfo: '基本信息',
         platform: '平台',
         model: '模型',
+        group: '分组',
+        account: '账号',
         latency: '请求时长',
         ttft: 'TTFT',
         businessLimited: '业务限制',
@@ -2227,6 +2286,7 @@ export default {
         retryNote1: '重试会使用相同的请求体和参数',
         retryNote2: '如果原请求失败是因为账号问题，固定重试可能仍会失败',
         retryNote3: '客户端重试会重新选择账号',
+        retryNote4: '对不可重试的错误可以强制重试，但不推荐',
         confirmRetryMessage: '确认要重试该请求吗？',
         confirmRetryHint: '将使用相同的请求参数重新发送',
         forceRetry: '我已确认并理解强制重试风险',
@@ -2481,7 +2541,11 @@ export default {
           lockKeyRequired: '启用分布式锁时必须填写 Lock Key',
           lockKeyPrefix: '分布式锁 Key 必须以「{prefixREDACTED」开头',
           lockKeyHint: '建议以「{prefixREDACTED」开头以避免冲突',
-          lockTtlRange: '分布式锁 TTL 必须在 1 到 86400 秒之间'
+          lockTtlRange: '分布式锁 TTL 必须在 1 到 86400 秒之间',
+          slaMinPercentRange: 'SLA 最低值必须在 0-100 之间',
+          ttftP99MaxRange: 'TTFT P99 最大值必须大于或等于 0',
+          requestErrorRateMaxRange: '请求错误率最大值必须在 0-100 之间',
+          upstreamErrorRateMaxRange: '上游错误率最大值必须在 0-100 之间'
         REDACTED
       REDACTED,
       email: {
@@ -2564,9 +2628,28 @@ export default {
         aggregation: '预聚合任务',
         enableAggregation: '启用预聚合任务',
         aggregationHint: '预聚合可提升长时间窗口查询性能',
+        errorFiltering: '错误过滤',
+        ignoreCountTokensErrors: '忽略 count_tokens 错误',
+        ignoreCountTokensErrorsHint: '启用后，count_tokens 请求的错误将不会写入错误日志。',
+        ignoreContextCanceled: '忽略客户端断连错误',
+        ignoreContextCanceledHint: '启用后，客户端主动断开连接（context canceled）的错误将不会写入错误日志。',
+        ignoreNoAvailableAccounts: '忽略无可用账号错误',
+        ignoreNoAvailableAccountsHint: '启用后，“No available accounts” 错误将不会写入错误日志（不推荐，这通常是配置问题）。',
+        autoRefresh: '自动刷新',
+        enableAutoRefresh: '启用自动刷新',
+        enableAutoRefreshHint: '自动刷新仪表板数据，启用后会定期拉取最新数据。',
+        refreshInterval: '刷新间隔',
+        refreshInterval15s: '15 秒',
+        refreshInterval30s: '30 秒',
+        refreshInterval60s: '60 秒',
+        autoRefreshCountdown: '自动刷新：{secondsREDACTEDs',
         validation: {
           title: '请先修正以下问题',
-          retentionDaysRange: '保留天数必须在1-365天之间'
+          retentionDaysRange: '保留天数必须在1-365天之间',
+          slaMinPercentRange: 'SLA最低百分比必须在0-100之间',
+          ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
+          requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
+          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间'
         REDACTED
       REDACTED,
       concurrency: {

@@ -15,9 +15,9 @@
       <!-- Header actions -->
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2 text-xs">
-          <span class="font-semibold text-gray-600 dark:text-gray-300">Resolved:</span>
+          <span class="font-semibold text-gray-600 dark:text-gray-300">{{ t('admin.ops.errorDetail.resolution') REDACTEDREDACTED</span>
           <span :class="(detail as any).resolved ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-300'">
-            {{ (detail as any).resolved ? 'true' : 'false' REDACTEDREDACTED
+            {{ (detail as any).resolved ? t('admin.ops.errorDetails.resolved') : t('admin.ops.errorDetails.unresolved') REDACTEDREDACTED
           </span>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -28,7 +28,7 @@
             :disabled="loading"
             @click="markResolved(true)"
           >
-            {{ t('admin.ops.errorDetail.markResolved') || 'Mark resolved' REDACTEDREDACTED
+            {{ t('admin.ops.errorDetail.markResolved') REDACTEDREDACTED
           </button>
           <button
             v-else
@@ -37,17 +37,17 @@
             :disabled="loading"
             @click="markResolved(false)"
           >
-            {{ t('admin.ops.errorDetail.markUnresolved') || 'Mark unresolved' REDACTEDREDACTED
+            {{ t('admin.ops.errorDetail.markUnresolved') REDACTEDREDACTED
           </button>
         </div>
       </div>
 
       <!-- Tabs -->
       <div class="flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-dark-700">
-        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='overview' ? 'opacity-100' : 'opacity-70'" @click="activeTab='overview'">{{ t('admin.ops.errorDetail.tabOverview') || 'Overview' REDACTEDREDACTED</button>
-        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='retries' ? 'opacity-100' : 'opacity-70'" @click="activeTab='retries'">{{ t('admin.ops.errorDetail.tabRetries') || 'Retries' REDACTEDREDACTED</button>
-        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='request' ? 'opacity-100' : 'opacity-70'" @click="activeTab='request'">{{ t('admin.ops.errorDetail.tabRequest') || 'Request' REDACTEDREDACTED</button>
-        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='response' ? 'opacity-100' : 'opacity-70'" @click="activeTab='response'">{{ t('admin.ops.errorDetail.tabResponse') || 'Response' REDACTEDREDACTED</button>
+        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='overview' ? 'opacity-100' : 'opacity-70'" @click="activeTab='overview'">{{ t('admin.ops.errorDetail.tabOverview') REDACTEDREDACTED</button>
+        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='retries' ? 'opacity-100' : 'opacity-70'" @click="activeTab='retries'">{{ t('admin.ops.errorDetail.tabRetries') REDACTEDREDACTED</button>
+        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='request' ? 'opacity-100' : 'opacity-70'" @click="activeTab='request'">{{ t('admin.ops.errorDetail.tabRequest') REDACTEDREDACTED</button>
+        <button type="button" class="btn btn-secondary btn-sm" :class="activeTab==='response' ? 'opacity-100' : 'opacity-70'" @click="activeTab='response'">{{ t('admin.ops.errorDetail.tabResponse') REDACTEDREDACTED</button>
       </div>
 
       <div v-if="activeTab==='overview'">
@@ -102,7 +102,7 @@
 
       <!-- Suggestion -->
       <div v-if="handlingSuggestion" class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
-        <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.suggestion') || 'Suggestion' REDACTEDREDACTED</h3>
+        <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.suggestion') REDACTEDREDACTED</h3>
         <div class="text-sm font-medium text-gray-800 dark:text-gray-200 break-words">
           {{ handlingSuggestion REDACTEDREDACTED
         </div>
@@ -110,41 +110,41 @@
 
         <!-- Classification -->
         <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
-          <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.classification') || 'Classification' REDACTEDREDACTED</h3>
+          <h3 class="mb-4 text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.classification') REDACTEDREDACTED</h3>
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">phase</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.phase') REDACTEDREDACTED</div>
               <div class="mt-1 text-sm font-bold uppercase text-gray-900 dark:text-white">{{ detail.phase || '—' REDACTEDREDACTED</div>
             </div>
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">owner</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.owner') REDACTEDREDACTED</div>
               <div class="mt-1 text-sm font-bold uppercase text-gray-900 dark:text-white">{{ (detail as any).error_owner || '—' REDACTEDREDACTED</div>
             </div>
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">source</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.source') REDACTEDREDACTED</div>
               <div class="mt-1 text-sm font-bold uppercase text-gray-900 dark:text-white">{{ (detail as any).error_source || '—' REDACTEDREDACTED</div>
             </div>
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">retryable</div>
-              <div class="mt-1 text-sm font-bold text-gray-900 dark:text-white">{{ (detail as any).is_retryable ? '✓' : '✗' REDACTEDREDACTED</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.retryable') REDACTEDREDACTED</div>
+              <div class="mt-1 text-sm font-bold text-gray-900 dark:text-white">{{ (detail as any).is_retryable ? t('common.yes') : t('common.no') REDACTEDREDACTED</div>
             </div>
           </div>
 
           <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">resolved_at</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.resolvedAt') REDACTEDREDACTED</div>
               <div class="mt-1 font-mono text-xs text-gray-700 dark:text-gray-200">{{ (detail as any).resolved_at || '—' REDACTEDREDACTED</div>
             </div>
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">resolved_by</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.resolvedBy') REDACTEDREDACTED</div>
               <div class="mt-1 font-mono text-xs text-gray-700 dark:text-gray-200">{{ (detail as any).resolved_by_user_id ?? '—' REDACTEDREDACTED</div>
             </div>
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">resolved_retry_id</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.resolvedRetryId') REDACTEDREDACTED</div>
               <div class="mt-1 font-mono text-xs text-gray-700 dark:text-gray-200">{{ (detail as any).resolved_retry_id ?? '—' REDACTEDREDACTED</div>
             </div>
             <div>
-              <div class="text-xs font-bold uppercase text-gray-400">retry_count</div>
+              <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.classificationKeys.retryCount') REDACTEDREDACTED</div>
               <div class="mt-1 font-mono text-xs text-gray-700 dark:text-gray-200">{{ (detail as any).retry_count ?? '—' REDACTEDREDACTED</div>
             </div>
           </div>
@@ -165,7 +165,7 @@
           <div>
             <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.group') REDACTEDREDACTED</div>
             <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-              <el-tooltip v-if="detail.group_id" :content="'ID: ' + detail.group_id" placement="top">
+              <el-tooltip v-if="detail.group_id" :content="t('admin.ops.errorLog.id') + ' ' + detail.group_id" placement="top">
                 <span>{{ detail.group_name || detail.group_id REDACTEDREDACTED</span>
               </el-tooltip>
               <span v-else>—</span>
@@ -174,7 +174,7 @@
           <div>
             <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.account') REDACTEDREDACTED</div>
             <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-              <el-tooltip v-if="detail.account_id" :content="'ID: ' + detail.account_id" placement="top">
+              <el-tooltip v-if="detail.account_id" :content="t('admin.ops.errorLog.id') + ' ' + detail.account_id" placement="top">
                 <span>{{ detail.account_name || detail.account_id REDACTEDREDACTED</span>
               </el-tooltip>
               <span v-else>—</span>
@@ -257,7 +257,7 @@
                </button>
              </template>
              <template v-else>
-               <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">{{ t('admin.ops.errorDetail.notRetryable') || 'Not retryable' REDACTEDREDACTED</span>
+               <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">{{ t('admin.ops.errorDetail.notRetryable') REDACTEDREDACTED</span>
              </template>
            </div>
          </div>
@@ -268,7 +268,7 @@
             <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.pinnedAccountId') REDACTEDREDACTED</label>
             <input v-model="pinnedAccountIdInput" type="text" class="input font-mono text-sm" disabled />
             <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              pinned to original account_id
+               {{ t('admin.ops.errorDetail.pinnedToOriginalAccountId') REDACTEDREDACTED
             </div>
           </div>
           <div class="md:col-span-2">
@@ -294,13 +294,13 @@
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <div class="text-xs font-bold uppercase text-gray-400">status</div>
+            <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.upstreamKeys.status') REDACTEDREDACTED</div>
             <div class="mt-1 font-mono text-sm font-bold text-gray-900 dark:text-white">
               {{ detail.upstream_status_code != null ? detail.upstream_status_code : '—' REDACTEDREDACTED
             </div>
           </div>
           <div class="sm:col-span-2">
-            <div class="text-xs font-bold uppercase text-gray-400">message</div>
+            <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.upstreamKeys.message') REDACTEDREDACTED</div>
             <div class="mt-1 break-words text-sm font-medium text-gray-900 dark:text-white">
               {{ detail.upstream_error_message || '—' REDACTEDREDACTED
             </div>
@@ -308,14 +308,14 @@
         </div>
 
         <div v-if="detail.upstream_error_detail" class="mt-4">
-          <div class="text-xs font-bold uppercase text-gray-400">detail</div>
+          <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.upstreamKeys.detail') REDACTEDREDACTED</div>
           <pre
             class="mt-2 max-h-[240px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"
           ><code>{{ prettyJSON(detail.upstream_error_detail) REDACTEDREDACTED</code></pre>
         </div>
 
         <div v-if="detail.upstream_errors" class="mt-5">
-          <div class="mb-2 text-xs font-bold uppercase text-gray-400">upstream_errors</div>
+          <div class="mb-2 text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.upstreamKeys.upstreamErrors') REDACTEDREDACTED</div>
 
           <div v-if="upstreamErrors.length" class="space-y-3">
             <div
@@ -333,7 +333,7 @@
                     type="button"
                     class="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
                     :disabled="retrying || !ev.upstream_request_body"
-                    :title="ev.upstream_request_body ? '' : 'missing upstream request body'"
+                    :title="ev.upstream_request_body ? '' : t('admin.ops.errorDetail.missingUpstreamRequestBody')"
                     @click.stop="retryUpstreamEvent(idx)"
                   >
                     {{ t('admin.ops.errorDetail.retryUpstream') REDACTEDREDACTED #{{ idx + 1 REDACTEDREDACTED
@@ -346,15 +346,15 @@
 
               <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
                 <div>
-                  <span class="text-gray-400">account:</span> 
-                  <el-tooltip v-if="ev.account_id" :content="'ID: ' + ev.account_id" placement="top">
+                  <span class="text-gray-400">{{ t('admin.ops.errorDetail.upstreamEvent.account') REDACTEDREDACTED:</span>
+                  <el-tooltip v-if="ev.account_id" :content="t('admin.ops.errorLog.id') + ' ' + ev.account_id" placement="top">
                     <span class="font-medium text-gray-900 dark:text-white ml-1">{{ ev.account_name || ev.account_id REDACTEDREDACTED</span>
                   </el-tooltip>
                   <span v-else class="ml-1">—</span>
                 </div>
-                <div><span class="text-gray-400">status:</span> <span class="font-mono ml-1">{{ ev.upstream_status_code ?? '—' REDACTEDREDACTED</span></div>
+                <div><span class="text-gray-400">{{ t('admin.ops.errorDetail.upstreamEvent.status') REDACTEDREDACTED:</span> <span class="font-mono ml-1">{{ ev.upstream_status_code ?? '—' REDACTEDREDACTED</span></div>
                 <div class="sm:col-span-2 break-all">
-                  <span class="text-gray-400">request_id:</span> <span class="font-mono ml-1">{{ ev.upstream_request_id || '—' REDACTEDREDACTED</span>
+                  <span class="text-gray-400">{{ t('admin.ops.errorDetail.upstreamEvent.requestId') REDACTEDREDACTED:</span> <span class="font-mono ml-1">{{ ev.upstream_request_id || '—' REDACTEDREDACTED</span>
                 </div>
               </div>
 
@@ -403,7 +403,7 @@
 
       <div v-else-if="activeTab==='retries'">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.retryHistory') || 'Retry History' REDACTEDREDACTED</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.retryHistory') REDACTEDREDACTED</div>
           <div class="flex flex-wrap gap-2">
             <button type="button" class="btn btn-secondary btn-sm" @click="loadRetryHistory">{{ t('common.refresh') REDACTEDREDACTED</button>
           </div>
@@ -415,14 +415,14 @@
           <div v-else>
             <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
               <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
-                <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.compareA') || 'Compare A' REDACTEDREDACTED</div>
+                <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.compareA') REDACTEDREDACTED</div>
                 <select v-model.number="compareA" class="input mt-2 w-full font-mono text-xs">
                   <option :value="null">—</option>
                   <option v-for="a in retryHistory" :key="a.id" :value="a.id">#{{ a.id REDACTEDREDACTED · {{ a.mode REDACTEDREDACTED · {{ a.status REDACTEDREDACTED</option>
                 </select>
               </div>
               <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
-                <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.compareB') || 'Compare B' REDACTEDREDACTED</div>
+                <div class="text-xs font-bold uppercase text-gray-400">{{ t('admin.ops.errorDetail.compareB') REDACTEDREDACTED</div>
                 <select v-model.number="compareB" class="input mt-2 w-full font-mono text-xs">
                   <option :value="null">—</option>
                   <option v-for="b in retryHistory" :key="b.id" :value="b.id">#{{ b.id REDACTEDREDACTED · {{ b.mode REDACTEDREDACTED · {{ b.status REDACTEDREDACTED</option>
@@ -434,8 +434,8 @@
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="text-xs font-black text-gray-900 dark:text-white">{{ selectedA ? `#${selectedA.idREDACTED · ${selectedA.modeREDACTED · ${selectedA.statusREDACTED` : '—' REDACTEDREDACTED</div>
                 <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                  http: <span class="font-mono">{{ selectedA?.http_status_code ?? '—' REDACTEDREDACTED</span> · 
-                  used: <span class="font-mono">
+                  {{ t('admin.ops.errorDetail.retryMeta.http') REDACTEDREDACTED: <span class="font-mono">{{ selectedA?.http_status_code ?? '—' REDACTEDREDACTED</span> ·
+                  {{ t('admin.ops.errorDetail.retryMeta.used') REDACTEDREDACTED: <span class="font-mono">
                     <el-tooltip v-if="selectedA?.used_account_id" :content="'ID: ' + selectedA.used_account_id" placement="top">
                       <span class="font-medium">{{ selectedA.used_account_name || selectedA.used_account_id REDACTEDREDACTED</span>
                     </el-tooltip>
@@ -448,8 +448,8 @@
               <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
                 <div class="text-xs font-black text-gray-900 dark:text-white">{{ selectedB ? `#${selectedB.idREDACTED · ${selectedB.modeREDACTED · ${selectedB.statusREDACTED` : '—' REDACTEDREDACTED</div>
                 <div class="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                  http: <span class="font-mono">{{ selectedB?.http_status_code ?? '—' REDACTEDREDACTED</span> · 
-                  used: <span class="font-mono">
+                  {{ t('admin.ops.errorDetail.retryMeta.http') REDACTEDREDACTED: <span class="font-mono">{{ selectedB?.http_status_code ?? '—' REDACTEDREDACTED</span> ·
+                  {{ t('admin.ops.errorDetail.retryMeta.used') REDACTEDREDACTED: <span class="font-mono">
                     <el-tooltip v-if="selectedB?.used_account_id" :content="'ID: ' + selectedB.used_account_id" placement="top">
                       <span class="font-medium">{{ selectedB.used_account_name || selectedB.used_account_id REDACTEDREDACTED</span>
                     </el-tooltip>
@@ -468,17 +468,17 @@
                   <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ a.created_at REDACTEDREDACTED</div>
                 </div>
                 <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-4">
-                  <div><span class="text-gray-400">success:</span> <span class="font-mono">{{ a.success ?? '—' REDACTEDREDACTED</span></div>
-                  <div><span class="text-gray-400">http:</span> <span class="font-mono">{{ a.http_status_code ?? '—' REDACTEDREDACTED</span></div>
+                  <div><span class="text-gray-400">{{ t('admin.ops.errorDetail.retryMeta.success') REDACTEDREDACTED:</span> <span class="font-mono">{{ a.success ?? '—' REDACTEDREDACTED</span></div>
+                  <div><span class="text-gray-400">{{ t('admin.ops.errorDetail.retryMeta.http') REDACTEDREDACTED:</span> <span class="font-mono">{{ a.http_status_code ?? '—' REDACTEDREDACTED</span></div>
                   <div>
-                    <span class="text-gray-400">pinned:</span>
+                    <span class="text-gray-400">{{ t('admin.ops.errorDetail.retryMeta.pinned') REDACTEDREDACTED:</span>
                     <el-tooltip v-if="a.pinned_account_id" :content="'ID: ' + a.pinned_account_id" placement="top">
                       <span class="font-mono ml-1">{{ a.pinned_account_name || a.pinned_account_id REDACTEDREDACTED</span>
                     </el-tooltip>
                     <span v-else class="font-mono ml-1">—</span>
                   </div>
                   <div>
-                    <span class="text-gray-400">used:</span>
+                    <span class="text-gray-400">{{ t('admin.ops.errorDetail.retryMeta.used') REDACTEDREDACTED:</span>
                     <el-tooltip v-if="a.used_account_id" :content="'ID: ' + a.used_account_id" placement="top">
                       <span class="font-mono ml-1">{{ a.used_account_name || a.used_account_id REDACTEDREDACTED</span>
                     </el-tooltip>
@@ -502,7 +502,7 @@
 
       <div v-else-if="activeTab==='response'">
         <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
-          <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.responseBody') || 'Response' REDACTEDREDACTED</h3>
+          <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.responseBody') REDACTEDREDACTED</h3>
           <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
             {{ responseTabHint REDACTEDREDACTED
           </div>
@@ -525,7 +525,7 @@
     <div class="pointer-events-auto w-full max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
       <label class="flex items-center gap-2">
         <input v-model="forceRetryAck" type="checkbox" class="h-4 w-4" />
-        <span>{{ t('admin.ops.errorDetail.forceRetry') || 'I understand and want to force retry' REDACTEDREDACTED</span>
+        <span>{{ t('admin.ops.errorDetail.forceRetry') REDACTEDREDACTED</span>
       </label>
     </div>
   </div>
@@ -578,11 +578,11 @@ const compareB = ref<number | null>(null)
 const pinnedAccountIdInput = ref('')
 
 const title = computed(() => {
-  if (!props.errorId) return 'Error Detail'
-  return `Error #${props.errorIdREDACTED`
+  if (!props.errorId) return t('admin.ops.errorDetail.title')
+  return t('admin.ops.errorDetail.titleWithId', { id: String(props.errorId) REDACTED)
 REDACTED)
 
-const emptyText = computed(() => 'No error selected.')
+const emptyText = computed(() => t('admin.ops.errorDetail.noErrorSelected'))
 
 type UpstreamErrorEvent = {
   at_unix_ms?: number
@@ -630,20 +630,20 @@ const handlingSuggestion = computed(() => {
 
   if (owner === 'provider' && phase === 'upstream') {
     if (retryHistory.value.some((r) => r.success === true) && d.resolved) {
-      return t('admin.ops.errorDetail.suggestUpstreamResolved') || '✓ Upstream error resolved by retry; no action needed.'
+      return t('admin.ops.errorDetail.suggestUpstreamResolved')
     REDACTED
-    return t('admin.ops.errorDetail.suggestUpstream') || 'Upstream instability: consider checking upstream account status, switching accounts, or retrying.'
+    return t('admin.ops.errorDetail.suggestUpstream')
   REDACTED
   if (owner === 'client' && phase === 'request') {
-    return t('admin.ops.errorDetail.suggestRequest') || 'Client request validation error: contact customer to fix request parameters.'
+    return t('admin.ops.errorDetail.suggestRequest')
   REDACTED
   if (owner === 'client' && phase === 'auth') {
-    return t('admin.ops.errorDetail.suggestAuth') || 'Auth failed: verify API key/credentials.'
+    return t('admin.ops.errorDetail.suggestAuth')
   REDACTED
   if (owner === 'platform') {
-    return t('admin.ops.errorDetail.suggestPlatform') || 'Platform error: prioritize investigation and fix.'
+    return t('admin.ops.errorDetail.suggestPlatform')
   REDACTED
-  return t('admin.ops.errorDetail.suggestGeneric') || 'See details for more context.'
+  return t('admin.ops.errorDetail.suggestGeneric')
 REDACTED)
 
 async function fetchDetail(id: number) {
@@ -709,7 +709,7 @@ async function loadRetryHistory() {
     retryHistory.value = []
     compareA.value = null
     compareB.value = null
-    appStore.showError(err?.message || 'Failed to load retry history')
+    appStore.showError(err?.message || t('admin.ops.errorDetail.failedToLoadRetryHistory'))
   REDACTED finally {
     retryHistoryLoading.value = false
   REDACTED
@@ -732,7 +732,7 @@ const responseTabHint = computed(() => {
   if (succeeded?.response_preview) {
     return t('admin.ops.errorDetail.responseHintSucceeded', { id: String(succeeded.id) REDACTED) || `Showing succeeded retry response_preview (#${succeeded.idREDACTED)`
   REDACTED
-  return t('admin.ops.errorDetail.responseHintFallback') || 'No succeeded retry found; showing stored error_body'
+  return t('admin.ops.errorDetail.responseHintFallback')
 REDACTED)
 
 async function markResolved(resolved: boolean) {
@@ -745,9 +745,9 @@ async function markResolved(resolved: boolean) {
       await opsAPI.updateRequestErrorResolved(props.errorId, resolved)
     REDACTED
     await fetchDetail(props.errorId)
-    appStore.showSuccess(resolved ? (t('admin.ops.errorDetails.resolved') || 'Resolved') : (t('admin.ops.errorDetails.unresolved') || 'Unresolved'))
+    appStore.showSuccess(resolved ? t('admin.ops.errorDetails.resolved') : t('admin.ops.errorDetails.unresolved'))
   REDACTED catch (err: any) {
-    appStore.showError(err?.message || 'Failed to update resolved status')
+    appStore.showError(err?.message || t('admin.ops.errorDetail.failedToUpdateResolvedStatus'))
   REDACTED
 REDACTED
 
@@ -755,7 +755,7 @@ const retryConfirmMessage = computed(() => {
   const mode = pendingRetryMode.value
   const retryable = !!(detail.value as any)?.is_retryable
   if (!retryable) {
-    return t('admin.ops.errorDetail.forceRetryHint') || 'This error is not recommended to retry. Check the box to force retry.'
+    return t('admin.ops.errorDetail.forceRetryHint')
   REDACTED
   if (mode === 'upstream') {
     return t('admin.ops.errorDetail.confirmRetryMessage')
@@ -781,7 +781,7 @@ async function runConfirmedRetry() {
   const mode = pendingRetryMode.value
   const retryable = !!(detail.value as any)?.is_retryable
   if (!retryable && !forceRetryAck.value) {
-    appStore.showError(t('admin.ops.errorDetail.forceRetryNeedAck') || 'Please confirm you want to force retry')
+    appStore.showError(t('admin.ops.errorDetail.forceRetryNeedAck'))
     return
   REDACTED
 
@@ -799,7 +799,7 @@ async function runConfirmedRetry() {
         if (mode === 'client') {
           res = await opsAPI.retryRequestErrorClient(props.errorId)
         REDACTED else {
-          throw new Error('Unsupported retry mode')
+          throw new Error(t('admin.ops.errorDetail.unsupportedRetryMode'))
         REDACTED
       REDACTED
 

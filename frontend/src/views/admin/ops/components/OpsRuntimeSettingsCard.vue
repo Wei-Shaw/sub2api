@@ -50,22 +50,22 @@ function validateRuntimeSettings(settings: OpsAlertRuntimeSettings): ValidationR
   if (thresholds) {
     if (thresholds.sla_percent_min != null) {
       if (!Number.isFinite(thresholds.sla_percent_min) || thresholds.sla_percent_min < 0 || thresholds.sla_percent_min > 100) {
-        errors.push('SLA 最低值必须在 0-100 之间')
+        errors.push(t('admin.ops.runtime.validation.slaMinPercentRange'))
       REDACTED
     REDACTED
     if (thresholds.ttft_p99_ms_max != null) {
       if (!Number.isFinite(thresholds.ttft_p99_ms_max) || thresholds.ttft_p99_ms_max < 0) {
-        errors.push('TTFT P99 最大值必须大于或等于 0')
+        errors.push(t('admin.ops.runtime.validation.ttftP99MaxRange'))
       REDACTED
     REDACTED
     if (thresholds.request_error_rate_percent_max != null) {
       if (!Number.isFinite(thresholds.request_error_rate_percent_max) || thresholds.request_error_rate_percent_max < 0 || thresholds.request_error_rate_percent_max > 100) {
-        errors.push('请求错误率最大值必须在 0-100 之间')
+        errors.push(t('admin.ops.runtime.validation.requestErrorRateMaxRange'))
       REDACTED
     REDACTED
     if (thresholds.upstream_error_rate_percent_max != null) {
       if (!Number.isFinite(thresholds.upstream_error_rate_percent_max) || thresholds.upstream_error_rate_percent_max < 0 || thresholds.upstream_error_rate_percent_max > 100) {
-        errors.push('上游错误率最大值必须在 0-100 之间')
+        errors.push(t('admin.ops.runtime.validation.upstreamErrorRateMaxRange'))
       REDACTED
     REDACTED
   REDACTED
@@ -329,12 +329,12 @@ REDACTED)
       </div>
 
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
-        <div class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">指标阈值配置</div>
-        <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">配置各项指标的告警阈值。超出阈值的指标将在看板上以红色显示。</p>
+        <div class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.runtime.metricThresholds') REDACTEDREDACTED</div>
+        <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.metricThresholdsHint') REDACTEDREDACTED</p>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">SLA 最低值 (%)</div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.slaMinPercent') REDACTEDREDACTED</div>
             <input
               v-model.number="draftAlert.thresholds.sla_percent_min"
               type="number"
@@ -344,13 +344,13 @@ REDACTED)
               class="input"
               placeholder="99.5"
             />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">SLA 低于此值时将显示为红色</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.slaMinPercentHint') REDACTEDREDACTED</p>
           </div>
 
 
 
           <div>
-            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">TTFT P99 最大值 (ms)</div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.ttftP99MaxMs') REDACTEDREDACTED</div>
             <input
               v-model.number="draftAlert.thresholds.ttft_p99_ms_max"
               type="number"
@@ -359,11 +359,11 @@ REDACTED)
               class="input"
               placeholder="500"
             />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">TTFT P99 高于此值时将显示为红色</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.ttftP99MaxMsHint') REDACTEDREDACTED</p>
           </div>
 
           <div>
-            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">请求错误率最大值 (%)</div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.requestErrorRateMaxPercent') REDACTEDREDACTED</div>
             <input
               v-model.number="draftAlert.thresholds.request_error_rate_percent_max"
               type="number"
@@ -373,11 +373,11 @@ REDACTED)
               class="input"
               placeholder="5"
             />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">请求错误率高于此值时将显示为红色</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.requestErrorRateMaxPercentHint') REDACTEDREDACTED</p>
           </div>
 
           <div>
-            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">上游错误率最大值 (%)</div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.upstreamErrorRateMaxPercent') REDACTEDREDACTED</div>
             <input
               v-model.number="draftAlert.thresholds.upstream_error_rate_percent_max"
               type="number"
@@ -387,7 +387,7 @@ REDACTED)
               class="input"
               placeholder="5"
             />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">上游错误率高于此值时将显示为红色</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.upstreamErrorRateMaxPercentHint') REDACTEDREDACTED</p>
           </div>
         </div>
       </div>

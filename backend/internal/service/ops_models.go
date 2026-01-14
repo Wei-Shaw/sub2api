@@ -86,12 +86,13 @@ type OpsErrorLogFilter struct {
 	GroupID   *int64
 	AccountID *int64
 
-	StatusCodes []int
-	Phase       string
-	Owner       string
-	Source      string
-	Resolved    *bool
-	Query       string
+	StatusCodes      []int
+	StatusCodesOther bool
+	Phase            string
+	Owner            string
+	Source           string
+	Resolved         *bool
+	Query            string
 
 	// View controls error categorization for list endpoints.
 	// - errors: show actionable errors (exclude business-limited / 429 / 529)

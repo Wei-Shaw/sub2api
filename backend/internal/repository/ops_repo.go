@@ -132,7 +132,6 @@ REDACTED
 		pageSize = 500
 REDACTED
 
-	// buildOpsErrorLogsWhere may mutate filter (default resolved filter).
 	where, args := buildOpsErrorLogsWhere(filter)
 	countSQL := "SELECT COUNT(*) FROM ops_error_logs e " + where
 
@@ -933,14 +932,10 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 REDACTED
 	// ops_error_logs stores client-visible error requests (status>=400),
 	// but we also persist "recovered" upstream errors (status<400) for upstream health visibility.
-	// By default, keep list endpoints scoped to unresolved records if the caller didn't specify.
+	// If Resolved is not specified, do not filter by resolved state (backward-compatible).
 	resolvedFilter := (*bool)(nil)
 	if filter != nil {
 		resolvedFilter = filter.Resolved
-REDACTED
-	if resolvedFilter == nil {
-		f := false
-		resolvedFilter = &f
 REDACTED
 	// Keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
 	if phaseFilter != "upstream" {
@@ -1007,6 +1002,11 @@ REDACTED
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))
 		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+")")
+REDACTED else if filter.StatusCodesOther {
+		// "Other" means: status codes not in the common list.
+		known := []int{400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529REDACTED
+		args = append(args, pq.Array(known))
+		clauses = append(clauses, "NOT (COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+"))")
 REDACTED
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"

@@ -93,7 +93,7 @@
 
               <!-- Group -->
               <td class="px-4 py-2">
-                <el-tooltip v-if="log.group_id" :content="'ID: ' + log.group_id" placement="top" :show-after="500">
+                 <el-tooltip v-if="log.group_id" :content="t('admin.ops.errorLog.id') + ' ' + log.group_id" placement="top" :show-after="500">
                   <span class="max-w-[100px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
                     {{ log.group_name || '-' REDACTEDREDACTED
                   </span>
@@ -103,7 +103,7 @@
 
               <!-- Account -->
               <td class="px-4 py-2">
-                <el-tooltip v-if="log.account_id" :content="'ID: ' + log.account_id" placement="top" :show-after="500">
+                 <el-tooltip v-if="log.account_id" :content="t('admin.ops.errorLog.id') + ' ' + log.account_id" placement="top" :show-after="500">
                   <span class="max-w-[100px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
                     {{ log.account_name || '-' REDACTEDREDACTED
                   </span>
@@ -195,8 +195,8 @@ function getTypeBadge(log: OpsErrorLog): { label: string; className: string REDA
     return { label: t('admin.ops.errorLog.typeInternal'), className: 'bg-gray-100 text-gray-800 ring-gray-600/20 dark:bg-dark-700 dark:text-gray-200 dark:ring-dark-500/40' REDACTED
   REDACTED
 
-  const fallback = phase || owner || 'unknown'
-  return { label: fallback, className: 'bg-gray-50 text-gray-700 ring-gray-600/10 dark:bg-dark-900 dark:text-gray-300 dark:ring-dark-700' REDACTED
+    const fallback = phase || owner || t('common.unknown')
+    return { label: fallback, className: 'bg-gray-50 text-gray-700 ring-gray-600/10 dark:bg-dark-900 dark:text-gray-300 dark:ring-dark-700' REDACTED
 REDACTED
 
 interface Props {
@@ -238,9 +238,9 @@ function formatSmartMessage(msg: string): string {
     REDACTED
   REDACTED
 
-  if (msg.includes('context deadline exceeded')) return 'context deadline exceeded'
-  if (msg.includes('connection refused')) return 'connection refused'
-  if (msg.toLowerCase().includes('rate limit')) return 'rate limit'
+    if (msg.includes('context deadline exceeded')) return t('admin.ops.errorLog.commonErrors.contextDeadlineExceeded')
+    if (msg.includes('connection refused')) return t('admin.ops.errorLog.commonErrors.connectionRefused')
+    if (msg.toLowerCase().includes('rate limit')) return t('admin.ops.errorLog.commonErrors.rateLimit')
 
   return msg.length > 200 ? msg.substring(0, 200) + '...' : msg
 REDACTED

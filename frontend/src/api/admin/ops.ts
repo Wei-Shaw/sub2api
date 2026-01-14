@@ -965,6 +965,7 @@ export type OpsErrorListQueryParams = {
 
   q?: string
   status_codes?: string
+  status_codes_other?: string
 REDACTED
 
 // Legacy unified endpoints

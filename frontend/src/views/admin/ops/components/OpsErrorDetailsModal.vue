@@ -29,7 +29,7 @@ const page = ref(1)
 const pageSize = ref(20)
 
 const q = ref('')
-const statusCode = ref<number | null>(null)
+const statusCode = ref<number | 'other' | null>(null)
 const phase = ref<string>('')
 const errorOwner = ref<string>('')
   const resolvedStatus = ref<string>('unresolved')
@@ -44,16 +44,17 @@ const statusCodeSelectOptions = computed(() => {
   const codes = [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529]
   return [
     { value: null, label: t('common.all') REDACTED,
-    ...codes.map((c) => ({ value: c, label: String(c) REDACTED))
+    ...codes.map((c) => ({ value: c, label: String(c) REDACTED)),
+    { value: 'other', label: t('admin.ops.errorDetails.statusCodeOther') || 'Other' REDACTED
   ]
 REDACTED)
 
 const ownerSelectOptions = computed(() => {
   return [
     { value: '', label: t('common.all') REDACTED,
-    { value: 'provider', label: 'provider' REDACTED,
-    { value: 'client', label: 'client' REDACTED,
-    { value: 'platform', label: 'platform' REDACTED
+    { value: 'provider', label: t('admin.ops.errorDetails.owner.provider') || 'provider' REDACTED,
+    { value: 'client', label: t('admin.ops.errorDetails.owner.client') || 'client' REDACTED,
+    { value: 'platform', label: t('admin.ops.errorDetails.owner.platform') || 'platform' REDACTED
   ]
 REDACTED)
 
@@ -76,12 +77,12 @@ REDACTED)
 const phaseSelectOptions = computed(() => {
   const options = [
     { value: '', label: t('common.all') REDACTED,
-    { value: 'request', label: 'request' REDACTED,
-    { value: 'auth', label: 'auth' REDACTED,
-    { value: 'routing', label: 'routing' REDACTED,
-    { value: 'upstream', label: 'upstream' REDACTED,
-    { value: 'network', label: 'network' REDACTED,
-    { value: 'internal', label: 'internal' REDACTED
+    { value: 'request', label: t('admin.ops.errorDetails.phase.request') || 'request' REDACTED,
+    { value: 'auth', label: t('admin.ops.errorDetails.phase.auth') || 'auth' REDACTED,
+    { value: 'routing', label: t('admin.ops.errorDetails.phase.routing') || 'routing' REDACTED,
+    { value: 'upstream', label: t('admin.ops.errorDetails.phase.upstream') || 'upstream' REDACTED,
+    { value: 'network', label: t('admin.ops.errorDetails.phase.network') || 'network' REDACTED,
+    { value: 'internal', label: t('admin.ops.errorDetails.phase.internal') || 'internal' REDACTED
   ]
   return options
 REDACTED)
@@ -107,7 +108,8 @@ async function fetchErrorLogs() {
     if (typeof props.groupId === 'number' && props.groupId > 0) params.group_id = props.groupId
 
     if (q.value.trim()) params.q = q.value.trim()
-    if (typeof statusCode.value === 'number') params.status_codes = String(statusCode.value)
+    if (statusCode.value === 'other') params.status_codes_other = '1'
+    else if (typeof statusCode.value === 'number') params.status_codes = String(statusCode.value)
 
     const phaseVal = String(phase.value || '').trim()
     if (phaseVal) params.phase = phaseVal
