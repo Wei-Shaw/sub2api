@@ -32,7 +32,7 @@ REDACTED
 REDACTED
 
 // computeBusinessHealth calculates business health score (0-100)
-// Components: SLA (50%) + Error Rate (30%) + Latency (20%)
+// Components: SLA (50%) + Error Rate (30%)
 func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
 	// SLA score: 99.5% → 100, 95% → 0 (linear)
 	slaScore := 100.0
@@ -59,22 +59,9 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Latency score: 1s → 100, 10s → 0 (linear)
-	// Uses P99 of duration (TTFT is less critical for overall health)
-	latencyScore := 100.0
-	if overview.Duration.P99 != nil {
-		p99 := float64(*overview.Duration.P99)
-		if p99 > 1000 {
-			if p99 <= 10000 {
-				latencyScore = (10000 - p99) / 9000 * 100
-		REDACTED else {
-				latencyScore = 0
-		REDACTED
-	REDACTED
-REDACTED
-
-	// Weighted combination
-	return slaScore*0.5 + errorScore*0.3 + latencyScore*0.2
+	// Weighted combination (renormalized after removing duration)
+	const weightSum = 0.8
+	return (slaScore*0.5 + errorScore*0.3) / weightSum
 REDACTED
 
 // computeInfraHealth calculates infrastructure health score (0-100)

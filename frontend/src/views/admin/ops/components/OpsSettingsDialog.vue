@@ -32,7 +32,6 @@ const advancedSettings = ref<OpsAdvancedSettings | null>(null)
 // 指标阈值配置
 const metricThresholds = ref<OpsMetricThresholds>({
   sla_percent_min: 99.5,
-  latency_p99_ms_max: 2000,
   ttft_p99_ms_max: 500,
   request_error_rate_percent_max: 5,
   upstream_error_rate_percent_max: 5
@@ -53,13 +52,12 @@ async function loadAllSettings() {
     advancedSettings.value = advanced
     // 如果后端返回了阈值，使用后端的值；否则保持默认值
     if (thresholds && Object.keys(thresholds).length > 0) {
-      metricThresholds.value = {
-        sla_percent_min: thresholds.sla_percent_min ?? 99.5,
-        latency_p99_ms_max: thresholds.latency_p99_ms_max ?? 2000,
-        ttft_p99_ms_max: thresholds.ttft_p99_ms_max ?? 500,
-        request_error_rate_percent_max: thresholds.request_error_rate_percent_max ?? 5,
-        upstream_error_rate_percent_max: thresholds.upstream_error_rate_percent_max ?? 5
-      REDACTED
+        metricThresholds.value = {
+          sla_percent_min: thresholds.sla_percent_min ?? 99.5,
+          ttft_p99_ms_max: thresholds.ttft_p99_ms_max ?? 500,
+          request_error_rate_percent_max: thresholds.request_error_rate_percent_max ?? 5,
+          upstream_error_rate_percent_max: thresholds.upstream_error_rate_percent_max ?? 5
+        REDACTED
     REDACTED
   REDACTED catch (err: any) {
     console.error('[OpsSettingsDialog] Failed to load settings', err)
@@ -160,9 +158,6 @@ const validation = computed(() => {
   // 验证指标阈值
   if (metricThresholds.value.sla_percent_min != null && (metricThresholds.value.sla_percent_min < 0 || metricThresholds.value.sla_percent_min > 100)) {
     errors.push('SLA最低百分比必须在0-100之间')
-  REDACTED
-  if (metricThresholds.value.latency_p99_ms_max != null && metricThresholds.value.latency_p99_ms_max < 0) {
-    errors.push('延迟P99最大值必须大于等于0')
   REDACTED
   if (metricThresholds.value.ttft_p99_ms_max != null && metricThresholds.value.ttft_p99_ms_max < 0) {
     errors.push('TTFT P99最大值必须大于等于0')
@@ -362,17 +357,6 @@ REDACTED
             <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.slaMinPercentHint') REDACTEDREDACTED</p>
           </div>
 
-          <div>
-            <label class="input-label">{{ t('admin.ops.settings.latencyP99MaxMs') REDACTEDREDACTED</label>
-            <input
-              v-model.number="metricThresholds.latency_p99_ms_max"
-              type="number"
-              min="0"
-              step="100"
-              class="input"
-            />
-            <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.latencyP99MaxMsHint') REDACTEDREDACTED</p>
-          </div>
 
           <div>
             <label class="input-label">{{ t('admin.ops.settings.ttftP99MaxMs') REDACTEDREDACTED</label>

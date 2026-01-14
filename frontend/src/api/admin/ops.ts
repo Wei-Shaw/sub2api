@@ -653,8 +653,6 @@ export type MetricType =
   | 'success_rate'
   | 'error_rate'
   | 'upstream_error_rate'
-  | 'p95_latency_ms'
-  | 'p99_latency_ms'
   | 'cpu_usage_percent'
   | 'memory_usage_percent'
   | 'concurrency_queue_depth'
@@ -729,7 +727,6 @@ REDACTED
 
 export interface OpsMetricThresholds {
   sla_percent_min?: number | null                 // SLA低于此值变红
-  latency_p99_ms_max?: number | null              // 延迟 P99 高于此值变红
   ttft_p99_ms_max?: number | null                 // TTFT P99高于此值变红
   request_error_rate_percent_max?: number | null  // 请求错误率高于此值变红
   upstream_error_rate_percent_max?: number | null // 上游错误率高于此值变红

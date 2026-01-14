@@ -292,17 +292,6 @@ REDACTED{
 			wantMax: 100,
 	REDACTED,
 		{
-			name: "latency boundary 1000ms",
-			overview: &OpsDashboardOverview{
-				SLA:               0.995,
-				ErrorRate:         0,
-				UpstreamErrorRate: 0,
-				Duration:          OpsPercentiles{P99: intPtr(1000)REDACTED,
-		REDACTED,
-			wantMin: 95,
-			wantMax: 100,
-	REDACTED,
-		{
 			name: "upstream error dominates",
 			overview: &OpsDashboardOverview{
 				SLA:               0.995,

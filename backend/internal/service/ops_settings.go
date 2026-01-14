@@ -482,13 +482,11 @@ const SettingKeyOpsMetricThresholds = "ops_metric_thresholds"
 
 func defaultOpsMetricThresholds() *OpsMetricThresholds {
 	slaMin := 99.5
-	latencyMax := 2000.0
 	ttftMax := 500.0
 	reqErrMax := 5.0
 	upstreamErrMax := 5.0
 	return &OpsMetricThresholds{
 		SLAPercentMin:               &slaMin,
-		LatencyP99MsMax:             &latencyMax,
 		TTFTp99MsMax:                &ttftMax,
 		RequestErrorRatePercentMax:  &reqErrMax,
 		UpstreamErrorRatePercentMax: &upstreamErrMax,
@@ -537,9 +535,6 @@ REDACTED
 	// Validate thresholds
 	if cfg.SLAPercentMin != nil && (*cfg.SLAPercentMin < 0 || *cfg.SLAPercentMin > 100) {
 		return nil, errors.New("sla_percent_min must be between 0 and 100")
-REDACTED
-	if cfg.LatencyP99MsMax != nil && *cfg.LatencyP99MsMax < 0 {
-		return nil, errors.New("latency_p99_ms_max must be >= 0")
 REDACTED
 	if cfg.TTFTp99MsMax != nil && *cfg.TTFTp99MsMax < 0 {
 		return nil, errors.New("ttft_p99_ms_max must be >= 0")
