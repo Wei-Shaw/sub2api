@@ -32,7 +32,7 @@ REDACTED
 REDACTED
 
 // computeBusinessHealth calculates business health score (0-100)
-// Components: Error Rate (50%) + Latency (50%)
+// Components: Error Rate (50%) + TTFT (50%)
 func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
 	// Error rate score: 1% → 100, 10% → 0 (linear)
 	// Combines request errors and upstream errors
@@ -48,22 +48,22 @@ func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
 	REDACTED
 REDACTED
 
-	// Latency score: 1s → 100, 2s → 0 (linear)
-	// Uses P99 of duration
-	latencyScore := 100.0
-	if overview.Duration.P99 != nil {
-		p99 := float64(*overview.Duration.P99)
+	// TTFT score: 1s → 100, 3s → 0 (linear)
+	// Time to first token is critical for user experience
+	ttftScore := 100.0
+	if overview.TTFT.P99 != nil {
+		p99 := float64(*overview.TTFT.P99)
 		if p99 > 1000 {
-			if p99 <= 2000 {
-				latencyScore = (2000 - p99) / 1000 * 100
+			if p99 <= 3000 {
+				ttftScore = (3000 - p99) / 2000 * 100
 		REDACTED else {
-				latencyScore = 0
+				ttftScore = 0
 		REDACTED
 	REDACTED
 REDACTED
 
-	// Weighted combination: 50% error rate + 50% latency
-	return errorScore*0.5 + latencyScore*0.5
+	// Weighted combination: 50% error rate + 50% TTFT
+	return errorScore*0.5 + ttftScore*0.5
 REDACTED
 
 // computeInfraHealth calculates infrastructure health score (0-100)

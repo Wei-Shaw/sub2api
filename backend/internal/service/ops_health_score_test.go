@@ -127,8 +127,8 @@ REDACTED{
 					MemoryUsagePercent: float64Ptr(75),
 			REDACTED,
 		REDACTED,
-			wantMin: 61,
-			wantMax: 62,
+			wantMin: 96,
+			wantMax: 97,
 	REDACTED,
 		{
 			name: "DB failure",
@@ -203,8 +203,8 @@ REDACTED{
 					MemoryUsagePercent: float64Ptr(30),
 			REDACTED,
 		REDACTED,
-			wantMin: 25,
-			wantMax: 50,
+			wantMin: 84,
+			wantMax: 85,
 	REDACTED,
 		{
 			name: "combined failures - business healthy + infra degraded",
@@ -303,15 +303,15 @@ REDACTED{
 			wantMax: 78,
 	REDACTED,
 		{
-			name: "latency boundary 2s",
+			name: "TTFT boundary 2s",
 			overview: &OpsDashboardOverview{
 				SLA:               0.99,
 				ErrorRate:         0,
 				UpstreamErrorRate: 0,
-				Duration:          OpsPercentiles{P99: intPtr(2000)REDACTED,
+				TTFT:              OpsPercentiles{P99: intPtr(2000)REDACTED,
 		REDACTED,
-			wantMin: 50,
-			wantMax: 50,
+			wantMin: 75,
+			wantMax: 75,
 	REDACTED,
 		{
 			name: "upstream error dominates",
