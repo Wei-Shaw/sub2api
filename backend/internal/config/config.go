@@ -435,7 +435,8 @@ type DefaultConfig struct {
 REDACTED
 
 type RateLimitConfig struct {
-	OverloadCooldownMinutes int `mapstructure:"overload_cooldown_minutes"` // 529过载冷却时间(分钟)
+	OverloadCooldownMinutes int `mapstructure:"overload_cooldown_minutes"`  // 529过载冷却时间(分钟)
+	OAuth401CooldownMinutes int `mapstructure:"oauth_401_cooldown_minutes"` // OAuth 401 临时不可调度冷却时间(分钟)
 REDACTED
 
 // APIKeyAuthCacheConfig API Key 认证缓存配置
@@ -709,6 +710,7 @@ REDACTED)
 
 	// RateLimit
 	viper.SetDefault("rate_limit.overload_cooldown_minutes", 10)
+	viper.SetDefault("rate_limit.oauth_401_cooldown_minutes", 5)
 
 	// Pricing - 从 price-mirror 分支同步，该分支维护了 sha256 哈希文件用于增量更新检查
 	viper.SetDefault("pricing.remote_url", "https://raw.githubusercontent.com/Wei-Shaw/claude-relay-service/price-mirror/model_prices_and_context_window.json")

@@ -33,6 +33,11 @@ func (c *geminiTokenCache) SetAccessToken(ctx context.Context, cacheKey string, 
 	return c.rdb.Set(ctx, key, token, ttl).Err()
 REDACTED
 
+func (c *geminiTokenCache) DeleteAccessToken(ctx context.Context, cacheKey string) error {
+	key := fmt.Sprintf("%s%s", geminiTokenKeyPrefix, cacheKey)
+	return c.rdb.Del(ctx, key).Err()
+REDACTED
+
 func (c *geminiTokenCache) AcquireRefreshLock(ctx context.Context, cacheKey string, ttl time.Duration) (bool, error) {
 	key := fmt.Sprintf("%s%s", geminiRefreshLockKeyPrefix, cacheKey)
 	return c.rdb.SetNX(ctx, key, 1, ttl).Result()
