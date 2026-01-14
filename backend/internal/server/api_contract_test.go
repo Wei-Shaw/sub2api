@@ -858,6 +858,10 @@ func (stubProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) 
 	return 0, errors.New("not implemented")
 REDACTED
 
+func (stubProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
 type stubRedeemCodeRepo struct{REDACTED
 
 func (stubRedeemCodeRepo) Create(ctx context.Context, code *service.RedeemCode) error {
