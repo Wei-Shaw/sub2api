@@ -544,8 +544,14 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Cursor pagination
-	if rawTS := strings.TrimSpace(c.Query("before_fired_at")); rawTS != "" {
+	// Cursor pagination: both params must be provided together.
+	rawTS := strings.TrimSpace(c.Query("before_fired_at"))
+	rawID := strings.TrimSpace(c.Query("before_id"))
+	if (rawTS == "") != (rawID == "") {
+		response.BadRequest(c, "before_fired_at and before_id must be provided together")
+		return
+REDACTED
+	if rawTS != "" {
 		ts, err := time.Parse(time.RFC3339Nano, rawTS)
 		if err != nil {
 			if t2, err2 := time.Parse(time.RFC3339, rawTS); err2 == nil {
@@ -557,7 +563,7 @@ REDACTED
 	REDACTED
 		filter.BeforeFiredAt = &ts
 REDACTED
-	if rawID := strings.TrimSpace(c.Query("before_id")); rawID != "" {
+	if rawID != "" {
 		id, err := strconv.ParseInt(rawID, 10, 64)
 		if err != nil || id <= 0 {
 			response.BadRequest(c, "Invalid before_id")

@@ -261,7 +261,7 @@ func (s *OpsService) ListRetryAttemptsByErrorID(ctx context.Context, errorID int
 		return nil, err
 REDACTED
 	if s.opsRepo == nil {
-		return nil, infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+		return nil, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
 REDACTED
 	if errorID <= 0 {
 		return nil, infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")

@@ -262,11 +262,11 @@ REDACTED{
 			name: "GET /api/v1/admin/settings",
 			setup: func(t *testing.T, deps *contractDeps) {
 			REDACTED
-					deps.settingRepo.SetAll(map[string]string{
-						service.SettingKeyRegistrationEnabled: "true",
-						service.SettingKeyEmailVerifyEnabled:  "false",
+				deps.settingRepo.SetAll(map[string]string{
+					service.SettingKeyRegistrationEnabled: "true",
+					service.SettingKeyEmailVerifyEnabled:  "false",
 
-						service.SettingKeySMTPHost:     "smtp.example.com",
+					service.SettingKeySMTPHost:     "smtp.example.com",
 					service.SettingKeySMTPPort:     "587",
 					service.SettingKeySMTPUsername: "user",
 					service.SettingKeySMTPPassword: "secret",
@@ -285,15 +285,15 @@ REDACTED{
 					service.SettingKeyContactInfo:  "support",
 					service.SettingKeyDocURL:       "https://docs.example.com",
 
-						service.SettingKeyDefaultConcurrency: "5",
-						service.SettingKeyDefaultBalance:     "1.25",
+					service.SettingKeyDefaultConcurrency: "5",
+					service.SettingKeyDefaultBalance:     "1.25",
 
-						service.SettingKeyOpsMonitoringEnabled:         "false",
-						service.SettingKeyOpsRealtimeMonitoringEnabled: "true",
-						service.SettingKeyOpsQueryModeDefault:          "auto",
-						service.SettingKeyOpsMetricsIntervalSeconds:    "60",
-				REDACTED)
-			REDACTED,
+					service.SettingKeyOpsMonitoringEnabled:         "false",
+					service.SettingKeyOpsRealtimeMonitoringEnabled: "true",
+					service.SettingKeyOpsQueryModeDefault:          "auto",
+					service.SettingKeyOpsMetricsIntervalSeconds:    "60",
+			REDACTED)
+		REDACTED,
 			method:     http.MethodGet,
 			path:       "/api/v1/admin/settings",
 			wantStatus: http.StatusOK,

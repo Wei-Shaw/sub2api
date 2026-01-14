@@ -208,7 +208,11 @@ REDACTED
 	if eventID <= 0 {
 		return infraerrors.BadRequest("INVALID_EVENT_ID", "invalid event id")
 REDACTED
-	if strings.TrimSpace(status) == "" {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return infraerrors.BadRequest("INVALID_STATUS", "invalid status")
+REDACTED
+	if status != OpsAlertStatusResolved && status != OpsAlertStatusManualResolved {
 		return infraerrors.BadRequest("INVALID_STATUS", "invalid status")
 REDACTED
 	return s.opsRepo.UpdateAlertEventStatus(ctx, eventID, status, resolvedAt)

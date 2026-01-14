@@ -220,11 +220,8 @@ REDACTED
 		msg := result.ErrorMessage
 		updateErrMsg = &msg
 REDACTED
+	// Keep legacy result_request_id empty; use upstream_request_id instead.
 	var resultRequestID *string
-	if strings.TrimSpace(result.UpstreamRequestID) != "" {
-		v := result.UpstreamRequestID
-		resultRequestID = &v
-REDACTED
 
 	finalStatus := result.Status
 	if strings.TrimSpace(finalStatus) == "" {

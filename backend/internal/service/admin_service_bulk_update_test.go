@@ -12,9 +12,9 @@ import (
 
 type accountRepoStubForBulkUpdate struct {
 	accountRepoStub
-	bulkUpdateErr     error
-	bulkUpdateIDs     []int64
-	bindGroupErrByID  map[int64]error
+	bulkUpdateErr    error
+	bulkUpdateIDs    []int64
+	bindGroupErrByID map[int64]error
 REDACTED
 
 func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64, _ AccountBulkUpdate) (int64, error) {
