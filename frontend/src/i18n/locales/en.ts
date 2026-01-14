@@ -2022,6 +2022,7 @@ export default {
         user: 'User',
         userId: 'User ID',
         account: 'Account',
+        accountId: 'Account ID',
         status: 'Status',
         message: 'Message',
         latency: 'Request Duration',

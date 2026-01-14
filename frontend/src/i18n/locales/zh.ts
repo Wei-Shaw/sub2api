@@ -2166,6 +2166,7 @@ export default {
         user: '用户',
         userId: '用户 ID',
         account: '账号',
+        accountId: '账号 ID',
         status: '状态码',
         message: '响应内容',
         latency: '请求时长',
