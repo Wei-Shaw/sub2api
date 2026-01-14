@@ -55,6 +55,9 @@ type OpsUpstreamErrorEvent struct {
 	// Required for retrying a specific upstream attempt.
 	UpstreamRequestBody string `json:"upstream_request_body,omitempty"`
 
+	// Best-effort upstream response capture (sanitized+trimmed).
+	UpstreamResponseBody string `json:"upstream_response_body,omitempty"`
+
 	// Kind: http_error | request_error | retry_exhausted | failover
 	Kind string `json:"kind,omitempty"`
 
@@ -72,6 +75,7 @@ REDACTED
 	ev.Platform = strings.TrimSpace(ev.Platform)
 	ev.UpstreamRequestID = strings.TrimSpace(ev.UpstreamRequestID)
 	ev.UpstreamRequestBody = strings.TrimSpace(ev.UpstreamRequestBody)
+	ev.UpstreamResponseBody = strings.TrimSpace(ev.UpstreamResponseBody)
 	ev.Kind = strings.TrimSpace(ev.Kind)
 	ev.Message = strings.TrimSpace(ev.Message)
 	ev.Detail = strings.TrimSpace(ev.Detail)
