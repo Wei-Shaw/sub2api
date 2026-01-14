@@ -783,6 +783,7 @@ export default {
       withdraw: '退款',
       depositAmount: '充值金额',
       withdrawAmount: '退款金额',
+      withdrawAll: '全部',
       depositNotesPlaceholder: '例如：新用户注册奖励、活动充值、补偿充值等',
       withdrawNotesPlaceholder: '例如：服务问题退款、错误充值退回、账户注销退款等',
       notesOptional: '备注为可选项，有助于未来查账',

@@ -727,6 +727,7 @@ export default {
       withdraw: 'Withdraw',
       depositAmount: 'Deposit Amount',
       withdrawAmount: 'Withdraw Amount',
+      withdrawAll: 'All',
       currentBalance: 'Current Balance',
       depositNotesPlaceholder:
         'e.g., New user registration bonus, promotional credit, compensation, etc.',
