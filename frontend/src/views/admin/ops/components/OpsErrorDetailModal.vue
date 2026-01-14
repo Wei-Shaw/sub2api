@@ -247,11 +247,11 @@
                  {{ t('admin.ops.errorDetail.retryClient') REDACTEDREDACTED
                </button>
                <button
+                 v-if="props.errorType === 'upstream'"
                  type="button"
                  class="btn btn-secondary btn-sm"
-                 :disabled="retrying || !pinnedAccountId"
+                 :disabled="retrying"
                  @click="openRetryConfirm('upstream')"
-                 :title="pinnedAccountId ? '' : t('admin.ops.errorDetail.retryUpstreamHint')"
                >
                  {{ t('admin.ops.errorDetail.retryUpstream') REDACTEDREDACTED
                </button>
@@ -263,12 +263,12 @@
          </div>
 
 
-        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div v-if="props.errorType === 'upstream'" class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div class="md:col-span-1">
             <label class="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.pinnedAccountId') REDACTEDREDACTED</label>
-            <input v-model="pinnedAccountIdInput" type="text" class="input font-mono text-sm" :placeholder="t('admin.ops.errorDetail.pinnedAccountIdHint')" />
+            <input v-model="pinnedAccountIdInput" type="text" class="input font-mono text-sm" disabled />
             <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.ops.errorDetail.retryNote2') REDACTEDREDACTED
+              pinned to original account_id
             </div>
           </div>
           <div class="md:col-span-2">
@@ -327,8 +327,20 @@
                 <div class="text-xs font-black text-gray-800 dark:text-gray-100">
                   #{{ idx + 1 REDACTEDREDACTED <span v-if="ev.kind" class="font-mono">{{ ev.kind REDACTEDREDACTED</span>
                 </div>
-                <div class="font-mono text-xs text-gray-500 dark:text-gray-400">
-                  {{ ev.at_unix_ms ? formatDateTime(new Date(ev.at_unix_ms)) : '' REDACTEDREDACTED
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="props.errorType !== 'upstream'"
+                    type="button"
+                    class="rounded-md bg-gray-100 px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+                    :disabled="retrying || !ev.upstream_request_body"
+                    :title="ev.upstream_request_body ? '' : 'missing upstream request body'"
+                    @click.stop="retryUpstreamEvent(idx)"
+                  >
+                    {{ t('admin.ops.errorDetail.retryUpstream') REDACTEDREDACTED #{{ idx + 1 REDACTEDREDACTED
+                  </button>
+                  <div class="font-mono text-xs text-gray-500 dark:text-gray-400">
+                    {{ ev.at_unix_ms ? formatDateTime(new Date(ev.at_unix_ms)) : '' REDACTEDREDACTED
+                  </div>
                 </div>
               </div>
 
@@ -526,13 +538,14 @@ import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore REDACTED from '@/stores'
-import { opsAPI, type OpsErrorDetail, type OpsRetryMode, type OpsRetryAttempt REDACTED from '@/api/admin/ops'
+import { opsAPI, type OpsErrorDetail, type OpsRetryAttempt REDACTED from '@/api/admin/ops'
 import { formatDateTime REDACTED from '@/utils/format'
 import { getSeverityClass REDACTED from '../utils/opsFormatters'
 
 interface Props {
   show: boolean
   errorId: number | null
+  errorType?: 'request' | 'upstream'
 REDACTED
 
 interface Emits {
@@ -552,7 +565,7 @@ const activeTab = ref<'overview' | 'retries' | 'request' | 'response'>('overview
 
 const retrying = ref(false)
 const showRetryConfirm = ref(false)
-const pendingRetryMode = ref<OpsRetryMode>('client')
+const pendingRetryMode = ref<'client' | 'upstream' | 'upstream_event'>('client')
 
 const forceRetryAck = ref(false)
 const retryHistory = ref<OpsRetryAttempt[]>([])
@@ -563,12 +576,6 @@ const compareA = ref<number | null>(null)
 const compareB = ref<number | null>(null)
 
 const pinnedAccountIdInput = ref('')
-const pinnedAccountId = computed<number | null>(() => {
-  const raw = String(pinnedAccountIdInput.value || '').trim()
-  if (!raw) return null
-  const n = Number.parseInt(raw, 10)
-  return Number.isFinite(n) && n > 0 ? n : null
-REDACTED)
 
 const title = computed(() => {
   if (!props.errorId) return 'Error Detail'
@@ -584,6 +591,7 @@ type UpstreamErrorEvent = {
   account_name?: string
   upstream_status_code?: number
   upstream_request_id?: string
+  upstream_request_body?: string
   kind?: string
   message?: string
   detail?: string
@@ -641,15 +649,12 @@ REDACTED)
 async function fetchDetail(id: number) {
   loading.value = true
   try {
-    const d = await opsAPI.getErrorLogDetail(id)
+    const kind = props.errorType || (detail.value?.phase === 'upstream' ? 'upstream' : 'request')
+    const d = kind === 'upstream' ? await opsAPI.getUpstreamErrorDetail(id) : await opsAPI.getRequestErrorDetail(id)
     detail.value = d
 
-    // Default pinned account from error log if present.
-    if (d.account_id && d.account_id > 0) {
-      pinnedAccountIdInput.value = String(d.account_id)
-    REDACTED else {
-      pinnedAccountIdInput.value = ''
-    REDACTED
+    // Keep showing original account_id (read-only hint for upstream retries).
+    pinnedAccountIdInput.value = d.account_id && d.account_id > 0 ? String(d.account_id) : ''
   REDACTED catch (err: any) {
     detail.value = null
     appStore.showError(err?.message || t('admin.ops.failedToLoadErrorDetail'))
@@ -679,7 +684,7 @@ watch(
   { immediate: true REDACTED
 )
 
-function openRetryConfirm(mode: OpsRetryMode) {
+function openRetryConfirm(mode: 'client' | 'upstream' | 'upstream_event') {
   pendingRetryMode.value = mode
   // Force-ack required only when backend says not retryable.
   forceRetryAck.value = false
@@ -733,7 +738,12 @@ REDACTED)
 async function markResolved(resolved: boolean) {
   if (!props.errorId) return
   try {
-    await opsAPI.updateErrorResolved(props.errorId, resolved)
+    const kind = props.errorType || (detail.value?.phase === 'upstream' ? 'upstream' : 'request')
+    if (kind === 'upstream') {
+      await opsAPI.updateUpstreamErrorResolved(props.errorId, resolved)
+    REDACTED else {
+      await opsAPI.updateRequestErrorResolved(props.errorId, resolved)
+    REDACTED
     await fetchDetail(props.errorId)
     appStore.showSuccess(resolved ? (t('admin.ops.errorDetails.resolved') || 'Resolved') : (t('admin.ops.errorDetails.unresolved') || 'Unresolved'))
   REDACTED catch (err: any) {
@@ -779,16 +789,40 @@ async function runConfirmedRetry() {
 
   retrying.value = true
   try {
-    const req =
-      mode === 'upstream'
-        ? { mode, pinned_account_id: pinnedAccountId.value ?? undefined, force: !retryable ? true : undefined REDACTED
-        : { mode, force: !retryable ? true : undefined REDACTED
+    const kind = props.errorType || (detail.value?.phase === 'upstream' ? 'upstream' : 'request')
 
-    const res = await opsAPI.retryErrorRequest(props.errorId, req)
+    let res
+    if (kind === 'upstream') {
+      // Upstream error retries always pin the original account_id.
+      res = await opsAPI.retryUpstreamError(props.errorId)
+      REDACTED else {
+        if (mode === 'client') {
+          res = await opsAPI.retryRequestErrorClient(props.errorId)
+        REDACTED else {
+          throw new Error('Unsupported retry mode')
+        REDACTED
+      REDACTED
+
     const summary = res.status === 'succeeded' ? t('admin.ops.errorDetail.retrySuccess') : t('admin.ops.errorDetail.retryFailed')
     appStore.showSuccess(summary)
 
     // Refresh detail + history so resolved reflects auto resolution
+    await fetchDetail(props.errorId)
+    await loadRetryHistory()
+  REDACTED catch (err: any) {
+    appStore.showError(err?.message || t('admin.ops.retryFailed'))
+  REDACTED finally {
+    retrying.value = false
+  REDACTED
+REDACTED
+
+async function retryUpstreamEvent(idx: number) {
+  if (!props.errorId) return
+  try {
+    retrying.value = true
+    const res = await opsAPI.retryRequestErrorUpstreamEvent(props.errorId, idx)
+    const summary = res.status === 'succeeded' ? t('admin.ops.errorDetail.retrySuccess') : t('admin.ops.errorDetail.retryFailed')
+    appStore.showSuccess(summary)
     await fetchDetail(props.errorId)
     await loadRetryHistory()
   REDACTED catch (err: any) {

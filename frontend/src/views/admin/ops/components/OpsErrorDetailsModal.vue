@@ -32,7 +32,9 @@ const q = ref('')
 const statusCode = ref<number | null>(null)
 const phase = ref<string>('')
 const errorOwner = ref<string>('')
-const resolvedStatus = ref<string>('unresolved')
+  const resolvedStatus = ref<string>('unresolved')
+  const viewMode = ref<'errors' | 'excluded' | 'all'>('errors')
+
 
 const modalTitle = computed(() => {
   return props.errorType === 'upstream' ? t('admin.ops.errorDetails.upstreamErrors') : t('admin.ops.errorDetails.requestErrors')
@@ -63,6 +65,14 @@ const resolvedSelectOptions = computed(() => {
   ]
 REDACTED)
 
+const viewModeSelectOptions = computed(() => {
+  return [
+    { value: 'errors', label: t('admin.ops.errorDetails.viewErrors') || 'errors' REDACTED,
+    { value: 'excluded', label: t('admin.ops.errorDetails.viewExcluded') || 'excluded' REDACTED,
+    { value: 'all', label: t('common.all') REDACTED
+  ]
+REDACTED)
+
 const phaseSelectOptions = computed(() => {
   const options = [
     { value: '', label: t('common.all') REDACTED,
@@ -88,7 +98,8 @@ async function fetchErrorLogs() {
     const params: Record<string, any> = {
       page: page.value,
       page_size: pageSize.value,
-      time_range: props.timeRange
+      time_range: props.timeRange,
+      view: viewMode.value
     REDACTED
 
     const platform = String(props.platform || '').trim()
@@ -109,7 +120,9 @@ async function fetchErrorLogs() {
     else if (resolvedVal === 'unresolved') params.resolved = 'false'
     // 'all' -> omit
 
-    const res = await opsAPI.listErrorLogs(params)
+    const res = props.errorType === 'upstream'
+      ? await opsAPI.listUpstreamErrors(params)
+      : await opsAPI.listRequestErrors(params)
     rows.value = res.items || []
     total.value = res.total || 0
   REDACTED catch (err) {
@@ -121,15 +134,17 @@ async function fetchErrorLogs() {
   REDACTED
 REDACTED
 
-function resetFilters() {
-  q.value = ''
-  statusCode.value = null
-  phase.value = props.errorType === 'upstream' ? 'upstream' : ''
-  errorOwner.value = ''
-  resolvedStatus.value = 'unresolved'
-  page.value = 1
-  fetchErrorLogs()
-REDACTED
+  function resetFilters() {
+    q.value = ''
+    statusCode.value = null
+    phase.value = props.errorType === 'upstream' ? 'upstream' : ''
+    errorOwner.value = ''
+    resolvedStatus.value = 'unresolved'
+    viewMode.value = 'errors'
+    page.value = 1
+    fetchErrorLogs()
+  REDACTED
+
 
 watch(
   () => props.show,
@@ -172,7 +187,7 @@ watch(
 )
 
 watch(
-  () => [statusCode.value, phase.value, errorOwner.value, resolvedStatus.value] as const,
+  () => [statusCode.value, phase.value, errorOwner.value, resolvedStatus.value, viewMode.value] as const,
   () => {
     if (!props.show) return
     page.value = 1
@@ -186,7 +201,7 @@ watch(
     <div class="flex h-full min-h-0 flex-col">
       <!-- Filters -->
       <div class="mb-4 flex-shrink-0 border-b border-gray-200 pb-4 dark:border-dark-700">
-        <div class="grid grid-cols-7 gap-2">
+        <div class="grid grid-cols-8 gap-2">
           <div class="col-span-2 compact-select">
             <div class="relative group">
               <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -222,6 +237,10 @@ watch(
 
           <div class="compact-select">
             <Select :model-value="resolvedStatus" :options="resolvedSelectOptions" @update:model-value="resolvedStatus = String($event ?? 'unresolved')" />
+          </div>
+
+          <div class="compact-select">
+            <Select :model-value="viewMode" :options="viewModeSelectOptions" @update:model-value="viewMode = $event as any" />
           </div>
 
           <div class="flex items-center justify-end">

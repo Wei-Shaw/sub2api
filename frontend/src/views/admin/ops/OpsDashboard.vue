@@ -94,7 +94,7 @@
           @openErrorDetail="openError"
         />
 
-        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" />
+        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" />
 
         <OpsRequestDetailsModal
           v-model="showRequestDetails"

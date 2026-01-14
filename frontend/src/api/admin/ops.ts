@@ -54,6 +54,7 @@ export type OpsUpstreamErrorEvent = {
   account_name?: string
   upstream_status_code?: number
   upstream_request_id?: string
+  upstream_request_body?: string
   kind?: string
   message?: string
   detail?: string
@@ -944,7 +945,9 @@ export async function getErrorDistribution(
   return data
 REDACTED
 
-export async function listErrorLogs(params: {
+export type OpsErrorListView = 'errors' | 'excluded' | 'all'
+
+export type OpsErrorListQueryParams = {
   page?: number
   page_size?: number
   time_range?: string
@@ -958,10 +961,14 @@ export async function listErrorLogs(params: {
   error_owner?: string
   error_source?: string
   resolved?: string
+  view?: OpsErrorListView
 
   q?: string
   status_codes?: string
-REDACTED): Promise<OpsErrorLogsResponse> {
+REDACTED
+
+// Legacy unified endpoints
+export async function listErrorLogs(params: OpsErrorListQueryParams): Promise<OpsErrorLogsResponse> {
   const { data REDACTED = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/errors', { params REDACTED)
   return data
 REDACTED
@@ -983,6 +990,50 @@ REDACTED
 
 export async function updateErrorResolved(errorId: number, resolved: boolean): Promise<void> {
   await apiClient.put(`/admin/ops/errors/${errorIdREDACTED/resolve`, { resolved REDACTED)
+REDACTED
+
+// New split endpoints
+export async function listRequestErrors(params: OpsErrorListQueryParams): Promise<OpsErrorLogsResponse> {
+  const { data REDACTED = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/request-errors', { params REDACTED)
+  return data
+REDACTED
+
+export async function listUpstreamErrors(params: OpsErrorListQueryParams): Promise<OpsErrorLogsResponse> {
+  const { data REDACTED = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/upstream-errors', { params REDACTED)
+  return data
+REDACTED
+
+export async function getRequestErrorDetail(id: number): Promise<OpsErrorDetail> {
+  const { data REDACTED = await apiClient.get<OpsErrorDetail>(`/admin/ops/request-errors/${idREDACTED`)
+  return data
+REDACTED
+
+export async function getUpstreamErrorDetail(id: number): Promise<OpsErrorDetail> {
+  const { data REDACTED = await apiClient.get<OpsErrorDetail>(`/admin/ops/upstream-errors/${idREDACTED`)
+  return data
+REDACTED
+
+export async function retryRequestErrorClient(id: number): Promise<OpsRetryResult> {
+  const { data REDACTED = await apiClient.post<OpsRetryResult>(`/admin/ops/request-errors/${idREDACTED/retry-client`, {REDACTED)
+  return data
+REDACTED
+
+export async function retryRequestErrorUpstreamEvent(id: number, idx: number): Promise<OpsRetryResult> {
+  const { data REDACTED = await apiClient.post<OpsRetryResult>(`/admin/ops/request-errors/${idREDACTED/upstream-errors/${idxREDACTED/retry`, {REDACTED)
+  return data
+REDACTED
+
+export async function retryUpstreamError(id: number): Promise<OpsRetryResult> {
+  const { data REDACTED = await apiClient.post<OpsRetryResult>(`/admin/ops/upstream-errors/${idREDACTED/retry`, {REDACTED)
+  return data
+REDACTED
+
+export async function updateRequestErrorResolved(errorId: number, resolved: boolean): Promise<void> {
+  await apiClient.put(`/admin/ops/request-errors/${errorIdREDACTED/resolve`, { resolved REDACTED)
+REDACTED
+
+export async function updateUpstreamErrorResolved(errorId: number, resolved: boolean): Promise<void> {
+  await apiClient.put(`/admin/ops/upstream-errors/${errorIdREDACTED/resolve`, { resolved REDACTED)
 REDACTED
 
 export async function listRequestDetails(params: OpsRequestDetailsParams): Promise<OpsRequestDetailsResponse> {
@@ -1103,11 +1154,25 @@ export const opsAPI = {
   getAccountAvailabilityStats,
   getRealtimeTrafficSummary,
   subscribeQPS,
+
+  // Legacy unified endpoints
   listErrorLogs,
   getErrorLogDetail,
   retryErrorRequest,
   listRetryAttempts,
   updateErrorResolved,
+
+  // New split endpoints
+  listRequestErrors,
+  listUpstreamErrors,
+  getRequestErrorDetail,
+  getUpstreamErrorDetail,
+  retryRequestErrorClient,
+  retryRequestErrorUpstreamEvent,
+  retryUpstreamError,
+  updateRequestErrorResolved,
+  updateUpstreamErrorResolved,
+
   listRequestDetails,
   listAlertRules,
   createAlertRule,
