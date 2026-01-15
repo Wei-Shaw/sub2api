@@ -85,12 +85,23 @@ REDACTED
 
 	switch statusCode {
 	case 401:
-		if account.Type == AccountTypeOAuth &&
-			(account.Platform == PlatformAntigravity || account.Platform == PlatformGemini) {
+		// 对所有 OAuth 账号在 401 错误时调用缓存失效并强制下次刷新
+		if account.Type == AccountTypeOAuth {
+			// 1. 失效缓存
 			if s.tokenCacheInvalidator != nil {
 				if err := s.tokenCacheInvalidator.InvalidateToken(ctx, account); err != nil {
 					slog.Warn("oauth_401_invalidate_cache_failed", "account_id", account.ID, "error", err)
 			REDACTED
+		REDACTED
+			// 2. 设置 expires_at 为当前时间，强制下次请求刷新 token
+			if account.Credentials == nil {
+				account.Credentials = make(map[string]any)
+		REDACTED
+			account.Credentials["expires_at"] = time.Now().Format(time.RFC3339)
+			if err := s.accountRepo.Update(ctx, account); err != nil {
+				slog.Warn("oauth_401_force_refresh_update_failed", "account_id", account.ID, "error", err)
+		REDACTED else {
+				slog.Info("oauth_401_force_refresh_set", "account_id", account.ID, "platform", account.Platform)
 		REDACTED
 	REDACTED
 		msg := "Authentication failed (401): invalid or expired credentials"
