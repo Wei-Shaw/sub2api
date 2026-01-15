@@ -29,16 +29,16 @@ var codexToolNameMapping = map[string]string{
 	"execBash":     "bash",
 REDACTED
 
-// ToolCorrectionStats 记录工具修正的统计信息
+// ToolCorrectionStats 记录工具修正的统计信息（导出用于 JSON 序列化）
 type ToolCorrectionStats struct {
 	TotalCorrected    int            `json:"total_corrected"`
 	CorrectionsByTool map[string]int `json:"corrections_by_tool"`
-	mu                sync.RWMutex
 REDACTED
 
 // CodexToolCorrector 处理 Codex 工具调用的自动修正
 type CodexToolCorrector struct {
 	stats ToolCorrectionStats
+	mu    sync.RWMutex
 REDACTED
 
 // NewCodexToolCorrector 创建新的工具修正器
@@ -251,8 +251,8 @@ REDACTED
 
 // recordCorrection 记录一次工具名称修正
 func (c *CodexToolCorrector) recordCorrection(from, to string) {
-	c.stats.mu.Lock()
-	defer c.stats.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	c.stats.TotalCorrected++
 	key := fmt.Sprintf("%s->%s", from, to)
@@ -264,8 +264,8 @@ REDACTED
 
 // GetStats 获取工具修正统计信息
 func (c *CodexToolCorrector) GetStats() ToolCorrectionStats {
-	c.stats.mu.RLock()
-	defer c.stats.mu.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	// 返回副本以避免并发问题
 	statsCopy := ToolCorrectionStats{
@@ -281,8 +281,8 @@ REDACTED
 
 // ResetStats 重置统计信息
 func (c *CodexToolCorrector) ResetStats() {
-	c.stats.mu.Lock()
-	defer c.stats.mu.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	c.stats.TotalCorrected = 0
 	c.stats.CorrectionsByTool = make(map[string]int)

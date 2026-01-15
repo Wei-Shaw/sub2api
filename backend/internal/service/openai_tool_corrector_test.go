@@ -38,8 +38,18 @@ REDACTED{
 				if err := json.Unmarshal([]byte(result), &payload); err != nil {
 					t.Fatalf("Failed to parse result: %v", err)
 			REDACTED
-				toolCalls := payload["tool_calls"].([]any)
-				functionCall := toolCalls[0].(map[string]any)["function"].(map[string]any)
+				toolCalls, ok := payload["tool_calls"].([]any)
+				if !ok || len(toolCalls) == 0 {
+					t.Fatal("No tool_calls found in result")
+			REDACTED
+				toolCall, ok := toolCalls[0].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid tool_call format")
+			REDACTED
+				functionCall, ok := toolCall["function"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid function format")
+			REDACTED
 				if functionCall["name"] != "edit" {
 					t.Errorf("Expected tool name 'edit', got '%v'", functionCall["name"])
 			REDACTED
@@ -54,7 +64,10 @@ REDACTED{
 				if err := json.Unmarshal([]byte(result), &payload); err != nil {
 					t.Fatalf("Failed to parse result: %v", err)
 			REDACTED
-				functionCall := payload["function_call"].(map[string]any)
+				functionCall, ok := payload["function_call"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid function_call format")
+			REDACTED
 				if functionCall["name"] != "todowrite" {
 					t.Errorf("Expected tool name 'todowrite', got '%v'", functionCall["name"])
 			REDACTED
@@ -131,8 +144,18 @@ REDACTED{
 				if err := json.Unmarshal([]byte(result), &payload); err != nil {
 					t.Fatalf("Failed to parse result: %v", err)
 			REDACTED
-				toolCalls := payload["tool_calls"].([]any)
-				functionCall := toolCalls[0].(map[string]any)["function"].(map[string]any)
+				toolCalls, ok := payload["tool_calls"].([]any)
+				if !ok || len(toolCalls) == 0 {
+					t.Fatal("No tool_calls found in result")
+			REDACTED
+				toolCall, ok := toolCalls[0].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid tool_call format")
+			REDACTED
+				functionCall, ok := toolCall["function"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid function format")
+			REDACTED
 				if functionCall["name"] != "edit" {
 					t.Errorf("Expected tool name 'edit', got '%v'", functionCall["name"])
 			REDACTED
