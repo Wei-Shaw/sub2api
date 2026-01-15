@@ -14,9 +14,10 @@ import (
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
 type TokenRefreshService struct {
-	accountRepo AccountRepository
-	refreshers  []TokenRefresher
-	cfg         *config.TokenRefreshConfig
+	accountRepo      AccountRepository
+	refreshers       []TokenRefresher
+	cfg              *config.TokenRefreshConfig
+	cacheInvalidator TokenCacheInvalidator
 
 	stopCh chan struct{REDACTED
 	wg     sync.WaitGroup
@@ -29,12 +30,14 @@ func NewTokenRefreshService(
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
+	cacheInvalidator TokenCacheInvalidator,
 	cfg *config.Config,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
-		accountRepo: accountRepo,
-		cfg:         &cfg.TokenRefresh,
-		stopCh:      make(chan struct{REDACTED),
+		accountRepo:      accountRepo,
+		cfg:              &cfg.TokenRefresh,
+		cacheInvalidator: cacheInvalidator,
+		stopCh:           make(chan struct{REDACTED),
 REDACTED
 
 	// 注册平台特定的刷新器
@@ -168,6 +171,14 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			account.Credentials = newCredentials
 			if err := s.accountRepo.Update(ctx, account); err != nil {
 				return fmt.Errorf("failed to save credentials: %w", err)
+		REDACTED
+			if s.cacheInvalidator != nil && account.Type == AccountTypeOAuth &&
+				(account.Platform == PlatformGemini || account.Platform == PlatformAntigravity) {
+				if err := s.cacheInvalidator.InvalidateToken(ctx, account); err != nil {
+					log.Printf("[TokenRefresh] Failed to invalidate token cache for account %d: %v", account.ID, err)
+			REDACTED else {
+					log.Printf("[TokenRefresh] Token cache invalidated for account %d", account.ID)
+			REDACTED
 		REDACTED
 			return nil
 	REDACTED
