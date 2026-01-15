@@ -39,6 +39,8 @@ const (
 	FieldConcurrency = "concurrency"
 	// FieldPriority holds the string denoting the priority field in the database.
 	FieldPriority = "priority"
+	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
+	FieldRateMultiplier = "rate_multiplier"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
@@ -116,6 +118,7 @@ var Columns = []string{
 	FieldProxyID,
 	FieldConcurrency,
 	FieldPriority,
+	FieldRateMultiplier,
 	FieldStatus,
 	FieldErrorMessage,
 	FieldLastUsedAt,
@@ -174,6 +177,8 @@ var (
 	DefaultConcurrency int
 	// DefaultPriority holds the default value on creation for the "priority" field.
 	DefaultPriority int
+	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
+	DefaultRateMultiplier float64
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -242,6 +247,11 @@ REDACTED
 // ByPriority orders the results by the priority field.
 func ByPriority(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPriority, opts...).ToFunc()
+REDACTED
+
+// ByRateMultiplier orders the results by the rate_multiplier field.
+func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
 REDACTED
 
 // ByStatus orders the results by the status field.

@@ -136,6 +136,7 @@ type CreateAccountInput struct {
 	ProxyID            *int64
 	Concurrency        int
 	Priority           int
+	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
 	GroupIDs           []int64
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
@@ -151,8 +152,9 @@ type UpdateAccountInput struct {
 	Credentials           map[string]any
 	Extra                 map[string]any
 	ProxyID               *int64
-	Concurrency           *int // 使用指针区分"未提供"和"设置为0"
-	Priority              *int // 使用指针区分"未提供"和"设置为0"
+	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
+	Priority              *int     // 使用指针区分"未提供"和"设置为0"
+	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
 	Status                string
 	GroupIDs              *[]int64
 	ExpiresAt             *int64
@@ -162,16 +164,17 @@ REDACTED
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
 type BulkUpdateAccountsInput struct {
-	AccountIDs  []int64
-	Name        string
-	ProxyID     *int64
-	Concurrency *int
-	Priority    *int
-	Status      string
-	Schedulable *bool
-	GroupIDs    *[]int64
-	Credentials map[string]any
-	Extra       map[string]any
+	AccountIDs     []int64
+	Name           string
+	ProxyID        *int64
+	Concurrency    *int
+	Priority       *int
+	RateMultiplier *float64 // 账号计费倍率（>=0，允许 0）
+	Status         string
+	Schedulable    *bool
+	GroupIDs       *[]int64
+	Credentials    map[string]any
+	Extra          map[string]any
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
@@ -817,6 +820,12 @@ REDACTED
 REDACTED else {
 		account.AutoPauseOnExpired = true
 REDACTED
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier < 0 {
+			return nil, errors.New("rate_multiplier must be >= 0")
+	REDACTED
+		account.RateMultiplier = input.RateMultiplier
+REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 REDACTED
@@ -868,6 +877,12 @@ REDACTED
 	// 只在指针非 nil 时更新 Priority（支持设置为 0）
 	if input.Priority != nil {
 		account.Priority = *input.Priority
+REDACTED
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier < 0 {
+			return nil, errors.New("rate_multiplier must be >= 0")
+	REDACTED
+		account.RateMultiplier = input.RateMultiplier
 REDACTED
 	if input.Status != "" {
 		account.Status = input.Status
@@ -942,6 +957,12 @@ REDACTED
 	REDACTED
 REDACTED
 
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier < 0 {
+			return nil, errors.New("rate_multiplier must be >= 0")
+	REDACTED
+REDACTED
+
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
 		Credentials: input.Credentials,
@@ -958,6 +979,9 @@ REDACTED
 REDACTED
 	if input.Priority != nil {
 		repoUpdates.Priority = input.Priority
+REDACTED
+	if input.RateMultiplier != nil {
+		repoUpdates.RateMultiplier = input.RateMultiplier
 REDACTED
 	if input.Status != "" {
 		repoUpdates.Status = &input.Status

@@ -61,6 +61,11 @@
           <template #cell-usage="{ row REDACTED">
             <AccountUsageCell :account="row" />
           </template>
+          <template #cell-rate_multiplier="{ row REDACTED">
+            <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
+              {{ (row.rate_multiplier ?? 1).toFixed(2) REDACTEDREDACTEDx
+            </span>
+          </template>
           <template #cell-priority="{ value REDACTED">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value REDACTEDREDACTED</span>
           </template>
@@ -190,10 +195,11 @@ const cols = computed(() => {
   if (!authStore.isSimpleMode) {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false REDACTED)
   REDACTED
-  c.push(
-    { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
-    { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
-    { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
+    c.push(
+      { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
+      { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
+      { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true REDACTED,
+      { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true REDACTED,
     { key: 'notes', label: t('admin.accounts.columns.notes'), sortable: false REDACTED,
     { key: 'actions', label: t('admin.accounts.columns.actions'), sortable: false REDACTED

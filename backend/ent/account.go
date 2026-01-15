@@ -43,6 +43,8 @@ type Account struct {
 	Concurrency int `json:"concurrency,omitempty"`
 	// Priority holds the value of the "priority" field.
 	Priority int `json:"priority,omitempty"`
+	// RateMultiplier holds the value of the "rate_multiplier" field.
+	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// ErrorMessage holds the value of the "error_message" field.
@@ -135,6 +137,8 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case account.FieldAutoPauseOnExpired, account.FieldSchedulable:
 			values[i] = new(sql.NullBool)
+		case account.FieldRateMultiplier:
+			values[i] = new(sql.NullFloat64)
 		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldPriority:
 			values[i] = new(sql.NullInt64)
 		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldSessionWindowStatus:
@@ -240,6 +244,12 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field priority", values[i])
 		REDACTED else if value.Valid {
 				_m.Priority = int(value.Int64)
+		REDACTED
+		case account.FieldRateMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field rate_multiplier", values[i])
+		REDACTED else if value.Valid {
+				_m.RateMultiplier = value.Float64
 		REDACTED
 		case account.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -419,6 +429,9 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("priority=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Priority))
+	builder.WriteString(", ")
+	builder.WriteString("rate_multiplier=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RateMultiplier))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
