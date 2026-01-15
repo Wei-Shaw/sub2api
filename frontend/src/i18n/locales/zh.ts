@@ -2117,7 +2117,12 @@ export default {
         '6h': '近6小时',
         '24h': '近24小时',
         '7d': '近7天',
-        '30d': '近30天'
+        '30d': '近30天',
+        custom: '自定义'
+      REDACTED,
+      customTimeRange: {
+        startTime: '开始时间',
+        endTime: '结束时间'
       REDACTED,
       fullscreen: {
         enter: '进入全屏'

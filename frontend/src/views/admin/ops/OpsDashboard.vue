@@ -23,10 +23,13 @@
         :auto-refresh-enabled="autoRefreshEnabled"
         :auto-refresh-countdown="autoRefreshCountdown"
         :fullscreen="isFullscreen"
+        :custom-start-time="customStartTime"
+        :custom-end-time="customEndTime"
         @update:time-range="onTimeRangeChange"
         @update:platform="onPlatformChange"
         @update:group="onGroupChange"
         @update:query-mode="onQueryModeChange"
+        @update:custom-time-range="onCustomTimeRangeChange"
         @refresh="fetchData"
         @open-request-details="handleOpenRequestDetails"
         @open-error-details="openErrorDetails"
@@ -148,8 +151,8 @@ const { t REDACTED = useI18n()
 
 const opsEnabled = computed(() => adminSettingsStore.opsMonitoringEnabled)
 
-type TimeRange = '5m' | '30m' | '1h' | '6h' | '24h'
-const allowedTimeRanges = new Set<TimeRange>(['5m', '30m', '1h', '6h', '24h'])
+type TimeRange = '5m' | '30m' | '1h' | '6h' | '24h' | 'custom'
+const allowedTimeRanges = new Set<TimeRange>(['5m', '30m', '1h', '6h', '24h', 'custom'])
 
 type QueryMode = 'auto' | 'raw' | 'preagg'
 const allowedQueryModes = new Set<QueryMode>(['auto', 'raw', 'preagg'])
@@ -163,6 +166,8 @@ const timeRange = ref<TimeRange>('1h')
 const platform = ref<string>('')
 const groupId = ref<number | null>(null)
 const queryMode = ref<QueryMode>('auto')
+const customStartTime = ref<string | null>(null)
+const customEndTime = ref<string | null>(null)
 
 const QUERY_KEYS = {
   timeRange: 'tr',
@@ -420,6 +425,11 @@ function onTimeRangeChange(v: string | number | boolean | null) {
   timeRange.value = v as TimeRange
 REDACTED
 
+function onCustomTimeRangeChange(startTime: string, endTime: string) {
+  customStartTime.value = startTime
+  customEndTime.value = endTime
+REDACTED
+
 function onSettingsSaved() {
   loadThresholds()
   fetchData()
@@ -458,18 +468,25 @@ function openError(id: number) {
   showErrorModal.value = true
 REDACTED
 
+function buildApiParams() {
+  const params: any = {
+    platform: platform.value || undefined,
+    group_id: groupId.value ?? undefined,
+    mode: queryMode.value
+  REDACTED
+  if (timeRange.value === 'custom' && customStartTime.value && customEndTime.value) {
+    params.start_time = customStartTime.value
+    params.end_time = customEndTime.value
+  REDACTED else {
+    params.time_range = timeRange.value
+  REDACTED
+  return params
+REDACTED
+
 async function refreshOverviewWithCancel(fetchSeq: number, signal: AbortSignal) {
   if (!opsEnabled.value) return
   try {
-    const data = await opsAPI.getDashboardOverview(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getDashboardOverview(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     overview.value = data
   REDACTED catch (err: any) {
@@ -483,15 +500,7 @@ async function refreshThroughputTrendWithCancel(fetchSeq: number, signal: AbortS
   if (!opsEnabled.value) return
   loadingTrend.value = true
   try {
-    const data = await opsAPI.getThroughputTrend(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getThroughputTrend(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     throughputTrend.value = data
   REDACTED catch (err: any) {
@@ -509,15 +518,7 @@ async function refreshLatencyHistogramWithCancel(fetchSeq: number, signal: Abort
   if (!opsEnabled.value) return
   loadingLatency.value = true
   try {
-    const data = await opsAPI.getLatencyHistogram(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getLatencyHistogram(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     latencyHistogram.value = data
   REDACTED catch (err: any) {
@@ -535,15 +536,7 @@ async function refreshErrorTrendWithCancel(fetchSeq: number, signal: AbortSignal
   if (!opsEnabled.value) return
   loadingErrorTrend.value = true
   try {
-    const data = await opsAPI.getErrorTrend(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getErrorTrend(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     errorTrend.value = data
   REDACTED catch (err: any) {
@@ -561,15 +554,7 @@ async function refreshErrorDistributionWithCancel(fetchSeq: number, signal: Abor
   if (!opsEnabled.value) return
   loadingErrorDistribution.value = true
   try {
-    const data = await opsAPI.getErrorDistribution(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getErrorDistribution(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     errorDistribution.value = data
   REDACTED catch (err: any) {
