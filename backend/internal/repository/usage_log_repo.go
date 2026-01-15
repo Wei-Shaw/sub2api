@@ -455,7 +455,7 @@ REDACTED
 		FROM usage_dashboard_hourly
 		WHERE bucket_start = $1
 	`
-	hourStart := now.UTC().Truncate(time.Hour)
+	hourStart := now.In(timezone.Location()).Truncate(time.Hour)
 	if err := scanSingleRow(ctx, r.sql, hourlyActiveQuery, []any{hourStartREDACTED, &stats.HourlyActiveUsers); err != nil {
 		if err != sql.ErrNoRows {
 			return err
