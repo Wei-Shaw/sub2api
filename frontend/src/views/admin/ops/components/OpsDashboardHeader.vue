@@ -169,42 +169,54 @@ const updatedAtLabel = computed(() => {
   return props.lastUpdated.toLocaleTimeString()
 REDACTED)
 
-// --- Color coding for TTFT ---
-function getTTFTColor(ms: number | null | undefined): string {
-  if (ms == null) return 'text-gray-900 dark:text-white'
-  if (ms < 500) return 'text-green-600 dark:text-green-400'
-  if (ms < 1000) return 'text-yellow-600 dark:text-yellow-400'
-  if (ms < 2000) return 'text-orange-600 dark:text-orange-400'
-  return 'text-red-600 dark:text-red-400'
-REDACTED
-
 // --- Threshold checking helpers ---
-function isSLABelowThreshold(slaPercent: number | null): boolean {
-  if (slaPercent == null) return false
+type ThresholdLevel = 'normal' | 'warning' | 'critical'
+
+function getSLAThresholdLevel(slaPercent: number | null): ThresholdLevel {
+  if (slaPercent == null) return 'normal'
   const threshold = props.thresholds?.sla_percent_min
-  if (threshold == null) return false
-  return slaPercent < threshold
+  if (threshold == null) return 'normal'
+  if (slaPercent < threshold) return 'critical'
+  if (slaPercent < threshold / 0.8) return 'warning'
+  return 'normal'
 REDACTED
 
-function isTTFTAboveThreshold(ttftP99Ms: number | null): boolean {
-  if (ttftP99Ms == null) return false
+function getTTFTThresholdLevel(ttftMs: number | null): ThresholdLevel {
+  if (ttftMs == null) return 'normal'
   const threshold = props.thresholds?.ttft_p99_ms_max
-  if (threshold == null) return false
-  return ttftP99Ms > threshold
+  if (threshold == null) return 'normal'
+  if (ttftMs >= threshold) return 'critical'
+  if (ttftMs >= threshold * 0.8) return 'warning'
+  return 'normal'
 REDACTED
 
-function isRequestErrorRateAboveThreshold(errorRatePercent: number | null): boolean {
-  if (errorRatePercent == null) return false
+function getRequestErrorRateThresholdLevel(errorRatePercent: number | null): ThresholdLevel {
+  if (errorRatePercent == null) return 'normal'
   const threshold = props.thresholds?.request_error_rate_percent_max
-  if (threshold == null) return false
-  return errorRatePercent > threshold
+  if (threshold == null) return 'normal'
+  if (errorRatePercent >= threshold) return 'critical'
+  if (errorRatePercent >= threshold * 0.8) return 'warning'
+  return 'normal'
 REDACTED
 
-function isUpstreamErrorRateAboveThreshold(upstreamErrorRatePercent: number | null): boolean {
-  if (upstreamErrorRatePercent == null) return false
+function getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent: number | null): ThresholdLevel {
+  if (upstreamErrorRatePercent == null) return 'normal'
   const threshold = props.thresholds?.upstream_error_rate_percent_max
-  if (threshold == null) return false
-  return upstreamErrorRatePercent > threshold
+  if (threshold == null) return 'normal'
+  if (upstreamErrorRatePercent >= threshold) return 'critical'
+  if (upstreamErrorRatePercent >= threshold * 0.8) return 'warning'
+  return 'normal'
+REDACTED
+
+function getThresholdColorClass(level: ThresholdLevel): string {
+  switch (level) {
+    case 'critical':
+      return 'text-red-600 dark:text-red-400'
+    case 'warning':
+      return 'text-yellow-600 dark:text-yellow-400'
+    default:
+      return 'text-green-600 dark:text-green-400'
+  REDACTED
 REDACTED
 
 // --- Realtime / Overview labels ---
@@ -1197,7 +1209,7 @@ REDACTED
             <div class="flex items-center gap-2">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.sla') REDACTEDREDACTED</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.sla')" />
-              <span class="h-1.5 w-1.5 rounded-full" :class="isSLABelowThreshold(slaPercent) ? 'bg-red-500' : (slaPercent ?? 0) >= 99.5 ? 'bg-green-500' : 'bg-yellow-500'"></span>
+              <span class="h-1.5 w-1.5 rounded-full" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-green-500'"></span>
             </div>
             <button
               v-if="!props.fullscreen"
@@ -1208,11 +1220,11 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="isSLABelowThreshold(slaPercent) ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getSLAThresholdLevel(slaPercent))">
             {{ slaPercent == null ? '-' : `${slaPercent.toFixed(3)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
-            <div class="h-full transition-all" :class="isSLABelowThreshold(slaPercent) ? 'bg-red-500' : 'bg-green-500'" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10REDACTED%` REDACTED"></div>
+            <div class="h-full transition-all" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10REDACTED%` REDACTED"></div>
           </div>
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
@@ -1244,28 +1256,28 @@ REDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
-              <span class="text-gray-500">{{ t('admin.ops.p95') REDACTEDREDACTED</span>
+          <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">P95:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationP95Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
-              <span class="text-gray-500">{{ t('admin.ops.p90') REDACTEDREDACTED</span>
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">P90:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationP90Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
-              <span class="text-gray-500">{{ t('admin.ops.p50') REDACTEDREDACTED</span>
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">P50:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationP50Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationAvgMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
               <span class="font-bold text-gray-900 dark:text-white">{{ durationMaxMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
@@ -1290,35 +1302,35 @@ REDACTED
             </button>
           </div>
           <div class="mt-2 flex items-baseline gap-2">
-            <div class="text-3xl font-black" :class="isTTFTAboveThreshold(ttftP99Ms) ? 'text-red-600 dark:text-red-400' : getTTFTColor(ttftP99Ms)">
+            <div class="text-3xl font-black" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP99Ms))">
               {{ ttftP99Ms ?? '-' REDACTEDREDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
-              <span class="text-gray-500">{{ t('admin.ops.p95') REDACTEDREDACTED</span>
-              <span class="font-bold" :class="getTTFTColor(ttftP95Ms)">{{ ttftP95Ms ?? '-' REDACTEDREDACTED</span>
+          <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">P95:</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP95Ms))">{{ ttftP95Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
-              <span class="text-gray-500">{{ t('admin.ops.p90') REDACTEDREDACTED</span>
-              <span class="font-bold" :class="getTTFTColor(ttftP90Ms)">{{ ttftP90Ms ?? '-' REDACTEDREDACTED</span>
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">P90:</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP90Ms))">{{ ttftP90Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
-              <span class="text-gray-500">{{ t('admin.ops.p50') REDACTEDREDACTED</span>
-              <span class="font-bold" :class="getTTFTColor(ttftP50Ms)">{{ ttftP50Ms ?? '-' REDACTEDREDACTED</span>
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
+              <span class="text-gray-500">P50:</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP50Ms))">{{ ttftP50Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold" :class="getTTFTColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftAvgMs))">{{ ttftAvgMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getTTFTColor(ttftMaxMs)">{{ ttftMaxMs ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftMaxMs))">{{ ttftMaxMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
           </div>
@@ -1335,7 +1347,7 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="isRequestErrorRateAboveThreshold(errorRatePercent) ? 'text-red-600 dark:text-red-400' : (errorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getRequestErrorRateThresholdLevel(errorRatePercent))">
             {{ errorRatePercent == null ? '-' : `${errorRatePercent.toFixed(2)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 space-y-1 text-xs">
@@ -1361,7 +1373,7 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="isUpstreamErrorRateAboveThreshold(upstreamErrorRatePercent) ? 'text-red-600 dark:text-red-400' : (upstreamErrorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent))">
             {{ upstreamErrorRatePercent == null ? '-' : `${upstreamErrorRatePercent.toFixed(2)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 space-y-1 text-xs">
