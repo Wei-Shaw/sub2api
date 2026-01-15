@@ -144,22 +144,22 @@ REDACTED
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
-	accountRepo          AccountRepository
-	groupRepo            GroupRepository
-	usageLogRepo         UsageLogRepository
-	userRepo             UserRepository
-	userSubRepo          UserSubscriptionRepository
-	cache                GatewayCache
-	cfg                  *config.Config
-	schedulerSnapshot    *SchedulerSnapshotService
-	billingService       *BillingService
-	rateLimitService     *RateLimitService
-	billingCacheService  *BillingCacheService
-	identityService      *IdentityService
-	httpUpstream         HTTPUpstream
-	deferredService      *DeferredService
-	concurrencyService   *ConcurrencyService
-	claudeTokenProvider  *ClaudeTokenProvider
+	accountRepo         AccountRepository
+	groupRepo           GroupRepository
+	usageLogRepo        UsageLogRepository
+	userRepo            UserRepository
+	userSubRepo         UserSubscriptionRepository
+	cache               GatewayCache
+	cfg                 *config.Config
+	schedulerSnapshot   *SchedulerSnapshotService
+	billingService      *BillingService
+	rateLimitService    *RateLimitService
+	billingCacheService *BillingCacheService
+	identityService     *IdentityService
+	httpUpstream        HTTPUpstream
+	deferredService     *DeferredService
+	concurrencyService  *ConcurrencyService
+	claudeTokenProvider *ClaudeTokenProvider
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -182,22 +182,22 @@ func NewGatewayService(
 	claudeTokenProvider *ClaudeTokenProvider,
 ) *GatewayService {
 	return &GatewayService{
-		accountRepo:          accountRepo,
-		groupRepo:            groupRepo,
-		usageLogRepo:         usageLogRepo,
-		userRepo:             userRepo,
-		userSubRepo:          userSubRepo,
-		cache:                cache,
-		cfg:                  cfg,
-		schedulerSnapshot:    schedulerSnapshot,
-		concurrencyService:   concurrencyService,
-		billingService:       billingService,
-		rateLimitService:     rateLimitService,
-		billingCacheService:  billingCacheService,
-		identityService:      identityService,
-		httpUpstream:         httpUpstream,
-		deferredService:      deferredService,
-		claudeTokenProvider:  claudeTokenProvider,
+		accountRepo:         accountRepo,
+		groupRepo:           groupRepo,
+		usageLogRepo:        usageLogRepo,
+		userRepo:            userRepo,
+		userSubRepo:         userSubRepo,
+		cache:               cache,
+		cfg:                 cfg,
+		schedulerSnapshot:   schedulerSnapshot,
+		concurrencyService:  concurrencyService,
+		billingService:      billingService,
+		rateLimitService:    rateLimitService,
+		billingCacheService: billingCacheService,
+		identityService:     identityService,
+		httpUpstream:        httpUpstream,
+		deferredService:     deferredService,
+		claudeTokenProvider: claudeTokenProvider,
 REDACTED
 REDACTED
 
