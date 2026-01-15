@@ -14,6 +14,8 @@ type OpsRepository interface {
 	InsertRetryAttempt(ctx context.Context, input *OpsInsertRetryAttemptInput) (int64, error)
 	UpdateRetryAttempt(ctx context.Context, input *OpsUpdateRetryAttemptInput) error
 	GetLatestRetryAttemptForError(ctx context.Context, sourceErrorID int64) (*OpsRetryAttempt, error)
+	ListRetryAttemptsByErrorID(ctx context.Context, sourceErrorID int64, limit int) ([]*OpsRetryAttempt, error)
+	UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64, resolvedAt *time.Time) error
 
 	// Lightweight window stats (for realtime WS / quick sampling).
 	GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error)
@@ -39,11 +41,16 @@ type OpsRepository interface {
 	DeleteAlertRule(ctx context.Context, id int64) error
 
 	ListAlertEvents(ctx context.Context, filter *OpsAlertEventFilter) ([]*OpsAlertEvent, error)
+	GetAlertEventByID(ctx context.Context, eventID int64) (*OpsAlertEvent, error)
 	GetActiveAlertEvent(ctx context.Context, ruleID int64) (*OpsAlertEvent, error)
 	GetLatestAlertEvent(ctx context.Context, ruleID int64) (*OpsAlertEvent, error)
 	CreateAlertEvent(ctx context.Context, event *OpsAlertEvent) (*OpsAlertEvent, error)
 	UpdateAlertEventStatus(ctx context.Context, eventID int64, status string, resolvedAt *time.Time) error
 	UpdateAlertEventEmailSent(ctx context.Context, eventID int64, emailSent bool) error
+
+	// Alert silences
+	CreateAlertSilence(ctx context.Context, input *OpsAlertSilence) (*OpsAlertSilence, error)
+	IsAlertSilenced(ctx context.Context, ruleID int64, platform string, groupID *int64, region *string, now time.Time) (bool, error)
 
 	// Pre-aggregation (hourly/daily) used for long-window dashboard performance.
 	UpsertHourlyMetrics(ctx context.Context, startTime, endTime time.Time) error
@@ -91,7 +98,6 @@ type OpsInsertErrorLogInput struct {
 	// It is set by OpsService.RecordError before persisting.
 	UpstreamErrorsJSON *string
 
-	DurationMs         *int
 	TimeToFirstTokenMs *int64
 
 	RequestBodyJSON      *string // sanitized json string (not raw bytes)
@@ -124,7 +130,15 @@ type OpsUpdateRetryAttemptInput struct {
 	FinishedAt time.Time
 	DurationMs int64
 
-	// Optional correlation
+	// Persisted execution results (best-effort)
+	Success           *bool
+	HTTPStatusCode    *int
+	UpstreamRequestID *string
+	UsedAccountID     *int64
+	ResponsePreview   *string
+	ResponseTruncated *bool
+
+	// Optional correlation (legacy fields kept)
 	ResultRequestID *string
 	ResultErrorID   *int64
 

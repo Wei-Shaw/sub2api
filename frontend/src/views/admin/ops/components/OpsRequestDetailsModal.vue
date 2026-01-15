@@ -38,7 +38,7 @@ const loading = ref(false)
 const items = ref<OpsRequestDetail[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 
 const close = () => emit('update:modelValue', false)
 
@@ -95,7 +95,7 @@ watch(
   (open) => {
     if (open) {
       page.value = 1
-      pageSize.value = 20
+      pageSize.value = 10
       fetchData()
     REDACTED
   REDACTED

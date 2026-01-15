@@ -8,7 +8,7 @@
         {{ errorMessage REDACTEDREDACTED
       </div>
 
-      <OpsDashboardSkeleton v-if="loading && !hasLoadedOnce" />
+      <OpsDashboardSkeleton v-if="loading && !hasLoadedOnce" :fullscreen="isFullscreen" />
 
       <OpsDashboardHeader
         v-else-if="opsEnabled"
@@ -94,7 +94,7 @@
           @openErrorDetail="openError"
         />
 
-        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" />
+        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" />
 
         <OpsRequestDetailsModal
           v-model="showRequestDetails"
@@ -169,7 +169,13 @@ const QUERY_KEYS = {
   platform: 'platform',
   groupId: 'group_id',
   queryMode: 'mode',
-  fullscreen: 'fullscreen'
+  fullscreen: 'fullscreen',
+
+  // Deep links
+  openErrorDetails: 'open_error_details',
+  errorType: 'error_type',
+  alertRuleId: 'alert_rule_id',
+  openAlertRules: 'open_alert_rules'
 REDACTED as const
 
 const isApplyingRouteQuery = ref(false)
@@ -248,6 +254,24 @@ const applyRouteQueryToState = () => {
   REDACTED else {
     const fallback = adminSettingsStore.opsQueryModeDefault || 'auto'
     queryMode.value = allowedQueryModes.has(fallback as QueryMode) ? (fallback as QueryMode) : 'auto'
+  REDACTED
+
+  // Deep links
+  const openRules = readQueryString(QUERY_KEYS.openAlertRules)
+  if (openRules === '1' || openRules === 'true') {
+    showAlertRulesCard.value = true
+  REDACTED
+
+  const ruleID = readQueryNumber(QUERY_KEYS.alertRuleId)
+  if (typeof ruleID === 'number' && ruleID > 0) {
+    showAlertRulesCard.value = true
+  REDACTED
+
+  const openErr = readQueryString(QUERY_KEYS.openErrorDetails)
+  if (openErr === '1' || openErr === 'true') {
+    const typ = readQueryString(QUERY_KEYS.errorType)
+    errorDetailsType.value = typ === 'upstream' ? 'upstream' : 'request'
+    showErrorDetails.value = true
   REDACTED
 REDACTED
 
@@ -376,11 +400,17 @@ function handleOpenRequestDetails(preset?: OpsRequestDetailsPreset) {
 
   requestDetailsPreset.value = { ...basePreset, ...(preset ?? {REDACTED) REDACTED
   if (!requestDetailsPreset.value.title) requestDetailsPreset.value.title = basePreset.title
+  // Ensure only one modal visible at a time.
+  showErrorDetails.value = false
+  showErrorModal.value = false
   showRequestDetails.value = true
 REDACTED
 
 function openErrorDetails(kind: 'request' | 'upstream') {
   errorDetailsType.value = kind
+  // Ensure only one modal visible at a time.
+  showRequestDetails.value = false
+  showErrorModal.value = false
   showErrorDetails.value = true
 REDACTED
 
@@ -422,6 +452,9 @@ REDACTED
 
 function openError(id: number) {
   selectedErrorId.value = id
+  // Ensure only one modal visible at a time.
+  showErrorDetails.value = false
+  showRequestDetails.value = false
   showErrorModal.value = true
 REDACTED
 

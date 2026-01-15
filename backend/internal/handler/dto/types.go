@@ -76,6 +76,7 @@ type Account struct {
 	ProxyID            *int64         `json:"proxy_id"`
 	Concurrency        int            `json:"concurrency"`
 	Priority           int            `json:"priority"`
+	RateMultiplier     float64        `json:"rate_multiplier"`
 	Status             string         `json:"status"`
 	ErrorMessage       string         `json:"error_message"`
 	LastUsedAt         *time.Time     `json:"last_used_at"`
@@ -129,7 +130,18 @@ REDACTED
 
 type ProxyWithAccountCount struct {
 	Proxy
-	AccountCount int64 `json:"account_count"`
+	AccountCount   int64  `json:"account_count"`
+	LatencyMs      *int64 `json:"latency_ms,omitempty"`
+	LatencyStatus  string `json:"latency_status,omitempty"`
+	LatencyMessage string `json:"latency_message,omitempty"`
+REDACTED
+
+type ProxyAccountSummary struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Platform string  `json:"platform"`
+	Type     string  `json:"type"`
+	Notes    *string `json:"notes,omitempty"`
 REDACTED
 
 type RedeemCode struct {
@@ -169,13 +181,14 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
 
-	InputCost         float64 `json:"input_cost"`
-	OutputCost        float64 `json:"output_cost"`
-	CacheCreationCost float64 `json:"cache_creation_cost"`
-	CacheReadCost     float64 `json:"cache_read_cost"`
-	TotalCost         float64 `json:"total_cost"`
-	ActualCost        float64 `json:"actual_cost"`
-	RateMultiplier    float64 `json:"rate_multiplier"`
+	InputCost             float64  `json:"input_cost"`
+	OutputCost            float64  `json:"output_cost"`
+	CacheCreationCost     float64  `json:"cache_creation_cost"`
+	CacheReadCost         float64  `json:"cache_read_cost"`
+	TotalCost             float64  `json:"total_cost"`
+	ActualCost            float64  `json:"actual_cost"`
+	RateMultiplier        float64  `json:"rate_multiplier"`
+	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
 
 	BillingType  int8 `json:"billing_type"`
 	Stream       bool `json:"stream"`

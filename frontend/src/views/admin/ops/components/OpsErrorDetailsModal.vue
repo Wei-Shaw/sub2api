@@ -22,23 +22,19 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 
+
 const loading = ref(false)
 const rows = ref<OpsErrorLog[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 
 const q = ref('')
-const statusCode = ref<number | null>(null)
+const statusCode = ref<number | 'other' | null>(null)
 const phase = ref<string>('')
-const accountIdInput = ref<string>('')
+const errorOwner = ref<string>('')
+const viewMode = ref<'errors' | 'excluded' | 'all'>('errors')
 
-const accountId = computed<number | null>(() => {
-  const raw = String(accountIdInput.value || '').trim()
-  if (!raw) return null
-  const n = Number.parseInt(raw, 10)
-  return Number.isFinite(n) && n > 0 ? n : null
-REDACTED)
 
 const modalTitle = computed(() => {
   return props.errorType === 'upstream' ? t('admin.ops.errorDetails.upstreamErrors') : t('admin.ops.errorDetails.requestErrors')
@@ -48,20 +44,38 @@ const statusCodeSelectOptions = computed(() => {
   const codes = [400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529]
   return [
     { value: null, label: t('common.all') REDACTED,
-    ...codes.map((c) => ({ value: c, label: String(c) REDACTED))
+    ...codes.map((c) => ({ value: c, label: String(c) REDACTED)),
+    { value: 'other', label: t('admin.ops.errorDetails.statusCodeOther') || 'Other' REDACTED
+  ]
+REDACTED)
+
+const ownerSelectOptions = computed(() => {
+  return [
+    { value: '', label: t('common.all') REDACTED,
+    { value: 'provider', label: t('admin.ops.errorDetails.owner.provider') || 'provider' REDACTED,
+    { value: 'client', label: t('admin.ops.errorDetails.owner.client') || 'client' REDACTED,
+    { value: 'platform', label: t('admin.ops.errorDetails.owner.platform') || 'platform' REDACTED
+  ]
+REDACTED)
+
+
+const viewModeSelectOptions = computed(() => {
+  return [
+    { value: 'errors', label: t('admin.ops.errorDetails.viewErrors') || 'errors' REDACTED,
+    { value: 'excluded', label: t('admin.ops.errorDetails.viewExcluded') || 'excluded' REDACTED,
+    { value: 'all', label: t('common.all') REDACTED
   ]
 REDACTED)
 
 const phaseSelectOptions = computed(() => {
   const options = [
     { value: '', label: t('common.all') REDACTED,
-    { value: 'upstream', label: 'upstream' REDACTED,
-    { value: 'network', label: 'network' REDACTED,
-    { value: 'routing', label: 'routing' REDACTED,
-    { value: 'auth', label: 'auth' REDACTED,
-    { value: 'billing', label: 'billing' REDACTED,
-    { value: 'concurrency', label: 'concurrency' REDACTED,
-    { value: 'internal', label: 'internal' REDACTED
+    { value: 'request', label: t('admin.ops.errorDetails.phase.request') || 'request' REDACTED,
+    { value: 'auth', label: t('admin.ops.errorDetails.phase.auth') || 'auth' REDACTED,
+    { value: 'routing', label: t('admin.ops.errorDetails.phase.routing') || 'routing' REDACTED,
+    { value: 'upstream', label: t('admin.ops.errorDetails.phase.upstream') || 'upstream' REDACTED,
+    { value: 'network', label: t('admin.ops.errorDetails.phase.network') || 'network' REDACTED,
+    { value: 'internal', label: t('admin.ops.errorDetails.phase.internal') || 'internal' REDACTED
   ]
   return options
 REDACTED)
@@ -78,7 +92,8 @@ async function fetchErrorLogs() {
     const params: Record<string, any> = {
       page: page.value,
       page_size: pageSize.value,
-      time_range: props.timeRange
+      time_range: props.timeRange,
+      view: viewMode.value
     REDACTED
 
     const platform = String(props.platform || '').trim()
@@ -86,13 +101,19 @@ async function fetchErrorLogs() {
     if (typeof props.groupId === 'number' && props.groupId > 0) params.group_id = props.groupId
 
     if (q.value.trim()) params.q = q.value.trim()
-    if (typeof statusCode.value === 'number') params.status_codes = String(statusCode.value)
-    if (typeof accountId.value === 'number') params.account_id = accountId.value
+    if (statusCode.value === 'other') params.status_codes_other = '1'
+    else if (typeof statusCode.value === 'number') params.status_codes = String(statusCode.value)
 
     const phaseVal = String(phase.value || '').trim()
     if (phaseVal) params.phase = phaseVal
 
-    const res = await opsAPI.listErrorLogs(params)
+    const ownerVal = String(errorOwner.value || '').trim()
+    if (ownerVal) params.error_owner = ownerVal
+
+
+    const res = props.errorType === 'upstream'
+      ? await opsAPI.listUpstreamErrors(params)
+      : await opsAPI.listRequestErrors(params)
     rows.value = res.items || []
     total.value = res.total || 0
   REDACTED catch (err) {
@@ -104,21 +125,23 @@ async function fetchErrorLogs() {
   REDACTED
 REDACTED
 
-function resetFilters() {
-  q.value = ''
-  statusCode.value = null
-  phase.value = props.errorType === 'upstream' ? 'upstream' : ''
-  accountIdInput.value = ''
-  page.value = 1
-  fetchErrorLogs()
-REDACTED
+  function resetFilters() {
+    q.value = ''
+    statusCode.value = null
+    phase.value = props.errorType === 'upstream' ? 'upstream' : ''
+    errorOwner.value = ''
+    viewMode.value = 'errors'
+    page.value = 1
+    fetchErrorLogs()
+  REDACTED
+
 
 watch(
   () => props.show,
   (open) => {
     if (!open) return
     page.value = 1
-    pageSize.value = 20
+    pageSize.value = 10
     resetFilters()
   REDACTED
 )
@@ -154,16 +177,7 @@ watch(
 )
 
 watch(
-  () => [statusCode.value, phase.value] as const,
-  () => {
-    if (!props.show) return
-    page.value = 1
-    fetchErrorLogs()
-  REDACTED
-)
-
-watch(
-  () => accountId.value,
+  () => [statusCode.value, phase.value, errorOwner.value, viewMode.value] as const,
   () => {
     if (!props.show) return
     page.value = 1
@@ -177,12 +191,12 @@ watch(
     <div class="flex h-full min-h-0 flex-col">
       <!-- Filters -->
       <div class="mb-4 flex-shrink-0 border-b border-gray-200 pb-4 dark:border-dark-700">
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <div class="lg:col-span-5">
+        <div class="grid grid-cols-8 gap-2">
+          <div class="col-span-2 compact-select">
             <div class="relative group">
-              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                 <svg
-                  class="h-4 w-4 text-gray-400 transition-colors group-focus-within:text-blue-500"
+                  class="h-3.5 w-3.5 text-gray-400 transition-colors group-focus-within:text-blue-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -193,32 +207,32 @@ watch(
               <input
                 v-model="q"
                 type="text"
-                class="w-full rounded-2xl border-gray-200 bg-gray-50/50 py-2 pl-10 pr-4 text-sm font-medium text-gray-700 transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:focus:bg-dark-800"
+                class="w-full rounded-lg border-gray-200 bg-gray-50/50 py-1.5 pl-9 pr-3 text-xs font-medium text-gray-700 transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/10 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:focus:bg-dark-800"
                 :placeholder="t('admin.ops.errorDetails.searchPlaceholder')"
               />
             </div>
           </div>
 
-          <div class="lg:col-span-2">
-            <Select :model-value="statusCode" :options="statusCodeSelectOptions" class="w-full" @update:model-value="statusCode = $event as any" />
+          <div class="compact-select">
+            <Select :model-value="statusCode" :options="statusCodeSelectOptions" @update:model-value="statusCode = $event as any" />
           </div>
 
-          <div class="lg:col-span-2">
-            <Select :model-value="phase" :options="phaseSelectOptions" class="w-full" @update:model-value="phase = String($event ?? '')" />
+          <div class="compact-select">
+            <Select :model-value="phase" :options="phaseSelectOptions" @update:model-value="phase = String($event ?? '')" />
           </div>
 
-          <div class="lg:col-span-2">
-            <input
-              v-model="accountIdInput"
-              type="text"
-              inputmode="numeric"
-              class="input w-full text-sm"
-              :placeholder="t('admin.ops.errorDetails.accountIdPlaceholder')"
-            />
+          <div class="compact-select">
+            <Select :model-value="errorOwner" :options="ownerSelectOptions" @update:model-value="errorOwner = String($event ?? '')" />
           </div>
 
-          <div class="lg:col-span-1 flex items-center justify-end">
-            <button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
+
+
+          <div class="compact-select">
+            <Select :model-value="viewMode" :options="viewModeSelectOptions" @update:model-value="viewMode = $event as any" />
+          </div>
+
+          <div class="flex items-center justify-end">
+            <button type="button" class="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600" @click="resetFilters">
               {{ t('common.reset') REDACTEDREDACTED
             </button>
           </div>
@@ -231,18 +245,26 @@ watch(
           {{ t('admin.ops.errorDetails.total') REDACTEDREDACTED {{ total REDACTEDREDACTED
         </div>
 
-        <OpsErrorLogTable
-          class="min-h-0 flex-1"
-          :rows="rows"
-          :total="total"
-          :loading="loading"
-          :page="page"
-          :page-size="pageSize"
-          @openErrorDetail="emit('openErrorDetail', $event)"
-          @update:page="page = $event"
-          @update:pageSize="pageSize = $event"
-        />
+          <OpsErrorLogTable
+            class="min-h-0 flex-1"
+            :rows="rows"
+            :total="total"
+            :loading="loading"
+            :page="page"
+            :page-size="pageSize"
+            @openErrorDetail="emit('openErrorDetail', $event)"
+
+            @update:page="page = $event"
+            @update:pageSize="pageSize = $event"
+          />
+
       </div>
     </div>
   </BaseDialog>
 </template>
+
+<style>
+.compact-select .select-trigger {
+  @apply py-1.5 px-3 text-xs rounded-lg;
+REDACTED
+</style>

@@ -15,7 +15,13 @@
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatTokens REDACTEDREDACTED
         </span>
-        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"> ${{ formatCost REDACTEDREDACTED </span>
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"> A ${{ formatAccountCost REDACTEDREDACTED </span>
+        <span
+          v-if="windowStats?.user_cost != null"
+          class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+        >
+          U ${{ formatUserCost REDACTEDREDACTED
+        </span>
       </div>
     </div>
 
@@ -149,8 +155,13 @@ const formatTokens = computed(() => {
   return t.toString()
 REDACTED)
 
-const formatCost = computed(() => {
+const formatAccountCost = computed(() => {
   if (!props.windowStats) return '0.00'
   return props.windowStats.cost.toFixed(2)
+REDACTED)
+
+const formatUserCost = computed(() => {
+  if (!props.windowStats || props.windowStats.user_cost == null) return '0.00'
+  return props.windowStats.user_cost.toFixed(2)
 REDACTED)
 </script>

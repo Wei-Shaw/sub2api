@@ -81,17 +81,22 @@
         </template>
 
         <template #cell-cost="{ row REDACTED">
-          <div class="flex items-center gap-1.5 text-sm">
-            <span class="font-medium text-green-600 dark:text-green-400">${{ row.actual_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
-            <!-- Cost Detail Tooltip -->
-            <div
-              class="group relative"
-              @mouseenter="showTooltip($event, row)"
-              @mouseleave="hideTooltip"
-            >
-              <div class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50">
-                <Icon name="infoCircle" size="xs" class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
+          <div class="text-sm">
+            <div class="flex items-center gap-1.5">
+              <span class="font-medium text-green-600 dark:text-green-400">${{ row.actual_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
+              <!-- Cost Detail Tooltip -->
+              <div
+                class="group relative"
+                @mouseenter="showTooltip($event, row)"
+                @mouseleave="hideTooltip"
+              >
+                <div class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50">
+                  <Icon name="infoCircle" size="xs" class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
+                </div>
               </div>
+            </div>
+            <div v-if="row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-gray-400">
+              A ${{ (row.total_cost * row.account_rate_multiplier).toFixed(6) REDACTEDREDACTED
             </div>
           </div>
         </template>
@@ -203,12 +208,22 @@
             <span class="font-semibold text-blue-400">{{ (tooltipData?.rate_multiplier || 1).toFixed(2) REDACTEDREDACTEDx</span>
           </div>
           <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.accountMultiplier') REDACTEDREDACTED</span>
+            <span class="font-semibold text-blue-400">{{ (tooltipData?.account_rate_multiplier ?? 1).toFixed(2) REDACTEDREDACTEDx</span>
+          </div>
+          <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') REDACTEDREDACTED</span>
             <span class="font-medium text-white">${{ tooltipData?.total_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
           </div>
-          <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
-            <span class="text-gray-400">{{ t('usage.billed') REDACTEDREDACTED</span>
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.userBilled') REDACTEDREDACTED</span>
             <span class="font-semibold text-green-400">${{ tooltipData?.actual_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
+          </div>
+          <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
+            <span class="text-gray-400">{{ t('usage.accountBilled') REDACTEDREDACTED</span>
+            <span class="font-semibold text-green-400">
+              ${{ (((tooltipData?.total_cost || 0) * (tooltipData?.account_rate_multiplier ?? 1)) || 0).toFixed(6) REDACTEDREDACTED
+            </span>
           </div>
         </div>
         <div class="absolute right-full top-1/2 h-0 w-0 -translate-y-1/2 border-b-[6px] border-r-[6px] border-t-[6px] border-b-transparent border-r-gray-900 border-t-transparent dark:border-r-gray-800"></div>

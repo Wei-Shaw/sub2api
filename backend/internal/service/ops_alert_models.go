@@ -8,8 +8,9 @@ import "time"
 // with the existing ops dashboard frontend (backup style).
 
 const (
-	OpsAlertStatusFiring   = "firing"
-	OpsAlertStatusResolved = "resolved"
+	OpsAlertStatusFiring         = "firing"
+	OpsAlertStatusResolved       = "resolved"
+	OpsAlertStatusManualResolved = "manual_resolved"
 )
 
 type OpsAlertRule struct {
@@ -58,12 +59,32 @@ type OpsAlertEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 REDACTED
 
+type OpsAlertSilence struct {
+	ID int64 `json:"id"`
+
+	RuleID   int64   `json:"rule_id"`
+	Platform string  `json:"platform"`
+	GroupID  *int64  `json:"group_id,omitempty"`
+	Region   *string `json:"region,omitempty"`
+
+	Until  time.Time `json:"until"`
+	Reason string    `json:"reason"`
+
+	CreatedBy *int64    `json:"created_by,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+REDACTED
+
 type OpsAlertEventFilter struct {
 	Limit int
 
+	// Cursor pagination (descending by fired_at, then id).
+	BeforeFiredAt *time.Time
+	BeforeID      *int64
+
 	// Optional filters.
-	Status   string
-	Severity string
+	Status    string
+	Severity  string
+	EmailSent *bool
 
 	StartTime *time.Time
 	EndTime   *time.Time

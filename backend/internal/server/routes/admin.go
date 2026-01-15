@@ -81,6 +81,9 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.PUT("/alert-rules/:id", h.Admin.Ops.UpdateAlertRule)
 		ops.DELETE("/alert-rules/:id", h.Admin.Ops.DeleteAlertRule)
 		ops.GET("/alert-events", h.Admin.Ops.ListAlertEvents)
+		ops.GET("/alert-events/:id", h.Admin.Ops.GetAlertEvent)
+		ops.PUT("/alert-events/:id/status", h.Admin.Ops.UpdateAlertEventStatus)
+		ops.POST("/alert-silences", h.Admin.Ops.CreateAlertSilence)
 
 		// Email notification config (DB-backed)
 		ops.GET("/email-notification/config", h.Admin.Ops.GetEmailNotificationConfig)
@@ -110,10 +113,26 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			ws.GET("/qps", h.Admin.Ops.QPSWSHandler)
 	REDACTED
 
-		// Error logs (MVP-1)
+		// Error logs (legacy)
 		ops.GET("/errors", h.Admin.Ops.GetErrorLogs)
 		ops.GET("/errors/:id", h.Admin.Ops.GetErrorLogByID)
+		ops.GET("/errors/:id/retries", h.Admin.Ops.ListRetryAttempts)
 		ops.POST("/errors/:id/retry", h.Admin.Ops.RetryErrorRequest)
+		ops.PUT("/errors/:id/resolve", h.Admin.Ops.UpdateErrorResolution)
+
+		// Request errors (client-visible failures)
+		ops.GET("/request-errors", h.Admin.Ops.ListRequestErrors)
+		ops.GET("/request-errors/:id", h.Admin.Ops.GetRequestError)
+		ops.GET("/request-errors/:id/upstream-errors", h.Admin.Ops.ListRequestErrorUpstreamErrors)
+		ops.POST("/request-errors/:id/retry-client", h.Admin.Ops.RetryRequestErrorClient)
+		ops.POST("/request-errors/:id/upstream-errors/:idx/retry", h.Admin.Ops.RetryRequestErrorUpstreamEvent)
+		ops.PUT("/request-errors/:id/resolve", h.Admin.Ops.ResolveRequestError)
+
+		// Upstream errors (independent upstream failures)
+		ops.GET("/upstream-errors", h.Admin.Ops.ListUpstreamErrors)
+		ops.GET("/upstream-errors/:id", h.Admin.Ops.GetUpstreamError)
+		ops.POST("/upstream-errors/:id/retry", h.Admin.Ops.RetryUpstreamError)
+		ops.PUT("/upstream-errors/:id/resolve", h.Admin.Ops.ResolveUpstreamError)
 
 		// Request drilldown (success + error)
 		ops.GET("/requests", h.Admin.Ops.ListRequestDetails)
@@ -250,6 +269,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		proxies.POST("/:id/test", h.Admin.Proxy.Test)
 		proxies.GET("/:id/stats", h.Admin.Proxy.GetStats)
 		proxies.GET("/:id/accounts", h.Admin.Proxy.GetProxyAccounts)
+		proxies.POST("/batch-delete", h.Admin.Proxy.BatchDelete)
 		proxies.POST("/batch", h.Admin.Proxy.BatchCreate)
 REDACTED
 REDACTED

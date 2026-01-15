@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -99,6 +100,34 @@ REDACTED
 func (s *UsageLogRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")
+REDACTED
+
+func (s *UsageLogRepoSuite) TestGetByID_ReturnsAccountRateMultiplier() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "getbyid-mult@test.com"REDACTED)
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-getbyid-mult", Name: "k"REDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-getbyid-mult"REDACTED)
+
+	m := 0.5
+	log := &service.UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             uuid.New().String(),
+		Model:                 "claude-3",
+		InputTokens:           10,
+		OutputTokens:          20,
+		TotalCost:             1.0,
+		ActualCost:            2.0,
+		AccountRateMultiplier: &m,
+		CreatedAt:             timezone.Today().Add(2 * time.Hour),
+REDACTED
+	_, err := s.repo.Create(s.ctx, log)
+	s.Require().NoError(err)
+
+	got, err := s.repo.GetByID(s.ctx, log.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.AccountRateMultiplier)
+	s.Require().InEpsilon(0.5, *got.AccountRateMultiplier, 0.0001)
 REDACTED
 
 // --- Delete ---
@@ -409,12 +438,49 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-acctoday", Name: "k"REDACTED)
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-today"REDACTED)
 
-	s.createUsageLog(user, apiKey, account, 10, 20, 0.5, time.Now())
+	createdAt := timezone.Today().Add(1 * time.Hour)
+
+	m1 := 1.5
+	m2 := 0.0
+	_, err := s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             uuid.New().String(),
+		Model:                 "claude-3",
+		InputTokens:           10,
+		OutputTokens:          20,
+		TotalCost:             1.0,
+		ActualCost:            2.0,
+		AccountRateMultiplier: &m1,
+		CreatedAt:             createdAt,
+REDACTED)
+	s.Require().NoError(err)
+	_, err = s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             uuid.New().String(),
+		Model:                 "claude-3",
+		InputTokens:           5,
+		OutputTokens:          5,
+		TotalCost:             0.5,
+		ActualCost:            1.0,
+		AccountRateMultiplier: &m2,
+		CreatedAt:             createdAt,
+REDACTED)
+	s.Require().NoError(err)
 
 	stats, err := s.repo.GetAccountTodayStats(s.ctx, account.ID)
 	s.Require().NoError(err, "GetAccountTodayStats")
-	s.Require().Equal(int64(1), stats.Requests)
-	s.Require().Equal(int64(30), stats.Tokens)
+	s.Require().Equal(int64(2), stats.Requests)
+	s.Require().Equal(int64(40), stats.Tokens)
+	// account cost = SUM(total_cost * account_rate_multiplier)
+	s.Require().InEpsilon(1.5, stats.Cost, 0.0001)
+	// standard cost = SUM(total_cost)
+	s.Require().InEpsilon(1.5, stats.StandardCost, 0.0001)
+	// user cost = SUM(actual_cost)
+	s.Require().InEpsilon(3.0, stats.UserCost, 0.0001)
 REDACTED
 
 func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
@@ -422,8 +488,8 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	// 使用固定的时间偏移确保 hour1 和 hour2 在同一天且都在过去
 	// 选择当天 02:00 和 03:00 作为测试时间点（基于 now 的日期）
 	dayStart := truncateToDayUTC(now)
-	hour1 := dayStart.Add(2 * time.Hour)  // 当天 02:00
-	hour2 := dayStart.Add(3 * time.Hour)  // 当天 03:00
+	hour1 := dayStart.Add(2 * time.Hour) // 当天 02:00
+	hour2 := dayStart.Add(3 * time.Hour) // 当天 03:00
 	// 如果当前时间早于 hour2，则使用昨天的时间
 	if now.Before(hour2.Add(time.Hour)) {
 		dayStart = dayStart.Add(-24 * time.Hour)
