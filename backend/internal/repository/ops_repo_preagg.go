@@ -71,7 +71,9 @@ usage_agg AS (
 error_base AS (
   SELECT
     date_trunc('hour', created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket_start,
-    platform AS platform,
+    -- platform is NULL for some early-phase errors (e.g. before routing); map to a sentinel
+    -- value so platform-level GROUPING SETS don't collide with the overall (platform=NULL) row.
+    COALESCE(platform, 'unknown') AS platform,
     group_id AS group_id,
     is_business_limited AS is_business_limited,
     error_owner AS error_owner,
