@@ -117,21 +117,6 @@
             <code class="code text-xs">{{ row.host REDACTEDREDACTED:{{ row.port REDACTEDREDACTED</code>
           </template>
 
-          <template #cell-location="{ row REDACTED">
-            <div class="flex items-center gap-2">
-              <img
-                v-if="row.country_code"
-                :src="flagUrl(row.country_code)"
-                :alt="row.country || row.country_code"
-                class="h-4 w-6 rounded-sm"
-              />
-              <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
-                {{ formatLocation(row) REDACTEDREDACTED
-              </span>
-              <span v-else class="text-sm text-gray-400">-</span>
-            </div>
-          </template>
-
           <template #cell-account_count="{ row, value REDACTED">
             <button
               v-if="(value || 0) > 0"
@@ -680,7 +665,6 @@ const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.proxies.columns.name'), sortable: true REDACTED,
   { key: 'protocol', label: t('admin.proxies.columns.protocol'), sortable: true REDACTED,
   { key: 'address', label: t('admin.proxies.columns.address'), sortable: false REDACTED,
-  { key: 'location', label: t('admin.proxies.columns.location'), sortable: false REDACTED,
   { key: 'account_count', label: t('admin.proxies.columns.accounts'), sortable: true REDACTED,
   { key: 'latency', label: t('admin.proxies.columns.latency'), sortable: false REDACTED,
   { key: 'status', label: t('admin.proxies.columns.status'), sortable: true REDACTED,
@@ -1074,46 +1058,19 @@ REDACTED
 
 const applyLatencyResult = (
   proxyId: number,
-  result: {
-    success: boolean
-    latency_ms?: number
-    message?: string
-    ip_address?: string
-    country?: string
-    country_code?: string
-    region?: string
-    city?: string
-  REDACTED
+  result: { success: boolean; latency_ms?: number; message?: string REDACTED
 ) => {
   const target = proxies.value.find((proxy) => proxy.id === proxyId)
   if (!target) return
   if (result.success) {
     target.latency_status = 'success'
     target.latency_ms = result.latency_ms
-    target.ip_address = result.ip_address
-    target.country = result.country
-    target.country_code = result.country_code
-    target.region = result.region
-    target.city = result.city
   REDACTED else {
     target.latency_status = 'failed'
     target.latency_ms = undefined
-    target.ip_address = undefined
-    target.country = undefined
-    target.country_code = undefined
-    target.region = undefined
-    target.city = undefined
   REDACTED
   target.latency_message = result.message
 REDACTED
-
-const formatLocation = (proxy: Proxy) => {
-  const parts = [proxy.country, proxy.city].filter(Boolean) as string[]
-  return parts.join(' · ')
-REDACTED
-
-const flagUrl = (code: string) =>
-  `https://unpkg.com/flag-icons/flags/4x3/${code.toLowerCase()REDACTED.svg`
 
 const startTestingProxy = (proxyId: number) => {
   testingProxyIds.value = new Set([...testingProxyIds.value, proxyId])

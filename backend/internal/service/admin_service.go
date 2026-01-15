@@ -236,23 +236,21 @@ REDACTED
 
 // ProxyTestResult represents the result of testing a proxy
 type ProxyTestResult struct {
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	LatencyMs   int64  `json:"latency_ms,omitempty"`
-	IPAddress   string `json:"ip_address,omitempty"`
-	City        string `json:"city,omitempty"`
-	Region      string `json:"region,omitempty"`
-	Country     string `json:"country,omitempty"`
-	CountryCode string `json:"country_code,omitempty"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	LatencyMs int64  `json:"latency_ms,omitempty"`
+	IPAddress string `json:"ip_address,omitempty"`
+	City      string `json:"city,omitempty"`
+	Region    string `json:"region,omitempty"`
+	Country   string `json:"country,omitempty"`
 REDACTED
 
-// ProxyExitInfo represents proxy exit information from ip-api.com
+// ProxyExitInfo represents proxy exit information from ipinfo.io
 type ProxyExitInfo struct {
-	IP          string
-	City        string
-	Region      string
-	Country     string
-	CountryCode string
+	IP      string
+	City    string
+	Region  string
+	Country string
 REDACTED
 
 // ProxyExitInfoProber tests proxy connectivity and retrieves exit information
@@ -1342,25 +1340,19 @@ REDACTED
 
 	latency := latencyMs
 	s.saveProxyLatency(ctx, id, &ProxyLatencyInfo{
-		Success:     true,
-		LatencyMs:   &latency,
-		Message:     "Proxy is accessible",
-		IPAddress:   exitInfo.IP,
-		Country:     exitInfo.Country,
-		CountryCode: exitInfo.CountryCode,
-		Region:      exitInfo.Region,
-		City:        exitInfo.City,
-		UpdatedAt:   time.Now(),
+		Success:   true,
+		LatencyMs: &latency,
+		Message:   "Proxy is accessible",
+		UpdatedAt: time.Now(),
 REDACTED)
 	return &ProxyTestResult{
-		Success:     true,
-		Message:     "Proxy is accessible",
-		LatencyMs:   latencyMs,
-		IPAddress:   exitInfo.IP,
-		City:        exitInfo.City,
-		Region:      exitInfo.Region,
-		Country:     exitInfo.Country,
-		CountryCode: exitInfo.CountryCode,
+		Success:   true,
+		Message:   "Proxy is accessible",
+		LatencyMs: latencyMs,
+		IPAddress: exitInfo.IP,
+		City:      exitInfo.City,
+		Region:    exitInfo.Region,
+		Country:   exitInfo.Country,
 REDACTED, nil
 REDACTED
 
@@ -1380,15 +1372,10 @@ REDACTED
 
 	latency := latencyMs
 	s.saveProxyLatency(ctx, proxy.ID, &ProxyLatencyInfo{
-		Success:     true,
-		LatencyMs:   &latency,
-		Message:     "Proxy is accessible",
-		IPAddress:   exitInfo.IP,
-		Country:     exitInfo.Country,
-		CountryCode: exitInfo.CountryCode,
-		Region:      exitInfo.Region,
-		City:        exitInfo.City,
-		UpdatedAt:   time.Now(),
+		Success:   true,
+		LatencyMs: &latency,
+		Message:   "Proxy is accessible",
+		UpdatedAt: time.Now(),
 REDACTED)
 REDACTED
 
@@ -1469,11 +1456,6 @@ REDACTED
 			proxies[i].LatencyStatus = "failed"
 	REDACTED
 		proxies[i].LatencyMessage = info.Message
-		proxies[i].IPAddress = info.IPAddress
-		proxies[i].Country = info.Country
-		proxies[i].CountryCode = info.CountryCode
-		proxies[i].Region = info.Region
-		proxies[i].City = info.City
 REDACTED
 REDACTED
 

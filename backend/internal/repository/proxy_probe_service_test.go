@@ -21,7 +21,7 @@ REDACTED
 func (s *ProxyProbeServiceSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.prober = &proxyProbeService{
-		ipInfoURL:         "http://ip-api.test/json/?lang=zh-CN",
+		ipInfoURL:         "http://ipinfo.test/json",
 		allowPrivateHosts: true,
 REDACTED
 REDACTED
@@ -54,7 +54,7 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_Success() {
 	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen <- r.RequestURI
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"status":"success","query":"1.2.3.4","city":"c","regionName":"r","country":"cc","countryCode":"CC"REDACTED`)
+		_, _ = io.WriteString(w, `{"ip":"1.2.3.4","city":"c","region":"r","country":"cc"REDACTED`)
 REDACTED))
 
 	info, latencyMs, err := s.prober.ProbeProxy(s.ctx, s.proxySrv.URL)
@@ -64,12 +64,11 @@ REDACTED))
 	require.Equal(s.T(), "c", info.City)
 	require.Equal(s.T(), "r", info.Region)
 	require.Equal(s.T(), "cc", info.Country)
-	require.Equal(s.T(), "CC", info.CountryCode)
 
 	// Verify proxy received the request
 	select {
 	case uri := <-seen:
-		require.Contains(s.T(), uri, "ip-api.test", "expected request to go through proxy")
+		require.Contains(s.T(), uri, "ipinfo.test", "expected request to go through proxy")
 	default:
 		require.Fail(s.T(), "expected proxy to receive request")
 REDACTED

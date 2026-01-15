@@ -134,11 +134,6 @@ type ProxyWithAccountCount struct {
 	LatencyMs      *int64 `json:"latency_ms,omitempty"`
 	LatencyStatus  string `json:"latency_status,omitempty"`
 	LatencyMessage string `json:"latency_message,omitempty"`
-	IPAddress      string `json:"ip_address,omitempty"`
-	Country        string `json:"country,omitempty"`
-	CountryCode    string `json:"country_code,omitempty"`
-	Region         string `json:"region,omitempty"`
-	City           string `json:"city,omitempty"`
 REDACTED
 
 type ProxyAccountSummary struct {

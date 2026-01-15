@@ -367,11 +367,6 @@ export interface Proxy {
   latency_ms?: number
   latency_status?: 'success' | 'failed'
   latency_message?: string
-  ip_address?: string
-  country?: string
-  country_code?: string
-  region?: string
-  city?: string
   created_at: string
   updated_at: string
 REDACTED

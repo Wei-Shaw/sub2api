@@ -35,11 +35,6 @@ type ProxyWithAccountCount struct {
 	LatencyMs      *int64
 	LatencyStatus  string
 	LatencyMessage string
-	IPAddress      string
-	Country        string
-	CountryCode    string
-	Region         string
-	City           string
 REDACTED
 
 type ProxyAccountSummary struct {
