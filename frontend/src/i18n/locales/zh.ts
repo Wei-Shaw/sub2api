@@ -2048,6 +2048,7 @@ export default {
       lastRun: '最近运行',
       lastSuccess: '最近成功',
       lastError: '最近错误',
+      result: '结果',
       noData: '暂无数据',
       loadingText: '加载中...',
       ready: '就绪',

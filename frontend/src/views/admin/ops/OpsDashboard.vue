@@ -355,23 +355,21 @@ const autoRefreshCountdown = ref(0)
 // Used to trigger child component refreshes in a single shared cadence.
 const dashboardRefreshToken = ref(0)
 
-// Auto refresh timer
-const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useIntervalFn(
-  () => {
-    if (autoRefreshEnabled.value && opsEnabled.value && !loading.value) {
-      fetchData()
-    REDACTED
-  REDACTED,
-  autoRefreshIntervalMs,
-  { immediate: false REDACTED
-)
-
-// Countdown timer (updates every second)
+// Countdown timer (drives auto refresh; updates every second)
 const { pause: pauseCountdown, resume: resumeCountdown REDACTED = useIntervalFn(
   () => {
-    if (autoRefreshEnabled.value && autoRefreshCountdown.value > 0) {
-      autoRefreshCountdown.value--
+    if (!autoRefreshEnabled.value) return
+    if (!opsEnabled.value) return
+    if (loading.value) return
+
+    if (autoRefreshCountdown.value <= 0) {
+      // Fetch immediately when the countdown reaches 0.
+      // fetchData() will reset the countdown to the full interval.
+      fetchData()
+      return
     REDACTED
+
+    autoRefreshCountdown.value -= 1
   REDACTED,
   1000,
   { immediate: false REDACTED
@@ -477,12 +475,19 @@ function buildApiParams() {
     group_id: groupId.value ?? undefined,
     mode: queryMode.value
   REDACTED
-  if (timeRange.value === 'custom' && customStartTime.value && customEndTime.value) {
-    params.start_time = customStartTime.value
-    params.end_time = customEndTime.value
+
+  if (timeRange.value === 'custom') {
+    if (customStartTime.value && customEndTime.value) {
+      params.start_time = customStartTime.value
+      params.end_time = customEndTime.value
+    REDACTED else {
+      // Safety fallback: avoid sending time_range=custom (backend may not support it)
+      params.time_range = '1h'
+    REDACTED
   REDACTED else {
     params.time_range = timeRange.value
   REDACTED
+
   return params
 REDACTED
 
@@ -679,7 +684,6 @@ onMounted(async () => {
 
   // Start auto refresh if enabled
   if (autoRefreshEnabled.value) {
-    resumeAutoRefresh()
     resumeCountdown()
   REDACTED
 REDACTED)
@@ -697,7 +701,6 @@ REDACTED
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   abortDashboardFetch()
-  pauseAutoRefresh()
   pauseCountdown()
 REDACTED)
 
@@ -705,10 +708,8 @@ REDACTED)
 watch(autoRefreshEnabled, (enabled) => {
   if (enabled) {
     autoRefreshCountdown.value = Math.floor(autoRefreshIntervalMs.value / 1000)
-    resumeAutoRefresh()
     resumeCountdown()
   REDACTED else {
-    pauseAutoRefresh()
     pauseCountdown()
     autoRefreshCountdown.value = 0
   REDACTED

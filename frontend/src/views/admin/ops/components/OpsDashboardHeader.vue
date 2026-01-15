@@ -191,8 +191,10 @@ function handleCustomTimeRangeConfirm() {
   if (!customStartTimeInput.value || !customEndTimeInput.value) return
   const startTime = new Date(customStartTimeInput.value).toISOString()
   const endTime = new Date(customEndTimeInput.value).toISOString()
-  emit('update:timeRange', 'custom')
+  // Emit custom time range first so the parent can build correct API params
+  // when it reacts to timeRange switching to "custom".
   emit('update:customTimeRange', startTime, endTime)
+  emit('update:timeRange', 'custom')
   showCustomTimeRangeDialog.value = false
 REDACTED
 
@@ -221,8 +223,14 @@ function getSLAThresholdLevel(slaPercent: number | null): ThresholdLevel {
   if (slaPercent == null) return 'normal'
   const threshold = props.thresholds?.sla_percent_min
   if (threshold == null) return 'normal'
+
+  // SLA is "higher is better":
+  // - below threshold => critical
+  // - within +0.1% buffer => warning
+  const warningBuffer = 0.1
+
   if (slaPercent < threshold) return 'critical'
-  if (slaPercent < threshold / 0.8) return 'warning'
+  if (slaPercent < threshold + warningBuffer) return 'warning'
   return 'normal'
 REDACTED
 
