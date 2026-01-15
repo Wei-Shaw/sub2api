@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useAuthStore REDACTED from '@/stores/auth'
@@ -202,7 +202,56 @@ const cols = computed(() => {
 REDACTED)
 
 const handleEdit = (a: Account) => { edAcc.value = a; showEdit.value = true REDACTED
-const openMenu = (a: Account, e: MouseEvent) => { menu.acc = a; menu.pos = { top: e.clientY, left: e.clientX - 200 REDACTED; menu.show = true REDACTED
+const openMenu = (a: Account, e: MouseEvent) => {
+  menu.acc = a
+
+  const target = e.currentTarget as HTMLElement
+  if (target) {
+    const rect = target.getBoundingClientRect()
+    const menuWidth = 200
+    const menuHeight = 240
+    const padding = 8
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+
+    let left, top
+
+    if (viewportWidth < 768) {
+      // 居中显示,水平位置
+      left = Math.max(padding, Math.min(
+        rect.left + rect.width / 2 - menuWidth / 2,
+        viewportWidth - menuWidth - padding
+      ))
+
+      // 优先显示在按钮下方
+      top = rect.bottom + 4
+
+      // 如果下方空间不够,显示在上方
+      if (top + menuHeight > viewportHeight - padding) {
+        top = rect.top - menuHeight - 4
+        // 如果上方也不够,就贴在视口顶部
+        if (top < padding) {
+          top = padding
+        REDACTED
+      REDACTED
+    REDACTED else {
+      left = Math.max(padding, Math.min(
+        e.clientX - menuWidth,
+        viewportWidth - menuWidth - padding
+      ))
+      top = e.clientY
+      if (top + menuHeight > viewportHeight - padding) {
+        top = viewportHeight - menuHeight - padding
+      REDACTED
+    REDACTED
+
+    menu.pos = { top, left REDACTED
+  REDACTED else {
+    menu.pos = { top: e.clientY, left: e.clientX - 200 REDACTED
+  REDACTED
+
+  menu.show = true
+REDACTED
 const toggleSel = (id: number) => { const i = selIds.value.indexOf(id); if(i === -1) selIds.value.push(id); else selIds.value.splice(i, 1) REDACTED
 const selectPage = () => { selIds.value = [...new Set([...selIds.value, ...accounts.value.map(a => a.id)])] REDACTED
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); selIds.value = []; reload() REDACTED catch (error) { console.error('Failed to bulk delete accounts:', error) REDACTED REDACTED
@@ -360,5 +409,14 @@ const isExpired = (value: number | null) => {
   return value * 1000 <= Date.now()
 REDACTED
 
-onMounted(async () => { load(); try { const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()]); proxies.value = p; groups.value = g REDACTED catch (error) { console.error('Failed to load proxies/groups:', error) REDACTED REDACTED)
+// 滚动时关闭菜单
+const handleScroll = () => {
+  menu.show = false
+REDACTED
+
+onMounted(async () => { load(); try { const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()]); proxies.value = p; groups.value = g REDACTED catch (error) { console.error('Failed to load proxies/groups:', error) REDACTED; window.addEventListener('scroll', handleScroll, true) REDACTED)
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll, true)
+REDACTED)
 </script>
