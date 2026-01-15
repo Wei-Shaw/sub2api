@@ -9,7 +9,7 @@ import (
 //
 // Design goals:
 // - Backend-owned scoring (UI only displays).
-// - Layered scoring: Business Health (70%) + Infrastructure Health (30%)
+// - Layered scoring: Business Health (80%) + Infrastructure Health (20%)
 // - Avoids double-counting (e.g., DB failure affects both infra and business metrics)
 // - Conservative + stable: penalize clear degradations; avoid overreacting to missing/idle data.
 func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) int {
@@ -26,8 +26,8 @@ REDACTED
 	businessHealth := computeBusinessHealth(overview)
 	infraHealth := computeInfraHealth(now, overview)
 
-	// Weighted combination: 70% business + 30% infrastructure
-	score := businessHealth*0.7 + infraHealth*0.3
+	// Weighted combination: 80% business + 20% infrastructure
+	score := businessHealth*0.8 + infraHealth*0.2
 	return int(math.Round(clampFloat64(score, 0, 100)))
 REDACTED
 
