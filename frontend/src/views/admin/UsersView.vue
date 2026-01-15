@@ -372,8 +372,7 @@
 
               <!-- More Actions Menu Trigger -->
               <button
-                :ref="(el) => setActionButtonRef(row.id, el)"
-                @click="openActionMenu(row)"
+                @click="openActionMenu(row, $event)"
                 class="action-menu-trigger flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
                 :class="{ 'bg-gray-100 text-gray-900 dark:bg-dark-700 dark:text-white': activeMenuId === row.id REDACTED"
               >
@@ -485,7 +484,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { formatDateTime REDACTED from '@/utils/format'
@@ -745,56 +744,56 @@ let abortController: AbortController | null = null
 // Action Menu State
 const activeMenuId = ref<number | null>(null)
 const menuPosition = ref<{ top: number; left: number REDACTED | null>(null)
-const actionButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 
-const setActionButtonRef = (userId: number, el: Element | ComponentPublicInstance | null) => {
-  if (el instanceof HTMLElement) {
-    actionButtonRefs.value.set(userId, el)
-  REDACTED else {
-    actionButtonRefs.value.delete(userId)
-  REDACTED
-REDACTED
-
-const openActionMenu = (user: User) => {
+const openActionMenu = (user: User, e: MouseEvent) => {
   if (activeMenuId.value === user.id) {
     closeActionMenu()
   REDACTED else {
-    const buttonEl = actionButtonRefs.value.get(user.id)
-    if (buttonEl) {
-      const rect = buttonEl.getBoundingClientRect()
-      const menuWidth = 192
-      const menuHeight = 240
-      const padding = 8
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
+    const target = e.currentTarget as HTMLElement
+    if (!target) {
+      closeActionMenu()
+      return
+    REDACTED
 
-      let left, top
+    const rect = target.getBoundingClientRect()
+    const menuWidth = 200
+    const menuHeight = 240
+    const padding = 8
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
 
-      if (viewportWidth < 768) {
-        left = Math.max(padding, Math.min(
-          rect.left + rect.width / 2 - menuWidth / 2,
-          viewportWidth - menuWidth - padding
-        ))
+    let left, top
+
+    if (viewportWidth < 768) {
+      // 居中显示,水平位置
+      left = Math.max(padding, Math.min(
+        rect.left + rect.width / 2 - menuWidth / 2,
+        viewportWidth - menuWidth - padding
+      ))
+
+      // 优先显示在按钮下方
+      top = rect.bottom + 4
+
+      // 如果下方空间不够,显示在上方
+      if (top + menuHeight > viewportHeight - padding) {
         top = rect.top - menuHeight - 4
+        // 如果上方也不够,就贴在视口顶部
         if (top < padding) {
-          top = rect.bottom + 4
-        REDACTED
-      REDACTED else {
-        left = Math.min(
-          Math.max(rect.right - menuWidth, padding),
-          Math.max(viewportWidth - menuWidth - padding, padding)
-        )
-        top = rect.bottom + 4
-        if (top + menuHeight > viewportHeight - padding) {
-          top = Math.max(rect.top - menuHeight - 4, padding)
+          top = padding
         REDACTED
       REDACTED
-
-      menuPosition.value = {
-        top,
-        left
+    REDACTED else {
+      left = Math.max(padding, Math.min(
+        e.clientX - menuWidth,
+        viewportWidth - menuWidth - padding
+      ))
+      top = e.clientY
+      if (top + menuHeight > viewportHeight - padding) {
+        top = viewportHeight - menuHeight - padding
       REDACTED
     REDACTED
+
+    menuPosition.value = { top, left REDACTED
     activeMenuId.value = user.id
   REDACTED
 REDACTED
