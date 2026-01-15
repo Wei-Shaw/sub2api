@@ -55,7 +55,6 @@ INSERT INTO ops_error_logs (
   upstream_error_message,
   upstream_error_detail,
   upstream_errors,
-  duration_ms,
   time_to_first_token_ms,
   request_body,
   request_body_truncated,
@@ -65,7 +64,7 @@ INSERT INTO ops_error_logs (
   retry_count,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
 ) RETURNING id`
 
 	var id int64
@@ -98,7 +97,6 @@ INSERT INTO ops_error_logs (
 		opsNullString(input.UpstreamErrorMessage),
 		opsNullString(input.UpstreamErrorDetail),
 		opsNullString(input.UpstreamErrorsJSON),
-		opsNullInt(input.DurationMs),
 		opsNullInt64(input.TimeToFirstTokenMs),
 		opsNullString(input.RequestBodyJSON),
 		input.RequestBodyTruncated,
@@ -135,7 +133,7 @@ REDACTED
 REDACTED
 
 	where, args := buildOpsErrorLogsWhere(filter)
-	countSQL := "SELECT COUNT(*) FROM ops_error_logs " + where
+	countSQL := "SELECT COUNT(*) FROM ops_error_logs e " + where
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
@@ -146,28 +144,43 @@ REDACTED
 	argsWithLimit := append(args, pageSize, offset)
 	selectSQL := `
 SELECT
-  id,
-  created_at,
-  error_phase,
-  error_type,
-  severity,
-  COALESCE(upstream_status_code, status_code, 0),
-  COALESCE(platform, ''),
-  COALESCE(model, ''),
-  duration_ms,
-  COALESCE(client_request_id, ''),
-  COALESCE(request_id, ''),
-  COALESCE(error_message, ''),
-  user_id,
-  api_key_id,
-  account_id,
-  group_id,
-  CASE WHEN client_ip IS NULL THEN NULL ELSE client_ip::text END,
-  COALESCE(request_path, ''),
-  stream
-FROM ops_error_logs
+  e.id,
+  e.created_at,
+  e.error_phase,
+  e.error_type,
+  COALESCE(e.error_owner, ''),
+  COALESCE(e.error_source, ''),
+  e.severity,
+  COALESCE(e.upstream_status_code, e.status_code, 0),
+  COALESCE(e.platform, ''),
+  COALESCE(e.model, ''),
+  COALESCE(e.is_retryable, false),
+  COALESCE(e.retry_count, 0),
+  COALESCE(e.resolved, false),
+  e.resolved_at,
+  e.resolved_by_user_id,
+  COALESCE(u2.email, ''),
+  e.resolved_retry_id,
+  COALESCE(e.client_request_id, ''),
+  COALESCE(e.request_id, ''),
+  COALESCE(e.error_message, ''),
+  e.user_id,
+  COALESCE(u.email, ''),
+  e.api_key_id,
+  e.account_id,
+  COALESCE(a.name, ''),
+  e.group_id,
+  COALESCE(g.name, ''),
+  CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip::text END,
+  COALESCE(e.request_path, ''),
+  e.stream
+FROM ops_error_logs e
+LEFT JOIN accounts a ON e.account_id = a.id
+LEFT JOIN groups g ON e.group_id = g.id
+LEFT JOIN users u ON e.user_id = u.id
+LEFT JOIN users u2 ON e.resolved_by_user_id = u2.id
 ` + where + `
-ORDER BY created_at DESC
+ORDER BY e.created_at DESC
 LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 
 	rows, err := r.db.QueryContext(ctx, selectSQL, argsWithLimit...)
@@ -179,39 +192,65 @@ REDACTED
 	out := make([]*service.OpsErrorLog, 0, pageSize)
 	for rows.Next() {
 		var item service.OpsErrorLog
-		var latency sql.NullInt64
 		var statusCode sql.NullInt64
 		var clientIP sql.NullString
 		var userID sql.NullInt64
 		var apiKeyID sql.NullInt64
 		var accountID sql.NullInt64
+		var accountName string
 		var groupID sql.NullInt64
+		var groupName string
+		var userEmail string
+		var resolvedAt sql.NullTime
+		var resolvedBy sql.NullInt64
+		var resolvedByName string
+		var resolvedRetryID sql.NullInt64
 		if err := rows.Scan(
 			&item.ID,
 			&item.CreatedAt,
 			&item.Phase,
 			&item.Type,
+			&item.Owner,
+			&item.Source,
 			&item.Severity,
 			&statusCode,
 			&item.Platform,
 			&item.Model,
-			&latency,
+			&item.IsRetryable,
+			&item.RetryCount,
+			&item.Resolved,
+			&resolvedAt,
+			&resolvedBy,
+			&resolvedByName,
+			&resolvedRetryID,
 			&item.ClientRequestID,
 			&item.RequestID,
 			&item.Message,
 			&userID,
+			&userEmail,
 			&apiKeyID,
 			&accountID,
+			&accountName,
 			&groupID,
+			&groupName,
 			&clientIP,
 			&item.RequestPath,
 			&item.Stream,
 		); err != nil {
 			return nil, err
 	REDACTED
-		if latency.Valid {
-			v := int(latency.Int64)
-			item.LatencyMs = &v
+		if resolvedAt.Valid {
+			t := resolvedAt.Time
+			item.ResolvedAt = &t
+	REDACTED
+		if resolvedBy.Valid {
+			v := resolvedBy.Int64
+			item.ResolvedByUserID = &v
+	REDACTED
+		item.ResolvedByUserName = resolvedByName
+		if resolvedRetryID.Valid {
+			v := resolvedRetryID.Int64
+			item.ResolvedRetryID = &v
 	REDACTED
 		item.StatusCode = int(statusCode.Int64)
 		if clientIP.Valid {
@@ -222,6 +261,7 @@ REDACTED
 			v := userID.Int64
 			item.UserID = &v
 	REDACTED
+		item.UserEmail = userEmail
 		if apiKeyID.Valid {
 			v := apiKeyID.Int64
 			item.APIKeyID = &v
@@ -230,10 +270,12 @@ REDACTED
 			v := accountID.Int64
 			item.AccountID = &v
 	REDACTED
+		item.AccountName = accountName
 		if groupID.Valid {
 			v := groupID.Int64
 			item.GroupID = &v
 	REDACTED
+		item.GroupName = groupName
 		out = append(out, &item)
 REDACTED
 	if err := rows.Err(); err != nil {
@@ -258,49 +300,64 @@ REDACTED
 
 	q := `
 SELECT
-  id,
-  created_at,
-  error_phase,
-  error_type,
-  severity,
-  COALESCE(upstream_status_code, status_code, 0),
-  COALESCE(platform, ''),
-  COALESCE(model, ''),
-  duration_ms,
-  COALESCE(client_request_id, ''),
-  COALESCE(request_id, ''),
-  COALESCE(error_message, ''),
-  COALESCE(error_body, ''),
-  upstream_status_code,
-  COALESCE(upstream_error_message, ''),
-  COALESCE(upstream_error_detail, ''),
-  COALESCE(upstream_errors::text, ''),
-  is_business_limited,
-  user_id,
-  api_key_id,
-  account_id,
-  group_id,
-  CASE WHEN client_ip IS NULL THEN NULL ELSE client_ip::text END,
-  COALESCE(request_path, ''),
-  stream,
-  COALESCE(user_agent, ''),
-  auth_latency_ms,
-  routing_latency_ms,
-  upstream_latency_ms,
-  response_latency_ms,
-  time_to_first_token_ms,
-  COALESCE(request_body::text, ''),
-  request_body_truncated,
-  request_body_bytes,
-  COALESCE(request_headers::text, '')
-FROM ops_error_logs
-WHERE id = $1
+  e.id,
+  e.created_at,
+  e.error_phase,
+  e.error_type,
+  COALESCE(e.error_owner, ''),
+  COALESCE(e.error_source, ''),
+  e.severity,
+  COALESCE(e.upstream_status_code, e.status_code, 0),
+  COALESCE(e.platform, ''),
+  COALESCE(e.model, ''),
+  COALESCE(e.is_retryable, false),
+  COALESCE(e.retry_count, 0),
+  COALESCE(e.resolved, false),
+  e.resolved_at,
+  e.resolved_by_user_id,
+  e.resolved_retry_id,
+  COALESCE(e.client_request_id, ''),
+  COALESCE(e.request_id, ''),
+  COALESCE(e.error_message, ''),
+  COALESCE(e.error_body, ''),
+  e.upstream_status_code,
+  COALESCE(e.upstream_error_message, ''),
+  COALESCE(e.upstream_error_detail, ''),
+  COALESCE(e.upstream_errors::text, ''),
+  e.is_business_limited,
+  e.user_id,
+  COALESCE(u.email, ''),
+  e.api_key_id,
+  e.account_id,
+  COALESCE(a.name, ''),
+  e.group_id,
+  COALESCE(g.name, ''),
+  CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip::text END,
+  COALESCE(e.request_path, ''),
+  e.stream,
+  COALESCE(e.user_agent, ''),
+  e.auth_latency_ms,
+  e.routing_latency_ms,
+  e.upstream_latency_ms,
+  e.response_latency_ms,
+  e.time_to_first_token_ms,
+  COALESCE(e.request_body::text, ''),
+  e.request_body_truncated,
+  e.request_body_bytes,
+  COALESCE(e.request_headers::text, '')
+FROM ops_error_logs e
+LEFT JOIN users u ON e.user_id = u.id
+LEFT JOIN accounts a ON e.account_id = a.id
+LEFT JOIN groups g ON e.group_id = g.id
+WHERE e.id = $1
 LIMIT 1`
 
 	var out service.OpsErrorLogDetail
-	var latency sql.NullInt64
 	var statusCode sql.NullInt64
 	var upstreamStatusCode sql.NullInt64
+	var resolvedAt sql.NullTime
+	var resolvedBy sql.NullInt64
+	var resolvedRetryID sql.NullInt64
 	var clientIP sql.NullString
 	var userID sql.NullInt64
 	var apiKeyID sql.NullInt64
@@ -318,11 +375,18 @@ LIMIT 1`
 		&out.CreatedAt,
 		&out.Phase,
 		&out.Type,
+		&out.Owner,
+		&out.Source,
 		&out.Severity,
 		&statusCode,
 		&out.Platform,
 		&out.Model,
-		&latency,
+		&out.IsRetryable,
+		&out.RetryCount,
+		&out.Resolved,
+		&resolvedAt,
+		&resolvedBy,
+		&resolvedRetryID,
 		&out.ClientRequestID,
 		&out.RequestID,
 		&out.Message,
@@ -333,9 +397,12 @@ LIMIT 1`
 		&out.UpstreamErrors,
 		&out.IsBusinessLimited,
 		&userID,
+		&out.UserEmail,
 		&apiKeyID,
 		&accountID,
+		&out.AccountName,
 		&groupID,
+		&out.GroupName,
 		&clientIP,
 		&out.RequestPath,
 		&out.Stream,
@@ -355,9 +422,17 @@ LIMIT 1`
 REDACTED
 
 	out.StatusCode = int(statusCode.Int64)
-	if latency.Valid {
-		v := int(latency.Int64)
-		out.LatencyMs = &v
+	if resolvedAt.Valid {
+		t := resolvedAt.Time
+		out.ResolvedAt = &t
+REDACTED
+	if resolvedBy.Valid {
+		v := resolvedBy.Int64
+		out.ResolvedByUserID = &v
+REDACTED
+	if resolvedRetryID.Valid {
+		v := resolvedRetryID.Int64
+		out.ResolvedRetryID = &v
 REDACTED
 	if clientIP.Valid {
 		s := clientIP.String
@@ -487,9 +562,15 @@ SET
   status = $2,
   finished_at = $3,
   duration_ms = $4,
-  result_request_id = $5,
-  result_error_id = $6,
-  error_message = $7
+  success = $5,
+  http_status_code = $6,
+  upstream_request_id = $7,
+  used_account_id = $8,
+  response_preview = $9,
+  response_truncated = $10,
+  result_request_id = $11,
+  result_error_id = $12,
+  error_message = $13
 WHERE id = $1`
 
 	_, err := r.db.ExecContext(
@@ -499,8 +580,14 @@ WHERE id = $1`
 		strings.TrimSpace(input.Status),
 		nullTime(input.FinishedAt),
 		input.DurationMs,
+		nullBool(input.Success),
+		nullInt(input.HTTPStatusCode),
+		opsNullString(input.UpstreamRequestID),
+		nullInt64(input.UsedAccountID),
+		opsNullString(input.ResponsePreview),
+		nullBool(input.ResponseTruncated),
 		opsNullString(input.ResultRequestID),
-		opsNullInt64(input.ResultErrorID),
+		nullInt64(input.ResultErrorID),
 		opsNullString(input.ErrorMessage),
 	)
 	return err
@@ -526,6 +613,12 @@ SELECT
   started_at,
   finished_at,
   duration_ms,
+  success,
+  http_status_code,
+  upstream_request_id,
+  used_account_id,
+  response_preview,
+  response_truncated,
   result_request_id,
   result_error_id,
   error_message
@@ -540,6 +633,12 @@ LIMIT 1`
 	var startedAt sql.NullTime
 	var finishedAt sql.NullTime
 	var durationMs sql.NullInt64
+	var success sql.NullBool
+	var httpStatusCode sql.NullInt64
+	var upstreamRequestID sql.NullString
+	var usedAccountID sql.NullInt64
+	var responsePreview sql.NullString
+	var responseTruncated sql.NullBool
 	var resultRequestID sql.NullString
 	var resultErrorID sql.NullInt64
 	var errorMessage sql.NullString
@@ -555,6 +654,12 @@ LIMIT 1`
 		&startedAt,
 		&finishedAt,
 		&durationMs,
+		&success,
+		&httpStatusCode,
+		&upstreamRequestID,
+		&usedAccountID,
+		&responsePreview,
+		&responseTruncated,
 		&resultRequestID,
 		&resultErrorID,
 		&errorMessage,
@@ -579,6 +684,30 @@ REDACTED
 		v := durationMs.Int64
 		out.DurationMs = &v
 REDACTED
+	if success.Valid {
+		v := success.Bool
+		out.Success = &v
+REDACTED
+	if httpStatusCode.Valid {
+		v := int(httpStatusCode.Int64)
+		out.HTTPStatusCode = &v
+REDACTED
+	if upstreamRequestID.Valid {
+		s := upstreamRequestID.String
+		out.UpstreamRequestID = &s
+REDACTED
+	if usedAccountID.Valid {
+		v := usedAccountID.Int64
+		out.UsedAccountID = &v
+REDACTED
+	if responsePreview.Valid {
+		s := responsePreview.String
+		out.ResponsePreview = &s
+REDACTED
+	if responseTruncated.Valid {
+		v := responseTruncated.Bool
+		out.ResponseTruncated = &v
+REDACTED
 	if resultRequestID.Valid {
 		s := resultRequestID.String
 		out.ResultRequestID = &s
@@ -602,30 +731,234 @@ REDACTED
 	return sql.NullTime{Time: t, Valid: trueREDACTED
 REDACTED
 
+func nullBool(v *bool) sql.NullBool {
+	if v == nil {
+		return sql.NullBool{REDACTED
+REDACTED
+	return sql.NullBool{Bool: *v, Valid: trueREDACTED
+REDACTED
+
+func (r *opsRepository) ListRetryAttemptsByErrorID(ctx context.Context, sourceErrorID int64, limit int) ([]*service.OpsRetryAttempt, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+REDACTED
+	if sourceErrorID <= 0 {
+		return nil, fmt.Errorf("invalid source_error_id")
+REDACTED
+	if limit <= 0 {
+		limit = 50
+REDACTED
+	if limit > 200 {
+		limit = 200
+REDACTED
+
+	q := `
+SELECT
+  r.id,
+  r.created_at,
+  COALESCE(r.requested_by_user_id, 0),
+  r.source_error_id,
+  COALESCE(r.mode, ''),
+  r.pinned_account_id,
+  COALESCE(pa.name, ''),
+  COALESCE(r.status, ''),
+  r.started_at,
+  r.finished_at,
+  r.duration_ms,
+  r.success,
+  r.http_status_code,
+  r.upstream_request_id,
+  r.used_account_id,
+  COALESCE(ua.name, ''),
+  r.response_preview,
+  r.response_truncated,
+  r.result_request_id,
+  r.result_error_id,
+  r.error_message
+FROM ops_retry_attempts r
+LEFT JOIN accounts pa ON r.pinned_account_id = pa.id
+LEFT JOIN accounts ua ON r.used_account_id = ua.id
+WHERE r.source_error_id = $1
+ORDER BY r.created_at DESC
+LIMIT $2`
+
+	rows, err := r.db.QueryContext(ctx, q, sourceErrorID, limit)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	out := make([]*service.OpsRetryAttempt, 0, 16)
+	for rows.Next() {
+		var item service.OpsRetryAttempt
+		var pinnedAccountID sql.NullInt64
+		var pinnedAccountName string
+		var requestedBy sql.NullInt64
+		var startedAt sql.NullTime
+		var finishedAt sql.NullTime
+		var durationMs sql.NullInt64
+		var success sql.NullBool
+		var httpStatusCode sql.NullInt64
+		var upstreamRequestID sql.NullString
+		var usedAccountID sql.NullInt64
+		var usedAccountName string
+		var responsePreview sql.NullString
+		var responseTruncated sql.NullBool
+		var resultRequestID sql.NullString
+		var resultErrorID sql.NullInt64
+		var errorMessage sql.NullString
+
+		if err := rows.Scan(
+			&item.ID,
+			&item.CreatedAt,
+			&requestedBy,
+			&item.SourceErrorID,
+			&item.Mode,
+			&pinnedAccountID,
+			&pinnedAccountName,
+			&item.Status,
+			&startedAt,
+			&finishedAt,
+			&durationMs,
+			&success,
+			&httpStatusCode,
+			&upstreamRequestID,
+			&usedAccountID,
+			&usedAccountName,
+			&responsePreview,
+			&responseTruncated,
+			&resultRequestID,
+			&resultErrorID,
+			&errorMessage,
+		); err != nil {
+			return nil, err
+	REDACTED
+
+		item.RequestedByUserID = requestedBy.Int64
+		if pinnedAccountID.Valid {
+			v := pinnedAccountID.Int64
+			item.PinnedAccountID = &v
+	REDACTED
+		item.PinnedAccountName = pinnedAccountName
+		if startedAt.Valid {
+			t := startedAt.Time
+			item.StartedAt = &t
+	REDACTED
+		if finishedAt.Valid {
+			t := finishedAt.Time
+			item.FinishedAt = &t
+	REDACTED
+		if durationMs.Valid {
+			v := durationMs.Int64
+			item.DurationMs = &v
+	REDACTED
+		if success.Valid {
+			v := success.Bool
+			item.Success = &v
+	REDACTED
+		if httpStatusCode.Valid {
+			v := int(httpStatusCode.Int64)
+			item.HTTPStatusCode = &v
+	REDACTED
+		if upstreamRequestID.Valid {
+			item.UpstreamRequestID = &upstreamRequestID.String
+	REDACTED
+		if usedAccountID.Valid {
+			v := usedAccountID.Int64
+			item.UsedAccountID = &v
+	REDACTED
+		item.UsedAccountName = usedAccountName
+		if responsePreview.Valid {
+			item.ResponsePreview = &responsePreview.String
+	REDACTED
+		if responseTruncated.Valid {
+			v := responseTruncated.Bool
+			item.ResponseTruncated = &v
+	REDACTED
+		if resultRequestID.Valid {
+			item.ResultRequestID = &resultRequestID.String
+	REDACTED
+		if resultErrorID.Valid {
+			v := resultErrorID.Int64
+			item.ResultErrorID = &v
+	REDACTED
+		if errorMessage.Valid {
+			item.ErrorMessage = &errorMessage.String
+	REDACTED
+		out = append(out, &item)
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return out, nil
+REDACTED
+
+func (r *opsRepository) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64, resolvedAt *time.Time) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+REDACTED
+	if errorID <= 0 {
+		return fmt.Errorf("invalid error id")
+REDACTED
+
+	q := `
+UPDATE ops_error_logs
+SET
+  resolved = $2,
+  resolved_at = $3,
+  resolved_by_user_id = $4,
+  resolved_retry_id = $5
+WHERE id = $1`
+
+	at := sql.NullTime{REDACTED
+	if resolvedAt != nil && !resolvedAt.IsZero() {
+		at = sql.NullTime{Time: resolvedAt.UTC(), Valid: trueREDACTED
+REDACTED else if resolved {
+		now := time.Now().UTC()
+		at = sql.NullTime{Time: now, Valid: trueREDACTED
+REDACTED
+
+	_, err := r.db.ExecContext(
+		ctx,
+		q,
+		errorID,
+		resolved,
+		at,
+		nullInt64(resolvedByUserID),
+		nullInt64(resolvedRetryID),
+	)
+	return err
+REDACTED
+
 func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
-	clauses := make([]string, 0, 8)
-	args := make([]any, 0, 8)
+	clauses := make([]string, 0, 12)
+	args := make([]any, 0, 12)
 	clauses = append(clauses, "1=1")
 
 	phaseFilter := ""
 	if filter != nil {
 		phaseFilter = strings.TrimSpace(strings.ToLower(filter.Phase))
 REDACTED
-	// ops_error_logs primarily stores client-visible error requests (status>=400),
+	// ops_error_logs stores client-visible error requests (status>=400),
 	// but we also persist "recovered" upstream errors (status<400) for upstream health visibility.
-	// By default, keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
+	// If Resolved is not specified, do not filter by resolved state (backward-compatible).
+	resolvedFilter := (*bool)(nil)
+	if filter != nil {
+		resolvedFilter = filter.Resolved
+REDACTED
+	// Keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
 	if phaseFilter != "upstream" {
 		clauses = append(clauses, "COALESCE(status_code, 0) >= 400")
 REDACTED
 
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
 		args = append(args, filter.StartTime.UTC())
-		clauses = append(clauses, "created_at >= $"+itoa(len(args)))
+		clauses = append(clauses, "e.created_at >= $"+itoa(len(args)))
 REDACTED
 	if filter.EndTime != nil && !filter.EndTime.IsZero() {
 		args = append(args, filter.EndTime.UTC())
 		// Keep time-window semantics consistent with other ops queries: [start, end)
-		clauses = append(clauses, "created_at < $"+itoa(len(args)))
+		clauses = append(clauses, "e.created_at < $"+itoa(len(args)))
 REDACTED
 	if p := strings.TrimSpace(filter.Platform); p != "" {
 		args = append(args, p)
@@ -643,15 +976,71 @@ REDACTED
 		args = append(args, phase)
 		clauses = append(clauses, "error_phase = $"+itoa(len(args)))
 REDACTED
+	if filter != nil {
+		if owner := strings.TrimSpace(strings.ToLower(filter.Owner)); owner != "" {
+			args = append(args, owner)
+			clauses = append(clauses, "LOWER(COALESCE(error_owner,'')) = $"+itoa(len(args)))
+	REDACTED
+		if source := strings.TrimSpace(strings.ToLower(filter.Source)); source != "" {
+			args = append(args, source)
+			clauses = append(clauses, "LOWER(COALESCE(error_source,'')) = $"+itoa(len(args)))
+	REDACTED
+REDACTED
+	if resolvedFilter != nil {
+		args = append(args, *resolvedFilter)
+		clauses = append(clauses, "COALESCE(resolved,false) = $"+itoa(len(args)))
+REDACTED
+
+	// View filter: errors vs excluded vs all.
+	// Excluded = upstream 429/529 and business-limited (quota/concurrency/billing) errors.
+	view := ""
+	if filter != nil {
+		view = strings.ToLower(strings.TrimSpace(filter.View))
+REDACTED
+	switch view {
+	case "", "errors":
+		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)")
+	case "excluded":
+		clauses = append(clauses, "(COALESCE(is_business_limited,false) = true OR COALESCE(upstream_status_code, status_code, 0) IN (429, 529))")
+	case "all":
+		// no-op
+	default:
+		// treat unknown as default 'errors'
+		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)")
+REDACTED
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))
 		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+")")
+REDACTED else if filter.StatusCodesOther {
+		// "Other" means: status codes not in the common list.
+		known := []int{400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529REDACTED
+		args = append(args, pq.Array(known))
+		clauses = append(clauses, "NOT (COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+"))")
 REDACTED
+	// Exact correlation keys (preferred for request↔upstream linkage).
+	if rid := strings.TrimSpace(filter.RequestID); rid != "" {
+		args = append(args, rid)
+		clauses = append(clauses, "COALESCE(request_id,'') = $"+itoa(len(args)))
+REDACTED
+	if crid := strings.TrimSpace(filter.ClientRequestID); crid != "" {
+		args = append(args, crid)
+		clauses = append(clauses, "COALESCE(client_request_id,'') = $"+itoa(len(args)))
+REDACTED
+
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"
 		args = append(args, like)
 		n := itoa(len(args))
 		clauses = append(clauses, "(request_id ILIKE $"+n+" OR client_request_id ILIKE $"+n+" OR error_message ILIKE $"+n+")")
+REDACTED
+
+	if userQuery := strings.TrimSpace(filter.UserQuery); userQuery != "" {
+		like := "%" + userQuery + "%"
+		args = append(args, like)
+		n := itoa(len(args))
+		clauses = append(clauses, "u.email ILIKE $"+n)
 REDACTED
 
 	return "WHERE " + strings.Join(clauses, " AND "), args

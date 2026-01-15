@@ -564,6 +564,10 @@ urlFallbackLoop:
 		REDACTED
 
 			upstreamReq, err := antigravity.NewAPIRequestWithURL(ctx, baseURL, action, accessToken, geminiBody)
+			// Capture upstream request body for ops retry of this attempt.
+			if c != nil {
+				c.Set(OpsUpstreamRequestBodyKey, string(geminiBody))
+		REDACTED
 			if err != nil {
 				return nil, err
 		REDACTED
@@ -574,6 +578,7 @@ urlFallbackLoop:
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
+					AccountName:        account.Name,
 					UpstreamStatusCode: 0,
 					Kind:               "request_error",
 					Message:            safeErr,
@@ -615,6 +620,7 @@ urlFallbackLoop:
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
 					Kind:               "retry",
@@ -645,6 +651,7 @@ urlFallbackLoop:
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						Platform:           account.Platform,
 						AccountID:          account.ID,
+						AccountName:        account.Name,
 						UpstreamStatusCode: resp.StatusCode,
 						UpstreamRequestID:  resp.Header.Get("x-request-id"),
 						Kind:               "retry",
@@ -697,6 +704,7 @@ REDACTED
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
+				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  resp.Header.Get("x-request-id"),
 				Kind:               "signature_error",
@@ -740,6 +748,7 @@ REDACTED
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						Platform:           account.Platform,
 						AccountID:          account.ID,
+						AccountName:        account.Name,
 						UpstreamStatusCode: 0,
 						Kind:               "signature_retry_request_error",
 						Message:            sanitizeUpstreamErrorMessage(retryErr.Error()),
@@ -770,6 +779,7 @@ REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
+					AccountName:        account.Name,
 					UpstreamStatusCode: retryResp.StatusCode,
 					UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
 					Kind:               kind,
@@ -817,6 +827,7 @@ REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
 					Kind:               "failover",
@@ -1371,6 +1382,7 @@ urlFallbackLoop:
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
+					AccountName:        account.Name,
 					UpstreamStatusCode: 0,
 					Kind:               "request_error",
 					Message:            safeErr,
@@ -1412,6 +1424,7 @@ urlFallbackLoop:
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
+					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
 					Kind:               "retry",
@@ -1442,6 +1455,7 @@ urlFallbackLoop:
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						Platform:           account.Platform,
 						AccountID:          account.ID,
+						AccountName:        account.Name,
 						UpstreamStatusCode: resp.StatusCode,
 						UpstreamRequestID:  resp.Header.Get("x-request-id"),
 						Kind:               "retry",
@@ -1543,6 +1557,7 @@ REDACTED()
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
+				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  requestID,
 				Kind:               "failover",
@@ -1559,6 +1574,7 @@ REDACTED()
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
 			AccountID:          account.ID,
+			AccountName:        account.Name,
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRequestID:  requestID,
 			Kind:               "http_error",
@@ -2039,6 +2055,7 @@ REDACTED
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:           account.Platform,
 		AccountID:          account.ID,
+		AccountName:        account.Name,
 		UpstreamStatusCode: upstreamStatus,
 		UpstreamRequestID:  upstreamRequestID,
 		Kind:               "http_error",
