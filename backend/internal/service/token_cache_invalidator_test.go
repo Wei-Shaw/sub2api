@@ -51,7 +51,7 @@ REDACTED
 
 	err := invalidator.InvalidateToken(context.Background(), account)
 REDACTED
-	require.Equal(t, []string{"project-x"REDACTED, cache.deletedKeys)
+	require.Equal(t, []string{"gemini:project-x"REDACTED, cache.deletedKeys)
 REDACTED
 
 func TestCompositeTokenCacheInvalidator_Antigravity(t *testing.T) {
@@ -253,7 +253,7 @@ func TestCompositeTokenCacheInvalidator_AllPlatformsIntegration(t *testing.T) {
 REDACTED
 
 	expectedKeys := []string{
-		"gemini-proj",
+		"gemini:gemini-proj",
 		"ag:ag-proj",
 		"openai:account:3",
 		"claude:account:4",

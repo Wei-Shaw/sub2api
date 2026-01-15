@@ -65,8 +65,8 @@ REDACTED
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= claudeTokenRefreshSkew
 	refreshFailed := false
 	if needsRefresh && p.tokenCache != nil {
-		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
-		if err == nil && locked {
+		locked, lockErr := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
+		if lockErr == nil && locked {
 			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) REDACTED()
 
 			// 拿到锁后再次检查缓存（另一个 worker 可能已刷新）
@@ -114,8 +114,60 @@ REDACTED
 				REDACTED
 			REDACTED
 		REDACTED
+	REDACTED else if lockErr != nil {
+			// Redis 错误导致无法获取锁，降级为无锁刷新（仅在 token 接近过期时）
+			slog.Warn("claude_token_lock_failed_degraded_refresh", "account_id", account.ID, "error", lockErr)
+
+			// 检查 ctx 是否已取消
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+		REDACTED
+
+			// 从数据库获取最新账户信息
+			if p.accountRepo != nil {
+				fresh, err := p.accountRepo.GetByID(ctx, account.ID)
+				if err == nil && fresh != nil {
+					account = fresh
+			REDACTED
+		REDACTED
+			expiresAt = account.GetCredentialAsTime("expires_at")
+
+			// 仅在 expires_at 已过期/接近过期时才执行无锁刷新
+			if expiresAt == nil || time.Until(*expiresAt) <= claudeTokenRefreshSkew {
+				if p.oauthService == nil {
+					slog.Warn("claude_oauth_service_not_configured", "account_id", account.ID)
+					refreshFailed = true
+			REDACTED else {
+					tokenInfo, err := p.oauthService.RefreshAccountToken(ctx, account)
+					if err != nil {
+						slog.Warn("claude_token_refresh_failed_degraded", "account_id", account.ID, "error", err)
+						refreshFailed = true
+				REDACTED else {
+						// 构建新 credentials，保留原有字段
+						newCredentials := make(map[string]any)
+						for k, v := range account.Credentials {
+							newCredentials[k] = v
+					REDACTED
+						newCredentials["access_token"] = tokenInfo.AccessToken
+						newCredentials["token_type"] = tokenInfo.TokenType
+						newCredentials["expires_in"] = strconv.FormatInt(tokenInfo.ExpiresIn, 10)
+						newCredentials["expires_at"] = strconv.FormatInt(tokenInfo.ExpiresAt, 10)
+						if tokenInfo.RefreshToken != "" {
+							newCredentials["refresh_token"] = tokenInfo.RefreshToken
+					REDACTED
+						if tokenInfo.Scope != "" {
+							newCredentials["scope"] = tokenInfo.Scope
+					REDACTED
+						account.Credentials = newCredentials
+						if updateErr := p.accountRepo.Update(ctx, account); updateErr != nil {
+							slog.Error("claude_token_provider_update_failed", "account_id", account.ID, "error", updateErr)
+					REDACTED
+						expiresAt = account.GetCredentialAsTime("expires_at")
+				REDACTED
+			REDACTED
+		REDACTED
 	REDACTED else {
-			// 锁获取失败，等待 200ms 后重试读取缓存（改进：减少并发时的缓存未命中）
+			// 锁获取失败（被其他 worker 持有），等待 200ms 后重试读取缓存
 			time.Sleep(claudeLockWaitTime)
 			if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
 				slog.Debug("claude_token_cache_hit_after_wait", "account_id", account.ID)

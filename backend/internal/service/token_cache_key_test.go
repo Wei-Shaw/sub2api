@@ -22,7 +22,7 @@ REDACTED{
 					"project_id": "my-project-123",
 			REDACTED,
 		REDACTED,
-			expected: "my-project-123",
+			expected: "gemini:my-project-123",
 	REDACTED,
 		{
 			name: "project_id_with_whitespace",
@@ -32,7 +32,7 @@ REDACTED{
 					"project_id": "  project-with-spaces  ",
 			REDACTED,
 		REDACTED,
-			expected: "project-with-spaces",
+			expected: "gemini:project-with-spaces",
 	REDACTED,
 		{
 			name: "empty_project_id_fallback_to_account_id",
@@ -42,7 +42,7 @@ REDACTED{
 					"project_id": "",
 			REDACTED,
 		REDACTED,
-			expected: "account:102",
+			expected: "gemini:account:102",
 	REDACTED,
 		{
 			name: "whitespace_only_project_id_fallback_to_account_id",
@@ -52,7 +52,7 @@ REDACTED{
 					"project_id": "   ",
 			REDACTED,
 		REDACTED,
-			expected: "account:103",
+			expected: "gemini:account:103",
 	REDACTED,
 		{
 			name: "no_project_id_key_fallback_to_account_id",
@@ -60,7 +60,7 @@ REDACTED{
 				ID:          104,
 		REDACTEDREDACTED,
 		REDACTED,
-			expected: "account:104",
+			expected: "gemini:account:104",
 	REDACTED,
 		{
 			name: "nil_credentials_fallback_to_account_id",
@@ -68,7 +68,7 @@ REDACTED{
 				ID:          105,
 				Credentials: nil,
 		REDACTED,
-			expected: "account:105",
+			expected: "gemini:account:105",
 	REDACTED,
 REDACTED
 

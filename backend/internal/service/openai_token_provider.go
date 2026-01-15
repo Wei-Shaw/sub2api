@@ -64,8 +64,8 @@ REDACTED
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew
 	refreshFailed := false
 	if needsRefresh && p.tokenCache != nil {
-		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
-		if err == nil && locked {
+		locked, lockErr := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
+		if lockErr == nil && locked {
 			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) REDACTED()
 
 			// 拿到锁后再次检查缓存（另一个 worker 可能已刷新）
@@ -104,8 +104,51 @@ REDACTED
 				REDACTED
 			REDACTED
 		REDACTED
+	REDACTED else if lockErr != nil {
+			// Redis 错误导致无法获取锁，降级为无锁刷新（仅在 token 接近过期时）
+			slog.Warn("openai_token_lock_failed_degraded_refresh", "account_id", account.ID, "error", lockErr)
+
+			// 检查 ctx 是否已取消
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+		REDACTED
+
+			// 从数据库获取最新账户信息
+			if p.accountRepo != nil {
+				fresh, err := p.accountRepo.GetByID(ctx, account.ID)
+				if err == nil && fresh != nil {
+					account = fresh
+			REDACTED
+		REDACTED
+			expiresAt = account.GetCredentialAsTime("expires_at")
+
+			// 仅在 expires_at 已过期/接近过期时才执行无锁刷新
+			if expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew {
+				if p.openAIOAuthService == nil {
+					slog.Warn("openai_oauth_service_not_configured", "account_id", account.ID)
+					refreshFailed = true
+			REDACTED else {
+					tokenInfo, err := p.openAIOAuthService.RefreshAccountToken(ctx, account)
+					if err != nil {
+						slog.Warn("openai_token_refresh_failed_degraded", "account_id", account.ID, "error", err)
+						refreshFailed = true
+				REDACTED else {
+						newCredentials := p.openAIOAuthService.BuildAccountCredentials(tokenInfo)
+						for k, v := range account.Credentials {
+							if _, exists := newCredentials[k]; !exists {
+								newCredentials[k] = v
+						REDACTED
+					REDACTED
+						account.Credentials = newCredentials
+						if updateErr := p.accountRepo.Update(ctx, account); updateErr != nil {
+							slog.Error("openai_token_provider_update_failed", "account_id", account.ID, "error", updateErr)
+					REDACTED
+						expiresAt = account.GetCredentialAsTime("expires_at")
+				REDACTED
+			REDACTED
+		REDACTED
 	REDACTED else {
-			// 锁获取失败，等待 200ms 后重试读取缓存（改进：减少并发时的缓存未命中）
+			// 锁获取失败（被其他 worker 持有），等待 200ms 后重试读取缓存
 			time.Sleep(openAILockWaitTime)
 			if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
 				slog.Debug("openai_token_cache_hit_after_wait", "account_id", account.ID)
