@@ -2062,7 +2062,7 @@ export default {
       avgQps: '平均 QPS',
       avgTps: '平均 TPS',
       avgLatency: '平均请求时长',
-      avgTtft: '平均首字延迟',
+      avgTtft: '平均首 Token 延迟',
       exceptions: '异常数',
       requestErrors: '请求错误',
       errorCount: '错误数',
@@ -2073,8 +2073,8 @@ export default {
       errors: '错误',
       errorRate: '错误率：',
       upstreamRate: '上游错误率：',
-      latencyDuration: '请求时长（毫秒）',
-      ttftLabel: '首字延迟（毫秒）',
+      latencyDuration: '请求时长',
+      ttftLabel: '首 Token 延迟（毫秒）',
       p50: 'p50',
       p90: 'p90',
       p95: 'p95',
@@ -2151,7 +2151,7 @@ export default {
         memoryHigh: '内存使用率偏高 ({usageREDACTED%)',
         memoryHighImpact: '内存压力较大，需要关注',
         memoryHighAction: '监控内存趋势，检查是否有内存泄漏',
-        ttftHigh: '首字节时间偏高 ({ttftREDACTEDms)',
+        ttftHigh: '首 Token 时间偏高 ({ttftREDACTEDms)',
         ttftHighImpact: '用户感知时长增加',
         ttftHighAction: '优化请求处理流程，减少前置逻辑耗时',
         // Error rate diagnostics
@@ -2743,7 +2743,7 @@ export default {
         sla: '服务等级协议达成率，排除业务限制（如余额不足、配额超限）的成功请求占比。',
         errors: '错误统计，包括总错误数、错误率和上游错误率。',
         latency: '请求时长统计，包括 p50、p90、p95、p99 等百分位数。',
-        ttft: '首Token延迟（Time To First Token），衡量流式响应的首字节返回速度。',
+        ttft: '首 Token 延迟（Time To First Token），衡量流式响应的首 Token 返回速度。',
         health: '系统健康评分（0-100），综合考虑 SLA、错误率和资源使用情况。'
       REDACTED,
       charts: {
