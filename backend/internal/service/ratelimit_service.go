@@ -85,8 +85,8 @@ REDACTED
 
 	switch statusCode {
 	case 401:
-		if account.Type == AccountTypeOAuth &&
-			(account.Platform == PlatformAntigravity || account.Platform == PlatformGemini) {
+		// 对所有 OAuth 账号在 401 错误时调用缓存失效
+		if account.Type == AccountTypeOAuth {
 			if s.tokenCacheInvalidator != nil {
 				if err := s.tokenCacheInvalidator.InvalidateToken(ctx, account); err != nil {
 					slog.Warn("oauth_401_invalidate_cache_failed", "account_id", account.ID, "error", err)

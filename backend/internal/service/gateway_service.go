@@ -144,21 +144,22 @@ REDACTED
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
-	accountRepo         AccountRepository
-	groupRepo           GroupRepository
-	usageLogRepo        UsageLogRepository
-	userRepo            UserRepository
-	userSubRepo         UserSubscriptionRepository
-	cache               GatewayCache
-	cfg                 *config.Config
-	schedulerSnapshot   *SchedulerSnapshotService
-	billingService      *BillingService
-	rateLimitService    *RateLimitService
-	billingCacheService *BillingCacheService
-	identityService     *IdentityService
-	httpUpstream        HTTPUpstream
-	deferredService     *DeferredService
-	concurrencyService  *ConcurrencyService
+	accountRepo          AccountRepository
+	groupRepo            GroupRepository
+	usageLogRepo         UsageLogRepository
+	userRepo             UserRepository
+	userSubRepo          UserSubscriptionRepository
+	cache                GatewayCache
+	cfg                  *config.Config
+	schedulerSnapshot    *SchedulerSnapshotService
+	billingService       *BillingService
+	rateLimitService     *RateLimitService
+	billingCacheService  *BillingCacheService
+	identityService      *IdentityService
+	httpUpstream         HTTPUpstream
+	deferredService      *DeferredService
+	concurrencyService   *ConcurrencyService
+	claudeTokenProvider  *ClaudeTokenProvider
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -178,23 +179,25 @@ func NewGatewayService(
 	identityService *IdentityService,
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
+	claudeTokenProvider *ClaudeTokenProvider,
 ) *GatewayService {
 	return &GatewayService{
-		accountRepo:         accountRepo,
-		groupRepo:           groupRepo,
-		usageLogRepo:        usageLogRepo,
-		userRepo:            userRepo,
-		userSubRepo:         userSubRepo,
-		cache:               cache,
-		cfg:                 cfg,
-		schedulerSnapshot:   schedulerSnapshot,
-		concurrencyService:  concurrencyService,
-		billingService:      billingService,
-		rateLimitService:    rateLimitService,
-		billingCacheService: billingCacheService,
-		identityService:     identityService,
-		httpUpstream:        httpUpstream,
-		deferredService:     deferredService,
+		accountRepo:          accountRepo,
+		groupRepo:            groupRepo,
+		usageLogRepo:         usageLogRepo,
+		userRepo:             userRepo,
+		userSubRepo:          userSubRepo,
+		cache:                cache,
+		cfg:                  cfg,
+		schedulerSnapshot:    schedulerSnapshot,
+		concurrencyService:   concurrencyService,
+		billingService:       billingService,
+		rateLimitService:     rateLimitService,
+		billingCacheService:  billingCacheService,
+		identityService:      identityService,
+		httpUpstream:         httpUpstream,
+		deferredService:      deferredService,
+		claudeTokenProvider:  claudeTokenProvider,
 REDACTED
 REDACTED
 
@@ -1079,6 +1082,16 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (string, string, error) {
+	// 对于 Anthropic OAuth 账号，使用 ClaudeTokenProvider 获取缓存的 token
+	if account.Platform == PlatformAnthropic && account.Type == AccountTypeOAuth && s.claudeTokenProvider != nil {
+		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", err
+	REDACTED
+		return accessToken, "oauth", nil
+REDACTED
+
+	// 其他情况（Gemini 有自己的 TokenProvider，setup-token 类型等）直接从账号读取
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
 		return "", "", errors.New("access_token not found in credentials")

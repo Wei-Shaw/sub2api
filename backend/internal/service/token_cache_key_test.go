@@ -151,3 +151,109 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestOpenAITokenCacheKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  *Account
+		expected string
+REDACTED{
+		{
+			name: "basic_account",
+			account: &Account{
+				ID: 300,
+		REDACTED,
+			expected: "openai:account:300",
+	REDACTED,
+		{
+			name: "account_with_credentials",
+			account: &Account{
+				ID: 301,
+		REDACTED
+					"access_token": "test-token",
+			REDACTED,
+		REDACTED,
+			expected: "openai:account:301",
+	REDACTED,
+		{
+			name: "account_id_zero",
+			account: &Account{
+				ID: 0,
+		REDACTED,
+			expected: "openai:account:0",
+	REDACTED,
+		{
+			name: "large_account_id",
+			account: &Account{
+				ID: 9999999999,
+		REDACTED,
+			expected: "openai:account:9999999999",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := OpenAITokenCacheKey(tt.account)
+			require.Equal(t, tt.expected, result)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestClaudeTokenCacheKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  *Account
+		expected string
+REDACTED{
+		{
+			name: "basic_account",
+			account: &Account{
+				ID: 400,
+		REDACTED,
+			expected: "claude:account:400",
+	REDACTED,
+		{
+			name: "account_with_credentials",
+			account: &Account{
+				ID: 401,
+		REDACTED
+					"access_token": "claude-token",
+			REDACTED,
+		REDACTED,
+			expected: "claude:account:401",
+	REDACTED,
+		{
+			name: "account_id_zero",
+			account: &Account{
+				ID: 0,
+		REDACTED,
+			expected: "claude:account:0",
+	REDACTED,
+		{
+			name: "large_account_id",
+			account: &Account{
+				ID: 9999999999,
+		REDACTED,
+			expected: "claude:account:9999999999",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ClaudeTokenCacheKey(tt.account)
+			require.Equal(t, tt.expected, result)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestCacheKeyUniqueness(t *testing.T) {
+	// 确保不同平台的缓存键不会冲突
+	account := &Account{ID: 123REDACTED
+
+	openaiKey := OpenAITokenCacheKey(account)
+	claudeKey := ClaudeTokenCacheKey(account)
+
+	require.NotEqual(t, openaiKey, claudeKey, "OpenAI and Claude cache keys should be different")
+	require.Contains(t, openaiKey, "openai:")
+	require.Contains(t, claudeKey, "claude:")
+REDACTED
