@@ -63,14 +63,15 @@ REDACTED
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
 // Nil pointers mean "do not change".
 type AccountBulkUpdate struct {
-	Name        *string
-	ProxyID     *int64
-	Concurrency *int
-	Priority    *int
-	Status      *string
-	Schedulable *bool
-	Credentials map[string]any
-	Extra       map[string]any
+	Name           *string
+	ProxyID        *int64
+	Concurrency    *int
+	Priority       *int
+	RateMultiplier *float64
+	Status         *string
+	Schedulable    *bool
+	Credentials    map[string]any
+	Extra          map[string]any
 REDACTED
 
 // CreateAccountRequest 创建账号请求

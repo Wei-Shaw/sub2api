@@ -6,24 +6,43 @@ type OpsErrorLog struct {
 	ID        int64     `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 
-	Phase    string `json:"phase"`
-	Type     string `json:"type"`
+	// Standardized classification
+	// - phase: request|auth|routing|upstream|network|internal
+	// - owner: client|provider|platform
+	// - source: client_request|upstream_http|gateway
+	Phase string `json:"phase"`
+	Type  string `json:"type"`
+
+	Owner  string `json:"error_owner"`
+	Source string `json:"error_source"`
+
 	Severity string `json:"severity"`
 
 	StatusCode int    `json:"status_code"`
 	Platform   string `json:"platform"`
 	Model      string `json:"model"`
 
-	LatencyMs *int `json:"latency_ms"`
+	IsRetryable bool `json:"is_retryable"`
+	RetryCount  int  `json:"retry_count"`
+
+	Resolved           bool       `json:"resolved"`
+	ResolvedAt         *time.Time `json:"resolved_at"`
+	ResolvedByUserID   *int64     `json:"resolved_by_user_id"`
+	ResolvedByUserName string     `json:"resolved_by_user_name"`
+	ResolvedRetryID    *int64     `json:"resolved_retry_id"`
+	ResolvedStatusRaw  string     `json:"-"`
 
 	ClientRequestID string `json:"client_request_id"`
 	RequestID       string `json:"request_id"`
 	Message         string `json:"message"`
 
-	UserID    *int64 `json:"user_id"`
-	APIKeyID  *int64 `json:"api_key_id"`
-	AccountID *int64 `json:"account_id"`
-	GroupID   *int64 `json:"group_id"`
+	UserID      *int64 `json:"user_id"`
+	UserEmail   string `json:"user_email"`
+	APIKeyID    *int64 `json:"api_key_id"`
+	AccountID   *int64 `json:"account_id"`
+	AccountName string `json:"account_name"`
+	GroupID     *int64 `json:"group_id"`
+	GroupName   string `json:"group_name"`
 
 	ClientIP    *string `json:"client_ip"`
 	RequestPath string  `json:"request_path"`
@@ -67,9 +86,24 @@ type OpsErrorLogFilter struct {
 	GroupID   *int64
 	AccountID *int64
 
-	StatusCodes []int
-	Phase       string
-	Query       string
+	StatusCodes      []int
+	StatusCodesOther bool
+	Phase            string
+	Owner            string
+	Source           string
+	Resolved         *bool
+	Query            string
+	UserQuery        string // Search by user email
+
+	// Optional correlation keys for exact matching.
+	RequestID       string
+	ClientRequestID string
+
+	// View controls error categorization for list endpoints.
+	// - errors: show actionable errors (exclude business-limited / 429 / 529)
+	// - excluded: only show excluded errors
+	// - all: show everything
+	View string
 
 	Page     int
 	PageSize int
@@ -90,12 +124,23 @@ type OpsRetryAttempt struct {
 	SourceErrorID     int64  `json:"source_error_id"`
 	Mode              string `json:"mode"`
 	PinnedAccountID   *int64 `json:"pinned_account_id"`
+	PinnedAccountName string `json:"pinned_account_name"`
 
 	Status     string     `json:"status"`
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
 	DurationMs *int64     `json:"duration_ms"`
 
+	// Persisted execution results (best-effort)
+	Success           *bool   `json:"success"`
+	HTTPStatusCode    *int    `json:"http_status_code"`
+	UpstreamRequestID *string `json:"upstream_request_id"`
+	UsedAccountID     *int64  `json:"used_account_id"`
+	UsedAccountName   string  `json:"used_account_name"`
+	ResponsePreview   *string `json:"response_preview"`
+	ResponseTruncated *bool   `json:"response_truncated"`
+
+	// Optional correlation
 	ResultRequestID *string `json:"result_request_id"`
 	ResultErrorID   *int64  `json:"result_error_id"`
 

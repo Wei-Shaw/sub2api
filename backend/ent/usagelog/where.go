@@ -155,6 +155,11 @@ func RateMultiplier(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRateMultiplier, v))
 REDACTED
 
+// AccountRateMultiplier applies equality check predicate on the "account_rate_multiplier" field. It's identical to AccountRateMultiplierEQ.
+func AccountRateMultiplier(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAccountRateMultiplier, v))
+REDACTED
+
 // BillingType applies equality check predicate on the "billing_type" field. It's identical to BillingTypeEQ.
 func BillingType(v int8) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldBillingType, v))
@@ -968,6 +973,56 @@ REDACTED
 // RateMultiplierLTE applies the LTE predicate on the "rate_multiplier" field.
 func RateMultiplierLTE(v float64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldRateMultiplier, v))
+REDACTED
+
+// AccountRateMultiplierEQ applies the EQ predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldAccountRateMultiplier, v))
+REDACTED
+
+// AccountRateMultiplierNEQ applies the NEQ predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldAccountRateMultiplier, v))
+REDACTED
+
+// AccountRateMultiplierIn applies the In predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldAccountRateMultiplier, vs...))
+REDACTED
+
+// AccountRateMultiplierNotIn applies the NotIn predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldAccountRateMultiplier, vs...))
+REDACTED
+
+// AccountRateMultiplierGT applies the GT predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldAccountRateMultiplier, v))
+REDACTED
+
+// AccountRateMultiplierGTE applies the GTE predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldAccountRateMultiplier, v))
+REDACTED
+
+// AccountRateMultiplierLT applies the LT predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldAccountRateMultiplier, v))
+REDACTED
+
+// AccountRateMultiplierLTE applies the LTE predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldAccountRateMultiplier, v))
+REDACTED
+
+// AccountRateMultiplierIsNil applies the IsNil predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldAccountRateMultiplier))
+REDACTED
+
+// AccountRateMultiplierNotNil applies the NotNil predicate on the "account_rate_multiplier" field.
+func AccountRateMultiplierNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldAccountRateMultiplier))
 REDACTED
 
 // BillingTypeEQ applies the EQ predicate on the "billing_type" field.

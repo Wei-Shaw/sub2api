@@ -44,8 +44,14 @@ let abortController: AbortController | null = null; let exportAbortController: A
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' REDACTED)
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') REDACTED, { value: 'hour', label: t('admin.dashboard.hour') REDACTED])
-const formatLD = (d: Date) => d.toISOString().split('T')[0]
-const now = new Date(); const weekAgo = new Date(Date.now() - 6 * 86400000)
+// Use local timezone to avoid UTC timezone issues
+const formatLD = (d: Date) => {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${yearREDACTED-${monthREDACTED-${dayREDACTED`
+REDACTED
+const now = new Date(); const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 6)
 const startDate = ref(formatLD(weekAgo)); const endDate = ref(formatLD(now))
 const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, start_date: startDate.value, end_date: endDate.value REDACTED)
 const pagination = reactive({ page: 1, page_size: 20, total: 0 REDACTED)
@@ -61,8 +67,8 @@ const loadStats = async () => { try { const s = await adminAPI.usage.getStats(fi
 const loadChartData = async () => {
   chartsLoading.value = true
   try {
-    const params = { start_date: filters.value.start_date || startDate.value, end_date: filters.value.end_date || endDate.value, granularity: granularity.value, user_id: filters.value.user_id REDACTED
-    const [trendRes, modelRes] = await Promise.all([adminAPI.dashboard.getUsageTrend(params), adminAPI.dashboard.getModelStats({ start_date: params.start_date, end_date: params.end_date, user_id: params.user_id REDACTED)])
+    const params = { start_date: filters.value.start_date || startDate.value, end_date: filters.value.end_date || endDate.value, granularity: granularity.value, user_id: filters.value.user_id, model: filters.value.model, api_key_id: filters.value.api_key_id, account_id: filters.value.account_id, group_id: filters.value.group_id, stream: filters.value.stream REDACTED
+    const [trendRes, modelRes] = await Promise.all([adminAPI.dashboard.getUsageTrend(params), adminAPI.dashboard.getModelStats({ start_date: params.start_date, end_date: params.end_date, user_id: params.user_id, model: params.model, api_key_id: params.api_key_id, account_id: params.account_id, group_id: params.group_id, stream: params.stream REDACTED)])
     trendData.value = trendRes.trend || []; modelStats.value = modelRes.models || []
   REDACTED catch (error) { console.error('Failed to load chart data:', error) REDACTED finally { chartsLoading.value = false REDACTED
 REDACTED
@@ -94,7 +100,7 @@ const exportToExcel = async () => {
         t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
         t('admin.usage.inputCost'), t('admin.usage.outputCost'),
         t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
-        t('usage.rate'), t('usage.original'), t('usage.billed'),
+        t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
         t('usage.firstToken'), t('usage.duration'),
         t('admin.usage.requestId'), t('usage.userAgent'), t('admin.usage.ipAddress')
       ]
@@ -115,8 +121,10 @@ const exportToExcel = async () => {
         log.cache_read_cost?.toFixed(6) || '0.000000',
         log.cache_creation_cost?.toFixed(6) || '0.000000',
         log.rate_multiplier?.toFixed(2) || '1.00',
+        (log.account_rate_multiplier ?? 1).toFixed(2),
         log.total_cost?.toFixed(6) || '0.000000',
         log.actual_cost?.toFixed(6) || '0.000000',
+        (log.total_cost * (log.account_rate_multiplier ?? 1)).toFixed(6),
         log.first_token_ms ?? '',
         log.duration_ms,
         log.request_id || '',
