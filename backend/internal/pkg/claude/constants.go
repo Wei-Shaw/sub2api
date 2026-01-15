@@ -9,10 +9,14 @@ const (
 	BetaClaudeCode               = "claude-code-20250219"
 	BetaInterleavedThinking      = "REDACTED"
 	BetaFineGrainedToolStreaming = "fine-grained-tool-streaming-2025-05-14"
+	BetaTokenCounting            = "token-counting-2024-11-01"
 )
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
 const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
+
+// CountTokensBetaHeader count_tokens 请求使用的 anthropic-beta header
+const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaTokenCounting
 
 // HaikuBetaHeader Haiku 模型使用的 anthropic-beta header（不需要 claude-code beta）
 const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
