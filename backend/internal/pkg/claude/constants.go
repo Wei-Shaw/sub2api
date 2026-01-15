@@ -15,6 +15,12 @@ const (
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
 const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
 
+// MessageBetaHeaderNoTools /v1/messages 在无工具时的 beta header
+const MessageBetaHeaderNoTools = BetaOAuth + "," + BetaInterleavedThinking
+
+// MessageBetaHeaderWithTools /v1/messages 在有工具时的 beta header
+const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
+
 // CountTokensBetaHeader count_tokens 请求使用的 anthropic-beta header
 const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaTokenCounting
 

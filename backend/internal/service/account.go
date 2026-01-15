@@ -364,6 +364,22 @@ REDACTED
 	return ""
 REDACTED
 
+func (a *Account) GetClaudeUserID() string {
+	if v := strings.TrimSpace(a.GetExtraString("claude_user_id")); v != "" {
+		return v
+REDACTED
+	if v := strings.TrimSpace(a.GetExtraString("anthropic_user_id")); v != "" {
+		return v
+REDACTED
+	if v := strings.TrimSpace(a.GetCredential("claude_user_id")); v != "" {
+		return v
+REDACTED
+	if v := strings.TrimSpace(a.GetCredential("anthropic_user_id")); v != "" {
+		return v
+REDACTED
+	return ""
+REDACTED
+
 func (a *Account) IsCustomErrorCodesEnabled() bool {
 	if a.Type != AccountTypeAPIKey || a.Credentials == nil {
 		return false
