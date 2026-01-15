@@ -270,13 +270,13 @@ type DashboardStats = usagestats.DashboardStats
 
 func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
 	stats := &DashboardStats{REDACTED
-	now := time.Now().UTC()
-	todayUTC := truncateToDayUTC(now)
+	now := timezone.Now()
+	todayStart := timezone.Today()
 
-	if err := r.fillDashboardEntityStats(ctx, stats, todayUTC, now); err != nil {
+	if err := r.fillDashboardEntityStats(ctx, stats, todayStart, now); err != nil {
 		return nil, err
 REDACTED
-	if err := r.fillDashboardUsageStatsAggregated(ctx, stats, todayUTC, now); err != nil {
+	if err := r.fillDashboardUsageStatsAggregated(ctx, stats, todayStart, now); err != nil {
 		return nil, err
 REDACTED
 
@@ -298,13 +298,13 @@ func (r *usageLogRepository) GetDashboardStatsWithRange(ctx context.Context, sta
 REDACTED
 
 	stats := &DashboardStats{REDACTED
-	now := time.Now().UTC()
-	todayUTC := truncateToDayUTC(now)
+	now := timezone.Now()
+	todayStart := timezone.Today()
 
-	if err := r.fillDashboardEntityStats(ctx, stats, todayUTC, now); err != nil {
+	if err := r.fillDashboardEntityStats(ctx, stats, todayStart, now); err != nil {
 		return nil, err
 REDACTED
-	if err := r.fillDashboardUsageStatsFromUsageLogs(ctx, stats, startUTC, endUTC, todayUTC, now); err != nil {
+	if err := r.fillDashboardUsageStatsFromUsageLogs(ctx, stats, startUTC, endUTC, todayStart, now); err != nil {
 		return nil, err
 REDACTED
 
