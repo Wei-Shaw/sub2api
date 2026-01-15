@@ -364,8 +364,19 @@ export interface Proxy {
   password?: string | null
   status: 'active' | 'inactive'
   account_count?: number // Number of accounts using this proxy
+  latency_ms?: number
+  latency_status?: 'success' | 'failed'
+  latency_message?: string
   created_at: string
   updated_at: string
+REDACTED
+
+export interface ProxyAccountSummary {
+  id: number
+  name: string
+  platform: AccountPlatform
+  type: AccountType
+  notes?: string | null
 REDACTED
 
 // Gemini credentials structure for OAuth and API Key authentication

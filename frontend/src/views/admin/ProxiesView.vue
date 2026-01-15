@@ -51,6 +51,24 @@
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
+            <button
+              @click="handleBatchTest"
+              :disabled="batchTesting || loading"
+              class="btn btn-secondary"
+              :title="t('admin.proxies.testConnection')"
+            >
+              <Icon name="play" size="md" class="mr-2" />
+              {{ t('admin.proxies.testConnection') REDACTEDREDACTED
+            </button>
+            <button
+              @click="openBatchDelete"
+              :disabled="selectedCount === 0"
+              class="btn btn-danger"
+              :title="t('admin.proxies.batchDeleteAction')"
+            >
+              <Icon name="trash" size="md" class="mr-2" />
+              {{ t('admin.proxies.batchDeleteAction') REDACTEDREDACTED
+            </button>
             <button @click="showCreateModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.proxies.createProxy') REDACTEDREDACTED
@@ -61,6 +79,26 @@
 
       <template #table>
         <DataTable :columns="columns" :data="proxies" :loading="loading">
+          <template #header-select>
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="allVisibleSelected"
+              @click.stop
+              @change="toggleSelectAllVisible($event)"
+            />
+          </template>
+
+          <template #cell-select="{ row REDACTED">
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="selectedProxyIds.has(row.id)"
+              @click.stop
+              @change="toggleSelectRow(row.id, $event)"
+            />
+          </template>
+
           <template #cell-name="{ value REDACTED">
             <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
           </template>
@@ -79,17 +117,43 @@
             <code class="code text-xs">{{ row.host REDACTEDREDACTED:{{ row.port REDACTEDREDACTED</code>
           </template>
 
-          <template #cell-status="{ value REDACTED">
-            <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-danger']">
-              {{ t('admin.accounts.status.' + value) REDACTEDREDACTED
+          <template #cell-account_count="{ row, value REDACTED">
+            <button
+              v-if="(value || 0) > 0"
+              type="button"
+              class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-primary-700 hover:bg-gray-200 dark:bg-dark-600 dark:text-primary-300 dark:hover:bg-dark-500"
+              @click="openAccountsModal(row)"
+            >
+              {{ t('admin.groups.accountsCount', { count: value || 0 REDACTED) REDACTEDREDACTED
+            </button>
+            <span
+              v-else
+              class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
+            >
+              {{ t('admin.groups.accountsCount', { count: 0 REDACTED) REDACTEDREDACTED
             </span>
           </template>
 
-          <template #cell-account_count="{ value REDACTED">
+          <template #cell-latency="{ row REDACTED">
             <span
-              class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
+              v-if="row.latency_status === 'failed'"
+              class="badge badge-danger"
+              :title="row.latency_message || undefined"
             >
-              {{ t('admin.groups.accountsCount', { count: value || 0 REDACTED) REDACTEDREDACTED
+              {{ t('admin.proxies.latencyFailed') REDACTEDREDACTED
+            </span>
+            <span
+              v-else-if="typeof row.latency_ms === 'number'"
+              :class="['badge', row.latency_ms < 200 ? 'badge-success' : 'badge-warning']"
+            >
+              {{ row.latency_ms REDACTEDREDACTEDms
+            </span>
+            <span v-else class="text-sm text-gray-400">-</span>
+          </template>
+
+          <template #cell-status="{ value REDACTED">
+            <span :class="['badge', value === 'active' ? 'badge-success' : 'badge-danger']">
+              {{ t('admin.accounts.status.' + value) REDACTEDREDACTED
             </span>
           </template>
 
@@ -515,6 +579,63 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
+
+    <!-- Batch Delete Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showBatchDeleteDialog"
+      :title="t('admin.proxies.batchDelete')"
+      :message="t('admin.proxies.batchDeleteConfirm', { count: selectedCount REDACTED)"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmBatchDelete"
+      @cancel="showBatchDeleteDialog = false"
+    />
+
+    <!-- Proxy Accounts Dialog -->
+    <BaseDialog
+      :show="showAccountsModal"
+      :title="t('admin.proxies.accountsTitle', { name: accountsProxy?.name || '' REDACTED)"
+      width="normal"
+      @close="closeAccountsModal"
+    >
+      <div v-if="accountsLoading" class="flex items-center justify-center py-8 text-sm text-gray-500">
+        <Icon name="refresh" size="md" class="mr-2 animate-spin" />
+        {{ t('common.loading') REDACTEDREDACTED
+      </div>
+      <div v-else-if="proxyAccounts.length === 0" class="py-6 text-center text-sm text-gray-500">
+        {{ t('admin.proxies.accountsEmpty') REDACTEDREDACTED
+      </div>
+      <div v-else class="max-h-80 overflow-auto">
+        <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
+          <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-dark-400">
+            <tr>
+              <th class="px-4 py-2 text-left">{{ t('admin.proxies.accountName') REDACTEDREDACTED</th>
+              <th class="px-4 py-2 text-left">{{ t('admin.accounts.columns.platformType') REDACTEDREDACTED</th>
+              <th class="px-4 py-2 text-left">{{ t('admin.proxies.accountNotes') REDACTEDREDACTED</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
+            <tr v-for="account in proxyAccounts" :key="account.id">
+              <td class="px-4 py-2 font-medium text-gray-900 dark:text-white">{{ account.name REDACTEDREDACTED</td>
+              <td class="px-4 py-2">
+                <PlatformTypeBadge :platform="account.platform" :type="account.type" />
+              </td>
+              <td class="px-4 py-2 text-gray-600 dark:text-gray-300">
+                {{ account.notes || '-' REDACTEDREDACTED
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <template #footer>
+        <div class="flex justify-end">
+          <button @click="closeAccountsModal" class="btn btn-secondary">
+            {{ t('common.close') REDACTEDREDACTED
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -523,7 +644,7 @@ import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Proxy, ProxyProtocol REDACTED from '@/types'
+import type { Proxy, ProxyAccountSummary, ProxyProtocol REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -534,15 +655,18 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 
 const columns = computed<Column[]>(() => [
+  { key: 'select', label: '', sortable: false REDACTED,
   { key: 'name', label: t('admin.proxies.columns.name'), sortable: true REDACTED,
   { key: 'protocol', label: t('admin.proxies.columns.protocol'), sortable: true REDACTED,
   { key: 'address', label: t('admin.proxies.columns.address'), sortable: false REDACTED,
   { key: 'account_count', label: t('admin.proxies.columns.accounts'), sortable: true REDACTED,
+  { key: 'latency', label: t('admin.proxies.columns.latency'), sortable: false REDACTED,
   { key: 'status', label: t('admin.proxies.columns.status'), sortable: true REDACTED,
   { key: 'actions', label: t('admin.proxies.columns.actions'), sortable: false REDACTED
 ])
@@ -592,10 +716,23 @@ REDACTED)
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
+const showBatchDeleteDialog = ref(false)
+const showAccountsModal = ref(false)
 const submitting = ref(false)
 const testingProxyIds = ref<Set<number>>(new Set())
+const batchTesting = ref(false)
+const selectedProxyIds = ref<Set<number>>(new Set())
+const accountsProxy = ref<Proxy | null>(null)
+const proxyAccounts = ref<ProxyAccountSummary[]>([])
+const accountsLoading = ref(false)
 const editingProxy = ref<Proxy | null>(null)
 const deletingProxy = ref<Proxy | null>(null)
+
+const selectedCount = computed(() => selectedProxyIds.value.size)
+const allVisibleSelected = computed(() => {
+  if (proxies.value.length === 0) return false
+  return proxies.value.every((proxy) => selectedProxyIds.value.has(proxy.id))
+REDACTED)
 
 // Batch import state
 const createMode = ref<'standard' | 'batch'>('standard')
@@ -639,6 +776,30 @@ const isAbortError = (error: unknown) => {
   if (!error || typeof error !== 'object') return false
   const maybeError = error as { name?: string; code?: string REDACTED
   return maybeError.name === 'AbortError' || maybeError.code === 'ERR_CANCELED'
+REDACTED
+
+const toggleSelectRow = (id: number, event: Event) => {
+  const target = event.target as HTMLInputElement
+  const next = new Set(selectedProxyIds.value)
+  if (target.checked) {
+    next.add(id)
+  REDACTED else {
+    next.delete(id)
+  REDACTED
+  selectedProxyIds.value = next
+REDACTED
+
+const toggleSelectAllVisible = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const next = new Set(selectedProxyIds.value)
+  for (const proxy of proxies.value) {
+    if (target.checked) {
+      next.add(proxy.id)
+    REDACTED else {
+      next.delete(proxy.id)
+    REDACTED
+  REDACTED
+  selectedProxyIds.value = next
 REDACTED
 
 const loadProxies = async () => {
@@ -895,33 +1056,149 @@ const handleUpdateProxy = async () => {
   REDACTED
 REDACTED
 
-const handleTestConnection = async (proxy: Proxy) => {
-  // Create new Set to trigger reactivity
-  testingProxyIds.value = new Set([...testingProxyIds.value, proxy.id])
+const applyLatencyResult = (
+  proxyId: number,
+  result: { success: boolean; latency_ms?: number; message?: string REDACTED
+) => {
+  const target = proxies.value.find((proxy) => proxy.id === proxyId)
+  if (!target) return
+  if (result.success) {
+    target.latency_status = 'success'
+    target.latency_ms = result.latency_ms
+  REDACTED else {
+    target.latency_status = 'failed'
+    target.latency_ms = undefined
+  REDACTED
+  target.latency_message = result.message
+REDACTED
+
+const startTestingProxy = (proxyId: number) => {
+  testingProxyIds.value = new Set([...testingProxyIds.value, proxyId])
+REDACTED
+
+const stopTestingProxy = (proxyId: number) => {
+  const next = new Set(testingProxyIds.value)
+  next.delete(proxyId)
+  testingProxyIds.value = next
+REDACTED
+
+const runProxyTest = async (proxyId: number, notify: boolean) => {
+  startTestingProxy(proxyId)
   try {
-    const result = await adminAPI.proxies.testProxy(proxy.id)
-    if (result.success) {
-      const message = result.latency_ms
-        ? t('admin.proxies.proxyWorkingWithLatency', { latency: result.latency_ms REDACTED)
-        : t('admin.proxies.proxyWorking')
-      appStore.showSuccess(message)
-    REDACTED else {
-      appStore.showError(result.message || t('admin.proxies.proxyTestFailed'))
+    const result = await adminAPI.proxies.testProxy(proxyId)
+    applyLatencyResult(proxyId, result)
+    if (notify) {
+      if (result.success) {
+        const message = result.latency_ms
+          ? t('admin.proxies.proxyWorkingWithLatency', { latency: result.latency_ms REDACTED)
+          : t('admin.proxies.proxyWorking')
+        appStore.showSuccess(message)
+      REDACTED else {
+        appStore.showError(result.message || t('admin.proxies.proxyTestFailed'))
+      REDACTED
     REDACTED
+    return result
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.proxies.failedToTest'))
+    const message = error.response?.data?.detail || t('admin.proxies.failedToTest')
+    applyLatencyResult(proxyId, { success: false, message REDACTED)
+    if (notify) {
+      appStore.showError(message)
+    REDACTED
     console.error('Error testing proxy:', error)
+    return null
   REDACTED finally {
-    // Create new Set without this proxy id to trigger reactivity
-    const newSet = new Set(testingProxyIds.value)
-    newSet.delete(proxy.id)
-    testingProxyIds.value = newSet
+    stopTestingProxy(proxyId)
+  REDACTED
+REDACTED
+
+const handleTestConnection = async (proxy: Proxy) => {
+  await runProxyTest(proxy.id, true)
+REDACTED
+
+const fetchAllProxiesForBatch = async (): Promise<Proxy[]> => {
+  const pageSize = 200
+  const result: Proxy[] = []
+  let page = 1
+  let totalPages = 1
+
+  while (page <= totalPages) {
+    const response = await adminAPI.proxies.list(
+      page,
+      pageSize,
+      {
+        protocol: filters.protocol || undefined,
+        status: filters.status as any,
+        search: searchQuery.value || undefined
+      REDACTED
+    )
+    result.push(...response.items)
+    totalPages = response.pages || 1
+    page++
+  REDACTED
+
+  return result
+REDACTED
+
+const runBatchProxyTests = async (ids: number[]) => {
+  if (ids.length === 0) return
+  const concurrency = 5
+  let index = 0
+
+  const worker = async () => {
+    while (index < ids.length) {
+      const current = ids[index]
+      index++
+      await runProxyTest(current, false)
+    REDACTED
+  REDACTED
+
+  const workers = Array.from({ length: Math.min(concurrency, ids.length) REDACTED, () => worker())
+  await Promise.all(workers)
+REDACTED
+
+const handleBatchTest = async () => {
+  if (batchTesting.value) return
+
+  batchTesting.value = true
+  try {
+    let ids: number[] = []
+    if (selectedCount.value > 0) {
+      ids = Array.from(selectedProxyIds.value)
+    REDACTED else {
+      const allProxies = await fetchAllProxiesForBatch()
+      ids = allProxies.map((proxy) => proxy.id)
+    REDACTED
+
+    if (ids.length === 0) {
+      appStore.showInfo(t('admin.proxies.batchTestEmpty'))
+      return
+    REDACTED
+
+    await runBatchProxyTests(ids)
+    appStore.showSuccess(t('admin.proxies.batchTestDone', { count: ids.length REDACTED))
+    loadProxies()
+  REDACTED catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.batchTestFailed'))
+    console.error('Error batch testing proxies:', error)
+  REDACTED finally {
+    batchTesting.value = false
   REDACTED
 REDACTED
 
 const handleDelete = (proxy: Proxy) => {
+  if ((proxy.account_count || 0) > 0) {
+    appStore.showError(t('admin.proxies.deleteBlockedInUse'))
+    return
+  REDACTED
   deletingProxy.value = proxy
   showDeleteDialog.value = true
+REDACTED
+
+const openBatchDelete = () => {
+  if (selectedCount.value === 0) {
+    return
+  REDACTED
+  showBatchDeleteDialog.value = true
 REDACTED
 
 const confirmDelete = async () => {
@@ -931,12 +1208,66 @@ const confirmDelete = async () => {
     await adminAPI.proxies.delete(deletingProxy.value.id)
     appStore.showSuccess(t('admin.proxies.proxyDeleted'))
     showDeleteDialog.value = false
+    if (selectedProxyIds.value.has(deletingProxy.value.id)) {
+      const next = new Set(selectedProxyIds.value)
+      next.delete(deletingProxy.value.id)
+      selectedProxyIds.value = next
+    REDACTED
     deletingProxy.value = null
     loadProxies()
   REDACTED catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.proxies.failedToDelete'))
     console.error('Error deleting proxy:', error)
   REDACTED
+REDACTED
+
+const confirmBatchDelete = async () => {
+  const ids = Array.from(selectedProxyIds.value)
+  if (ids.length === 0) {
+    showBatchDeleteDialog.value = false
+    return
+  REDACTED
+
+  try {
+    const result = await adminAPI.proxies.batchDelete(ids)
+    const deleted = result.deleted_ids?.length || 0
+    const skipped = result.skipped?.length || 0
+
+    if (deleted > 0) {
+      appStore.showSuccess(t('admin.proxies.batchDeleteDone', { deleted, skipped REDACTED))
+    REDACTED else if (skipped > 0) {
+      appStore.showInfo(t('admin.proxies.batchDeleteSkipped', { skipped REDACTED))
+    REDACTED
+
+    selectedProxyIds.value = new Set()
+    showBatchDeleteDialog.value = false
+    loadProxies()
+  REDACTED catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.batchDeleteFailed'))
+    console.error('Error batch deleting proxies:', error)
+  REDACTED
+REDACTED
+
+const openAccountsModal = async (proxy: Proxy) => {
+  accountsProxy.value = proxy
+  proxyAccounts.value = []
+  accountsLoading.value = true
+  showAccountsModal.value = true
+
+  try {
+    proxyAccounts.value = await adminAPI.proxies.getProxyAccounts(proxy.id)
+  REDACTED catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.accountsFailed'))
+    console.error('Error loading proxy accounts:', error)
+  REDACTED finally {
+    accountsLoading.value = false
+  REDACTED
+REDACTED
+
+const closeAccountsModal = () => {
+  showAccountsModal.value = false
+  accountsProxy.value = null
+  proxyAccounts.value = []
 REDACTED
 
 onMounted(() => {

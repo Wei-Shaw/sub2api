@@ -22,29 +22,36 @@
             ]"
             @click="column.sortable && handleSort(column.key)"
           >
-            <div class="flex items-center space-x-1">
-              <span>{{ column.label REDACTEDREDACTED</span>
-              <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
-                <svg
-                  v-if="sortKey === column.key"
-                  class="h-4 w-4"
-                  :class="{ 'rotate-180 transform': sortOrder === 'desc' REDACTED"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-                <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                  />
-                </svg>
-              </span>
-            </div>
+            <slot
+              :name="`header-${column.keyREDACTED`"
+              :column="column"
+              :sort-key="sortKey"
+              :sort-order="sortOrder"
+            >
+              <div class="flex items-center space-x-1">
+                <span>{{ column.label REDACTEDREDACTED</span>
+                <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
+                  <svg
+                    v-if="sortKey === column.key"
+                    class="h-4 w-4"
+                    :class="{ 'rotate-180 transform': sortOrder === 'desc' REDACTED"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                    />
+                  </svg>
+                </span>
+              </div>
+            </slot>
           </th>
         </tr>
       </thead>
