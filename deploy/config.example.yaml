@@ -429,9 +429,6 @@ rate_limit:
   # Cooldown time (in minutes) when upstream returns 529 (overloaded)
   # 上游返回 529（过载）时的冷却时间（分钟）
   overload_cooldown_minutes: 10
-  # Cooldown time (in minutes) for OAuth 401 temporary unschedulable
-  # OAuth 401 临时不可调度冷却时间（分钟）
-  oauth_401_cooldown_minutes: 5
 
 # =============================================================================
 # Pricing Data Source (Optional)
