@@ -82,9 +82,22 @@ REDACTED{
 				if err := json.Unmarshal([]byte(result), &payload); err != nil {
 					t.Fatalf("Failed to parse result: %v", err)
 			REDACTED
-				delta := payload["delta"].(map[string]any)
-				toolCalls := delta["tool_calls"].([]any)
-				functionCall := toolCalls[0].(map[string]any)["function"].(map[string]any)
+				delta, ok := payload["delta"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid delta format")
+			REDACTED
+				toolCalls, ok := delta["tool_calls"].([]any)
+				if !ok || len(toolCalls) == 0 {
+					t.Fatal("No tool_calls found in delta")
+			REDACTED
+				toolCall, ok := toolCalls[0].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid tool_call format")
+			REDACTED
+				functionCall, ok := toolCall["function"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid function format")
+			REDACTED
 				if functionCall["name"] != "grep" {
 					t.Errorf("Expected tool name 'grep', got '%v'", functionCall["name"])
 			REDACTED
@@ -99,10 +112,30 @@ REDACTED{
 				if err := json.Unmarshal([]byte(result), &payload); err != nil {
 					t.Fatalf("Failed to parse result: %v", err)
 			REDACTED
-				choices := payload["choices"].([]any)
-				message := choices[0].(map[string]any)["message"].(map[string]any)
-				toolCalls := message["tool_calls"].([]any)
-				functionCall := toolCalls[0].(map[string]any)["function"].(map[string]any)
+				choices, ok := payload["choices"].([]any)
+				if !ok || len(choices) == 0 {
+					t.Fatal("No choices found in result")
+			REDACTED
+				choice, ok := choices[0].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid choice format")
+			REDACTED
+				message, ok := choice["message"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid message format")
+			REDACTED
+				toolCalls, ok := message["tool_calls"].([]any)
+				if !ok || len(toolCalls) == 0 {
+					t.Fatal("No tool_calls found in message")
+			REDACTED
+				toolCall, ok := toolCalls[0].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid tool_call format")
+			REDACTED
+				functionCall, ok := toolCall["function"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid function format")
+			REDACTED
 				if functionCall["name"] != "glob" {
 					t.Errorf("Expected tool name 'glob', got '%v'", functionCall["name"])
 			REDACTED
@@ -122,14 +155,31 @@ REDACTED{
 				if err := json.Unmarshal([]byte(result), &payload); err != nil {
 					t.Fatalf("Failed to parse result: %v", err)
 			REDACTED
-				toolCalls := payload["tool_calls"].([]any)
+				toolCalls, ok := payload["tool_calls"].([]any)
+				if !ok || len(toolCalls) < 2 {
+					t.Fatal("Expected at least 2 tool_calls")
+			REDACTED
 
-				func1 := toolCalls[0].(map[string]any)["function"].(map[string]any)
+				toolCall1, ok := toolCalls[0].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid first tool_call format")
+			REDACTED
+				func1, ok := toolCall1["function"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid first function format")
+			REDACTED
 				if func1["name"] != "edit" {
 					t.Errorf("Expected first tool name 'edit', got '%v'", func1["name"])
 			REDACTED
 
-				func2 := toolCalls[1].(map[string]any)["function"].(map[string]any)
+				toolCall2, ok := toolCalls[1].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid second tool_call format")
+			REDACTED
+				func2, ok := toolCall2["function"].(map[string]any)
+				if !ok {
+					t.Fatal("Invalid second function format")
+			REDACTED
 				if func2["name"] != "read" {
 					t.Errorf("Expected second tool name 'read', got '%v'", func2["name"])
 			REDACTED
@@ -326,10 +376,30 @@ REDACTED
 		t.Fatalf("Failed to parse result: %v", err)
 REDACTED
 
-	choices := payload["choices"].([]any)
-	delta := choices[0].(map[string]any)["delta"].(map[string]any)
-	toolCalls := delta["tool_calls"].([]any)
-	function := toolCalls[0].(map[string]any)["function"].(map[string]any)
+	choices, ok := payload["choices"].([]any)
+	if !ok || len(choices) == 0 {
+		t.Fatal("No choices found in result")
+REDACTED
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		t.Fatal("Invalid choice format")
+REDACTED
+	delta, ok := choice["delta"].(map[string]any)
+	if !ok {
+		t.Fatal("Invalid delta format")
+REDACTED
+	toolCalls, ok := delta["tool_calls"].([]any)
+	if !ok || len(toolCalls) == 0 {
+		t.Fatal("No tool_calls found in delta")
+REDACTED
+	toolCall, ok := toolCalls[0].(map[string]any)
+	if !ok {
+		t.Fatal("Invalid tool_call format")
+REDACTED
+	function, ok := toolCall["function"].(map[string]any)
+	if !ok {
+		t.Fatal("Invalid function format")
+REDACTED
 
 	if function["name"] != "edit" {
 		t.Errorf("Expected tool name 'edit', got '%v'", function["name"])
