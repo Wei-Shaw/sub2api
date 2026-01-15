@@ -42,7 +42,7 @@
       <!-- Row: Concurrency + Throughput -->
       <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div class="lg:col-span-1 min-h-[360px]">
-          <OpsConcurrencyCard :platform-filter="platform" :group-id-filter="groupId" />
+          <OpsConcurrencyCard :platform-filter="platform" :group-id-filter="groupId" :refresh-token="dashboardRefreshToken" />
         </div>
         <div class="lg:col-span-2 min-h-[360px]">
           <OpsThroughputTrendChart
@@ -352,6 +352,9 @@ const autoRefreshEnabled = ref(false)
 const autoRefreshIntervalMs = ref(30000) // default 30 seconds
 const autoRefreshCountdown = ref(0)
 
+// Used to trigger child component refreshes in a single shared cadence.
+const dashboardRefreshToken = ref(0)
+
 // Auto refresh timer
 const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useIntervalFn(
   () => {
@@ -597,7 +600,12 @@ async function fetchData() {
       refreshErrorDistributionWithCancel(fetchSeq, dashboardFetchController.signal)
     ])
     if (fetchSeq !== dashboardFetchSeq) return
+
     lastUpdated.value = new Date()
+
+    // Trigger child component refreshes using the same cadence as the header.
+    dashboardRefreshToken.value += 1
+
     // Reset auto refresh countdown after successful fetch
     if (autoRefreshEnabled.value) {
       autoRefreshCountdown.value = Math.floor(autoRefreshIntervalMs.value / 1000)

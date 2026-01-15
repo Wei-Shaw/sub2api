@@ -414,7 +414,7 @@ const handleScroll = () => {
   menu.show = false
 REDACTED
 
-onMounted(async () => { load(); try { const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()]); proxies.value = p; groups.value = g REDACTED catch (error) { console.error('Failed to load proxies/groups:', error) REDACTED; window.addEventListener('scroll', handleScroll, true) REDACTED)
+onMounted(async () => { load(); try { const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()]); proxies.value = p; groups.value = g REDACTED catch (error) { console.error('Failed to load proxies/groups:', error) REDACTED window.addEventListener('scroll', handleScroll, true) REDACTED)
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll, true)

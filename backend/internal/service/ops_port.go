@@ -235,6 +235,9 @@ type OpsUpsertJobHeartbeatInput struct {
 	LastErrorAt    *time.Time
 	LastError      *string
 	LastDurationMs *int64
+
+	// LastResult is an optional human-readable summary of the last successful run.
+	LastResult *string
 REDACTED
 
 type OpsJobHeartbeat struct {
@@ -245,6 +248,7 @@ type OpsJobHeartbeat struct {
 	LastErrorAt    *time.Time `json:"last_error_at"`
 	LastError      *string    `json:"last_error"`
 	LastDurationMs *int64     `json:"last_duration_ms"`
+	LastResult     *string    `json:"last_result"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 REDACTED

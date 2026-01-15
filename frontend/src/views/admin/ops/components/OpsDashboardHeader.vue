@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch REDACTED from 'vue'
-import { useIntervalFn REDACTED from '@vueuse/core'
+import { computed, onMounted, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
@@ -315,31 +314,33 @@ watch(
   { immediate: true REDACTED
 )
 
-const { pause: pauseRealtimeTrafficRefresh, resume: resumeRealtimeTrafficRefresh REDACTED = useIntervalFn(
-  () => {
-    loadRealtimeTrafficSummary()
-  REDACTED,
-  5000,
-  { immediate: false REDACTED
-)
-
 watch(
   () => adminSettingsStore.opsRealtimeMonitoringEnabled,
   (enabled) => {
-    if (enabled) {
-      resumeRealtimeTrafficRefresh()
-    REDACTED else {
-      pauseRealtimeTrafficRefresh()
+    if (!enabled) {
       // Keep UI stable when realtime monitoring is turned off.
       realtimeTrafficSummary.value = makeZeroRealtimeTrafficSummary()
+    REDACTED else {
+      loadRealtimeTrafficSummary()
     REDACTED
   REDACTED,
   { immediate: true REDACTED
 )
 
-onUnmounted(() => {
-  pauseRealtimeTrafficRefresh()
-REDACTED)
+// Realtime traffic refresh follows the parent (OpsDashboard) refresh cadence.
+watch(
+  () => [props.autoRefreshEnabled, props.autoRefreshCountdown, props.loading] as const,
+  ([enabled, countdown, loading]) => {
+    if (!enabled) return
+    if (loading) return
+    // Treat countdown reset (or reaching 0) as a refresh boundary.
+    if (countdown === 0) {
+      loadRealtimeTrafficSummary()
+    REDACTED
+  REDACTED
+)
+
+// no-op: parent controls refresh cadence
 
 const displayRealTimeQps = computed(() => {
   const v = realtimeTrafficSummary.value?.qps?.current
@@ -1442,7 +1443,7 @@ REDACTED
         <!-- MEM -->
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
-            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.mem') REDACTEDREDACTED</div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.memory') REDACTEDREDACTED</div>
             <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.memory')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="memPercentClass">
@@ -1545,7 +1546,10 @@ REDACTED
         >
           <div class="flex items-center justify-between gap-3">
             <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ hb.job_name REDACTEDREDACTED</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatTimeShort(hb.updated_at) REDACTEDREDACTED</div>
+            <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+              <span v-if="hb.last_duration_ms != null" class="font-mono">{{ hb.last_duration_ms REDACTEDREDACTEDms</span>
+              <span>{{ formatTimeShort(hb.updated_at) REDACTEDREDACTED</span>
+            </div>
           </div>
 
           <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
@@ -1554,6 +1558,9 @@ REDACTED
             </div>
             <div>
               {{ t('admin.ops.lastError') REDACTEDREDACTED <span class="font-mono">{{ formatTimeShort(hb.last_error_at) REDACTEDREDACTED</span>
+            </div>
+            <div>
+              {{ t('admin.ops.result') REDACTEDREDACTED <span class="font-mono">{{ hb.last_result || '-' REDACTEDREDACTED</span>
             </div>
           </div>
 

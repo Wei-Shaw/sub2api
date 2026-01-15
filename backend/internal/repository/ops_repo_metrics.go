@@ -296,9 +296,10 @@ INSERT INTO ops_job_heartbeats (
   last_error_at,
   last_error,
   last_duration_ms,
+  last_result,
   updated_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,NOW()
+  $1,$2,$3,$4,$5,$6,$7,NOW()
 )
 ON CONFLICT (job_name) DO UPDATE SET
   last_run_at = COALESCE(EXCLUDED.last_run_at, ops_job_heartbeats.last_run_at),
@@ -312,6 +313,10 @@ ON CONFLICT (job_name) DO UPDATE SET
     ELSE COALESCE(EXCLUDED.last_error, ops_job_heartbeats.last_error)
   END,
   last_duration_ms = COALESCE(EXCLUDED.last_duration_ms, ops_job_heartbeats.last_duration_ms),
+  last_result = CASE
+    WHEN EXCLUDED.last_success_at IS NOT NULL THEN COALESCE(EXCLUDED.last_result, ops_job_heartbeats.last_result)
+    ELSE ops_job_heartbeats.last_result
+  END,
   updated_at = NOW()`
 
 	_, err := r.db.ExecContext(
@@ -323,6 +328,7 @@ ON CONFLICT (job_name) DO UPDATE SET
 		opsNullTime(input.LastErrorAt),
 		opsNullString(input.LastError),
 		opsNullInt(input.LastDurationMs),
+		opsNullString(input.LastResult),
 	)
 	return err
 REDACTED
@@ -340,6 +346,7 @@ SELECT
   last_error_at,
   last_error,
   last_duration_ms,
+  last_result,
   updated_at
 FROM ops_job_heartbeats
 ORDER BY job_name ASC`
@@ -359,6 +366,8 @@ REDACTED
 		var lastError sql.NullString
 		var lastDuration sql.NullInt64
 
+		var lastResult sql.NullString
+
 		if err := rows.Scan(
 			&item.JobName,
 			&lastRun,
@@ -366,6 +375,7 @@ REDACTED
 			&lastErrorAt,
 			&lastError,
 			&lastDuration,
+			&lastResult,
 			&item.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -390,6 +400,10 @@ REDACTED
 		if lastDuration.Valid {
 			v := lastDuration.Int64
 			item.LastDurationMs = &v
+	REDACTED
+		if lastResult.Valid {
+			v := lastResult.String
+			item.LastResult = &v
 	REDACTED
 
 		out = append(out, &item)
