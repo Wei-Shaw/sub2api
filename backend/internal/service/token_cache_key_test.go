@@ -22,7 +22,7 @@ REDACTED{
 					"project_id": "my-project-123",
 			REDACTED,
 		REDACTED,
-			expected: "my-project-123",
+			expected: "gemini:my-project-123",
 	REDACTED,
 		{
 			name: "project_id_with_whitespace",
@@ -32,7 +32,7 @@ REDACTED{
 					"project_id": "  project-with-spaces  ",
 			REDACTED,
 		REDACTED,
-			expected: "project-with-spaces",
+			expected: "gemini:project-with-spaces",
 	REDACTED,
 		{
 			name: "empty_project_id_fallback_to_account_id",
@@ -42,7 +42,7 @@ REDACTED{
 					"project_id": "",
 			REDACTED,
 		REDACTED,
-			expected: "account:102",
+			expected: "gemini:account:102",
 	REDACTED,
 		{
 			name: "whitespace_only_project_id_fallback_to_account_id",
@@ -52,7 +52,7 @@ REDACTED{
 					"project_id": "   ",
 			REDACTED,
 		REDACTED,
-			expected: "account:103",
+			expected: "gemini:account:103",
 	REDACTED,
 		{
 			name: "no_project_id_key_fallback_to_account_id",
@@ -60,7 +60,7 @@ REDACTED{
 				ID:          104,
 		REDACTEDREDACTED,
 		REDACTED,
-			expected: "account:104",
+			expected: "gemini:account:104",
 	REDACTED,
 		{
 			name: "nil_credentials_fallback_to_account_id",
@@ -68,7 +68,7 @@ REDACTED{
 				ID:          105,
 				Credentials: nil,
 		REDACTED,
-			expected: "account:105",
+			expected: "gemini:account:105",
 	REDACTED,
 REDACTED
 
@@ -150,4 +150,110 @@ REDACTED
 			require.Equal(t, tt.expected, result)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestOpenAITokenCacheKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  *Account
+		expected string
+REDACTED{
+		{
+			name: "basic_account",
+			account: &Account{
+				ID: 300,
+		REDACTED,
+			expected: "openai:account:300",
+	REDACTED,
+		{
+			name: "account_with_credentials",
+			account: &Account{
+				ID: 301,
+		REDACTED
+					"access_token": "test-token",
+			REDACTED,
+		REDACTED,
+			expected: "openai:account:301",
+	REDACTED,
+		{
+			name: "account_id_zero",
+			account: &Account{
+				ID: 0,
+		REDACTED,
+			expected: "openai:account:0",
+	REDACTED,
+		{
+			name: "large_account_id",
+			account: &Account{
+				ID: 9999999999,
+		REDACTED,
+			expected: "openai:account:9999999999",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := OpenAITokenCacheKey(tt.account)
+			require.Equal(t, tt.expected, result)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestClaudeTokenCacheKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  *Account
+		expected string
+REDACTED{
+		{
+			name: "basic_account",
+			account: &Account{
+				ID: 400,
+		REDACTED,
+			expected: "claude:account:400",
+	REDACTED,
+		{
+			name: "account_with_credentials",
+			account: &Account{
+				ID: 401,
+		REDACTED
+					"access_token": "claude-token",
+			REDACTED,
+		REDACTED,
+			expected: "claude:account:401",
+	REDACTED,
+		{
+			name: "account_id_zero",
+			account: &Account{
+				ID: 0,
+		REDACTED,
+			expected: "claude:account:0",
+	REDACTED,
+		{
+			name: "large_account_id",
+			account: &Account{
+				ID: 9999999999,
+		REDACTED,
+			expected: "claude:account:9999999999",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ClaudeTokenCacheKey(tt.account)
+			require.Equal(t, tt.expected, result)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestCacheKeyUniqueness(t *testing.T) {
+	// 确保不同平台的缓存键不会冲突
+	account := &Account{ID: 123REDACTED
+
+	openaiKey := OpenAITokenCacheKey(account)
+	claudeKey := ClaudeTokenCacheKey(account)
+
+	require.NotEqual(t, openaiKey, claudeKey, "OpenAI and Claude cache keys should be different")
+	require.Contains(t, openaiKey, "openai:")
+	require.Contains(t, claudeKey, "claude:")
 REDACTED

@@ -93,6 +93,7 @@ type OpenAIGatewayService struct {
 	billingCacheService *BillingCacheService
 	httpUpstream        HTTPUpstream
 	deferredService     *DeferredService
+	openAITokenProvider *OpenAITokenProvider
 REDACTED
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -110,6 +111,7 @@ func NewOpenAIGatewayService(
 	billingCacheService *BillingCacheService,
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
+	openAITokenProvider *OpenAITokenProvider,
 ) *OpenAIGatewayService {
 	return &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -125,6 +127,7 @@ func NewOpenAIGatewayService(
 		billingCacheService: billingCacheService,
 		httpUpstream:        httpUpstream,
 		deferredService:     deferredService,
+		openAITokenProvider: openAITokenProvider,
 REDACTED
 REDACTED
 
@@ -503,6 +506,15 @@ REDACTED
 func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Account) (string, string, error) {
 	switch account.Type {
 	case AccountTypeOAuth:
+		// 使用 TokenProvider 获取缓存的 token
+		if s.openAITokenProvider != nil {
+			accessToken, err := s.openAITokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return "", "", err
+		REDACTED
+			return accessToken, "oauth", nil
+	REDACTED
+		// 降级：TokenProvider 未配置时直接从账号读取
 		accessToken := account.GetOpenAIAccessToken()
 		if accessToken == "" {
 			return "", "", errors.New("access_token not found in credentials")

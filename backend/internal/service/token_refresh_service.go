@@ -172,8 +172,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			if err := s.accountRepo.Update(ctx, account); err != nil {
 				return fmt.Errorf("failed to save credentials: %w", err)
 		REDACTED
-			if s.cacheInvalidator != nil && account.Type == AccountTypeOAuth &&
-				(account.Platform == PlatformGemini || account.Platform == PlatformAntigravity) {
+			// 对所有 OAuth 账号调用缓存失效（InvalidateToken 内部根据平台判断是否需要处理）
+			if s.cacheInvalidator != nil && account.Type == AccountTypeOAuth {
 				if err := s.cacheInvalidator.InvalidateToken(ctx, account); err != nil {
 					log.Printf("[TokenRefresh] Failed to invalidate token cache for account %d: %v", account.ID, err)
 			REDACTED else {

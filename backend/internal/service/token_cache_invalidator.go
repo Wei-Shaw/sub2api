@@ -7,29 +7,35 @@ type TokenCacheInvalidator interface {
 REDACTED
 
 type CompositeTokenCacheInvalidator struct {
-	geminiCache GeminiTokenCache
+	cache GeminiTokenCache // 统一使用一个缓存接口，通过缓存键前缀区分平台
 REDACTED
 
-func NewCompositeTokenCacheInvalidator(geminiCache GeminiTokenCache) *CompositeTokenCacheInvalidator {
+func NewCompositeTokenCacheInvalidator(cache GeminiTokenCache) *CompositeTokenCacheInvalidator {
 	return &CompositeTokenCacheInvalidator{
-		geminiCache: geminiCache,
+		cache: cache,
 REDACTED
 REDACTED
 
 func (c *CompositeTokenCacheInvalidator) InvalidateToken(ctx context.Context, account *Account) error {
-	if c == nil || c.geminiCache == nil || account == nil {
+	if c == nil || c.cache == nil || account == nil {
 		return nil
 REDACTED
 	if account.Type != AccountTypeOAuth {
 		return nil
 REDACTED
 
+	var cacheKey string
 	switch account.Platform {
 	case PlatformGemini:
-		return c.geminiCache.DeleteAccessToken(ctx, GeminiTokenCacheKey(account))
+		cacheKey = GeminiTokenCacheKey(account)
 	case PlatformAntigravity:
-		return c.geminiCache.DeleteAccessToken(ctx, AntigravityTokenCacheKey(account))
+		cacheKey = AntigravityTokenCacheKey(account)
+	case PlatformOpenAI:
+		cacheKey = OpenAITokenCacheKey(account)
+	case PlatformAnthropic:
+		cacheKey = ClaudeTokenCacheKey(account)
 	default:
 		return nil
 REDACTED
+	return c.cache.DeleteAccessToken(ctx, cacheKey)
 REDACTED
