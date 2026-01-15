@@ -33,6 +33,11 @@ type stubConcurrencyCache struct {
 	ConcurrencyCache
 REDACTED
 
+type cancelReadCloser struct{REDACTED
+
+func (c cancelReadCloser) Read(p []byte) (int, error) { return 0, context.Canceled REDACTED
+func (c cancelReadCloser) Close() error               { return nil REDACTED
+
 func (c stubConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	return true, nil
 REDACTED
@@ -171,6 +176,38 @@ REDACTED
 REDACTED
 	if !strings.Contains(rec.Body.String(), "stream_timeout") {
 		t.Fatalf("expected stream_timeout SSE error, got %q", rec.Body.String())
+REDACTED
+REDACTED
+
+func TestOpenAIStreamingContextCanceledDoesNotInjectErrorEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       cancelReadCloser{REDACTED,
+		Header:     http.Header{REDACTED,
+REDACTED
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+REDACTED
+	if strings.Contains(rec.Body.String(), "event: error") || strings.Contains(rec.Body.String(), "stream_read_error") {
+		t.Fatalf("expected no injected SSE error event, got %q", rec.Body.String())
 REDACTED
 REDACTED
 
