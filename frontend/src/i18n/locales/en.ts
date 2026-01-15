@@ -1634,6 +1634,7 @@ export default {
         name: 'Name',
         protocol: 'Protocol',
         address: 'Address',
+        location: 'Location',
         status: 'Status',
         accounts: 'Accounts',
         latency: 'Latency',
