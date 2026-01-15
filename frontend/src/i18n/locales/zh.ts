@@ -1719,6 +1719,7 @@ export default {
         name: '名称',
         protocol: '协议',
         address: '地址',
+        location: '地理位置',
         status: '状态',
         accounts: '账号数',
         latency: '延迟',
