@@ -3,11 +3,11 @@
     <TablePageLayout>
       <!-- Single Row: Search, Filters, and Actions -->
       <template #filters>
-        <div class="flex w-full flex-wrap-reverse items-center justify-between gap-4">
+        <div class="flex w-full flex-col gap-3 md:flex-row md:flex-wrap-reverse md:items-center md:justify-between md:gap-4">
           <!-- Left: Search + Active Filters -->
-          <div class="flex min-w-[280px] flex-1 flex-wrap content-start items-center gap-3">
+          <div class="flex min-w-[280px] flex-1 flex-wrap content-start items-center gap-3 md:order-1">
             <!-- Search Box -->
-            <div class="relative w-full sm:w-64">
+            <div class="relative w-full md:w-64">
               <Icon
                 name="search"
                 size="md"
@@ -100,109 +100,119 @@
           </div>
 
           <!-- Right: Actions and Settings -->
-          <div class="ml-auto flex max-w-full flex-wrap items-center justify-end gap-3">
-            <!-- Refresh Button -->
-            <button
-              @click="loadUsers"
-              :disabled="loading"
-              class="btn btn-secondary"
-              :title="t('common.refresh')"
-            >
-              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            </button>
-            <!-- Filter Settings Dropdown -->
-            <div class="relative" ref="filterDropdownRef">
+          <div class="flex w-full items-center justify-between gap-2 md:order-2 md:ml-auto md:max-w-full md:flex-wrap md:justify-end md:gap-3">
+            <!-- Mobile: Secondary buttons (icon only) -->
+            <div class="flex items-center gap-2 md:contents">
+              <!-- Refresh Button -->
               <button
-                @click="showFilterDropdown = !showFilterDropdown"
-                class="btn btn-secondary"
+                @click="loadUsers"
+                :disabled="loading"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('common.refresh')"
               >
-                <Icon name="filter" size="sm" class="mr-1.5" />
-                {{ t('admin.users.filterSettings') REDACTEDREDACTED
+                <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
               </button>
-              <!-- Dropdown menu -->
-              <div
-                v-if="showFilterDropdown"
-                class="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
-              >
-                <!-- Built-in filters -->
+              <!-- Filter Settings Dropdown -->
+              <div class="relative" ref="filterDropdownRef">
                 <button
-                  v-for="filter in builtInFilters"
-                  :key="filter.key"
-                  @click="toggleBuiltInFilter(filter.key)"
-                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                  @click="showFilterDropdown = !showFilterDropdown"
+                  class="btn btn-secondary px-2 md:px-3"
+                  :title="t('admin.users.filterSettings')"
                 >
-                  <span>{{ filter.name REDACTEDREDACTED</span>
-                  <Icon
-                    v-if="visibleFilters.has(filter.key)"
-                    name="check"
-                    size="sm"
-                    class="text-primary-500"
-                    :stroke-width="2"
-                  />
+                  <Icon name="filter" size="sm" class="md:mr-1.5" />
+                  <span class="hidden md:inline">{{ t('admin.users.filterSettings') REDACTEDREDACTED</span>
                 </button>
-                <!-- Divider if custom attributes exist -->
+                <!-- Dropdown menu -->
                 <div
-                  v-if="filterableAttributes.length > 0"
-                  class="my-1 border-t border-gray-100 dark:border-dark-700"
-                ></div>
-                <!-- Custom attribute filters -->
-                <button
-                  v-for="attr in filterableAttributes"
-                  :key="attr.id"
-                  @click="toggleAttributeFilter(attr)"
-                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                  v-if="showFilterDropdown"
+                  class="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
                 >
-                  <span>{{ attr.name REDACTEDREDACTED</span>
-                  <Icon
-                    v-if="visibleFilters.has(`attr_${attr.idREDACTED`)"
-                    name="check"
-                    size="sm"
-                    class="text-primary-500"
-                    :stroke-width="2"
-                  />
-                </button>
+                  <!-- Built-in filters -->
+                  <button
+                    v-for="filter in builtInFilters"
+                    :key="filter.key"
+                    @click="toggleBuiltInFilter(filter.key)"
+                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                  >
+                    <span>{{ filter.name REDACTEDREDACTED</span>
+                    <Icon
+                      v-if="visibleFilters.has(filter.key)"
+                      name="check"
+                      size="sm"
+                      class="text-primary-500"
+                      :stroke-width="2"
+                    />
+                  </button>
+                  <!-- Divider if custom attributes exist -->
+                  <div
+                    v-if="filterableAttributes.length > 0"
+                    class="my-1 border-t border-gray-100 dark:border-dark-700"
+                  ></div>
+                  <!-- Custom attribute filters -->
+                  <button
+                    v-for="attr in filterableAttributes"
+                    :key="attr.id"
+                    @click="toggleAttributeFilter(attr)"
+                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                  >
+                    <span>{{ attr.name REDACTEDREDACTED</span>
+                    <Icon
+                      v-if="visibleFilters.has(`attr_${attr.idREDACTED`)"
+                      name="check"
+                      size="sm"
+                      class="text-primary-500"
+                      :stroke-width="2"
+                    />
+                  </button>
+                </div>
               </div>
-            </div>
-            <!-- Column Settings Dropdown -->
-            <div class="relative" ref="columnDropdownRef">
+              <!-- Column Settings Dropdown -->
+              <div class="relative" ref="columnDropdownRef">
+                <button
+                  @click="showColumnDropdown = !showColumnDropdown"
+                  class="btn btn-secondary px-2 md:px-3"
+                  :title="t('admin.users.columnSettings')"
+                >
+                  <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                  <span class="hidden md:inline">{{ t('admin.users.columnSettings') REDACTEDREDACTED</span>
+                </button>
+                <!-- Dropdown menu -->
+                <div
+                  v-if="showColumnDropdown"
+                  class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                >
+                  <button
+                    v-for="col in toggleableColumns"
+                    :key="col.key"
+                    @click="toggleColumn(col.key)"
+                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                  >
+                    <span>{{ col.label REDACTEDREDACTED</span>
+                    <Icon
+                      v-if="isColumnVisible(col.key)"
+                      name="check"
+                      size="sm"
+                      class="text-primary-500"
+                      :stroke-width="2"
+                    />
+                  </button>
+                </div>
+              </div>
+              <!-- Attributes Config Button -->
               <button
-                @click="showColumnDropdown = !showColumnDropdown"
-                class="btn btn-secondary"
+                @click="showAttributesModal = true"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.attributes.configButton')"
               >
-                <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-                </svg>
-                {{ t('admin.users.columnSettings') REDACTEDREDACTED
+                <Icon name="cog" size="sm" class="md:mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.users.attributes.configButton') REDACTEDREDACTED</span>
               </button>
-              <!-- Dropdown menu -->
-              <div
-                v-if="showColumnDropdown"
-                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
-              >
-                <button
-                  v-for="col in toggleableColumns"
-                  :key="col.key"
-                  @click="toggleColumn(col.key)"
-                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
-                >
-                  <span>{{ col.label REDACTEDREDACTED</span>
-                  <Icon
-                    v-if="isColumnVisible(col.key)"
-                    name="check"
-                    size="sm"
-                    class="text-primary-500"
-                    :stroke-width="2"
-                  />
-                </button>
-              </div>
             </div>
-            <!-- Attributes Config Button -->
-            <button @click="showAttributesModal = true" class="btn btn-secondary">
-              <Icon name="cog" size="sm" class="mr-1.5" />
-              {{ t('admin.users.attributes.configButton') REDACTEDREDACTED
-            </button>
-            <!-- Create User Button -->
-            <button @click="showCreateModal = true" class="btn btn-primary">
+
+            <!-- Create User Button (full width on mobile, auto width on desktop) -->
+            <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.users.createUser') REDACTEDREDACTED
             </button>
@@ -362,8 +372,7 @@
 
               <!-- More Actions Menu Trigger -->
               <button
-                :ref="(el) => setActionButtonRef(row.id, el)"
-                @click="openActionMenu(row)"
+                @click="openActionMenu(row, $event)"
                 class="action-menu-trigger flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-dark-700 dark:hover:text-white"
                 :class="{ 'bg-gray-100 text-gray-900 dark:bg-dark-700 dark:text-white': activeMenuId === row.id REDACTED"
               >
@@ -475,7 +484,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { formatDateTime REDACTED from '@/utils/format'
@@ -735,42 +744,56 @@ let abortController: AbortController | null = null
 // Action Menu State
 const activeMenuId = ref<number | null>(null)
 const menuPosition = ref<{ top: number; left: number REDACTED | null>(null)
-const actionButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 
-const setActionButtonRef = (userId: number, el: Element | ComponentPublicInstance | null) => {
-  if (el instanceof HTMLElement) {
-    actionButtonRefs.value.set(userId, el)
-  REDACTED else {
-    actionButtonRefs.value.delete(userId)
-  REDACTED
-REDACTED
-
-const openActionMenu = (user: User) => {
+const openActionMenu = (user: User, e: MouseEvent) => {
   if (activeMenuId.value === user.id) {
     closeActionMenu()
   REDACTED else {
-    const buttonEl = actionButtonRefs.value.get(user.id)
-    if (buttonEl) {
-      const rect = buttonEl.getBoundingClientRect()
-      const menuWidth = 192
-      const menuHeight = 240
-      const padding = 8
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
-      const left = Math.min(
-        Math.max(rect.right - menuWidth, padding),
-        Math.max(viewportWidth - menuWidth - padding, padding)
-      )
-      let top = rect.bottom + 4
+    const target = e.currentTarget as HTMLElement
+    if (!target) {
+      closeActionMenu()
+      return
+    REDACTED
+
+    const rect = target.getBoundingClientRect()
+    const menuWidth = 200
+    const menuHeight = 240
+    const padding = 8
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+
+    let left, top
+
+    if (viewportWidth < 768) {
+      // 居中显示,水平位置
+      left = Math.max(padding, Math.min(
+        rect.left + rect.width / 2 - menuWidth / 2,
+        viewportWidth - menuWidth - padding
+      ))
+
+      // 优先显示在按钮下方
+      top = rect.bottom + 4
+
+      // 如果下方空间不够,显示在上方
       if (top + menuHeight > viewportHeight - padding) {
-        top = Math.max(rect.top - menuHeight - 4, padding)
+        top = rect.top - menuHeight - 4
+        // 如果上方也不够,就贴在视口顶部
+        if (top < padding) {
+          top = padding
+        REDACTED
       REDACTED
-      // Position menu near the trigger, clamped to viewport
-      menuPosition.value = {
-        top,
-        left
+    REDACTED else {
+      left = Math.max(padding, Math.min(
+        e.clientX - menuWidth,
+        viewportWidth - menuWidth - padding
+      ))
+      top = e.clientY
+      if (top + menuHeight > viewportHeight - padding) {
+        top = viewportHeight - menuHeight - padding
       REDACTED
     REDACTED
+
+    menuPosition.value = { top, left REDACTED
     activeMenuId.value = user.id
   REDACTED
 REDACTED
@@ -1054,16 +1077,24 @@ const closeBalanceModal = () => {
   showBalanceModal.value = false
   balanceUser.value = null
 REDACTED
+
+// 滚动时关闭菜单
+const handleScroll = () => {
+  closeActionMenu()
+REDACTED
+
 onMounted(async () => {
   await loadAttributeDefinitions()
   loadSavedFilters()
   loadSavedColumns()
   loadUsers()
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('scroll', handleScroll, true)
 REDACTED)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('scroll', handleScroll, true)
   clearTimeout(searchTimeout)
   abortController?.abort()
 REDACTED)

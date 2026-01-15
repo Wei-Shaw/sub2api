@@ -208,6 +208,25 @@ REDACTED
 				out.Detail = ""
 		REDACTED
 
+			out.UpstreamRequestBody = strings.TrimSpace(out.UpstreamRequestBody)
+			if out.UpstreamRequestBody != "" {
+				// Reuse the same sanitization/trimming strategy as request body storage.
+				// Keep it small so it is safe to persist in ops_error_logs JSON.
+				sanitized, truncated, _ := sanitizeAndTrimRequestBody([]byte(out.UpstreamRequestBody), 10*1024)
+				if sanitized != "" {
+					out.UpstreamRequestBody = sanitized
+					if truncated {
+						out.Kind = strings.TrimSpace(out.Kind)
+						if out.Kind == "" {
+							out.Kind = "upstream"
+					REDACTED
+						out.Kind = out.Kind + ":request_body_truncated"
+				REDACTED
+			REDACTED else {
+					out.UpstreamRequestBody = ""
+			REDACTED
+		REDACTED
+
 			// Drop fully-empty events (can happen if only status code was known).
 			if out.UpstreamStatusCode == 0 && out.Message == "" && out.Detail == "" {
 				continue
@@ -236,7 +255,13 @@ REDACTED
 	if s.opsRepo == nil {
 		return &OpsErrorLogList{Errors: []*OpsErrorLog{REDACTED, Total: 0, Page: 1, PageSize: 20REDACTED, nil
 REDACTED
-	return s.opsRepo.ListErrorLogs(ctx, filter)
+	result, err := s.opsRepo.ListErrorLogs(ctx, filter)
+	if err != nil {
+		log.Printf("[Ops] GetErrorLogs failed: %v", err)
+		return nil, err
+REDACTED
+
+	return result, nil
 REDACTED
 
 func (s *OpsService) GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error) {
@@ -254,6 +279,46 @@ REDACTED
 		return nil, infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
 REDACTED
 	return detail, nil
+REDACTED
+
+func (s *OpsService) ListRetryAttemptsByErrorID(ctx context.Context, errorID int64, limit int) ([]*OpsRetryAttempt, error) {
+	if err := s.RequireMonitoringEnabled(ctx); err != nil {
+		return nil, err
+REDACTED
+	if s.opsRepo == nil {
+		return nil, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
+REDACTED
+	if errorID <= 0 {
+		return nil, infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")
+REDACTED
+	items, err := s.opsRepo.ListRetryAttemptsByErrorID(ctx, errorID, limit)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []*OpsRetryAttempt{REDACTED, nil
+	REDACTED
+		return nil, infraerrors.InternalServer("OPS_RETRY_LIST_FAILED", "Failed to list retry attempts").WithCause(err)
+REDACTED
+	return items, nil
+REDACTED
+
+func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64) error {
+	if err := s.RequireMonitoringEnabled(ctx); err != nil {
+		return err
+REDACTED
+	if s.opsRepo == nil {
+		return infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
+REDACTED
+	if errorID <= 0 {
+		return infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")
+REDACTED
+	// Best-effort ensure the error exists
+	if _, err := s.opsRepo.GetErrorLogByID(ctx, errorID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return infraerrors.NotFound("OPS_ERROR_NOT_FOUND", "ops error log not found")
+	REDACTED
+		return infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
+REDACTED
+	return s.opsRepo.UpdateErrorResolution(ctx, errorID, resolved, resolvedByUserID, resolvedRetryID, nil)
 REDACTED
 
 func sanitizeAndTrimRequestBody(raw []byte, maxBytes int) (jsonString string, truncated bool, bytesLen int) {
@@ -296,14 +361,34 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Last resort: store a minimal placeholder (still valid JSON).
-	placeholder := map[string]any{
-		"request_body_truncated": true,
+	// Last resort: keep JSON shape but drop big fields.
+	// This avoids downstream code that expects certain top-level keys from crashing.
+	if root, ok := decoded.(map[string]any); ok {
+		placeholder := shallowCopyMap(root)
+		placeholder["request_body_truncated"] = true
+
+		// Replace potentially huge arrays/strings, but keep the keys present.
+		for _, k := range []string{"messages", "contents", "input", "prompt"REDACTED {
+			if _, exists := placeholder[k]; exists {
+				placeholder[k] = []any{REDACTED
+		REDACTED
+	REDACTED
+		for _, k := range []string{"text"REDACTED {
+			if _, exists := placeholder[k]; exists {
+				placeholder[k] = ""
+		REDACTED
+	REDACTED
+
+		encoded4, err4 := json.Marshal(placeholder)
+		if err4 == nil {
+			if len(encoded4) <= maxBytes {
+				return string(encoded4), true, bytesLen
+		REDACTED
+	REDACTED
 REDACTED
-	if model := extractString(decoded, "model"); model != "" {
-		placeholder["model"] = model
-REDACTED
-	encoded4, err4 := json.Marshal(placeholder)
+
+	// Final fallback: minimal valid JSON.
+	encoded4, err4 := json.Marshal(map[string]any{"request_body_truncated": trueREDACTED)
 	if err4 != nil {
 		return "", true, bytesLen
 REDACTED
@@ -525,13 +610,4 @@ REDACTED
 		return truncateString(raw, maxBytes), true
 REDACTED
 	return raw, false
-REDACTED
-
-func extractString(v any, key string) string {
-	root, ok := v.(map[string]any)
-	if !ok {
-		return ""
-REDACTED
-	s, _ := root[key].(string)
-	return strings.TrimSpace(s)
 REDACTED
