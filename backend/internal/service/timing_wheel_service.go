@@ -1,12 +1,15 @@
 package service
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/zeromicro/go-zero/core/collection"
 )
+
+var newTimingWheel = collection.NewTimingWheel
 
 // TimingWheelService wraps go-zero's TimingWheel for task scheduling
 type TimingWheelService struct {
@@ -15,18 +18,18 @@ type TimingWheelService struct {
 REDACTED
 
 // NewTimingWheelService creates a new TimingWheelService instance
-func NewTimingWheelService() *TimingWheelService {
+func NewTimingWheelService() (*TimingWheelService, error) {
 	// 1 second tick, 3600 slots = supports up to 1 hour delay
 	// execute function: runs func() type tasks
-	tw, err := collection.NewTimingWheel(1*time.Second, 3600, func(key, value any) {
+	tw, err := newTimingWheel(1*time.Second, 3600, func(key, value any) {
 		if fn, ok := value.(func()); ok {
 			fn()
 	REDACTED
 REDACTED)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("创建 timing wheel 失败: %w", err)
 REDACTED
-	return &TimingWheelService{tw: twREDACTED
+	return &TimingWheelService{tw: twREDACTED, nil
 REDACTED
 
 // Start starts the timing wheel
