@@ -599,7 +599,7 @@ REDACTED{
 			name: "Gemini平台-有映射配置-只支持配置的模型",
 			account: &Account{
 				Platform:    PlatformGemini,
-		REDACTED"model_mapping": map[string]any{"gemini-1.5-pro": "x"REDACTEDREDACTED,
+		REDACTED"model_mapping": map[string]any{"gemini-2.5-pro": "x"REDACTEDREDACTED,
 		REDACTED,
 			model:    "gemini-2.5-flash",
 			expected: false,
