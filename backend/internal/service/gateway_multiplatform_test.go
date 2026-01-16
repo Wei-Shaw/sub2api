@@ -1059,6 +1059,60 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		require.Equal(t, int64(1), result.Account.ID, "应选择优先级最高的账号")
 REDACTED)
 
+	t.Run("模型路由-无ConcurrencyService也生效", func(t *testing.T) {
+		groupID := int64(1)
+		sessionHash := "sticky"
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, AccountGroups: []AccountGroup{{GroupID: groupIDREDACTEDREDACTEDREDACTED,
+				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5, AccountGroups: []AccountGroup{{GroupID: groupIDREDACTEDREDACTEDREDACTED,
+		REDACTED,
+			accountsByID: map[int64]*Account{REDACTED,
+	REDACTED
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	REDACTED
+
+		cache := &mockGatewayCacheForPlatform{
+			sessionBindings: map[string]int64{sessionHash: 1REDACTED,
+	REDACTED
+
+		groupRepo := &mockGroupRepoForGateway{
+			groups: map[int64]*Group{
+				groupID: {
+					ID:                  groupID,
+					Platform:            PlatformAnthropic,
+					Status:              StatusActive,
+					Hydrated:            true,
+					ModelRoutingEnabled: true,
+					ModelRouting: map[string][]int64{
+						"claude-a": {1REDACTED,
+						"claude-b": {2REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			groupRepo:          groupRepo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: nil, // legacy path
+	REDACTED
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-b", nil)
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "切换到 claude-b 时应按模型路由切换账号")
+		require.Equal(t, int64(2), cache.sessionBindings[sessionHash], "粘性绑定应更新为路由选择的账号")
+REDACTED)
+
 	t.Run("无ConcurrencyService-降级到传统选择", func(t *testing.T) {
 		repo := &mockAccountRepoForPlatform{
 			accounts: []Account{
@@ -1347,6 +1401,7 @@ REDACTED
 		ID:       groupID,
 		Platform: PlatformAnthropic,
 		Status:   StatusActive,
+		Hydrated: true,
 REDACTED
 	groupRepo := &mockGroupRepoForGateway{
 		groups: map[int64]*Group{groupID: groupREDACTED,
@@ -1404,6 +1459,7 @@ REDACTED
 		ID:       fallbackID,
 		Platform: PlatformAnthropic,
 		Status:   StatusActive,
+		Hydrated: true,
 REDACTED
 	ctx = context.WithValue(ctx, ctxkey.Group, group)
 

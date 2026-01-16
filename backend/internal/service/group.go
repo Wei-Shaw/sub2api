@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type Group struct {
 	ID             int64
@@ -26,6 +29,12 @@ type Group struct {
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64
+
+	// 模型路由配置
+	// key: 模型匹配模式（支持 * 通配符，如 "claude-opus-*"）
+	// value: 优先账号 ID 列表
+	ModelRouting        map[string][]int64
+	ModelRoutingEnabled bool
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -89,4 +98,42 @@ REDACTED
 		return false
 REDACTED
 	return true
+REDACTED
+
+// GetRoutingAccountIDs 根据请求模型获取路由账号 ID 列表
+// 返回匹配的优先账号 ID 列表，如果没有匹配规则则返回 nil
+func (g *Group) GetRoutingAccountIDs(requestedModel string) []int64 {
+	if !g.ModelRoutingEnabled || len(g.ModelRouting) == 0 || requestedModel == "" {
+		return nil
+REDACTED
+
+	// 1. 精确匹配优先
+	if accountIDs, ok := g.ModelRouting[requestedModel]; ok && len(accountIDs) > 0 {
+		return accountIDs
+REDACTED
+
+	// 2. 通配符匹配（前缀匹配）
+	for pattern, accountIDs := range g.ModelRouting {
+		if matchModelPattern(pattern, requestedModel) && len(accountIDs) > 0 {
+			return accountIDs
+	REDACTED
+REDACTED
+
+	return nil
+REDACTED
+
+// matchModelPattern 检查模型是否匹配模式
+// 支持 * 通配符，如 "claude-opus-*" 匹配 "claude-opus-4-20250514"
+func matchModelPattern(pattern, model string) bool {
+	if pattern == model {
+		return true
+REDACTED
+
+	// 处理 * 通配符（仅支持末尾通配符）
+	if strings.HasSuffix(pattern, "*") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		return strings.HasPrefix(model, prefix)
+REDACTED
+
+	return false
 REDACTED

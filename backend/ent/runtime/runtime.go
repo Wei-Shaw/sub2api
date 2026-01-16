@@ -280,6 +280,10 @@ REDACTED()
 	groupDescClaudeCodeOnly := groupFields[14].Descriptor()
 	// group.DefaultClaudeCodeOnly holds the default value on creation for the claude_code_only field.
 	group.DefaultClaudeCodeOnly = groupDescClaudeCodeOnly.Default.(bool)
+	// groupDescModelRoutingEnabled is the schema descriptor for model_routing_enabled field.
+	groupDescModelRoutingEnabled := groupFields[17].Descriptor()
+	// group.DefaultModelRoutingEnabled holds the default value on creation for the model_routing_enabled field.
+	group.DefaultModelRoutingEnabled = groupDescModelRoutingEnabled.Default.(bool)
 	promocodeFields := schema.PromoCode{REDACTED.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.
