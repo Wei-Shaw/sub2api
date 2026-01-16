@@ -557,3 +557,141 @@ REDACTED
 REDACTED
 	return false
 REDACTED
+
+// WindowCostSchedulability 窗口费用调度状态
+type WindowCostSchedulability int
+
+const (
+	// WindowCostSchedulable 可正常调度
+	WindowCostSchedulable WindowCostSchedulability = iota
+	// WindowCostStickyOnly 仅允许粘性会话
+	WindowCostStickyOnly
+	// WindowCostNotSchedulable 完全不可调度
+	WindowCostNotSchedulable
+)
+
+// IsAnthropicOAuthOrSetupToken 判断是否为 Anthropic OAuth 或 SetupToken 类型账号
+// 仅这两类账号支持 5h 窗口额度控制和会话数量控制
+func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
+	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
+REDACTED
+
+// GetWindowCostLimit 获取 5h 窗口费用阈值（美元）
+// 返回 0 表示未启用
+func (a *Account) GetWindowCostLimit() float64 {
+	if a.Extra == nil {
+		return 0
+REDACTED
+	if v, ok := a.Extra["window_cost_limit"]; ok {
+		return parseExtraFloat64(v)
+REDACTED
+	return 0
+REDACTED
+
+// GetWindowCostStickyReserve 获取粘性会话预留额度（美元）
+// 默认值为 10
+func (a *Account) GetWindowCostStickyReserve() float64 {
+	if a.Extra == nil {
+		return 10.0
+REDACTED
+	if v, ok := a.Extra["window_cost_sticky_reserve"]; ok {
+		val := parseExtraFloat64(v)
+		if val > 0 {
+			return val
+	REDACTED
+REDACTED
+	return 10.0
+REDACTED
+
+// GetMaxSessions 获取最大并发会话数
+// 返回 0 表示未启用
+func (a *Account) GetMaxSessions() int {
+	if a.Extra == nil {
+		return 0
+REDACTED
+	if v, ok := a.Extra["max_sessions"]; ok {
+		return parseExtraInt(v)
+REDACTED
+	return 0
+REDACTED
+
+// GetSessionIdleTimeoutMinutes 获取会话空闲超时分钟数
+// 默认值为 5 分钟
+func (a *Account) GetSessionIdleTimeoutMinutes() int {
+	if a.Extra == nil {
+		return 5
+REDACTED
+	if v, ok := a.Extra["session_idle_timeout_minutes"]; ok {
+		val := parseExtraInt(v)
+		if val > 0 {
+			return val
+	REDACTED
+REDACTED
+	return 5
+REDACTED
+
+// CheckWindowCostSchedulability 根据当前窗口费用检查调度状态
+// - 费用 < 阈值: WindowCostSchedulable（可正常调度）
+// - 费用 >= 阈值 且 < 阈值+预留: WindowCostStickyOnly（仅粘性会话）
+// - 费用 >= 阈值+预留: WindowCostNotSchedulable（不可调度）
+func (a *Account) CheckWindowCostSchedulability(currentWindowCost float64) WindowCostSchedulability {
+	limit := a.GetWindowCostLimit()
+	if limit <= 0 {
+		return WindowCostSchedulable
+REDACTED
+
+	if currentWindowCost < limit {
+		return WindowCostSchedulable
+REDACTED
+
+	stickyReserve := a.GetWindowCostStickyReserve()
+	if currentWindowCost < limit+stickyReserve {
+		return WindowCostStickyOnly
+REDACTED
+
+	return WindowCostNotSchedulable
+REDACTED
+
+// parseExtraFloat64 从 extra 字段解析 float64 值
+func parseExtraFloat64(value any) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f
+	REDACTED
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return f
+	REDACTED
+REDACTED
+	return 0
+REDACTED
+
+// parseExtraInt 从 extra 字段解析 int 值
+func parseExtraInt(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i)
+	REDACTED
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return i
+	REDACTED
+REDACTED
+	return 0
+REDACTED

@@ -234,6 +234,10 @@ type GatewayConfig struct {
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
 	ConcurrencySlotTTLMinutes int `mapstructure:"concurrency_slot_ttl_minutes"`
+	// SessionIdleTimeoutMinutes: 会话空闲超时时间（分钟），默认 5 分钟
+	// 用于 Anthropic OAuth/SetupToken 账号的会话数量限制功能
+	// 空闲超过此时间的会话将被自动释放
+	SessionIdleTimeoutMinutes int `mapstructure:"session_idle_timeout_minutes"`
 
 	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
 	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`

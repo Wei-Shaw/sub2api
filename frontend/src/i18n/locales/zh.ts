@@ -160,6 +160,7 @@ export default {
     notAvailable: '不可用',
     now: '现在',
     unknown: '未知',
+    minutes: '分钟',
     time: {
       never: '从未',
       justNow: '刚刚',
@@ -1131,7 +1132,7 @@ export default {
         platformType: '平台/类型',
         platform: '平台',
         type: '类型',
-        concurrencyStatus: '并发',
+        capacity: '容量',
         notes: '备注',
         priority: '优先级',
         billingRateMultiplier: '账号倍率',
@@ -1144,6 +1145,18 @@ export default {
         lastUsed: '最近使用',
         expiresAt: '过期时间',
         actions: '操作'
+      REDACTED,
+      // 容量状态提示
+      capacity: {
+        windowCost: {
+          blocked: '5h窗口费用超限，账号暂停调度',
+          stickyOnly: '5h窗口费用达阈值，仅允许粘性会话',
+          normal: '5h窗口费用正常'
+        REDACTED,
+        sessions: {
+          full: '活跃会话已满，新会话需等待（空闲超时：{idleREDACTED分钟）',
+          normal: '活跃会话正常（空闲超时：{idleREDACTED分钟）'
+        REDACTED
       REDACTED,
       clearRateLimit: '清除速率限制',
       testConnection: '测试连接',
@@ -1380,6 +1393,31 @@ export default {
       interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
+      // Quota control (Anthropic OAuth/SetupToken only)
+      quotaControl: {
+        title: '配额控制',
+        hint: '仅适用于 Anthropic OAuth/Setup Token 账号',
+        windowCost: {
+          label: '5h窗口费用控制',
+          hint: '限制账号在5小时窗口内的费用使用',
+          limit: '费用阈值',
+          limitPlaceholder: '50',
+          limitHint: '达到阈值后不参与新请求调度',
+          stickyReserve: '粘性预留额度',
+          stickyReservePlaceholder: '10',
+          stickyReserveHint: '为粘性会话预留的额外额度'
+        REDACTED,
+        sessionLimit: {
+          label: '会话数量控制',
+          hint: '限制同时活跃的会话数量',
+          maxSessions: '最大会话数',
+          maxSessionsPlaceholder: '3',
+          maxSessionsHint: '同时活跃的最大会话数量',
+          idleTimeout: '空闲超时',
+          idleTimeoutPlaceholder: '5',
+          idleTimeoutHint: '会话空闲超时后自动释放'
+        REDACTED
+      REDACTED,
       expired: '已过期',
       proxy: '代理',
       noProxy: '无代理',

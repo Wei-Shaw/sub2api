@@ -163,6 +163,7 @@ export default {
     notAvailable: 'N/A',
     now: 'Now',
     unknown: 'Unknown',
+    minutes: 'min',
     time: {
       never: 'Never',
       justNow: 'Just now',
@@ -1082,7 +1083,7 @@ export default {
         platformType: 'Platform/Type',
         platform: 'Platform',
         type: 'Type',
-        concurrencyStatus: 'Concurrency',
+        capacity: 'Capacity',
         notes: 'Notes',
         priority: 'Priority',
         billingRateMultiplier: 'Billing Rate',
@@ -1095,6 +1096,18 @@ export default {
         lastUsed: 'Last Used',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      REDACTED,
+      // Capacity status tooltips
+      capacity: {
+        windowCost: {
+          blocked: '5h window cost exceeded, account scheduling paused',
+          stickyOnly: '5h window cost at threshold, only sticky sessions allowed',
+          normal: '5h window cost normal'
+        REDACTED,
+        sessions: {
+          full: 'Active sessions full, new sessions must wait (idle timeout: {idleREDACTED min)',
+          normal: 'Active sessions normal (idle timeout: {idleREDACTED min)'
+        REDACTED
       REDACTED,
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -1247,6 +1260,31 @@ export default {
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
+      // Quota control (Anthropic OAuth/SetupToken only)
+      quotaControl: {
+        title: 'Quota Control',
+        hint: 'Only applies to Anthropic OAuth/Setup Token accounts',
+        windowCost: {
+          label: '5h Window Cost Limit',
+          hint: 'Limit account cost usage within the 5-hour window',
+          limit: 'Cost Threshold',
+          limitPlaceholder: '50',
+          limitHint: 'Account will not participate in new scheduling after reaching threshold',
+          stickyReserve: 'Sticky Reserve',
+          stickyReservePlaceholder: '10',
+          stickyReserveHint: 'Additional reserve for sticky sessions'
+        REDACTED,
+        sessionLimit: {
+          label: 'Session Count Limit',
+          hint: 'Limit the number of active concurrent sessions',
+          maxSessions: 'Max Sessions',
+          maxSessionsPlaceholder: '3',
+          maxSessionsHint: 'Maximum number of active concurrent sessions',
+          idleTimeout: 'Idle Timeout',
+          idleTimeoutPlaceholder: '5',
+          idleTimeoutHint: 'Sessions will be released after idle timeout'
+        REDACTED
+      REDACTED,
       expired: 'Expired',
       proxy: 'Proxy',
       noProxy: 'No Proxy',

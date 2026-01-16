@@ -34,15 +34,8 @@
           <template #cell-platform_type="{ row REDACTED">
             <PlatformTypeBadge :platform="row.platform" :type="row.type" />
           </template>
-          <template #cell-concurrency="{ row REDACTED">
-            <div class="flex items-center gap-1.5">
-              <span :class="['inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium', (row.current_concurrency || 0) >= row.concurrency ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : (row.current_concurrency || 0) > 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400']">
-                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
-                <span class="font-mono">{{ row.current_concurrency || 0 REDACTEDREDACTED</span>
-                <span class="text-gray-400 dark:text-gray-500">/</span>
-                <span class="font-mono">{{ row.concurrency REDACTEDREDACTED</span>
-              </span>
-            </div>
+          <template #cell-capacity="{ row REDACTED">
+            <AccountCapacityCell :account="row" />
           </template>
           <template #cell-status="{ row REDACTED">
             <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
@@ -148,6 +141,7 @@ import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
+import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import type { Account, Proxy, Group REDACTED from '@/types'
@@ -187,7 +181,7 @@ const cols = computed(() => {
     { key: 'select', label: '', sortable: false REDACTED,
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true REDACTED,
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false REDACTED,
-    { key: 'concurrency', label: t('admin.accounts.columns.concurrencyStatus'), sortable: false REDACTED,
+    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false REDACTED,
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true REDACTED,
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true REDACTED,
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false REDACTED
