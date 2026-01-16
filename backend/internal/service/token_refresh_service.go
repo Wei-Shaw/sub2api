@@ -173,6 +173,16 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 	REDACTED
 
 		if err == nil {
+			// Antigravity 账户：如果之前是因为缺少 project_id 而标记为 error，现在成功获取到了，清除错误状态
+			if account.Platform == PlatformAntigravity &&
+				account.Status == StatusError &&
+				strings.HasPrefix(account.ErrorMessage, "missing_project_id:") {
+				if clearErr := s.accountRepo.ClearError(ctx, account.ID); clearErr != nil {
+					log.Printf("[TokenRefresh] Failed to clear error status for account %d: %v", account.ID, clearErr)
+			REDACTED else {
+					log.Printf("[TokenRefresh] Account %d: cleared missing_project_id error", account.ID)
+			REDACTED
+		REDACTED
 			return nil
 	REDACTED
 
