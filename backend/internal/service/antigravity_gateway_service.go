@@ -587,13 +587,27 @@ urlFallbackLoop:
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 		REDACTED
 
-			// 检查是否应触发 URL 降级（仅 429）
-			if resp.StatusCode == http.StatusTooManyRequests && urlIdx < len(availableURLs)-1 {
+			// 429 重试3次后限流账户
+			if resp.StatusCode == http.StatusTooManyRequests {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
-				antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
-				log.Printf("%s URL fallback (HTTP 429): %s -> %s body=%s", prefix, baseURL, availableURLs[urlIdx+1], truncateForLog(respBody, 200))
-				continue urlFallbackLoop
+
+				if attempt < 3 {
+					log.Printf("%s status=429 retry=%d/3 body=%s", prefix, attempt, truncateForLog(respBody, 200))
+					if !sleepAntigravityBackoffWithContext(ctx, attempt) {
+						return nil, ctx.Err()
+				REDACTED
+					continue
+			REDACTED
+				// 3次重试都失败，限流账户
+				s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
+				log.Printf("%s status=429 rate_limited body=%s", prefix, truncateForLog(respBody, 200))
+				resp = &http.Response{
+					StatusCode: resp.StatusCode,
+					Header:     resp.Header.Clone(),
+					Body:       io.NopCloser(bytes.NewReader(respBody)),
+			REDACTED
+				break urlFallbackLoop
 		REDACTED
 
 			if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(resp.StatusCode) {
@@ -1131,13 +1145,27 @@ urlFallbackLoop:
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
 		REDACTED
 
-			// 检查是否应触发 URL 降级（仅 429）
-			if resp.StatusCode == http.StatusTooManyRequests && urlIdx < len(availableURLs)-1 {
+			// 429 重试3次后限流账户
+			if resp.StatusCode == http.StatusTooManyRequests {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
-				antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
-				log.Printf("%s URL fallback (HTTP 429): %s -> %s body=%s", prefix, baseURL, availableURLs[urlIdx+1], truncateForLog(respBody, 200))
-				continue urlFallbackLoop
+
+				if attempt < 3 {
+					log.Printf("%s status=429 retry=%d/3 body=%s", prefix, attempt, truncateForLog(respBody, 200))
+					if !sleepAntigravityBackoffWithContext(ctx, attempt) {
+						return nil, ctx.Err()
+				REDACTED
+					continue
+			REDACTED
+				// 3次重试都失败，限流账户
+				s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
+				log.Printf("%s status=429 rate_limited body=%s", prefix, truncateForLog(respBody, 200))
+				resp = &http.Response{
+					StatusCode: resp.StatusCode,
+					Header:     resp.Header.Clone(),
+					Body:       io.NopCloser(bytes.NewReader(respBody)),
+			REDACTED
+				break urlFallbackLoop
 		REDACTED
 
 			if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(resp.StatusCode) {
