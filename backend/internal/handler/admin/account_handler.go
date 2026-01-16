@@ -474,7 +474,7 @@ REDACTED else if account.Platform == service.PlatformAntigravity {
 	REDACTED
 
 		// 成功获取到 project_id，如果之前是 missing_project_id 错误则清除
-		if account.Status == service.StatusError && strings.HasPrefix(account.ErrorMessage, "missing_project_id:") {
+		if account.Status == service.StatusError && strings.Contains(account.ErrorMessage, "missing_project_id:") {
 			if _, clearErr := h.adminService.ClearAccountError(c.Request.Context(), accountID); clearErr != nil {
 				response.InternalError(c, "Failed to clear account error: "+clearErr.Error())
 				return
