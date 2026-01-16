@@ -330,7 +330,8 @@ let authInitialized = false
 
 // 初始化导航加载状态和预加载
 const navigationLoading = useNavigationLoadingState()
-const routePrefetch = useRoutePrefetch()
+// 延迟初始化预加载，传入 router 实例
+let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
 
 router.beforeEach((to, _from, next) => {
   // 开始导航加载状态
@@ -414,6 +415,10 @@ router.afterEach((to) => {
   // 结束导航加载状态
   navigationLoading.endNavigation()
 
+  // 懒初始化预加载（首次导航时创建，传入 router 实例）
+  if (!routePrefetch) {
+    routePrefetch = useRoutePrefetch(router)
+  REDACTED
   // 触发路由预加载（在浏览器空闲时执行）
   routePrefetch.triggerPrefetch(to)
 REDACTED)
