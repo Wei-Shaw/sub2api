@@ -429,6 +429,11 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 		StopSequences:   DefaultStopSequences,
 REDACTED
 
+	// 如果请求中指定了 MaxTokens，使用请求值
+	if req.MaxTokens > 0 {
+		config.MaxOutputTokens = req.MaxTokens
+REDACTED
+
 	// Thinking 配置
 	if req.Thinking != nil && req.Thinking.Type == "enabled" {
 		config.ThinkingConfig = &GeminiThinkingConfig{
