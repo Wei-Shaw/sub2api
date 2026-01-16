@@ -49,7 +49,13 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
-		SetNillableFallbackGroupID(groupIn.FallbackGroupID)
+		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
+		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled)
+
+	// 设置模型路由配置
+	if groupIn.ModelRouting != nil {
+		builder = builder.SetModelRouting(groupIn.ModelRouting)
+REDACTED
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -101,13 +107,21 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
-		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly)
+		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
+		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled)
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置
 	if groupIn.FallbackGroupID != nil {
 		builder = builder.SetFallbackGroupID(*groupIn.FallbackGroupID)
 REDACTED else {
 		builder = builder.ClearFallbackGroupID()
+REDACTED
+
+	// 处理 ModelRouting：nil 时清除，否则设置
+	if groupIn.ModelRouting != nil {
+		builder = builder.SetModelRouting(groupIn.ModelRouting)
+REDACTED else {
+		builder = builder.ClearModelRouting()
 REDACTED
 
 	updated, err := builder.Save(ctx)

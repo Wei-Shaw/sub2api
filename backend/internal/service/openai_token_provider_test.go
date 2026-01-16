@@ -545,20 +545,20 @@ REDACTED
 
 func TestOpenAITokenProvider_TTLCalculation(t *testing.T) {
 	tests := []struct {
-		name        string
-		expiresIn   time.Duration
+		name      string
+		expiresIn time.Duration
 REDACTED{
 		{
-			name:        "far_future_expiry",
-			expiresIn:   1 * time.Hour,
+			name:      "far_future_expiry",
+			expiresIn: 1 * time.Hour,
 	REDACTED,
 		{
-			name:        "medium_expiry",
-			expiresIn:   10 * time.Minute,
+			name:      "medium_expiry",
+			expiresIn: 10 * time.Minute,
 	REDACTED,
 		{
-			name:        "near_expiry",
-			expiresIn:   6 * time.Minute,
+			name:      "near_expiry",
+			expiresIn: 6 * time.Minute,
 	REDACTED,
 REDACTED
 

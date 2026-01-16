@@ -37,6 +37,11 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice4K     *float64 `json:"image_price_4k,omitempty"`
 	ClaudeCodeOnly   bool     `json:"claude_code_only"`
 	FallbackGroupID  *int64   `json:"fallback_group_id,omitempty"`
+
+	// Model routing is used by gateway account selection, so it must be part of auth cache snapshot.
+	// Only anthropic groups use these fields; others may leave them empty.
+	ModelRouting        map[string][]int64 `json:"model_routing,omitempty"`
+	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 REDACTED
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存
