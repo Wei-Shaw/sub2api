@@ -591,11 +591,19 @@ urlFallbackLoop:
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 		REDACTED
 
-			// 429 不重试，直接限流账户
+			// 429 限流：优先切换 URL，所有 URL 都 429 时才返回
 			if resp.StatusCode == http.StatusTooManyRequests {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
+				// 还有其他 URL，切换重试
+				if urlIdx < len(availableURLs)-1 {
+					antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
+					log.Printf("%s URL fallback (429): %s -> %s", prefix, baseURL, availableURLs[urlIdx+1])
+					continue urlFallbackLoop
+			REDACTED
+
+				// 所有 URL 都 429，限流账户并返回
 				s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 				log.Printf("%s status=429 rate_limited body=%s", prefix, truncateForLog(respBody, 200))
 				resp = &http.Response{
@@ -1144,11 +1152,19 @@ urlFallbackLoop:
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
 		REDACTED
 
-			// 429 不重试，直接限流账户
+			// 429 限流：优先切换 URL，所有 URL 都 429 时才返回
 			if resp.StatusCode == http.StatusTooManyRequests {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
+				// 还有其他 URL，切换重试
+				if urlIdx < len(availableURLs)-1 {
+					antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
+					log.Printf("%s URL fallback (429): %s -> %s", prefix, baseURL, availableURLs[urlIdx+1])
+					continue urlFallbackLoop
+			REDACTED
+
+				// 所有 URL 都 429，限流账户并返回
 				s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 				log.Printf("%s status=429 rate_limited body=%s", prefix, truncateForLog(respBody, 200))
 				resp = &http.Response{
