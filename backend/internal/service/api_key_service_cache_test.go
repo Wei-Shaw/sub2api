@@ -172,12 +172,12 @@ REDACTED
 				Concurrency: 3,
 		REDACTED,
 			Group: &APIKeyAuthGroupSnapshot{
-				ID:               groupID,
-				Name:             "g",
-				Platform:         PlatformAnthropic,
-				Status:           StatusActive,
-				SubscriptionType: SubscriptionTypeStandard,
-				RateMultiplier:   1,
+				ID:                  groupID,
+				Name:                "g",
+				Platform:            PlatformAnthropic,
+				Status:              StatusActive,
+				SubscriptionType:    SubscriptionTypeStandard,
+				RateMultiplier:      1,
 				ModelRoutingEnabled: true,
 				ModelRouting: map[string][]int64{
 					"claude-opus-*": {1, 2REDACTED,

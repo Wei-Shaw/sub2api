@@ -696,11 +696,11 @@ REDACTED
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeOAuth,
 REDACTED
-			"access_token":   "old-access-token",
-			"refresh_token":  "old-refresh-token",
-			"expires_at":     expiresAt,
-			"custom_field":   "should-be-preserved",
-			"organization":   "test-org",
+			"access_token":  "old-access-token",
+			"refresh_token": "old-refresh-token",
+			"expires_at":    expiresAt,
+			"custom_field":  "should-be-preserved",
+			"organization":  "test-org",
 	REDACTED,
 REDACTED
 	accountRepo.account = account

@@ -110,8 +110,8 @@ func TestCompositeTokenCacheInvalidator_SkipNonOAuth(t *testing.T) {
 	invalidator := NewCompositeTokenCacheInvalidator(cache)
 
 	tests := []struct {
-		name     string
-		account  *Account
+		name    string
+		account *Account
 REDACTED{
 		{
 			name: "gemini_api_key",
@@ -210,8 +210,8 @@ func TestCompositeTokenCacheInvalidator_DeleteError(t *testing.T) {
 	invalidator := NewCompositeTokenCacheInvalidator(cache)
 
 	tests := []struct {
-		name     string
-		account  *Account
+		name    string
+		account *Account
 REDACTED{
 		{
 			name: "openai_delete_error",
