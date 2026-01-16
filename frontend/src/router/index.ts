@@ -6,6 +6,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw REDACTED from 'vue-router'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { useAppStore REDACTED from '@/stores/app'
+import { useNavigationLoadingState REDACTED from '@/composables/useNavigationLoading'
+import { useRoutePrefetch REDACTED from '@/composables/useRoutePrefetch'
 
 /**
  * Route definitions with lazy loading
@@ -326,7 +328,14 @@ REDACTED)
  */
 let authInitialized = false
 
+// 初始化导航加载状态和预加载
+const navigationLoading = useNavigationLoadingState()
+const routePrefetch = useRoutePrefetch()
+
 router.beforeEach((to, _from, next) => {
+  // 开始导航加载状态
+  navigationLoading.startNavigation()
+
   const authStore = useAuthStore()
 
   // Restore auth state from localStorage on first navigation (page refresh)
@@ -396,6 +405,17 @@ router.beforeEach((to, _from, next) => {
 
   // All checks passed, allow navigation
   next()
+REDACTED)
+
+/**
+ * Navigation guard: End loading and trigger prefetch
+ */
+router.afterEach((to) => {
+  // 结束导航加载状态
+  navigationLoading.endNavigation()
+
+  // 触发路由预加载（在浏览器空闲时执行）
+  routePrefetch.triggerPrefetch(to)
 REDACTED)
 
 /**

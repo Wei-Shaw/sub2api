@@ -2,6 +2,7 @@
 import { RouterView, useRouter, useRoute REDACTED from 'vue-router'
 import { onMounted, watch REDACTED from 'vue'
 import Toast from '@/components/common/Toast.vue'
+import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore REDACTED from '@/stores'
 import { getSetupStatus REDACTED from '@/api/setup'
 
@@ -84,6 +85,7 @@ REDACTED)
 </script>
 
 <template>
+  <NavigationProgress />
   <RouterView />
   <Toast />
 </template>
