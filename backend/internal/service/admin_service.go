@@ -42,6 +42,7 @@ type AdminService interface {
 	DeleteAccount(ctx context.Context, id int64) error
 	RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error)
 	ClearAccountError(ctx context.Context, id int64) (*Account, error)
+	SetAccountError(ctx context.Context, id int64, errorMsg string) error
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 
@@ -989,6 +990,10 @@ REDACTED
 		return nil, err
 REDACTED
 	return account, nil
+REDACTED
+
+func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
+	return s.accountRepo.SetError(ctx, id, errorMsg)
 REDACTED
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {

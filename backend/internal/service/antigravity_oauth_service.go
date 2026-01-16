@@ -82,13 +82,14 @@ REDACTED
 
 // AntigravityTokenInfo token 信息
 type AntigravityTokenInfo struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int64  `json:"expires_in"`
-	ExpiresAt    int64  `json:"expires_at"`
-	TokenType    string `json:"token_type"`
-	Email        string `json:"email,omitempty"`
-	ProjectID    string `json:"project_id,omitempty"`
+	AccessToken      string `json:"access_token"`
+	RefreshToken     string `json:"refresh_token"`
+	ExpiresIn        int64  `json:"expires_in"`
+	ExpiresAt        int64  `json:"expires_at"`
+	TokenType        string `json:"token_type"`
+	Email            string `json:"email,omitempty"`
+	ProjectID        string `json:"project_id,omitempty"`
+	ProjectIDMissing bool   `json:"-"` // LoadCodeAssist 未返回 project_id
 REDACTED
 
 // ExchangeCode 用 authorization code 交换 token
@@ -236,16 +237,15 @@ REDACTED
 		tokenInfo.Email = existingEmail
 REDACTED
 
-	// 每次刷新都调用 LoadCodeAssist 更新 project_id
+	// 每次刷新都调用 LoadCodeAssist 获取 project_id
 	client := antigravity.NewClient(proxyURL)
 	loadResp, _, err := client.LoadCodeAssist(ctx, tokenInfo.AccessToken)
-	if err != nil {
-		// 失败时保留原有的 project_id
+	if err != nil || loadResp == nil || loadResp.CloudAICompanionProject == "" {
+		// LoadCodeAssist 失败或返回空，保留原有 project_id，标记缺失
 		existingProjectID := strings.TrimSpace(account.GetCredential("project_id"))
-		if existingProjectID != "" {
-			tokenInfo.ProjectID = existingProjectID
-	REDACTED
-REDACTED else if loadResp != nil && loadResp.CloudAICompanionProject != "" {
+		tokenInfo.ProjectID = existingProjectID
+		tokenInfo.ProjectIDMissing = true
+REDACTED else {
 		tokenInfo.ProjectID = loadResp.CloudAICompanionProject
 REDACTED
 

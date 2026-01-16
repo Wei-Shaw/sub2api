@@ -163,12 +163,16 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 	for attempt := 1; attempt <= s.cfg.MaxRetries; attempt++ {
 		newCredentials, err := refresher.Refresh(ctx, account)
-		if err == nil {
-			// 刷新成功，更新账号credentials
+
+		// 如果有新凭证，先更新（即使有错误也要保存 token）
+		if newCredentials != nil {
 			account.Credentials = newCredentials
-			if err := s.accountRepo.Update(ctx, account); err != nil {
-				return fmt.Errorf("failed to save credentials: %w", err)
+			if saveErr := s.accountRepo.Update(ctx, account); saveErr != nil {
+				return fmt.Errorf("failed to save credentials: %w", saveErr)
 		REDACTED
+	REDACTED
+
+		if err == nil {
 			return nil
 	REDACTED
 
@@ -219,6 +223,7 @@ REDACTED
 		"invalid_client",      // 客户端配置错误
 		"unauthorized_client", // 客户端未授权
 		"access_denied",       // 访问被拒绝
+		"missing_project_id",  // 缺少 project_id
 REDACTED
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {
