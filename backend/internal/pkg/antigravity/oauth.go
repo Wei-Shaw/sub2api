@@ -42,12 +42,9 @@ const (
 	URLAvailabilityTTL = 5 * time.Minute
 )
 
-// BaseURLs 定义 Antigravity API 端点，按优先级排序
-// fallback 顺序: sandbox → daily → prod
+// BaseURLs 定义 Antigravity API 端点
 var BaseURLs = []string{
-	"https://daily-cloudcode-pa.sandbox.googleapis.com", // sandbox
-	"https://daily-cloudcode-pa.googleapis.com",         // daily
-	"https://cloudcode-pa.googleapis.com",               // prod
+	"https://cloudcode-pa.googleapis.com", // prod
 REDACTED
 
 // BaseURL 默认 URL（保持向后兼容）
@@ -239,25 +236,4 @@ func BuildAuthorizationURL(state, codeChallenge string) string {
 	params.Set("include_granted_scopes", "true")
 
 	return fmt.Sprintf("%s?%s", AuthorizeURL, params.Encode())
-REDACTED
-
-// GenerateMockProjectID 生成随机 project_id（当 API 不返回时使用）
-// 格式：{形容词REDACTED-{名词REDACTED-{5位随机字符REDACTED
-func GenerateMockProjectID() string {
-	adjectives := []string{"useful", "bright", "swift", "calm", "bold"REDACTED
-	nouns := []string{"fuze", "wave", "spark", "flow", "core"REDACTED
-
-	randBytes, _ := GenerateRandomBytes(7)
-
-	adj := adjectives[int(randBytes[0])%len(adjectives)]
-	noun := nouns[int(randBytes[1])%len(nouns)]
-
-	// 生成 5 位随机字符（a-z0-9）
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	suffix := make([]byte, 5)
-	for i := 0; i < 5; i++ {
-		suffix[i] = charset[int(randBytes[i+2])%len(charset)]
-REDACTED
-
-	return fmt.Sprintf("%s-%s-%s", adj, noun, string(suffix))
 REDACTED

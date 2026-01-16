@@ -31,11 +31,6 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	accessToken := account.GetCredential("access_token")
 	projectID := account.GetCredential("project_id")
 
-	// 如果没有 project_id，生成一个随机的
-	if projectID == "" {
-		projectID = antigravity.GenerateMockProjectID()
-REDACTED
-
 	client := antigravity.NewClient(proxyURL)
 
 	// 调用 API 获取配额
