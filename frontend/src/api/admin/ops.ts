@@ -293,6 +293,7 @@ export interface OpsJobHeartbeat {
   last_error_at?: string | null
   last_error?: string | null
   last_duration_ms?: number | null
+  last_result?: string | null
   updated_at: string
 REDACTED
 

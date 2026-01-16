@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch REDACTED from 'vue'
+import { computed, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { useIntervalFn REDACTED from '@vueuse/core'
 import { opsAPI, type OpsAccountAvailabilityStatsResponse, type OpsConcurrencyStatsResponse REDACTED from '@/api/admin/ops'
 
 interface Props {
   platformFilter?: string
   groupIdFilter?: number | null
+  refreshToken: number
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -233,15 +233,13 @@ async function loadData() {
   REDACTED
 REDACTED
 
-// 定期刷新（5秒）
-const { pause: pauseRefresh, resume: resumeRefresh REDACTED = useIntervalFn(
+// 刷新节奏由父组件统一控制（OpsDashboard Header 的刷新状态/倒计时）
+watch(
+  () => props.refreshToken,
   () => {
-    if (realtimeEnabled.value) {
-      loadData()
-    REDACTED
-  REDACTED,
-  5000,
-  { immediate: false REDACTED
+    if (!realtimeEnabled.value) return
+    loadData()
+  REDACTED
 )
 
 function getLoadBarClass(loadPct: number): string {
@@ -271,23 +269,15 @@ function formatDuration(seconds: number): string {
   return `${hoursREDACTEDh`
 REDACTED
 
-onMounted(() => {
-  loadData()
-  resumeRefresh()
-REDACTED)
-
-onUnmounted(() => {
-  pauseRefresh()
-REDACTED)
-
-watch(realtimeEnabled, async (enabled) => {
-  if (!enabled) {
-    pauseRefresh()
-  REDACTED else {
-    resumeRefresh()
-    await loadData()
-  REDACTED
-REDACTED)
+watch(
+  () => realtimeEnabled.value,
+  async (enabled) => {
+    if (enabled) {
+      await loadData()
+    REDACTED
+  REDACTED,
+  { immediate: true REDACTED
+)
 </script>
 
 <template>
