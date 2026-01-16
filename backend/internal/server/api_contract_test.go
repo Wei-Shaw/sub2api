@@ -780,6 +780,10 @@ func (s *stubAccountRepo) SetAntigravityQuotaScopeLimit(ctx context.Context, id 
 	return errors.New("not implemented")
 REDACTED
 
+func (s *stubAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+	return errors.New("not implemented")
+REDACTED
+
 func (s *stubAccountRepo) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
 	return errors.New("not implemented")
 REDACTED
@@ -797,6 +801,10 @@ func (s *stubAccountRepo) ClearRateLimit(ctx context.Context, id int64) error {
 REDACTED
 
 func (s *stubAccountRepo) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+REDACTED
+
+func (s *stubAccountRepo) ClearModelRateLimits(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 REDACTED
 

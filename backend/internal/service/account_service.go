@@ -50,11 +50,13 @@ type AccountRepository interface {
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error
+	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
 	SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error
 	ClearTempUnschedulable(ctx context.Context, id int64) error
 	ClearRateLimit(ctx context.Context, id int64) error
 	ClearAntigravityQuotaScopes(ctx context.Context, id int64) error
+	ClearModelRateLimits(ctx context.Context, id int64) error
 	UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error
 	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
 	BulkUpdate(ctx context.Context, ids []int64, updates AccountBulkUpdate) (int64, error)

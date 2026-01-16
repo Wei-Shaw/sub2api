@@ -49,6 +49,9 @@ REDACTED
 	if !a.IsSchedulable() {
 		return false
 REDACTED
+	if a.isModelRateLimited(requestedModel) {
+		return false
+REDACTED
 	if a.Platform != PlatformAntigravity {
 		return true
 REDACTED
