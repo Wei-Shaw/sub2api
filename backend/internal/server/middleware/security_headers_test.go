@@ -122,7 +122,10 @@ REDACTED)
 
 		csp := w.Header().Get("Content-Security-Policy")
 		assert.NotEmpty(t, csp)
-		assert.Equal(t, "default-src 'self'", csp)
+		// Policy is auto-enhanced with nonce and Cloudflare Insights domain
+		assert.Contains(t, csp, "default-src 'self'")
+		assert.Contains(t, csp, "'nonce-")
+		assert.Contains(t, csp, CloudflareInsightsDomain)
 REDACTED)
 
 	t.Run("csp_enabled_with_nonce_placeholder", func(t *testing.T) {
@@ -258,6 +261,83 @@ REDACTED
 func TestNonceTemplate(t *testing.T) {
 	t.Run("constant_value", func(t *testing.T) {
 		assert.Equal(t, "__CSP_NONCE__", NonceTemplate)
+REDACTED)
+REDACTED
+
+func TestEnhanceCSPPolicy(t *testing.T) {
+	t.Run("adds_nonce_placeholder_if_missing", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self'"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Contains(t, enhanced, NonceTemplate)
+		assert.Contains(t, enhanced, CloudflareInsightsDomain)
+REDACTED)
+
+	t.Run("does_not_duplicate_nonce_placeholder", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__"
+		enhanced := enhanceCSPPolicy(policy)
+
+		// Should not duplicate
+		count := strings.Count(enhanced, NonceTemplate)
+		assert.Equal(t, 1, count)
+REDACTED)
+
+	t.Run("does_not_duplicate_cloudflare_domain", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com"
+		enhanced := enhanceCSPPolicy(policy)
+
+		count := strings.Count(enhanced, CloudflareInsightsDomain)
+		assert.Equal(t, 1, count)
+REDACTED)
+
+	t.Run("handles_policy_without_script_src", func(t *testing.T) {
+		policy := "default-src 'self'"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Contains(t, enhanced, "script-src")
+		assert.Contains(t, enhanced, NonceTemplate)
+		assert.Contains(t, enhanced, CloudflareInsightsDomain)
+REDACTED)
+
+	t.Run("preserves_existing_nonce", func(t *testing.T) {
+		policy := "script-src 'self' 'nonce-existing'"
+		enhanced := enhanceCSPPolicy(policy)
+
+		// Should not add placeholder if nonce already exists
+		assert.NotContains(t, enhanced, NonceTemplate)
+		assert.Contains(t, enhanced, "'nonce-existing'")
+REDACTED)
+REDACTED
+
+func TestAddToDirective(t *testing.T) {
+	t.Run("adds_to_existing_directive", func(t *testing.T) {
+		policy := "script-src 'self'; style-src 'self'"
+		result := addToDirective(policy, "script-src", "https://example.com")
+
+		assert.Contains(t, result, "script-src 'self' https://example.com")
+REDACTED)
+
+	t.Run("creates_directive_if_not_exists", func(t *testing.T) {
+		policy := "default-src 'self'"
+		result := addToDirective(policy, "script-src", "https://example.com")
+
+		assert.Contains(t, result, "script-src")
+		assert.Contains(t, result, "https://example.com")
+REDACTED)
+
+	t.Run("handles_directive_at_end_without_semicolon", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self'"
+		result := addToDirective(policy, "script-src", "https://example.com")
+
+		assert.Contains(t, result, "https://example.com")
+REDACTED)
+
+	t.Run("handles_empty_policy", func(t *testing.T) {
+		policy := ""
+		result := addToDirective(policy, "script-src", "https://example.com")
+
+		assert.Contains(t, result, "script-src")
+		assert.Contains(t, result, "https://example.com")
 REDACTED)
 REDACTED
 
