@@ -16,15 +16,6 @@ import (
 	"time"
 )
 
-// resolveHost 从 URL 解析 host
-func resolveHost(urlStr string) string {
-	parsed, err := url.Parse(urlStr)
-	if err != nil {
-		return ""
-REDACTED
-	return parsed.Host
-REDACTED
-
 // NewAPIRequestWithURL 使用指定的 base URL 创建 Antigravity API 请求（v1internal 端点）
 func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken string, body []byte) (*http.Request, error) {
 	// 构建 URL，流式请求添加 ?alt=sse 参数
@@ -39,22 +30,10 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 基础 Headers
+	// 基础 Headers（与 Antigravity-Manager 保持一致，只设置这 3 个）
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", UserAgent)
-
-	// Accept Header 根据请求类型设置
-	if isStream {
-		req.Header.Set("Accept", "text/event-stream")
-REDACTED else {
-		req.Header.Set("Accept", "application/json")
-REDACTED
-
-	// 显式设置 Host Header
-	if host := resolveHost(apiURL); host != "" {
-		req.Host = host
-REDACTED
 
 	return req, nil
 REDACTED
@@ -195,12 +174,15 @@ REDACTED
 REDACTED
 
 // shouldFallbackToNextURL 判断是否应切换到下一个 URL
-// 仅连接错误和 HTTP 429 触发 URL 降级
+// 与 Antigravity-Manager 保持一致：连接错误、429、408、404、5xx 触发 URL 降级
 func shouldFallbackToNextURL(err error, statusCode int) bool {
 	if isConnectionError(err) {
 		return true
 REDACTED
-	return statusCode == http.StatusTooManyRequests
+	return statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusRequestTimeout ||
+		statusCode == http.StatusNotFound ||
+		statusCode >= 500
 REDACTED
 
 // ExchangeCode 用 authorization code 交换 token

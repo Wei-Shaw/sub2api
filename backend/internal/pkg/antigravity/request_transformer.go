@@ -78,7 +78,7 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 REDACTED
 
 	// 2. 构建 systemInstruction
-	systemInstruction := buildSystemInstruction(claudeReq.System, claudeReq.Model, opts)
+	systemInstruction := buildSystemInstruction(claudeReq.System, claudeReq.Model, opts, claudeReq.Tools)
 
 	// 3. 构建 generationConfig
 	reqForConfig := claudeReq
@@ -154,8 +154,40 @@ func GetDefaultIdentityPatch() string {
 	return antigravityIdentity
 REDACTED
 
-// buildSystemInstruction 构建 systemInstruction
-func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions) *GeminiContent {
+// mcpXMLProtocol MCP XML 工具调用协议（与 Antigravity-Manager 保持一致）
+const mcpXMLProtocol = `
+==== MCP XML 工具调用协议 (Workaround) ====
+当你需要调用名称以 ` + "`mcp__`" + ` 开头的 MCP 工具时：
+1) 优先尝试 XML 格式调用：输出 ` + "`<mcp__tool_name>{\"arg\":\"value\"REDACTED</mcp__tool_name>`" + `。
+2) 必须直接输出 XML 块，无需 markdown 包装，内容为 JSON 格式的入参。
+3) 这种方式具有更高的连通性和容错性，适用于大型结果返回场景。
+===========================================`
+
+// hasMCPTools 检测是否有 mcp__ 前缀的工具
+func hasMCPTools(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if strings.HasPrefix(tool.Name, "mcp__") {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// filterOpenCodePrompt 过滤 OpenCode 默认提示词，只保留用户自定义指令
+func filterOpenCodePrompt(text string) string {
+	if !strings.Contains(text, "You are an interactive CLI tool") {
+		return text
+REDACTED
+	// 提取 "Instructions from:" 及之后的部分
+	if idx := strings.Index(text, "Instructions from:"); idx >= 0 {
+		return text[idx:]
+REDACTED
+	// 如果没有自定义指令，返回空
+	return ""
+REDACTED
+
+// buildSystemInstruction 构建 systemInstruction（与 Antigravity-Manager 保持一致）
+func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions, tools []ClaudeTool) *GeminiContent {
 	var parts []GeminiPart
 
 	// 先解析用户的 system prompt，检测是否已包含 Antigravity identity
@@ -167,9 +199,13 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 		var sysStr string
 		if err := json.Unmarshal(system, &sysStr); err == nil {
 			if strings.TrimSpace(sysStr) != "" {
-				userSystemParts = append(userSystemParts, GeminiPart{Text: sysStrREDACTED)
 				if strings.Contains(sysStr, "You are Antigravity") {
 					userHasAntigravityIdentity = true
+			REDACTED
+				// 过滤 OpenCode 默认提示词
+				filtered := filterOpenCodePrompt(sysStr)
+				if filtered != "" {
+					userSystemParts = append(userSystemParts, GeminiPart{Text: filteredREDACTED)
 			REDACTED
 		REDACTED
 	REDACTED else {
@@ -178,9 +214,13 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 			if err := json.Unmarshal(system, &sysBlocks); err == nil {
 				for _, block := range sysBlocks {
 					if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
-						userSystemParts = append(userSystemParts, GeminiPart{Text: block.TextREDACTED)
 						if strings.Contains(block.Text, "You are Antigravity") {
 							userHasAntigravityIdentity = true
+					REDACTED
+						// 过滤 OpenCode 默认提示词
+						filtered := filterOpenCodePrompt(block.Text)
+						if filtered != "" {
+							userSystemParts = append(userSystemParts, GeminiPart{Text: filteredREDACTED)
 					REDACTED
 				REDACTED
 			REDACTED
@@ -199,6 +239,16 @@ REDACTED
 
 	// 添加用户的 system prompt
 	parts = append(parts, userSystemParts...)
+
+	// 检测是否有 MCP 工具，如有则注入 XML 调用协议
+	if hasMCPTools(tools) {
+		parts = append(parts, GeminiPart{Text: mcpXMLProtocolREDACTED)
+REDACTED
+
+	// 如果用户没有提供 Antigravity 身份，添加结束标记
+	if !userHasAntigravityIdentity {
+		parts = append(parts, GeminiPart{Text: "\n--- [SYSTEM_PROMPT_END] ---"REDACTED)
+REDACTED
 
 	if len(parts) == 0 {
 		return nil

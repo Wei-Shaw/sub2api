@@ -32,8 +32,8 @@ const (
 		"https://www.googleapis.com/auth/cclog " +
 		"https://www.googleapis.com/auth/experimentsandconfigs"
 
-	// User-Agent（模拟官方客户端）
-	UserAgent = "antigravity/1.104.0 darwin/arm64"
+	// User-Agent（与 Antigravity-Manager 保持一致）
+	UserAgent = "antigravity/1.11.9 windows/amd64"
 
 	// Session 过期时间
 	SessionTTL = 30 * time.Minute
@@ -42,9 +42,10 @@ const (
 	URLAvailabilityTTL = 5 * time.Minute
 )
 
-// BaseURLs 定义 Antigravity API 端点
+// BaseURLs 定义 Antigravity API 端点（与 Antigravity-Manager 保持一致）
 var BaseURLs = []string{
-	"https://cloudcode-pa.googleapis.com", // prod
+	"https://cloudcode-pa.googleapis.com",               // prod (优先)
+	"https://daily-cloudcode-pa.sandbox.googleapis.com", // daily sandbox (备用)
 REDACTED
 
 // BaseURL 默认 URL（保持向后兼容）
