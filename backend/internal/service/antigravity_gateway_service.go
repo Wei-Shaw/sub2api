@@ -587,19 +587,11 @@ urlFallbackLoop:
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 		REDACTED
 
-			// 429 重试3次后限流账户
+			// 429 不重试，直接限流账户
 			if resp.StatusCode == http.StatusTooManyRequests {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				if attempt < 3 {
-					log.Printf("%s status=429 retry=%d/3 body=%s", prefix, attempt, truncateForLog(respBody, 200))
-					if !sleepAntigravityBackoffWithContext(ctx, attempt) {
-						return nil, ctx.Err()
-				REDACTED
-					continue
-			REDACTED
-				// 3次重试都失败，限流账户
 				s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 				log.Printf("%s status=429 rate_limited body=%s", prefix, truncateForLog(respBody, 200))
 				resp = &http.Response{
@@ -621,10 +613,6 @@ urlFallbackLoop:
 						return nil, ctx.Err()
 				REDACTED
 					continue
-			REDACTED
-				// 所有重试都失败，标记限流状态
-				if resp.StatusCode == 429 {
-					s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 			REDACTED
 				// 最后一次尝试也失败
 				resp = &http.Response{
@@ -1145,19 +1133,11 @@ urlFallbackLoop:
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
 		REDACTED
 
-			// 429 重试3次后限流账户
+			// 429 不重试，直接限流账户
 			if resp.StatusCode == http.StatusTooManyRequests {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				if attempt < 3 {
-					log.Printf("%s status=429 retry=%d/3 body=%s", prefix, attempt, truncateForLog(respBody, 200))
-					if !sleepAntigravityBackoffWithContext(ctx, attempt) {
-						return nil, ctx.Err()
-				REDACTED
-					continue
-			REDACTED
-				// 3次重试都失败，限流账户
 				s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 				log.Printf("%s status=429 rate_limited body=%s", prefix, truncateForLog(respBody, 200))
 				resp = &http.Response{
@@ -1179,10 +1159,6 @@ urlFallbackLoop:
 						return nil, ctx.Err()
 				REDACTED
 					continue
-			REDACTED
-				// 所有重试都失败，标记限流状态
-				if resp.StatusCode == 429 {
-					s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 			REDACTED
 				resp = &http.Response{
 					StatusCode: resp.StatusCode,
@@ -1356,8 +1332,12 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 	if statusCode == 429 {
 		resetAt := ParseGeminiRateLimitResetTime(body)
 		if resetAt == nil {
-			// 解析失败：默认 5 分钟，直接限流整个账户
-			defaultDur := 5 * time.Minute
+			// 解析失败：使用配置的 fallback 时间，直接限流整个账户
+			fallbackMinutes := 5
+			if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes > 0 {
+				fallbackMinutes = s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes
+		REDACTED
+			defaultDur := time.Duration(fallbackMinutes) * time.Minute
 			ra := time.Now().Add(defaultDur)
 			log.Printf("%s status=429 rate_limited account=%d reset_in=%v (fallback)", prefix, account.ID, defaultDur)
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, ra); err != nil {

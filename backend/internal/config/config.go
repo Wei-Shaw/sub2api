@@ -228,6 +228,14 @@ type GatewayConfig struct {
 	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
+	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
+	MaxAccountSwitches int `mapstructure:"max_account_switches"`
+	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
+	MaxAccountSwitchesGemini int `mapstructure:"max_account_switches_gemini"`
+
+	// Antigravity 429 fallback 限流时间（分钟），解析重置时间失败时使用
+	AntigravityFallbackCooldownMinutes int `mapstructure:"antigravity_fallback_cooldown_minutes"`
+
 	// Scheduling: 账号调度相关配置
 	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
 REDACTED
@@ -661,6 +669,9 @@ REDACTED)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
 	viper.SetDefault("gateway.failover_on_400", false)
+	viper.SetDefault("gateway.max_account_switches", 10)
+	viper.SetDefault("gateway.max_account_switches_gemini", 3)
+	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 5)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
