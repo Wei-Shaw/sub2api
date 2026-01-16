@@ -1328,18 +1328,12 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 	if statusCode == 429 {
 		resetAt := ParseGeminiRateLimitResetTime(body)
 		if resetAt == nil {
-			// 解析失败：Gemini 有重试时间用 5 分钟，Claude 没有用 1 分钟
-			defaultDur := 1 * time.Minute
-			if bytes.Contains(body, []byte("Please retry in")) || bytes.Contains(body, []byte("retryDelay")) {
-				defaultDur = 5 * time.Minute
-		REDACTED
+			// 解析失败：默认 5 分钟，直接限流整个账户
+			defaultDur := 5 * time.Minute
 			ra := time.Now().Add(defaultDur)
-			log.Printf("%s status=429 rate_limited scope=%s reset_in=%v (fallback)", prefix, quotaScope, defaultDur)
-			if quotaScope == "" {
-				return
-		REDACTED
-			if err := s.accountRepo.SetAntigravityQuotaScopeLimit(ctx, account.ID, quotaScope, ra); err != nil {
-				log.Printf("%s status=429 rate_limit_set_failed scope=%s error=%v", prefix, quotaScope, err)
+			log.Printf("%s status=429 rate_limited account=%d reset_in=%v (fallback)", prefix, account.ID, defaultDur)
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, ra); err != nil {
+				log.Printf("%s status=429 rate_limit_set_failed account=%d error=%v", prefix, account.ID, err)
 		REDACTED
 			return
 	REDACTED
