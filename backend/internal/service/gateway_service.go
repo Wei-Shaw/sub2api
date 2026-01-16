@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	mathrand "math/rand"
 	"net/http"
 	"regexp"
 	"sort"
@@ -605,7 +606,7 @@ REDACTED else {
 REDACTED
 
 	// ============ Layer 3: 兜底排队 ============
-	sortAccountsByPriorityAndLastUsed(candidates, preferOAuth)
+	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
 	for _, acc := range candidates {
 		return &AccountSelectionResult{
 			Account: acc,
@@ -803,6 +804,56 @@ func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 			return a.LastUsedAt.Before(*b.LastUsedAt)
 	REDACTED
 REDACTED)
+REDACTED
+
+// sortCandidatesForFallback 根据配置选择排序策略
+// mode: "last_used"(按最后使用时间) 或 "random"(随机)
+func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOAuth bool, mode string) {
+	if mode == "random" {
+		// 先按优先级排序，然后在同优先级内随机打乱
+		sortAccountsByPriorityOnly(accounts, preferOAuth)
+		shuffleWithinPriority(accounts)
+REDACTED else {
+		// 默认按最后使用时间排序
+		sortAccountsByPriorityAndLastUsed(accounts, preferOAuth)
+REDACTED
+REDACTED
+
+// sortAccountsByPriorityOnly 仅按优先级排序
+func sortAccountsByPriorityOnly(accounts []*Account, preferOAuth bool) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i], accounts[j]
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+	REDACTED
+		if preferOAuth && a.Type != b.Type {
+			return a.Type == AccountTypeOAuth
+	REDACTED
+		return false
+REDACTED)
+REDACTED
+
+// shuffleWithinPriority 在同优先级内随机打乱顺序
+func shuffleWithinPriority(accounts []*Account) {
+	if len(accounts) <= 1 {
+		return
+REDACTED
+	r := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
+	start := 0
+	for start < len(accounts) {
+		priority := accounts[start].Priority
+		end := start + 1
+		for end < len(accounts) && accounts[end].Priority == priority {
+			end++
+	REDACTED
+		// 对 [start, end) 范围内的账户随机打乱
+		if end-start > 1 {
+			r.Shuffle(end-start, func(i, j int) {
+				accounts[start+i], accounts[start+j] = accounts[start+j], accounts[start+i]
+		REDACTED)
+	REDACTED
+		start = end
+REDACTED
 REDACTED
 
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）

@@ -250,6 +250,9 @@ type GatewaySchedulingConfig struct {
 	FallbackWaitTimeout time.Duration `mapstructure:"fallback_wait_timeout"`
 	FallbackMaxWaiting  int           `mapstructure:"fallback_max_waiting"`
 
+	// 兜底层账户选择策略: "last_used"(按最后使用时间排序，默认) 或 "random"(随机)
+	FallbackSelectionMode string `mapstructure:"fallback_selection_mode"`
+
 	// 负载计算
 	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
 
@@ -689,6 +692,7 @@ REDACTED)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 45*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
+	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
 	viper.SetDefault("concurrency.ping_interval", 10)
