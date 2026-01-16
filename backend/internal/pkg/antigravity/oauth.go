@@ -51,11 +51,12 @@ REDACTED
 // BaseURL 默认 URL（保持向后兼容）
 var BaseURL = BaseURLs[0]
 
-// URLAvailability 管理 URL 可用性状态（带 TTL 自动恢复）
+// URLAvailability 管理 URL 可用性状态（带 TTL 自动恢复和动态优先级）
 type URLAvailability struct {
 	mu          sync.RWMutex
 	unavailable map[string]time.Time // URL -> 恢复时间
 	ttl         time.Duration
+	lastSuccess string // 最近成功请求的 URL，优先使用
 REDACTED
 
 // DefaultURLAvailability 全局 URL 可用性管理器
@@ -76,6 +77,15 @@ func (u *URLAvailability) MarkUnavailable(url string) {
 	u.unavailable[url] = time.Now().Add(u.ttl)
 REDACTED
 
+// MarkSuccess 标记 URL 请求成功，将其设为优先使用
+func (u *URLAvailability) MarkSuccess(url string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.lastSuccess = url
+	// 成功后清除该 URL 的不可用标记
+	delete(u.unavailable, url)
+REDACTED
+
 // IsAvailable 检查 URL 是否可用
 func (u *URLAvailability) IsAvailable(url string) bool {
 	u.mu.RLock()
@@ -87,14 +97,29 @@ REDACTED
 	return time.Now().After(expiry)
 REDACTED
 
-// GetAvailableURLs 返回可用的 URL 列表（保持优先级顺序）
+// GetAvailableURLs 返回可用的 URL 列表
+// 最近成功的 URL 优先，其他按默认顺序
 func (u *URLAvailability) GetAvailableURLs() []string {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
 
 	now := time.Now()
 	result := make([]string, 0, len(BaseURLs))
+
+	// 如果有最近成功的 URL 且可用，放在最前面
+	if u.lastSuccess != "" {
+		expiry, exists := u.unavailable[u.lastSuccess]
+		if !exists || now.After(expiry) {
+			result = append(result, u.lastSuccess)
+	REDACTED
+REDACTED
+
+	// 添加其他可用的 URL（按默认顺序）
 	for _, url := range BaseURLs {
+		// 跳过已添加的 lastSuccess
+		if url == u.lastSuccess {
+			continue
+	REDACTED
 		expiry, exists := u.unavailable[url]
 		if !exists || now.After(expiry) {
 			result = append(result, url)
