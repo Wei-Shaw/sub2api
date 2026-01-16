@@ -221,6 +221,8 @@ REDACTED
 			ImagePrice4K:     apiKey.Group.ImagePrice4K,
 			ClaudeCodeOnly:   apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:  apiKey.Group.FallbackGroupID,
+			ModelRouting:     apiKey.Group.ModelRouting,
+			ModelRoutingEnabled: apiKey.Group.ModelRoutingEnabled,
 	REDACTED
 REDACTED
 	return snapshot
@@ -263,6 +265,8 @@ REDACTED
 			ImagePrice4K:     snapshot.Group.ImagePrice4K,
 			ClaudeCodeOnly:   snapshot.Group.ClaudeCodeOnly,
 			FallbackGroupID:  snapshot.Group.FallbackGroupID,
+			ModelRouting:        snapshot.Group.ModelRouting,
+			ModelRoutingEnabled: snapshot.Group.ModelRoutingEnabled,
 	REDACTED
 REDACTED
 	return apiKey

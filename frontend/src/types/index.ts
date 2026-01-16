@@ -269,6 +269,9 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
+  // 模型路由配置（仅 anthropic 平台使用）
+  model_routing: Record<string, number[]> | null
+  model_routing_enabled: boolean
   account_count?: number
   created_at: string
   updated_at: string

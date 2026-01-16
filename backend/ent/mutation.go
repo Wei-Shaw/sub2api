@@ -3864,6 +3864,8 @@ type GroupMutation struct {
 	claude_code_only         *bool
 	fallback_group_id        *int64
 	addfallback_group_id     *int64
+	model_routing            *map[string][]int64
+	model_routing_enabled    *bool
 	clearedFields            map[string]struct{REDACTED
 	api_keys                 map[int64]struct{REDACTED
 	removedapi_keys          map[int64]struct{REDACTED
@@ -4974,6 +4976,91 @@ func (m *GroupMutation) ResetFallbackGroupID() {
 	delete(m.clearedFields, group.FieldFallbackGroupID)
 REDACTED
 
+// SetModelRouting sets the "model_routing" field.
+func (m *GroupMutation) SetModelRouting(value map[string][]int64) {
+	m.model_routing = &value
+REDACTED
+
+// ModelRouting returns the value of the "model_routing" field in the mutation.
+func (m *GroupMutation) ModelRouting() (r map[string][]int64, exists bool) {
+	v := m.model_routing
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldModelRouting returns the old "model_routing" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelRouting(ctx context.Context) (v map[string][]int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelRouting is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelRouting requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelRouting: %w", err)
+REDACTED
+	return oldValue.ModelRouting, nil
+REDACTED
+
+// ClearModelRouting clears the value of the "model_routing" field.
+func (m *GroupMutation) ClearModelRouting() {
+	m.model_routing = nil
+	m.clearedFields[group.FieldModelRouting] = struct{REDACTED{REDACTED
+REDACTED
+
+// ModelRoutingCleared returns if the "model_routing" field was cleared in this mutation.
+func (m *GroupMutation) ModelRoutingCleared() bool {
+	_, ok := m.clearedFields[group.FieldModelRouting]
+	return ok
+REDACTED
+
+// ResetModelRouting resets all changes to the "model_routing" field.
+func (m *GroupMutation) ResetModelRouting() {
+	m.model_routing = nil
+	delete(m.clearedFields, group.FieldModelRouting)
+REDACTED
+
+// SetModelRoutingEnabled sets the "model_routing_enabled" field.
+func (m *GroupMutation) SetModelRoutingEnabled(b bool) {
+	m.model_routing_enabled = &b
+REDACTED
+
+// ModelRoutingEnabled returns the value of the "model_routing_enabled" field in the mutation.
+func (m *GroupMutation) ModelRoutingEnabled() (r bool, exists bool) {
+	v := m.model_routing_enabled
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldModelRoutingEnabled returns the old "model_routing_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelRoutingEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelRoutingEnabled is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelRoutingEnabled requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelRoutingEnabled: %w", err)
+REDACTED
+	return oldValue.ModelRoutingEnabled, nil
+REDACTED
+
+// ResetModelRoutingEnabled resets all changes to the "model_routing_enabled" field.
+func (m *GroupMutation) ResetModelRoutingEnabled() {
+	m.model_routing_enabled = nil
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -5332,7 +5419,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 21)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -5390,6 +5477,12 @@ REDACTED
 	if m.fallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 REDACTED
+	if m.model_routing != nil {
+		fields = append(fields, group.FieldModelRouting)
+REDACTED
+	if m.model_routing_enabled != nil {
+		fields = append(fields, group.FieldModelRoutingEnabled)
+REDACTED
 	return fields
 REDACTED
 
@@ -5436,6 +5529,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
 		return m.FallbackGroupID()
+	case group.FieldModelRouting:
+		return m.ModelRouting()
+	case group.FieldModelRoutingEnabled:
+		return m.ModelRoutingEnabled()
 REDACTED
 	return nil, false
 REDACTED
@@ -5483,6 +5580,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
 		return m.OldFallbackGroupID(ctx)
+	case group.FieldModelRouting:
+		return m.OldModelRouting(ctx)
+	case group.FieldModelRoutingEnabled:
+		return m.OldModelRoutingEnabled(ctx)
 REDACTED
 	return nil, fmt.Errorf("unknown Group field %s", name)
 REDACTED
@@ -5624,6 +5725,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetFallbackGroupID(v)
+		return nil
+	case group.FieldModelRouting:
+		v, ok := value.(map[string][]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetModelRouting(v)
+		return nil
+	case group.FieldModelRoutingEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetModelRoutingEnabled(v)
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group field %s", name)
@@ -5793,6 +5908,9 @@ REDACTED
 	if m.FieldCleared(group.FieldFallbackGroupID) {
 		fields = append(fields, group.FieldFallbackGroupID)
 REDACTED
+	if m.FieldCleared(group.FieldModelRouting) {
+		fields = append(fields, group.FieldModelRouting)
+REDACTED
 	return fields
 REDACTED
 
@@ -5833,6 +5951,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldFallbackGroupID:
 		m.ClearFallbackGroupID()
+		return nil
+	case group.FieldModelRouting:
+		m.ClearModelRouting()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -5898,6 +6019,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldFallbackGroupID:
 		m.ResetFallbackGroupID()
+		return nil
+	case group.FieldModelRouting:
+		m.ResetModelRouting()
+		return nil
+	case group.FieldModelRoutingEnabled:
+		m.ResetModelRoutingEnabled()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group field %s", name)

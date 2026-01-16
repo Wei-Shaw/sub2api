@@ -916,6 +916,26 @@ export default {
         fallbackGroup: 'Fallback Group',
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
+      REDACTED,
+      modelRouting: {
+        title: 'Model Routing',
+        tooltip: 'Configure specific model requests to be routed to designated accounts. Supports wildcard matching, e.g., claude-opus-* matches all opus models.',
+        enabled: 'Enabled',
+        disabled: 'Disabled',
+        disabledHint: 'Routing rules will only take effect when enabled',
+        addRule: 'Add Routing Rule',
+        modelPattern: 'Model Pattern',
+        modelPatternPlaceholder: 'claude-opus-*',
+        modelPatternHint: 'Supports * wildcard, e.g., claude-opus-* matches all opus models',
+        accounts: 'Priority Accounts',
+        selectAccounts: 'Select accounts',
+        noAccounts: 'No accounts in this group',
+        loadingAccounts: 'Loading accounts...',
+        removeRule: 'Remove Rule',
+        noRules: 'No routing rules',
+        noRulesHint: 'Add routing rules to route specific model requests to designated accounts',
+        searchAccountPlaceholder: 'Search accounts...',
+        accountsHint: 'Select accounts to prioritize for this model pattern'
       REDACTED
     REDACTED,
 
