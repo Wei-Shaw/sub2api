@@ -50,16 +50,19 @@ export default {
       REDACTED,
       fontFamily: {
         sans: [
-          'Inter',
+          'system-ui',
           '-apple-system',
           'BlinkMacSystemFont',
           'Segoe UI',
           'Roboto',
           'Helvetica Neue',
           'Arial',
+          'PingFang SC',
+          'Hiragino Sans GB',
+          'Microsoft YaHei',
           'sans-serif'
         ],
-        mono: ['JetBrains Mono', 'Fira Code', 'Monaco', 'Consolas', 'monospace']
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
       REDACTED,
       boxShadow: {
         glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
