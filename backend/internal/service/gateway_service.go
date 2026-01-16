@@ -439,7 +439,7 @@ REDACTED
 	REDACTED
 		runes := []rune(lower)
 		runes[0] = unicode.ToUpper(runes[0])
-		builder.WriteString(string(runes))
+		_, _ = builder.WriteString(string(runes))
 REDACTED
 	return builder.String()
 REDACTED
@@ -723,12 +723,8 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if _, ok := req["temperature"]; ok {
-		delete(req, "temperature")
-REDACTED
-	if _, ok := req["tool_choice"]; ok {
-		delete(req, "tool_choice")
-REDACTED
+	delete(req, "temperature")
+	delete(req, "tool_choice")
 
 	newBody, err := json.Marshal(req)
 	if err != nil {
