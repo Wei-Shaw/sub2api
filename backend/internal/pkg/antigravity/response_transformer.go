@@ -289,8 +289,8 @@ REDACTED
 	var builder strings.Builder
 
 	if len(grounding.WebSearchQueries) > 0 {
-		builder.WriteString("\n\n---\nWeb search queries: ")
-		builder.WriteString(strings.Join(grounding.WebSearchQueries, ", "))
+		_, _ = builder.WriteString("\n\n---\nWeb search queries: ")
+		_, _ = builder.WriteString(strings.Join(grounding.WebSearchQueries, ", "))
 REDACTED
 
 	if len(grounding.GroundingChunks) > 0 {
@@ -311,8 +311,8 @@ REDACTED
 	REDACTED
 
 		if len(links) > 0 {
-			builder.WriteString("\n\nSources:\n")
-			builder.WriteString(strings.Join(links, "\n"))
+			_, _ = builder.WriteString("\n\nSources:\n")
+			_, _ = builder.WriteString(strings.Join(links, "\n"))
 	REDACTED
 REDACTED
 
