@@ -92,17 +92,29 @@ urlFallbackLoop:
 				return nil, fmt.Errorf("upstream request failed after retries: %w", err)
 		REDACTED
 
-			// 429 限流：优先切换 URL，所有 URL 都 429 时才返回
+			// 429 限流处理：区分 URL 级别限流和账户配额限流
 			if resp.StatusCode == http.StatusTooManyRequests {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				if urlIdx < len(availableURLs)-1 {
+				// "Resource has been exhausted" 是 URL 级别限流，切换 URL
+				if isURLLevelRateLimit(respBody) && urlIdx < len(availableURLs)-1 {
 					antigravity.DefaultURLAvailability.MarkUnavailable(baseURL)
 					log.Printf("%s URL fallback (429): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
 					continue urlFallbackLoop
 			REDACTED
 
+				// 账户/模型配额限流，重试 3 次（指数退避）
+				if attempt < antigravityMaxRetries {
+					log.Printf("%s status=429 retry=%d/%d body=%s", p.prefix, attempt, antigravityMaxRetries, truncateForLog(respBody, 200))
+					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
+						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
+						return nil, p.ctx.Err()
+				REDACTED
+					continue
+			REDACTED
+
+				// 重试用尽，标记账户限流
 				p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope)
 				log.Printf("%s status=429 rate_limited base_url=%s body=%s", p.prefix, baseURL, truncateForLog(respBody, 200))
 				resp = &http.Response{
@@ -153,6 +165,16 @@ func shouldRetryAntigravityError(statusCode int) bool {
 	default:
 		return false
 REDACTED
+REDACTED
+
+// isURLLevelRateLimit 判断是否为 URL 级别的限流（应切换 URL 重试）
+// "Resource has been exhausted" 是 URL/节点级别限流，切换 URL 可能成功
+// "exhausted your capacity on this model" 是账户/模型配额限流，切换 URL 无效
+func isURLLevelRateLimit(body []byte) bool {
+	// 快速检查：包含 "Resource has been exhausted" 且不包含 "capacity on this model"
+	bodyStr := string(body)
+	return strings.Contains(bodyStr, "Resource has been exhausted") &&
+		!strings.Contains(bodyStr, "capacity on this model")
 REDACTED
 
 // isAntigravityConnectionError 判断是否为连接错误（网络超时、DNS 失败、连接拒绝）
