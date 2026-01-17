@@ -54,6 +54,9 @@ func DefaultTransformOptions() TransformOptions {
 REDACTED
 REDACTED
 
+// webSearchFallbackModel web_search 请求使用的降级模型
+const webSearchFallbackModel = "gemini-2.5-flash"
+
 // TransformClaudeToGemini 将 Claude 请求转换为 v1internal Gemini 格式
 func TransformClaudeToGemini(claudeReq *ClaudeRequest, projectID, mappedModel string) ([]byte, error) {
 	return TransformClaudeToGeminiWithOptions(claudeReq, projectID, mappedModel, DefaultTransformOptions())
@@ -64,12 +67,23 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 用于存储 tool_use id -> name 映射
 	toolIDToName := make(map[string]string)
 
+	// 检测是否有 web_search 工具
+	hasWebSearchTool := hasWebSearchTool(claudeReq.Tools)
+	requestType := "agent"
+	targetModel := mappedModel
+	if hasWebSearchTool {
+		requestType = "web_search"
+		if targetModel != webSearchFallbackModel {
+			targetModel = webSearchFallbackModel
+	REDACTED
+REDACTED
+
 	// 检测是否启用 thinking
 	isThinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
 
 	// 只有 Gemini 模型支持 dummy thought workaround
 	// Claude 模型通过 Vertex/Google API 需要有效的 thought signatures
-	allowDummyThought := strings.HasPrefix(mappedModel, "gemini-")
+	allowDummyThought := strings.HasPrefix(targetModel, "gemini-")
 
 	// 1. 构建 contents
 	contents, strippedThinking, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
@@ -87,6 +101,11 @@ REDACTED
 		// disable upstream thinking mode to avoid signature/structure validation errors.
 		reqCopy := *claudeReq
 		reqCopy.Thinking = nil
+		reqForConfig = &reqCopy
+REDACTED
+	if targetModel != "" && targetModel != reqForConfig.Model {
+		reqCopy := *reqForConfig
+		reqCopy.Model = targetModel
 		reqForConfig = &reqCopy
 REDACTED
 	generationConfig := buildGenerationConfig(reqForConfig)
@@ -127,8 +146,8 @@ REDACTED
 		Project:     projectID,
 		RequestID:   "agent-" + uuid.New().String(),
 		UserAgent:   "antigravity", // 固定值，与官方客户端一致
-		RequestType: "agent",
-		Model:       mappedModel,
+		RequestType: requestType,
+		Model:       targetModel,
 		Request:     innerRequest,
 REDACTED
 
@@ -513,37 +532,43 @@ REDACTED
 	return config
 REDACTED
 
+func hasWebSearchTool(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if isWebSearchTool(tool) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func isWebSearchTool(tool ClaudeTool) bool {
+	if strings.HasPrefix(tool.Type, "web_search") || tool.Type == "google_search" {
+		return true
+REDACTED
+
+	name := strings.TrimSpace(tool.Name)
+	switch name {
+	case "web_search", "google_search", "web_search_20250305":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
 // buildTools 构建 tools
 func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 	if len(tools) == 0 {
 		return nil
 REDACTED
 
-	// 检查是否有 web_search 工具
-	hasWebSearch := false
-	for _, tool := range tools {
-		if tool.Name == "web_search" {
-			hasWebSearch = true
-			break
-	REDACTED
-REDACTED
-
-	if hasWebSearch {
-		// Web Search 工具映射
-		return []GeminiToolDeclaration{{
-			GoogleSearch: &GeminiGoogleSearch{
-				EnhancedContent: &GeminiEnhancedContent{
-					ImageSearch: &GeminiImageSearch{
-						MaxResultCount: 5,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-	REDACTEDREDACTED
-REDACTED
+	hasWebSearch := hasWebSearchTool(tools)
 
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
 	for _, tool := range tools {
+		if isWebSearchTool(tool) {
+			continue
+	REDACTED
 		// 跳过无效工具名称
 		if strings.TrimSpace(tool.Name) == "" {
 			log.Printf("Warning: skipping tool with empty name")
@@ -586,7 +611,20 @@ REDACTED
 REDACTED
 
 	if len(funcDecls) == 0 {
-		return nil
+		if !hasWebSearch {
+			return nil
+	REDACTED
+
+		// Web Search 工具映射
+		return []GeminiToolDeclaration{{
+			GoogleSearch: &GeminiGoogleSearch{
+				EnhancedContent: &GeminiEnhancedContent{
+					ImageSearch: &GeminiImageSearch{
+						MaxResultCount: 5,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTEDREDACTED
 REDACTED
 
 	return []GeminiToolDeclaration{{
