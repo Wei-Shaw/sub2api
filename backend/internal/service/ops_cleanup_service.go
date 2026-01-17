@@ -149,7 +149,7 @@ REDACTED
 		log.Printf("[OpsCleanup] cleanup failed: %v", err)
 		return
 REDACTED
-	s.recordHeartbeatSuccess(runAt, time.Since(startedAt))
+	s.recordHeartbeatSuccess(runAt, time.Since(startedAt), counts)
 	log.Printf("[OpsCleanup] cleanup complete: %s", counts)
 REDACTED
 
@@ -330,12 +330,13 @@ REDACTED
 	return release, true
 REDACTED
 
-func (s *OpsCleanupService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration) {
+func (s *OpsCleanupService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration, counts opsCleanupDeletedCounts) {
 	if s == nil || s.opsRepo == nil {
 		return
 REDACTED
 	now := time.Now().UTC()
 	durMs := duration.Milliseconds()
+	result := truncateString(counts.String(), 2048)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = s.opsRepo.UpsertJobHeartbeat(ctx, &OpsUpsertJobHeartbeatInput{
@@ -343,6 +344,7 @@ REDACTED
 		LastRunAt:      &runAt,
 		LastSuccessAt:  &now,
 		LastDurationMs: &durMs,
+		LastResult:     &result,
 REDACTED)
 REDACTED
 

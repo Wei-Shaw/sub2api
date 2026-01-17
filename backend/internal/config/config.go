@@ -19,7 +19,9 @@ const (
 	RunModeSimple   = "simple"
 )
 
-const DefaultCSPPolicy = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+// DefaultCSPPolicy is the default Content-Security-Policy with nonce support
+// __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
+const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // 连接池隔离策略常量
 // 用于控制上游 HTTP 连接池的隔离粒度，影响连接复用和资源消耗
@@ -232,6 +234,10 @@ type GatewayConfig struct {
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
 	ConcurrencySlotTTLMinutes int `mapstructure:"concurrency_slot_ttl_minutes"`
+	// SessionIdleTimeoutMinutes: 会话空闲超时时间（分钟），默认 5 分钟
+	// 用于 Anthropic OAuth/SetupToken 账号的会话数量限制功能
+	// 空闲超过此时间的会话将被自动释放
+	SessionIdleTimeoutMinutes int `mapstructure:"session_idle_timeout_minutes"`
 
 	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
 	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`

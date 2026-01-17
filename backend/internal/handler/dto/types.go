@@ -58,6 +58,10 @@ type Group struct {
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 
+	// 模型路由配置（仅 anthropic 平台使用）
+	ModelRouting        map[string][]int64 `json:"model_routing"`
+	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
@@ -76,6 +80,7 @@ type Account struct {
 	ProxyID            *int64         `json:"proxy_id"`
 	Concurrency        int            `json:"concurrency"`
 	Priority           int            `json:"priority"`
+	RateMultiplier     float64        `json:"rate_multiplier"`
 	Status             string         `json:"status"`
 	ErrorMessage       string         `json:"error_message"`
 	LastUsedAt         *time.Time     `json:"last_used_at"`
@@ -96,6 +101,16 @@ type Account struct {
 	SessionWindowStart  *time.Time `json:"session_window_start"`
 	SessionWindowEnd    *time.Time `json:"session_window_end"`
 	SessionWindowStatus string     `json:"session_window_status"`
+
+	// 5h窗口费用控制（仅 Anthropic OAuth/SetupToken 账号有效）
+	// 从 extra 字段提取，方便前端显示和编辑
+	WindowCostLimit         *float64 `json:"window_cost_limit,omitempty"`
+	WindowCostStickyReserve *float64 `json:"window_cost_sticky_reserve,omitempty"`
+
+	// 会话数量控制（仅 Anthropic OAuth/SetupToken 账号有效）
+	// 从 extra 字段提取，方便前端显示和编辑
+	MaxSessions           *int `json:"max_sessions,omitempty"`
+	SessionIdleTimeoutMin *int `json:"session_idle_timeout_minutes,omitempty"`
 
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
@@ -129,7 +144,23 @@ REDACTED
 
 type ProxyWithAccountCount struct {
 	Proxy
-	AccountCount int64 `json:"account_count"`
+	AccountCount   int64  `json:"account_count"`
+	LatencyMs      *int64 `json:"latency_ms,omitempty"`
+	LatencyStatus  string `json:"latency_status,omitempty"`
+	LatencyMessage string `json:"latency_message,omitempty"`
+	IPAddress      string `json:"ip_address,omitempty"`
+	Country        string `json:"country,omitempty"`
+	CountryCode    string `json:"country_code,omitempty"`
+	Region         string `json:"region,omitempty"`
+	City           string `json:"city,omitempty"`
+REDACTED
+
+type ProxyAccountSummary struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	Platform string  `json:"platform"`
+	Type     string  `json:"type"`
+	Notes    *string `json:"notes,omitempty"`
 REDACTED
 
 type RedeemCode struct {
@@ -169,13 +200,14 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
 
-	InputCost         float64 `json:"input_cost"`
-	OutputCost        float64 `json:"output_cost"`
-	CacheCreationCost float64 `json:"cache_creation_cost"`
-	CacheReadCost     float64 `json:"cache_read_cost"`
-	TotalCost         float64 `json:"total_cost"`
-	ActualCost        float64 `json:"actual_cost"`
-	RateMultiplier    float64 `json:"rate_multiplier"`
+	InputCost             float64  `json:"input_cost"`
+	OutputCost            float64  `json:"output_cost"`
+	CacheCreationCost     float64  `json:"cache_creation_cost"`
+	CacheReadCost         float64  `json:"cache_read_cost"`
+	TotalCost             float64  `json:"total_cost"`
+	ActualCost            float64  `json:"actual_cost"`
+	RateMultiplier        float64  `json:"rate_multiplier"`
+	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
 
 	BillingType  int8 `json:"billing_type"`
 	Stream       bool `json:"stream"`

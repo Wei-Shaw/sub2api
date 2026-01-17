@@ -53,6 +53,10 @@ const (
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
 	FieldFallbackGroupID = "fallback_group_id"
+	// FieldModelRouting holds the string denoting the model_routing field in the database.
+	FieldModelRouting = "model_routing"
+	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
+	FieldModelRoutingEnabled = "model_routing_enabled"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -147,6 +151,8 @@ var Columns = []string{
 	FieldImagePrice4k,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
+	FieldModelRouting,
+	FieldModelRoutingEnabled,
 REDACTED
 
 var (
@@ -204,6 +210,8 @@ var (
 	DefaultDefaultValidityDays int
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
+	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
+	DefaultModelRoutingEnabled bool
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -307,6 +315,11 @@ REDACTED
 // ByFallbackGroupID orders the results by the fallback_group_id field.
 func ByFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFallbackGroupID, opts...).ToFunc()
+REDACTED
+
+// ByModelRoutingEnabled orders the results by the model_routing_enabled field.
+func ByModelRoutingEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModelRoutingEnabled, opts...).ToFunc()
 REDACTED
 
 // ByAPIKeysCount orders the results by api_keys count.

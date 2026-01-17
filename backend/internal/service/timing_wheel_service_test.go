@@ -1,0 +1,146 @@
+package service
+
+import (
+	"errors"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/zeromicro/go-zero/core/collection"
+)
+
+func TestNewTimingWheelService_InitFail_NoPanicAndReturnError(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original REDACTED)
+
+	newTimingWheel = func(_ time.Duration, _ int, _ collection.Execute) (*collection.TimingWheel, error) {
+		return nil, errors.New("boom")
+REDACTED
+
+	svc, err := NewTimingWheelService()
+	if err == nil {
+		t.Fatalf("期望返回 error，但得到 nil")
+REDACTED
+	if svc != nil {
+		t.Fatalf("期望返回 nil svc，但得到非空")
+REDACTED
+REDACTED
+
+func TestNewTimingWheelService_Success(t *testing.T) {
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+REDACTED
+	if svc == nil {
+		t.Fatalf("期望 svc 非空，但得到 nil")
+REDACTED
+	svc.Stop()
+REDACTED
+
+func TestNewTimingWheelService_ExecuteCallbackRunsFunc(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original REDACTED)
+
+	var captured collection.Execute
+	newTimingWheel = func(interval time.Duration, numSlots int, execute collection.Execute) (*collection.TimingWheel, error) {
+		captured = execute
+		return original(interval, numSlots, execute)
+REDACTED
+
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+REDACTED
+	if captured == nil {
+		t.Fatalf("期望 captured 非空，但得到 nil")
+REDACTED
+
+	called := false
+	captured("k", func() { called = true REDACTED)
+	if !called {
+		t.Fatalf("期望 execute 回调触发传入函数执行")
+REDACTED
+
+	svc.Stop()
+REDACTED
+
+func TestTimingWheelService_Schedule_ExecutesOnce(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original REDACTED)
+
+	newTimingWheel = func(_ time.Duration, _ int, execute collection.Execute) (*collection.TimingWheel, error) {
+		return original(10*time.Millisecond, 128, execute)
+REDACTED
+
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+REDACTED
+	defer svc.Stop()
+
+	ch := make(chan struct{REDACTED, 1)
+	svc.Schedule("once", 30*time.Millisecond, func() { ch <- struct{REDACTED{REDACTED REDACTED)
+
+	select {
+	case <-ch:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("等待任务执行超时")
+REDACTED
+
+	select {
+	case <-ch:
+		t.Fatalf("任务不应重复执行")
+	case <-time.After(80 * time.Millisecond):
+REDACTED
+REDACTED
+
+func TestTimingWheelService_Cancel_PreventsExecution(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original REDACTED)
+
+	newTimingWheel = func(_ time.Duration, _ int, execute collection.Execute) (*collection.TimingWheel, error) {
+		return original(10*time.Millisecond, 128, execute)
+REDACTED
+
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+REDACTED
+	defer svc.Stop()
+
+	ch := make(chan struct{REDACTED, 1)
+	svc.Schedule("cancel", 80*time.Millisecond, func() { ch <- struct{REDACTED{REDACTED REDACTED)
+	svc.Cancel("cancel")
+
+	select {
+	case <-ch:
+		t.Fatalf("任务已取消，不应执行")
+	case <-time.After(200 * time.Millisecond):
+REDACTED
+REDACTED
+
+func TestTimingWheelService_ScheduleRecurring_ExecutesMultipleTimes(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original REDACTED)
+
+	newTimingWheel = func(_ time.Duration, _ int, execute collection.Execute) (*collection.TimingWheel, error) {
+		return original(10*time.Millisecond, 128, execute)
+REDACTED
+
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+REDACTED
+	defer svc.Stop()
+
+	var count int32
+	svc.ScheduleRecurring("rec", 30*time.Millisecond, func() { atomic.AddInt32(&count, 1) REDACTED)
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for atomic.LoadInt32(&count) < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+REDACTED
+	if atomic.LoadInt32(&count) < 2 {
+		t.Fatalf("期望周期任务至少执行 2 次，但只执行了 %d 次", atomic.LoadInt32(&count))
+REDACTED
+REDACTED

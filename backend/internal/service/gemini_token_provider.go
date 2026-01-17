@@ -40,7 +40,7 @@ REDACTED
 		return "", errors.New("not a gemini oauth account")
 REDACTED
 
-	cacheKey := geminiTokenCacheKey(account)
+	cacheKey := GeminiTokenCacheKey(account)
 
 	// 1) Try cache first.
 	if p.tokenCache != nil {
@@ -151,10 +151,10 @@ REDACTED
 	return accessToken, nil
 REDACTED
 
-func geminiTokenCacheKey(account *Account) string {
+func GeminiTokenCacheKey(account *Account) string {
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
 	if projectID != "" {
-		return projectID
+		return "gemini:" + projectID
 REDACTED
-	return "account:" + strconv.FormatInt(account.ID, 10)
+	return "gemini:account:" + strconv.FormatInt(account.ID, 10)
 REDACTED

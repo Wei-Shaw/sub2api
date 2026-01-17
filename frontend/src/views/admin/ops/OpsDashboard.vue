@@ -8,7 +8,7 @@
         {{ errorMessage REDACTEDREDACTED
       </div>
 
-      <OpsDashboardSkeleton v-if="loading && !hasLoadedOnce" />
+      <OpsDashboardSkeleton v-if="loading && !hasLoadedOnce" :fullscreen="isFullscreen" />
 
       <OpsDashboardHeader
         v-else-if="opsEnabled"
@@ -23,10 +23,13 @@
         :auto-refresh-enabled="autoRefreshEnabled"
         :auto-refresh-countdown="autoRefreshCountdown"
         :fullscreen="isFullscreen"
+        :custom-start-time="customStartTime"
+        :custom-end-time="customEndTime"
         @update:time-range="onTimeRangeChange"
         @update:platform="onPlatformChange"
         @update:group="onGroupChange"
         @update:query-mode="onQueryModeChange"
+        @update:custom-time-range="onCustomTimeRangeChange"
         @refresh="fetchData"
         @open-request-details="handleOpenRequestDetails"
         @open-error-details="openErrorDetails"
@@ -39,7 +42,7 @@
       <!-- Row: Concurrency + Throughput -->
       <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div class="lg:col-span-1 min-h-[360px]">
-          <OpsConcurrencyCard :platform-filter="platform" :group-id-filter="groupId" />
+          <OpsConcurrencyCard :platform-filter="platform" :group-id-filter="groupId" :refresh-token="dashboardRefreshToken" />
         </div>
         <div class="lg:col-span-2 min-h-[360px]">
           <OpsThroughputTrendChart
@@ -94,7 +97,7 @@
           @openErrorDetail="openError"
         />
 
-        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" />
+        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" />
 
         <OpsRequestDetailsModal
           v-model="showRequestDetails"
@@ -148,8 +151,8 @@ const { t REDACTED = useI18n()
 
 const opsEnabled = computed(() => adminSettingsStore.opsMonitoringEnabled)
 
-type TimeRange = '5m' | '30m' | '1h' | '6h' | '24h'
-const allowedTimeRanges = new Set<TimeRange>(['5m', '30m', '1h', '6h', '24h'])
+type TimeRange = '5m' | '30m' | '1h' | '6h' | '24h' | 'custom'
+const allowedTimeRanges = new Set<TimeRange>(['5m', '30m', '1h', '6h', '24h', 'custom'])
 
 type QueryMode = 'auto' | 'raw' | 'preagg'
 const allowedQueryModes = new Set<QueryMode>(['auto', 'raw', 'preagg'])
@@ -163,13 +166,21 @@ const timeRange = ref<TimeRange>('1h')
 const platform = ref<string>('')
 const groupId = ref<number | null>(null)
 const queryMode = ref<QueryMode>('auto')
+const customStartTime = ref<string | null>(null)
+const customEndTime = ref<string | null>(null)
 
 const QUERY_KEYS = {
   timeRange: 'tr',
   platform: 'platform',
   groupId: 'group_id',
   queryMode: 'mode',
-  fullscreen: 'fullscreen'
+  fullscreen: 'fullscreen',
+
+  // Deep links
+  openErrorDetails: 'open_error_details',
+  errorType: 'error_type',
+  alertRuleId: 'alert_rule_id',
+  openAlertRules: 'open_alert_rules'
 REDACTED as const
 
 const isApplyingRouteQuery = ref(false)
@@ -249,6 +260,24 @@ const applyRouteQueryToState = () => {
     const fallback = adminSettingsStore.opsQueryModeDefault || 'auto'
     queryMode.value = allowedQueryModes.has(fallback as QueryMode) ? (fallback as QueryMode) : 'auto'
   REDACTED
+
+  // Deep links
+  const openRules = readQueryString(QUERY_KEYS.openAlertRules)
+  if (openRules === '1' || openRules === 'true') {
+    showAlertRulesCard.value = true
+  REDACTED
+
+  const ruleID = readQueryNumber(QUERY_KEYS.alertRuleId)
+  if (typeof ruleID === 'number' && ruleID > 0) {
+    showAlertRulesCard.value = true
+  REDACTED
+
+  const openErr = readQueryString(QUERY_KEYS.openErrorDetails)
+  if (openErr === '1' || openErr === 'true') {
+    const typ = readQueryString(QUERY_KEYS.errorType)
+    errorDetailsType.value = typ === 'upstream' ? 'upstream' : 'request'
+    showErrorDetails.value = true
+  REDACTED
 REDACTED
 
 applyRouteQueryToState()
@@ -323,23 +352,24 @@ const autoRefreshEnabled = ref(false)
 const autoRefreshIntervalMs = ref(30000) // default 30 seconds
 const autoRefreshCountdown = ref(0)
 
-// Auto refresh timer
-const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useIntervalFn(
-  () => {
-    if (autoRefreshEnabled.value && opsEnabled.value && !loading.value) {
-      fetchData()
-    REDACTED
-  REDACTED,
-  autoRefreshIntervalMs,
-  { immediate: false REDACTED
-)
+// Used to trigger child component refreshes in a single shared cadence.
+const dashboardRefreshToken = ref(0)
 
-// Countdown timer (updates every second)
+// Countdown timer (drives auto refresh; updates every second)
 const { pause: pauseCountdown, resume: resumeCountdown REDACTED = useIntervalFn(
   () => {
-    if (autoRefreshEnabled.value && autoRefreshCountdown.value > 0) {
-      autoRefreshCountdown.value--
+    if (!autoRefreshEnabled.value) return
+    if (!opsEnabled.value) return
+    if (loading.value) return
+
+    if (autoRefreshCountdown.value <= 0) {
+      // Fetch immediately when the countdown reaches 0.
+      // fetchData() will reset the countdown to the full interval.
+      fetchData()
+      return
     REDACTED
+
+    autoRefreshCountdown.value -= 1
   REDACTED,
   1000,
   { immediate: false REDACTED
@@ -376,11 +406,17 @@ function handleOpenRequestDetails(preset?: OpsRequestDetailsPreset) {
 
   requestDetailsPreset.value = { ...basePreset, ...(preset ?? {REDACTED) REDACTED
   if (!requestDetailsPreset.value.title) requestDetailsPreset.value.title = basePreset.title
+  // Ensure only one modal visible at a time.
+  showErrorDetails.value = false
+  showErrorModal.value = false
   showRequestDetails.value = true
 REDACTED
 
 function openErrorDetails(kind: 'request' | 'upstream') {
   errorDetailsType.value = kind
+  // Ensure only one modal visible at a time.
+  showRequestDetails.value = false
+  showErrorModal.value = false
   showErrorDetails.value = true
 REDACTED
 
@@ -388,6 +424,11 @@ function onTimeRangeChange(v: string | number | boolean | null) {
   if (typeof v !== 'string') return
   if (!allowedTimeRanges.has(v as TimeRange)) return
   timeRange.value = v as TimeRange
+REDACTED
+
+function onCustomTimeRangeChange(startTime: string, endTime: string) {
+  customStartTime.value = startTime
+  customEndTime.value = endTime
 REDACTED
 
 function onSettingsSaved() {
@@ -422,21 +463,38 @@ REDACTED
 
 function openError(id: number) {
   selectedErrorId.value = id
+  // Ensure only one modal visible at a time.
+  showErrorDetails.value = false
+  showRequestDetails.value = false
   showErrorModal.value = true
+REDACTED
+
+function buildApiParams() {
+  const params: any = {
+    platform: platform.value || undefined,
+    group_id: groupId.value ?? undefined,
+    mode: queryMode.value
+  REDACTED
+
+  if (timeRange.value === 'custom') {
+    if (customStartTime.value && customEndTime.value) {
+      params.start_time = customStartTime.value
+      params.end_time = customEndTime.value
+    REDACTED else {
+      // Safety fallback: avoid sending time_range=custom (backend may not support it)
+      params.time_range = '1h'
+    REDACTED
+  REDACTED else {
+    params.time_range = timeRange.value
+  REDACTED
+
+  return params
 REDACTED
 
 async function refreshOverviewWithCancel(fetchSeq: number, signal: AbortSignal) {
   if (!opsEnabled.value) return
   try {
-    const data = await opsAPI.getDashboardOverview(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getDashboardOverview(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     overview.value = data
   REDACTED catch (err: any) {
@@ -450,15 +508,7 @@ async function refreshThroughputTrendWithCancel(fetchSeq: number, signal: AbortS
   if (!opsEnabled.value) return
   loadingTrend.value = true
   try {
-    const data = await opsAPI.getThroughputTrend(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getThroughputTrend(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     throughputTrend.value = data
   REDACTED catch (err: any) {
@@ -476,15 +526,7 @@ async function refreshLatencyHistogramWithCancel(fetchSeq: number, signal: Abort
   if (!opsEnabled.value) return
   loadingLatency.value = true
   try {
-    const data = await opsAPI.getLatencyHistogram(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getLatencyHistogram(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     latencyHistogram.value = data
   REDACTED catch (err: any) {
@@ -502,15 +544,7 @@ async function refreshErrorTrendWithCancel(fetchSeq: number, signal: AbortSignal
   if (!opsEnabled.value) return
   loadingErrorTrend.value = true
   try {
-    const data = await opsAPI.getErrorTrend(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getErrorTrend(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     errorTrend.value = data
   REDACTED catch (err: any) {
@@ -528,15 +562,7 @@ async function refreshErrorDistributionWithCancel(fetchSeq: number, signal: Abor
   if (!opsEnabled.value) return
   loadingErrorDistribution.value = true
   try {
-    const data = await opsAPI.getErrorDistribution(
-      {
-        time_range: timeRange.value,
-        platform: platform.value || undefined,
-        group_id: groupId.value ?? undefined,
-        mode: queryMode.value
-      REDACTED,
-      { signal REDACTED
-    )
+    const data = await opsAPI.getErrorDistribution(buildApiParams(), { signal REDACTED)
     if (fetchSeq !== dashboardFetchSeq) return
     errorDistribution.value = data
   REDACTED catch (err: any) {
@@ -579,7 +605,12 @@ async function fetchData() {
       refreshErrorDistributionWithCancel(fetchSeq, dashboardFetchController.signal)
     ])
     if (fetchSeq !== dashboardFetchSeq) return
+
     lastUpdated.value = new Date()
+
+    // Trigger child component refreshes using the same cadence as the header.
+    dashboardRefreshToken.value += 1
+
     // Reset auto refresh countdown after successful fetch
     if (autoRefreshEnabled.value) {
       autoRefreshCountdown.value = Math.floor(autoRefreshIntervalMs.value / 1000)
@@ -653,15 +684,14 @@ onMounted(async () => {
 
   // Start auto refresh if enabled
   if (autoRefreshEnabled.value) {
-    resumeAutoRefresh()
     resumeCountdown()
   REDACTED
 REDACTED)
 
 async function loadThresholds() {
   try {
-    const settings = await opsAPI.getAlertRuntimeSettings()
-    metricThresholds.value = settings.thresholds || null
+    const thresholds = await opsAPI.getMetricThresholds()
+    metricThresholds.value = thresholds || null
   REDACTED catch (err) {
     console.warn('[OpsDashboard] Failed to load thresholds', err)
     metricThresholds.value = null
@@ -671,7 +701,6 @@ REDACTED
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   abortDashboardFetch()
-  pauseAutoRefresh()
   pauseCountdown()
 REDACTED)
 
@@ -679,10 +708,8 @@ REDACTED)
 watch(autoRefreshEnabled, (enabled) => {
   if (enabled) {
     autoRefreshCountdown.value = Math.floor(autoRefreshIntervalMs.value / 1000)
-    resumeAutoRefresh()
     resumeCountdown()
   REDACTED else {
-    pauseAutoRefresh()
     pauseCountdown()
     autoRefreshCountdown.value = 0
   REDACTED

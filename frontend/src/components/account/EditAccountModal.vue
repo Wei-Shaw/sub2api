@@ -549,7 +549,7 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input" />
@@ -563,6 +563,11 @@
             class="input"
             data-tour="account-form-priority"
           />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') REDACTEDREDACTED</label>
+          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.01" class="input" />
+          <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') REDACTEDREDACTED</p>
         </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -596,6 +601,136 @@
               ]"
             />
           </button>
+        </div>
+      </div>
+
+      <!-- Quota Control Section (Anthropic OAuth/SetupToken only) -->
+      <div
+        v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') REDACTEDREDACTED</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaControl.hint') REDACTEDREDACTED
+          </p>
+        </div>
+
+        <!-- Window Cost Limit -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.windowCost.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.windowCost.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="windowCostEnabled = !windowCostEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                windowCostEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  windowCostEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="windowCostEnabled" class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.windowCost.limit') REDACTEDREDACTED</label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+                <input
+                  v-model.number="windowCostLimit"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="input pl-7"
+                  :placeholder="t('admin.accounts.quotaControl.windowCost.limitPlaceholder')"
+                />
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.windowCost.limitHint') REDACTEDREDACTED</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.windowCost.stickyReserve') REDACTEDREDACTED</label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+                <input
+                  v-model.number="windowCostStickyReserve"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="input pl-7"
+                  :placeholder="t('admin.accounts.quotaControl.windowCost.stickyReservePlaceholder')"
+                />
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.windowCost.stickyReserveHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Session Limit -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.sessionLimit.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.sessionLimit.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="sessionLimitEnabled = !sessionLimitEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                sessionLimitEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  sessionLimitEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="sessionLimitEnabled" class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessions') REDACTEDREDACTED</label>
+              <input
+                v-model.number="maxSessions"
+                type="number"
+                min="1"
+                step="1"
+                class="input"
+                :placeholder="t('admin.accounts.quotaControl.sessionLimit.maxSessionsPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessionsHint') REDACTEDREDACTED</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeout') REDACTEDREDACTED</label>
+              <div class="relative">
+                <input
+                  v-model.number="sessionIdleTimeout"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="input pr-12"
+                  :placeholder="t('admin.accounts.quotaControl.sessionLimit.idleTimeoutPlaceholder')"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">{{ t('common.minutes') REDACTEDREDACTED</span>
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeoutHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -762,6 +897,14 @@ const mixedScheduling = ref(false) // For antigravity accounts: enable mixed sch
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 
+// Quota control state (Anthropic OAuth/SetupToken only)
+const windowCostEnabled = ref(false)
+const windowCostLimit = ref<number | null>(null)
+const windowCostStickyReserve = ref<number | null>(null)
+const sessionLimitEnabled = ref(false)
+const maxSessions = ref<number | null>(null)
+const sessionIdleTimeout = ref<number | null>(null)
+
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
 const tempUnschedPresets = computed(() => [
@@ -807,6 +950,7 @@ const form = reactive({
   proxy_id: null as number | null,
   concurrency: 1,
   priority: 1,
+  rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive',
   group_ids: [] as number[],
   expires_at: null as number | null
@@ -834,6 +978,7 @@ watch(
       form.proxy_id = newAccount.proxy_id
       form.concurrency = newAccount.concurrency
       form.priority = newAccount.priority
+      form.rate_multiplier = newAccount.rate_multiplier ?? 1
       form.status = newAccount.status as 'active' | 'inactive'
       form.group_ids = newAccount.group_ids || []
       form.expires_at = newAccount.expires_at ?? null
@@ -846,6 +991,9 @@ watch(
       // Load mixed scheduling setting (only for antigravity accounts)
       const extra = newAccount.extra as Record<string, unknown> | undefined
       mixedScheduling.value = extra?.mixed_scheduling === true
+
+      // Load quota control settings (Anthropic OAuth/SetupToken only)
+      loadQuotaControlSettings(newAccount)
 
       loadTempUnschedRules(credentials)
 
@@ -1080,6 +1228,35 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
   REDACTED)
 REDACTED
 
+// Load quota control settings from account (Anthropic OAuth/SetupToken only)
+function loadQuotaControlSettings(account: Account) {
+  // Reset all quota control state first
+  windowCostEnabled.value = false
+  windowCostLimit.value = null
+  windowCostStickyReserve.value = null
+  sessionLimitEnabled.value = false
+  maxSessions.value = null
+  sessionIdleTimeout.value = null
+
+  // Only applies to Anthropic OAuth/SetupToken accounts
+  if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
+    return
+  REDACTED
+
+  // Load from extra field (via backend DTO fields)
+  if (account.window_cost_limit != null && account.window_cost_limit > 0) {
+    windowCostEnabled.value = true
+    windowCostLimit.value = account.window_cost_limit
+    windowCostStickyReserve.value = account.window_cost_sticky_reserve ?? 10
+  REDACTED
+
+  if (account.max_sessions != null && account.max_sessions > 0) {
+    sessionLimitEnabled.value = true
+    maxSessions.value = account.max_sessions
+    sessionIdleTimeout.value = account.session_idle_timeout_minutes ?? 5
+  REDACTED
+REDACTED
+
 function formatTempUnschedKeywords(value: unknown) {
   if (Array.isArray(value)) {
     return value
@@ -1204,6 +1381,32 @@ const handleSubmit = async () => {
       REDACTED else {
         delete newExtra.mixed_scheduling
       REDACTED
+      updatePayload.extra = newExtra
+    REDACTED
+
+    // For Anthropic OAuth/SetupToken accounts, handle quota control settings in extra
+    if (props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')) {
+      const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
+      const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+
+      // Window cost limit settings
+      if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {
+        newExtra.window_cost_limit = windowCostLimit.value
+        newExtra.window_cost_sticky_reserve = windowCostStickyReserve.value ?? 10
+      REDACTED else {
+        delete newExtra.window_cost_limit
+        delete newExtra.window_cost_sticky_reserve
+      REDACTED
+
+      // Session limit settings
+      if (sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
+        newExtra.max_sessions = maxSessions.value
+        newExtra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
+      REDACTED else {
+        delete newExtra.max_sessions
+        delete newExtra.session_idle_timeout_minutes
+      REDACTED
+
       updatePayload.extra = newExtra
     REDACTED
 

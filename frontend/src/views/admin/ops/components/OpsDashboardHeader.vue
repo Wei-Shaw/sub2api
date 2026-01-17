@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch REDACTED from 'vue'
-import { useIntervalFn REDACTED from '@vueuse/core'
+import { computed, onMounted, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
@@ -26,6 +25,8 @@ interface Props {
   autoRefreshEnabled?: boolean
   autoRefreshCountdown?: number
   fullscreen?: boolean
+  customStartTime?: string | null
+  customEndTime?: string | null
 REDACTED
 
 interface Emits {
@@ -33,6 +34,7 @@ interface Emits {
   (e: 'update:group', value: number | null): void
   (e: 'update:timeRange', value: string): void
   (e: 'update:queryMode', value: string): void
+  (e: 'update:customTimeRange', startTime: string, endTime: string): void
   (e: 'refresh'): void
   (e: 'openRequestDetails', preset?: OpsRequestDetailsPreset): void
   (e: 'openErrorDetails', kind: 'request' | 'upstream'): void
@@ -85,6 +87,23 @@ watch(
 
 // --- Filters ---
 
+const showCustomTimeRangeDialog = ref(false)
+const customStartTimeInput = ref('')
+const customEndTimeInput = ref('')
+
+function formatCustomTimeRangeLabel(startTime: string, endTime: string): string {
+  const start = new Date(startTime)
+  const end = new Date(endTime)
+  const formatDate = (d: Date) => {
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const hour = String(d.getHours()).padStart(2, '0')
+    const minute = String(d.getMinutes()).padStart(2, '0')
+    return `${monthREDACTED-${dayREDACTED ${hourREDACTED:${minuteREDACTED`
+  REDACTED
+  return `${formatDate(start)REDACTED ~ ${formatDate(end)REDACTED`
+REDACTED
+
 const groups = ref<Array<{ id: number; name: string; platform: string REDACTED>>([])
 
 const platformOptions = computed(() => [
@@ -100,7 +119,13 @@ const timeRangeOptions = computed(() => [
   { value: '30m', label: t('admin.ops.timeRange.30m') REDACTED,
   { value: '1h', label: t('admin.ops.timeRange.1h') REDACTED,
   { value: '6h', label: t('admin.ops.timeRange.6h') REDACTED,
-  { value: '24h', label: t('admin.ops.timeRange.24h') REDACTED
+  { value: '24h', label: t('admin.ops.timeRange.24h') REDACTED,
+  {
+    value: 'custom',
+    label: props.timeRange === 'custom' && props.customStartTime && props.customEndTime
+      ? `${t('admin.ops.timeRange.custom')REDACTED (${formatCustomTimeRangeLabel(props.customStartTime, props.customEndTime)REDACTED)`
+      : t('admin.ops.timeRange.custom')
+  REDACTED
 ])
 
 const queryModeOptions = computed(() => [
@@ -149,7 +174,34 @@ function handleGroupChange(val: string | number | boolean | null) {
 REDACTED
 
 function handleTimeRangeChange(val: string | number | boolean | null) {
-  emit('update:timeRange', String(val || '1h'))
+  const newValue = String(val || '1h')
+  if (newValue === 'custom') {
+    // 初始化为最近1小时
+    const now = new Date()
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
+    customStartTimeInput.value = oneHourAgo.toISOString().slice(0, 16)
+    customEndTimeInput.value = now.toISOString().slice(0, 16)
+    showCustomTimeRangeDialog.value = true
+  REDACTED else {
+    emit('update:timeRange', newValue)
+  REDACTED
+REDACTED
+
+function handleCustomTimeRangeConfirm() {
+  if (!customStartTimeInput.value || !customEndTimeInput.value) return
+  const startTime = new Date(customStartTimeInput.value).toISOString()
+  const endTime = new Date(customEndTimeInput.value).toISOString()
+  // Emit custom time range first so the parent can build correct API params
+  // when it reacts to timeRange switching to "custom".
+  emit('update:customTimeRange', startTime, endTime)
+  emit('update:timeRange', 'custom')
+  showCustomTimeRangeDialog.value = false
+REDACTED
+
+function handleCustomTimeRangeCancel() {
+  showCustomTimeRangeDialog.value = false
+  // 如果当前不是 custom，不需要做任何事
+  // 如果当前是 custom，保持不变
 REDACTED
 
 function handleQueryModeChange(val: string | number | boolean | null) {
@@ -164,54 +216,60 @@ function openErrorDetails(kind: 'request' | 'upstream') {
   emit('openErrorDetails', kind)
 REDACTED
 
-const updatedAtLabel = computed(() => {
-  if (!props.lastUpdated) return t('common.unknown')
-  return props.lastUpdated.toLocaleTimeString()
-REDACTED)
-
-// --- Color coding for latency/TTFT ---
-function getLatencyColor(ms: number | null | undefined): string {
-  if (ms == null) return 'text-gray-900 dark:text-white'
-  if (ms < 500) return 'text-green-600 dark:text-green-400'
-  if (ms < 1000) return 'text-yellow-600 dark:text-yellow-400'
-  if (ms < 2000) return 'text-orange-600 dark:text-orange-400'
-  return 'text-red-600 dark:text-red-400'
-REDACTED
-
 // --- Threshold checking helpers ---
-function isSLABelowThreshold(slaPercent: number | null): boolean {
-  if (slaPercent == null) return false
+type ThresholdLevel = 'normal' | 'warning' | 'critical'
+
+function getSLAThresholdLevel(slaPercent: number | null): ThresholdLevel {
+  if (slaPercent == null) return 'normal'
   const threshold = props.thresholds?.sla_percent_min
-  if (threshold == null) return false
-  return slaPercent < threshold
+  if (threshold == null) return 'normal'
+
+  // SLA is "higher is better":
+  // - below threshold => critical
+  // - within +0.1% buffer => warning
+  const warningBuffer = 0.1
+
+  if (slaPercent < threshold) return 'critical'
+  if (slaPercent < threshold + warningBuffer) return 'warning'
+  return 'normal'
 REDACTED
 
-function isLatencyAboveThreshold(latencyP99Ms: number | null): boolean {
-  if (latencyP99Ms == null) return false
-  const threshold = props.thresholds?.latency_p99_ms_max
-  if (threshold == null) return false
-  return latencyP99Ms > threshold
-REDACTED
-
-function isTTFTAboveThreshold(ttftP99Ms: number | null): boolean {
-  if (ttftP99Ms == null) return false
+function getTTFTThresholdLevel(ttftMs: number | null): ThresholdLevel {
+  if (ttftMs == null) return 'normal'
   const threshold = props.thresholds?.ttft_p99_ms_max
-  if (threshold == null) return false
-  return ttftP99Ms > threshold
+  if (threshold == null) return 'normal'
+  if (ttftMs >= threshold) return 'critical'
+  if (ttftMs >= threshold * 0.8) return 'warning'
+  return 'normal'
 REDACTED
 
-function isRequestErrorRateAboveThreshold(errorRatePercent: number | null): boolean {
-  if (errorRatePercent == null) return false
+function getRequestErrorRateThresholdLevel(errorRatePercent: number | null): ThresholdLevel {
+  if (errorRatePercent == null) return 'normal'
   const threshold = props.thresholds?.request_error_rate_percent_max
-  if (threshold == null) return false
-  return errorRatePercent > threshold
+  if (threshold == null) return 'normal'
+  if (errorRatePercent >= threshold) return 'critical'
+  if (errorRatePercent >= threshold * 0.8) return 'warning'
+  return 'normal'
 REDACTED
 
-function isUpstreamErrorRateAboveThreshold(upstreamErrorRatePercent: number | null): boolean {
-  if (upstreamErrorRatePercent == null) return false
+function getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent: number | null): ThresholdLevel {
+  if (upstreamErrorRatePercent == null) return 'normal'
   const threshold = props.thresholds?.upstream_error_rate_percent_max
-  if (threshold == null) return false
-  return upstreamErrorRatePercent > threshold
+  if (threshold == null) return 'normal'
+  if (upstreamErrorRatePercent >= threshold) return 'critical'
+  if (upstreamErrorRatePercent >= threshold * 0.8) return 'warning'
+  return 'normal'
+REDACTED
+
+function getThresholdColorClass(level: ThresholdLevel): string {
+  switch (level) {
+    case 'critical':
+      return 'text-red-600 dark:text-red-400'
+    case 'warning':
+      return 'text-yellow-600 dark:text-yellow-400'
+    default:
+      return 'text-green-600 dark:text-green-400'
+  REDACTED
 REDACTED
 
 // --- Realtime / Overview labels ---
@@ -264,31 +322,33 @@ watch(
   { immediate: true REDACTED
 )
 
-const { pause: pauseRealtimeTrafficRefresh, resume: resumeRealtimeTrafficRefresh REDACTED = useIntervalFn(
-  () => {
-    loadRealtimeTrafficSummary()
-  REDACTED,
-  5000,
-  { immediate: false REDACTED
-)
-
 watch(
   () => adminSettingsStore.opsRealtimeMonitoringEnabled,
   (enabled) => {
-    if (enabled) {
-      resumeRealtimeTrafficRefresh()
-    REDACTED else {
-      pauseRealtimeTrafficRefresh()
+    if (!enabled) {
       // Keep UI stable when realtime monitoring is turned off.
       realtimeTrafficSummary.value = makeZeroRealtimeTrafficSummary()
+    REDACTED else {
+      loadRealtimeTrafficSummary()
     REDACTED
   REDACTED,
   { immediate: true REDACTED
 )
 
-onUnmounted(() => {
-  pauseRealtimeTrafficRefresh()
-REDACTED)
+// Realtime traffic refresh follows the parent (OpsDashboard) refresh cadence.
+watch(
+  () => [props.autoRefreshEnabled, props.autoRefreshCountdown, props.loading] as const,
+  ([enabled, countdown, loading]) => {
+    if (!enabled) return
+    if (loading) return
+    // Treat countdown reset (or reaching 0) as a refresh boundary.
+    if (countdown === 0) {
+      loadRealtimeTrafficSummary()
+    REDACTED
+  REDACTED
+)
+
+// no-op: parent controls refresh cadence
 
 const displayRealTimeQps = computed(() => {
   const v = realtimeTrafficSummary.value?.qps?.current
@@ -480,24 +540,6 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
         action: t('admin.ops.diagnosis.memoryHighAction')
       REDACTED)
     REDACTED
-  REDACTED
-
-  // Latency diagnostics
-  const durationP99 = ov.duration?.p99_ms ?? 0
-  if (durationP99 > 2000) {
-    report.push({
-      type: 'critical',
-      message: t('admin.ops.diagnosis.latencyCritical', { latency: durationP99.toFixed(0) REDACTED),
-      impact: t('admin.ops.diagnosis.latencyCriticalImpact'),
-      action: t('admin.ops.diagnosis.latencyCriticalAction')
-    REDACTED)
-  REDACTED else if (durationP99 > 1000) {
-    report.push({
-      type: 'warning',
-      message: t('admin.ops.diagnosis.latencyHigh', { latency: durationP99.toFixed(0) REDACTED),
-      impact: t('admin.ops.diagnosis.latencyHighImpact'),
-      action: t('admin.ops.diagnosis.latencyHighAction')
-    REDACTED)
   REDACTED
 
   const ttftP99 = ov.ttft?.p99_ms ?? 0
@@ -842,25 +884,11 @@ REDACTED
           </span>
 
           <span>·</span>
-          <span>{{ t('common.refresh') REDACTEDREDACTED: {{ updatedAtLabel REDACTEDREDACTED</span>
+          <span>{{ t('common.refresh') REDACTEDREDACTED: {{ props.lastUpdated ? props.lastUpdated.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' REDACTED).replace(/\//g, '-') : t('common.unknown') REDACTEDREDACTED</span>
 
           <template v-if="props.autoRefreshEnabled && props.autoRefreshCountdown !== undefined">
             <span>·</span>
-            <span class="flex items-center gap-1">
-              <svg class="h-3 w-3 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span>自动刷新: {{ props.autoRefreshCountdown REDACTEDREDACTEDs</span>
-            </span>
-          </template>
-
-          <template v-if="systemMetrics">
-            <span>·</span>
-            <span>
-              {{ t('admin.ops.collectedAt') REDACTEDREDACTED {{ formatTimeShort(systemMetrics.created_at) REDACTEDREDACTED
-              ({{ t('admin.ops.window') REDACTEDREDACTED {{ systemMetrics.window_minutes REDACTEDREDACTEDm)
-            </span>
+            <span>剩余 {{ props.autoRefreshCountdown REDACTEDREDACTEDs</span>
           </template>
         </div>
       </div>
@@ -1113,7 +1141,7 @@ REDACTED
                   </div>
                   <div class="flex items-baseline gap-1.5">
                     <span :class="[props.fullscreen ? 'text-4xl' : 'text-xl sm:text-2xl', 'font-black text-gray-900 dark:text-white']">{{ displayRealTimeTps.toFixed(1) REDACTEDREDACTED</span>
-                    <span :class="[props.fullscreen ? 'text-sm' : 'text-xs', 'font-bold text-gray-500']">TPS</span>
+                    <span :class="[props.fullscreen ? 'text-sm' : 'text-xs', 'font-bold text-gray-500']">{{ t('admin.ops.tps') REDACTEDREDACTED</span>
                   </div>
                 </div>
               </div>
@@ -1130,7 +1158,7 @@ REDACTED
                     </div>
                     <div class="flex items-baseline gap-1.5">
                       <span class="font-black text-gray-900 dark:text-white">{{ realtimeTpsPeakLabel REDACTEDREDACTED</span>
-                      <span class="text-xs">TPS</span>
+                      <span class="text-xs">{{ t('admin.ops.tps') REDACTEDREDACTED</span>
                     </div>
                   </div>
                 </div>
@@ -1145,7 +1173,7 @@ REDACTED
                     </div>
                     <div class="flex items-baseline gap-1.5">
                       <span class="font-black text-gray-900 dark:text-white">{{ realtimeTpsAvgLabel REDACTEDREDACTED</span>
-                      <span class="text-xs">TPS</span>
+                      <span class="text-xs">{{ t('admin.ops.tps') REDACTEDREDACTED</span>
                     </div>
                   </div>
                 </div>
@@ -1181,7 +1209,7 @@ REDACTED
       <!-- Right: 6 cards (3 cols x 2 rows) -->
       <div class="grid h-full grid-cols-1 content-center gap-4 sm:grid-cols-2 lg:col-span-7 lg:grid-cols-3">
         <!-- Card 1: Requests -->
-        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 1;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestsTitle') REDACTEDREDACTED</span>
@@ -1217,12 +1245,12 @@ REDACTED
         </div>
 
         <!-- Card 2: SLA -->
-        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 2;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <span class="text-[10px] font-bold uppercase text-gray-400">SLA</span>
+              <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.sla') REDACTEDREDACTED</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.sla')" />
-              <span class="h-1.5 w-1.5 rounded-full" :class="isSLABelowThreshold(slaPercent) ? 'bg-red-500' : (slaPercent ?? 0) >= 99.5 ? 'bg-green-500' : 'bg-yellow-500'"></span>
+              <span class="h-1.5 w-1.5 rounded-full" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-green-500'"></span>
             </div>
             <button
               v-if="!props.fullscreen"
@@ -1233,11 +1261,11 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="isSLABelowThreshold(slaPercent) ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getSLAThresholdLevel(slaPercent))">
             {{ slaPercent == null ? '-' : `${slaPercent.toFixed(3)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
-            <div class="h-full transition-all" :class="isSLABelowThreshold(slaPercent) ? 'bg-red-500' : 'bg-green-500'" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10REDACTED%` REDACTED"></div>
+            <div class="h-full transition-all" :class="getSLAThresholdLevel(slaPercent) === 'critical' ? 'bg-red-500' : getSLAThresholdLevel(slaPercent) === 'warning' ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: `${Math.max((slaPercent ?? 0) - 90, 0) * 10REDACTED%` REDACTED"></div>
           </div>
           <div class="mt-3 text-xs">
             <div class="flex justify-between">
@@ -1247,8 +1275,8 @@ REDACTED
           </div>
         </div>
 
-        <!-- Card 3: Latency (Duration) -->
-        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
+        <!-- Card 4: Request Duration -->
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 4;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.latencyDuration') REDACTEDREDACTED</span>
@@ -1258,48 +1286,48 @@ REDACTED
               v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
-              @click="openDetails({ title: t('admin.ops.latencyDuration'), sort: 'duration_desc', min_duration_ms: Math.max(Number(durationP99Ms ?? 0), 0) REDACTED)"
+              @click="openDetails({ title: t('admin.ops.latencyDuration'), sort: 'duration_desc' REDACTED)"
             >
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
           <div class="mt-2 flex items-baseline gap-2">
-            <div class="text-3xl font-black" :class="isLatencyAboveThreshold(durationP99Ms) ? 'text-red-600 dark:text-red-400' : getLatencyColor(durationP99Ms)">
+            <div class="text-3xl font-black text-gray-900 dark:text-white">
               {{ durationP99Ms ?? '-' REDACTEDREDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+          <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold" :class="getLatencyColor(durationP95Ms)">{{ durationP95Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ durationP95Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold" :class="getLatencyColor(durationP90Ms)">{{ durationP90Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ durationP90Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold" :class="getLatencyColor(durationP50Ms)">{{ durationP50Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ durationP50Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold" :class="getLatencyColor(durationAvgMs)">{{ durationAvgMs ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ durationAvgMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getLatencyColor(durationMaxMs)">{{ durationMaxMs ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold text-gray-900 dark:text-white">{{ durationMaxMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
           </div>
         </div>
 
-        <!-- Card 4: TTFT -->
-        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
+        <!-- Card 5: TTFT -->
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 5;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">TTFT</span>
@@ -1309,48 +1337,48 @@ REDACTED
               v-if="!props.fullscreen"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
-              @click="openDetails({ title: 'TTFT', sort: 'duration_desc' REDACTED)"
+              @click="openDetails({ title: t('admin.ops.ttftLabel'), sort: 'duration_desc' REDACTED)"
             >
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
           <div class="mt-2 flex items-baseline gap-2">
-            <div class="text-3xl font-black" :class="isTTFTAboveThreshold(ttftP99Ms) ? 'text-red-600 dark:text-red-400' : getLatencyColor(ttftP99Ms)">
+            <div class="text-3xl font-black" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP99Ms))">
               {{ ttftP99Ms ?? '-' REDACTEDREDACTED
             </div>
             <span class="text-xs font-bold text-gray-400">ms (P99)</span>
           </div>
-          <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+          <div class="mt-3 grid grid-cols-1 gap-x-3 gap-y-1 text-xs 2xl:grid-cols-2">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P95:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftP95Ms)">{{ ttftP95Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP95Ms))">{{ ttftP95Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P90:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftP90Ms)">{{ ttftP90Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP90Ms))">{{ ttftP90Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">P50:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftP50Ms)">{{ ttftP50Ms ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftP50Ms))">{{ ttftP50Ms ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Avg:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftAvgMs)">{{ ttftAvgMs ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftAvgMs))">{{ ttftAvgMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
-            <div class="flex min-w-[60px] items-baseline gap-1 whitespace-nowrap">
+            <div class="flex items-baseline gap-1 whitespace-nowrap">
               <span class="text-gray-500">Max:</span>
-              <span class="font-bold" :class="getLatencyColor(ttftMaxMs)">{{ ttftMaxMs ?? '-' REDACTEDREDACTED</span>
+              <span class="font-bold" :class="getThresholdColorClass(getTTFTThresholdLevel(ttftMaxMs))">{{ ttftMaxMs ?? '-' REDACTEDREDACTED</span>
               <span class="text-gray-400">ms</span>
             </div>
           </div>
         </div>
 
-        <!-- Card 5: Request Errors -->
-        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
+        <!-- Card 3: Request Errors -->
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 3;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestErrors') REDACTEDREDACTED</span>
@@ -1360,7 +1388,7 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="isRequestErrorRateAboveThreshold(errorRatePercent) ? 'text-red-600 dark:text-red-400' : (errorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getRequestErrorRateThresholdLevel(errorRatePercent))">
             {{ errorRatePercent == null ? '-' : `${errorRatePercent.toFixed(2)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 space-y-1 text-xs">
@@ -1376,7 +1404,7 @@ REDACTED
         </div>
 
         <!-- Card 6: Upstream Errors -->
-        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900">
+        <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-900" style="order: 6;">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1">
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.upstreamErrors') REDACTEDREDACTED</span>
@@ -1386,7 +1414,7 @@ REDACTED
               {{ t('admin.ops.requestDetails.details') REDACTEDREDACTED
             </button>
           </div>
-          <div class="mt-2 text-3xl font-black" :class="isUpstreamErrorRateAboveThreshold(upstreamErrorRatePercent) ? 'text-red-600 dark:text-red-400' : (upstreamErrorRatePercent ?? 0) > 5 ? 'text-red-500' : 'text-gray-900 dark:text-white'">
+          <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent))">
             {{ upstreamErrorRatePercent == null ? '-' : `${upstreamErrorRatePercent.toFixed(2)REDACTED%` REDACTEDREDACTED
           </div>
           <div class="mt-3 space-y-1 text-xs">
@@ -1423,7 +1451,7 @@ REDACTED
         <!-- MEM -->
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
-            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">MEM</div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.memory') REDACTEDREDACTED</div>
             <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.memory')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="memPercentClass">
@@ -1441,7 +1469,7 @@ REDACTED
         <!-- DB -->
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
-            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">DB</div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.db') REDACTEDREDACTED</div>
             <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.db')" />
           </div>
           <div class="mt-1 text-lg font-black" :class="dbMiddleClass">
@@ -1526,7 +1554,10 @@ REDACTED
         >
           <div class="flex items-center justify-between gap-3">
             <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ hb.job_name REDACTEDREDACTED</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatTimeShort(hb.updated_at) REDACTEDREDACTED</div>
+            <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+              <span v-if="hb.last_duration_ms != null" class="font-mono">{{ hb.last_duration_ms REDACTEDREDACTEDms</span>
+              <span>{{ formatTimeShort(hb.updated_at) REDACTEDREDACTED</span>
+            </div>
           </div>
 
           <div class="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
@@ -1536,6 +1567,9 @@ REDACTED
             <div>
               {{ t('admin.ops.lastError') REDACTEDREDACTED <span class="font-mono">{{ formatTimeShort(hb.last_error_at) REDACTEDREDACTED</span>
             </div>
+            <div>
+              {{ t('admin.ops.result') REDACTEDREDACTED <span class="font-mono">{{ hb.last_result || '-' REDACTEDREDACTED</span>
+            </div>
           </div>
 
           <div
@@ -1544,6 +1578,48 @@ REDACTED
           >
             {{ hb.last_error REDACTEDREDACTED
           </div>
+        </div>
+      </div>
+    </BaseDialog>
+
+    <!-- Custom Time Range Dialog -->
+    <BaseDialog :show="showCustomTimeRangeDialog" :title="t('admin.ops.timeRange.custom')" width="narrow" @close="handleCustomTimeRangeCancel">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t('admin.ops.customTimeRange.startTime') REDACTEDREDACTED
+          </label>
+          <input
+            v-model="customStartTimeInput"
+            type="datetime-local"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t('admin.ops.customTimeRange.endTime') REDACTEDREDACTED
+          </label>
+          <input
+            v-model="customEndTimeInput"
+            type="datetime-local"
+            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+          />
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button
+            type="button"
+            class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+            @click="handleCustomTimeRangeCancel"
+          >
+            {{ t('common.cancel') REDACTEDREDACTED
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600"
+            @click="handleCustomTimeRangeConfirm"
+          >
+            {{ t('common.confirm') REDACTEDREDACTED
+          </button>
         </div>
       </div>
     </BaseDialog>

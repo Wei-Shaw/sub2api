@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -34,7 +35,10 @@ REDACTED
 REDACTED
 REDACTED
 
-const defaultIPInfoURL = "https://ipinfo.io/json"
+const (
+	defaultIPInfoURL         = "http://ip-api.com/json/?lang=zh-CN"
+	defaultProxyProbeTimeout = 30 * time.Second
+)
 
 type proxyProbeService struct {
 	ipInfoURL          string
@@ -46,7 +50,7 @@ REDACTED
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
 	client, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
-		Timeout:            15 * time.Second,
+		Timeout:            defaultProxyProbeTimeout,
 		InsecureSkipVerify: s.insecureSkipVerify,
 		ProxyStrict:        true,
 		ValidateResolvedIP: s.validateResolvedIP,
@@ -75,10 +79,14 @@ REDACTED
 REDACTED
 
 	var ipInfo struct {
-		IP      string `json:"ip"`
-		City    string `json:"city"`
-		Region  string `json:"region"`
-		Country string `json:"country"`
+		Status      string `json:"status"`
+		Message     string `json:"message"`
+		Query       string `json:"query"`
+		City        string `json:"city"`
+		Region      string `json:"region"`
+		RegionName  string `json:"regionName"`
+		Country     string `json:"country"`
+		CountryCode string `json:"countryCode"`
 REDACTED
 
 	body, err := io.ReadAll(resp.Body)
@@ -89,11 +97,22 @@ REDACTED
 	if err := json.Unmarshal(body, &ipInfo); err != nil {
 		return nil, latencyMs, fmt.Errorf("failed to parse response: %w", err)
 REDACTED
+	if strings.ToLower(ipInfo.Status) != "success" {
+		if ipInfo.Message == "" {
+			ipInfo.Message = "ip-api request failed"
+	REDACTED
+		return nil, latencyMs, fmt.Errorf("ip-api request failed: %s", ipInfo.Message)
+REDACTED
 
+	region := ipInfo.RegionName
+	if region == "" {
+		region = ipInfo.Region
+REDACTED
 	return &service.ProxyExitInfo{
-		IP:      ipInfo.IP,
-		City:    ipInfo.City,
-		Region:  ipInfo.Region,
-		Country: ipInfo.Country,
+		IP:          ipInfo.Query,
+		City:        ipInfo.City,
+		Region:      region,
+		Country:     ipInfo.Country,
+		CountryCode: ipInfo.CountryCode,
 REDACTED, latencyMs, nil
 REDACTED

@@ -42,9 +42,10 @@ func ProvideTokenRefreshService(
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
+	cacheInvalidator TokenCacheInvalidator,
 	cfg *config.Config,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cfg)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, cfg)
 	svc.Start()
 	return svc
 REDACTED
@@ -64,10 +65,13 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 REDACTED
 
 // ProvideTimingWheelService creates and starts TimingWheelService
-func ProvideTimingWheelService() *TimingWheelService {
-	svc := NewTimingWheelService()
+func ProvideTimingWheelService() (*TimingWheelService, error) {
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		return nil, err
+REDACTED
 	svc.Start()
-	return svc
+	return svc, nil
 REDACTED
 
 // ProvideDeferredService creates and starts DeferredService
@@ -108,10 +112,12 @@ func ProvideRateLimitService(
 	tempUnschedCache TempUnschedCache,
 	timeoutCounterCache TimeoutCounterCache,
 	settingService *SettingService,
+	tokenCacheInvalidator TokenCacheInvalidator,
 ) *RateLimitService {
 	svc := NewRateLimitService(accountRepo, usageRepo, cfg, geminiQuotaService, tempUnschedCache)
 	svc.SetTimeoutCounterCache(timeoutCounterCache)
 	svc.SetSettingService(settingService)
+	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
 	return svc
 REDACTED
 
@@ -210,10 +216,14 @@ var ProviderSet = wire.NewSet(
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
+	NewCompositeTokenCacheInvalidator,
+	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
 	NewGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	NewAntigravityTokenProvider,
+	NewOpenAITokenProvider,
+	NewClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
 	NewAccountUsageService,

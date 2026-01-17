@@ -27,7 +27,7 @@ func TestSchedulerSnapshotOutboxReplay(t *testing.T) {
 		RunMode: config.RunModeStandard,
 		Gateway: config.GatewayConfig{
 			Scheduling: config.GatewaySchedulingConfig{
-				OutboxPollIntervalSeconds: 1,
+				OutboxPollIntervalSeconds:  1,
 				FullRebuildIntervalSeconds: 0,
 				DbFallbackEnabled:          true,
 		REDACTED,

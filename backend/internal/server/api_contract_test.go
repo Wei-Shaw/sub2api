@@ -239,9 +239,10 @@ REDACTED{
 							"cache_creation_cost": 0,
 							"cache_read_cost": 0,
 							"total_cost": 0.5,
-							"actual_cost": 0.5,
-							"rate_multiplier": 1,
-							"billing_type": 0,
+						"actual_cost": 0.5,
+						"rate_multiplier": 1,
+						"account_rate_multiplier": null,
+						"billing_type": 0,
 							"stream": true,
 							"duration_ms": 100,
 							"first_token_ms": 50,
@@ -262,11 +263,11 @@ REDACTED{
 			name: "GET /api/v1/admin/settings",
 			setup: func(t *testing.T, deps *contractDeps) {
 			REDACTED
-					deps.settingRepo.SetAll(map[string]string{
-						service.SettingKeyRegistrationEnabled: "true",
-						service.SettingKeyEmailVerifyEnabled:  "false",
+				deps.settingRepo.SetAll(map[string]string{
+					service.SettingKeyRegistrationEnabled: "true",
+					service.SettingKeyEmailVerifyEnabled:  "false",
 
-						service.SettingKeySMTPHost:     "smtp.example.com",
+					service.SettingKeySMTPHost:     "smtp.example.com",
 					service.SettingKeySMTPPort:     "587",
 					service.SettingKeySMTPUsername: "user",
 					service.SettingKeySMTPPassword: "secret",
@@ -285,15 +286,15 @@ REDACTED{
 					service.SettingKeyContactInfo:  "support",
 					service.SettingKeyDocURL:       "https://docs.example.com",
 
-						service.SettingKeyDefaultConcurrency: "5",
-						service.SettingKeyDefaultBalance:     "1.25",
+					service.SettingKeyDefaultConcurrency: "5",
+					service.SettingKeyDefaultBalance:     "1.25",
 
-						service.SettingKeyOpsMonitoringEnabled:         "false",
-						service.SettingKeyOpsRealtimeMonitoringEnabled: "true",
-						service.SettingKeyOpsQueryModeDefault:          "auto",
-						service.SettingKeyOpsMetricsIntervalSeconds:    "60",
-				REDACTED)
-			REDACTED,
+					service.SettingKeyOpsMonitoringEnabled:         "false",
+					service.SettingKeyOpsRealtimeMonitoringEnabled: "true",
+					service.SettingKeyOpsQueryModeDefault:          "auto",
+					service.SettingKeyOpsMetricsIntervalSeconds:    "60",
+			REDACTED)
+		REDACTED,
 			method:     http.MethodGet,
 			path:       "/api/v1/admin/settings",
 			wantStatus: http.StatusOK,
@@ -435,12 +436,12 @@ REDACTED
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
@@ -779,6 +780,10 @@ func (s *stubAccountRepo) SetAntigravityQuotaScopeLimit(ctx context.Context, id 
 	return errors.New("not implemented")
 REDACTED
 
+func (s *stubAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+	return errors.New("not implemented")
+REDACTED
+
 func (s *stubAccountRepo) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
 	return errors.New("not implemented")
 REDACTED
@@ -796,6 +801,10 @@ func (s *stubAccountRepo) ClearRateLimit(ctx context.Context, id int64) error {
 REDACTED
 
 func (s *stubAccountRepo) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+REDACTED
+
+func (s *stubAccountRepo) ClearModelRateLimits(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 REDACTED
 
@@ -856,6 +865,10 @@ REDACTED
 
 func (stubProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	return 0, errors.New("not implemented")
+REDACTED
+
+func (stubProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
+	return nil, errors.New("not implemented")
 REDACTED
 
 type stubRedeemCodeRepo struct{REDACTED
@@ -1229,11 +1242,11 @@ func (r *stubUsageLogRepo) GetDashboardStats(ctx context.Context) (*usagestats.D
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubUsageLogRepo) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) ([]usagestats.TrendDataPoint, error) {
+func (r *stubUsageLogRepo) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool) ([]usagestats.TrendDataPoint, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubUsageLogRepo) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) ([]usagestats.ModelStat, error) {
+func (r *stubUsageLogRepo) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, stream *bool) ([]usagestats.ModelStat, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 

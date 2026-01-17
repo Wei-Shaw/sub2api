@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,7 +9,6 @@
 
   html {
     @apply scroll-smooth antialiased;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   REDACTED
 
   body {
@@ -345,7 +342,7 @@ REDACTED
   .modal-overlay {
     @apply fixed inset-0 z-50;
     @apply bg-black/50 backdrop-blur-sm;
-    @apply flex items-center justify-center p-4;
+    @apply flex items-center justify-center p-2 sm:p-4;
   REDACTED
 
   .modal-content {

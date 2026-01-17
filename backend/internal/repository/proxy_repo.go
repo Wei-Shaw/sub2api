@@ -219,10 +219,52 @@ REDACTED
 // CountAccountsByProxyID returns the number of accounts using a specific proxy
 func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	var count int64
-	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1", []any{proxyIDREDACTED, &count); err != nil {
+	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1 AND deleted_at IS NULL", []any{proxyIDREDACTED, &count); err != nil {
 		return 0, err
 REDACTED
 	return count, nil
+REDACTED
+
+func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, name, platform, type, notes
+		FROM accounts
+		WHERE proxy_id = $1 AND deleted_at IS NULL
+		ORDER BY id DESC
+	`, proxyID)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	out := make([]service.ProxyAccountSummary, 0)
+	for rows.Next() {
+		var (
+			id       int64
+			name     string
+			platform string
+			accType  string
+			notes    sql.NullString
+		)
+		if err := rows.Scan(&id, &name, &platform, &accType, &notes); err != nil {
+			return nil, err
+	REDACTED
+		var notesPtr *string
+		if notes.Valid {
+			notesPtr = &notes.String
+	REDACTED
+		out = append(out, service.ProxyAccountSummary{
+			ID:       id,
+			Name:     name,
+			Platform: platform,
+			Type:     accType,
+			Notes:    notesPtr,
+	REDACTED)
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return out, nil
 REDACTED
 
 // GetAccountCountsForProxies returns a map of proxy ID to account count for all proxies

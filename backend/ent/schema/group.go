@@ -95,6 +95,17 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("非 Claude Code 请求降级使用的分组 ID"),
+
+		// 模型路由配置 (added by migration 040)
+		field.JSON("model_routing", map[string][]int64{REDACTED).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"REDACTED).
+			Comment("模型路由配置：模型模式 -> 优先账号ID列表"),
+
+		// 模型路由开关 (added by migration 041)
+		field.Bool("model_routing_enabled").
+			Default(false).
+			Comment("是否启用模型路由配置"),
 REDACTED
 REDACTED
 

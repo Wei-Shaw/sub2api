@@ -27,9 +27,18 @@
       </div>
       <div class="min-w-0 flex-1">
         <p class="text-xs font-medium text-gray-500">{{ t('usage.totalCost') REDACTEDREDACTED</p>
-        <p class="text-xl font-bold text-green-600">${{ (stats?.total_actual_cost || 0).toFixed(4) REDACTEDREDACTED</p>
-        <p class="text-xs text-gray-400">
-          {{ t('usage.standardCost') REDACTEDREDACTED: <span class="line-through">${{ (stats?.total_cost || 0).toFixed(4) REDACTEDREDACTED</span>
+        <p class="text-xl font-bold text-green-600">
+          ${{ ((stats?.total_account_cost ?? stats?.total_actual_cost) || 0).toFixed(4) REDACTEDREDACTED
+        </p>
+        <p class="text-xs text-gray-400" v-if="stats?.total_account_cost != null">
+          {{ t('usage.userBilled') REDACTEDREDACTED:
+          <span class="text-gray-300">${{ (stats?.total_actual_cost || 0).toFixed(4) REDACTEDREDACTED</span>
+          · {{ t('usage.standardCost') REDACTEDREDACTED:
+          <span class="text-gray-300">${{ (stats?.total_cost || 0).toFixed(4) REDACTEDREDACTED</span>
+        </p>
+        <p class="text-xs text-gray-400" v-else>
+          {{ t('usage.standardCost') REDACTEDREDACTED:
+          <span class="line-through">${{ (stats?.total_cost || 0).toFixed(4) REDACTEDREDACTED</span>
         </p>
       </div>
     </div>

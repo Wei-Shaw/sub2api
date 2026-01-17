@@ -32,8 +32,8 @@ type UsageLogRepository interface {
 
 	// Admin dashboard stats
 	GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error)
-	GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) ([]usagestats.TrendDataPoint, error)
-	GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) ([]usagestats.ModelStat, error)
+	GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool) ([]usagestats.TrendDataPoint, error)
+	GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, stream *bool) ([]usagestats.ModelStat, error)
 	GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error)
 	GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.UserUsageTrendPoint, error)
 	GetBatchUserUsageStats(ctx context.Context, userIDs []int64) (map[int64]*usagestats.BatchUserUsageStats, error)
@@ -96,10 +96,16 @@ func NewUsageCache() *UsageCache {
 REDACTED
 
 // WindowStats 窗口期统计
+//
+// cost: 账号口径费用（total_cost * account_rate_multiplier）
+// standard_cost: 标准费用（total_cost，不含倍率）
+// user_cost: 用户/API Key 口径费用（actual_cost，受分组倍率影响）
 type WindowStats struct {
-	Requests int64   `json:"requests"`
-	Tokens   int64   `json:"tokens"`
-	Cost     float64 `json:"cost"`
+	Requests     int64   `json:"requests"`
+	Tokens       int64   `json:"tokens"`
+	Cost         float64 `json:"cost"`
+	StandardCost float64 `json:"standard_cost"`
+	UserCost     float64 `json:"user_cost"`
 REDACTED
 
 // UsageProgress 使用量进度
@@ -266,7 +272,7 @@ REDACTED
 REDACTED
 
 	dayStart := geminiDailyWindowStart(now)
-	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, dayStart, now, 0, 0, account.ID)
+	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, dayStart, now, 0, 0, account.ID, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get gemini usage stats failed: %w", err)
 REDACTED
@@ -288,7 +294,7 @@ REDACTED
 	// Minute window (RPM) - fixed-window approximation: current minute [truncate(now), truncate(now)+1m)
 	minuteStart := now.Truncate(time.Minute)
 	minuteResetAt := minuteStart.Add(time.Minute)
-	minuteStats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, minuteStart, now, 0, 0, account.ID)
+	minuteStats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, minuteStart, now, 0, 0, account.ID, 0, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get gemini minute usage stats failed: %w", err)
 REDACTED
@@ -377,9 +383,11 @@ REDACTED
 	REDACTED
 
 		windowStats = &WindowStats{
-			Requests: stats.Requests,
-			Tokens:   stats.Tokens,
-			Cost:     stats.Cost,
+			Requests:     stats.Requests,
+			Tokens:       stats.Tokens,
+			Cost:         stats.Cost,
+			StandardCost: stats.StandardCost,
+			UserCost:     stats.UserCost,
 	REDACTED
 
 		// 缓存窗口统计（1 分钟）
@@ -403,9 +411,11 @@ func (s *AccountUsageService) GetTodayStats(ctx context.Context, accountID int64
 REDACTED
 
 	return &WindowStats{
-		Requests: stats.Requests,
-		Tokens:   stats.Tokens,
-		Cost:     stats.Cost,
+		Requests:     stats.Requests,
+		Tokens:       stats.Tokens,
+		Cost:         stats.Cost,
+		StandardCost: stats.StandardCost,
+		UserCost:     stats.UserCost,
 REDACTED, nil
 REDACTED
 
@@ -564,4 +574,10 @@ REDACTED
 			Cost:     cost,
 	REDACTED,
 REDACTED
+REDACTED
+
+// GetAccountWindowStats 获取账号在指定时间窗口内的使用统计
+// 用于账号列表页面显示当前窗口费用
+func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
+	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
 REDACTED
