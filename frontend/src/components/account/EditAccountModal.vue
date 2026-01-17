@@ -8,7 +8,7 @@
     <form
       v-if="account"
       id="edit-account-form"
-      @submit.prevent="handleSubmit"
+      @submit.prevent="() => handleSubmit()"
       class="space-y-5"
     >
       <div>
@@ -1294,12 +1294,17 @@ const handleClose = () => {
   emit('close')
 REDACTED
 
-const handleSubmit = async () => {
+const handleSubmit = async (confirmMixedChannelRisk = false) => {
   if (!props.account) return
 
   submitting.value = true
   try {
     const updatePayload: Record<string, unknown> = { ...form REDACTED
+    
+    // Add confirmation flag if user confirmed mixed channel risk
+    if (confirmMixedChannelRisk) {
+      updatePayload.confirm_mixed_channel_risk = true
+    REDACTED
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0
@@ -1415,7 +1420,28 @@ const handleSubmit = async () => {
     emit('updated')
     handleClose()
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))
+    // Handle 409 mixed_channel_warning - show confirmation dialog
+    if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning') {
+      const details = error.response.data.details || {REDACTED
+      const groupName = details.group_name || 'Unknown'
+      const currentPlatform = details.current_platform || 'Unknown'
+      const otherPlatform = details.other_platform || 'Unknown'
+      
+      const confirmMessage = t('admin.accounts.mixedChannelWarning', {
+        groupName,
+        currentPlatform,
+        otherPlatform
+      REDACTED)
+      
+      if (confirm(confirmMessage)) {
+        // Retry with confirmation flag
+        submitting.value = false
+        await handleSubmit(true)
+        return
+      REDACTED
+    REDACTED else {
+      appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))
+    REDACTED
   REDACTED finally {
     submitting.value = false
   REDACTED

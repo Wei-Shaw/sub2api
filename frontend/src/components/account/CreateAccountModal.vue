@@ -2157,6 +2157,46 @@ const handleClose = () => {
   emit('close')
 REDACTED
 
+// Helper function to create account with mixed channel warning handling
+const doCreateAccount = async (payload: any, confirmMixedChannelRisk = false) => {
+  if (confirmMixedChannelRisk) {
+    payload.confirm_mixed_channel_risk = true
+  REDACTED
+  
+  submitting.value = true
+  try {
+    await adminAPI.accounts.create(payload)
+    appStore.showSuccess(t('admin.accounts.accountCreated'))
+    emit('created')
+    handleClose()
+  REDACTED catch (error: any) {
+    // Handle 409 mixed_channel_warning - show confirmation dialog
+    if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning') {
+      const details = error.response.data.details || {REDACTED
+      const groupName = details.group_name || 'Unknown'
+      const currentPlatform = details.current_platform || 'Unknown'
+      const otherPlatform = details.other_platform || 'Unknown'
+      
+      const confirmMessage = t('admin.accounts.mixedChannelWarning', {
+        groupName,
+        currentPlatform,
+        otherPlatform
+      REDACTED)
+      
+      if (confirm(confirmMessage)) {
+        // Retry with confirmation flag
+        submitting.value = false
+        await doCreateAccount(payload, true)
+        return
+      REDACTED
+    REDACTED else {
+      appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    REDACTED
+  REDACTED finally {
+    submitting.value = false
+  REDACTED
+REDACTED
+
 const handleSubmit = async () => {
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
@@ -2213,21 +2253,11 @@ const handleSubmit = async () => {
 
   form.credentials = credentials
 
-  submitting.value = true
-  try {
-    await adminAPI.accounts.create({
-      ...form,
-      group_ids: form.group_ids,
-      auto_pause_on_expired: autoPauseOnExpired.value
-    REDACTED)
-    appStore.showSuccess(t('admin.accounts.accountCreated'))
-    emit('created')
-    handleClose()
-  REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToCreate'))
-  REDACTED finally {
-    submitting.value = false
-  REDACTED
+  await doCreateAccount({
+    ...form,
+    group_ids: form.group_ids,
+    auto_pause_on_expired: autoPauseOnExpired.value
+  REDACTED)
 REDACTED
 
 const goBackToBasicInfo = () => {
