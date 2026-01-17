@@ -303,11 +303,8 @@ func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadC
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 REDACTED
 
-	// 获取可用的 URL 列表
-	availableURLs := DefaultURLAvailability.GetAvailableURLs()
-	if len(availableURLs) == 0 {
-		availableURLs = BaseURLs // 所有 URL 都不可用时，重试所有
-REDACTED
+	// 固定顺序：prod -> daily
+	availableURLs := BaseURLs
 
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
@@ -394,11 +391,8 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 REDACTED
 
-	// 获取可用的 URL 列表
-	availableURLs := DefaultURLAvailability.GetAvailableURLs()
-	if len(availableURLs) == 0 {
-		availableURLs = BaseURLs // 所有 URL 都不可用时，重试所有
-REDACTED
+	// 固定顺序：prod -> daily
+	availableURLs := BaseURLs
 
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
