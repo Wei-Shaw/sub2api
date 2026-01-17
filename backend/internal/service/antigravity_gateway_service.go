@@ -33,18 +33,18 @@ const antigravityScopeRateLimitEnv = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
 
 // antigravityRetryLoopParams 重试循环的参数
 type antigravityRetryLoopParams struct {
-	ctx          context.Context
-	prefix       string
-	account      *Account
-	proxyURL     string
-	accessToken  string
-	action       string
-	body         []byte
-	quotaScope   AntigravityQuotaScope
-	c            *gin.Context
-	httpUpstream HTTPUpstream
+	ctx            context.Context
+	prefix         string
+	account        *Account
+	proxyURL       string
+	accessToken    string
+	action         string
+	body           []byte
+	quotaScope     AntigravityQuotaScope
+	c              *gin.Context
+	httpUpstream   HTTPUpstream
 	settingService *SettingService
-	handleError  func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope)
+	handleError    func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope)
 REDACTED
 
 // antigravityRetryLoopResult 重试循环的结果
@@ -769,18 +769,18 @@ REDACTED
 
 	// 执行带重试的请求
 	result, err := antigravityRetryLoop(antigravityRetryLoopParams{
-		ctx:          ctx,
-		prefix:       prefix,
-		account:      account,
-		proxyURL:     proxyURL,
-		accessToken:  accessToken,
-		action:       action,
-		body:         geminiBody,
-		quotaScope:   quotaScope,
-		c:            c,
-		httpUpstream: s.httpUpstream,
+		ctx:            ctx,
+		prefix:         prefix,
+		account:        account,
+		proxyURL:       proxyURL,
+		accessToken:    accessToken,
+		action:         action,
+		body:           geminiBody,
+		quotaScope:     quotaScope,
+		c:              c,
+		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
-		handleError:  s.handleUpstreamError,
+		handleError:    s.handleUpstreamError,
 REDACTED)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
@@ -1459,18 +1459,18 @@ REDACTED
 
 	// 执行带重试的请求
 	result, err := antigravityRetryLoop(antigravityRetryLoopParams{
-		ctx:          ctx,
-		prefix:       prefix,
-		account:      account,
-		proxyURL:     proxyURL,
-		accessToken:  accessToken,
-		action:       upstreamAction,
-		body:         wrappedBody,
-		quotaScope:   quotaScope,
-		c:            c,
-		httpUpstream: s.httpUpstream,
+		ctx:            ctx,
+		prefix:         prefix,
+		account:        account,
+		proxyURL:       proxyURL,
+		accessToken:    accessToken,
+		action:         upstreamAction,
+		body:           wrappedBody,
+		quotaScope:     quotaScope,
+		c:              c,
+		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
-		handleError:  s.handleUpstreamError,
+		handleError:    s.handleUpstreamError,
 REDACTED)
 	if err != nil {
 		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
