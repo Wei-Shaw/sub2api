@@ -114,7 +114,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 	REDACTED
 REDACTED)
 
-	t.Run("Claude model - preserve valid signature for tool_use", func(t *testing.T) {
+	t.Run("Claude model - no signature for tool_use", func(t *testing.T) {
 		toolIDToName := make(map[string]string)
 		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, false)
 		if err != nil {
@@ -123,9 +123,9 @@ REDACTED)
 		if len(parts) != 1 || parts[0].FunctionCall == nil {
 			t.Fatalf("expected 1 functionCall part, got %+v", parts)
 	REDACTED
-		// Claude 模型应透传有效的 signature（Vertex/Google 需要完整签名链路）
-		if parts[0].ThoughtSignature != "sig_tool_abc" {
-			t.Fatalf("expected preserved tool signature %q, got %q", "sig_tool_abc", parts[0].ThoughtSignature)
+		// Claude 模型不设置 signature
+		if parts[0].ThoughtSignature != "" {
+			t.Fatalf("expected no tool signature for Claude, got %q", parts[0].ThoughtSignature)
 	REDACTED
 REDACTED)
 REDACTED
