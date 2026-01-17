@@ -55,13 +55,15 @@ REDACTED
 
 // UserService 用户服务
 type UserService struct {
-	userRepo UserRepository
+	userRepo             UserRepository
+	authCacheInvalidator APIKeyAuthCacheInvalidator
 REDACTED
 
 // NewUserService 创建用户服务实例
-func NewUserService(userRepo UserRepository) *UserService {
+func NewUserService(userRepo UserRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *UserService {
 	return &UserService{
-		userRepo: userRepo,
+		userRepo:             userRepo,
+		authCacheInvalidator: authCacheInvalidator,
 REDACTED
 REDACTED
 
@@ -89,6 +91,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, req Updat
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
+	oldConcurrency := user.Concurrency
 
 	// 更新字段
 	if req.Email != nil {
@@ -113,6 +116,9 @@ REDACTED
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
+REDACTED
+	if s.authCacheInvalidator != nil && user.Concurrency != oldConcurrency {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 REDACTED
 
 	return user, nil
@@ -169,6 +175,9 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 	if err := s.userRepo.UpdateBalance(ctx, userID, amount); err != nil {
 		return fmt.Errorf("update balance: %w", err)
 REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
 	return nil
 REDACTED
 
@@ -176,6 +185,9 @@ REDACTED
 func (s *UserService) UpdateConcurrency(ctx context.Context, userID int64, concurrency int) error {
 	if err := s.userRepo.UpdateConcurrency(ctx, userID, concurrency); err != nil {
 		return fmt.Errorf("update concurrency: %w", err)
+REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 REDACTED
 	return nil
 REDACTED
@@ -192,12 +204,18 @@ REDACTED
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("update user: %w", err)
 REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
 
 	return nil
 REDACTED
 
 // Delete 删除用户（管理员功能）
 func (s *UserService) Delete(ctx context.Context, userID int64) error {
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
 	if err := s.userRepo.Delete(ctx, userID); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 REDACTED

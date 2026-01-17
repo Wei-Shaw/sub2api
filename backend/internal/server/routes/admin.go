@@ -44,8 +44,14 @@ func RegisterAdminRoutes(
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
 
+		// 优惠码管理
+		registerPromoCodeRoutes(admin, h)
+
 		// 系统设置
 		registerSettingsRoutes(admin, h)
+
+		// 运维监控（Ops）
+		registerOpsRoutes(admin, h)
 
 		// 系统管理
 		registerSystemRoutes(admin, h)
@@ -61,6 +67,85 @@ func RegisterAdminRoutes(
 REDACTED
 REDACTED
 
+func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	ops := admin.Group("/ops")
+	{
+		// Realtime ops signals
+		ops.GET("/concurrency", h.Admin.Ops.GetConcurrencyStats)
+		ops.GET("/account-availability", h.Admin.Ops.GetAccountAvailability)
+		ops.GET("/realtime-traffic", h.Admin.Ops.GetRealtimeTrafficSummary)
+
+		// Alerts (rules + events)
+		ops.GET("/alert-rules", h.Admin.Ops.ListAlertRules)
+		ops.POST("/alert-rules", h.Admin.Ops.CreateAlertRule)
+		ops.PUT("/alert-rules/:id", h.Admin.Ops.UpdateAlertRule)
+		ops.DELETE("/alert-rules/:id", h.Admin.Ops.DeleteAlertRule)
+		ops.GET("/alert-events", h.Admin.Ops.ListAlertEvents)
+		ops.GET("/alert-events/:id", h.Admin.Ops.GetAlertEvent)
+		ops.PUT("/alert-events/:id/status", h.Admin.Ops.UpdateAlertEventStatus)
+		ops.POST("/alert-silences", h.Admin.Ops.CreateAlertSilence)
+
+		// Email notification config (DB-backed)
+		ops.GET("/email-notification/config", h.Admin.Ops.GetEmailNotificationConfig)
+		ops.PUT("/email-notification/config", h.Admin.Ops.UpdateEmailNotificationConfig)
+
+		// Runtime settings (DB-backed)
+		runtime := ops.Group("/runtime")
+		{
+			runtime.GET("/alert", h.Admin.Ops.GetAlertRuntimeSettings)
+			runtime.PUT("/alert", h.Admin.Ops.UpdateAlertRuntimeSettings)
+	REDACTED
+
+		// Advanced settings (DB-backed)
+		ops.GET("/advanced-settings", h.Admin.Ops.GetAdvancedSettings)
+		ops.PUT("/advanced-settings", h.Admin.Ops.UpdateAdvancedSettings)
+
+		// Settings group (DB-backed)
+		settings := ops.Group("/settings")
+		{
+			settings.GET("/metric-thresholds", h.Admin.Ops.GetMetricThresholds)
+			settings.PUT("/metric-thresholds", h.Admin.Ops.UpdateMetricThresholds)
+	REDACTED
+
+		// WebSocket realtime (QPS/TPS)
+		ws := ops.Group("/ws")
+		{
+			ws.GET("/qps", h.Admin.Ops.QPSWSHandler)
+	REDACTED
+
+		// Error logs (legacy)
+		ops.GET("/errors", h.Admin.Ops.GetErrorLogs)
+		ops.GET("/errors/:id", h.Admin.Ops.GetErrorLogByID)
+		ops.GET("/errors/:id/retries", h.Admin.Ops.ListRetryAttempts)
+		ops.POST("/errors/:id/retry", h.Admin.Ops.RetryErrorRequest)
+		ops.PUT("/errors/:id/resolve", h.Admin.Ops.UpdateErrorResolution)
+
+		// Request errors (client-visible failures)
+		ops.GET("/request-errors", h.Admin.Ops.ListRequestErrors)
+		ops.GET("/request-errors/:id", h.Admin.Ops.GetRequestError)
+		ops.GET("/request-errors/:id/upstream-errors", h.Admin.Ops.ListRequestErrorUpstreamErrors)
+		ops.POST("/request-errors/:id/retry-client", h.Admin.Ops.RetryRequestErrorClient)
+		ops.POST("/request-errors/:id/upstream-errors/:idx/retry", h.Admin.Ops.RetryRequestErrorUpstreamEvent)
+		ops.PUT("/request-errors/:id/resolve", h.Admin.Ops.ResolveRequestError)
+
+		// Upstream errors (independent upstream failures)
+		ops.GET("/upstream-errors", h.Admin.Ops.ListUpstreamErrors)
+		ops.GET("/upstream-errors/:id", h.Admin.Ops.GetUpstreamError)
+		ops.POST("/upstream-errors/:id/retry", h.Admin.Ops.RetryUpstreamError)
+		ops.PUT("/upstream-errors/:id/resolve", h.Admin.Ops.ResolveUpstreamError)
+
+		// Request drilldown (success + error)
+		ops.GET("/requests", h.Admin.Ops.ListRequestDetails)
+
+		// Dashboard (vNext - raw path for MVP)
+		ops.GET("/dashboard/overview", h.Admin.Ops.GetDashboardOverview)
+		ops.GET("/dashboard/throughput-trend", h.Admin.Ops.GetDashboardThroughputTrend)
+		ops.GET("/dashboard/latency-histogram", h.Admin.Ops.GetDashboardLatencyHistogram)
+		ops.GET("/dashboard/error-trend", h.Admin.Ops.GetDashboardErrorTrend)
+		ops.GET("/dashboard/error-distribution", h.Admin.Ops.GetDashboardErrorDistribution)
+REDACTED
+REDACTED
+
 func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	dashboard := admin.Group("/dashboard")
 	{
@@ -72,6 +157,7 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dashboard.GET("/users-trend", h.Admin.Dashboard.GetUserUsageTrend)
 		dashboard.POST("/users-usage", h.Admin.Dashboard.GetBatchUsersUsage)
 		dashboard.POST("/api-keys-usage", h.Admin.Dashboard.GetBatchAPIKeysUsage)
+		dashboard.POST("/aggregation/backfill", h.Admin.Dashboard.BackfillAggregation)
 REDACTED
 REDACTED
 
@@ -183,6 +269,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		proxies.POST("/:id/test", h.Admin.Proxy.Test)
 		proxies.GET("/:id/stats", h.Admin.Proxy.GetStats)
 		proxies.GET("/:id/accounts", h.Admin.Proxy.GetProxyAccounts)
+		proxies.POST("/batch-delete", h.Admin.Proxy.BatchDelete)
 		proxies.POST("/batch", h.Admin.Proxy.BatchCreate)
 REDACTED
 REDACTED
@@ -201,6 +288,18 @@ func registerRedeemCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 REDACTED
 REDACTED
 
+func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	promoCodes := admin.Group("/promo-codes")
+	{
+		promoCodes.GET("", h.Admin.Promo.List)
+		promoCodes.GET("/:id", h.Admin.Promo.GetByID)
+		promoCodes.POST("", h.Admin.Promo.Create)
+		promoCodes.PUT("/:id", h.Admin.Promo.Update)
+		promoCodes.DELETE("/:id", h.Admin.Promo.Delete)
+		promoCodes.GET("/:id/usages", h.Admin.Promo.GetUsages)
+REDACTED
+REDACTED
+
 func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	adminSettings := admin.Group("/settings")
 	{
@@ -212,6 +311,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
 		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
 		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
+		// 流超时处理配置
+		adminSettings.GET("/stream-timeout", h.Admin.Setting.GetStreamTimeoutSettings)
+		adminSettings.PUT("/stream-timeout", h.Admin.Setting.UpdateStreamTimeoutSettings)
 REDACTED
 REDACTED
 

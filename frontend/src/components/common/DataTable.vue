@@ -1,7 +1,68 @@
 <template>
+  <div class="md:hidden space-y-3">
+    <template v-if="loading">
+      <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+        <div class="space-y-3">
+          <div v-for="column in columns.filter(c => c.key !== 'actions')" :key="column.key" class="flex justify-between">
+            <div class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+            <div class="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+          </div>
+          <div v-if="hasActionsColumn" class="border-t border-gray-200 pt-3 dark:border-dark-700">
+            <div class="h-8 w-full animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else-if="!data || data.length === 0">
+      <div class="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
+        <slot name="empty">
+          <div class="flex flex-col items-center">
+            <Icon
+              name="inbox"
+              size="xl"
+              class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500"
+            />
+            <p class="text-lg font-medium text-gray-900 dark:text-gray-100">
+              {{ t('empty.noData') REDACTEDREDACTED
+            </p>
+          </div>
+        </slot>
+      </div>
+    </template>
+
+    <template v-else>
+      <div
+        v-for="(row, index) in sortedData"
+        :key="resolveRowKey(row, index)"
+        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+      >
+        <div class="space-y-3">
+          <div
+            v-for="column in columns.filter(c => c.key !== 'actions')"
+            :key="column.key"
+            class="flex items-start justify-between gap-4"
+          >
+            <span class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400">
+              {{ column.label REDACTEDREDACTED
+            </span>
+            <div class="text-right text-sm text-gray-900 dark:text-gray-100">
+              <slot :name="`cell-${column.keyREDACTED`" :row="row" :value="row[column.key]" :expanded="actionsExpanded">
+                {{ column.formatter ? column.formatter(row[column.key], row) : row[column.key] REDACTEDREDACTED
+              </slot>
+            </div>
+          </div>
+          <div v-if="hasActionsColumn" class="border-t border-gray-200 pt-3 dark:border-dark-700">
+            <slot name="cell-actions" :row="row" :value="row['actions']" :expanded="actionsExpanded"></slot>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
   <div
     ref="tableWrapperRef"
-    class="table-wrapper"
+    class="table-wrapper hidden md:block"
     :class="{
       'actions-expanded': actionsExpanded,
       'is-scrollable': isScrollable
@@ -22,29 +83,36 @@
             ]"
             @click="column.sortable && handleSort(column.key)"
           >
-            <div class="flex items-center space-x-1">
-              <span>{{ column.label REDACTEDREDACTED</span>
-              <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
-                <svg
-                  v-if="sortKey === column.key"
-                  class="h-4 w-4"
-                  :class="{ 'rotate-180 transform': sortOrder === 'desc' REDACTED"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-                <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                  />
-                </svg>
-              </span>
-            </div>
+            <slot
+              :name="`header-${column.keyREDACTED`"
+              :column="column"
+              :sort-key="sortKey"
+              :sort-order="sortOrder"
+            >
+              <div class="flex items-center space-x-1">
+                <span>{{ column.label REDACTEDREDACTED</span>
+                <span v-if="column.sortable" class="text-gray-400 dark:text-dark-500">
+                  <svg
+                    v-if="sortKey === column.key"
+                    class="h-4 w-4"
+                    :class="{ 'rotate-180 transform': sortOrder === 'desc' REDACTED"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                    />
+                  </svg>
+                </span>
+              </div>
+            </slot>
           </th>
         </tr>
       </thead>
@@ -83,7 +151,7 @@
         <tr
           v-else
           v-for="(row, index) in sortedData"
-          :key="index"
+          :key="resolveRowKey(row, index)"
           class="hover:bg-gray-50 dark:hover:bg-dark-800"
         >
           <td
@@ -210,6 +278,7 @@ interface Props {
   stickyActionsColumn?: boolean
   expandableActions?: boolean
   actionsCount?: number // 操作按钮总数，用于判断是否需要展开功能
+  rowKey?: string | ((row: any) => string | number)
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -222,6 +291,18 @@ REDACTED)
 const sortKey = ref<string>('')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const actionsExpanded = ref(false)
+const resolveRowKey = (row: any, index: number) => {
+  if (typeof props.rowKey === 'function') {
+    const key = props.rowKey(row)
+    return key ?? index
+  REDACTED
+  if (typeof props.rowKey === 'string' && props.rowKey) {
+    const key = row?.[props.rowKey]
+    return key ?? index
+  REDACTED
+  const key = row?.id
+  return key ?? index
+REDACTED
 
 // 数据/列变化时重新检查滚动状态
 // 注意：不能监听 actionsExpanded，因为 checkActionsColumnWidth 会临时修改它，会导致无限循环
@@ -264,7 +345,10 @@ const sortedData = computed(() => {
   REDACTED)
 REDACTED)
 
-// 检查第一列是否为勾选列
+const hasActionsColumn = computed(() => {
+  return props.columns.some(column => column.key === 'actions')
+REDACTED)
+
 const hasSelectColumn = computed(() => {
   return props.columns.length > 0 && props.columns[0].key === 'select'
 REDACTED)

@@ -85,6 +85,12 @@ func (UsageLog) Fields() []ent.Field {
 			Default(1).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"REDACTED),
 
+		// account_rate_multiplier: 账号计费倍率快照（NULL 表示按 1.0 处理）
+		field.Float("account_rate_multiplier").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"REDACTED),
+
 		// 其他字段
 		field.Int8("billing_type").
 			Default(0),
@@ -98,6 +104,10 @@ func (UsageLog) Fields() []ent.Field {
 			Nillable(),
 		field.String("user_agent").
 			MaxLen(512).
+			Optional().
+			Nillable(),
+		field.String("ip_address").
+			MaxLen(45). // 支持 IPv6
 			Optional().
 			Nillable(),
 

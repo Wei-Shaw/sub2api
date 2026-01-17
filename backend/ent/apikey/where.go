@@ -470,6 +470,26 @@ func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
 REDACTED
 
+// IPWhitelistIsNil applies the IsNil predicate on the "ip_whitelist" field.
+func IPWhitelistIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldIPWhitelist))
+REDACTED
+
+// IPWhitelistNotNil applies the NotNil predicate on the "ip_whitelist" field.
+func IPWhitelistNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldIPWhitelist))
+REDACTED
+
+// IPBlacklistIsNil applies the IsNil predicate on the "ip_blacklist" field.
+func IPBlacklistIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldIPBlacklist))
+REDACTED
+
+// IPBlacklistNotNil applies the NotNil predicate on the "ip_blacklist" field.
+func IPBlacklistNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldIPBlacklist))
+REDACTED
+
 // HasUser applies the HasEdge predicate on the "user" edge.
 func HasUser() predicate.APIKey {
 	return predicate.APIKey(func(s *sql.Selector) {

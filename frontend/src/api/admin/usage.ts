@@ -16,6 +16,7 @@ export interface AdminUsageStatsResponse {
   total_tokens: number
   total_cost: number
   total_actual_cost: number
+  total_account_cost?: number
   average_duration_ms: number
 REDACTED
 
@@ -64,7 +65,6 @@ export async function getStats(params: {
   group_id?: number
   model?: string
   stream?: boolean
-  billing_type?: number
   period?: string
   start_date?: string
   end_date?: string

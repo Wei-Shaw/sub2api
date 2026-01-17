@@ -19,7 +19,9 @@ const (
 	RunModeSimple   = "simple"
 )
 
-const DefaultCSPPolicy = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+// DefaultCSPPolicy is the default Content-Security-Policy with nonce support
+// __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
+const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // 连接池隔离策略常量
 // 用于控制上游 HTTP 连接池的隔离粒度，影响连接复用和资源消耗
@@ -36,33 +38,29 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig         `mapstructure:"server"`
-	CORS         CORSConfig           `mapstructure:"cors"`
-	Security     SecurityConfig       `mapstructure:"security"`
-	Billing      BillingConfig        `mapstructure:"billing"`
-	Turnstile    TurnstileConfig      `mapstructure:"turnstile"`
-	Database     DatabaseConfig       `mapstructure:"database"`
-	Redis        RedisConfig          `mapstructure:"redis"`
-	JWT          JWTConfig            `mapstructure:"jwt"`
-	LinuxDo      LinuxDoConnectConfig `mapstructure:"linuxdo_connect"`
-	Default      DefaultConfig        `mapstructure:"default"`
-	RateLimit    RateLimitConfig      `mapstructure:"rate_limit"`
-	Pricing      PricingConfig        `mapstructure:"pricing"`
-	Gateway      GatewayConfig        `mapstructure:"gateway"`
-	Concurrency  ConcurrencyConfig    `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig   `mapstructure:"token_refresh"`
-	RunMode      string               `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string               `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig         `mapstructure:"gemini"`
-	Update       UpdateConfig         `mapstructure:"update"`
-REDACTED
-
-// UpdateConfig 在线更新相关配置
-type UpdateConfig struct {
-	// ProxyURL 用于访问 GitHub 的代理地址
-	// 支持 http/https/socks5/socks5h 协议
-	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
-	ProxyURL string `mapstructure:"proxy_url"`
+	Server       ServerConfig               `mapstructure:"server"`
+	CORS         CORSConfig                 `mapstructure:"cors"`
+	Security     SecurityConfig             `mapstructure:"security"`
+	Billing      BillingConfig              `mapstructure:"billing"`
+	Turnstile    TurnstileConfig            `mapstructure:"turnstile"`
+	Database     DatabaseConfig             `mapstructure:"database"`
+	Redis        RedisConfig                `mapstructure:"redis"`
+	Ops          OpsConfig                  `mapstructure:"ops"`
+	JWT          JWTConfig                  `mapstructure:"jwt"`
+	LinuxDo      LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
+	Default      DefaultConfig              `mapstructure:"default"`
+	RateLimit    RateLimitConfig            `mapstructure:"rate_limit"`
+	Pricing      PricingConfig              `mapstructure:"pricing"`
+	Gateway      GatewayConfig              `mapstructure:"gateway"`
+	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
+	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
+	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
+	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
+	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
+	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini       GeminiConfig               `mapstructure:"gemini"`
+	Update       UpdateConfig               `mapstructure:"update"`
 REDACTED
 
 type GeminiConfig struct {
@@ -85,6 +83,33 @@ type GeminiTierQuotaConfig struct {
 	ProRPD          *int64 `mapstructure:"pro_rpd" json:"pro_rpd"`
 	FlashRPD        *int64 `mapstructure:"flash_rpd" json:"flash_rpd"`
 	CooldownMinutes *int   `mapstructure:"cooldown_minutes" json:"cooldown_minutes"`
+REDACTED
+
+type UpdateConfig struct {
+	// ProxyURL 用于访问 GitHub 的代理地址
+	// 支持 http/https/socks5/socks5h 协议
+	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
+	ProxyURL string `mapstructure:"proxy_url"`
+REDACTED
+
+type LinuxDoConnectConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	ClientID            string `mapstructure:"client_id"`
+	ClientSecret        string `mapstructure:"client_secret"`
+	AuthorizeURL        string `mapstructure:"authorize_url"`
+	TokenURL            string `mapstructure:"token_url"`
+	UserInfoURL         string `mapstructure:"userinfo_url"`
+	Scopes              string `mapstructure:"scopes"`
+	RedirectURL         string `mapstructure:"redirect_url"`          // 后端回调地址（需在提供方后台登记）
+	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认：/auth/linuxdo/callback）
+	TokenAuthMethod     string `mapstructure:"token_auth_method"`     // client_secret_post / client_secret_basic / none
+	UsePKCE             bool   `mapstructure:"use_pkce"`
+
+	// 可选：用于从 userinfo JSON 中提取字段的 gjson 路径。
+	// 为空时，服务端会尝试一组常见字段名。
+	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
+	UserInfoIDPath       string `mapstructure:"userinfo_id_path"`
+	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
 REDACTED
 
 // TokenRefreshConfig OAuth token自动刷新配置
@@ -209,6 +234,10 @@ type GatewayConfig struct {
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
 	ConcurrencySlotTTLMinutes int `mapstructure:"concurrency_slot_ttl_minutes"`
+	// SessionIdleTimeoutMinutes: 会话空闲超时时间（分钟），默认 5 分钟
+	// 用于 Anthropic OAuth/SetupToken 账号的会话数量限制功能
+	// 空闲超过此时间的会话将被自动释放
+	SessionIdleTimeoutMinutes int `mapstructure:"session_idle_timeout_minutes"`
 
 	// StreamDataIntervalTimeout: 流数据间隔超时（秒），0表示禁用
 	StreamDataIntervalTimeout int `mapstructure:"stream_data_interval_timeout"`
@@ -258,6 +287,29 @@ type GatewaySchedulingConfig struct {
 
 	// 过期槽位清理周期（0 表示禁用）
 	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
+
+	// 受控回源配置
+	DbFallbackEnabled bool `mapstructure:"db_fallback_enabled"`
+	// 受控回源超时（秒），0 表示不额外收紧超时
+	DbFallbackTimeoutSeconds int `mapstructure:"db_fallback_timeout_seconds"`
+	// 受控回源限流（实例级 QPS），0 表示不限制
+	DbFallbackMaxQPS int `mapstructure:"db_fallback_max_qps"`
+
+	// Outbox 轮询与滞后阈值配置
+	// Outbox 轮询周期（秒）
+	OutboxPollIntervalSeconds int `mapstructure:"outbox_poll_interval_seconds"`
+	// Outbox 滞后告警阈值（秒）
+	OutboxLagWarnSeconds int `mapstructure:"outbox_lag_warn_seconds"`
+	// Outbox 触发强制重建阈值（秒）
+	OutboxLagRebuildSeconds int `mapstructure:"outbox_lag_rebuild_seconds"`
+	// Outbox 连续滞后触发次数
+	OutboxLagRebuildFailures int `mapstructure:"outbox_lag_rebuild_failures"`
+	// Outbox 积压触发重建阈值（行数）
+	OutboxBacklogRebuildRows int `mapstructure:"outbox_backlog_rebuild_rows"`
+
+	// 全量重建周期配置
+	// 全量重建周期（秒），0 表示禁用
+	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
 REDACTED
 
 func (s *ServerConfig) Address() string {
@@ -285,6 +337,13 @@ type DatabaseConfig struct {
 REDACTED
 
 func (d *DatabaseConfig) DSN() string {
+	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
+	if d.Password == "" {
+		return fmt.Sprintf(
+			"host=%s port=%d user=%s dbname=%s sslmode=%s",
+			d.Host, d.Port, d.User, d.DBName, d.SSLMode,
+		)
+REDACTED
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode,
@@ -295,6 +354,13 @@ REDACTED
 func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 	if tz == "" {
 		tz = "Asia/Shanghai"
+REDACTED
+	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
+	if d.Password == "" {
+		return fmt.Sprintf(
+			"host=%s port=%d user=%s dbname=%s sslmode=%s TimeZone=%s",
+			d.Host, d.Port, d.User, d.DBName, d.SSLMode, tz,
+		)
 REDACTED
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
@@ -326,6 +392,47 @@ func (r *RedisConfig) Address() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 REDACTED
 
+type OpsConfig struct {
+	// Enabled controls whether ops features should run.
+	//
+	// NOTE: vNext still has a DB-backed feature flag (ops_monitoring_enabled) for runtime on/off.
+	// This config flag is the "hard switch" for deployments that want to disable ops completely.
+	Enabled bool `mapstructure:"enabled"`
+
+	// UsePreaggregatedTables prefers ops_metrics_hourly/daily for long-window dashboard queries.
+	UsePreaggregatedTables bool `mapstructure:"use_preaggregated_tables"`
+
+	// Cleanup controls periodic deletion of old ops data to prevent unbounded growth.
+	Cleanup OpsCleanupConfig `mapstructure:"cleanup"`
+
+	// MetricsCollectorCache controls Redis caching for expensive per-window collector queries.
+	MetricsCollectorCache OpsMetricsCollectorCacheConfig `mapstructure:"metrics_collector_cache"`
+
+	// Pre-aggregation configuration.
+	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+REDACTED
+
+type OpsCleanupConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Schedule string `mapstructure:"schedule"`
+
+	// Retention days (0 disables that cleanup target).
+	//
+	// vNext requirement: default 30 days across ops datasets.
+	ErrorLogRetentionDays      int `mapstructure:"error_log_retention_days"`
+	MinuteMetricsRetentionDays int `mapstructure:"minute_metrics_retention_days"`
+	HourlyMetricsRetentionDays int `mapstructure:"hourly_metrics_retention_days"`
+REDACTED
+
+type OpsAggregationConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+REDACTED
+
+type OpsMetricsCollectorCacheConfig struct {
+	Enabled bool          `mapstructure:"enabled"`
+	TTL     time.Duration `mapstructure:"ttl"`
+REDACTED
+
 type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`
 	ExpireHour int    `mapstructure:"expire_hour"`
@@ -333,30 +440,6 @@ REDACTED
 
 type TurnstileConfig struct {
 	Required bool `mapstructure:"required"`
-REDACTED
-
-// LinuxDoConnectConfig 用于 LinuxDo Connect OAuth 登录（终端用户 SSO）。
-//
-// 注意：这与上游账号的 OAuth（例如 OpenAI/Gemini 账号接入）不是一回事。
-// 这里是用于登录 Sub2API 本身的用户体系。
-type LinuxDoConnectConfig struct {
-	Enabled             bool   `mapstructure:"enabled"`
-	ClientID            string `mapstructure:"client_id"`
-	ClientSecret        string `mapstructure:"client_secret"`
-	AuthorizeURL        string `mapstructure:"authorize_url"`
-	TokenURL            string `mapstructure:"token_url"`
-	UserInfoURL         string `mapstructure:"userinfo_url"`
-	Scopes              string `mapstructure:"scopes"`
-	RedirectURL         string `mapstructure:"redirect_url"`          // 后端回调地址（需在提供方后台登记）
-	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认：/auth/linuxdo/callback）
-	TokenAuthMethod     string `mapstructure:"token_auth_method"`     // client_secret_post / client_secret_basic / none
-	UsePKCE             bool   `mapstructure:"use_pkce"`
-
-	// 可选：用于从 userinfo JSON 中提取字段的 gjson 路径。
-	// 为空时，服务端会尝试一组常见字段名。
-	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
-	UserInfoIDPath       string `mapstructure:"userinfo_id_path"`
-	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
 REDACTED
 
 type DefaultConfig struct {
@@ -370,6 +453,55 @@ REDACTED
 
 type RateLimitConfig struct {
 	OverloadCooldownMinutes int `mapstructure:"overload_cooldown_minutes"` // 529过载冷却时间(分钟)
+REDACTED
+
+// APIKeyAuthCacheConfig API Key 认证缓存配置
+type APIKeyAuthCacheConfig struct {
+	L1Size             int  `mapstructure:"l1_size"`
+	L1TTLSeconds       int  `mapstructure:"l1_ttl_seconds"`
+	L2TTLSeconds       int  `mapstructure:"l2_ttl_seconds"`
+	NegativeTTLSeconds int  `mapstructure:"negative_ttl_seconds"`
+	JitterPercent      int  `mapstructure:"jitter_percent"`
+	Singleflight       bool `mapstructure:"singleflight"`
+REDACTED
+
+// DashboardCacheConfig 仪表盘统计缓存配置
+type DashboardCacheConfig struct {
+	// Enabled: 是否启用仪表盘缓存
+	Enabled bool `mapstructure:"enabled"`
+	// KeyPrefix: Redis key 前缀，用于多环境隔离
+	KeyPrefix string `mapstructure:"key_prefix"`
+	// StatsFreshTTLSeconds: 缓存命中认为“新鲜”的时间窗口（秒）
+	StatsFreshTTLSeconds int `mapstructure:"stats_fresh_ttl_seconds"`
+	// StatsTTLSeconds: Redis 缓存总 TTL（秒）
+	StatsTTLSeconds int `mapstructure:"stats_ttl_seconds"`
+	// StatsRefreshTimeoutSeconds: 异步刷新超时（秒）
+	StatsRefreshTimeoutSeconds int `mapstructure:"stats_refresh_timeout_seconds"`
+REDACTED
+
+// DashboardAggregationConfig 仪表盘预聚合配置
+type DashboardAggregationConfig struct {
+	// Enabled: 是否启用预聚合作业
+	Enabled bool `mapstructure:"enabled"`
+	// IntervalSeconds: 聚合刷新间隔（秒）
+	IntervalSeconds int `mapstructure:"interval_seconds"`
+	// LookbackSeconds: 回看窗口（秒）
+	LookbackSeconds int `mapstructure:"lookback_seconds"`
+	// BackfillEnabled: 是否允许全量回填
+	BackfillEnabled bool `mapstructure:"backfill_enabled"`
+	// BackfillMaxDays: 回填最大跨度（天）
+	BackfillMaxDays int `mapstructure:"backfill_max_days"`
+	// Retention: 各表保留窗口（天）
+	Retention DashboardAggregationRetentionConfig `mapstructure:"retention"`
+	// RecomputeDays: 启动时重算最近 N 天
+	RecomputeDays int `mapstructure:"recompute_days"`
+REDACTED
+
+// DashboardAggregationRetentionConfig 预聚合保留窗口
+type DashboardAggregationRetentionConfig struct {
+	UsageLogsDays int `mapstructure:"usage_logs_days"`
+	HourlyDays    int `mapstructure:"hourly_days"`
+	DailyDays     int `mapstructure:"daily_days"`
 REDACTED
 
 func NormalizeRunMode(value string) string {
@@ -437,6 +569,7 @@ REDACTED
 	cfg.LinuxDo.UserInfoEmailPath = strings.TrimSpace(cfg.LinuxDo.UserInfoEmailPath)
 	cfg.LinuxDo.UserInfoIDPath = strings.TrimSpace(cfg.LinuxDo.UserInfoIDPath)
 	cfg.LinuxDo.UserInfoUsernamePath = strings.TrimSpace(cfg.LinuxDo.UserInfoUsernamePath)
+	cfg.Dashboard.KeyPrefix = strings.TrimSpace(cfg.Dashboard.KeyPrefix)
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
@@ -473,81 +606,6 @@ REDACTED
 REDACTED
 
 	return &cfg, nil
-REDACTED
-
-// ValidateAbsoluteHTTPURL 校验一个绝对 http(s) URL（禁止 fragment）。
-func ValidateAbsoluteHTTPURL(raw string) error {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return fmt.Errorf("empty url")
-REDACTED
-	u, err := url.Parse(raw)
-	if err != nil {
-		return err
-REDACTED
-	if !u.IsAbs() {
-		return fmt.Errorf("must be absolute")
-REDACTED
-	if !isHTTPScheme(u.Scheme) {
-		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
-REDACTED
-	if strings.TrimSpace(u.Host) == "" {
-		return fmt.Errorf("missing host")
-REDACTED
-	if u.Fragment != "" {
-		return fmt.Errorf("must not include fragment")
-REDACTED
-	return nil
-REDACTED
-
-// ValidateFrontendRedirectURL 校验前端回调地址：
-// - 允许同源相对路径（以 / 开头）
-// - 或绝对 http(s) URL（禁止 fragment）
-func ValidateFrontendRedirectURL(raw string) error {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return fmt.Errorf("empty url")
-REDACTED
-	if strings.ContainsAny(raw, "\r\n") {
-		return fmt.Errorf("contains invalid characters")
-REDACTED
-	if strings.HasPrefix(raw, "/") {
-		if strings.HasPrefix(raw, "//") {
-			return fmt.Errorf("must not start with //")
-	REDACTED
-		return nil
-REDACTED
-	u, err := url.Parse(raw)
-	if err != nil {
-		return err
-REDACTED
-	if !u.IsAbs() {
-		return fmt.Errorf("must be absolute http(s) url or relative path")
-REDACTED
-	if !isHTTPScheme(u.Scheme) {
-		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
-REDACTED
-	if strings.TrimSpace(u.Host) == "" {
-		return fmt.Errorf("missing host")
-REDACTED
-	if u.Fragment != "" {
-		return fmt.Errorf("must not include fragment")
-REDACTED
-	return nil
-REDACTED
-
-func isHTTPScheme(scheme string) bool {
-	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
-REDACTED
-
-func warnIfInsecureURL(field, raw string) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return
-REDACTED
-	if strings.EqualFold(u.Scheme, "http") {
-		log.Printf("Warning: %s uses http scheme; use https in production to avoid token leakage.", field)
-REDACTED
 REDACTED
 
 func setDefaults() {
@@ -599,7 +657,7 @@ REDACTED)
 	// Turnstile
 	viper.SetDefault("turnstile.required", false)
 
-	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	// LinuxDo Connect OAuth 登录
 	viper.SetDefault("linuxdo_connect.enabled", false)
 	viper.SetDefault("linuxdo_connect.client_id", "")
 	viper.SetDefault("linuxdo_connect.client_secret", "")
@@ -638,6 +696,20 @@ REDACTED)
 	viper.SetDefault("redis.pool_size", 128)
 	viper.SetDefault("redis.min_idle_conns", 10)
 
+	// Ops (vNext)
+	viper.SetDefault("ops.enabled", true)
+	viper.SetDefault("ops.use_preaggregated_tables", false)
+	viper.SetDefault("ops.cleanup.enabled", true)
+	viper.SetDefault("ops.cleanup.schedule", "0 2 * * *")
+	// Retention days: vNext defaults to 30 days across ops datasets.
+	viper.SetDefault("ops.cleanup.error_log_retention_days", 30)
+	viper.SetDefault("ops.cleanup.minute_metrics_retention_days", 30)
+	viper.SetDefault("ops.cleanup.hourly_metrics_retention_days", 30)
+	viper.SetDefault("ops.aggregation.enabled", true)
+	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
+	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
+	viper.SetDefault("ops.metrics_collector_cache.ttl", 65*time.Second)
+
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
@@ -666,9 +738,35 @@ REDACTED)
 	// Timezone (default to Asia/Shanghai for Chinese users)
 	viper.SetDefault("timezone", "Asia/Shanghai")
 
+	// API Key auth cache
+	viper.SetDefault("api_key_auth_cache.l1_size", 65535)
+	viper.SetDefault("api_key_auth_cache.l1_ttl_seconds", 15)
+	viper.SetDefault("api_key_auth_cache.l2_ttl_seconds", 300)
+	viper.SetDefault("api_key_auth_cache.negative_ttl_seconds", 30)
+	viper.SetDefault("api_key_auth_cache.jitter_percent", 10)
+	viper.SetDefault("api_key_auth_cache.singleflight", true)
+
+	// Dashboard cache
+	viper.SetDefault("dashboard_cache.enabled", true)
+	viper.SetDefault("dashboard_cache.key_prefix", "sub2api:")
+	viper.SetDefault("dashboard_cache.stats_fresh_ttl_seconds", 15)
+	viper.SetDefault("dashboard_cache.stats_ttl_seconds", 30)
+	viper.SetDefault("dashboard_cache.stats_refresh_timeout_seconds", 30)
+
+	// Dashboard aggregation
+	viper.SetDefault("dashboard_aggregation.enabled", true)
+	viper.SetDefault("dashboard_aggregation.interval_seconds", 60)
+	viper.SetDefault("dashboard_aggregation.lookback_seconds", 120)
+	viper.SetDefault("dashboard_aggregation.backfill_enabled", false)
+	viper.SetDefault("dashboard_aggregation.backfill_max_days", 31)
+	viper.SetDefault("dashboard_aggregation.retention.usage_logs_days", 90)
+	viper.SetDefault("dashboard_aggregation.retention.hourly_days", 180)
+	viper.SetDefault("dashboard_aggregation.retention.daily_days", 730)
+	viper.SetDefault("dashboard_aggregation.recompute_days", 2)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
-	viper.SetDefault("gateway.log_upstream_error_body", false)
+	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
 	viper.SetDefault("gateway.failover_on_400", false)
@@ -689,12 +787,21 @@ REDACTED)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.max_line_size", 40*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
-	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 45*time.Second)
+	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
+	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
+	viper.SetDefault("gateway.scheduling.db_fallback_timeout_seconds", 0)
+	viper.SetDefault("gateway.scheduling.db_fallback_max_qps", 0)
+	viper.SetDefault("gateway.scheduling.outbox_poll_interval_seconds", 1)
+	viper.SetDefault("gateway.scheduling.outbox_lag_warn_seconds", 5)
+	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_seconds", 10)
+	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
+	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
+	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh
@@ -711,10 +818,6 @@ REDACTED)
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
-
-	// Update - 在线更新配置
-	// 代理地址为空表示直连 GitHub（适用于海外服务器）
-	viper.SetDefault("update.proxy_url", "")
 REDACTED
 
 func (c *Config) Validate() error {
@@ -755,7 +858,8 @@ REDACTED
 		if method == "none" && !c.LinuxDo.UsePKCE {
 			return fmt.Errorf("linuxdo_connect.use_pkce must be true when linuxdo_connect.token_auth_method=none")
 	REDACTED
-		if (method == "" || method == "client_secret_post" || method == "client_secret_basic") && strings.TrimSpace(c.LinuxDo.ClientSecret) == "" {
+		if (method == "" || method == "client_secret_post" || method == "client_secret_basic") &&
+			strings.TrimSpace(c.LinuxDo.ClientSecret) == "" {
 			return fmt.Errorf("linuxdo_connect.client_secret is required when linuxdo_connect.enabled=true and token_auth_method is client_secret_post/client_secret_basic")
 	REDACTED
 		if strings.TrimSpace(c.LinuxDo.FrontendRedirectURL) == "" {
@@ -828,6 +932,78 @@ REDACTED
 	if c.Redis.MinIdleConns > c.Redis.PoolSize {
 		return fmt.Errorf("redis.min_idle_conns cannot exceed redis.pool_size")
 REDACTED
+	if c.Dashboard.Enabled {
+		if c.Dashboard.StatsFreshTTLSeconds <= 0 {
+			return fmt.Errorf("dashboard_cache.stats_fresh_ttl_seconds must be positive")
+	REDACTED
+		if c.Dashboard.StatsTTLSeconds <= 0 {
+			return fmt.Errorf("dashboard_cache.stats_ttl_seconds must be positive")
+	REDACTED
+		if c.Dashboard.StatsRefreshTimeoutSeconds <= 0 {
+			return fmt.Errorf("dashboard_cache.stats_refresh_timeout_seconds must be positive")
+	REDACTED
+		if c.Dashboard.StatsFreshTTLSeconds > c.Dashboard.StatsTTLSeconds {
+			return fmt.Errorf("dashboard_cache.stats_fresh_ttl_seconds must be <= dashboard_cache.stats_ttl_seconds")
+	REDACTED
+REDACTED else {
+		if c.Dashboard.StatsFreshTTLSeconds < 0 {
+			return fmt.Errorf("dashboard_cache.stats_fresh_ttl_seconds must be non-negative")
+	REDACTED
+		if c.Dashboard.StatsTTLSeconds < 0 {
+			return fmt.Errorf("dashboard_cache.stats_ttl_seconds must be non-negative")
+	REDACTED
+		if c.Dashboard.StatsRefreshTimeoutSeconds < 0 {
+			return fmt.Errorf("dashboard_cache.stats_refresh_timeout_seconds must be non-negative")
+	REDACTED
+REDACTED
+	if c.DashboardAgg.Enabled {
+		if c.DashboardAgg.IntervalSeconds <= 0 {
+			return fmt.Errorf("dashboard_aggregation.interval_seconds must be positive")
+	REDACTED
+		if c.DashboardAgg.LookbackSeconds < 0 {
+			return fmt.Errorf("dashboard_aggregation.lookback_seconds must be non-negative")
+	REDACTED
+		if c.DashboardAgg.BackfillMaxDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.backfill_max_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.BackfillEnabled && c.DashboardAgg.BackfillMaxDays == 0 {
+			return fmt.Errorf("dashboard_aggregation.backfill_max_days must be positive")
+	REDACTED
+		if c.DashboardAgg.Retention.UsageLogsDays <= 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.usage_logs_days must be positive")
+	REDACTED
+		if c.DashboardAgg.Retention.HourlyDays <= 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.hourly_days must be positive")
+	REDACTED
+		if c.DashboardAgg.Retention.DailyDays <= 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.daily_days must be positive")
+	REDACTED
+		if c.DashboardAgg.RecomputeDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.recompute_days must be non-negative")
+	REDACTED
+REDACTED else {
+		if c.DashboardAgg.IntervalSeconds < 0 {
+			return fmt.Errorf("dashboard_aggregation.interval_seconds must be non-negative")
+	REDACTED
+		if c.DashboardAgg.LookbackSeconds < 0 {
+			return fmt.Errorf("dashboard_aggregation.lookback_seconds must be non-negative")
+	REDACTED
+		if c.DashboardAgg.BackfillMaxDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.backfill_max_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.Retention.UsageLogsDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.usage_logs_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.Retention.HourlyDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.hourly_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.Retention.DailyDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.retention.daily_days must be non-negative")
+	REDACTED
+		if c.DashboardAgg.RecomputeDays < 0 {
+			return fmt.Errorf("dashboard_aggregation.recompute_days must be non-negative")
+	REDACTED
+REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
 REDACTED
@@ -897,6 +1073,50 @@ REDACTED
 REDACTED
 	if c.Gateway.Scheduling.SlotCleanupInterval < 0 {
 		return fmt.Errorf("gateway.scheduling.slot_cleanup_interval must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.DbFallbackTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.db_fallback_timeout_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.DbFallbackMaxQPS < 0 {
+		return fmt.Errorf("gateway.scheduling.db_fallback_max_qps must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxPollIntervalSeconds <= 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_poll_interval_seconds must be positive")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagWarnSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_warn_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagRebuildSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagRebuildFailures <= 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_failures must be positive")
+REDACTED
+	if c.Gateway.Scheduling.OutboxBacklogRebuildRows < 0 {
+		return fmt.Errorf("gateway.scheduling.outbox_backlog_rebuild_rows must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.FullRebuildIntervalSeconds < 0 {
+		return fmt.Errorf("gateway.scheduling.full_rebuild_interval_seconds must be non-negative")
+REDACTED
+	if c.Gateway.Scheduling.OutboxLagWarnSeconds > 0 &&
+		c.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 &&
+		c.Gateway.Scheduling.OutboxLagRebuildSeconds < c.Gateway.Scheduling.OutboxLagWarnSeconds {
+		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_seconds must be >= outbox_lag_warn_seconds")
+REDACTED
+	if c.Ops.MetricsCollectorCache.TTL < 0 {
+		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.ErrorLogRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.error_log_retention_days must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.MinuteMetricsRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.minute_metrics_retention_days must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.HourlyMetricsRetentionDays < 0 {
+		return fmt.Errorf("ops.cleanup.hourly_metrics_retention_days must be non-negative")
+REDACTED
+	if c.Ops.Cleanup.Enabled && strings.TrimSpace(c.Ops.Cleanup.Schedule) == "" {
+		return fmt.Errorf("ops.cleanup.schedule is required when ops.cleanup.enabled=true")
 REDACTED
 	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
 		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")
@@ -973,4 +1193,78 @@ func GetServerAddress() string {
 	host := v.GetString("server.host")
 	port := v.GetInt("server.port")
 	return fmt.Sprintf("%s:%d", host, port)
+REDACTED
+
+// ValidateAbsoluteHTTPURL 验证是否为有效的绝对 HTTP(S) URL
+func ValidateAbsoluteHTTPURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("empty url")
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+REDACTED
+	if !u.IsAbs() {
+		return fmt.Errorf("must be absolute")
+REDACTED
+	if !isHTTPScheme(u.Scheme) {
+		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
+REDACTED
+	if strings.TrimSpace(u.Host) == "" {
+		return fmt.Errorf("missing host")
+REDACTED
+	if u.Fragment != "" {
+		return fmt.Errorf("must not include fragment")
+REDACTED
+	return nil
+REDACTED
+
+// ValidateFrontendRedirectURL 验证前端重定向 URL（可以是绝对 URL 或相对路径）
+func ValidateFrontendRedirectURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("empty url")
+REDACTED
+	if strings.ContainsAny(raw, "\r\n") {
+		return fmt.Errorf("contains invalid characters")
+REDACTED
+	if strings.HasPrefix(raw, "/") {
+		if strings.HasPrefix(raw, "//") {
+			return fmt.Errorf("must not start with //")
+	REDACTED
+		return nil
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+REDACTED
+	if !u.IsAbs() {
+		return fmt.Errorf("must be absolute http(s) url or relative path")
+REDACTED
+	if !isHTTPScheme(u.Scheme) {
+		return fmt.Errorf("unsupported scheme: %s", u.Scheme)
+REDACTED
+	if strings.TrimSpace(u.Host) == "" {
+		return fmt.Errorf("missing host")
+REDACTED
+	if u.Fragment != "" {
+		return fmt.Errorf("must not include fragment")
+REDACTED
+	return nil
+REDACTED
+
+// isHTTPScheme 检查是否为 HTTP 或 HTTPS 协议
+func isHTTPScheme(scheme string) bool {
+	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
+REDACTED
+
+func warnIfInsecureURL(field, raw string) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return
+REDACTED
+	if strings.EqualFold(u.Scheme, "http") {
+		log.Printf("Warning: %s uses http scheme; use https in production to avoid token leakage.", field)
+REDACTED
 REDACTED

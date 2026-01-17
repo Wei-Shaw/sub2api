@@ -459,7 +459,7 @@
       </div>
 
       <!-- Concurrency & Priority -->
-      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600">
+      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600 lg:grid-cols-3">
         <div>
           <div class="mb-3 flex items-center justify-between">
             <label
@@ -515,6 +515,36 @@
             :class="!enablePriority && 'cursor-not-allowed opacity-50'"
             aria-labelledby="bulk-edit-priority-label"
           />
+        </div>
+        <div>
+          <div class="mb-3 flex items-center justify-between">
+            <label
+              id="bulk-edit-rate-multiplier-label"
+              class="input-label mb-0"
+              for="bulk-edit-rate-multiplier-enabled"
+            >
+              {{ t('admin.accounts.billingRateMultiplier') REDACTEDREDACTED
+            </label>
+            <input
+              v-model="enableRateMultiplier"
+              id="bulk-edit-rate-multiplier-enabled"
+              type="checkbox"
+              aria-controls="bulk-edit-rate-multiplier"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+          </div>
+          <input
+            v-model.number="rateMultiplier"
+            id="bulk-edit-rate-multiplier"
+            type="number"
+            min="0"
+            step="0.01"
+            :disabled="!enableRateMultiplier"
+            class="input"
+            :class="!enableRateMultiplier && 'cursor-not-allowed opacity-50'"
+            aria-labelledby="bulk-edit-rate-multiplier-label"
+          />
+          <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') REDACTEDREDACTED</p>
         </div>
       </div>
 
@@ -655,6 +685,7 @@ const enableInterceptWarmup = ref(false)
 const enableProxy = ref(false)
 const enableConcurrency = ref(false)
 const enablePriority = ref(false)
+const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
 
@@ -670,6 +701,7 @@ const interceptWarmupRequests = ref(false)
 const proxyId = ref<number | null>(null)
 const concurrency = ref(1)
 const priority = ref(1)
+const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
 
@@ -778,6 +810,16 @@ REDACTED
 const toggleErrorCode = (code: number) => {
   const index = selectedErrorCodes.value.indexOf(code)
   if (index === -1) {
+    // Adding code - check for 429/529 warning
+    if (code === 429) {
+      if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
+        return
+      REDACTED
+    REDACTED else if (code === 529) {
+      if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
+        return
+      REDACTED
+    REDACTED
     selectedErrorCodes.value.push(code)
   REDACTED else {
     selectedErrorCodes.value.splice(index, 1)
@@ -793,6 +835,16 @@ const addCustomErrorCode = () => {
   if (selectedErrorCodes.value.includes(code)) {
     appStore.showInfo(t('admin.accounts.errorCodeExists'))
     return
+  REDACTED
+  // Check for 429/529 warning
+  if (code === 429) {
+    if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
+      return
+    REDACTED
+  REDACTED else if (code === 529) {
+    if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
+      return
+    REDACTED
   REDACTED
   selectedErrorCodes.value.push(code)
   customErrorCodeInput.value = null
@@ -841,6 +893,10 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enablePriority.value) {
     updates.priority = priority.value
+  REDACTED
+
+  if (enableRateMultiplier.value) {
+    updates.rate_multiplier = rateMultiplier.value
   REDACTED
 
   if (enableStatus.value) {
@@ -903,6 +959,7 @@ const handleSubmit = async () => {
     enableProxy.value ||
     enableConcurrency.value ||
     enablePriority.value ||
+    enableRateMultiplier.value ||
     enableStatus.value ||
     enableGroups.value
 
@@ -957,6 +1014,7 @@ watch(
       enableProxy.value = false
       enableConcurrency.value = false
       enablePriority.value = false
+      enableRateMultiplier.value = false
       enableStatus.value = false
       enableGroups.value = false
 
@@ -971,6 +1029,7 @@ watch(
       proxyId.value = null
       concurrency.value = 1
       priority.value = 1
+      rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
     REDACTED

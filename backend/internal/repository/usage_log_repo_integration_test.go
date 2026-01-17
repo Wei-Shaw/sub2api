@@ -37,6 +37,12 @@ func TestUsageLogRepoSuite(t *testing.T) {
 	suite.Run(t, new(UsageLogRepoSuite))
 REDACTED
 
+// truncateToDayUTC 截断到 UTC 日期边界（测试辅助函数）
+func truncateToDayUTC(t time.Time) time.Time {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+REDACTED
+
 func (s *UsageLogRepoSuite) createUsageLog(user *service.User, apiKey *service.APIKey, account *service.Account, inputTokens, outputTokens int, cost float64, createdAt time.Time) *service.UsageLog {
 	log := &service.UsageLog{
 		UserID:       user.ID,
@@ -94,6 +100,34 @@ REDACTED
 func (s *UsageLogRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")
+REDACTED
+
+func (s *UsageLogRepoSuite) TestGetByID_ReturnsAccountRateMultiplier() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "getbyid-mult@test.com"REDACTED)
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-getbyid-mult", Name: "k"REDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-getbyid-mult"REDACTED)
+
+	m := 0.5
+	log := &service.UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             uuid.New().String(),
+		Model:                 "claude-3",
+		InputTokens:           10,
+		OutputTokens:          20,
+		TotalCost:             1.0,
+		ActualCost:            2.0,
+		AccountRateMultiplier: &m,
+		CreatedAt:             timezone.Today().Add(2 * time.Hour),
+REDACTED
+	_, err := s.repo.Create(s.ctx, log)
+	s.Require().NoError(err)
+
+	got, err := s.repo.GetByID(s.ctx, log.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(got.AccountRateMultiplier)
+	s.Require().InEpsilon(0.5, *got.AccountRateMultiplier, 0.0001)
 REDACTED
 
 // --- Delete ---
@@ -198,14 +232,14 @@ REDACTED
 // --- GetDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
-	now := time.Now()
-	todayStart := timezone.Today()
+	now := time.Now().UTC()
+	todayStart := truncateToDayUTC(now)
 	baseStats, err := s.repo.GetDashboardStats(s.ctx)
 	s.Require().NoError(err, "GetDashboardStats base")
 
 	userToday := mustCreateUser(s.T(), s.client, &service.User{
 		Email:     "today@example.com",
-		CreatedAt: maxTime(todayStart.Add(10*time.Second), now.Add(-10*time.Second)),
+		CreatedAt: testMaxTime(todayStart.Add(10*time.Second), now.Add(-10*time.Second)),
 		UpdatedAt: now,
 REDACTED)
 	userOld := mustCreateUser(s.T(), s.client, &service.User{
@@ -238,7 +272,7 @@ REDACTED)
 		TotalCost:           1.5,
 		ActualCost:          1.2,
 		DurationMs:          &d1,
-		CreatedAt:           maxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
+		CreatedAt:           testMaxTime(todayStart.Add(2*time.Minute), now.Add(-2*time.Minute)),
 REDACTED
 	_, err = s.repo.Create(s.ctx, logToday)
 	s.Require().NoError(err, "Create logToday")
@@ -273,6 +307,11 @@ REDACTED
 	_, err = s.repo.Create(s.ctx, logPerf)
 	s.Require().NoError(err, "Create logPerf")
 
+	aggRepo := newDashboardAggregationRepositoryWithSQL(s.tx)
+	aggStart := todayStart.Add(-2 * time.Hour)
+	aggEnd := now.Add(2 * time.Minute)
+	s.Require().NoError(aggRepo.AggregateRange(s.ctx, aggStart, aggEnd), "AggregateRange")
+
 	stats, err := s.repo.GetDashboardStats(s.ctx)
 	s.Require().NoError(err, "GetDashboardStats")
 
@@ -303,6 +342,80 @@ REDACTED
 	s.Require().Equal(wantTpm, stats.Tpm, "Tpm mismatch")
 REDACTED
 
+func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
+	now := time.Now().UTC()
+	todayStart := truncateToDayUTC(now)
+	rangeStart := todayStart.Add(-24 * time.Hour)
+	rangeEnd := now.Add(1 * time.Second)
+
+	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u1@test.com"REDACTED)
+	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u2@test.com"REDACTED)
+	apiKey1 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user1.ID, Key: "sk-range-1", Name: "k1"REDACTED)
+	apiKey2 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user2.ID, Key: "sk-range-2", Name: "k2"REDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-range"REDACTED)
+
+	d1, d2, d3 := 100, 200, 300
+	logOutside := &service.UsageLog{
+		UserID:       user1.ID,
+		APIKeyID:     apiKey1.ID,
+		AccountID:    account.ID,
+		Model:        "claude-3",
+		InputTokens:  7,
+		OutputTokens: 8,
+		TotalCost:    0.8,
+		ActualCost:   0.7,
+		DurationMs:   &d3,
+		CreatedAt:    rangeStart.Add(-1 * time.Hour),
+REDACTED
+	_, err := s.repo.Create(s.ctx, logOutside)
+	s.Require().NoError(err)
+
+	logRange := &service.UsageLog{
+		UserID:              user1.ID,
+		APIKeyID:            apiKey1.ID,
+		AccountID:           account.ID,
+		Model:               "claude-3",
+		InputTokens:         10,
+		OutputTokens:        20,
+		CacheCreationTokens: 1,
+		CacheReadTokens:     2,
+		TotalCost:           1.0,
+		ActualCost:          0.9,
+		DurationMs:          &d1,
+		CreatedAt:           rangeStart.Add(2 * time.Hour),
+REDACTED
+	_, err = s.repo.Create(s.ctx, logRange)
+	s.Require().NoError(err)
+
+	logToday := &service.UsageLog{
+		UserID:          user2.ID,
+		APIKeyID:        apiKey2.ID,
+		AccountID:       account.ID,
+		Model:           "claude-3",
+		InputTokens:     5,
+		OutputTokens:    6,
+		CacheReadTokens: 1,
+		TotalCost:       0.5,
+		ActualCost:      0.5,
+		DurationMs:      &d2,
+		CreatedAt:       now,
+REDACTED
+	_, err = s.repo.Create(s.ctx, logToday)
+	s.Require().NoError(err)
+
+	stats, err := s.repo.GetDashboardStatsWithRange(s.ctx, rangeStart, rangeEnd)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), stats.TotalRequests)
+	s.Require().Equal(int64(15), stats.TotalInputTokens)
+	s.Require().Equal(int64(26), stats.TotalOutputTokens)
+	s.Require().Equal(int64(1), stats.TotalCacheCreationTokens)
+	s.Require().Equal(int64(3), stats.TotalCacheReadTokens)
+	s.Require().Equal(int64(45), stats.TotalTokens)
+	s.Require().Equal(1.5, stats.TotalCost)
+	s.Require().Equal(1.4, stats.TotalActualCost)
+	s.Require().InEpsilon(150.0, stats.AverageDurationMs, 0.0001)
+REDACTED
+
 // --- GetUserDashboardStats ---
 
 func (s *UsageLogRepoSuite) TestGetUserDashboardStats() {
@@ -325,12 +438,202 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-acctoday", Name: "k"REDACTED)
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-today"REDACTED)
 
-	s.createUsageLog(user, apiKey, account, 10, 20, 0.5, time.Now())
+	createdAt := timezone.Today().Add(1 * time.Hour)
+
+	m1 := 1.5
+	m2 := 0.0
+	_, err := s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             uuid.New().String(),
+		Model:                 "claude-3",
+		InputTokens:           10,
+		OutputTokens:          20,
+		TotalCost:             1.0,
+		ActualCost:            2.0,
+		AccountRateMultiplier: &m1,
+		CreatedAt:             createdAt,
+REDACTED)
+	s.Require().NoError(err)
+	_, err = s.repo.Create(s.ctx, &service.UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             uuid.New().String(),
+		Model:                 "claude-3",
+		InputTokens:           5,
+		OutputTokens:          5,
+		TotalCost:             0.5,
+		ActualCost:            1.0,
+		AccountRateMultiplier: &m2,
+		CreatedAt:             createdAt,
+REDACTED)
+	s.Require().NoError(err)
 
 	stats, err := s.repo.GetAccountTodayStats(s.ctx, account.ID)
 	s.Require().NoError(err, "GetAccountTodayStats")
-	s.Require().Equal(int64(1), stats.Requests)
-	s.Require().Equal(int64(30), stats.Tokens)
+	s.Require().Equal(int64(2), stats.Requests)
+	s.Require().Equal(int64(40), stats.Tokens)
+	// account cost = SUM(total_cost * account_rate_multiplier)
+	s.Require().InEpsilon(1.5, stats.Cost, 0.0001)
+	// standard cost = SUM(total_cost)
+	s.Require().InEpsilon(1.5, stats.StandardCost, 0.0001)
+	// user cost = SUM(actual_cost)
+	s.Require().InEpsilon(3.0, stats.UserCost, 0.0001)
+REDACTED
+
+func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
+	now := time.Now().UTC().Truncate(time.Second)
+	// 使用固定的时间偏移确保 hour1 和 hour2 在同一天且都在过去
+	// 选择当天 02:00 和 03:00 作为测试时间点（基于 now 的日期）
+	dayStart := truncateToDayUTC(now)
+	hour1 := dayStart.Add(2 * time.Hour) // 当天 02:00
+	hour2 := dayStart.Add(3 * time.Hour) // 当天 03:00
+	// 如果当前时间早于 hour2，则使用昨天的时间
+	if now.Before(hour2.Add(time.Hour)) {
+		dayStart = dayStart.Add(-24 * time.Hour)
+		hour1 = dayStart.Add(2 * time.Hour)
+		hour2 = dayStart.Add(3 * time.Hour)
+REDACTED
+
+	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "agg-u1@test.com"REDACTED)
+	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "agg-u2@test.com"REDACTED)
+	apiKey1 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user1.ID, Key: "sk-agg-1", Name: "k1"REDACTED)
+	apiKey2 := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user2.ID, Key: "sk-agg-2", Name: "k2"REDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-agg"REDACTED)
+
+	d1, d2, d3 := 100, 200, 150
+	log1 := &service.UsageLog{
+		UserID:              user1.ID,
+		APIKeyID:            apiKey1.ID,
+		AccountID:           account.ID,
+		Model:               "claude-3",
+		InputTokens:         10,
+		OutputTokens:        20,
+		CacheCreationTokens: 2,
+		CacheReadTokens:     1,
+		TotalCost:           1.0,
+		ActualCost:          0.9,
+		DurationMs:          &d1,
+		CreatedAt:           hour1.Add(5 * time.Minute),
+REDACTED
+	_, err := s.repo.Create(s.ctx, log1)
+	s.Require().NoError(err)
+
+	log2 := &service.UsageLog{
+		UserID:       user1.ID,
+		APIKeyID:     apiKey1.ID,
+		AccountID:    account.ID,
+		Model:        "claude-3",
+		InputTokens:  5,
+		OutputTokens: 5,
+		TotalCost:    0.5,
+		ActualCost:   0.5,
+		DurationMs:   &d2,
+		CreatedAt:    hour1.Add(20 * time.Minute),
+REDACTED
+	_, err = s.repo.Create(s.ctx, log2)
+	s.Require().NoError(err)
+
+	log3 := &service.UsageLog{
+		UserID:       user2.ID,
+		APIKeyID:     apiKey2.ID,
+		AccountID:    account.ID,
+		Model:        "claude-3",
+		InputTokens:  7,
+		OutputTokens: 8,
+		TotalCost:    0.7,
+		ActualCost:   0.7,
+		DurationMs:   &d3,
+		CreatedAt:    hour2.Add(10 * time.Minute),
+REDACTED
+	_, err = s.repo.Create(s.ctx, log3)
+	s.Require().NoError(err)
+
+	aggRepo := newDashboardAggregationRepositoryWithSQL(s.tx)
+	aggStart := hour1.Add(-5 * time.Minute)
+	aggEnd := hour2.Add(time.Hour) // 确保覆盖 hour2 的所有数据
+	s.Require().NoError(aggRepo.AggregateRange(s.ctx, aggStart, aggEnd))
+
+	type hourlyRow struct {
+		totalRequests       int64
+		inputTokens         int64
+		outputTokens        int64
+		cacheCreationTokens int64
+		cacheReadTokens     int64
+		totalCost           float64
+		actualCost          float64
+		totalDurationMs     int64
+		activeUsers         int64
+REDACTED
+	fetchHourly := func(bucketStart time.Time) hourlyRow {
+		var row hourlyRow
+		err := scanSingleRow(s.ctx, s.tx, `
+			SELECT total_requests, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+			       total_cost, actual_cost, total_duration_ms, active_users
+			FROM usage_dashboard_hourly
+			WHERE bucket_start = $1
+		`, []any{bucketStartREDACTED, &row.totalRequests, &row.inputTokens, &row.outputTokens,
+			&row.cacheCreationTokens, &row.cacheReadTokens, &row.totalCost, &row.actualCost,
+			&row.totalDurationMs, &row.activeUsers,
+		)
+		s.Require().NoError(err)
+		return row
+REDACTED
+
+	hour1Row := fetchHourly(hour1)
+	s.Require().Equal(int64(2), hour1Row.totalRequests)
+	s.Require().Equal(int64(15), hour1Row.inputTokens)
+	s.Require().Equal(int64(25), hour1Row.outputTokens)
+	s.Require().Equal(int64(2), hour1Row.cacheCreationTokens)
+	s.Require().Equal(int64(1), hour1Row.cacheReadTokens)
+	s.Require().Equal(1.5, hour1Row.totalCost)
+	s.Require().Equal(1.4, hour1Row.actualCost)
+	s.Require().Equal(int64(300), hour1Row.totalDurationMs)
+	s.Require().Equal(int64(1), hour1Row.activeUsers)
+
+	hour2Row := fetchHourly(hour2)
+	s.Require().Equal(int64(1), hour2Row.totalRequests)
+	s.Require().Equal(int64(7), hour2Row.inputTokens)
+	s.Require().Equal(int64(8), hour2Row.outputTokens)
+	s.Require().Equal(int64(0), hour2Row.cacheCreationTokens)
+	s.Require().Equal(int64(0), hour2Row.cacheReadTokens)
+	s.Require().Equal(0.7, hour2Row.totalCost)
+	s.Require().Equal(0.7, hour2Row.actualCost)
+	s.Require().Equal(int64(150), hour2Row.totalDurationMs)
+	s.Require().Equal(int64(1), hour2Row.activeUsers)
+
+	var daily struct {
+		totalRequests       int64
+		inputTokens         int64
+		outputTokens        int64
+		cacheCreationTokens int64
+		cacheReadTokens     int64
+		totalCost           float64
+		actualCost          float64
+		totalDurationMs     int64
+		activeUsers         int64
+REDACTED
+	err = scanSingleRow(s.ctx, s.tx, `
+		SELECT total_requests, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+		       total_cost, actual_cost, total_duration_ms, active_users
+		FROM usage_dashboard_daily
+		WHERE bucket_date = $1::date
+	`, []any{dayStartREDACTED, &daily.totalRequests, &daily.inputTokens, &daily.outputTokens,
+		&daily.cacheCreationTokens, &daily.cacheReadTokens, &daily.totalCost, &daily.actualCost,
+		&daily.totalDurationMs, &daily.activeUsers,
+	)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), daily.totalRequests)
+	s.Require().Equal(int64(22), daily.inputTokens)
+	s.Require().Equal(int64(33), daily.outputTokens)
+	s.Require().Equal(int64(2), daily.cacheCreationTokens)
+	s.Require().Equal(int64(1), daily.cacheReadTokens)
+	s.Require().Equal(2.2, daily.totalCost)
+	s.Require().Equal(2.1, daily.actualCost)
+	s.Require().Equal(int64(450), daily.totalDurationMs)
+	s.Require().Equal(int64(2), daily.activeUsers)
 REDACTED
 
 // --- GetBatchUserUsageStats ---
@@ -398,7 +701,7 @@ func (s *UsageLogRepoSuite) TestGetGlobalStats() {
 	s.Require().Equal(int64(45), stats.TotalOutputTokens)
 REDACTED
 
-func maxTime(a, b time.Time) time.Time {
+func testMaxTime(a, b time.Time) time.Time {
 	if a.After(b) {
 		return a
 REDACTED
@@ -641,17 +944,17 @@ func (s *UsageLogRepoSuite) TestGetUsageTrendWithFilters() {
 	endTime := base.Add(48 * time.Hour)
 
 	// Test with user filter
-	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, 0)
+	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, 0, 0, 0, "", nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters user filter")
 	s.Require().Len(trend, 2)
 
 	// Test with apiKey filter
-	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", 0, apiKey.ID)
+	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", 0, apiKey.ID, 0, 0, "", nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters apiKey filter")
 	s.Require().Len(trend, 2)
 
 	// Test with both filters
-	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, apiKey.ID)
+	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, apiKey.ID, 0, 0, "", nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters both filters")
 	s.Require().Len(trend, 2)
 REDACTED
@@ -668,7 +971,7 @@ func (s *UsageLogRepoSuite) TestGetUsageTrendWithFilters_HourlyGranularity() {
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(3 * time.Hour)
 
-	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "hour", user.ID, 0)
+	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "hour", user.ID, 0, 0, 0, "", nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters hourly")
 	s.Require().Len(trend, 2)
 REDACTED
@@ -714,17 +1017,17 @@ REDACTED
 	endTime := base.Add(2 * time.Hour)
 
 	// Test with user filter
-	stats, err := s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, user.ID, 0, 0)
+	stats, err := s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, user.ID, 0, 0, 0, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters user filter")
 	s.Require().Len(stats, 2)
 
 	// Test with apiKey filter
-	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, apiKey.ID, 0)
+	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, apiKey.ID, 0, 0, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters apiKey filter")
 	s.Require().Len(stats, 2)
 
 	// Test with account filter
-	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, 0, account.ID)
+	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, 0, account.ID, 0, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters account filter")
 	s.Require().Len(stats, 2)
 REDACTED

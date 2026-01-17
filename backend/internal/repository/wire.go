@@ -37,6 +37,16 @@ func ProvidePricingRemoteClient(cfg *config.Config) service.PricingRemoteClient 
 	return NewPricingRemoteClient(cfg.Update.ProxyURL)
 REDACTED
 
+// ProvideSessionLimitCache 创建会话限制缓存
+// 用于 Anthropic OAuth/SetupToken 账号的并发会话数量控制
+func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.SessionLimitCache {
+	defaultIdleTimeoutMinutes := 5 // 默认 5 分钟空闲超时
+	if cfg != nil && cfg.Gateway.SessionIdleTimeoutMinutes > 0 {
+		defaultIdleTimeoutMinutes = cfg.Gateway.SessionIdleTimeoutMinutes
+REDACTED
+	return NewSessionLimitCache(rdb, defaultIdleTimeoutMinutes)
+REDACTED
+
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
 	NewUserRepository,
@@ -45,8 +55,11 @@ var ProviderSet = wire.NewSet(
 	NewAccountRepository,
 	NewProxyRepository,
 	NewRedeemCodeRepository,
+	NewPromoCodeRepository,
 	NewUsageLogRepository,
+	NewDashboardAggregationRepository,
 	NewSettingRepository,
+	NewOpsRepository,
 	NewUserSubscriptionRepository,
 	NewUserAttributeDefinitionRepository,
 	NewUserAttributeValueRepository,
@@ -56,12 +69,18 @@ var ProviderSet = wire.NewSet(
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,
+	NewTimeoutCounterCache,
 	ProvideConcurrencyCache,
+	ProvideSessionLimitCache,
+	NewDashboardCache,
 	NewEmailCache,
 	NewIdentityCache,
 	NewRedeemCache,
 	NewUpdateCache,
 	NewGeminiTokenCache,
+	NewSchedulerCache,
+	NewSchedulerOutboxRepository,
+	NewProxyLatencyCache,
 
 	// HTTP service ports (DI Strategy A: return interface directly)
 	NewTurnstileVerifier,

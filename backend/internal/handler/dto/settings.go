@@ -28,6 +28,7 @@ type SystemSettings struct {
 	APIBaseURL   string `json:"api_base_url"`
 	ContactInfo  string `json:"contact_info"`
 	DocURL       string `json:"doc_url"`
+	HomeContent  string `json:"home_content"`
 
 	DefaultConcurrency int     `json:"default_concurrency"`
 	DefaultBalance     float64 `json:"default_balance"`
@@ -42,6 +43,12 @@ type SystemSettings struct {
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
+
+	// Ops monitoring (vNext)
+	OpsMonitoringEnabled         bool   `json:"ops_monitoring_enabled"`
+	OpsRealtimeMonitoringEnabled bool   `json:"ops_realtime_monitoring_enabled"`
+	OpsQueryModeDefault          string `json:"ops_query_mode_default"`
+	OpsMetricsIntervalSeconds    int    `json:"ops_metrics_interval_seconds"`
 REDACTED
 
 type PublicSettings struct {
@@ -55,6 +62,16 @@ type PublicSettings struct {
 	APIBaseURL          string `json:"api_base_url"`
 	ContactInfo         string `json:"contact_info"`
 	DocURL              string `json:"doc_url"`
+	HomeContent         string `json:"home_content"`
 	LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
 	Version             string `json:"version"`
+REDACTED
+
+// StreamTimeoutSettings 流超时处理配置 DTO
+type StreamTimeoutSettings struct {
+	Enabled                bool   `json:"enabled"`
+	Action                 string `json:"action"`
+	TempUnschedMinutes     int    `json:"temp_unsched_minutes"`
+	ThresholdCount         int    `json:"threshold_count"`
+	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
 REDACTED

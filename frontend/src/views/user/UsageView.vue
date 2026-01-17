@@ -273,19 +273,6 @@
             </div>
           </template>
 
-          <template #cell-billing_type="{ row REDACTED">
-            <span
-              class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium"
-              :class="
-                row.billing_type === 1
-                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-              "
-            >
-              {{ row.billing_type === 1 ? t('usage.subscription') : t('usage.balance') REDACTEDREDACTED
-            </span>
-          </template>
-
           <template #cell-first_token="{ row REDACTED">
             <span
               v-if="row.first_token_ms != null"
@@ -482,7 +469,6 @@ const columns = computed<Column[]>(() => [
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
-  { key: 'billing_type', label: t('usage.billingType'), sortable: false REDACTED,
   { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
   { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
   { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
@@ -745,7 +731,6 @@ const exportToCSV = async () => {
       'Rate Multiplier',
       'Billed Cost',
       'Original Cost',
-      'Billing Type',
       'First Token (ms)',
       'Duration (ms)'
     ]
@@ -762,7 +747,6 @@ const exportToCSV = async () => {
         log.rate_multiplier,
         log.actual_cost.toFixed(8),
         log.total_cost.toFixed(8),
-        log.billing_type === 1 ? 'Subscription' : 'Balance',
         log.first_token_ms ?? '',
         log.duration_ms
       ].map(escapeCSVValue)

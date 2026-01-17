@@ -52,6 +52,7 @@ type AuthService struct {
 	emailService      *EmailService
 	turnstileService  *TurnstileService
 	emailQueueService *EmailQueueService
+	promoService      *PromoService
 REDACTED
 
 // NewAuthService 创建认证服务实例
@@ -62,6 +63,7 @@ func NewAuthService(
 	emailService *EmailService,
 	turnstileService *TurnstileService,
 	emailQueueService *EmailQueueService,
+	promoService *PromoService,
 ) *AuthService {
 	return &AuthService{
 		userRepo:          userRepo,
@@ -70,16 +72,17 @@ func NewAuthService(
 		emailService:      emailService,
 		turnstileService:  turnstileService,
 		emailQueueService: emailQueueService,
+		promoService:      promoService,
 REDACTED
 REDACTED
 
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "")
+	return s.RegisterWithVerification(ctx, email, password, "", "")
 REDACTED
 
-// RegisterWithVerification 用户注册（支持邮件验证），返回token和用户
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode string) (string, *User, error) {
+// RegisterWithVerification 用户注册（支持邮件验证和优惠码），返回token和用户
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -148,6 +151,19 @@ REDACTED
 	REDACTED
 		log.Printf("[Auth] Database error creating user: %v", err)
 		return "", nil, ErrServiceUnavailable
+REDACTED
+
+	// 应用优惠码（如果提供）
+	if promoCode != "" && s.promoService != nil {
+		if err := s.promoService.ApplyPromoCode(ctx, user.ID, promoCode); err != nil {
+			// 优惠码应用失败不影响注册，只记录日志
+			log.Printf("[Auth] Failed to apply promo code for user %d: %v", user.ID, err)
+	REDACTED else {
+			// 重新获取用户信息以获取更新后的余额
+			if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {
+				user = updatedUser
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 生成token
@@ -341,7 +357,7 @@ REDACTED
 // - 如果邮箱已存在：直接登录（不需要本地密码）
 // - 如果邮箱不存在：创建新用户并登录
 //
-// 注意：该函数用于“终端用户登录 Sub2API 本身”的场景（不同于上游账号的 OAuth，例如 OpenAI/Gemini）。
+// 注意：该函数用于 LinuxDo OAuth 登录场景（不同于上游账号的 OAuth，例如 Claude/OpenAI/Gemini）。
 // 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
 func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
 	email = strings.TrimSpace(email)
@@ -360,8 +376,8 @@ REDACTED
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			// OAuth 首次登录视为注册。
-			if s.settingService != nil && !s.settingService.IsRegistrationEnabled(ctx) {
+			// OAuth 首次登录视为注册（fail-close：settingService 未配置时不允许注册）
+			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 				return "", nil, ErrRegDisabled
 		REDACTED
 

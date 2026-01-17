@@ -13,6 +13,7 @@ import (
 	"log"
 	mathrand "math/rand"
 	"net/http"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -38,6 +39,21 @@ const (
 	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
 	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
+
+func (s *GatewayService) debugModelRoutingEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+REDACTED
+
+func shortSessionHash(sessionHash string) string {
+	if sessionHash == "" {
+		return ""
+REDACTED
+	if len(sessionHash) <= 8 {
+		return sessionHash
+REDACTED
+	return sessionHash[:8]
+REDACTED
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
@@ -152,6 +168,7 @@ type GatewayService struct {
 	userSubRepo         UserSubscriptionRepository
 	cache               GatewayCache
 	cfg                 *config.Config
+	schedulerSnapshot   *SchedulerSnapshotService
 	billingService      *BillingService
 	rateLimitService    *RateLimitService
 	billingCacheService *BillingCacheService
@@ -159,6 +176,8 @@ type GatewayService struct {
 	httpUpstream        HTTPUpstream
 	deferredService     *DeferredService
 	concurrencyService  *ConcurrencyService
+	claudeTokenProvider *ClaudeTokenProvider
+	sessionLimitCache   SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -170,6 +189,7 @@ func NewGatewayService(
 	userSubRepo UserSubscriptionRepository,
 	cache GatewayCache,
 	cfg *config.Config,
+	schedulerSnapshot *SchedulerSnapshotService,
 	concurrencyService *ConcurrencyService,
 	billingService *BillingService,
 	rateLimitService *RateLimitService,
@@ -177,6 +197,8 @@ func NewGatewayService(
 	identityService *IdentityService,
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
+	claudeTokenProvider *ClaudeTokenProvider,
+	sessionLimitCache SessionLimitCache,
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
@@ -186,6 +208,7 @@ func NewGatewayService(
 		userSubRepo:         userSubRepo,
 		cache:               cache,
 		cfg:                 cfg,
+		schedulerSnapshot:   schedulerSnapshot,
 		concurrencyService:  concurrencyService,
 		billingService:      billingService,
 		rateLimitService:    rateLimitService,
@@ -193,6 +216,8 @@ func NewGatewayService(
 		identityService:     identityService,
 		httpUpstream:        httpUpstream,
 		deferredService:     deferredService,
+		claudeTokenProvider: claudeTokenProvider,
+		sessionLimitCache:   sessionLimitCache,
 REDACTED
 REDACTED
 
@@ -362,27 +387,13 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 	if hasForcePlatform && forcePlatform != "" {
 		platform = forcePlatform
 REDACTED else if groupID != nil {
-		// 根据分组 platform 决定查询哪种账号
-		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		group, resolvedGroupID, err := s.resolveGatewayGroup(ctx, groupID)
 		if err != nil {
-			return nil, fmt.Errorf("get group failed: %w", err)
+			return nil, err
 	REDACTED
+		groupID = resolvedGroupID
+		ctx = s.withGroupContext(ctx, group)
 		platform = group.Platform
-
-		// 检查 Claude Code 客户端限制
-		if group.ClaudeCodeOnly {
-			isClaudeCode := IsClaudeCodeClient(ctx)
-			if !isClaudeCode {
-				// 非 Claude Code 客户端，检查是否有降级分组
-				if group.FallbackGroupID != nil {
-					// 使用降级分组重新调度
-					fallbackGroupID := *group.FallbackGroupID
-					return s.SelectAccountForModelWithExclusions(ctx, &fallbackGroupID, sessionHash, requestedModel, excludedIDs)
-			REDACTED
-				// 无降级分组，拒绝访问
-				return nil, ErrClaudeCodeOnly
-		REDACTED
-	REDACTED
 REDACTED else {
 		// 无分组时只使用原生 anthropic 平台
 		platform = PlatformAnthropic
@@ -400,8 +411,12 @@ REDACTED
 REDACTED
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
-func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*AccountSelectionResult, error) {
+// metadataUserID: 原始 metadata.user_id 字段（用于提取会话 UUID 进行会话数量限制）
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, metadataUserID string) (*AccountSelectionResult, error) {
 	cfg := s.schedulingConfig()
+	// 提取会话 UUID（用于会话数量限制）
+	sessionUUID := extractSessionUUID(metadataUserID)
+
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); err == nil {
@@ -410,9 +425,19 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 REDACTED
 
 	// 检查 Claude Code 客户端限制（可能会替换 groupID 为降级分组）
-	groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
+	group, groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
 	if err != nil {
 		return nil, err
+REDACTED
+	ctx = s.withGroupContext(ctx, group)
+
+	if s.debugModelRoutingEnabled() && requestedModel != "" {
+		groupPlatform := ""
+		if group != nil {
+			groupPlatform = group.Platform
+	REDACTED
+		log.Printf("[ModelRoutingDebug] select entry: group_id=%v group_platform=%s model=%s session=%s sticky_account=%d load_batch=%v concurrency=%v",
+			derefGroupID(groupID), groupPlatform, requestedModel, shortSessionHash(sessionHash), stickyAccountID, cfg.LoadBatchEnabled, s.concurrencyService != nil)
 REDACTED
 
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
@@ -453,11 +478,14 @@ REDACTED
 	REDACTED, nil
 REDACTED
 
-	platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID)
+	platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID, group)
 	if err != nil {
 		return nil, err
 REDACTED
 	preferOAuth := platform == PlatformGemini
+	if s.debugModelRoutingEnabled() && platform == PlatformAnthropic && requestedModel != "" {
+		log.Printf("[ModelRoutingDebug] load-aware enabled: group_id=%v model=%s session=%s platform=%s", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), platform)
+REDACTED
 
 	accounts, useMixed, err := s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
@@ -475,23 +503,242 @@ REDACTED
 		return excluded
 REDACTED
 
-	// ============ Layer 1: 粘性会话优先 ============
-	if sessionHash != "" && s.cache != nil {
+	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
+	accountByID := make(map[int64]*Account, len(accounts))
+	for i := range accounts {
+		accountByID[accounts[i].ID] = &accounts[i]
+REDACTED
+
+	// 获取模型路由配置（仅 anthropic 平台）
+	var routingAccountIDs []int64
+	if group != nil && requestedModel != "" && group.Platform == PlatformAnthropic {
+		routingAccountIDs = group.GetRoutingAccountIDs(requestedModel)
+		if s.debugModelRoutingEnabled() {
+			log.Printf("[ModelRoutingDebug] context group routing: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v session=%s sticky_account=%d",
+				group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), routingAccountIDs, shortSessionHash(sessionHash), stickyAccountID)
+			if len(routingAccountIDs) == 0 && group.ModelRoutingEnabled && len(group.ModelRouting) > 0 {
+				keys := make([]string, 0, len(group.ModelRouting))
+				for k := range group.ModelRouting {
+					keys = append(keys, k)
+			REDACTED
+				sort.Strings(keys)
+				const maxKeys = 20
+				if len(keys) > maxKeys {
+					keys = keys[:maxKeys]
+			REDACTED
+				log.Printf("[ModelRoutingDebug] context group routing miss: group_id=%d model=%s patterns(sample)=%v", group.ID, requestedModel, keys)
+		REDACTED
+	REDACTED
+REDACTED
+
+	// ============ Layer 1: 模型路由优先选择（优先级高于粘性会话） ============
+	if len(routingAccountIDs) > 0 && s.concurrencyService != nil {
+		// 1. 过滤出路由列表中可调度的账号
+		var routingCandidates []*Account
+		var filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping, filteredWindowCost int
+		for _, routingAccountID := range routingAccountIDs {
+			if isExcluded(routingAccountID) {
+				filteredExcluded++
+				continue
+		REDACTED
+			account, ok := accountByID[routingAccountID]
+			if !ok || !account.IsSchedulable() {
+				if !ok {
+					filteredMissing++
+			REDACTED else {
+					filteredUnsched++
+			REDACTED
+				continue
+		REDACTED
+			if !s.isAccountAllowedForPlatform(account, platform, useMixed) {
+				filteredPlatform++
+				continue
+		REDACTED
+			if !account.IsSchedulableForModel(requestedModel) {
+				filteredModelScope++
+				continue
+		REDACTED
+			if requestedModel != "" && !s.isModelSupportedByAccount(account, requestedModel) {
+				filteredModelMapping++
+				continue
+		REDACTED
+			// 窗口费用检查（非粘性会话路径）
+			if !s.isAccountSchedulableForWindowCost(ctx, account, false) {
+				filteredWindowCost++
+				continue
+		REDACTED
+			routingCandidates = append(routingCandidates, account)
+	REDACTED
+
+		if s.debugModelRoutingEnabled() {
+			log.Printf("[ModelRoutingDebug] routed candidates: group_id=%v model=%s routed=%d candidates=%d filtered(excluded=%d missing=%d unsched=%d platform=%d model_scope=%d model_mapping=%d window_cost=%d)",
+				derefGroupID(groupID), requestedModel, len(routingAccountIDs), len(routingCandidates),
+				filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping, filteredWindowCost)
+	REDACTED
+
+		if len(routingCandidates) > 0 {
+			// 1.5. 在路由账号范围内检查粘性会话
+			if sessionHash != "" && s.cache != nil {
+				stickyAccountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+				if err == nil && stickyAccountID > 0 && containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
+					// 粘性账号在路由列表中，优先使用
+					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
+						if stickyAccount.IsSchedulable() &&
+							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
+							stickyAccount.IsSchedulableForModel(requestedModel) &&
+							(requestedModel == "" || s.isModelSupportedByAccount(stickyAccount, requestedModel)) &&
+							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) { // 粘性会话窗口费用检查
+							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
+							if err == nil && result.Acquired {
+								// 会话数量限制检查
+								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionUUID) {
+									result.ReleaseFunc() // 释放槽位
+									// 继续到负载感知选择
+							REDACTED else {
+									_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+									if s.debugModelRoutingEnabled() {
+										log.Printf("[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
+								REDACTED
+									return &AccountSelectionResult{
+										Account:     stickyAccount,
+										Acquired:    true,
+										ReleaseFunc: result.ReleaseFunc,
+								REDACTED, nil
+							REDACTED
+						REDACTED
+
+							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
+							if waitingCount < cfg.StickySessionMaxWaiting {
+								return &AccountSelectionResult{
+									Account: stickyAccount,
+									WaitPlan: &AccountWaitPlan{
+										AccountID:      stickyAccountID,
+										MaxConcurrency: stickyAccount.Concurrency,
+										Timeout:        cfg.StickySessionWaitTimeout,
+										MaxWaiting:     cfg.StickySessionMaxWaiting,
+								REDACTED,
+							REDACTED, nil
+						REDACTED
+							// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+
+			// 2. 批量获取负载信息
+			routingLoads := make([]AccountWithConcurrency, 0, len(routingCandidates))
+			for _, acc := range routingCandidates {
+				routingLoads = append(routingLoads, AccountWithConcurrency{
+					ID:             acc.ID,
+					MaxConcurrency: acc.Concurrency,
+			REDACTED)
+		REDACTED
+			routingLoadMap, _ := s.concurrencyService.GetAccountsLoadBatch(ctx, routingLoads)
+
+			// 3. 按负载感知排序
+			type accountWithLoad struct {
+				account  *Account
+				loadInfo *AccountLoadInfo
+		REDACTED
+			var routingAvailable []accountWithLoad
+			for _, acc := range routingCandidates {
+				loadInfo := routingLoadMap[acc.ID]
+				if loadInfo == nil {
+					loadInfo = &AccountLoadInfo{AccountID: acc.IDREDACTED
+			REDACTED
+				if loadInfo.LoadRate < 100 {
+					routingAvailable = append(routingAvailable, accountWithLoad{account: acc, loadInfo: loadInfoREDACTED)
+			REDACTED
+		REDACTED
+
+			if len(routingAvailable) > 0 {
+				// 排序：优先级 > 负载率 > 最后使用时间
+				sort.SliceStable(routingAvailable, func(i, j int) bool {
+					a, b := routingAvailable[i], routingAvailable[j]
+					if a.account.Priority != b.account.Priority {
+						return a.account.Priority < b.account.Priority
+				REDACTED
+					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
+						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
+				REDACTED
+					switch {
+					case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
+						return true
+					case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
+						return false
+					case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
+						return false
+					default:
+						return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
+				REDACTED
+			REDACTED)
+
+				// 4. 尝试获取槽位
+				for _, item := range routingAvailable {
+					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
+					if err == nil && result.Acquired {
+						// 会话数量限制检查
+						if !s.checkAndRegisterSession(ctx, item.account, sessionUUID) {
+							result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+							continue
+					REDACTED
+						if sessionHash != "" && s.cache != nil {
+							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
+					REDACTED
+						if s.debugModelRoutingEnabled() {
+							log.Printf("[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
+					REDACTED
+						return &AccountSelectionResult{
+							Account:     item.account,
+							Acquired:    true,
+							ReleaseFunc: result.ReleaseFunc,
+					REDACTED, nil
+				REDACTED
+			REDACTED
+
+				// 5. 所有路由账号槽位满，返回等待计划（选择负载最低的）
+				acc := routingAvailable[0].account
+				if s.debugModelRoutingEnabled() {
+					log.Printf("[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), acc.ID)
+			REDACTED
+				return &AccountSelectionResult{
+					Account: acc,
+					WaitPlan: &AccountWaitPlan{
+						AccountID:      acc.ID,
+						MaxConcurrency: acc.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+				REDACTED,
+			REDACTED, nil
+		REDACTED
+			// 路由列表中的账号都不可用（负载率 >= 100），继续到 Layer 2 回退
+			log.Printf("[ModelRouting] All routed accounts unavailable for model=%s, falling back to normal selection", requestedModel)
+	REDACTED
+REDACTED
+
+	// ============ Layer 1.5: 粘性会话（仅在无模型路由配置时生效） ============
+	if len(routingAccountIDs) == 0 && sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
-			account, err := s.accountRepo.GetByID(ctx, accountID)
-			if err == nil && s.isAccountInGroup(account, groupID) &&
+			account, ok := accountByID[accountID]
+			if ok && s.isAccountInGroup(account, groupID) &&
 				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 				account.IsSchedulableForModel(requestedModel) &&
-				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) &&
+				s.isAccountSchedulableForWindowCost(ctx, account, true) { // 粘性会话窗口费用检查
 				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 				if err == nil && result.Acquired {
-					_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
-					return &AccountSelectionResult{
-						Account:     account,
-						Acquired:    true,
-						ReleaseFunc: result.ReleaseFunc,
-				REDACTED, nil
+					// 会话数量限制检查
+					if !s.checkAndRegisterSession(ctx, account, sessionUUID) {
+						result.ReleaseFunc() // 释放槽位，继续到 Layer 2
+				REDACTED else {
+						_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+						return &AccountSelectionResult{
+							Account:     account,
+							Acquired:    true,
+							ReleaseFunc: result.ReleaseFunc,
+					REDACTED, nil
+				REDACTED
 			REDACTED
 
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
@@ -517,6 +764,12 @@ REDACTED
 		if isExcluded(acc.ID) {
 			continue
 	REDACTED
+		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
+		// re-check schedulability here so recently rate-limited/overloaded accounts
+		// are not selected again before the bucket is rebuilt.
+		if !acc.IsSchedulable() {
+			continue
+	REDACTED
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
 			continue
 	REDACTED
@@ -524,6 +777,10 @@ REDACTED
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
+			continue
+	REDACTED
+		// 窗口费用检查（非粘性会话路径）
+		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
 			continue
 	REDACTED
 		candidates = append(candidates, acc)
@@ -543,7 +800,7 @@ REDACTED
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
+		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth, sessionUUID); ok {
 			return result, nil
 	REDACTED
 REDACTED else {
@@ -592,6 +849,11 @@ REDACTED else {
 			for _, item := range available {
 				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
 				if err == nil && result.Acquired {
+					// 会话数量限制检查
+					if !s.checkAndRegisterSession(ctx, item.account, sessionUUID) {
+						result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+						continue
+				REDACTED
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
 				REDACTED
@@ -621,13 +883,18 @@ REDACTED
 	return nil, errors.New("no available accounts")
 REDACTED
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool, sessionUUID string) (*AccountSelectionResult, bool) {
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
 	for _, acc := range ordered {
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
 		if err == nil && result.Acquired {
+			// 会话数量限制检查
+			if !s.checkAndRegisterSession(ctx, acc, sessionUUID) {
+				result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+				continue
+		REDACTED
 			if sessionHash != "" && s.cache != nil {
 				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 		REDACTED
@@ -656,51 +923,123 @@ REDACTED
 REDACTED
 REDACTED
 
+func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
+	if !IsGroupContextValid(group) {
+		return ctx
+REDACTED
+	if existing, ok := ctx.Value(ctxkey.Group).(*Group); ok && existing != nil && existing.ID == group.ID && IsGroupContextValid(existing) {
+		return ctx
+REDACTED
+	return context.WithValue(ctx, ctxkey.Group, group)
+REDACTED
+
+func (s *GatewayService) groupFromContext(ctx context.Context, groupID int64) *Group {
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == groupID {
+		return group
+REDACTED
+	return nil
+REDACTED
+
+func (s *GatewayService) resolveGroupByID(ctx context.Context, groupID int64) (*Group, error) {
+	if group := s.groupFromContext(ctx, groupID); group != nil {
+		return group, nil
+REDACTED
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("get group failed: %w", err)
+REDACTED
+	return group, nil
+REDACTED
+
+func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
+	if groupID == nil || requestedModel == "" || platform != PlatformAnthropic {
+		return nil
+REDACTED
+	group, err := s.resolveGroupByID(ctx, *groupID)
+	if err != nil || group == nil {
+		if s.debugModelRoutingEnabled() {
+			log.Printf("[ModelRoutingDebug] resolve group failed: group_id=%v model=%s platform=%s err=%v", derefGroupID(groupID), requestedModel, platform, err)
+	REDACTED
+		return nil
+REDACTED
+	// Preserve existing behavior: model routing only applies to anthropic groups.
+	if group.Platform != PlatformAnthropic {
+		if s.debugModelRoutingEnabled() {
+			log.Printf("[ModelRoutingDebug] skip: non-anthropic group platform: group_id=%d group_platform=%s model=%s", group.ID, group.Platform, requestedModel)
+	REDACTED
+		return nil
+REDACTED
+	ids := group.GetRoutingAccountIDs(requestedModel)
+	if s.debugModelRoutingEnabled() {
+		log.Printf("[ModelRoutingDebug] routing lookup: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v",
+			group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), ids)
+REDACTED
+	return ids
+REDACTED
+
+func (s *GatewayService) resolveGatewayGroup(ctx context.Context, groupID *int64) (*Group, *int64, error) {
+	if groupID == nil {
+		return nil, nil, nil
+REDACTED
+
+	currentID := *groupID
+	visited := map[int64]struct{REDACTED{REDACTED
+	for {
+		if _, seen := visited[currentID]; seen {
+			return nil, nil, fmt.Errorf("fallback group cycle detected")
+	REDACTED
+		visited[currentID] = struct{REDACTED{REDACTED
+
+		group, err := s.resolveGroupByID(ctx, currentID)
+		if err != nil {
+			return nil, nil, err
+	REDACTED
+
+		if !group.ClaudeCodeOnly || IsClaudeCodeClient(ctx) {
+			return group, &currentID, nil
+	REDACTED
+
+		if group.FallbackGroupID == nil {
+			return nil, nil, ErrClaudeCodeOnly
+	REDACTED
+		currentID = *group.FallbackGroupID
+REDACTED
+REDACTED
+
 // checkClaudeCodeRestriction 检查分组的 Claude Code 客户端限制
 // 如果分组启用了 claude_code_only 且请求不是来自 Claude Code 客户端：
 //   - 有降级分组：返回降级分组的 ID
 //   - 无降级分组：返回 ErrClaudeCodeOnly 错误
-func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID *int64) (*int64, error) {
+func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID *int64) (*Group, *int64, error) {
 	if groupID == nil {
-		return groupID, nil
+		return nil, groupID, nil
 REDACTED
 
 	// 强制平台模式不检查 Claude Code 限制
 	if _, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string); hasForcePlatform {
-		return groupID, nil
+		return nil, groupID, nil
 REDACTED
 
-	group, err := s.groupRepo.GetByID(ctx, *groupID)
+	group, resolvedID, err := s.resolveGatewayGroup(ctx, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("get group failed: %w", err)
+		return nil, nil, err
 REDACTED
 
-	if !group.ClaudeCodeOnly {
-		return groupID, nil
+	return group, resolvedID, nil
 REDACTED
 
-	// 分组启用了 Claude Code 限制
-	if IsClaudeCodeClient(ctx) {
-		return groupID, nil
-REDACTED
-
-	// 非 Claude Code 客户端，检查降级分组
-	if group.FallbackGroupID != nil {
-		return group.FallbackGroupID, nil
-REDACTED
-
-	return nil, ErrClaudeCodeOnly
-REDACTED
-
-func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64) (string, bool, error) {
+func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, group *Group) (string, bool, error) {
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		return forcePlatform, true, nil
 REDACTED
+	if group != nil {
+		return group.Platform, false, nil
+REDACTED
 	if groupID != nil {
-		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		group, err := s.resolveGroupByID(ctx, *groupID)
 		if err != nil {
-			return "", false, fmt.Errorf("get group failed: %w", err)
+			return "", false, err
 	REDACTED
 		return group.Platform, false, nil
 REDACTED
@@ -708,6 +1047,9 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+	if s.schedulerSnapshot != nil {
+		return s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+REDACTED
 	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
 	if useMixed {
 		platforms := []string{platform, PlatformAntigravityREDACTED
@@ -782,6 +1124,114 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {REDACTEDREDACTED, nil
 REDACTED
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+REDACTED
+
+// isAccountSchedulableForWindowCost 检查账号是否可根据窗口费用进行调度
+// 仅适用于 Anthropic OAuth/SetupToken 账号
+// 返回 true 表示可调度，false 表示不可调度
+func (s *GatewayService) isAccountSchedulableForWindowCost(ctx context.Context, account *Account, isSticky bool) bool {
+	// 只检查 Anthropic OAuth/SetupToken 账号
+	if !account.IsAnthropicOAuthOrSetupToken() {
+		return true
+REDACTED
+
+	limit := account.GetWindowCostLimit()
+	if limit <= 0 {
+		return true // 未启用窗口费用限制
+REDACTED
+
+	// 尝试从缓存获取窗口费用
+	var currentCost float64
+	if s.sessionLimitCache != nil {
+		if cost, hit, err := s.sessionLimitCache.GetWindowCost(ctx, account.ID); err == nil && hit {
+			currentCost = cost
+			goto checkSchedulability
+	REDACTED
+REDACTED
+
+	// 缓存未命中，从数据库查询
+	{
+		var startTime time.Time
+		if account.SessionWindowStart != nil {
+			startTime = *account.SessionWindowStart
+	REDACTED else {
+			startTime = time.Now().Add(-5 * time.Hour)
+	REDACTED
+
+		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
+		if err != nil {
+			// 失败开放：查询失败时允许调度
+			return true
+	REDACTED
+
+		// 使用标准费用（不含账号倍率）
+		currentCost = stats.StandardCost
+
+		// 设置缓存（忽略错误）
+		if s.sessionLimitCache != nil {
+			_ = s.sessionLimitCache.SetWindowCost(ctx, account.ID, currentCost)
+	REDACTED
+REDACTED
+
+checkSchedulability:
+	schedulability := account.CheckWindowCostSchedulability(currentCost)
+
+	switch schedulability {
+	case WindowCostSchedulable:
+		return true
+	case WindowCostStickyOnly:
+		return isSticky
+	case WindowCostNotSchedulable:
+		return false
+REDACTED
+	return true
+REDACTED
+
+// checkAndRegisterSession 检查并注册会话，用于会话数量限制
+// 仅适用于 Anthropic OAuth/SetupToken 账号
+// 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
+func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionUUID string) bool {
+	// 只检查 Anthropic OAuth/SetupToken 账号
+	if !account.IsAnthropicOAuthOrSetupToken() {
+		return true
+REDACTED
+
+	maxSessions := account.GetMaxSessions()
+	if maxSessions <= 0 || sessionUUID == "" {
+		return true // 未启用会话限制或无会话ID
+REDACTED
+
+	if s.sessionLimitCache == nil {
+		return true // 缓存不可用时允许通过
+REDACTED
+
+	idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
+
+	allowed, err := s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionUUID, maxSessions, idleTimeout)
+	if err != nil {
+		// 失败开放：缓存错误时允许通过
+		return true
+REDACTED
+	return allowed
+REDACTED
+
+// extractSessionUUID 从 metadata.user_id 中提取会话 UUID
+// 格式: user_{64位hexREDACTED_account__session_{uuidREDACTED
+func extractSessionUUID(metadataUserID string) string {
+	if metadataUserID == "" {
+		return ""
+REDACTED
+	if match := sessionIDRegex.FindStringSubmatch(metadataUserID); len(match) > 1 {
+		return match[1]
+REDACTED
+	return ""
+REDACTED
+
+func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if s.schedulerSnapshot != nil {
+		return s.schedulerSnapshot.GetAccount(ctx, accountID)
+REDACTED
+	return s.accountRepo.GetByID(ctx, accountID)
 REDACTED
 
 func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
@@ -859,12 +1309,122 @@ REDACTED
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
 func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platform string) (*Account, error) {
 	preferOAuth := platform == PlatformGemini
+	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
+
+	var accounts []Account
+	accountsLoaded := false
+
+	// ============ Model Routing (legacy path): apply before sticky session ============
+	// When load-awareness is disabled (e.g. concurrency service not configured), we still honor model routing
+	// so switching model can switch upstream account within the same sticky session.
+	if len(routingAccountIDs) > 0 {
+		if s.debugModelRoutingEnabled() {
+			log.Printf("[ModelRoutingDebug] legacy routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
+				derefGroupID(groupID), requestedModel, platform, shortSessionHash(sessionHash), routingAccountIDs)
+	REDACTED
+		// 1) Sticky session only applies if the bound account is within the routing set.
+		if sessionHash != "" && s.cache != nil {
+			accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+			if err == nil && accountID > 0 && containsInt64(routingAccountIDs, accountID) {
+				if _, excluded := excludedIDs[accountID]; !excluded {
+					account, err := s.getSchedulableAccount(ctx, accountID)
+					// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
+					if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+						if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
+							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+					REDACTED
+						if s.debugModelRoutingEnabled() {
+							log.Printf("[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
+					REDACTED
+						return account, nil
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// 2) Select an account from the routed candidates.
+		forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
+		if hasForcePlatform && forcePlatform == "" {
+			hasForcePlatform = false
+	REDACTED
+		var err error
+		accounts, _, err = s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+	REDACTED
+		accountsLoaded = true
+
+		routingSet := make(map[int64]struct{REDACTED, len(routingAccountIDs))
+		for _, id := range routingAccountIDs {
+			if id > 0 {
+				routingSet[id] = struct{REDACTED{REDACTED
+		REDACTED
+	REDACTED
+
+		var selected *Account
+		for i := range accounts {
+			acc := &accounts[i]
+			if _, ok := routingSet[acc.ID]; !ok {
+				continue
+		REDACTED
+			if _, excluded := excludedIDs[acc.ID]; excluded {
+				continue
+		REDACTED
+			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+			// avoid selecting accounts that were recently rate-limited/overloaded.
+			if !acc.IsSchedulable() {
+				continue
+		REDACTED
+			if !acc.IsSchedulableForModel(requestedModel) {
+				continue
+		REDACTED
+			if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
+				continue
+		REDACTED
+			if selected == nil {
+				selected = acc
+				continue
+		REDACTED
+			if acc.Priority < selected.Priority {
+				selected = acc
+		REDACTED else if acc.Priority == selected.Priority {
+				switch {
+				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
+					selected = acc
+				case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+					// keep selected (never used is preferred)
+				case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+					if preferOAuth && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
+						selected = acc
+				REDACTED
+				default:
+					if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+						selected = acc
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if selected != nil {
+			if sessionHash != "" && s.cache != nil {
+				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+					log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+			REDACTED
+		REDACTED
+			if s.debugModelRoutingEnabled() {
+				log.Printf("[ModelRoutingDebug] legacy routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
+		REDACTED
+			return selected, nil
+	REDACTED
+		log.Printf("[ModelRouting] No routed accounts available for model=%s, falling back to normal selection", requestedModel)
+REDACTED
+
 	// 1. 查询粘性会话
 	if sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
-				account, err := s.accountRepo.GetByID(ctx, accountID)
+				account, err := s.getSchedulableAccount(ctx, accountID)
 				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
 				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
@@ -877,18 +1437,16 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 REDACTED
 
 	// 2. 获取可调度账号列表（单平台）
-	var accounts []Account
-	var err error
-	if s.cfg.RunMode == config.RunModeSimple {
-		// 简易模式：忽略 groupID，查询所有可用账号
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
-REDACTED else if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
-REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
-REDACTED
-	if err != nil {
-		return nil, fmt.Errorf("query accounts failed: %w", err)
+	if !accountsLoaded {
+		forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
+		if hasForcePlatform && forcePlatform == "" {
+			hasForcePlatform = false
+	REDACTED
+		var err error
+		accounts, _, err = s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+	REDACTED
 REDACTED
 
 	// 3. 按优先级+最久未用选择（考虑模型支持）
@@ -896,6 +1454,11 @@ REDACTED
 	for i := range accounts {
 		acc := &accounts[i]
 		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+		// avoid selecting accounts that were recently rate-limited/overloaded.
+		if !acc.IsSchedulable() {
 			continue
 	REDACTED
 		if !acc.IsSchedulableForModel(requestedModel) {
@@ -948,15 +1511,123 @@ REDACTED
 // selectAccountWithMixedScheduling 选择账户（支持混合调度）
 // 查询原生平台账户 + 启用 mixed_scheduling 的 antigravity 账户
 func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, nativePlatform string) (*Account, error) {
-	platforms := []string{nativePlatform, PlatformAntigravityREDACTED
 	preferOAuth := nativePlatform == PlatformGemini
+	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, nativePlatform)
+
+	var accounts []Account
+	accountsLoaded := false
+
+	// ============ Model Routing (legacy path): apply before sticky session ============
+	if len(routingAccountIDs) > 0 {
+		if s.debugModelRoutingEnabled() {
+			log.Printf("[ModelRoutingDebug] legacy mixed routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
+				derefGroupID(groupID), requestedModel, nativePlatform, shortSessionHash(sessionHash), routingAccountIDs)
+	REDACTED
+		// 1) Sticky session only applies if the bound account is within the routing set.
+		if sessionHash != "" && s.cache != nil {
+			accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+			if err == nil && accountID > 0 && containsInt64(routingAccountIDs, accountID) {
+				if _, excluded := excludedIDs[accountID]; !excluded {
+					account, err := s.getSchedulableAccount(ctx, accountID)
+					// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
+					if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
+							if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
+								log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+						REDACTED
+							if s.debugModelRoutingEnabled() {
+								log.Printf("[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
+						REDACTED
+							return account, nil
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// 2) Select an account from the routed candidates.
+		var err error
+		accounts, _, err = s.listSchedulableAccounts(ctx, groupID, nativePlatform, false)
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+	REDACTED
+		accountsLoaded = true
+
+		routingSet := make(map[int64]struct{REDACTED, len(routingAccountIDs))
+		for _, id := range routingAccountIDs {
+			if id > 0 {
+				routingSet[id] = struct{REDACTED{REDACTED
+		REDACTED
+	REDACTED
+
+		var selected *Account
+		for i := range accounts {
+			acc := &accounts[i]
+			if _, ok := routingSet[acc.ID]; !ok {
+				continue
+		REDACTED
+			if _, excluded := excludedIDs[acc.ID]; excluded {
+				continue
+		REDACTED
+			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+			// avoid selecting accounts that were recently rate-limited/overloaded.
+			if !acc.IsSchedulable() {
+				continue
+		REDACTED
+			// 过滤：原生平台直接通过，antigravity 需要启用混合调度
+			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+				continue
+		REDACTED
+			if !acc.IsSchedulableForModel(requestedModel) {
+				continue
+		REDACTED
+			if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
+				continue
+		REDACTED
+			if selected == nil {
+				selected = acc
+				continue
+		REDACTED
+			if acc.Priority < selected.Priority {
+				selected = acc
+		REDACTED else if acc.Priority == selected.Priority {
+				switch {
+				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
+					selected = acc
+				case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
+					// keep selected (never used is preferred)
+				case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
+					if preferOAuth && acc.Platform == PlatformGemini && selected.Platform == PlatformGemini && acc.Type != selected.Type && acc.Type == AccountTypeOAuth {
+						selected = acc
+				REDACTED
+				default:
+					if acc.LastUsedAt.Before(*selected.LastUsedAt) {
+						selected = acc
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if selected != nil {
+			if sessionHash != "" && s.cache != nil {
+				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+					log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+			REDACTED
+		REDACTED
+			if s.debugModelRoutingEnabled() {
+				log.Printf("[ModelRoutingDebug] legacy mixed routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
+		REDACTED
+			return selected, nil
+	REDACTED
+		log.Printf("[ModelRouting] No routed accounts available for model=%s, falling back to normal selection", requestedModel)
+REDACTED
 
 	// 1. 查询粘性会话
 	if sessionHash != "" && s.cache != nil {
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 {
 			if _, excluded := excludedIDs[accountID]; !excluded {
-				account, err := s.accountRepo.GetByID(ctx, accountID)
+				account, err := s.getSchedulableAccount(ctx, accountID)
 				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
 				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
 					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
@@ -971,15 +1642,12 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 REDACTED
 
 	// 2. 获取可调度账号列表
-	var accounts []Account
-	var err error
-	if groupID != nil {
-		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
-REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
-REDACTED
-	if err != nil {
-		return nil, fmt.Errorf("query accounts failed: %w", err)
+	if !accountsLoaded {
+		var err error
+		accounts, _, err = s.listSchedulableAccounts(ctx, groupID, nativePlatform, false)
+		if err != nil {
+			return nil, fmt.Errorf("query accounts failed: %w", err)
+	REDACTED
 REDACTED
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
@@ -987,6 +1655,11 @@ REDACTED
 	for i := range accounts {
 		acc := &accounts[i]
 		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+		// avoid selecting accounts that were recently rate-limited/overloaded.
+		if !acc.IsSchedulable() {
 			continue
 	REDACTED
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -1075,6 +1748,16 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (string, string, error) {
+	// 对于 Anthropic OAuth 账号，使用 ClaudeTokenProvider 获取缓存的 token
+	if account.Platform == PlatformAnthropic && account.Type == AccountTypeOAuth && s.claudeTokenProvider != nil {
+		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", err
+	REDACTED
+		return accessToken, "oauth", nil
+REDACTED
+
+	// 其他情况（Gemini 有自己的 TokenProvider，setup-token 类型等）直接从账号读取
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
 		return "", "", errors.New("access_token not found in credentials")
@@ -1239,6 +1922,9 @@ func enforceCacheControlLimit(body []byte) []byte {
 		return body
 REDACTED
 
+	// 清理 thinking 块中的非法 cache_control（thinking 块不支持该字段）
+	removeCacheControlFromThinkingBlocks(data)
+
 	// 计算当前 cache_control 块数量
 	count := countCacheControlBlocks(data)
 	if count <= maxCacheControlBlocks {
@@ -1266,6 +1952,7 @@ REDACTED
 REDACTED
 
 // countCacheControlBlocks 统计 system 和 messages 中的 cache_control 块数量
+// 注意：thinking 块不支持 cache_control，统计时跳过
 func countCacheControlBlocks(data map[string]any) int {
 	count := 0
 
@@ -1273,6 +1960,10 @@ func countCacheControlBlocks(data map[string]any) int {
 	if system, ok := data["system"].([]any); ok {
 		for _, item := range system {
 			if m, ok := item.(map[string]any); ok {
+				// thinking 块不支持 cache_control，跳过
+				if blockType, _ := m["type"].(string); blockType == "thinking" {
+					continue
+			REDACTED
 				if _, has := m["cache_control"]; has {
 					count++
 			REDACTED
@@ -1287,6 +1978,10 @@ REDACTED
 				if content, ok := msgMap["content"].([]any); ok {
 					for _, item := range content {
 						if m, ok := item.(map[string]any); ok {
+							// thinking 块不支持 cache_control，跳过
+							if blockType, _ := m["type"].(string); blockType == "thinking" {
+								continue
+						REDACTED
 							if _, has := m["cache_control"]; has {
 								count++
 						REDACTED
@@ -1302,6 +1997,7 @@ REDACTED
 
 // removeCacheControlFromMessages 从 messages 中移除一个 cache_control（从头开始）
 // 返回 true 表示成功移除，false 表示没有可移除的
+// 注意：跳过 thinking 块（它不支持 cache_control）
 func removeCacheControlFromMessages(data map[string]any) bool {
 	messages, ok := data["messages"].([]any)
 	if !ok {
@@ -1319,6 +2015,10 @@ REDACTED
 	REDACTED
 		for _, item := range content {
 			if m, ok := item.(map[string]any); ok {
+				// thinking 块不支持 cache_control，跳过
+				if blockType, _ := m["type"].(string); blockType == "thinking" {
+					continue
+			REDACTED
 				if _, has := m["cache_control"]; has {
 					delete(m, "cache_control")
 					return true
@@ -1331,6 +2031,7 @@ REDACTED
 
 // removeCacheControlFromSystem 从 system 中移除一个 cache_control（从尾部开始，保护注入的 prompt）
 // 返回 true 表示成功移除，false 表示没有可移除的
+// 注意：跳过 thinking 块（它不支持 cache_control）
 func removeCacheControlFromSystem(data map[string]any) bool {
 	system, ok := data["system"].([]any)
 	if !ok {
@@ -1340,6 +2041,10 @@ REDACTED
 	// 从尾部开始移除，保护开头注入的 Claude Code prompt
 	for i := len(system) - 1; i >= 0; i-- {
 		if m, ok := system[i].(map[string]any); ok {
+			// thinking 块不支持 cache_control，跳过
+			if blockType, _ := m["type"].(string); blockType == "thinking" {
+				continue
+		REDACTED
 			if _, has := m["cache_control"]; has {
 				delete(m, "cache_control")
 				return true
@@ -1347,6 +2052,44 @@ REDACTED
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+// removeCacheControlFromThinkingBlocks 强制清理所有 thinking 块中的非法 cache_control
+// thinking 块不支持 cache_control 字段，这个函数确保所有 thinking 块都不含该字段
+func removeCacheControlFromThinkingBlocks(data map[string]any) {
+	// 清理 system 中的 thinking 块
+	if system, ok := data["system"].([]any); ok {
+		for _, item := range system {
+			if m, ok := item.(map[string]any); ok {
+				if blockType, _ := m["type"].(string); blockType == "thinking" {
+					if _, has := m["cache_control"]; has {
+						delete(m, "cache_control")
+						log.Printf("[Warning] Removed illegal cache_control from thinking block in system")
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 清理 messages 中的 thinking 块
+	if messages, ok := data["messages"].([]any); ok {
+		for msgIdx, msg := range messages {
+			if msgMap, ok := msg.(map[string]any); ok {
+				if content, ok := msgMap["content"].([]any); ok {
+					for contentIdx, item := range content {
+						if m, ok := item.(map[string]any); ok {
+							if blockType, _ := m["type"].(string); blockType == "thinking" {
+								if _, has := m["cache_control"]; has {
+									delete(m, "cache_control")
+									log.Printf("[Warning] Removed illegal cache_control from thinking block in messages[%d].content[%d]", msgIdx, contentIdx)
+							REDACTED
+						REDACTED
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
 REDACTED
 
 // Forward 转发请求到Claude API
@@ -1402,6 +2145,9 @@ REDACTED
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel)
+		// Capture upstream request body for ops retry of this attempt.
+		c.Set(OpsUpstreamRequestBodyKey, string(body))
+
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -1412,7 +2158,25 @@ REDACTED
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 		REDACTED
-			return nil, fmt.Errorf("upstream request failed: %w", err)
+			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			setOpsUpstreamError(c, 0, safeErr, "")
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: 0,
+				Kind:               "request_error",
+				Message:            safeErr,
+		REDACTED)
+			c.JSON(http.StatusBadGateway, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream request failed",
+			REDACTED,
+		REDACTED)
+			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	REDACTED
 
 		// 优先检测thinking block签名错误（400）并重试一次
@@ -1422,6 +2186,22 @@ REDACTED
 				_ = resp.Body.Close()
 
 				if s.isThinkingBlockSignatureError(respBody) {
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						Kind:               "signature_error",
+						Message:            extractUpstreamErrorMessage(respBody),
+						Detail: func() string {
+							if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+								return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+						REDACTED
+							return ""
+					REDACTED(),
+				REDACTED)
+
 					looksLikeToolSignatureError := func(msg string) bool {
 						m := strings.ToLower(msg)
 						return strings.Contains(m, "tool_use") ||
@@ -1458,6 +2238,21 @@ REDACTED
 							retryRespBody, retryReadErr := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
 							_ = retryResp.Body.Close()
 							if retryReadErr == nil && retryResp.StatusCode == 400 && s.isThinkingBlockSignatureError(retryRespBody) {
+								appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+									Platform:           account.Platform,
+									AccountID:          account.ID,
+									AccountName:        account.Name,
+									UpstreamStatusCode: retryResp.StatusCode,
+									UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
+									Kind:               "signature_retry_thinking",
+									Message:            extractUpstreamErrorMessage(retryRespBody),
+									Detail: func() string {
+										if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+											return truncateString(string(retryRespBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+									REDACTED
+										return ""
+								REDACTED(),
+							REDACTED)
 								msg2 := extractUpstreamErrorMessage(retryRespBody)
 								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
 									log.Printf("Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
@@ -1472,6 +2267,14 @@ REDACTED
 										if retryResp2 != nil && retryResp2.Body != nil {
 											_ = retryResp2.Body.Close()
 									REDACTED
+										appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+											Platform:           account.Platform,
+											AccountID:          account.ID,
+											AccountName:        account.Name,
+											UpstreamStatusCode: 0,
+											Kind:               "signature_retry_tools_request_error",
+											Message:            sanitizeUpstreamErrorMessage(retryErr2.Error()),
+									REDACTED)
 										log.Printf("Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
 								REDACTED else {
 										log.Printf("Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
@@ -1521,9 +2324,25 @@ REDACTED
 					break
 			REDACTED
 
+				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+				_ = resp.Body.Close()
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "retry",
+					Message:            extractUpstreamErrorMessage(respBody),
+					Detail: func() string {
+						if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+							return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+					REDACTED
+						return ""
+				REDACTED(),
+			REDACTED)
 				log.Printf("Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
-				_ = resp.Body.Close()
 				if err := sleepWithContext(ctx, delay); err != nil {
 					return nil, err
 			REDACTED
@@ -1551,7 +2370,26 @@ REDACTED
 	// 处理重试耗尽的情况
 	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
 			s.handleRetryExhaustedSideEffects(ctx, resp, account)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				Kind:               "retry_exhausted_failover",
+				Message:            extractUpstreamErrorMessage(respBody),
+				Detail: func() string {
+					if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+						return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+				REDACTED
+					return ""
+			REDACTED(),
+		REDACTED)
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 	REDACTED
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
@@ -1559,7 +2397,25 @@ REDACTED
 
 	// 处理可切换账号的错误
 	if resp.StatusCode >= 400 && s.shouldFailoverUpstreamError(resp.StatusCode) {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
 		s.handleFailoverSideEffects(ctx, resp, account)
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "failover",
+			Message:            extractUpstreamErrorMessage(respBody),
+			Detail: func() string {
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+			REDACTED
+				return ""
+		REDACTED(),
+	REDACTED)
 		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 REDACTED
 
@@ -1576,6 +2432,27 @@ REDACTED
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 			if s.shouldFailoverOn400(respBody) {
+				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "failover_on_400",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+
 				if s.cfg.Gateway.LogUpstreamErrorBody {
 					log.Printf(
 						"Account %d: 400 error, attempting failover: %s",
@@ -1872,7 +2749,30 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	// Enrich Ops error logs with upstream status + message, and optionally a truncated body snippet.
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+	REDACTED
+		upstreamDetail = truncateString(string(body), maxBytes)
+REDACTED
+	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		UpstreamStatusCode: resp.StatusCode,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               "http_error",
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+REDACTED)
 
 	// 处理上游错误，标记账号状态
 	shouldDisable := false
@@ -1883,24 +2783,33 @@ REDACTED
 		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
 REDACTED
 
+	// 记录上游错误响应体摘要便于排障（可选：由配置控制；不回显到客户端）
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		log.Printf(
+			"Upstream error %d (account=%d platform=%s type=%s): %s",
+			resp.StatusCode,
+			account.ID,
+			account.Platform,
+			account.Type,
+			truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+		)
+REDACTED
+
 	// 根据状态码返回适当的自定义错误响应（不透传上游详细信息）
 	var errType, errMsg string
 	var statusCode int
 
 	switch resp.StatusCode {
 	case 400:
-		// 仅记录上游错误摘要（避免输出请求内容）；需要时可通过配置打开
-		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			log.Printf(
-				"Upstream 400 error (account=%d platform=%s type=%s): %s",
-				account.ID,
-				account.Platform,
-				account.Type,
-				truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
-			)
-	REDACTED
 		c.Data(http.StatusBadRequest, "application/json", body)
-		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+		summary := upstreamMsg
+		if summary == "" {
+			summary = truncateForLog(body, 512)
+	REDACTED
+		if summary == "" {
+			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
@@ -1936,11 +2845,14 @@ REDACTED
 	REDACTED,
 REDACTED)
 
-	return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+	if upstreamMsg == "" {
+		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+REDACTED
+	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, resp *http.Response, account *Account) {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	statusCode := resp.StatusCode
 
 	// OAuth/Setup Token 账号的 403：标记账号异常
@@ -1954,7 +2866,7 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 REDACTED
 
@@ -1962,7 +2874,44 @@ REDACTED
 // OAuth 403：标记账号异常
 // API Key 未配置错误码：仅返回错误，不标记账号
 func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
+	// Capture upstream error body before side-effects consume the stream.
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	_ = resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
 	s.handleRetryExhaustedSideEffects(ctx, resp, account)
+
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+	REDACTED
+		upstreamDetail = truncateString(string(respBody), maxBytes)
+REDACTED
+	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		UpstreamStatusCode: resp.StatusCode,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               "retry_exhausted",
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+REDACTED)
+
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		log.Printf(
+			"Upstream error %d retries_exhausted (account=%d platform=%s type=%s): %s",
+			resp.StatusCode,
+			account.ID,
+			account.Platform,
+			account.Type,
+			truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+		)
+REDACTED
 
 	// 返回统一的重试耗尽错误响应
 	c.JSON(http.StatusBadGateway, gin.H{
@@ -1973,7 +2922,10 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	REDACTED,
 REDACTED)
 
-	return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
+	if upstreamMsg == "" {
+		return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
+REDACTED
+	return nil, fmt.Errorf("upstream error: %d (retries exhausted) message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 // streamingResult 流式响应结果
@@ -2154,6 +3106,10 @@ REDACTED
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
 		REDACTED
 			log.Printf("Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+			// 处理流超时，可能标记账户为临时不可调度或错误状态
+			if s.rateLimitService != nil {
+				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+		REDACTED
 			sendErrorEvent("stream_timeout")
 			return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
 	REDACTED
@@ -2307,6 +3263,7 @@ type RecordUsageInput struct {
 	Account      *Account
 	Subscription *UserSubscription // 可选：订阅信息
 	UserAgent    string            // 请求的 User-Agent
+	IPAddress    string            // 请求的客户端 IP 地址
 REDACTED
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -2366,35 +3323,42 @@ REDACTED
 	if result.ImageSize != "" {
 		imageSize = &result.ImageSize
 REDACTED
+	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := &UsageLog{
-		UserID:              user.ID,
-		APIKeyID:            apiKey.ID,
-		AccountID:           account.ID,
-		RequestID:           result.RequestID,
-		Model:               result.Model,
-		InputTokens:         result.Usage.InputTokens,
-		OutputTokens:        result.Usage.OutputTokens,
-		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:     result.Usage.CacheReadInputTokens,
-		InputCost:           cost.InputCost,
-		OutputCost:          cost.OutputCost,
-		CacheCreationCost:   cost.CacheCreationCost,
-		CacheReadCost:       cost.CacheReadCost,
-		TotalCost:           cost.TotalCost,
-		ActualCost:          cost.ActualCost,
-		RateMultiplier:      multiplier,
-		BillingType:         billingType,
-		Stream:              result.Stream,
-		DurationMs:          &durationMs,
-		FirstTokenMs:        result.FirstTokenMs,
-		ImageCount:          result.ImageCount,
-		ImageSize:           imageSize,
-		CreatedAt:           time.Now(),
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             result.RequestID,
+		Model:                 result.Model,
+		InputTokens:           result.Usage.InputTokens,
+		OutputTokens:          result.Usage.OutputTokens,
+		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:       result.Usage.CacheReadInputTokens,
+		InputCost:             cost.InputCost,
+		OutputCost:            cost.OutputCost,
+		CacheCreationCost:     cost.CacheCreationCost,
+		CacheReadCost:         cost.CacheReadCost,
+		TotalCost:             cost.TotalCost,
+		ActualCost:            cost.ActualCost,
+		RateMultiplier:        multiplier,
+		AccountRateMultiplier: &accountRateMultiplier,
+		BillingType:           billingType,
+		Stream:                result.Stream,
+		DurationMs:            &durationMs,
+		FirstTokenMs:          result.FirstTokenMs,
+		ImageCount:            result.ImageCount,
+		ImageSize:             imageSize,
+		CreatedAt:             time.Now(),
 REDACTED
 
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent
+REDACTED
+
+	// 添加 IPAddress
+	if input.IPAddress != "" {
+		usageLog.IPAddress = &input.IPAddress
 REDACTED
 
 	// 添加分组和订阅关联
@@ -2497,6 +3461,7 @@ REDACTED
 	// 发送请求
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
+		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
 		return fmt.Errorf("upstream request failed: %w", err)
 REDACTED
@@ -2534,6 +3499,18 @@ REDACTED
 		// 标记账号状态（429/529等）
 		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		upstreamDetail := ""
+		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			if maxBytes <= 0 {
+				maxBytes = 2048
+		REDACTED
+			upstreamDetail = truncateString(string(respBody), maxBytes)
+	REDACTED
+		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
 		// 记录上游错误摘要便于排障（不回显请求内容）
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 			log.Printf(
@@ -2555,7 +3532,10 @@ REDACTED
 			errMsg = "Service overloaded"
 	REDACTED
 		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
-		return fmt.Errorf("upstream error: %d", resp.StatusCode)
+		if upstreamMsg == "" {
+			return fmt.Errorf("upstream error: %d", resp.StatusCode)
+	REDACTED
+		return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 	// 透传成功响应

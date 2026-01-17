@@ -13,6 +13,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/promocode"
+	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -186,6 +188,60 @@ func (f TraverseGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 REDACTED
 	return fmt.Errorf("unexpected query type %T. expect *ent.GroupQuery", q)
+REDACTED
+
+// The PromoCodeFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PromoCodeFunc func(context.Context, *ent.PromoCodeQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PromoCodeFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PromoCodeQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PromoCodeQuery", q)
+REDACTED
+
+// The TraversePromoCode type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePromoCode func(context.Context, *ent.PromoCodeQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePromoCode) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraversePromoCode) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PromoCodeQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.PromoCodeQuery", q)
+REDACTED
+
+// The PromoCodeUsageFunc type is an adapter to allow the use of ordinary function as a Querier.
+type PromoCodeUsageFunc func(context.Context, *ent.PromoCodeUsageQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f PromoCodeUsageFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.PromoCodeUsageQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.PromoCodeUsageQuery", q)
+REDACTED
+
+// The TraversePromoCodeUsage type is an adapter to allow the use of ordinary function as Traverser.
+type TraversePromoCodeUsage func(context.Context, *ent.PromoCodeUsageQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraversePromoCodeUsage) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraversePromoCodeUsage) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.PromoCodeUsageQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.PromoCodeUsageQuery", q)
 REDACTED
 
 // The ProxyFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -442,6 +498,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AccountGroupQuery, predicate.AccountGroup, accountgroup.OrderOption]{typ: ent.TypeAccountGroup, tq: qREDACTED, nil
 	case *ent.GroupQuery:
 		return &query[*ent.GroupQuery, predicate.Group, group.OrderOption]{typ: ent.TypeGroup, tq: qREDACTED, nil
+	case *ent.PromoCodeQuery:
+		return &query[*ent.PromoCodeQuery, predicate.PromoCode, promocode.OrderOption]{typ: ent.TypePromoCode, tq: qREDACTED, nil
+	case *ent.PromoCodeUsageQuery:
+		return &query[*ent.PromoCodeUsageQuery, predicate.PromoCodeUsage, promocodeusage.OrderOption]{typ: ent.TypePromoCodeUsage, tq: qREDACTED, nil
 	case *ent.ProxyQuery:
 		return &query[*ent.ProxyQuery, predicate.Proxy, proxy.OrderOption]{typ: ent.TypeProxy, tq: qREDACTED, nil
 	case *ent.RedeemCodeQuery:

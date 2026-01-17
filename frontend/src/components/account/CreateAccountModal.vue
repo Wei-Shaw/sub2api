@@ -1196,7 +1196,7 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input" />
@@ -1211,6 +1211,11 @@
             data-tour="account-form-priority"
           />
           <p class="input-hint">{{ t('admin.accounts.priorityHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') REDACTEDREDACTED</label>
+          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.01" class="input" />
+          <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') REDACTEDREDACTED</p>
         </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -1832,6 +1837,7 @@ const form = reactive({
   proxy_id: null as number | null,
   concurrency: 10,
   priority: 1,
+  rate_multiplier: 1,
   group_ids: [] as number[],
   expires_at: null as number | null
 REDACTED)
@@ -1976,6 +1982,16 @@ REDACTED
 const toggleErrorCode = (code: number) => {
   const index = selectedErrorCodes.value.indexOf(code)
   if (index === -1) {
+    // Adding code - check for 429/529 warning
+    if (code === 429) {
+      if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
+        return
+      REDACTED
+    REDACTED else if (code === 529) {
+      if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
+        return
+      REDACTED
+    REDACTED
     selectedErrorCodes.value.push(code)
   REDACTED else {
     selectedErrorCodes.value.splice(index, 1)
@@ -1992,6 +2008,16 @@ const addCustomErrorCode = () => {
   if (selectedErrorCodes.value.includes(code)) {
     appStore.showInfo(t('admin.accounts.errorCodeExists'))
     return
+  REDACTED
+  // Check for 429/529 warning
+  if (code === 429) {
+    if (!confirm(t('admin.accounts.customErrorCodes429Warning'))) {
+      return
+    REDACTED
+  REDACTED else if (code === 529) {
+    if (!confirm(t('admin.accounts.customErrorCodes529Warning'))) {
+      return
+    REDACTED
   REDACTED
   selectedErrorCodes.value.push(code)
   customErrorCodeInput.value = null
@@ -2099,6 +2125,7 @@ const resetForm = () => {
   form.proxy_id = null
   form.concurrency = 10
   form.priority = 1
+  form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
   accountCategory.value = 'oauth-based'
@@ -2252,6 +2279,7 @@ const createAccountAndFinish = async (
     proxy_id: form.proxy_id,
     concurrency: form.concurrency,
     priority: form.priority,
+    rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
     auto_pause_on_expired: autoPauseOnExpired.value
@@ -2462,6 +2490,7 @@ const handleCookieAuth = async (sessionKey: string) => {
 
         await adminAPI.accounts.create({
           name: accountName,
+          notes: form.notes,
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
@@ -2469,6 +2498,9 @@ const handleCookieAuth = async (sessionKey: string) => {
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         REDACTED)
 

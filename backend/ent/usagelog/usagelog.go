@@ -54,6 +54,8 @@ const (
 	FieldActualCost = "actual_cost"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldAccountRateMultiplier holds the string denoting the account_rate_multiplier field in the database.
+	FieldAccountRateMultiplier = "account_rate_multiplier"
 	// FieldBillingType holds the string denoting the billing_type field in the database.
 	FieldBillingType = "billing_type"
 	// FieldStream holds the string denoting the stream field in the database.
@@ -64,6 +66,8 @@ const (
 	FieldFirstTokenMs = "first_token_ms"
 	// FieldUserAgent holds the string denoting the user_agent field in the database.
 	FieldUserAgent = "user_agent"
+	// FieldIPAddress holds the string denoting the ip_address field in the database.
+	FieldIPAddress = "ip_address"
 	// FieldImageCount holds the string denoting the image_count field in the database.
 	FieldImageCount = "image_count"
 	// FieldImageSize holds the string denoting the image_size field in the database.
@@ -142,11 +146,13 @@ var Columns = []string{
 	FieldTotalCost,
 	FieldActualCost,
 	FieldRateMultiplier,
+	FieldAccountRateMultiplier,
 	FieldBillingType,
 	FieldStream,
 	FieldDurationMs,
 	FieldFirstTokenMs,
 	FieldUserAgent,
+	FieldIPAddress,
 	FieldImageCount,
 	FieldImageSize,
 	FieldCreatedAt,
@@ -199,6 +205,8 @@ var (
 	DefaultStream bool
 	// UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
 	UserAgentValidator func(string) error
+	// IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
+	IPAddressValidator func(string) error
 	// DefaultImageCount holds the default value on creation for the "image_count" field.
 	DefaultImageCount int
 	// ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
@@ -315,6 +323,11 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
 REDACTED
 
+// ByAccountRateMultiplier orders the results by the account_rate_multiplier field.
+func ByAccountRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAccountRateMultiplier, opts...).ToFunc()
+REDACTED
+
 // ByBillingType orders the results by the billing_type field.
 func ByBillingType(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBillingType, opts...).ToFunc()
@@ -338,6 +351,11 @@ REDACTED
 // ByUserAgent orders the results by the user_agent field.
 func ByUserAgent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserAgent, opts...).ToFunc()
+REDACTED
+
+// ByIPAddress orders the results by the ip_address field.
+func ByIPAddress(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIPAddress, opts...).ToFunc()
 REDACTED
 
 // ByImageCount orders the results by the image_count field.

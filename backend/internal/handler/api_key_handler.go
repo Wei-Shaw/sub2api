@@ -27,16 +27,20 @@ REDACTED
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name      string  `json:"name" binding:"required"`
-	GroupID   *int64  `json:"group_id"`   // nullable
-	CustomKey *string `json:"custom_key"` // 可选的自定义key
+	Name        string   `json:"name" binding:"required"`
+	GroupID     *int64   `json:"group_id"`     // nullable
+	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
+	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
 REDACTED
 
 // UpdateAPIKeyRequest represents the update API key request payload
 type UpdateAPIKeyRequest struct {
-	Name    string `json:"name"`
-	GroupID *int64 `json:"group_id"`
-	Status  string `json:"status" binding:"omitempty,oneof=active inactive"`
+	Name        string   `json:"name"`
+	GroupID     *int64   `json:"group_id"`
+	Status      string   `json:"status" binding:"omitempty,oneof=active inactive"`
+	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
 REDACTED
 
 // List handles listing user's API keys with pagination
@@ -110,9 +114,11 @@ REDACTED
 REDACTED
 
 	svcReq := service.CreateAPIKeyRequest{
-		Name:      req.Name,
-		GroupID:   req.GroupID,
-		CustomKey: req.CustomKey,
+		Name:        req.Name,
+		GroupID:     req.GroupID,
+		CustomKey:   req.CustomKey,
+		IPWhitelist: req.IPWhitelist,
+		IPBlacklist: req.IPBlacklist,
 REDACTED
 	key, err := h.apiKeyService.Create(c.Request.Context(), subject.UserID, svcReq)
 	if err != nil {
@@ -144,7 +150,10 @@ REDACTED
 		return
 REDACTED
 
-	svcReq := service.UpdateAPIKeyRequest{REDACTED
+	svcReq := service.UpdateAPIKeyRequest{
+		IPWhitelist: req.IPWhitelist,
+		IPBlacklist: req.IPBlacklist,
+REDACTED
 	if req.Name != "" {
 		svcReq.Name = &req.Name
 REDACTED

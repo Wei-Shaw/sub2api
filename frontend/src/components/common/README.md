@@ -13,6 +13,7 @@ A generic data table component with sorting, loading states, and custom cell ren
 - `columns: Column[]` - Array of column definitions with key, label, sortable, and formatter
 - `data: any[]` - Array of data objects to display
 - `loading?: boolean` - Show loading skeleton
+- `rowKey?: string | (row: any) => string | number` - Row key field or resolver (defaults to `row.id`, falls back to index)
 
 **Slots:**
 

@@ -22,7 +22,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, image_count, image_size, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, created_at"
 
 type usageLogRepository struct {
 	client *dbent.Client
@@ -105,11 +105,13 @@ REDACTED
 			total_cost,
 			actual_cost,
 			rate_multiplier,
+			account_rate_multiplier,
 			billing_type,
 			stream,
 			duration_ms,
 			first_token_ms,
 			user_agent,
+			ip_address,
 			image_count,
 			image_size,
 			created_at
@@ -119,7 +121,7 @@ REDACTED
 			$8, $9, $10, $11,
 			$12, $13,
 			$14, $15, $16, $17, $18, $19,
-		$20, $21, $22, $23, $24, $25, $26, $27, $28
+			$20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -130,6 +132,7 @@ REDACTED
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
 	userAgent := nullString(log.UserAgent)
+	ipAddress := nullString(log.IPAddress)
 	imageSize := nullString(log.ImageSize)
 
 	var requestIDArg any
@@ -158,11 +161,13 @@ REDACTED
 		log.TotalCost,
 		log.ActualCost,
 		rateMultiplier,
+		log.AccountRateMultiplier,
 		log.BillingType,
 		log.Stream,
 		duration,
 		firstToken,
 		userAgent,
+		ipAddress,
 		log.ImageCount,
 		imageSize,
 		createdAt,
@@ -266,16 +271,60 @@ REDACTED
 type DashboardStats = usagestats.DashboardStats
 
 func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardStats, error) {
-	var stats DashboardStats
-	today := timezone.Today()
-	now := time.Now()
+	stats := &DashboardStats{REDACTED
+	now := timezone.Now()
+	todayStart := timezone.Today()
 
-	// 合并用户统计查询
+	if err := r.fillDashboardEntityStats(ctx, stats, todayStart, now); err != nil {
+		return nil, err
+REDACTED
+	if err := r.fillDashboardUsageStatsAggregated(ctx, stats, todayStart, now); err != nil {
+		return nil, err
+REDACTED
+
+	rpm, tpm, err := r.getPerformanceStats(ctx, 0)
+	if err != nil {
+		return nil, err
+REDACTED
+	stats.Rpm = rpm
+	stats.Tpm = tpm
+
+	return stats, nil
+REDACTED
+
+func (r *usageLogRepository) GetDashboardStatsWithRange(ctx context.Context, start, end time.Time) (*DashboardStats, error) {
+	startUTC := start.UTC()
+	endUTC := end.UTC()
+	if !endUTC.After(startUTC) {
+		return nil, errors.New("统计时间范围无效")
+REDACTED
+
+	stats := &DashboardStats{REDACTED
+	now := timezone.Now()
+	todayStart := timezone.Today()
+
+	if err := r.fillDashboardEntityStats(ctx, stats, todayStart, now); err != nil {
+		return nil, err
+REDACTED
+	if err := r.fillDashboardUsageStatsFromUsageLogs(ctx, stats, startUTC, endUTC, todayStart, now); err != nil {
+		return nil, err
+REDACTED
+
+	rpm, tpm, err := r.getPerformanceStats(ctx, 0)
+	if err != nil {
+		return nil, err
+REDACTED
+	stats.Rpm = rpm
+	stats.Tpm = tpm
+
+	return stats, nil
+REDACTED
+
+func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats *DashboardStats, todayUTC, now time.Time) error {
 	userStatsQuery := `
 		SELECT
 			COUNT(*) as total_users,
-			COUNT(CASE WHEN created_at >= $1 THEN 1 END) as today_new_users,
-			(SELECT COUNT(DISTINCT user_id) FROM usage_logs WHERE created_at >= $2) as active_users
+			COUNT(CASE WHEN created_at >= $1 THEN 1 END) as today_new_users
 		FROM users
 		WHERE deleted_at IS NULL
 	`
@@ -283,15 +332,13 @@ func (r *usageLogRepository) GetDashboardStats(ctx context.Context) (*DashboardS
 		ctx,
 		r.sql,
 		userStatsQuery,
-		[]any{today, todayREDACTED,
+		[]any{todayUTCREDACTED,
 		&stats.TotalUsers,
 		&stats.TodayNewUsers,
-		&stats.ActiveUsers,
 	); err != nil {
-		return nil, err
+		return err
 REDACTED
 
-	// 合并API Key统计查询
 	apiKeyStatsQuery := `
 		SELECT
 			COUNT(*) as total_api_keys,
@@ -307,10 +354,9 @@ REDACTED
 		&stats.TotalAPIKeys,
 		&stats.ActiveAPIKeys,
 	); err != nil {
-		return nil, err
+		return err
 REDACTED
 
-	// 合并账户统计查询
 	accountStatsQuery := `
 		SELECT
 			COUNT(*) as total_accounts,
@@ -332,22 +378,26 @@ REDACTED
 		&stats.RateLimitAccounts,
 		&stats.OverloadAccounts,
 	); err != nil {
-		return nil, err
+		return err
 REDACTED
 
-	// 累计 Token 统计
+	return nil
+REDACTED
+
+func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Context, stats *DashboardStats, todayUTC, now time.Time) error {
 	totalStatsQuery := `
 		SELECT
-			COUNT(*) as total_requests,
+			COALESCE(SUM(total_requests), 0) as total_requests,
 			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
 			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
 			COALESCE(SUM(cache_creation_tokens), 0) as total_cache_creation_tokens,
 			COALESCE(SUM(cache_read_tokens), 0) as total_cache_read_tokens,
 			COALESCE(SUM(total_cost), 0) as total_cost,
 			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
-			COALESCE(AVG(duration_ms), 0) as avg_duration_ms
-		FROM usage_logs
+			COALESCE(SUM(total_duration_ms), 0) as total_duration_ms
+		FROM usage_dashboard_daily
 	`
+	var totalDurationMs int64
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
@@ -360,13 +410,100 @@ REDACTED
 		&stats.TotalCacheReadTokens,
 		&stats.TotalCost,
 		&stats.TotalActualCost,
-		&stats.AverageDurationMs,
+		&totalDurationMs,
 	); err != nil {
-		return nil, err
+		return err
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheCreationTokens + stats.TotalCacheReadTokens
+	if stats.TotalRequests > 0 {
+		stats.AverageDurationMs = float64(totalDurationMs) / float64(stats.TotalRequests)
+REDACTED
 
-	// 今日 Token 统计
+	todayStatsQuery := `
+		SELECT
+			total_requests as today_requests,
+			input_tokens as today_input_tokens,
+			output_tokens as today_output_tokens,
+			cache_creation_tokens as today_cache_creation_tokens,
+			cache_read_tokens as today_cache_read_tokens,
+			total_cost as today_cost,
+			actual_cost as today_actual_cost,
+			active_users as active_users
+		FROM usage_dashboard_daily
+		WHERE bucket_date = $1::date
+	`
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		todayStatsQuery,
+		[]any{todayUTCREDACTED,
+		&stats.TodayRequests,
+		&stats.TodayInputTokens,
+		&stats.TodayOutputTokens,
+		&stats.TodayCacheCreationTokens,
+		&stats.TodayCacheReadTokens,
+		&stats.TodayCost,
+		&stats.TodayActualCost,
+		&stats.ActiveUsers,
+	); err != nil {
+		if err != sql.ErrNoRows {
+			return err
+	REDACTED
+REDACTED
+	stats.TodayTokens = stats.TodayInputTokens + stats.TodayOutputTokens + stats.TodayCacheCreationTokens + stats.TodayCacheReadTokens
+
+	hourlyActiveQuery := `
+		SELECT active_users
+		FROM usage_dashboard_hourly
+		WHERE bucket_start = $1
+	`
+	hourStart := now.In(timezone.Location()).Truncate(time.Hour)
+	if err := scanSingleRow(ctx, r.sql, hourlyActiveQuery, []any{hourStartREDACTED, &stats.HourlyActiveUsers); err != nil {
+		if err != sql.ErrNoRows {
+			return err
+	REDACTED
+REDACTED
+
+	return nil
+REDACTED
+
+func (r *usageLogRepository) fillDashboardUsageStatsFromUsageLogs(ctx context.Context, stats *DashboardStats, startUTC, endUTC, todayUTC, now time.Time) error {
+	totalStatsQuery := `
+		SELECT
+			COUNT(*) as total_requests,
+			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+			COALESCE(SUM(cache_creation_tokens), 0) as total_cache_creation_tokens,
+			COALESCE(SUM(cache_read_tokens), 0) as total_cache_read_tokens,
+			COALESCE(SUM(total_cost), 0) as total_cost,
+			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(SUM(COALESCE(duration_ms, 0)), 0) as total_duration_ms
+		FROM usage_logs
+		WHERE created_at >= $1 AND created_at < $2
+	`
+	var totalDurationMs int64
+	if err := scanSingleRow(
+		ctx,
+		r.sql,
+		totalStatsQuery,
+		[]any{startUTC, endUTCREDACTED,
+		&stats.TotalRequests,
+		&stats.TotalInputTokens,
+		&stats.TotalOutputTokens,
+		&stats.TotalCacheCreationTokens,
+		&stats.TotalCacheReadTokens,
+		&stats.TotalCost,
+		&stats.TotalActualCost,
+		&totalDurationMs,
+	); err != nil {
+		return err
+REDACTED
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheCreationTokens + stats.TotalCacheReadTokens
+	if stats.TotalRequests > 0 {
+		stats.AverageDurationMs = float64(totalDurationMs) / float64(stats.TotalRequests)
+REDACTED
+
+	todayEnd := todayUTC.Add(24 * time.Hour)
 	todayStatsQuery := `
 		SELECT
 			COUNT(*) as today_requests,
@@ -377,13 +514,13 @@ REDACTED
 			COALESCE(SUM(total_cost), 0) as today_cost,
 			COALESCE(SUM(actual_cost), 0) as today_actual_cost
 		FROM usage_logs
-		WHERE created_at >= $1
+		WHERE created_at >= $1 AND created_at < $2
 	`
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
 		todayStatsQuery,
-		[]any{todayREDACTED,
+		[]any{todayUTC, todayEndREDACTED,
 		&stats.TodayRequests,
 		&stats.TodayInputTokens,
 		&stats.TodayOutputTokens,
@@ -392,19 +529,31 @@ REDACTED
 		&stats.TodayCost,
 		&stats.TodayActualCost,
 	); err != nil {
-		return nil, err
+		return err
 REDACTED
 	stats.TodayTokens = stats.TodayInputTokens + stats.TodayOutputTokens + stats.TodayCacheCreationTokens + stats.TodayCacheReadTokens
 
-	// 性能指标：RPM 和 TPM（最近1分钟，全局）
-	rpm, tpm, err := r.getPerformanceStats(ctx, 0)
-	if err != nil {
-		return nil, err
+	activeUsersQuery := `
+		SELECT COUNT(DISTINCT user_id) as active_users
+		FROM usage_logs
+		WHERE created_at >= $1 AND created_at < $2
+	`
+	if err := scanSingleRow(ctx, r.sql, activeUsersQuery, []any{todayUTC, todayEndREDACTED, &stats.ActiveUsers); err != nil {
+		return err
 REDACTED
-	stats.Rpm = rpm
-	stats.Tpm = tpm
 
-	return &stats, nil
+	hourStart := now.UTC().Truncate(time.Hour)
+	hourEnd := hourStart.Add(time.Hour)
+	hourlyActiveQuery := `
+		SELECT COUNT(DISTINCT user_id) as active_users
+		FROM usage_logs
+		WHERE created_at >= $1 AND created_at < $2
+	`
+	if err := scanSingleRow(ctx, r.sql, hourlyActiveQuery, []any{hourStart, hourEndREDACTED, &stats.HourlyActiveUsers); err != nil {
+		return err
+REDACTED
+
+	return nil
 REDACTED
 
 func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -688,7 +837,9 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 		SELECT
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
-			COALESCE(SUM(actual_cost), 0) as cost
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as cost,
+			COALESCE(SUM(total_cost), 0) as standard_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = $1 AND created_at >= $2
 	`
@@ -702,6 +853,8 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 		&stats.Requests,
 		&stats.Tokens,
 		&stats.Cost,
+		&stats.StandardCost,
+		&stats.UserCost,
 	); err != nil {
 		return nil, err
 REDACTED
@@ -714,7 +867,9 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 		SELECT
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
-			COALESCE(SUM(actual_cost), 0) as cost
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as cost,
+			COALESCE(SUM(total_cost), 0) as standard_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = $1 AND created_at >= $2
 	`
@@ -728,6 +883,8 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 		&stats.Requests,
 		&stats.Tokens,
 		&stats.Cost,
+		&stats.StandardCost,
+		&stats.UserCost,
 	); err != nil {
 		return nil, err
 REDACTED
@@ -1253,8 +1410,8 @@ REDACTED
 	return result, nil
 REDACTED
 
-// GetUsageTrendWithFilters returns usage trend data with optional user/api_key filters
-func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID int64) (results []TrendDataPoint, err error) {
+// GetUsageTrendWithFilters returns usage trend data with optional filters
+func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool) (results []TrendDataPoint, err error) {
 	dateFormat := "YYYY-MM-DD"
 	if granularity == "hour" {
 		dateFormat = "YYYY-MM-DD HH24:00"
@@ -1283,6 +1440,22 @@ REDACTED
 		query += fmt.Sprintf(" AND api_key_id = $%d", len(args)+1)
 		args = append(args, apiKeyID)
 REDACTED
+	if accountID > 0 {
+		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
+		args = append(args, accountID)
+REDACTED
+	if groupID > 0 {
+		query += fmt.Sprintf(" AND group_id = $%d", len(args)+1)
+		args = append(args, groupID)
+REDACTED
+	if model != "" {
+		query += fmt.Sprintf(" AND model = $%d", len(args)+1)
+		args = append(args, model)
+REDACTED
+	if stream != nil {
+		query += fmt.Sprintf(" AND stream = $%d", len(args)+1)
+		args = append(args, *stream)
+REDACTED
 	query += " GROUP BY date ORDER BY date ASC"
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
@@ -1305,9 +1478,15 @@ REDACTED
 	return results, nil
 REDACTED
 
-// GetModelStatsWithFilters returns model statistics with optional user/api_key filters
-func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID int64) (results []ModelStat, err error) {
-	query := `
+// GetModelStatsWithFilters returns model statistics with optional filters
+func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, stream *bool) (results []ModelStat, err error) {
+	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
+	// 当仅按 account_id 聚合时，实际费用使用账号倍率（total_cost * account_rate_multiplier）。
+	if accountID > 0 && userID == 0 && apiKeyID == 0 {
+		actualCostExpr = "COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
+REDACTED
+
+	query := fmt.Sprintf(`
 		SELECT
 			model,
 			COUNT(*) as requests,
@@ -1315,10 +1494,10 @@ func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, start
 			COALESCE(SUM(output_tokens), 0) as output_tokens,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
 			COALESCE(SUM(total_cost), 0) as cost,
-			COALESCE(SUM(actual_cost), 0) as actual_cost
+			%s
 		FROM usage_logs
 		WHERE created_at >= $1 AND created_at < $2
-	`
+	`, actualCostExpr)
 
 	args := []any{startTime, endTimeREDACTED
 	if userID > 0 {
@@ -1332,6 +1511,14 @@ REDACTED
 	if accountID > 0 {
 		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, accountID)
+REDACTED
+	if groupID > 0 {
+		query += fmt.Sprintf(" AND group_id = $%d", len(args)+1)
+		args = append(args, groupID)
+REDACTED
+	if stream != nil {
+		query += fmt.Sprintf(" AND stream = $%d", len(args)+1)
+		args = append(args, *stream)
 REDACTED
 	query += " GROUP BY model ORDER BY total_tokens DESC"
 
@@ -1440,12 +1627,14 @@ REDACTED
 			COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) as total_cache_tokens,
 			COALESCE(SUM(total_cost), 0) as total_cost,
 			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as total_account_cost,
 			COALESCE(AVG(duration_ms), 0) as avg_duration_ms
 		FROM usage_logs
 		%s
 	`, buildWhere(conditions))
 
 	stats := &UsageStats{REDACTED
+	var totalAccountCost float64
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
@@ -1457,9 +1646,13 @@ REDACTED
 		&stats.TotalCacheTokens,
 		&stats.TotalCost,
 		&stats.TotalActualCost,
+		&totalAccountCost,
 		&stats.AverageDurationMs,
 	); err != nil {
 		return nil, err
+REDACTED
+	if filters.AccountID > 0 {
+		stats.TotalAccountCost = &totalAccountCost
 REDACTED
 	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
 	return stats, nil
@@ -1487,7 +1680,8 @@ REDACTED
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
 			COALESCE(SUM(total_cost), 0) as cost,
-			COALESCE(SUM(actual_cost), 0) as actual_cost
+			COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost,
+			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = $1 AND created_at >= $2 AND created_at < $3
 		GROUP BY date
@@ -1514,7 +1708,8 @@ REDACTED()
 		var tokens int64
 		var cost float64
 		var actualCost float64
-		if err = rows.Scan(&date, &requests, &tokens, &cost, &actualCost); err != nil {
+		var userCost float64
+		if err = rows.Scan(&date, &requests, &tokens, &cost, &actualCost, &userCost); err != nil {
 			return nil, err
 	REDACTED
 		t, _ := time.Parse("2006-01-02", date)
@@ -1525,19 +1720,21 @@ REDACTED()
 			Tokens:     tokens,
 			Cost:       cost,
 			ActualCost: actualCost,
+			UserCost:   userCost,
 	REDACTED)
 REDACTED
 	if err = rows.Err(); err != nil {
 		return nil, err
 REDACTED
 
-	var totalActualCost, totalStandardCost float64
+	var totalAccountCost, totalUserCost, totalStandardCost float64
 	var totalRequests, totalTokens int64
 	var highestCostDay, highestRequestDay *AccountUsageHistory
 
 	for i := range history {
 		h := &history[i]
-		totalActualCost += h.ActualCost
+		totalAccountCost += h.ActualCost
+		totalUserCost += h.UserCost
 		totalStandardCost += h.Cost
 		totalRequests += h.Requests
 		totalTokens += h.Tokens
@@ -1564,11 +1761,13 @@ REDACTED
 	summary := AccountUsageSummary{
 		Days:              daysCount,
 		ActualDaysUsed:    actualDaysUsed,
-		TotalCost:         totalActualCost,
+		TotalCost:         totalAccountCost,
+		TotalUserCost:     totalUserCost,
 		TotalStandardCost: totalStandardCost,
 		TotalRequests:     totalRequests,
 		TotalTokens:       totalTokens,
-		AvgDailyCost:      totalActualCost / float64(actualDaysUsed),
+		AvgDailyCost:      totalAccountCost / float64(actualDaysUsed),
+		AvgDailyUserCost:  totalUserCost / float64(actualDaysUsed),
 		AvgDailyRequests:  float64(totalRequests) / float64(actualDaysUsed),
 		AvgDailyTokens:    float64(totalTokens) / float64(actualDaysUsed),
 		AvgDurationMs:     avgDuration,
@@ -1580,11 +1779,13 @@ REDACTED
 			summary.Today = &struct {
 				Date     string  `json:"date"`
 				Cost     float64 `json:"cost"`
+				UserCost float64 `json:"user_cost"`
 				Requests int64   `json:"requests"`
 				Tokens   int64   `json:"tokens"`
 		REDACTED{
 				Date:     history[i].Date,
 				Cost:     history[i].ActualCost,
+				UserCost: history[i].UserCost,
 				Requests: history[i].Requests,
 				Tokens:   history[i].Tokens,
 		REDACTED
@@ -1597,11 +1798,13 @@ REDACTED
 			Date     string  `json:"date"`
 			Label    string  `json:"label"`
 			Cost     float64 `json:"cost"`
+			UserCost float64 `json:"user_cost"`
 			Requests int64   `json:"requests"`
 	REDACTED{
 			Date:     highestCostDay.Date,
 			Label:    highestCostDay.Label,
 			Cost:     highestCostDay.ActualCost,
+			UserCost: highestCostDay.UserCost,
 			Requests: highestCostDay.Requests,
 	REDACTED
 REDACTED
@@ -1612,15 +1815,17 @@ REDACTED
 			Label    string  `json:"label"`
 			Requests int64   `json:"requests"`
 			Cost     float64 `json:"cost"`
+			UserCost float64 `json:"user_cost"`
 	REDACTED{
 			Date:     highestRequestDay.Date,
 			Label:    highestRequestDay.Label,
 			Requests: highestRequestDay.Requests,
 			Cost:     highestRequestDay.ActualCost,
+			UserCost: highestRequestDay.UserCost,
 	REDACTED
 REDACTED
 
-	models, err := r.GetModelStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID)
+	models, err := r.GetModelStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, nil)
 	if err != nil {
 		models = []ModelStat{REDACTED
 REDACTED
@@ -1847,35 +2052,37 @@ REDACTED
 
 func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.UsageLog, error) {
 	var (
-		id                  int64
-		userID              int64
-		apiKeyID            int64
-		accountID           int64
-		requestID           sql.NullString
-		model               string
-		groupID             sql.NullInt64
-		subscriptionID      sql.NullInt64
-		inputTokens         int
-		outputTokens        int
-		cacheCreationTokens int
-		cacheReadTokens     int
-		cacheCreation5m     int
-		cacheCreation1h     int
-		inputCost           float64
-		outputCost          float64
-		cacheCreationCost   float64
-		cacheReadCost       float64
-		totalCost           float64
-		actualCost          float64
-		rateMultiplier      float64
-		billingType         int16
-		stream              bool
-		durationMs          sql.NullInt64
-		firstTokenMs        sql.NullInt64
-		userAgent           sql.NullString
-		imageCount          int
-		imageSize           sql.NullString
-		createdAt           time.Time
+		id                    int64
+		userID                int64
+		apiKeyID              int64
+		accountID             int64
+		requestID             sql.NullString
+		model                 string
+		groupID               sql.NullInt64
+		subscriptionID        sql.NullInt64
+		inputTokens           int
+		outputTokens          int
+		cacheCreationTokens   int
+		cacheReadTokens       int
+		cacheCreation5m       int
+		cacheCreation1h       int
+		inputCost             float64
+		outputCost            float64
+		cacheCreationCost     float64
+		cacheReadCost         float64
+		totalCost             float64
+		actualCost            float64
+		rateMultiplier        float64
+		accountRateMultiplier sql.NullFloat64
+		billingType           int16
+		stream                bool
+		durationMs            sql.NullInt64
+		firstTokenMs          sql.NullInt64
+		userAgent             sql.NullString
+		ipAddress             sql.NullString
+		imageCount            int
+		imageSize             sql.NullString
+		createdAt             time.Time
 	)
 
 	if err := scanner.Scan(
@@ -1900,11 +2107,13 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		&totalCost,
 		&actualCost,
 		&rateMultiplier,
+		&accountRateMultiplier,
 		&billingType,
 		&stream,
 		&durationMs,
 		&firstTokenMs,
 		&userAgent,
+		&ipAddress,
 		&imageCount,
 		&imageSize,
 		&createdAt,
@@ -1931,6 +2140,7 @@ REDACTED
 		TotalCost:             totalCost,
 		ActualCost:            actualCost,
 		RateMultiplier:        rateMultiplier,
+		AccountRateMultiplier: nullFloat64Ptr(accountRateMultiplier),
 		BillingType:           int8(billingType),
 		Stream:                stream,
 		ImageCount:            imageCount,
@@ -1958,6 +2168,9 @@ REDACTED
 REDACTED
 	if userAgent.Valid {
 		log.UserAgent = &userAgent.String
+REDACTED
+	if ipAddress.Valid {
+		log.IPAddress = &ipAddress.String
 REDACTED
 	if imageSize.Valid {
 		log.ImageSize = &imageSize.String
@@ -2032,6 +2245,14 @@ func nullInt(v *int) sql.NullInt64 {
 		return sql.NullInt64{REDACTED
 REDACTED
 	return sql.NullInt64{Int64: int64(*v), Valid: trueREDACTED
+REDACTED
+
+func nullFloat64Ptr(v sql.NullFloat64) *float64 {
+	if !v.Valid {
+		return nil
+REDACTED
+	out := v.Float64
+	return &out
 REDACTED
 
 func nullString(v *string) sql.NullString {

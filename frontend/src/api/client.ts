@@ -80,9 +80,45 @@ apiClient.interceptors.response.use(
     return response
   REDACTED,
   (error: AxiosError<ApiResponse<unknown>>) => {
+    // Request cancellation: keep the original axios cancellation error so callers can ignore it.
+    // Otherwise we'd misclassify it as a generic "network error".
+    if (error.code === 'ERR_CANCELED' || axios.isCancel(error)) {
+      return Promise.reject(error)
+    REDACTED
+
     // Handle common errors
     if (error.response) {
       const { status, data REDACTED = error.response
+      const url = String(error.config?.url || '')
+
+      // Validate `data` shape to avoid HTML error pages breaking our error handling.
+      const apiData = (typeof data === 'object' && data !== null ? data : {REDACTED) as Record<string, any>
+
+      // Ops monitoring disabled: treat as feature-flagged 404, and proactively redirect away
+      // from ops pages to avoid broken UI states.
+      if (status === 404 && apiData.message === 'Ops monitoring is disabled') {
+        try {
+          localStorage.setItem('ops_monitoring_enabled_cached', 'false')
+        REDACTED catch {
+          // ignore localStorage failures
+        REDACTED
+        try {
+          window.dispatchEvent(new CustomEvent('ops-monitoring-disabled'))
+        REDACTED catch {
+          // ignore event failures
+        REDACTED
+
+        if (window.location.pathname.startsWith('/admin/ops')) {
+          window.location.href = '/admin/settings'
+        REDACTED
+
+        return Promise.reject({
+          status,
+          code: 'OPS_DISABLED',
+          message: apiData.message || error.message,
+          url
+        REDACTED)
+      REDACTED
 
       // 401: Unauthorized - clear token and redirect to login
       if (status === 401) {
@@ -113,8 +149,8 @@ apiClient.interceptors.response.use(
       // Return structured error
       return Promise.reject({
         status,
-        code: data?.code,
-        message: data?.message || error.message
+        code: apiData.code,
+        message: apiData.message || apiData.detail || error.message
       REDACTED)
     REDACTED
 

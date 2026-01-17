@@ -13,7 +13,17 @@ const openaiModels = [
   'o1', 'o1-preview', 'o1-mini', 'o1-pro',
   'o3', 'o3-mini', 'o3-pro',
   'o4-mini',
-  'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
+  // GPT-5 系列（同步后端定价文件）
+  'gpt-5', 'gpt-5-2025-08-07', 'gpt-5-chat', 'gpt-5-chat-latest',
+  'gpt-5-codex', 'gpt-5-pro', 'gpt-5-pro-2025-10-06',
+  'gpt-5-mini', 'gpt-5-mini-2025-08-07',
+  'gpt-5-nano', 'gpt-5-nano-2025-08-07',
+  // GPT-5.1 系列
+  'gpt-5.1', 'gpt-5.1-2025-11-13', 'gpt-5.1-chat-latest',
+  'gpt-5.1-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini',
+  // GPT-5.2 系列
+  'gpt-5.2', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest',
+  'gpt-5.2-codex', 'gpt-5.2-pro', 'gpt-5.2-pro-2025-12-11',
   'chatgpt-4o-latest',
   'gpt-4o-audio-preview', 'gpt-4o-realtime-preview'
 ]
@@ -211,7 +221,10 @@ const openaiPresetMappings = [
   { label: 'GPT-4.1', from: 'gpt-4.1', to: 'gpt-4.1', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
   { label: 'o1', from: 'o1', to: 'o1', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
   { label: 'o3', from: 'o3', to: 'o3', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
-  { label: 'GPT-5', from: 'gpt-5', to: 'gpt-5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED
+  { label: 'GPT-5', from: 'gpt-5', to: 'gpt-5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED,
+  { label: 'GPT-5.1', from: 'gpt-5.1', to: 'gpt-5.1', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' REDACTED,
+  { label: 'GPT-5.2', from: 'gpt-5.2', to: 'gpt-5.2', color: 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400' REDACTED,
+  { label: 'GPT-5.1 Codex', from: 'gpt-5.1-codex', to: 'gpt-5.1-codex', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' REDACTED
 ]
 
 const geminiPresetMappings = [

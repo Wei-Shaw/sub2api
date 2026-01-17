@@ -51,11 +51,13 @@ type AccountRepository interface {
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error
+	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
 	SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error
 	ClearTempUnschedulable(ctx context.Context, id int64) error
 	ClearRateLimit(ctx context.Context, id int64) error
 	ClearAntigravityQuotaScopes(ctx context.Context, id int64) error
+	ClearModelRateLimits(ctx context.Context, id int64) error
 	UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error
 	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
 	BulkUpdate(ctx context.Context, ids []int64, updates AccountBulkUpdate) (int64, error)
@@ -64,14 +66,15 @@ REDACTED
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
 // Nil pointers mean "do not change".
 type AccountBulkUpdate struct {
-	Name        *string
-	ProxyID     *int64
-	Concurrency *int
-	Priority    *int
-	Status      *string
-	Schedulable *bool
-	Credentials map[string]any
-	Extra       map[string]any
+	Name           *string
+	ProxyID        *int64
+	Concurrency    *int
+	Priority       *int
+	RateMultiplier *float64
+	Status         *string
+	Schedulable    *bool
+	Credentials    map[string]any
+	Extra          map[string]any
 REDACTED
 
 // CreateAccountRequest 创建账号请求

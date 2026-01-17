@@ -46,6 +46,12 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(service.StatusActive),
+		field.JSON("ip_whitelist", []string{REDACTED).
+			Optional().
+			Comment("Allowed IPs/CIDRs, e.g. [\"192.168.1.100\", \"10.0.0.0/8\"]"),
+		field.JSON("ip_blacklist", []string{REDACTED).
+			Optional().
+			Comment("Blocked IPs/CIDRs"),
 REDACTED
 REDACTED
 

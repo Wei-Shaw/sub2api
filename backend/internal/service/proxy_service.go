@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrProxyNotFound = infraerrors.NotFound("PROXY_NOT_FOUND", "proxy not found")
+	ErrProxyInUse    = infraerrors.Conflict("PROXY_IN_USE", "proxy is in use by accounts")
 )
 
 type ProxyRepository interface {
@@ -26,6 +27,7 @@ type ProxyRepository interface {
 
 	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error)
 	CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error)
+	ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
 REDACTED
 
 // CreateProxyRequest 创建代理请求

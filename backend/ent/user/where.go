@@ -871,6 +871,29 @@ func HasAttributeValuesWith(preds ...predicate.UserAttributeValue) predicate.Use
 REDACTED)
 REDACTED
 
+// HasPromoCodeUsages applies the HasEdge predicate on the "promo_code_usages" edge.
+func HasPromoCodeUsages() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, PromoCodeUsagesTable, PromoCodeUsagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+REDACTED)
+REDACTED
+
+// HasPromoCodeUsagesWith applies the HasEdge predicate on the "promo_code_usages" edge with a given conditions (other predicates).
+func HasPromoCodeUsagesWith(preds ...predicate.PromoCodeUsage) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newPromoCodeUsagesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+		REDACTED
+	REDACTED)
+REDACTED)
+REDACTED
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

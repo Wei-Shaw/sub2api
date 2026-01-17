@@ -4,7 +4,13 @@
  */
 
 import { apiClient REDACTED from '../client'
-import type { Proxy, CreateProxyRequest, UpdateProxyRequest, PaginatedResponse REDACTED from '@/types'
+import type {
+  Proxy,
+  ProxyAccountSummary,
+  CreateProxyRequest,
+  UpdateProxyRequest,
+  PaginatedResponse
+REDACTED from '@/types'
 
 /**
  * List all proxies with pagination
@@ -120,6 +126,7 @@ export async function testProxy(id: number): Promise<{
   city?: string
   region?: string
   country?: string
+  country_code?: string
 REDACTED> {
   const { data REDACTED = await apiClient.post<{
     success: boolean
@@ -129,6 +136,7 @@ REDACTED> {
     city?: string
     region?: string
     country?: string
+    country_code?: string
   REDACTED>(`/admin/proxies/${idREDACTED/test`)
   return data
 REDACTED
@@ -160,8 +168,8 @@ REDACTED
  * @param id - Proxy ID
  * @returns List of accounts using the proxy
  */
-export async function getProxyAccounts(id: number): Promise<PaginatedResponse<any>> {
-  const { data REDACTED = await apiClient.get<PaginatedResponse<any>>(`/admin/proxies/${idREDACTED/accounts`)
+export async function getProxyAccounts(id: number): Promise<ProxyAccountSummary[]> {
+  const { data REDACTED = await apiClient.get<ProxyAccountSummary[]>(`/admin/proxies/${idREDACTED/accounts`)
   return data
 REDACTED
 
@@ -189,6 +197,17 @@ REDACTED> {
   return data
 REDACTED
 
+export async function batchDelete(ids: number[]): Promise<{
+  deleted_ids: number[]
+  skipped: Array<{ id: number; reason: string REDACTED>
+REDACTED> {
+  const { data REDACTED = await apiClient.post<{
+    deleted_ids: number[]
+    skipped: Array<{ id: number; reason: string REDACTED>
+  REDACTED>('/admin/proxies/batch-delete', { ids REDACTED)
+  return data
+REDACTED
+
 export const proxiesAPI = {
   list,
   getAll,
@@ -201,7 +220,8 @@ export const proxiesAPI = {
   testProxy,
   getStats,
   getProxyAccounts,
-  batchCreate
+  batchCreate,
+  batchDelete
 REDACTED
 
 export default proxiesAPI

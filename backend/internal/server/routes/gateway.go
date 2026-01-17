@@ -16,13 +16,18 @@ func RegisterGatewayRoutes(
 	apiKeyAuth middleware.APIKeyAuthMiddleware,
 	apiKeyService *service.APIKeyService,
 	subscriptionService *service.SubscriptionService,
+	opsService *service.OpsService,
 	cfg *config.Config,
 ) {
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
+	clientRequestID := middleware.ClientRequestID()
+	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
+	gateway.Use(clientRequestID)
+	gateway.Use(opsErrorLogger)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	{
 		gateway.POST("/messages", h.Gateway.Messages)
@@ -36,6 +41,8 @@ REDACTED
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
 	gemini := r.Group("/v1beta")
 	gemini.Use(bodyLimit)
+	gemini.Use(clientRequestID)
+	gemini.Use(opsErrorLogger)
 	gemini.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	{
 		gemini.GET("/models", h.Gateway.GeminiV1BetaListModels)
@@ -45,7 +52,7 @@ REDACTED
 REDACTED
 
 	// OpenAI Responses API（不带v1前缀的别名）
-	r.POST("/responses", bodyLimit, gin.HandlerFunc(apiKeyAuth), h.OpenAIGateway.Responses)
+	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), h.OpenAIGateway.Responses)
 
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), h.Gateway.AntigravityModels)
@@ -53,6 +60,8 @@ REDACTED
 	// Antigravity 专用路由（仅使用 antigravity 账户，不混合调度）
 	antigravityV1 := r.Group("/antigravity/v1")
 	antigravityV1.Use(bodyLimit)
+	antigravityV1.Use(clientRequestID)
+	antigravityV1.Use(opsErrorLogger)
 	antigravityV1.Use(middleware.ForcePlatform(service.PlatformAntigravity))
 	antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))
 	{
@@ -64,6 +73,8 @@ REDACTED
 
 	antigravityV1Beta := r.Group("/antigravity/v1beta")
 	antigravityV1Beta.Use(bodyLimit)
+	antigravityV1Beta.Use(clientRequestID)
+	antigravityV1Beta.Use(opsErrorLogger)
 	antigravityV1Beta.Use(middleware.ForcePlatform(service.PlatformAntigravity))
 	antigravityV1Beta.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	{

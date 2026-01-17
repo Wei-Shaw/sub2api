@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,19 +13,21 @@ import (
 
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
-	cfg         *config.Config
-	authService *service.AuthService
-	userService *service.UserService
-	settingSvc  *service.SettingService
+	cfg          *config.Config
+	authService  *service.AuthService
+	userService  *service.UserService
+	settingSvc   *service.SettingService
+	promoService *service.PromoService
 REDACTED
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService) *AuthHandler {
 	return &AuthHandler{
-		cfg:         cfg,
-		authService: authService,
-		userService: userService,
-		settingSvc:  settingService,
+		cfg:          cfg,
+		authService:  authService,
+		userService:  userService,
+		settingSvc:   settingService,
+		promoService: promoService,
 REDACTED
 REDACTED
 
@@ -34,6 +37,7 @@ type RegisterRequest struct {
 	Password       string `json:"password" binding:"required,min=6"`
 	VerifyCode     string `json:"verify_code"`
 	TurnstileToken string `json:"turnstile_token"`
+	PromoCode      string `json:"promo_code"` // 注册优惠码
 REDACTED
 
 // SendVerifyCodeRequest 发送验证码请求
@@ -73,13 +77,13 @@ REDACTED
 
 	// Turnstile 验证（当提供了邮箱验证码时跳过，因为发送验证码时已验证过）
 	if req.VerifyCode == "" {
-		if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, c.ClientIP()); err != nil {
+		if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
 			response.ErrorFrom(c, err)
 			return
 	REDACTED
 REDACTED
 
-	token, user, err := h.authService.RegisterWithVerification(c.Request.Context(), req.Email, req.Password, req.VerifyCode)
+	token, user, err := h.authService.RegisterWithVerification(c.Request.Context(), req.Email, req.Password, req.VerifyCode, req.PromoCode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -102,7 +106,7 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 REDACTED
 
 	// Turnstile 验证
-	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, c.ClientIP()); err != nil {
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -129,7 +133,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 REDACTED
 
 	// Turnstile 验证
-	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, c.ClientIP()); err != nil {
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -173,4 +177,64 @@ REDACTED
 REDACTED
 
 	response.Success(c, UserResponse{User: dto.UserFromService(user), RunMode: runModeREDACTED)
+REDACTED
+
+// ValidatePromoCodeRequest 验证优惠码请求
+type ValidatePromoCodeRequest struct {
+	Code string `json:"code" binding:"required"`
+REDACTED
+
+// ValidatePromoCodeResponse 验证优惠码响应
+type ValidatePromoCodeResponse struct {
+	Valid       bool    `json:"valid"`
+	BonusAmount float64 `json:"bonus_amount,omitempty"`
+	ErrorCode   string  `json:"error_code,omitempty"`
+	Message     string  `json:"message,omitempty"`
+REDACTED
+
+// ValidatePromoCode 验证优惠码（公开接口，注册前调用）
+// POST /api/v1/auth/validate-promo-code
+func (h *AuthHandler) ValidatePromoCode(c *gin.Context) {
+	var req ValidatePromoCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	promoCode, err := h.promoService.ValidatePromoCode(c.Request.Context(), req.Code)
+	if err != nil {
+		// 根据错误类型返回对应的错误码
+		errorCode := "PROMO_CODE_INVALID"
+		switch err {
+		case service.ErrPromoCodeNotFound:
+			errorCode = "PROMO_CODE_NOT_FOUND"
+		case service.ErrPromoCodeExpired:
+			errorCode = "PROMO_CODE_EXPIRED"
+		case service.ErrPromoCodeDisabled:
+			errorCode = "PROMO_CODE_DISABLED"
+		case service.ErrPromoCodeMaxUsed:
+			errorCode = "PROMO_CODE_MAX_USED"
+		case service.ErrPromoCodeAlreadyUsed:
+			errorCode = "PROMO_CODE_ALREADY_USED"
+	REDACTED
+
+		response.Success(c, ValidatePromoCodeResponse{
+			Valid:     false,
+			ErrorCode: errorCode,
+	REDACTED)
+		return
+REDACTED
+
+	if promoCode == nil {
+		response.Success(c, ValidatePromoCodeResponse{
+			Valid:     false,
+			ErrorCode: "PROMO_CODE_INVALID",
+	REDACTED)
+		return
+REDACTED
+
+	response.Success(c, ValidatePromoCodeResponse{
+		Valid:       true,
+		BonusAmount: promoCode.BonusAmount,
+REDACTED)
 REDACTED

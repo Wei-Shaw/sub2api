@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -32,6 +33,8 @@ REDACTED
 type SettingService struct {
 	settingRepo SettingRepository
 	cfg         *config.Config
+	onUpdate    func() // Callback when settings are updated (for cache invalidation)
+	version     string // Application version
 REDACTED
 
 // NewSettingService 创建系统设置服务实例
@@ -65,6 +68,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
+		SettingKeyHomeContent,
 		SettingKeyLinuxDoConnectEnabled,
 REDACTED
 
@@ -91,7 +95,59 @@ REDACTED
 		APIBaseURL:          settings[SettingKeyAPIBaseURL],
 		ContactInfo:         settings[SettingKeyContactInfo],
 		DocURL:              settings[SettingKeyDocURL],
+		HomeContent:         settings[SettingKeyHomeContent],
 		LinuxDoOAuthEnabled: linuxDoEnabled,
+REDACTED, nil
+REDACTED
+
+// SetOnUpdateCallback sets a callback function to be called when settings are updated
+// This is used for cache invalidation (e.g., HTML cache in frontend server)
+func (s *SettingService) SetOnUpdateCallback(callback func()) {
+	s.onUpdate = callback
+REDACTED
+
+// SetVersion sets the application version for injection into public settings
+func (s *SettingService) SetVersion(version string) {
+	s.version = version
+REDACTED
+
+// GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection
+// This implements the web.PublicSettingsProvider interface
+func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any, error) {
+	settings, err := s.GetPublicSettings(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// Return a struct that matches the frontend's expected format
+	return &struct {
+		RegistrationEnabled bool   `json:"registration_enabled"`
+		EmailVerifyEnabled  bool   `json:"email_verify_enabled"`
+		TurnstileEnabled    bool   `json:"turnstile_enabled"`
+		TurnstileSiteKey    string `json:"turnstile_site_key,omitempty"`
+		SiteName            string `json:"site_name"`
+		SiteLogo            string `json:"site_logo,omitempty"`
+		SiteSubtitle        string `json:"site_subtitle,omitempty"`
+		APIBaseURL          string `json:"api_base_url,omitempty"`
+		ContactInfo         string `json:"contact_info,omitempty"`
+		DocURL              string `json:"doc_url,omitempty"`
+		HomeContent         string `json:"home_content,omitempty"`
+		LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
+		Version             string `json:"version,omitempty"`
+REDACTED{
+		RegistrationEnabled: settings.RegistrationEnabled,
+		EmailVerifyEnabled:  settings.EmailVerifyEnabled,
+		TurnstileEnabled:    settings.TurnstileEnabled,
+		TurnstileSiteKey:    settings.TurnstileSiteKey,
+		SiteName:            settings.SiteName,
+		SiteLogo:            settings.SiteLogo,
+		SiteSubtitle:        settings.SiteSubtitle,
+		APIBaseURL:          settings.APIBaseURL,
+		ContactInfo:         settings.ContactInfo,
+		DocURL:              settings.DocURL,
+		HomeContent:         settings.HomeContent,
+		LinuxDoOAuthEnabled: settings.LinuxDoOAuthEnabled,
+		Version:             s.version,
 REDACTED, nil
 REDACTED
 
@@ -121,7 +177,7 @@ REDACTED
 		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
 REDACTED
 
-	// LinuxDo Connect OAuth 登录（终端用户 SSO）
+	// LinuxDo Connect OAuth 登录
 	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
 	updates[SettingKeyLinuxDoConnectClientID] = settings.LinuxDoConnectClientID
 	updates[SettingKeyLinuxDoConnectRedirectURL] = settings.LinuxDoConnectRedirectURL
@@ -136,6 +192,7 @@ REDACTED
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
+	updates[SettingKeyHomeContent] = settings.HomeContent
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -152,7 +209,19 @@ REDACTED
 	updates[SettingKeyEnableIdentityPatch] = strconv.FormatBool(settings.EnableIdentityPatch)
 	updates[SettingKeyIdentityPatchPrompt] = settings.IdentityPatchPrompt
 
-	return s.settingRepo.SetMultiple(ctx, updates)
+	// Ops monitoring (vNext)
+	updates[SettingKeyOpsMonitoringEnabled] = strconv.FormatBool(settings.OpsMonitoringEnabled)
+	updates[SettingKeyOpsRealtimeMonitoringEnabled] = strconv.FormatBool(settings.OpsRealtimeMonitoringEnabled)
+	updates[SettingKeyOpsQueryModeDefault] = string(ParseOpsQueryMode(settings.OpsQueryModeDefault))
+	if settings.OpsMetricsIntervalSeconds > 0 {
+		updates[SettingKeyOpsMetricsIntervalSeconds] = strconv.Itoa(settings.OpsMetricsIntervalSeconds)
+REDACTED
+
+	err := s.settingRepo.SetMultiple(ctx, updates)
+	if err == nil && s.onUpdate != nil {
+		s.onUpdate() // Invalidate cache after settings update
+REDACTED
+	return err
 REDACTED
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -238,6 +307,12 @@ REDACTED
 		// Identity patch defaults
 		SettingKeyEnableIdentityPatch: "true",
 		SettingKeyIdentityPatchPrompt: "",
+
+		// Ops monitoring defaults (vNext)
+		SettingKeyOpsMonitoringEnabled:         "true",
+		SettingKeyOpsRealtimeMonitoringEnabled: "true",
+		SettingKeyOpsQueryModeDefault:          "auto",
+		SettingKeyOpsMetricsIntervalSeconds:    "60",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -263,6 +338,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		APIBaseURL:                   settings[SettingKeyAPIBaseURL],
 		ContactInfo:                  settings[SettingKeyContactInfo],
 		DocURL:                       settings[SettingKeyDocURL],
+		HomeContent:                  settings[SettingKeyHomeContent],
 REDACTED
 
 	// 解析整数类型
@@ -336,100 +412,33 @@ REDACTED else {
 REDACTED
 	result.IdentityPatchPrompt = settings[SettingKeyIdentityPatchPrompt]
 
+	// Ops monitoring settings (default: enabled, fail-open)
+	result.OpsMonitoringEnabled = !isFalseSettingValue(settings[SettingKeyOpsMonitoringEnabled])
+	result.OpsRealtimeMonitoringEnabled = !isFalseSettingValue(settings[SettingKeyOpsRealtimeMonitoringEnabled])
+	result.OpsQueryModeDefault = string(ParseOpsQueryMode(settings[SettingKeyOpsQueryModeDefault]))
+	result.OpsMetricsIntervalSeconds = 60
+	if raw := strings.TrimSpace(settings[SettingKeyOpsMetricsIntervalSeconds]); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			if v < 60 {
+				v = 60
+		REDACTED
+			if v > 3600 {
+				v = 3600
+		REDACTED
+			result.OpsMetricsIntervalSeconds = v
+	REDACTED
+REDACTED
+
 	return result
 REDACTED
 
-// GetLinuxDoConnectOAuthConfig 返回用于登录的“最终生效” LinuxDo Connect 配置。
-//
-// 优先级：
-// - 若对应系统设置键存在，则覆盖 config.yaml/env 的值
-// - 否则回退到 config.yaml/env 的值
-func (s *SettingService) GetLinuxDoConnectOAuthConfig(ctx context.Context) (config.LinuxDoConnectConfig, error) {
-	if s == nil || s.cfg == nil {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.ServiceUnavailable("CONFIG_NOT_READY", "config not loaded")
-REDACTED
-
-	effective := s.cfg.LinuxDo
-
-	keys := []string{
-		SettingKeyLinuxDoConnectEnabled,
-		SettingKeyLinuxDoConnectClientID,
-		SettingKeyLinuxDoConnectClientSecret,
-		SettingKeyLinuxDoConnectRedirectURL,
-REDACTED
-	settings, err := s.settingRepo.GetMultiple(ctx, keys)
-	if err != nil {
-		return config.LinuxDoConnectConfig{REDACTED, fmt.Errorf("get linuxdo connect settings: %w", err)
-REDACTED
-
-	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok {
-		effective.Enabled = raw == "true"
-REDACTED
-	if v, ok := settings[SettingKeyLinuxDoConnectClientID]; ok && strings.TrimSpace(v) != "" {
-		effective.ClientID = strings.TrimSpace(v)
-REDACTED
-	if v, ok := settings[SettingKeyLinuxDoConnectClientSecret]; ok && strings.TrimSpace(v) != "" {
-		effective.ClientSecret = strings.TrimSpace(v)
-REDACTED
-	if v, ok := settings[SettingKeyLinuxDoConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
-		effective.RedirectURL = strings.TrimSpace(v)
-REDACTED
-
-	if !effective.Enabled {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
-REDACTED
-
-	// 基础健壮性校验（避免把用户重定向到一个必然失败或不安全的 OAuth 流程里）。
-	if strings.TrimSpace(effective.ClientID) == "" {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client id not configured")
-REDACTED
-	if strings.TrimSpace(effective.AuthorizeURL) == "" {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth authorize url not configured")
-REDACTED
-	if strings.TrimSpace(effective.TokenURL) == "" {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token url not configured")
-REDACTED
-	if strings.TrimSpace(effective.UserInfoURL) == "" {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth userinfo url not configured")
-REDACTED
-	if strings.TrimSpace(effective.RedirectURL) == "" {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth redirect url not configured")
-REDACTED
-	if strings.TrimSpace(effective.FrontendRedirectURL) == "" {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth frontend redirect url not configured")
-REDACTED
-
-	if err := config.ValidateAbsoluteHTTPURL(effective.AuthorizeURL); err != nil {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth authorize url invalid")
-REDACTED
-	if err := config.ValidateAbsoluteHTTPURL(effective.TokenURL); err != nil {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token url invalid")
-REDACTED
-	if err := config.ValidateAbsoluteHTTPURL(effective.UserInfoURL); err != nil {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth userinfo url invalid")
-REDACTED
-	if err := config.ValidateAbsoluteHTTPURL(effective.RedirectURL); err != nil {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth redirect url invalid")
-REDACTED
-	if err := config.ValidateFrontendRedirectURL(effective.FrontendRedirectURL); err != nil {
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth frontend redirect url invalid")
-REDACTED
-
-	method := strings.ToLower(strings.TrimSpace(effective.TokenAuthMethod))
-	switch method {
-	case "", "client_secret_post", "client_secret_basic":
-		if strings.TrimSpace(effective.ClientSecret) == "" {
-			return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client secret not configured")
-	REDACTED
-	case "none":
-		if !effective.UsePKCE {
-			return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth pkce must be enabled when token_auth_method=none")
-	REDACTED
+func isFalseSettingValue(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "false", "0", "off", "disabled":
+		return true
 	default:
-		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token_auth_method invalid")
+		return false
 REDACTED
-
-	return effective, nil
 REDACTED
 
 // getStringOrDefault 获取字符串值或默认值
@@ -573,4 +582,178 @@ REDACTED
 		return defaultModel
 REDACTED
 	return value
+REDACTED
+
+// GetLinuxDoConnectOAuthConfig 返回用于登录的"最终生效" LinuxDo Connect 配置。
+//
+// 优先级：
+// - 若对应系统设置键存在，则覆盖 config.yaml/env 的值
+// - 否则回退到 config.yaml/env 的值
+func (s *SettingService) GetLinuxDoConnectOAuthConfig(ctx context.Context) (config.LinuxDoConnectConfig, error) {
+	if s == nil || s.cfg == nil {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.ServiceUnavailable("CONFIG_NOT_READY", "config not loaded")
+REDACTED
+
+	effective := s.cfg.LinuxDo
+
+	keys := []string{
+		SettingKeyLinuxDoConnectEnabled,
+		SettingKeyLinuxDoConnectClientID,
+		SettingKeyLinuxDoConnectClientSecret,
+		SettingKeyLinuxDoConnectRedirectURL,
+REDACTED
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return config.LinuxDoConnectConfig{REDACTED, fmt.Errorf("get linuxdo connect settings: %w", err)
+REDACTED
+
+	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok {
+		effective.Enabled = raw == "true"
+REDACTED
+	if v, ok := settings[SettingKeyLinuxDoConnectClientID]; ok && strings.TrimSpace(v) != "" {
+		effective.ClientID = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyLinuxDoConnectClientSecret]; ok && strings.TrimSpace(v) != "" {
+		effective.ClientSecret = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyLinuxDoConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		effective.RedirectURL = strings.TrimSpace(v)
+REDACTED
+
+	if !effective.Enabled {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
+REDACTED
+
+	// 基础健壮性校验（避免把用户重定向到一个必然失败或不安全的 OAuth 流程里）。
+	if strings.TrimSpace(effective.ClientID) == "" {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client id not configured")
+REDACTED
+	if strings.TrimSpace(effective.AuthorizeURL) == "" {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth authorize url not configured")
+REDACTED
+	if strings.TrimSpace(effective.TokenURL) == "" {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token url not configured")
+REDACTED
+	if strings.TrimSpace(effective.UserInfoURL) == "" {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth userinfo url not configured")
+REDACTED
+	if strings.TrimSpace(effective.RedirectURL) == "" {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth redirect url not configured")
+REDACTED
+	if strings.TrimSpace(effective.FrontendRedirectURL) == "" {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth frontend redirect url not configured")
+REDACTED
+
+	if err := config.ValidateAbsoluteHTTPURL(effective.AuthorizeURL); err != nil {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth authorize url invalid")
+REDACTED
+	if err := config.ValidateAbsoluteHTTPURL(effective.TokenURL); err != nil {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token url invalid")
+REDACTED
+	if err := config.ValidateAbsoluteHTTPURL(effective.UserInfoURL); err != nil {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth userinfo url invalid")
+REDACTED
+	if err := config.ValidateAbsoluteHTTPURL(effective.RedirectURL); err != nil {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth redirect url invalid")
+REDACTED
+	if err := config.ValidateFrontendRedirectURL(effective.FrontendRedirectURL); err != nil {
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth frontend redirect url invalid")
+REDACTED
+
+	method := strings.ToLower(strings.TrimSpace(effective.TokenAuthMethod))
+	switch method {
+	case "", "client_secret_post", "client_secret_basic":
+		if strings.TrimSpace(effective.ClientSecret) == "" {
+			return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client secret not configured")
+	REDACTED
+	case "none":
+		if !effective.UsePKCE {
+			return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth pkce must be enabled when token_auth_method=none")
+	REDACTED
+	default:
+		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token_auth_method invalid")
+REDACTED
+
+	return effective, nil
+REDACTED
+
+// GetStreamTimeoutSettings 获取流超时处理配置
+func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamTimeoutSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyStreamTimeoutSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultStreamTimeoutSettings(), nil
+	REDACTED
+		return nil, fmt.Errorf("get stream timeout settings: %w", err)
+REDACTED
+	if value == "" {
+		return DefaultStreamTimeoutSettings(), nil
+REDACTED
+
+	var settings StreamTimeoutSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultStreamTimeoutSettings(), nil
+REDACTED
+
+	// 验证并修正配置值
+	if settings.TempUnschedMinutes < 1 {
+		settings.TempUnschedMinutes = 1
+REDACTED
+	if settings.TempUnschedMinutes > 60 {
+		settings.TempUnschedMinutes = 60
+REDACTED
+	if settings.ThresholdCount < 1 {
+		settings.ThresholdCount = 1
+REDACTED
+	if settings.ThresholdCount > 10 {
+		settings.ThresholdCount = 10
+REDACTED
+	if settings.ThresholdWindowMinutes < 1 {
+		settings.ThresholdWindowMinutes = 1
+REDACTED
+	if settings.ThresholdWindowMinutes > 60 {
+		settings.ThresholdWindowMinutes = 60
+REDACTED
+
+	// 验证 action
+	switch settings.Action {
+	case StreamTimeoutActionTempUnsched, StreamTimeoutActionError, StreamTimeoutActionNone:
+		// valid
+	default:
+		settings.Action = StreamTimeoutActionTempUnsched
+REDACTED
+
+	return &settings, nil
+REDACTED
+
+// SetStreamTimeoutSettings 设置流超时处理配置
+func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings *StreamTimeoutSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+REDACTED
+
+	// 验证配置值
+	if settings.TempUnschedMinutes < 1 || settings.TempUnschedMinutes > 60 {
+		return fmt.Errorf("temp_unsched_minutes must be between 1-60")
+REDACTED
+	if settings.ThresholdCount < 1 || settings.ThresholdCount > 10 {
+		return fmt.Errorf("threshold_count must be between 1-10")
+REDACTED
+	if settings.ThresholdWindowMinutes < 1 || settings.ThresholdWindowMinutes > 60 {
+		return fmt.Errorf("threshold_window_minutes must be between 1-60")
+REDACTED
+
+	switch settings.Action {
+	case StreamTimeoutActionTempUnsched, StreamTimeoutActionError, StreamTimeoutActionNone:
+		// valid
+	default:
+		return fmt.Errorf("invalid action: %s", settings.Action)
+REDACTED
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal stream timeout settings: %w", err)
+REDACTED
+
+	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 REDACTED

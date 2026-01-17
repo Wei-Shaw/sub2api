@@ -55,7 +55,8 @@ type AdminService interface {
 	CreateProxy(ctx context.Context, input *CreateProxyInput) (*Proxy, error)
 	UpdateProxy(ctx context.Context, id int64, input *UpdateProxyInput) (*Proxy, error)
 	DeleteProxy(ctx context.Context, id int64) error
-	GetProxyAccounts(ctx context.Context, proxyID int64, page, pageSize int) ([]Account, int64, error)
+	BatchDeleteProxies(ctx context.Context, ids []int64) (*ProxyBatchDeleteResult, error)
+	GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
 	CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error)
 	TestProxy(ctx context.Context, id int64) (*ProxyTestResult, error)
 
@@ -106,6 +107,9 @@ type CreateGroupInput struct {
 	ImagePrice4K    *float64
 	ClaudeCodeOnly  bool   // 仅允许 Claude Code 客户端
 	FallbackGroupID *int64 // 降级分组 ID
+	// 模型路由配置（仅 anthropic 平台使用）
+	ModelRouting        map[string][]int64
+	ModelRoutingEnabled bool // 是否启用模型路由
 REDACTED
 
 type UpdateGroupInput struct {
@@ -125,6 +129,9 @@ type UpdateGroupInput struct {
 	ImagePrice4K    *float64
 	ClaudeCodeOnly  *bool  // 仅允许 Claude Code 客户端
 	FallbackGroupID *int64 // 降级分组 ID
+	// 模型路由配置（仅 anthropic 平台使用）
+	ModelRouting        map[string][]int64
+	ModelRoutingEnabled *bool // 是否启用模型路由
 REDACTED
 
 type CreateAccountInput struct {
@@ -137,6 +144,7 @@ type CreateAccountInput struct {
 	ProxyID            *int64
 	Concurrency        int
 	Priority           int
+	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
 	GroupIDs           []int64
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
@@ -152,8 +160,9 @@ type UpdateAccountInput struct {
 	Credentials           map[string]any
 	Extra                 map[string]any
 	ProxyID               *int64
-	Concurrency           *int // 使用指针区分"未提供"和"设置为0"
-	Priority              *int // 使用指针区分"未提供"和"设置为0"
+	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
+	Priority              *int     // 使用指针区分"未提供"和"设置为0"
+	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
 	Status                string
 	GroupIDs              *[]int64
 	ExpiresAt             *int64
@@ -163,16 +172,17 @@ REDACTED
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
 type BulkUpdateAccountsInput struct {
-	AccountIDs  []int64
-	Name        string
-	ProxyID     *int64
-	Concurrency *int
-	Priority    *int
-	Status      string
-	Schedulable *bool
-	GroupIDs    *[]int64
-	Credentials map[string]any
-	Extra       map[string]any
+	AccountIDs     []int64
+	Name           string
+	ProxyID        *int64
+	Concurrency    *int
+	Priority       *int
+	RateMultiplier *float64 // 账号计费倍率（>=0，允许 0）
+	Status         string
+	Schedulable    *bool
+	GroupIDs       *[]int64
+	Credentials    map[string]any
+	Extra          map[string]any
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
@@ -187,9 +197,11 @@ REDACTED
 
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
 type BulkUpdateAccountsResult struct {
-	Success int                       `json:"success"`
-	Failed  int                       `json:"failed"`
-	Results []BulkUpdateAccountResult `json:"results"`
+	Success    int                       `json:"success"`
+	Failed     int                       `json:"failed"`
+	SuccessIDs []int64                   `json:"success_ids"`
+	FailedIDs  []int64                   `json:"failed_ids"`
+	Results    []BulkUpdateAccountResult `json:"results"`
 REDACTED
 
 type CreateProxyInput struct {
@@ -219,23 +231,35 @@ type GenerateRedeemCodesInput struct {
 	ValidityDays int    // 订阅类型专用：有效天数
 REDACTED
 
-// ProxyTestResult represents the result of testing a proxy
-type ProxyTestResult struct {
-	Success   bool   `json:"success"`
-	Message   string `json:"message"`
-	LatencyMs int64  `json:"latency_ms,omitempty"`
-	IPAddress string `json:"ip_address,omitempty"`
-	City      string `json:"city,omitempty"`
-	Region    string `json:"region,omitempty"`
-	Country   string `json:"country,omitempty"`
+type ProxyBatchDeleteResult struct {
+	DeletedIDs []int64                   `json:"deleted_ids"`
+	Skipped    []ProxyBatchDeleteSkipped `json:"skipped"`
 REDACTED
 
-// ProxyExitInfo represents proxy exit information from ipinfo.io
+type ProxyBatchDeleteSkipped struct {
+	ID     int64  `json:"id"`
+	Reason string `json:"reason"`
+REDACTED
+
+// ProxyTestResult represents the result of testing a proxy
+type ProxyTestResult struct {
+	Success     bool   `json:"success"`
+	Message     string `json:"message"`
+	LatencyMs   int64  `json:"latency_ms,omitempty"`
+	IPAddress   string `json:"ip_address,omitempty"`
+	City        string `json:"city,omitempty"`
+	Region      string `json:"region,omitempty"`
+	Country     string `json:"country,omitempty"`
+	CountryCode string `json:"country_code,omitempty"`
+REDACTED
+
+// ProxyExitInfo represents proxy exit information from ip-api.com
 type ProxyExitInfo struct {
-	IP      string
-	City    string
-	Region  string
-	Country string
+	IP          string
+	City        string
+	Region      string
+	Country     string
+	CountryCode string
 REDACTED
 
 // ProxyExitInfoProber tests proxy connectivity and retrieves exit information
@@ -245,14 +269,16 @@ REDACTED
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo            UserRepository
-	groupRepo           GroupRepository
-	accountRepo         AccountRepository
-	proxyRepo           ProxyRepository
-	apiKeyRepo          APIKeyRepository
-	redeemCodeRepo      RedeemCodeRepository
-	billingCacheService *BillingCacheService
-	proxyProber         ProxyExitInfoProber
+	userRepo             UserRepository
+	groupRepo            GroupRepository
+	accountRepo          AccountRepository
+	proxyRepo            ProxyRepository
+	apiKeyRepo           APIKeyRepository
+	redeemCodeRepo       RedeemCodeRepository
+	billingCacheService  *BillingCacheService
+	proxyProber          ProxyExitInfoProber
+	proxyLatencyCache    ProxyLatencyCache
+	authCacheInvalidator APIKeyAuthCacheInvalidator
 REDACTED
 
 // NewAdminService creates a new AdminService
@@ -265,16 +291,20 @@ func NewAdminService(
 	redeemCodeRepo RedeemCodeRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
+	proxyLatencyCache ProxyLatencyCache,
+	authCacheInvalidator APIKeyAuthCacheInvalidator,
 ) AdminService {
 	return &adminServiceImpl{
-		userRepo:            userRepo,
-		groupRepo:           groupRepo,
-		accountRepo:         accountRepo,
-		proxyRepo:           proxyRepo,
-		apiKeyRepo:          apiKeyRepo,
-		redeemCodeRepo:      redeemCodeRepo,
-		billingCacheService: billingCacheService,
-		proxyProber:         proxyProber,
+		userRepo:             userRepo,
+		groupRepo:            groupRepo,
+		accountRepo:          accountRepo,
+		proxyRepo:            proxyRepo,
+		apiKeyRepo:           apiKeyRepo,
+		redeemCodeRepo:       redeemCodeRepo,
+		billingCacheService:  billingCacheService,
+		proxyProber:          proxyProber,
+		proxyLatencyCache:    proxyLatencyCache,
+		authCacheInvalidator: authCacheInvalidator,
 REDACTED
 REDACTED
 
@@ -324,6 +354,8 @@ REDACTED
 REDACTED
 
 	oldConcurrency := user.Concurrency
+	oldStatus := user.Status
+	oldRole := user.Role
 
 	if input.Email != "" {
 		user.Email = input.Email
@@ -355,6 +387,11 @@ REDACTED
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
+REDACTED
+	if s.authCacheInvalidator != nil {
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
+	REDACTED
 REDACTED
 
 	concurrencyDiff := user.Concurrency - oldConcurrency
@@ -394,6 +431,9 @@ REDACTED
 		log.Printf("delete user failed: user_id=%d err=%v", id, err)
 		return err
 REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
+REDACTED
 	return nil
 REDACTED
 
@@ -421,6 +461,10 @@ REDACTED
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
 REDACTED
+	balanceDiff := user.Balance - oldBalance
+	if s.authCacheInvalidator != nil && balanceDiff != 0 {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
 
 	if s.billingCacheService != nil {
 		go func() {
@@ -432,7 +476,6 @@ REDACTED
 	REDACTED()
 REDACTED
 
-	balanceDiff := user.Balance - oldBalance
 	if balanceDiff != 0 {
 		code, err := GenerateRedeemCode()
 		if err != nil {
@@ -545,6 +588,7 @@ REDACTED
 		ImagePrice4K:     imagePrice4K,
 		ClaudeCodeOnly:   input.ClaudeCodeOnly,
 		FallbackGroupID:  input.FallbackGroupID,
+		ModelRouting:     input.ModelRouting,
 REDACTED
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -577,18 +621,33 @@ func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGro
 		return fmt.Errorf("cannot set self as fallback group")
 REDACTED
 
-	// 检查降级分组是否存在
-	fallbackGroup, err := s.groupRepo.GetByID(ctx, fallbackGroupID)
-	if err != nil {
-		return fmt.Errorf("fallback group not found: %w", err)
-REDACTED
+	visited := map[int64]struct{REDACTED{REDACTED
+	nextID := fallbackGroupID
+	for {
+		if _, seen := visited[nextID]; seen {
+			return fmt.Errorf("fallback group cycle detected")
+	REDACTED
+		visited[nextID] = struct{REDACTED{REDACTED
+		if currentGroupID > 0 && nextID == currentGroupID {
+			return fmt.Errorf("fallback group cycle detected")
+	REDACTED
 
-	// 降级分组不能启用 claude_code_only，否则会造成死循环
-	if fallbackGroup.ClaudeCodeOnly {
-		return fmt.Errorf("fallback group cannot have claude_code_only enabled")
-REDACTED
+		// 检查降级分组是否存在
+		fallbackGroup, err := s.groupRepo.GetByIDLite(ctx, nextID)
+		if err != nil {
+			return fmt.Errorf("fallback group not found: %w", err)
+	REDACTED
 
-	return nil
+		// 降级分组不能启用 claude_code_only，否则会造成死循环
+		if nextID == fallbackGroupID && fallbackGroup.ClaudeCodeOnly {
+			return fmt.Errorf("fallback group cannot have claude_code_only enabled")
+	REDACTED
+
+		if fallbackGroup.FallbackGroupID == nil {
+			return nil
+	REDACTED
+		nextID = *fallbackGroup.FallbackGroupID
+REDACTED
 REDACTED
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
@@ -658,13 +717,32 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 模型路由配置
+	if input.ModelRouting != nil {
+		group.ModelRouting = input.ModelRouting
+REDACTED
+	if input.ModelRoutingEnabled != nil {
+		group.ModelRoutingEnabled = *input.ModelRoutingEnabled
+REDACTED
+
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
+REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 REDACTED
 	return group, nil
 REDACTED
 
 func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
+	var groupKeys []string
+	if s.authCacheInvalidator != nil {
+		keys, err := s.apiKeyRepo.ListKeysByGroupID(ctx, id)
+		if err == nil {
+			groupKeys = keys
+	REDACTED
+REDACTED
+
 	affectedUserIDs, err := s.groupRepo.DeleteCascade(ctx, id)
 	if err != nil {
 		return err
@@ -682,6 +760,11 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED()
+REDACTED
+	if s.authCacheInvalidator != nil {
+		for _, key := range groupKeys {
+			s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, key)
+	REDACTED
 REDACTED
 
 	return nil
@@ -769,6 +852,12 @@ REDACTED
 REDACTED else {
 		account.AutoPauseOnExpired = true
 REDACTED
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier < 0 {
+			return nil, errors.New("rate_multiplier must be >= 0")
+	REDACTED
+		account.RateMultiplier = input.RateMultiplier
+REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 REDACTED
@@ -821,6 +910,12 @@ REDACTED
 	if input.Priority != nil {
 		account.Priority = *input.Priority
 REDACTED
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier < 0 {
+			return nil, errors.New("rate_multiplier must be >= 0")
+	REDACTED
+		account.RateMultiplier = input.RateMultiplier
+REDACTED
 	if input.Status != "" {
 		account.Status = input.Status
 REDACTED
@@ -871,7 +966,9 @@ REDACTED
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	result := &BulkUpdateAccountsResult{
-		Results: make([]BulkUpdateAccountResult, 0, len(input.AccountIDs)),
+		SuccessIDs: make([]int64, 0, len(input.AccountIDs)),
+		FailedIDs:  make([]int64, 0, len(input.AccountIDs)),
+		Results:    make([]BulkUpdateAccountResult, 0, len(input.AccountIDs)),
 REDACTED
 
 	if len(input.AccountIDs) == 0 {
@@ -892,6 +989,12 @@ REDACTED
 	REDACTED
 REDACTED
 
+	if input.RateMultiplier != nil {
+		if *input.RateMultiplier < 0 {
+			return nil, errors.New("rate_multiplier must be >= 0")
+	REDACTED
+REDACTED
+
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
 		Credentials: input.Credentials,
@@ -908,6 +1011,9 @@ REDACTED
 REDACTED
 	if input.Priority != nil {
 		repoUpdates.Priority = input.Priority
+REDACTED
+	if input.RateMultiplier != nil {
+		repoUpdates.RateMultiplier = input.RateMultiplier
 REDACTED
 	if input.Status != "" {
 		repoUpdates.Status = &input.Status
@@ -935,6 +1041,7 @@ REDACTED
 						entry.Success = false
 						entry.Error = err.Error()
 						result.Failed++
+						result.FailedIDs = append(result.FailedIDs, accountID)
 						result.Results = append(result.Results, entry)
 						continue
 				REDACTED
@@ -944,6 +1051,7 @@ REDACTED
 					entry.Success = false
 					entry.Error = err.Error()
 					result.Failed++
+					result.FailedIDs = append(result.FailedIDs, accountID)
 					result.Results = append(result.Results, entry)
 					continue
 			REDACTED
@@ -953,6 +1061,7 @@ REDACTED
 				entry.Success = false
 				entry.Error = err.Error()
 				result.Failed++
+				result.FailedIDs = append(result.FailedIDs, accountID)
 				result.Results = append(result.Results, entry)
 				continue
 		REDACTED
@@ -960,6 +1069,7 @@ REDACTED
 
 		entry.Success = true
 		result.Success++
+		result.SuccessIDs = append(result.SuccessIDs, accountID)
 		result.Results = append(result.Results, entry)
 REDACTED
 
@@ -1019,6 +1129,7 @@ func (s *adminServiceImpl) ListProxiesWithAccountCount(ctx context.Context, page
 	if err != nil {
 		return nil, 0, err
 REDACTED
+	s.attachProxyLatency(ctx, proxies)
 	return proxies, result.Total, nil
 REDACTED
 
@@ -1027,7 +1138,12 @@ func (s *adminServiceImpl) GetAllProxies(ctx context.Context) ([]Proxy, error) {
 REDACTED
 
 func (s *adminServiceImpl) GetAllProxiesWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error) {
-	return s.proxyRepo.ListActiveWithAccountCount(ctx)
+	proxies, err := s.proxyRepo.ListActiveWithAccountCount(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	s.attachProxyLatency(ctx, proxies)
+	return proxies, nil
 REDACTED
 
 func (s *adminServiceImpl) GetProxy(ctx context.Context, id int64) (*Proxy, error) {
@@ -1047,6 +1163,8 @@ REDACTED
 	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
 		return nil, err
 REDACTED
+	// Probe latency asynchronously so creation isn't blocked by network timeout.
+	go s.probeProxyLatency(context.Background(), proxy)
 	return proxy, nil
 REDACTED
 
@@ -1085,12 +1203,53 @@ REDACTED
 REDACTED
 
 func (s *adminServiceImpl) DeleteProxy(ctx context.Context, id int64) error {
+	count, err := s.proxyRepo.CountAccountsByProxyID(ctx, id)
+	if err != nil {
+		return err
+REDACTED
+	if count > 0 {
+		return ErrProxyInUse
+REDACTED
 	return s.proxyRepo.Delete(ctx, id)
 REDACTED
 
-func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64, page, pageSize int) ([]Account, int64, error) {
-	// Return mock data for now - would need a dedicated repository method
-	return []Account{REDACTED, 0, nil
+func (s *adminServiceImpl) BatchDeleteProxies(ctx context.Context, ids []int64) (*ProxyBatchDeleteResult, error) {
+	result := &ProxyBatchDeleteResult{REDACTED
+	if len(ids) == 0 {
+		return result, nil
+REDACTED
+
+	for _, id := range ids {
+		count, err := s.proxyRepo.CountAccountsByProxyID(ctx, id)
+		if err != nil {
+			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
+				ID:     id,
+				Reason: err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		if count > 0 {
+			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
+				ID:     id,
+				Reason: ErrProxyInUse.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		if err := s.proxyRepo.Delete(ctx, id); err != nil {
+			result.Skipped = append(result.Skipped, ProxyBatchDeleteSkipped{
+				ID:     id,
+				Reason: err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		result.DeletedIDs = append(result.DeletedIDs, id)
+REDACTED
+
+	return result, nil
+REDACTED
+
+func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
+	return s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID)
 REDACTED
 
 func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {
@@ -1190,21 +1349,67 @@ REDACTED
 	proxyURL := proxy.URL()
 	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxyURL)
 	if err != nil {
+		s.saveProxyLatency(ctx, id, &ProxyLatencyInfo{
+			Success:   false,
+			Message:   err.Error(),
+			UpdatedAt: time.Now(),
+	REDACTED)
 		return &ProxyTestResult{
 			Success: false,
 			Message: err.Error(),
 	REDACTED, nil
 REDACTED
 
+	latency := latencyMs
+	s.saveProxyLatency(ctx, id, &ProxyLatencyInfo{
+		Success:     true,
+		LatencyMs:   &latency,
+		Message:     "Proxy is accessible",
+		IPAddress:   exitInfo.IP,
+		Country:     exitInfo.Country,
+		CountryCode: exitInfo.CountryCode,
+		Region:      exitInfo.Region,
+		City:        exitInfo.City,
+		UpdatedAt:   time.Now(),
+REDACTED)
 	return &ProxyTestResult{
-		Success:   true,
-		Message:   "Proxy is accessible",
-		LatencyMs: latencyMs,
-		IPAddress: exitInfo.IP,
-		City:      exitInfo.City,
-		Region:    exitInfo.Region,
-		Country:   exitInfo.Country,
+		Success:     true,
+		Message:     "Proxy is accessible",
+		LatencyMs:   latencyMs,
+		IPAddress:   exitInfo.IP,
+		City:        exitInfo.City,
+		Region:      exitInfo.Region,
+		Country:     exitInfo.Country,
+		CountryCode: exitInfo.CountryCode,
 REDACTED, nil
+REDACTED
+
+func (s *adminServiceImpl) probeProxyLatency(ctx context.Context, proxy *Proxy) {
+	if s.proxyProber == nil || proxy == nil {
+		return
+REDACTED
+	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxy.URL())
+	if err != nil {
+		s.saveProxyLatency(ctx, proxy.ID, &ProxyLatencyInfo{
+			Success:   false,
+			Message:   err.Error(),
+			UpdatedAt: time.Now(),
+	REDACTED)
+		return
+REDACTED
+
+	latency := latencyMs
+	s.saveProxyLatency(ctx, proxy.ID, &ProxyLatencyInfo{
+		Success:     true,
+		LatencyMs:   &latency,
+		Message:     "Proxy is accessible",
+		IPAddress:   exitInfo.IP,
+		Country:     exitInfo.Country,
+		CountryCode: exitInfo.CountryCode,
+		Region:      exitInfo.Region,
+		City:        exitInfo.City,
+		UpdatedAt:   time.Now(),
+REDACTED)
 REDACTED
 
 // checkMixedChannelRisk 检查分组中是否存在混合渠道（Antigravity + Anthropic）
@@ -1254,6 +1459,51 @@ REDACTED
 REDACTED
 
 	return nil
+REDACTED
+
+func (s *adminServiceImpl) attachProxyLatency(ctx context.Context, proxies []ProxyWithAccountCount) {
+	if s.proxyLatencyCache == nil || len(proxies) == 0 {
+		return
+REDACTED
+
+	ids := make([]int64, 0, len(proxies))
+	for i := range proxies {
+		ids = append(ids, proxies[i].ID)
+REDACTED
+
+	latencies, err := s.proxyLatencyCache.GetProxyLatencies(ctx, ids)
+	if err != nil {
+		log.Printf("Warning: load proxy latency cache failed: %v", err)
+		return
+REDACTED
+
+	for i := range proxies {
+		info := latencies[proxies[i].ID]
+		if info == nil {
+			continue
+	REDACTED
+		if info.Success {
+			proxies[i].LatencyStatus = "success"
+			proxies[i].LatencyMs = info.LatencyMs
+	REDACTED else {
+			proxies[i].LatencyStatus = "failed"
+	REDACTED
+		proxies[i].LatencyMessage = info.Message
+		proxies[i].IPAddress = info.IPAddress
+		proxies[i].Country = info.Country
+		proxies[i].CountryCode = info.CountryCode
+		proxies[i].Region = info.Region
+		proxies[i].City = info.City
+REDACTED
+REDACTED
+
+func (s *adminServiceImpl) saveProxyLatency(ctx context.Context, proxyID int64, info *ProxyLatencyInfo) {
+	if s.proxyLatencyCache == nil || info == nil {
+		return
+REDACTED
+	if err := s.proxyLatencyCache.SetProxyLatency(ctx, proxyID, info); err != nil {
+		log.Printf("Warning: store proxy latency cache failed: %v", err)
+REDACTED
 REDACTED
 
 // getAccountPlatform 根据账号 platform 判断混合渠道检查用的平台标识

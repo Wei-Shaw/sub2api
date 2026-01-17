@@ -50,6 +50,7 @@ export interface RegisterRequest {
   password: string
   verify_code?: string
   turnstile_token?: string
+  promo_code?: string
 REDACTED
 
 export interface SendVerifyCodeRequest {
@@ -73,6 +74,7 @@ export interface PublicSettings {
   api_base_url: string
   contact_info: string
   doc_url: string
+  home_content: string
   linuxdo_oauth_enabled: boolean
   version: string
 REDACTED
@@ -267,6 +269,9 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
+  // 模型路由配置（仅 anthropic 平台使用）
+  model_routing: Record<string, number[]> | null
+  model_routing_enabled: boolean
   account_count?: number
   created_at: string
   updated_at: string
@@ -279,6 +284,8 @@ export interface ApiKey {
   name: string
   group_id: number | null
   status: 'active' | 'inactive'
+  ip_whitelist: string[]
+  ip_blacklist: string[]
   created_at: string
   updated_at: string
   group?: Group
@@ -288,12 +295,16 @@ export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
   custom_key?: string // Optional custom API Key
+  ip_whitelist?: string[]
+  ip_blacklist?: string[]
 REDACTED
 
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
   status?: 'active' | 'inactive'
+  ip_whitelist?: string[]
+  ip_blacklist?: string[]
 REDACTED
 
 export interface CreateGroupRequest {
@@ -356,8 +367,24 @@ export interface Proxy {
   password?: string | null
   status: 'active' | 'inactive'
   account_count?: number // Number of accounts using this proxy
+  latency_ms?: number
+  latency_status?: 'success' | 'failed'
+  latency_message?: string
+  ip_address?: string
+  country?: string
+  country_code?: string
+  region?: string
+  city?: string
   created_at: string
   updated_at: string
+REDACTED
+
+export interface ProxyAccountSummary {
+  id: number
+  name: string
+  platform: AccountPlatform
+  type: AccountType
+  notes?: string | null
 REDACTED
 
 // Gemini credentials structure for OAuth and API Key authentication
@@ -420,6 +447,7 @@ export interface Account {
   concurrency: number
   current_concurrency?: number // Real-time concurrency count from Redis
   priority: number
+  rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   status: 'active' | 'inactive' | 'error'
   error_message: string | null
   last_used_at: string | null
@@ -443,13 +471,27 @@ export interface Account {
   session_window_start: string | null
   session_window_end: string | null
   session_window_status: 'allowed' | 'allowed_warning' | 'rejected' | null
+
+  // 5h窗口费用控制（仅 Anthropic OAuth/SetupToken 账号有效）
+  window_cost_limit?: number | null
+  window_cost_sticky_reserve?: number | null
+
+  // 会话数量控制（仅 Anthropic OAuth/SetupToken 账号有效）
+  max_sessions?: number | null
+  session_idle_timeout_minutes?: number | null
+
+  // 运行时状态（仅当启用对应限制时返回）
+  current_window_cost?: number | null // 当前窗口费用
+  active_sessions?: number | null // 当前活跃会话数
 REDACTED
 
 // Account Usage types
 export interface WindowStats {
   requests: number
   tokens: number
-  cost: number
+  cost: number // Account cost (account multiplier)
+  standard_cost?: number
+  user_cost?: number
 REDACTED
 
 export interface UsageProgress {
@@ -514,6 +556,7 @@ export interface CreateAccountRequest {
   proxy_id?: number | null
   concurrency?: number
   priority?: number
+  rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
@@ -529,6 +572,7 @@ export interface UpdateAccountRequest {
   proxy_id?: number | null
   concurrency?: number
   priority?: number
+  rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   schedulable?: boolean
   status?: 'active' | 'inactive'
   group_ids?: number[]
@@ -560,9 +604,6 @@ REDACTED
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription'
 
-// 消费类型: 0=钱包余额, 1=订阅套餐
-export type BillingType = 0 | 1
-
 export interface UsageLog {
   id: number
   user_id: number
@@ -588,8 +629,8 @@ export interface UsageLog {
   total_cost: number
   actual_cost: number
   rate_multiplier: number
+  account_rate_multiplier?: number | null
 
-  billing_type: BillingType
   stream: boolean
   duration_ms: number
   first_token_ms: number | null
@@ -600,6 +641,9 @@ export interface UsageLog {
 
   // User-Agent
   user_agent: string | null
+
+  // IP 地址（仅管理员可见）
+  ip_address: string | null
 
   created_at: string
 
@@ -645,6 +689,9 @@ export interface DashboardStats {
   total_users: number
   today_new_users: number // 今日新增用户数
   active_users: number // 今日有请求的用户数
+  hourly_active_users: number // 当前小时活跃用户数（UTC）
+  stats_updated_at: string // 统计更新时间（UTC RFC3339）
+  stats_stale: boolean // 统计是否过期
 
   // API Key 统计
   total_api_keys: number
@@ -830,7 +877,6 @@ export interface UsageQueryParams {
   group_id?: number
   model?: string
   stream?: boolean
-  billing_type?: number
   start_date?: string
   end_date?: string
 REDACTED
@@ -843,23 +889,27 @@ export interface AccountUsageHistory {
   requests: number
   tokens: number
   cost: number
-  actual_cost: number
+  actual_cost: number // Account cost (account multiplier)
+  user_cost: number // User/API key billed cost (group multiplier)
 REDACTED
 
 export interface AccountUsageSummary {
   days: number
   actual_days_used: number
-  total_cost: number
+  total_cost: number // Account cost (account multiplier)
+  total_user_cost: number
   total_standard_cost: number
   total_requests: number
   total_tokens: number
-  avg_daily_cost: number
+  avg_daily_cost: number // Account cost
+  avg_daily_user_cost: number
   avg_daily_requests: number
   avg_daily_tokens: number
   avg_duration_ms: number
   today: {
     date: string
     cost: number
+    user_cost: number
     requests: number
     tokens: number
   REDACTED | null
@@ -867,6 +917,7 @@ export interface AccountUsageSummary {
     date: string
     label: string
     cost: number
+    user_cost: number
     requests: number
   REDACTED | null
   highest_request_day: {
@@ -874,6 +925,7 @@ export interface AccountUsageSummary {
     label: string
     requests: number
     cost: number
+    user_cost: number
   REDACTED | null
 REDACTED
 
@@ -955,4 +1007,45 @@ REDACTED
 
 export interface UserAttributeValuesMap {
   [attributeId: number]: string
+REDACTED
+
+// ==================== Promo Code Types ====================
+
+export interface PromoCode {
+  id: number
+  code: string
+  bonus_amount: number
+  max_uses: number
+  used_count: number
+  status: 'active' | 'disabled'
+  expires_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface PromoCodeUsage {
+  id: number
+  promo_code_id: number
+  user_id: number
+  bonus_amount: number
+  used_at: string
+  user?: User
+REDACTED
+
+export interface CreatePromoCodeRequest {
+  code?: string
+  bonus_amount: number
+  max_uses?: number
+  expires_at?: number | null
+  notes?: string
+REDACTED
+
+export interface UpdatePromoCodeRequest {
+  code?: string
+  bonus_amount?: number
+  max_uses?: number
+  status?: 'active' | 'disabled'
+  expires_at?: number | null
+  notes?: string
 REDACTED
