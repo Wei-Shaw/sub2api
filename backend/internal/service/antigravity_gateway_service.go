@@ -844,11 +844,20 @@ REDACTED
 				if txErr != nil {
 					continue
 			REDACTED
-				retryReq, buildErr := antigravity.NewAPIRequest(ctx, action, accessToken, retryGeminiBody)
-				if buildErr != nil {
-					continue
-			REDACTED
-				retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+				retryResult, retryErr := antigravityRetryLoop(antigravityRetryLoopParams{
+					ctx:            ctx,
+					prefix:         prefix,
+					account:        account,
+					proxyURL:       proxyURL,
+					accessToken:    accessToken,
+					action:         action,
+					body:           retryGeminiBody,
+					quotaScope:     quotaScope,
+					c:              c,
+					httpUpstream:   s.httpUpstream,
+					settingService: s.settingService,
+					handleError:    s.handleUpstreamError,
+			REDACTED)
 				if retryErr != nil {
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						Platform:           account.Platform,
@@ -862,6 +871,7 @@ REDACTED
 					continue
 			REDACTED
 
+				retryResp := retryResult.resp
 				if retryResp.StatusCode < 400 {
 					_ = resp.Body.Close()
 					resp = retryResp
@@ -873,8 +883,8 @@ REDACTED
 				_ = retryResp.Body.Close()
 				if retryResp.StatusCode == http.StatusTooManyRequests {
 					retryBaseURL := ""
-					if retryReq.URL != nil {
-						retryBaseURL = retryReq.URL.Scheme + "://" + retryReq.URL.Host
+					if retryResp.Request != nil && retryResp.Request.URL != nil {
+						retryBaseURL = retryResp.Request.URL.Scheme + "://" + retryResp.Request.URL.Host
 				REDACTED
 					log.Printf("%s status=429 rate_limited base_url=%s retry_stage=%s body=%s", prefix, retryBaseURL, stage.name, truncateForLog(retryBody, 200))
 			REDACTED
