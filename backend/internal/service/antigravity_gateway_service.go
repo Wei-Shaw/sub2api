@@ -39,14 +39,12 @@ type antigravityRetryLoopParams struct {
 	body         []byte
 	quotaScope   AntigravityQuotaScope
 	httpUpstream HTTPUpstream
-	accountRepo  AccountRepository
 	handleError  func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope)
 REDACTED
 
 // antigravityRetryLoopResult 重试循环的结果
 type antigravityRetryLoopResult struct {
-	resp        *http.Response
-	usedBaseURL string
+	resp *http.Response
 REDACTED
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
@@ -144,7 +142,7 @@ REDACTED
 		antigravity.DefaultURLAvailability.MarkSuccess(usedBaseURL)
 REDACTED
 
-	return &antigravityRetryLoopResult{resp: resp, usedBaseURL: usedBaseURLREDACTED, nil
+	return &antigravityRetryLoopResult{resp: respREDACTED, nil
 REDACTED
 
 // shouldRetryAntigravityError 判断是否应该重试
@@ -685,7 +683,6 @@ REDACTED
 		body:         geminiBody,
 		quotaScope:   quotaScope,
 		httpUpstream: s.httpUpstream,
-		accountRepo:  s.accountRepo,
 		handleError:  s.handleUpstreamError,
 REDACTED)
 	if err != nil {
@@ -1166,7 +1163,6 @@ REDACTED
 		body:         wrappedBody,
 		quotaScope:   quotaScope,
 		httpUpstream: s.httpUpstream,
-		accountRepo:  s.accountRepo,
 		handleError:  s.handleUpstreamError,
 REDACTED)
 	if err != nil {
