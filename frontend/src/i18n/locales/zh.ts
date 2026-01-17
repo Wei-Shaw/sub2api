@@ -1439,6 +1439,7 @@ export default {
       accountUpdated: '账号更新成功',
       failedToCreate: '创建账号失败',
       failedToUpdate: '更新账号失败',
+      mixedChannelWarningTitle: '混合渠道警告',
       mixedChannelWarning: '警告：分组 "{groupNameREDACTED" 中同时包含 {currentPlatformREDACTED 和 {otherPlatformREDACTED 账号。混合使用不同渠道可能导致 thinking block 签名验证问题，会自动回退到非 thinking 模式。确定要继续吗？',
       pleaseEnterAccountName: '请输入账号名称',
       pleaseEnterApiKey: '请输入 API Key',
