@@ -112,9 +112,6 @@ func (d SoftDeleteMixin) Hooks() []ent.Hook {
 					SetOp(ent.Op)
 					SetDeletedAt(time.Time)
 					WhereP(...func(*sql.Selector))
-					Client() interface {
-						Mutate(context.Context, ent.Mutation) (ent.Value, error)
-				REDACTED
 			REDACTED)
 				if !ok {
 					return nil, fmt.Errorf("unexpected mutation type %T", m)
@@ -125,7 +122,7 @@ func (d SoftDeleteMixin) Hooks() []ent.Hook {
 				mx.SetOp(ent.OpUpdate)
 				// 设置删除时间为当前时间
 				mx.SetDeletedAt(time.Now())
-				return mx.Client().Mutate(ctx, m)
+				return next.Mutate(ctx, m)
 		REDACTED)
 	REDACTED,
 REDACTED
