@@ -21,11 +21,15 @@ var (
 	ErrDashboardBackfillDisabled = errors.New("仪表盘聚合回填已禁用")
 	// ErrDashboardBackfillTooLarge 当回填跨度超过限制时返回。
 	ErrDashboardBackfillTooLarge = errors.New("回填时间跨度过大")
+	errDashboardAggregationRunning = errors.New("聚合作业正在运行")
 )
 
 // DashboardAggregationRepository 定义仪表盘预聚合仓储接口。
 type DashboardAggregationRepository interface {
 	AggregateRange(ctx context.Context, start, end time.Time) error
+	// RecomputeRange 重新计算指定时间范围内的聚合数据（包含活跃用户等派生表）。
+	// 设计目的：当 usage_logs 被批量删除/回滚后，确保聚合表可恢复一致性。
+	RecomputeRange(ctx context.Context, start, end time.Time) error
 	GetAggregationWatermark(ctx context.Context) (time.Time, error)
 	UpdateAggregationWatermark(ctx context.Context, aggregatedAt time.Time) error
 	CleanupAggregates(ctx context.Context, hourlyCutoff, dailyCutoff time.Time) error
@@ -112,6 +116,41 @@ REDACTED()
 	return nil
 REDACTED
 
+// TriggerRecomputeRange 触发指定范围的重新计算（异步）。
+// 与 TriggerBackfill 不同：
+// - 不依赖 backfill_enabled（这是内部一致性修复）
+// - 不更新 watermark（避免影响正常增量聚合游标）
+func (s *DashboardAggregationService) TriggerRecomputeRange(start, end time.Time) error {
+	if s == nil || s.repo == nil {
+		return errors.New("聚合服务未初始化")
+REDACTED
+	if !s.cfg.Enabled {
+		return errors.New("聚合服务已禁用")
+REDACTED
+	if !end.After(start) {
+		return errors.New("重新计算时间范围无效")
+REDACTED
+
+	go func() {
+		const maxRetries = 3
+		for i := 0; i < maxRetries; i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
+			err := s.recomputeRange(ctx, start, end)
+			cancel()
+			if err == nil {
+				return
+		REDACTED
+			if !errors.Is(err, errDashboardAggregationRunning) {
+				log.Printf("[DashboardAggregation] 重新计算失败: %v", err)
+				return
+		REDACTED
+			time.Sleep(5 * time.Second)
+	REDACTED
+		log.Printf("[DashboardAggregation] 重新计算放弃: 聚合作业持续占用")
+REDACTED()
+	return nil
+REDACTED
+
 func (s *DashboardAggregationService) recomputeRecentDays() {
 	days := s.cfg.RecomputeDays
 	if days <= 0 {
@@ -126,6 +165,24 @@ REDACTED
 		log.Printf("[DashboardAggregation] 启动重算失败: %v", err)
 		return
 REDACTED
+REDACTED
+
+func (s *DashboardAggregationService) recomputeRange(ctx context.Context, start, end time.Time) error {
+	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
+		return errDashboardAggregationRunning
+REDACTED
+	defer atomic.StoreInt32(&s.running, 0)
+
+	jobStart := time.Now().UTC()
+	if err := s.repo.RecomputeRange(ctx, start, end); err != nil {
+		return err
+REDACTED
+	log.Printf("[DashboardAggregation] 重新计算完成 (start=%s end=%s duration=%s)",
+		start.UTC().Format(time.RFC3339),
+		end.UTC().Format(time.RFC3339),
+		time.Since(jobStart).String(),
+	)
+	return nil
 REDACTED
 
 func (s *DashboardAggregationService) runScheduledAggregation() {
@@ -179,7 +236,7 @@ REDACTED
 
 func (s *DashboardAggregationService) backfillRange(ctx context.Context, start, end time.Time) error {
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
-		return errors.New("聚合作业正在运行")
+		return errDashboardAggregationRunning
 REDACTED
 	defer atomic.StoreInt32(&s.running, 0)
 

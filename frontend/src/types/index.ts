@@ -618,6 +618,7 @@ export interface UsageLog {
   actual_cost: number
   rate_multiplier: number
   account_rate_multiplier?: number | null
+  billing_type: number
 
   stream: boolean
   duration_ms: number
@@ -640,6 +641,33 @@ export interface UsageLog {
   account?: Account
   group?: Group
   subscription?: UserSubscription
+REDACTED
+
+export interface UsageCleanupFilters {
+  start_time: string
+  end_time: string
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  group_id?: number
+  model?: string | null
+  stream?: boolean | null
+  billing_type?: number | null
+REDACTED
+
+export interface UsageCleanupTask {
+  id: number
+  status: string
+  filters: UsageCleanupFilters
+  created_by: number
+  deleted_rows: number
+  error_message?: string | null
+  canceled_by?: number | null
+  canceled_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  created_at: string
+  updated_at: string
 REDACTED
 
 export interface RedeemCode {
@@ -865,6 +893,7 @@ export interface UsageQueryParams {
   group_id?: number
   model?: string
   stream?: boolean
+  billing_type?: number | null
   start_date?: string
   end_date?: string
 REDACTED

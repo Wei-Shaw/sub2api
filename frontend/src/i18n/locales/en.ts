@@ -1893,7 +1893,43 @@ export default {
       cacheCreationTokens: 'Cache Creation Tokens',
       cacheReadTokens: 'Cache Read Tokens',
       failedToLoad: 'Failed to load usage records',
-      ipAddress: 'IP'
+      billingType: 'Billing Type',
+      allBillingTypes: 'All Billing Types',
+      billingTypeBalance: 'Balance',
+      billingTypeSubscription: 'Subscription',
+      ipAddress: 'IP',
+      cleanup: {
+        button: 'Cleanup',
+        title: 'Cleanup Usage Records',
+        warning: 'Cleanup is irreversible and will affect historical stats.',
+        submit: 'Submit Cleanup',
+        submitting: 'Submitting...',
+        confirmTitle: 'Confirm Cleanup',
+        confirmMessage: 'Are you sure you want to submit this cleanup task? This action cannot be undone.',
+        confirmSubmit: 'Confirm Cleanup',
+        cancel: 'Cancel',
+        cancelConfirmTitle: 'Confirm Cancel',
+        cancelConfirmMessage: 'Are you sure you want to cancel this cleanup task?',
+        cancelConfirm: 'Confirm Cancel',
+        cancelSuccess: 'Cleanup task canceled',
+        cancelFailed: 'Failed to cancel cleanup task',
+        recentTasks: 'Recent Cleanup Tasks',
+        loadingTasks: 'Loading tasks...',
+        noTasks: 'No cleanup tasks yet',
+        range: 'Range',
+        deletedRows: 'Deleted',
+        missingRange: 'Please select a date range',
+        submitSuccess: 'Cleanup task created',
+        submitFailed: 'Failed to create cleanup task',
+        loadFailed: 'Failed to load cleanup tasks',
+        status: {
+          pending: 'Pending',
+          running: 'Running',
+          succeeded: 'Succeeded',
+          failed: 'Failed',
+          canceled: 'Canceled'
+        REDACTED
+      REDACTED
     REDACTED,
 
     // Ops Monitoring
