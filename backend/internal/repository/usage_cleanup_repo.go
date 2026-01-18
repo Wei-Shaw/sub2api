@@ -136,16 +136,16 @@ REDACTED
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)
-		UPDATE usage_cleanup_tasks
+		UPDATE usage_cleanup_tasks AS tasks
 		SET status = $4,
 			started_at = NOW(),
 			finished_at = NULL,
 			error_message = NULL,
 			updated_at = NOW()
 		FROM next
-		WHERE usage_cleanup_tasks.id = next.id
-		RETURNING id, status, filters, created_by, deleted_rows, error_message,
-			started_at, finished_at, created_at, updated_at
+		WHERE tasks.id = next.id
+		RETURNING tasks.id, tasks.status, tasks.filters, tasks.created_by, tasks.deleted_rows, tasks.error_message,
+			tasks.started_at, tasks.finished_at, tasks.created_at, tasks.updated_at
 	`
 	var task service.UsageCleanupTask
 	var filtersJSON []byte
