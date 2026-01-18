@@ -66,6 +66,19 @@
             </div>
           </div>
         </div>
+
+        <Pagination
+          v-if="tasksTotal > tasksPageSize"
+          class="mt-4"
+          :total="tasksTotal"
+          :page="tasksPage"
+          :page-size="tasksPageSize"
+          :page-size-options="[5]"
+          :show-page-size-selector="false"
+          :show-jump="true"
+          @update:page="handleTaskPageChange"
+          @update:pageSize="handleTaskPageSizeChange"
+        />
       </div>
     </div>
 
@@ -108,6 +121,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import { adminUsageAPI REDACTED from '@/api/admin/usage'
 import type { AdminUsageQueryParams, UsageCleanupTask, CreateUsageCleanupTaskRequest REDACTED from '@/api/admin/usage'
@@ -131,6 +145,9 @@ const localEndDate = ref('')
 
 const tasks = ref<UsageCleanupTask[]>([])
 const tasksLoading = ref(false)
+const tasksPage = ref(1)
+const tasksPageSize = ref(5)
+const tasksTotal = ref(0)
 const submitting = ref(false)
 const confirmVisible = ref(false)
 const cancelConfirmVisible = ref(false)
@@ -146,6 +163,8 @@ const resetFilters = () => {
   localEndDate.value = props.endDate
   localFilters.value.start_date = localStartDate.value
   localFilters.value.end_date = localEndDate.value
+  tasksPage.value = 1
+  tasksTotal.value = 0
 REDACTED
 
 const startPolling = () => {
@@ -219,14 +238,36 @@ const loadTasks = async () => {
   if (!props.show) return
   tasksLoading.value = true
   try {
-    const res = await adminUsageAPI.listCleanupTasks({ page: 1, page_size: 5 REDACTED)
+    const res = await adminUsageAPI.listCleanupTasks({
+      page: tasksPage.value,
+      page_size: tasksPageSize.value
+    REDACTED)
     tasks.value = res.items || []
+    tasksTotal.value = res.total || 0
+    if (res.page) {
+      tasksPage.value = res.page
+    REDACTED
+    if (res.page_size) {
+      tasksPageSize.value = res.page_size
+    REDACTED
   REDACTED catch (error) {
     console.error('Failed to load cleanup tasks:', error)
     appStore.showError(t('admin.usage.cleanup.loadFailed'))
   REDACTED finally {
     tasksLoading.value = false
   REDACTED
+REDACTED
+
+const handleTaskPageChange = (page: number) => {
+  tasksPage.value = page
+  loadTasks()
+REDACTED
+
+const handleTaskPageSizeChange = (size: number) => {
+  if (!Number.isFinite(size) || size <= 0) return
+  tasksPageSize.value = size
+  tasksPage.value = 1
+  loadTasks()
 REDACTED
 
 const openConfirm = () => {

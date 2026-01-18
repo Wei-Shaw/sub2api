@@ -567,7 +567,10 @@ export default {
     previous: '上一页',
     next: '下一页',
     perPage: '每页',
-    goToPage: '跳转到第 {pageREDACTED 页'
+    goToPage: '跳转到第 {pageREDACTED 页',
+    jumpTo: '跳转页',
+    jumpPlaceholder: '页码',
+    jumpAction: '跳转'
   REDACTED,
 
   // Errors

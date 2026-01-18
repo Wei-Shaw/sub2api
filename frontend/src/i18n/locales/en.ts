@@ -571,7 +571,10 @@ export default {
     previous: 'Previous',
     next: 'Next',
     perPage: 'Per page',
-    goToPage: 'Go to page {pageREDACTED'
+    goToPage: 'Go to page {pageREDACTED',
+    jumpTo: 'Jump to',
+    jumpPlaceholder: 'Page',
+    jumpAction: 'Go'
   REDACTED,
 
   // Errors
