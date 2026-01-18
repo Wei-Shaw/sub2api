@@ -12,10 +12,10 @@ REDACTED
 // DefaultModels is the curated Gemini model list used by the admin UI "test account" flow.
 var DefaultModels = []Model{
 	{ID: "gemini-2.0-flash", Type: "model", DisplayName: "Gemini 2.0 Flash", CreatedAt: ""REDACTED,
-	{ID: "gemini-2.5-pro", Type: "model", DisplayName: "Gemini 2.5 Pro", CreatedAt: ""REDACTED,
 	{ID: "gemini-2.5-flash", Type: "model", DisplayName: "Gemini 2.5 Flash", CreatedAt: ""REDACTED,
-	{ID: "gemini-3-pro-preview", Type: "model", DisplayName: "Gemini 3 Pro Preview", CreatedAt: ""REDACTED,
+	{ID: "gemini-2.5-pro", Type: "model", DisplayName: "Gemini 2.5 Pro", CreatedAt: ""REDACTED,
 	{ID: "gemini-3-flash-preview", Type: "model", DisplayName: "Gemini 3 Flash Preview", CreatedAt: ""REDACTED,
+	{ID: "gemini-3-pro-preview", Type: "model", DisplayName: "Gemini 3 Pro Preview", CreatedAt: ""REDACTED,
 REDACTED
 
 // DefaultTestModel is the default model to preselect in test flows.

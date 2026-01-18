@@ -531,8 +531,8 @@ REDACTED
 func normalizeModelNameForPricing(model string) string {
 	// Common Gemini/VertexAI forms:
 	// - models/gemini-2.0-flash-exp
-	// - publishers/google/models/gemini-1.5-pro
-	// - projects/.../locations/.../publishers/google/models/gemini-1.5-pro
+	// - publishers/google/models/gemini-2.5-pro
+	// - projects/.../locations/.../publishers/google/models/gemini-2.5-pro
 	model = strings.TrimSpace(model)
 	model = strings.TrimLeft(model, "/")
 	model = strings.TrimPrefix(model, "models/")
