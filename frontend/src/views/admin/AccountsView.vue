@@ -15,7 +15,40 @@
             @refresh="load"
             @sync="showSync = true"
             @create="showCreate = true"
-          />
+          >
+            <template #before>
+              <!-- Column Settings Dropdown -->
+              <div class="relative" ref="columnDropdownRef">
+                <button
+                  @click="showColumnDropdown = !showColumnDropdown"
+                  class="btn btn-secondary px-2 md:px-3"
+                  :title="t('admin.users.columnSettings')"
+                >
+                  <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                  <span class="hidden md:inline">{{ t('admin.users.columnSettings') REDACTEDREDACTED</span>
+                </button>
+                <!-- Dropdown menu -->
+                <div
+                  v-if="showColumnDropdown"
+                  class="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <div class="max-h-80 overflow-y-auto p-2">
+                    <button
+                      v-for="col in toggleableColumns"
+                      :key="col.key"
+                      @click="toggleColumn(col.key)"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <span>{{ col.label REDACTEDREDACTED</span>
+                      <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </AccountTableActions>
         </div>
       </template>
       <template #table>
@@ -34,15 +67,8 @@
           <template #cell-platform_type="{ row REDACTED">
             <PlatformTypeBadge :platform="row.platform" :type="row.type" />
           </template>
-          <template #cell-concurrency="{ row REDACTED">
-            <div class="flex items-center gap-1.5">
-              <span :class="['inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium', (row.current_concurrency || 0) >= row.concurrency ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : (row.current_concurrency || 0) > 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400']">
-                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
-                <span class="font-mono">{{ row.current_concurrency || 0 REDACTEDREDACTED</span>
-                <span class="text-gray-400 dark:text-gray-500">/</span>
-                <span class="font-mono">{{ row.concurrency REDACTEDREDACTED</span>
-              </span>
-            </div>
+          <template #cell-capacity="{ row REDACTED">
+            <AccountCapacityCell :account="row" />
           </template>
           <template #cell-status="{ row REDACTED">
             <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
@@ -60,6 +86,15 @@
           </template>
           <template #cell-usage="{ row REDACTED">
             <AccountUsageCell :account="row" />
+          </template>
+          <template #cell-proxy="{ row REDACTED">
+            <div v-if="row.proxy" class="flex items-center gap-2">
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ row.proxy.name REDACTEDREDACTED</span>
+              <span v-if="row.proxy.country_code" class="text-xs text-gray-500 dark:text-gray-400">
+                ({{ row.proxy.country_code REDACTEDREDACTED)
+              </span>
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-rate_multiplier="{ row REDACTED">
             <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
@@ -148,7 +183,9 @@ import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
+import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import type { Account, Proxy, Group REDACTED from '@/types'
 
@@ -177,17 +214,59 @@ const statsAcc = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:numberREDACTED|nullREDACTED>({ show: false, acc: null, pos: null REDACTED)
 
+// Column settings
+const showColumnDropdown = ref(false)
+const columnDropdownRef = ref<HTMLElement | null>(null)
+const hiddenColumns = reactive<Set<string>>(new Set())
+const DEFAULT_HIDDEN_COLUMNS = ['proxy', 'notes', 'priority', 'rate_multiplier']
+const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
+
+const loadSavedColumns = () => {
+  try {
+    const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved) as string[]
+      parsed.forEach(key => hiddenColumns.add(key))
+    REDACTED else {
+      DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+    REDACTED
+  REDACTED catch (e) {
+    console.error('Failed to load saved columns:', e)
+    DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+  REDACTED
+REDACTED
+
+const saveColumnsToStorage = () => {
+  try {
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+  REDACTED catch (e) {
+    console.error('Failed to save columns:', e)
+  REDACTED
+REDACTED
+
+const toggleColumn = (key: string) => {
+  if (hiddenColumns.has(key)) {
+    hiddenColumns.delete(key)
+  REDACTED else {
+    hiddenColumns.add(key)
+  REDACTED
+  saveColumnsToStorage()
+REDACTED
+
+const isColumnVisible = (key: string) => !hiddenColumns.has(key)
+
 const { items: accounts, loading, params, pagination, load, reload, debouncedReload, handlePageChange, handlePageSizeChange REDACTED = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: { platform: '', type: '', status: '', search: '' REDACTED
 REDACTED)
 
-const cols = computed(() => {
+// All available columns
+const allColumns = computed(() => {
   const c = [
     { key: 'select', label: '', sortable: false REDACTED,
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true REDACTED,
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false REDACTED,
-    { key: 'concurrency', label: t('admin.accounts.columns.concurrencyStatus'), sortable: false REDACTED,
+    { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false REDACTED,
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true REDACTED,
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true REDACTED,
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false REDACTED
@@ -195,17 +274,30 @@ const cols = computed(() => {
   if (!authStore.isSimpleMode) {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false REDACTED)
   REDACTED
-    c.push(
-      { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
-      { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
-      { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true REDACTED,
-      { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
+  c.push(
+    { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
+    { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false REDACTED,
+    { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
+    { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true REDACTED,
+    { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true REDACTED,
     { key: 'notes', label: t('admin.accounts.columns.notes'), sortable: false REDACTED,
     { key: 'actions', label: t('admin.accounts.columns.actions'), sortable: false REDACTED
   )
   return c
 REDACTED)
+
+// Columns that can be toggled (exclude select, name, and actions)
+const toggleableColumns = computed(() =>
+  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'name' && col.key !== 'actions')
+)
+
+// Filtered columns based on visibility
+const cols = computed(() =>
+  allColumns.value.filter(col =>
+    col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
+  )
+)
 
 const handleEdit = (a: Account) => { edAcc.value = a; showEdit.value = true REDACTED
 const openMenu = (a: Account, e: MouseEvent) => {
@@ -409,12 +501,21 @@ const isExpired = (value: number | null) => {
   return value * 1000 <= Date.now()
 REDACTED
 
-// 滚动时关闭菜单
+// 滚动时关闭操作菜单（不关闭列设置下拉菜单）
 const handleScroll = () => {
   menu.show = false
 REDACTED
 
+// 点击外部关闭列设置下拉菜单
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
+    showColumnDropdown.value = false
+  REDACTED
+REDACTED
+
 onMounted(async () => {
+  loadSavedColumns()
   load()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
@@ -424,9 +525,11 @@ onMounted(async () => {
     console.error('Failed to load proxies/groups:', error)
   REDACTED
   window.addEventListener('scroll', handleScroll, true)
+  document.addEventListener('click', handleClickOutside)
 REDACTED)
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll, true)
+  document.removeEventListener('click', handleClickOutside)
 REDACTED)
 </script>

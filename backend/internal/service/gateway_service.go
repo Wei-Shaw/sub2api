@@ -176,6 +176,7 @@ type GatewayService struct {
 	deferredService     *DeferredService
 	concurrencyService  *ConcurrencyService
 	claudeTokenProvider *ClaudeTokenProvider
+	sessionLimitCache   SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -196,6 +197,7 @@ func NewGatewayService(
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
 	claudeTokenProvider *ClaudeTokenProvider,
+	sessionLimitCache SessionLimitCache,
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
@@ -214,6 +216,7 @@ func NewGatewayService(
 		httpUpstream:        httpUpstream,
 		deferredService:     deferredService,
 		claudeTokenProvider: claudeTokenProvider,
+		sessionLimitCache:   sessionLimitCache,
 REDACTED
 REDACTED
 
@@ -407,8 +410,12 @@ REDACTED
 REDACTED
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
-func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*AccountSelectionResult, error) {
+// metadataUserID: 原始 metadata.user_id 字段（用于提取会话 UUID 进行会话数量限制）
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, metadataUserID string) (*AccountSelectionResult, error) {
 	cfg := s.schedulingConfig()
+	// 提取会话 UUID（用于会话数量限制）
+	sessionUUID := extractSessionUUID(metadataUserID)
+
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); err == nil {
@@ -527,7 +534,7 @@ REDACTED
 	if len(routingAccountIDs) > 0 && s.concurrencyService != nil {
 		// 1. 过滤出路由列表中可调度的账号
 		var routingCandidates []*Account
-		var filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping int
+		var filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping, filteredWindowCost int
 		for _, routingAccountID := range routingAccountIDs {
 			if isExcluded(routingAccountID) {
 				filteredExcluded++
@@ -554,13 +561,18 @@ REDACTED
 				filteredModelMapping++
 				continue
 		REDACTED
+			// 窗口费用检查（非粘性会话路径）
+			if !s.isAccountSchedulableForWindowCost(ctx, account, false) {
+				filteredWindowCost++
+				continue
+		REDACTED
 			routingCandidates = append(routingCandidates, account)
 	REDACTED
 
 		if s.debugModelRoutingEnabled() {
-			log.Printf("[ModelRoutingDebug] routed candidates: group_id=%v model=%s routed=%d candidates=%d filtered(excluded=%d missing=%d unsched=%d platform=%d model_scope=%d model_mapping=%d)",
+			log.Printf("[ModelRoutingDebug] routed candidates: group_id=%v model=%s routed=%d candidates=%d filtered(excluded=%d missing=%d unsched=%d platform=%d model_scope=%d model_mapping=%d window_cost=%d)",
 				derefGroupID(groupID), requestedModel, len(routingAccountIDs), len(routingCandidates),
-				filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping)
+				filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping, filteredWindowCost)
 	REDACTED
 
 		if len(routingCandidates) > 0 {
@@ -573,18 +585,25 @@ REDACTED
 						if stickyAccount.IsSchedulable() &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							stickyAccount.IsSchedulableForModel(requestedModel) &&
-							(requestedModel == "" || s.isModelSupportedByAccount(stickyAccount, requestedModel)) {
+							(requestedModel == "" || s.isModelSupportedByAccount(stickyAccount, requestedModel)) &&
+							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) { // 粘性会话窗口费用检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
-								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
-								if s.debugModelRoutingEnabled() {
-									log.Printf("[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
+								// 会话数量限制检查
+								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionUUID) {
+									result.ReleaseFunc() // 释放槽位
+									// 继续到负载感知选择
+							REDACTED else {
+									_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+									if s.debugModelRoutingEnabled() {
+										log.Printf("[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
+								REDACTED
+									return &AccountSelectionResult{
+										Account:     stickyAccount,
+										Acquired:    true,
+										ReleaseFunc: result.ReleaseFunc,
+								REDACTED, nil
 							REDACTED
-								return &AccountSelectionResult{
-									Account:     stickyAccount,
-									Acquired:    true,
-									ReleaseFunc: result.ReleaseFunc,
-							REDACTED, nil
 						REDACTED
 
 							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
@@ -657,6 +676,11 @@ REDACTED
 				for _, item := range routingAvailable {
 					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
 					if err == nil && result.Acquired {
+						// 会话数量限制检查
+						if !s.checkAndRegisterSession(ctx, item.account, sessionUUID) {
+							result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+							continue
+					REDACTED
 						if sessionHash != "" && s.cache != nil {
 							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
 					REDACTED
@@ -699,15 +723,21 @@ REDACTED
 			if ok && s.isAccountInGroup(account, groupID) &&
 				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 				account.IsSchedulableForModel(requestedModel) &&
-				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) &&
+				s.isAccountSchedulableForWindowCost(ctx, account, true) { // 粘性会话窗口费用检查
 				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 				if err == nil && result.Acquired {
-					_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
-					return &AccountSelectionResult{
-						Account:     account,
-						Acquired:    true,
-						ReleaseFunc: result.ReleaseFunc,
-				REDACTED, nil
+					// 会话数量限制检查
+					if !s.checkAndRegisterSession(ctx, account, sessionUUID) {
+						result.ReleaseFunc() // 释放槽位，继续到 Layer 2
+				REDACTED else {
+						_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+						return &AccountSelectionResult{
+							Account:     account,
+							Acquired:    true,
+							ReleaseFunc: result.ReleaseFunc,
+					REDACTED, nil
+				REDACTED
 			REDACTED
 
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
@@ -748,6 +778,10 @@ REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
 			continue
 	REDACTED
+		// 窗口费用检查（非粘性会话路径）
+		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+			continue
+	REDACTED
 		candidates = append(candidates, acc)
 REDACTED
 
@@ -765,7 +799,7 @@ REDACTED
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
+		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth, sessionUUID); ok {
 			return result, nil
 	REDACTED
 REDACTED else {
@@ -814,6 +848,11 @@ REDACTED else {
 			for _, item := range available {
 				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
 				if err == nil && result.Acquired {
+					// 会话数量限制检查
+					if !s.checkAndRegisterSession(ctx, item.account, sessionUUID) {
+						result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+						continue
+				REDACTED
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
 				REDACTED
@@ -843,13 +882,18 @@ REDACTED
 	return nil, errors.New("no available accounts")
 REDACTED
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool, sessionUUID string) (*AccountSelectionResult, bool) {
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
 	for _, acc := range ordered {
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
 		if err == nil && result.Acquired {
+			// 会话数量限制检查
+			if !s.checkAndRegisterSession(ctx, acc, sessionUUID) {
+				result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+				continue
+		REDACTED
 			if sessionHash != "" && s.cache != nil {
 				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 		REDACTED
@@ -1079,6 +1123,107 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {REDACTEDREDACTED, nil
 REDACTED
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+REDACTED
+
+// isAccountSchedulableForWindowCost 检查账号是否可根据窗口费用进行调度
+// 仅适用于 Anthropic OAuth/SetupToken 账号
+// 返回 true 表示可调度，false 表示不可调度
+func (s *GatewayService) isAccountSchedulableForWindowCost(ctx context.Context, account *Account, isSticky bool) bool {
+	// 只检查 Anthropic OAuth/SetupToken 账号
+	if !account.IsAnthropicOAuthOrSetupToken() {
+		return true
+REDACTED
+
+	limit := account.GetWindowCostLimit()
+	if limit <= 0 {
+		return true // 未启用窗口费用限制
+REDACTED
+
+	// 尝试从缓存获取窗口费用
+	var currentCost float64
+	if s.sessionLimitCache != nil {
+		if cost, hit, err := s.sessionLimitCache.GetWindowCost(ctx, account.ID); err == nil && hit {
+			currentCost = cost
+			goto checkSchedulability
+	REDACTED
+REDACTED
+
+	// 缓存未命中，从数据库查询
+	{
+		var startTime time.Time
+		if account.SessionWindowStart != nil {
+			startTime = *account.SessionWindowStart
+	REDACTED else {
+			startTime = time.Now().Add(-5 * time.Hour)
+	REDACTED
+
+		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
+		if err != nil {
+			// 失败开放：查询失败时允许调度
+			return true
+	REDACTED
+
+		// 使用标准费用（不含账号倍率）
+		currentCost = stats.StandardCost
+
+		// 设置缓存（忽略错误）
+		if s.sessionLimitCache != nil {
+			_ = s.sessionLimitCache.SetWindowCost(ctx, account.ID, currentCost)
+	REDACTED
+REDACTED
+
+checkSchedulability:
+	schedulability := account.CheckWindowCostSchedulability(currentCost)
+
+	switch schedulability {
+	case WindowCostSchedulable:
+		return true
+	case WindowCostStickyOnly:
+		return isSticky
+	case WindowCostNotSchedulable:
+		return false
+REDACTED
+	return true
+REDACTED
+
+// checkAndRegisterSession 检查并注册会话，用于会话数量限制
+// 仅适用于 Anthropic OAuth/SetupToken 账号
+// 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
+func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionUUID string) bool {
+	// 只检查 Anthropic OAuth/SetupToken 账号
+	if !account.IsAnthropicOAuthOrSetupToken() {
+		return true
+REDACTED
+
+	maxSessions := account.GetMaxSessions()
+	if maxSessions <= 0 || sessionUUID == "" {
+		return true // 未启用会话限制或无会话ID
+REDACTED
+
+	if s.sessionLimitCache == nil {
+		return true // 缓存不可用时允许通过
+REDACTED
+
+	idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
+
+	allowed, err := s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionUUID, maxSessions, idleTimeout)
+	if err != nil {
+		// 失败开放：缓存错误时允许通过
+		return true
+REDACTED
+	return allowed
+REDACTED
+
+// extractSessionUUID 从 metadata.user_id 中提取会话 UUID
+// 格式: user_{64位hexREDACTED_account__session_{uuidREDACTED
+func extractSessionUUID(metadataUserID string) string {
+	if metadataUserID == "" {
+		return ""
+REDACTED
+	if match := sessionIDRegex.FindStringSubmatch(metadataUserID); len(match) > 1 {
+		return match[1]
+REDACTED
+	return ""
 REDACTED
 
 func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
