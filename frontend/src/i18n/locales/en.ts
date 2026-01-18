@@ -673,6 +673,7 @@ export default {
       updating: 'Updating...',
       columns: {
         user: 'User',
+        email: 'Email',
         username: 'Username',
         notes: 'Notes',
         role: 'Role',
@@ -1093,6 +1094,7 @@ export default {
         todayStats: 'Today Stats',
         groups: 'Groups',
         usageWindows: 'Usage Windows',
+        proxy: 'Proxy',
         lastUsed: 'Last Used',
         expiresAt: 'Expires At',
         actions: 'Actions'
