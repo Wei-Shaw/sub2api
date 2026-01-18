@@ -243,7 +243,7 @@
           />
           <p class="input-hint">{{ t('admin.groups.platformHint') REDACTEDREDACTED</p>
         </div>
-        <div v-if="createForm.subscription_type !== 'subscription'">
+        <div>
           <label class="input-label">{{ t('admin.groups.form.rateMultiplier') REDACTEDREDACTED</label>
           <input
             v-model.number="createForm.rate_multiplier"
@@ -680,7 +680,7 @@
           />
           <p class="input-hint">{{ t('admin.groups.platformNotEditable') REDACTEDREDACTED</p>
         </div>
-        <div v-if="editForm.subscription_type !== 'subscription'">
+        <div>
           <label class="input-label">{{ t('admin.groups.form.rateMultiplier') REDACTEDREDACTED</label>
           <input
             v-model.number="editForm.rate_multiplier"
@@ -1605,12 +1605,11 @@ const confirmDelete = async () => {
   REDACTED
 REDACTED
 
-// 监听 subscription_type 变化，订阅模式时重置 rate_multiplier 为 1，is_exclusive 为 true
+// 监听 subscription_type 变化，订阅模式时 is_exclusive 默认为 true
 watch(
   () => createForm.subscription_type,
   (newVal) => {
     if (newVal === 'subscription') {
-      createForm.rate_multiplier = 1.0
       createForm.is_exclusive = true
     REDACTED
   REDACTED
