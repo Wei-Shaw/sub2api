@@ -3536,7 +3536,7 @@ REDACTED
 			eventName = eventType
 	REDACTED
 
-		if needModelReplace && eventType == "message_start" {
+		if needModelReplace {
 			if msg, ok := event["message"].(map[string]any); ok {
 				if model, ok := msg["model"].(string); ok && model == mappedModel {
 					msg["model"] = originalModel
@@ -3701,45 +3701,6 @@ REDACTED
 
 REDACTED
 
-// replaceModelInSSELine 替换SSE数据行中的model字段
-func (s *GatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
-	if !sseDataRe.MatchString(line) {
-		return line
-REDACTED
-	data := sseDataRe.ReplaceAllString(line, "")
-	if data == "" || data == "[DONE]" {
-		return line
-REDACTED
-
-	var event map[string]any
-	if err := json.Unmarshal([]byte(data), &event); err != nil {
-		return line
-REDACTED
-
-	// 只替换 message_start 事件中的 message.model
-	if event["type"] != "message_start" {
-		return line
-REDACTED
-
-	msg, ok := event["message"].(map[string]any)
-	if !ok {
-		return line
-REDACTED
-
-	model, ok := msg["model"].(string)
-	if !ok || model != fromModel {
-		return line
-REDACTED
-
-	msg["model"] = toModel
-	newData, err := json.Marshal(event)
-	if err != nil {
-		return line
-REDACTED
-
-	return "data: " + string(newData)
-REDACTED
-
 func rewriteParamKeysInValue(value any, cache map[string]string) (any, bool) {
 	switch v := value.(type) {
 	case map[string]any:
@@ -3858,22 +3819,6 @@ REDACTED)
 REDACTED
 
 	return output
-REDACTED
-
-func (s *GatewayService) replaceToolNamesInSSELine(line string, toolNameMap map[string]string) string {
-	if !sseDataRe.MatchString(line) {
-		return line
-REDACTED
-	data := sseDataRe.ReplaceAllString(line, "")
-	if data == "" || data == "[DONE]" {
-		return line
-REDACTED
-
-	replaced := replaceToolNamesInText(data, toolNameMap)
-	if replaced == data {
-		return line
-REDACTED
-	return "data: " + replaced
 REDACTED
 
 func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
