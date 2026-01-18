@@ -576,6 +576,25 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 REDACTED
 
+// IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
+func (a *Account) IsTLSFingerprintEnabled() bool {
+	// 仅支持 Anthropic OAuth/SetupToken 账号
+	if !a.IsAnthropicOAuthOrSetupToken() {
+		return false
+REDACTED
+	if a.Extra == nil {
+		return false
+REDACTED
+	if v, ok := a.Extra["enable_tls_fingerprint"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
 // GetWindowCostLimit 获取 5h 窗口费用阈值（美元）
 // 返回 0 表示未启用
 func (a *Account) GetWindowCostLimit() float64 {

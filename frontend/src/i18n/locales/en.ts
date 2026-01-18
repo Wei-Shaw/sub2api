@@ -1285,6 +1285,10 @@ export default {
           idleTimeout: 'Idle Timeout',
           idleTimeoutPlaceholder: '5',
           idleTimeoutHint: 'Sessions will be released after idle timeout'
+        REDACTED,
+        tlsFingerprint: {
+          label: 'TLS Fingerprint Simulation',
+          hint: 'Simulate Node.js/Claude Code client TLS fingerprint'
         REDACTED
       REDACTED,
       expired: 'Expired',

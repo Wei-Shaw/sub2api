@@ -112,6 +112,10 @@ type Account struct {
 	MaxSessions           *int `json:"max_sessions,omitempty"`
 	SessionIdleTimeoutMin *int `json:"session_idle_timeout_minutes,omitempty"`
 
+	// TLS指纹伪装（仅 Anthropic OAuth/SetupToken 账号有效）
+	// 从 extra 字段提取，方便前端显示和编辑
+	EnableTLSFingerprint *bool `json:"enable_tls_fingerprint,omitempty"`
+
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 

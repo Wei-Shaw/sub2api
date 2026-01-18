@@ -259,6 +259,33 @@ type GatewayConfig struct {
 
 	// Scheduling: 账号调度相关配置
 	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
+
+	// TLSFingerprint: TLS指纹伪装配置
+	TLSFingerprint TLSFingerprintConfig `mapstructure:"tls_fingerprint"`
+REDACTED
+
+// TLSFingerprintConfig TLS指纹伪装配置
+// 用于模拟 Claude CLI (Node.js) 的 TLS 握手特征，避免被识别为非官方客户端
+type TLSFingerprintConfig struct {
+	// Enabled: 是否全局启用TLS指纹功能
+	Enabled bool `mapstructure:"enabled"`
+	// Profiles: 预定义的TLS指纹配置模板
+	// key 为模板名称，如 "claude_cli_v2", "chrome_120" 等
+	Profiles map[string]TLSProfileConfig `mapstructure:"profiles"`
+REDACTED
+
+// TLSProfileConfig 单个TLS指纹模板的配置
+type TLSProfileConfig struct {
+	// Name: 模板显示名称
+	Name string `mapstructure:"name"`
+	// EnableGREASE: 是否启用GREASE扩展（Chrome使用，Node.js不使用）
+	EnableGREASE bool `mapstructure:"enable_grease"`
+	// CipherSuites: TLS加密套件列表（空则使用内置默认值）
+	CipherSuites []uint16 `mapstructure:"cipher_suites"`
+	// Curves: 椭圆曲线列表（空则使用内置默认值）
+	Curves []uint16 `mapstructure:"curves"`
+	// PointFormats: 点格式列表（空则使用内置默认值）
+	PointFormats []uint8 `mapstructure:"point_formats"`
 REDACTED
 
 // GatewaySchedulingConfig accounts scheduling configuration.
@@ -787,6 +814,8 @@ REDACTED)
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
+	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
+	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh

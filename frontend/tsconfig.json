@@ -21,5 +21,6 @@
     "types": ["vite/client"]
   REDACTED,
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "exclude": ["src/**/__tests__/**", "src/**/*.spec.ts", "src/**/*.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" REDACTED]
 REDACTED

@@ -210,6 +210,19 @@ gateway:
     outbox_backlog_rebuild_rows: 10000
     # 全量重建周期（秒），0 表示禁用
     full_rebuild_interval_seconds: 300
+  # TLS fingerprint simulation / TLS 指纹伪装
+  # Default profile "claude_cli_v2" simulates Node.js 20.x
+  # 默认模板 "claude_cli_v2" 模拟 Node.js 20.x 指纹
+  tls_fingerprint:
+    enabled: true
+    # profiles:
+    #   profile_1:
+    #     name: "Custom Profile 1"
+    #   profile_2:
+    #     name: "Custom Profile 2"
+    #     cipher_suites: [4866, 4867, 4865, 49199, 49195, 49200, 49196]
+    #     curves: [29, 23, 24]
+    #     point_formats: [0]
 
 # =============================================================================
 # API Key Auth Cache Configuration
