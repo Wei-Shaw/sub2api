@@ -219,7 +219,7 @@ const loadTasks = async () => {
   if (!props.show) return
   tasksLoading.value = true
   try {
-    const res = await adminUsageAPI.listCleanupTasks({ page: 1, page_size: 10 REDACTED)
+    const res = await adminUsageAPI.listCleanupTasks({ page: 1, page_size: 5 REDACTED)
     tasks.value = res.items || []
   REDACTED catch (error) {
     console.error('Failed to load cleanup tasks:', error)

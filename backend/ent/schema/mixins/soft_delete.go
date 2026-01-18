@@ -12,7 +12,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/mixin"
-	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/intercept"
 )
 
@@ -113,7 +112,9 @@ func (d SoftDeleteMixin) Hooks() []ent.Hook {
 					SetOp(ent.Op)
 					SetDeletedAt(time.Time)
 					WhereP(...func(*sql.Selector))
-					Client() *dbent.Client
+					Client() interface {
+						Mutate(context.Context, ent.Mutation) (ent.Value, error)
+				REDACTED
 			REDACTED)
 				if !ok {
 					return nil, fmt.Errorf("unexpected mutation type %T", m)

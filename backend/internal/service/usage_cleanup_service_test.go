@@ -46,8 +46,45 @@ type cleanupRepoStub struct {
 	markSucceeded []cleanupMarkCall
 	markFailed    []cleanupMarkCall
 	statusByID    map[int64]string
+	statusErr     error
 	progressCalls []cleanupMarkCall
+	updateErr     error
 	cancelCalls   []int64
+	cancelErr     error
+	cancelResult  *bool
+	markFailedErr error
+REDACTED
+
+type dashboardRepoStub struct {
+	recomputeErr error
+REDACTED
+
+func (s *dashboardRepoStub) AggregateRange(ctx context.Context, start, end time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardRepoStub) RecomputeRange(ctx context.Context, start, end time.Time) error {
+	return s.recomputeErr
+REDACTED
+
+func (s *dashboardRepoStub) GetAggregationWatermark(ctx context.Context) (time.Time, error) {
+	return time.Time{REDACTED, nil
+REDACTED
+
+func (s *dashboardRepoStub) UpdateAggregationWatermark(ctx context.Context, aggregatedAt time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardRepoStub) CleanupAggregates(ctx context.Context, hourlyCutoff, dailyCutoff time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardRepoStub) CleanupUsageLogs(ctx context.Context, cutoff time.Time) error {
+	return nil
+REDACTED
+
+func (s *dashboardRepoStub) EnsureUsageLogsPartitions(ctx context.Context, now time.Time) error {
+	return nil
 REDACTED
 
 func (s *cleanupRepoStub) CreateTask(ctx context.Context, task *UsageCleanupTask) error {
@@ -100,6 +137,9 @@ REDACTED
 func (s *cleanupRepoStub) GetTaskStatus(ctx context.Context, taskID int64) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.statusErr != nil {
+		return "", s.statusErr
+REDACTED
 	if s.statusByID == nil {
 		return "", sql.ErrNoRows
 REDACTED
@@ -114,6 +154,9 @@ func (s *cleanupRepoStub) UpdateTaskProgress(ctx context.Context, taskID int64, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.progressCalls = append(s.progressCalls, cleanupMarkCall{taskID: taskID, deletedRows: deletedRowsREDACTED)
+	if s.updateErr != nil {
+		return s.updateErr
+REDACTED
 	return nil
 REDACTED
 
@@ -121,6 +164,19 @@ func (s *cleanupRepoStub) CancelTask(ctx context.Context, taskID int64, canceled
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cancelCalls = append(s.cancelCalls, taskID)
+	if s.cancelErr != nil {
+		return false, s.cancelErr
+REDACTED
+	if s.cancelResult != nil {
+		ok := *s.cancelResult
+		if ok {
+			if s.statusByID == nil {
+				s.statusByID = map[int64]string{REDACTED
+		REDACTED
+			s.statusByID[taskID] = UsageCleanupStatusCanceled
+	REDACTED
+		return ok, nil
+REDACTED
 	if s.statusByID == nil {
 		s.statusByID = map[int64]string{REDACTED
 REDACTED
@@ -151,6 +207,9 @@ func (s *cleanupRepoStub) MarkTaskFailed(ctx context.Context, taskID int64, dele
 		s.statusByID = map[int64]string{REDACTED
 REDACTED
 	s.statusByID[taskID] = UsageCleanupStatusFailed
+	if s.markFailedErr != nil {
+		return s.markFailedErr
+REDACTED
 	return nil
 REDACTED
 
@@ -266,9 +325,11 @@ REDACTED
 REDACTED
 
 func TestUsageCleanupServiceRunOnceSuccess(t *testing.T) {
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Hour)
 	repo := &cleanupRepoStub{
 		claimQueue: []*UsageCleanupTask{
-			{ID: 5, Filters: UsageCleanupFilters{StartTime: time.Now(), EndTime: time.Now().Add(2 * time.Hour)REDACTEDREDACTED,
+			{ID: 5, Filters: UsageCleanupFilters{StartTime: start, EndTime: endREDACTEDREDACTED,
 	REDACTED,
 		deleteQueue: []cleanupDeleteResponse{
 			{deleted: 2REDACTED,
@@ -288,6 +349,9 @@ REDACTED
 	require.Empty(t, repo.markFailed)
 	require.Equal(t, int64(5), repo.markSucceeded[0].taskID)
 	require.Equal(t, int64(5), repo.markSucceeded[0].deletedRows)
+	require.Equal(t, 2, repo.deleteCalls[0].limit)
+	require.Equal(t, start, repo.deleteCalls[0].filters.StartTime)
+	require.Equal(t, end, repo.deleteCalls[0].filters.EndTime)
 REDACTED
 
 func TestUsageCleanupServiceRunOnceClaimError(t *testing.T) {
@@ -334,6 +398,293 @@ REDACTED
 	require.Len(t, repo.markFailed, 1)
 	require.Equal(t, int64(11), repo.markFailed[0].taskID)
 	require.Equal(t, 500, len(repo.markFailed[0].errMsg))
+REDACTED
+
+func TestUsageCleanupServiceExecuteTaskProgressError(t *testing.T) {
+	repo := &cleanupRepoStub{
+		deleteQueue: []cleanupDeleteResponse{
+			{deleted: 2REDACTED,
+			{deleted: 0REDACTED,
+	REDACTED,
+		updateErr: errors.New("update failed"),
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2REDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+	task := &UsageCleanupTask{
+		ID: 8,
+		Filters: UsageCleanupFilters{
+			StartTime: time.Now().UTC(),
+			EndTime:   time.Now().UTC().Add(time.Hour),
+	REDACTED,
+REDACTED
+
+	svc.executeTask(context.Background(), task)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Len(t, repo.markSucceeded, 1)
+	require.Empty(t, repo.markFailed)
+	require.Len(t, repo.progressCalls, 1)
+REDACTED
+
+func TestUsageCleanupServiceExecuteTaskDeleteCanceled(t *testing.T) {
+	repo := &cleanupRepoStub{
+		deleteQueue: []cleanupDeleteResponse{
+			{err: context.CanceledREDACTED,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2REDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+	task := &UsageCleanupTask{
+		ID: 12,
+		Filters: UsageCleanupFilters{
+			StartTime: time.Now().UTC(),
+			EndTime:   time.Now().UTC().Add(time.Hour),
+	REDACTED,
+REDACTED
+
+	svc.executeTask(context.Background(), task)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Empty(t, repo.markSucceeded)
+	require.Empty(t, repo.markFailed)
+REDACTED
+
+func TestUsageCleanupServiceExecuteTaskContextCanceled(t *testing.T) {
+	repo := &cleanupRepoStub{REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2REDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+	task := &UsageCleanupTask{
+		ID: 9,
+		Filters: UsageCleanupFilters{
+			StartTime: time.Now().UTC(),
+			EndTime:   time.Now().UTC().Add(time.Hour),
+	REDACTED,
+REDACTED
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	svc.executeTask(ctx, task)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Empty(t, repo.markSucceeded)
+	require.Empty(t, repo.markFailed)
+	require.Empty(t, repo.deleteCalls)
+REDACTED
+
+func TestUsageCleanupServiceExecuteTaskMarkFailedUpdateError(t *testing.T) {
+	repo := &cleanupRepoStub{
+		deleteQueue: []cleanupDeleteResponse{
+			{err: errors.New("boom")REDACTED,
+	REDACTED,
+		markFailedErr: errors.New("update failed"),
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2REDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+	task := &UsageCleanupTask{
+		ID: 13,
+		Filters: UsageCleanupFilters{
+			StartTime: time.Now().UTC(),
+			EndTime:   time.Now().UTC().Add(time.Hour),
+	REDACTED,
+REDACTED
+
+	svc.executeTask(context.Background(), task)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Len(t, repo.markFailed, 1)
+	require.Equal(t, int64(13), repo.markFailed[0].taskID)
+REDACTED
+
+func TestUsageCleanupServiceExecuteTaskDashboardRecomputeError(t *testing.T) {
+	repo := &cleanupRepoStub{
+		deleteQueue: []cleanupDeleteResponse{
+			{deleted: 0REDACTED,
+	REDACTED,
+REDACTED
+	dashboard := NewDashboardAggregationService(&dashboardRepoStub{REDACTED, nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: falseREDACTED,
+REDACTED)
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2REDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, dashboard, cfg)
+	task := &UsageCleanupTask{
+		ID: 14,
+		Filters: UsageCleanupFilters{
+			StartTime: time.Now().UTC(),
+			EndTime:   time.Now().UTC().Add(time.Hour),
+	REDACTED,
+REDACTED
+
+	svc.executeTask(context.Background(), task)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Len(t, repo.markSucceeded, 1)
+REDACTED
+
+func TestUsageCleanupServiceExecuteTaskDashboardRecomputeSuccess(t *testing.T) {
+	repo := &cleanupRepoStub{
+		deleteQueue: []cleanupDeleteResponse{
+			{deleted: 0REDACTED,
+	REDACTED,
+REDACTED
+	dashboard := NewDashboardAggregationService(&dashboardRepoStub{REDACTED, nil, &config.Config{
+		DashboardAgg: config.DashboardAggregationConfig{Enabled: trueREDACTED,
+REDACTED)
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2REDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, dashboard, cfg)
+	task := &UsageCleanupTask{
+		ID: 15,
+		Filters: UsageCleanupFilters{
+			StartTime: time.Now().UTC(),
+			EndTime:   time.Now().UTC().Add(time.Hour),
+	REDACTED,
+REDACTED
+
+	svc.executeTask(context.Background(), task)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Len(t, repo.markSucceeded, 1)
+REDACTED
+
+func TestUsageCleanupServiceExecuteTaskCanceled(t *testing.T) {
+	repo := &cleanupRepoStub{
+		statusByID: map[int64]string{
+			3: UsageCleanupStatusCanceled,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: true, BatchSize: 2REDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+	task := &UsageCleanupTask{
+		ID: 3,
+		Filters: UsageCleanupFilters{
+			StartTime: time.Now().UTC(),
+			EndTime:   time.Now().UTC().Add(time.Hour),
+	REDACTED,
+REDACTED
+
+	svc.executeTask(context.Background(), task)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Empty(t, repo.deleteCalls)
+	require.Empty(t, repo.markSucceeded)
+	require.Empty(t, repo.markFailed)
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskSuccess(t *testing.T) {
+	repo := &cleanupRepoStub{
+		statusByID: map[int64]string{
+			5: UsageCleanupStatusPending,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 5, 9)
+REDACTED
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Equal(t, UsageCleanupStatusCanceled, repo.statusByID[5])
+	require.Len(t, repo.cancelCalls, 1)
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskDisabled(t *testing.T) {
+	repo := &cleanupRepoStub{REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: falseREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 1, 2)
+REDACTED
+	require.Equal(t, http.StatusServiceUnavailable, infraerrors.Code(err))
+	require.Equal(t, "USAGE_CLEANUP_DISABLED", infraerrors.Reason(err))
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskNotFound(t *testing.T) {
+	repo := &cleanupRepoStub{REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 999, 1)
+REDACTED
+	require.Equal(t, http.StatusNotFound, infraerrors.Code(err))
+	require.Equal(t, "USAGE_CLEANUP_TASK_NOT_FOUND", infraerrors.Reason(err))
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskStatusError(t *testing.T) {
+	repo := &cleanupRepoStub{statusErr: errors.New("status broken")REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 7, 1)
+REDACTED
+	require.Contains(t, err.Error(), "status broken")
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskConflict(t *testing.T) {
+	repo := &cleanupRepoStub{
+		statusByID: map[int64]string{
+			7: UsageCleanupStatusSucceeded,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 7, 1)
+REDACTED
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+	require.Equal(t, "USAGE_CLEANUP_CANCEL_CONFLICT", infraerrors.Reason(err))
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskRepoConflict(t *testing.T) {
+	shouldCancel := false
+	repo := &cleanupRepoStub{
+		statusByID: map[int64]string{
+			7: UsageCleanupStatusPending,
+	REDACTED,
+		cancelResult: &shouldCancel,
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 7, 1)
+REDACTED
+	require.Equal(t, http.StatusConflict, infraerrors.Code(err))
+	require.Equal(t, "USAGE_CLEANUP_CANCEL_CONFLICT", infraerrors.Reason(err))
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskRepoError(t *testing.T) {
+	repo := &cleanupRepoStub{
+		statusByID: map[int64]string{
+			7: UsageCleanupStatusPending,
+	REDACTED,
+		cancelErr: errors.New("cancel failed"),
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 7, 1)
+REDACTED
+	require.Contains(t, err.Error(), "cancel failed")
+REDACTED
+
+func TestUsageCleanupServiceCancelTaskInvalidCanceller(t *testing.T) {
+	repo := &cleanupRepoStub{
+		statusByID: map[int64]string{
+			7: UsageCleanupStatusRunning,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 7, 0)
+REDACTED
+	require.Equal(t, "USAGE_CLEANUP_INVALID_CANCELLER", infraerrors.Reason(err))
 REDACTED
 
 func TestUsageCleanupServiceListTasks(t *testing.T) {
@@ -417,4 +768,48 @@ REDACTED
 	require.Nil(t, filters.AccountID)
 	require.Nil(t, filters.GroupID)
 	require.Nil(t, filters.Model)
+REDACTED
+
+func TestDescribeUsageCleanupFiltersAllFields(t *testing.T) {
+	start := time.Date(2024, 2, 1, 10, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Hour)
+	userID := int64(1)
+	apiKeyID := int64(2)
+	accountID := int64(3)
+	groupID := int64(4)
+	model := " gpt-4 "
+	stream := true
+	billingType := int8(2)
+	filters := UsageCleanupFilters{
+		StartTime:   start,
+		EndTime:     end,
+		UserID:      &userID,
+		APIKeyID:    &apiKeyID,
+		AccountID:   &accountID,
+		GroupID:     &groupID,
+		Model:       &model,
+		Stream:      &stream,
+		BillingType: &billingType,
+REDACTED
+
+	desc := describeUsageCleanupFilters(filters)
+	require.Equal(t, "start=2024-02-01T10:00:00Z end=2024-02-01T12:00:00Z user_id=1 api_key_id=2 account_id=3 group_id=4 model=gpt-4 stream=true billing_type=2", desc)
+REDACTED
+
+func TestUsageCleanupServiceIsTaskCanceledNotFound(t *testing.T) {
+	repo := &cleanupRepoStub{REDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED)
+
+	canceled, err := svc.isTaskCanceled(context.Background(), 9)
+REDACTED
+	require.False(t, canceled)
+REDACTED
+
+func TestUsageCleanupServiceIsTaskCanceledError(t *testing.T) {
+	repo := &cleanupRepoStub{statusErr: errors.New("status err")REDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED)
+
+	_, err := svc.isTaskCanceled(context.Background(), 9)
+REDACTED
+	require.Contains(t, err.Error(), "status err")
 REDACTED

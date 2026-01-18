@@ -23,7 +23,7 @@ REDACTED
 
 func TestNewUsageCleanupRepository(t *testing.T) {
 	db, _ := newSQLMock(t)
-	repo := NewUsageCleanupRepository(db)
+	repo := NewUsageCleanupRepository(nil, db)
 	require.NotNil(t, repo)
 REDACTED
 
@@ -143,6 +143,21 @@ REDACTED
 	require.NotNil(t, tasks[0].StartedAt)
 	require.NotNil(t, tasks[0].FinishedAt)
 	require.Equal(t, int64(1), result.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageCleanupRepositoryListTasksQueryError(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageCleanupRepository{sql: dbREDACTED
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_cleanup_tasks").
+		WillReturnRows(sqlmock.NewRows([]string{"count"REDACTED).AddRow(int64(2)))
+	mock.ExpectQuery("SELECT id, status, filters, created_by, deleted_rows, error_message").
+		WithArgs(20, 0).
+		WillReturnError(sql.ErrConnDone)
+
+	_, _, err := repo.ListTasks(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20REDACTED)
+REDACTED
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
 
@@ -320,6 +335,19 @@ REDACTED
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
 
+func TestUsageCleanupRepositoryGetTaskStatusQueryError(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageCleanupRepository{sql: dbREDACTED
+
+	mock.ExpectQuery("SELECT status FROM usage_cleanup_tasks").
+		WithArgs(int64(9)).
+		WillReturnError(sql.ErrConnDone)
+
+	_, err := repo.GetTaskStatus(context.Background(), 9)
+REDACTED
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
 func TestUsageCleanupRepositoryUpdateTaskProgress(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: dbREDACTED
@@ -344,6 +372,20 @@ func TestUsageCleanupRepositoryCancelTask(t *testing.T) {
 	ok, err := repo.CancelTask(context.Background(), 6, 9)
 REDACTED
 	require.True(t, ok)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageCleanupRepositoryCancelTaskNoRows(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageCleanupRepository{sql: dbREDACTED
+
+	mock.ExpectQuery("UPDATE usage_cleanup_tasks").
+		WithArgs(service.UsageCleanupStatusCanceled, int64(6), int64(9), service.UsageCleanupStatusPending, service.UsageCleanupStatusRunning).
+		WillReturnRows(sqlmock.NewRows([]string{"id"REDACTED))
+
+	ok, err := repo.CancelTask(context.Background(), 6, 9)
+REDACTED
+	require.False(t, ok)
 	require.NoError(t, mock.ExpectationsWereMet())
 REDACTED
 

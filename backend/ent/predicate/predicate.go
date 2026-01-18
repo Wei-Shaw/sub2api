@@ -33,6 +33,9 @@ type RedeemCode func(*sql.Selector)
 // Setting is the predicate function for setting builders.
 type Setting func(*sql.Selector)
 
+// UsageCleanupTask is the predicate function for usagecleanuptask builders.
+type UsageCleanupTask func(*sql.Selector)
+
 // UsageLog is the predicate function for usagelog builders.
 type UsageLog func(*sql.Selector)
 
