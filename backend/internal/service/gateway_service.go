@@ -1293,18 +1293,6 @@ REDACTED
 	return allowed
 REDACTED
 
-// extractSessionUUID 从 metadata.user_id 中提取会话 UUID
-// 格式: user_{64位hexREDACTED_account__session_{uuidREDACTED
-func extractSessionUUID(metadataUserID string) string {
-	if metadataUserID == "" {
-		return ""
-REDACTED
-	if match := sessionIDRegex.FindStringSubmatch(metadataUserID); len(match) > 1 {
-		return match[1]
-REDACTED
-	return ""
-REDACTED
-
 func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
 	if s.schedulerSnapshot != nil {
 		return s.schedulerSnapshot.GetAccount(ctx, accountID)
