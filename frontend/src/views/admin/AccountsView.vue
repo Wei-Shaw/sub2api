@@ -15,7 +15,40 @@
             @refresh="load"
             @sync="showSync = true"
             @create="showCreate = true"
-          />
+          >
+            <template #before>
+              <!-- Column Settings Dropdown -->
+              <div class="relative" ref="columnDropdownRef">
+                <button
+                  @click="showColumnDropdown = !showColumnDropdown"
+                  class="btn btn-secondary px-2 md:px-3"
+                  :title="t('admin.users.columnSettings')"
+                >
+                  <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                  <span class="hidden md:inline">{{ t('admin.users.columnSettings') REDACTEDREDACTED</span>
+                </button>
+                <!-- Dropdown menu -->
+                <div
+                  v-if="showColumnDropdown"
+                  class="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <div class="max-h-80 overflow-y-auto p-2">
+                    <button
+                      v-for="col in toggleableColumns"
+                      :key="col.key"
+                      @click="toggleColumn(col.key)"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <span>{{ col.label REDACTEDREDACTED</span>
+                      <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </AccountTableActions>
         </div>
       </template>
       <template #table>
@@ -53,6 +86,15 @@
           </template>
           <template #cell-usage="{ row REDACTED">
             <AccountUsageCell :account="row" />
+          </template>
+          <template #cell-proxy="{ row REDACTED">
+            <div v-if="row.proxy" class="flex items-center gap-2">
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ row.proxy.name REDACTEDREDACTED</span>
+              <span v-if="row.proxy.country_code" class="text-xs text-gray-500 dark:text-gray-400">
+                ({{ row.proxy.country_code REDACTEDREDACTED)
+              </span>
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-rate_multiplier="{ row REDACTED">
             <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
@@ -143,6 +185,7 @@ import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vu
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import type { Account, Proxy, Group REDACTED from '@/types'
 
@@ -171,12 +214,54 @@ const statsAcc = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:numberREDACTED|nullREDACTED>({ show: false, acc: null, pos: null REDACTED)
 
+// Column settings
+const showColumnDropdown = ref(false)
+const columnDropdownRef = ref<HTMLElement | null>(null)
+const hiddenColumns = reactive<Set<string>>(new Set())
+const DEFAULT_HIDDEN_COLUMNS = ['proxy', 'notes', 'priority', 'rate_multiplier']
+const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
+
+const loadSavedColumns = () => {
+  try {
+    const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved) as string[]
+      parsed.forEach(key => hiddenColumns.add(key))
+    REDACTED else {
+      DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+    REDACTED
+  REDACTED catch (e) {
+    console.error('Failed to load saved columns:', e)
+    DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+  REDACTED
+REDACTED
+
+const saveColumnsToStorage = () => {
+  try {
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+  REDACTED catch (e) {
+    console.error('Failed to save columns:', e)
+  REDACTED
+REDACTED
+
+const toggleColumn = (key: string) => {
+  if (hiddenColumns.has(key)) {
+    hiddenColumns.delete(key)
+  REDACTED else {
+    hiddenColumns.add(key)
+  REDACTED
+  saveColumnsToStorage()
+REDACTED
+
+const isColumnVisible = (key: string) => !hiddenColumns.has(key)
+
 const { items: accounts, loading, params, pagination, load, reload, debouncedReload, handlePageChange, handlePageSizeChange REDACTED = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: { platform: '', type: '', status: '', search: '' REDACTED
 REDACTED)
 
-const cols = computed(() => {
+// All available columns
+const allColumns = computed(() => {
   const c = [
     { key: 'select', label: '', sortable: false REDACTED,
     { key: 'name', label: t('admin.accounts.columns.name'), sortable: true REDACTED,
@@ -189,17 +274,30 @@ const cols = computed(() => {
   if (!authStore.isSimpleMode) {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false REDACTED)
   REDACTED
-    c.push(
-      { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
-      { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
-      { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true REDACTED,
-      { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
+  c.push(
+    { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false REDACTED,
+    { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false REDACTED,
+    { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true REDACTED,
+    { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true REDACTED,
+    { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true REDACTED,
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true REDACTED,
     { key: 'notes', label: t('admin.accounts.columns.notes'), sortable: false REDACTED,
     { key: 'actions', label: t('admin.accounts.columns.actions'), sortable: false REDACTED
   )
   return c
 REDACTED)
+
+// Columns that can be toggled (exclude select, name, and actions)
+const toggleableColumns = computed(() =>
+  allColumns.value.filter(col => col.key !== 'select' && col.key !== 'name' && col.key !== 'actions')
+)
+
+// Filtered columns based on visibility
+const cols = computed(() =>
+  allColumns.value.filter(col =>
+    col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
+  )
+)
 
 const handleEdit = (a: Account) => { edAcc.value = a; showEdit.value = true REDACTED
 const openMenu = (a: Account, e: MouseEvent) => {
@@ -403,12 +501,21 @@ const isExpired = (value: number | null) => {
   return value * 1000 <= Date.now()
 REDACTED
 
-// 滚动时关闭菜单
+// 滚动时关闭操作菜单（不关闭列设置下拉菜单）
 const handleScroll = () => {
   menu.show = false
 REDACTED
 
+// 点击外部关闭列设置下拉菜单
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
+    showColumnDropdown.value = false
+  REDACTED
+REDACTED
+
 onMounted(async () => {
+  loadSavedColumns()
   load()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
@@ -418,9 +525,11 @@ onMounted(async () => {
     console.error('Failed to load proxies/groups:', error)
   REDACTED
   window.addEventListener('scroll', handleScroll, true)
+  document.addEventListener('click', handleClickOutside)
 REDACTED)
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll, true)
+  document.removeEventListener('click', handleClickOutside)
 REDACTED)
 </script>
