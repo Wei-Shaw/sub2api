@@ -316,7 +316,7 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 REDACTED
 	return &AdminRedeemCode{
 		RedeemCode: redeemCodeFromServiceBase(rc),
-		Notes:     rc.Notes,
+		Notes:      rc.Notes,
 REDACTED
 REDACTED
 

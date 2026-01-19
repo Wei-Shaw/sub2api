@@ -350,10 +350,10 @@ type AdminUserSubscription struct {
 REDACTED
 
 type BulkAssignResult struct {
-	SuccessCount  int                `json:"success_count"`
-	FailedCount   int                `json:"failed_count"`
+	SuccessCount  int                     `json:"success_count"`
+	FailedCount   int                     `json:"failed_count"`
 	Subscriptions []AdminUserSubscription `json:"subscriptions"`
-	Errors        []string           `json:"errors"`
+	Errors        []string                `json:"errors"`
 REDACTED
 
 // PromoCode 注册优惠码
