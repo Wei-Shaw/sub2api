@@ -157,9 +157,20 @@ REDACTED `json:"seven_day"`
 REDACTED `json:"seven_day_sonnet"`
 REDACTED
 
+// ClaudeUsageFetchOptions 包含获取 Claude 用量数据所需的所有选项
+type ClaudeUsageFetchOptions struct {
+	AccessToken          string       // OAuth access token
+	ProxyURL             string       // 代理 URL（可选）
+	AccountID            int64        // 账号 ID（用于 TLS 指纹选择）
+	EnableTLSFingerprint bool         // 是否启用 TLS 指纹伪装
+	Fingerprint          *Fingerprint // 缓存的指纹信息（User-Agent 等）
+REDACTED
+
 // ClaudeUsageFetcher fetches usage data from Anthropic OAuth API
 type ClaudeUsageFetcher interface {
 	FetchUsage(ctx context.Context, accessToken, proxyURL string) (*ClaudeUsageResponse, error)
+	// FetchUsageWithOptions 使用完整选项获取用量数据，支持 TLS 指纹和自定义 User-Agent
+	FetchUsageWithOptions(ctx context.Context, opts *ClaudeUsageFetchOptions) (*ClaudeUsageResponse, error)
 REDACTED
 
 // AccountUsageService 账号使用量查询服务
@@ -170,6 +181,7 @@ type AccountUsageService struct {
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	cache                   *UsageCache
+	identityCache           IdentityCache
 REDACTED
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -180,6 +192,7 @@ func NewAccountUsageService(
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
 	cache *UsageCache,
+	identityCache IdentityCache,
 ) *AccountUsageService {
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
@@ -188,6 +201,7 @@ func NewAccountUsageService(
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		cache:                   cache,
+		identityCache:           identityCache,
 REDACTED
 REDACTED
 
@@ -424,6 +438,8 @@ REDACTED
 REDACTED
 
 // fetchOAuthUsageRaw 从 Anthropic API 获取原始响应（不构建 UsageInfo）
+// 如果账号开启了 TLS 指纹，则使用 TLS 指纹伪装
+// 如果有缓存的 Fingerprint，则使用缓存的 User-Agent 等信息
 func (s *AccountUsageService) fetchOAuthUsageRaw(ctx context.Context, account *Account) (*ClaudeUsageResponse, error) {
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
@@ -435,7 +451,22 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	return s.usageFetcher.FetchUsage(ctx, accessToken, proxyURL)
+	// 构建完整的选项
+	opts := &ClaudeUsageFetchOptions{
+		AccessToken:          accessToken,
+		ProxyURL:             proxyURL,
+		AccountID:            account.ID,
+		EnableTLSFingerprint: account.IsTLSFingerprintEnabled(),
+REDACTED
+
+	// 尝试获取缓存的 Fingerprint（包含 User-Agent 等信息）
+	if s.identityCache != nil {
+		if fp, err := s.identityCache.GetFingerprint(ctx, account.ID); err == nil && fp != nil {
+			opts.Fingerprint = fp
+	REDACTED
+REDACTED
+
+	return s.usageFetcher.FetchUsageWithOptions(ctx, opts)
 REDACTED
 
 // parseTime 尝试多种格式解析时间
