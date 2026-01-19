@@ -6,7 +6,6 @@ type User struct {
 	ID            int64     `json:"id"`
 	Email         string    `json:"email"`
 	Username      string    `json:"username"`
-	Notes         string    `json:"notes"`
 	Role          string    `json:"role"`
 	Balance       float64   `json:"balance"`
 	Concurrency   int       `json:"concurrency"`
@@ -17,6 +16,14 @@ type User struct {
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
+REDACTED
+
+// AdminUser 是管理员接口使用的 user DTO（包含敏感/内部字段）。
+// 注意：普通用户接口不得返回 notes 等管理员备注信息。
+type AdminUser struct {
+	User
+
+	Notes string `json:"notes"`
 REDACTED
 
 type APIKey struct {

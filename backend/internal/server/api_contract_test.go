@@ -51,7 +51,6 @@ REDACTED{
 					"id": 1,
 					"email": "alice@example.com",
 					"username": "alice",
-					"notes": "hello",
 					"role": "user",
 					"balance": 12.5,
 					"concurrency": 5,
