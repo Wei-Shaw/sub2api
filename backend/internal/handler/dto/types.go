@@ -323,22 +323,29 @@ type UserSubscription struct {
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
 
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	User  *User  `json:"user,omitempty"`
+	Group *Group `json:"group,omitempty"`
+REDACTED
+
+// AdminUserSubscription 是管理员接口使用的订阅 DTO（包含分配信息/备注等字段）。
+// 注意：普通用户接口不得返回 assigned_by/assigned_at/notes/assigned_by_user 等管理员字段。
+type AdminUserSubscription struct {
+	UserSubscription
+
 	AssignedBy *int64    `json:"assigned_by"`
 	AssignedAt time.Time `json:"assigned_at"`
 	Notes      string    `json:"notes"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-
-	User           *User  `json:"user,omitempty"`
-	Group          *Group `json:"group,omitempty"`
-	AssignedByUser *User  `json:"assigned_by_user,omitempty"`
+	AssignedByUser *User `json:"assigned_by_user,omitempty"`
 REDACTED
 
 type BulkAssignResult struct {
 	SuccessCount  int                `json:"success_count"`
 	FailedCount   int                `json:"failed_count"`
-	Subscriptions []UserSubscription `json:"subscriptions"`
+	Subscriptions []AdminUserSubscription `json:"subscriptions"`
 	Errors        []string           `json:"errors"`
 REDACTED
 

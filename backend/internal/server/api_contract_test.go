@@ -187,6 +187,56 @@ REDACTED{
 		REDACTED`,
 	REDACTED,
 		{
+			name: "GET /api/v1/subscriptions",
+			setup: func(t *testing.T, deps *contractDeps) {
+			REDACTED
+				// 普通用户订阅接口不应包含 assigned_* / notes 等管理员字段。
+				deps.userSubRepo.SetByUserID(1, []service.UserSubscription{
+					{
+						ID:           501,
+						UserID:       1,
+						GroupID:      10,
+						StartsAt:     deps.now,
+						ExpiresAt:    deps.now.Add(24 * time.Hour),
+						Status:       service.SubscriptionStatusActive,
+						DailyUsageUSD:   1.23,
+						WeeklyUsageUSD:  2.34,
+						MonthlyUsageUSD: 3.45,
+						AssignedBy:    ptr(int64(999)),
+						AssignedAt:    deps.now,
+						Notes:         "admin-note",
+						CreatedAt:     deps.now,
+						UpdatedAt:     deps.now,
+				REDACTED,
+			REDACTED)
+		REDACTED,
+			method:     http.MethodGet,
+			path:       "/api/v1/subscriptions",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": [
+					{
+						"id": 501,
+						"user_id": 1,
+						"group_id": 10,
+						"starts_at": "2025-01-02T03:04:05Z",
+						"expires_at": "2025-01-03T03:04:05Z",
+						"status": "active",
+						"daily_window_start": null,
+						"weekly_window_start": null,
+						"monthly_window_start": null,
+						"daily_usage_usd": 1.23,
+						"weekly_usage_usd": 2.34,
+						"monthly_usage_usd": 3.45,
+						"created_at": "2025-01-02T03:04:05Z",
+						"updated_at": "2025-01-02T03:04:05Z"
+				REDACTED
+				]
+		REDACTED`,
+	REDACTED,
+		{
 			name: "GET /api/v1/usage/stats",
 			setup: func(t *testing.T, deps *contractDeps) {
 			REDACTED
@@ -490,6 +540,9 @@ REDACTED
 	usageRepo := newStubUsageLogRepo()
 	usageService := service.NewUsageService(usageRepo, userRepo, nil, nil)
 
+	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
+
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
@@ -535,6 +588,10 @@ REDACTED
 	v1Usage.Use(jwtAuth)
 	v1Usage.GET("/usage", usageHandler.List)
 	v1Usage.GET("/usage/stats", usageHandler.Stats)
+
+	v1Subs := v1.Group("")
+	v1Subs.Use(jwtAuth)
+	v1Subs.GET("/subscriptions", subscriptionHandler.List)
 
 	v1Admin := v1.Group("/admin")
 	v1Admin.Use(adminAuth)

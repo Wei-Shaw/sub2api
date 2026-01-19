@@ -83,9 +83,9 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.UserSubscription, 0, len(subscriptions))
+	out := make([]dto.AdminUserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
-		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subscriptions[i]))
 REDACTED
 	response.PaginatedWithResult(c, out, toResponsePagination(pagination))
 REDACTED
@@ -105,7 +105,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.UserSubscriptionFromService(subscription))
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 REDACTED
 
 // GetProgress handles getting subscription usage progress
@@ -150,7 +150,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, dto.UserSubscriptionFromService(subscription))
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 REDACTED
 
 // BulkAssign handles bulk assigning subscriptions to multiple users
@@ -201,7 +201,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.UserSubscriptionFromService(subscription))
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 REDACTED
 
 // Revoke handles revoking a subscription
@@ -239,9 +239,9 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.UserSubscription, 0, len(subscriptions))
+	out := make([]dto.AdminUserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
-		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subscriptions[i]))
 REDACTED
 	response.PaginatedWithResult(c, out, toResponsePagination(pagination))
 REDACTED
@@ -261,9 +261,9 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.UserSubscription, 0, len(subscriptions))
+	out := make([]dto.AdminUserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
-		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subscriptions[i]))
 REDACTED
 	response.Success(c, out)
 REDACTED
