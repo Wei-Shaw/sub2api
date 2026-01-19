@@ -671,6 +671,23 @@ REDACTED
 	return WindowCostNotSchedulable
 REDACTED
 
+// GetCurrentWindowStartTime 获取当前有效的窗口开始时间
+// 逻辑：
+// 1. 如果窗口未过期（SessionWindowEnd 存在且在当前时间之后），使用记录的 SessionWindowStart
+// 2. 否则（窗口过期或未设置），使用新的预测窗口开始时间（从当前整点开始）
+func (a *Account) GetCurrentWindowStartTime() time.Time {
+	now := time.Now()
+
+	// 窗口未过期，使用记录的窗口开始时间
+	if a.SessionWindowStart != nil && a.SessionWindowEnd != nil && now.Before(*a.SessionWindowEnd) {
+		return *a.SessionWindowStart
+REDACTED
+
+	// 窗口已过期或未设置，预测新的窗口开始时间（从当前整点开始）
+	// 与 ratelimit_service.go 中 UpdateSessionWindow 的预测逻辑保持一致
+	return time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+REDACTED
+
 // parseExtraFloat64 从 extra 字段解析 float64 值
 func parseExtraFloat64(value any) float64 {
 	switch v := value.(type) {
