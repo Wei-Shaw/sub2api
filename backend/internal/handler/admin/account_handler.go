@@ -615,7 +615,7 @@ REDACTED
 	if h.tokenCacheInvalidator != nil {
 		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), updatedAccount); invalidateErr != nil {
 			// 缓存失效失败只记录日志，不影响主流程
-			c.Error(invalidateErr)
+			_ = c.Error(invalidateErr)
 	REDACTED
 REDACTED
 
