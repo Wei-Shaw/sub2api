@@ -543,6 +543,15 @@ REDACTED
 	return nil
 REDACTED
 
+func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetStatus(service.StatusActive).
+		SetErrorMessage("").
+		Save(ctx)
+	return err
+REDACTED
+
 func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID int64, priority int) error {
 	_, err := r.client.AccountGroup.Create().
 		SetAccountID(accountID).

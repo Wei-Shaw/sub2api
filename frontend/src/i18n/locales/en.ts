@@ -196,7 +196,8 @@ export default {
     expand: 'Expand',
     logout: 'Logout',
     github: 'GitHub',
-    mySubscriptions: 'My Subscriptions'
+    mySubscriptions: 'My Subscriptions',
+    docs: 'Docs'
   REDACTED,
 
   // Auth

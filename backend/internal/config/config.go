@@ -257,6 +257,14 @@ type GatewayConfig struct {
 	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
+	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
+	MaxAccountSwitches int `mapstructure:"max_account_switches"`
+	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
+	MaxAccountSwitchesGemini int `mapstructure:"max_account_switches_gemini"`
+
+	// Antigravity 429 fallback 限流时间（分钟），解析重置时间失败时使用
+	AntigravityFallbackCooldownMinutes int `mapstructure:"antigravity_fallback_cooldown_minutes"`
+
 	// Scheduling: 账号调度相关配置
 	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
 
@@ -297,6 +305,9 @@ type GatewaySchedulingConfig struct {
 	// 兜底排队配置
 	FallbackWaitTimeout time.Duration `mapstructure:"fallback_wait_timeout"`
 	FallbackMaxWaiting  int           `mapstructure:"fallback_max_waiting"`
+
+	// 兜底层账户选择策略: "last_used"(按最后使用时间排序，默认) 或 "random"(随机)
+	FallbackSelectionMode string `mapstructure:"fallback_selection_mode"`
 
 	// 负载计算
 	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
@@ -786,6 +797,9 @@ REDACTED)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
 	viper.SetDefault("gateway.failover_on_400", false)
+	viper.SetDefault("gateway.max_account_switches", 10)
+	viper.SetDefault("gateway.max_account_switches_gemini", 3)
+	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
@@ -798,11 +812,12 @@ REDACTED)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
-	viper.SetDefault("gateway.max_line_size", 10*1024*1024)
+	viper.SetDefault("gateway.max_line_size", 40*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
+	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)

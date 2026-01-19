@@ -61,5 +61,10 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 如果 project_id 获取失败，返回 credentials 但同时返回错误让账户被标记
+	if tokenInfo.ProjectIDMissing {
+		return newCredentials, fmt.Errorf("missing_project_id: 账户缺少project id，可能无法使用Antigravity")
+REDACTED
+
 	return newCredentials, nil
 REDACTED
