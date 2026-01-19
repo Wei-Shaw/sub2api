@@ -64,7 +64,9 @@ REDACTED
 	if err != nil {
 		return nil, nil, err
 REDACTED
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+REDACTED()
 
 	tasks := make([]service.UsageCleanupTask, 0)
 	for rows.Next() {
@@ -295,7 +297,9 @@ REDACTED
 	if err != nil {
 		return 0, err
 REDACTED
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+REDACTED()
 
 	var deleted int64
 	for rows.Next() {
@@ -357,7 +361,6 @@ REDACTED
 	if filters.BillingType != nil {
 		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", idx))
 		args = append(args, *filters.BillingType)
-		idx++
 REDACTED
 	return strings.Join(conditions, " AND "), args
 REDACTED

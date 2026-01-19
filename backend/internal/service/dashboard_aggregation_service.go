@@ -20,7 +20,7 @@ var (
 	// ErrDashboardBackfillDisabled 当配置禁用回填时返回。
 	ErrDashboardBackfillDisabled = errors.New("仪表盘聚合回填已禁用")
 	// ErrDashboardBackfillTooLarge 当回填跨度超过限制时返回。
-	ErrDashboardBackfillTooLarge = errors.New("回填时间跨度过大")
+	ErrDashboardBackfillTooLarge   = errors.New("回填时间跨度过大")
 	errDashboardAggregationRunning = errors.New("聚合作业正在运行")
 )
 

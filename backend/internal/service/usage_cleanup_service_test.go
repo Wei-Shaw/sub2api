@@ -266,9 +266,11 @@ REDACTED
 REDACTED
 
 func TestUsageCleanupServiceRunOnceSuccess(t *testing.T) {
+	start := time.Now()
+	end := start.Add(2 * time.Hour)
 	repo := &cleanupRepoStub{
 		claimQueue: []*UsageCleanupTask{
-			{ID: 5, Filters: UsageCleanupFilters{StartTime: time.Now(), EndTime: time.Now().Add(2 * time.Hour)REDACTEDREDACTED,
+			{ID: 5, Filters: UsageCleanupFilters{StartTime: start, EndTime: endREDACTEDREDACTED,
 	REDACTED,
 		deleteQueue: []cleanupDeleteResponse{
 			{deleted: 2REDACTED,
@@ -284,6 +286,9 @@ REDACTED
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
 	require.Len(t, repo.deleteCalls, 3)
+	require.Equal(t, 2, repo.deleteCalls[0].limit)
+	require.True(t, repo.deleteCalls[0].filters.StartTime.Equal(start))
+	require.True(t, repo.deleteCalls[0].filters.EndTime.Equal(end))
 	require.Len(t, repo.markSucceeded, 1)
 	require.Empty(t, repo.markFailed)
 	require.Equal(t, int64(5), repo.markSucceeded[0].taskID)

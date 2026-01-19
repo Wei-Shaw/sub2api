@@ -14,6 +14,7 @@ type reqClientOptions struct {
 	ProxyURL    string        // 代理 URL（支持 http/https/socks5）
 	Timeout     time.Duration // 请求超时时间
 	Impersonate bool          // 是否模拟 Chrome 浏览器指纹
+	ForceHTTP2  bool          // 是否强制使用 HTTP/2
 REDACTED
 
 // sharedReqClients 存储按配置参数缓存的 req 客户端实例
@@ -41,6 +42,9 @@ func getSharedReqClient(opts reqClientOptions) *req.Client {
 REDACTED
 
 	client := req.C().SetTimeout(opts.Timeout)
+	if opts.ForceHTTP2 {
+		client = client.EnableForceHTTP2()
+REDACTED
 	if opts.Impersonate {
 		client = client.ImpersonateChrome()
 REDACTED
@@ -56,9 +60,10 @@ REDACTED
 REDACTED
 
 func buildReqClientKey(opts reqClientOptions) string {
-	return fmt.Sprintf("%s|%s|%t",
+	return fmt.Sprintf("%s|%s|%t|%t",
 		strings.TrimSpace(opts.ProxyURL),
 		opts.Timeout.String(),
 		opts.Impersonate,
+		opts.ForceHTTP2,
 	)
 REDACTED
