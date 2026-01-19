@@ -2759,7 +2759,7 @@ REDACTED
 
 	// OAuth账号：应用统一指纹
 	var fingerprint *Fingerprint
-	if account.IsOAuth() && mimicClaudeCode && s.identityService != nil {
+	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 		if err != nil {
@@ -2812,7 +2812,7 @@ REDACTED
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 REDACTED
-	if tokenType == "oauth" && mimicClaudeCode {
+	if tokenType == "oauth" {
 		applyClaudeOAuthHeaderDefaults(req, reqStream)
 REDACTED
 
@@ -4112,7 +4112,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 REDACTED
 
 	// OAuth 账号：应用统一指纹和重写 userID
-	if account.IsOAuth() && mimicClaudeCode && s.identityService != nil {
+	if account.IsOAuth() && s.identityService != nil {
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 		if err == nil {
 			accountUUID := account.GetExtraString("account_uuid")
@@ -4147,7 +4147,7 @@ REDACTED
 REDACTED
 
 	// OAuth 账号：应用指纹到请求头
-	if account.IsOAuth() && mimicClaudeCode && s.identityService != nil {
+	if account.IsOAuth() && s.identityService != nil {
 		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 		if fp != nil {
 			s.identityService.ApplyFingerprint(req, fp)
@@ -4161,7 +4161,7 @@ REDACTED
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 REDACTED
-	if tokenType == "oauth" && mimicClaudeCode {
+	if tokenType == "oauth" {
 		applyClaudeOAuthHeaderDefaults(req, false)
 REDACTED
 
