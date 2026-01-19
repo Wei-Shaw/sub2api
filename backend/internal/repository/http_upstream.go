@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,15 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
-	"github.com/gin-gonic/gin"
 )
-
-// debugLog prints log only in non-release mode.
-func debugLog(format string, v ...any) {
-	if gin.Mode() != gin.ReleaseMode {
-		log.Printf(format, v...)
-REDACTED
-REDACTED
 
 // 默认配置常量
 // 这些值在配置文件未指定时作为回退默认值使用
@@ -189,7 +181,7 @@ REDACTED
 	if proxyURL != "" {
 		proxyInfo = proxyURL
 REDACTED
-	debugLog("[TLS Fingerprint] Account %d: TLS fingerprint ENABLED, target=%s, proxy=%s", accountID, targetHost, proxyInfo)
+	slog.Debug("tls_fingerprint_enabled", "account_id", accountID, "target", targetHost, "proxy", proxyInfo)
 
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
@@ -200,16 +192,16 @@ REDACTED
 	profile := registry.GetProfileByAccountID(accountID)
 	if profile == nil {
 		// 如果获取不到 profile，回退到普通请求
-		debugLog("[TLS Fingerprint] Account %d: WARNING - no profile found, falling back to standard request", accountID)
+		slog.Debug("tls_fingerprint_no_profile", "account_id", accountID, "fallback", "standard_request")
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 REDACTED
 
-	debugLog("[TLS Fingerprint] Account %d: Using profile '%s' (GREASE=%v)", accountID, profile.Name, profile.EnableGREASE)
+	slog.Debug("tls_fingerprint_using_profile", "account_id", accountID, "profile", profile.Name, "grease", profile.EnableGREASE)
 
 	// 获取或创建带 TLS 指纹的客户端
 	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile)
 	if err != nil {
-		debugLog("[TLS Fingerprint] Account %d: Failed to acquire TLS client: %v", accountID, err)
+		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
 		return nil, err
 REDACTED
 
@@ -219,11 +211,11 @@ REDACTED
 		// 请求失败，立即减少计数
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
-		debugLog("[TLS Fingerprint] Account %d: Request FAILED: %v", accountID, err)
+		slog.Debug("tls_fingerprint_request_failed", "account_id", accountID, "error", err)
 		return nil, err
 REDACTED
 
-	debugLog("[TLS Fingerprint] Account %d: Request SUCCESS, status=%d", accountID, resp.StatusCode)
+	slog.Debug("tls_fingerprint_request_success", "account_id", accountID, "status", resp.StatusCode)
 
 	// 包装响应体，在关闭时自动减少计数并更新时间戳
 	resp.Body = wrapTrackedBody(resp.Body, func() {
@@ -259,7 +251,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 			atomic.AddInt64(&entry.inFlight, 1)
 	REDACTED
 		s.mu.RUnlock()
-		debugLog("[TLS Fingerprint] Account %d: Reusing existing TLS client (cacheKey=%s)", accountID, cacheKey)
+		slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "cache_key", cacheKey)
 		return entry, nil
 REDACTED
 	s.mu.RUnlock()
@@ -273,11 +265,14 @@ REDACTED
 				atomic.AddInt64(&entry.inFlight, 1)
 		REDACTED
 			s.mu.Unlock()
-			debugLog("[TLS Fingerprint] Account %d: Reusing existing TLS client (cacheKey=%s)", accountID, cacheKey)
+			slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "cache_key", cacheKey)
 			return entry, nil
 	REDACTED
-		debugLog("[TLS Fingerprint] Account %d: Evicting stale TLS client (cacheKey=%s, proxyChanged=%v, poolChanged=%v)",
-			accountID, cacheKey, entry.proxyKey != proxyKey, entry.poolKey != poolKey)
+		slog.Debug("tls_fingerprint_evicting_stale_client",
+			"account_id", accountID,
+			"cache_key", cacheKey,
+			"proxy_changed", entry.proxyKey != proxyKey,
+			"pool_changed", entry.poolKey != poolKey)
 		s.removeClientLocked(cacheKey, entry)
 REDACTED
 
@@ -293,8 +288,7 @@ REDACTED
 REDACTED
 
 	// 创建带 TLS 指纹的 Transport
-	debugLog("[TLS Fingerprint] Account %d: Creating NEW TLS fingerprint client (cacheKey=%s, proxy=%s)",
-		accountID, cacheKey, proxyKey)
+	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
 	if err != nil {
@@ -822,7 +816,7 @@ REDACTED
 	// 根据代理类型选择合适的 TLS 指纹 Dialer
 	if proxyURL == nil {
 		// 直连：使用 TLSFingerprintDialer
-		debugLog("[TLS Fingerprint Transport] Using DIRECT TLS dialer (no proxy)")
+		slog.Debug("tls_fingerprint_transport_direct")
 		dialer := tlsfingerprint.NewDialer(profile, nil)
 		transport.DialTLSContext = dialer.DialTLSContext
 REDACTED else {
@@ -830,17 +824,17 @@ REDACTED else {
 		switch scheme {
 		case "socks5", "socks5h":
 			// SOCKS5 代理：使用 SOCKS5ProxyDialer
-			debugLog("[TLS Fingerprint Transport] Using SOCKS5 TLS dialer (proxy=%s)", proxyURL.Host)
+			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
 			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
 			transport.DialTLSContext = socks5Dialer.DialTLSContext
 		case "http", "https":
 			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
-			debugLog("[TLS Fingerprint Transport] Using HTTP CONNECT TLS dialer (proxy=%s)", proxyURL.Host)
+			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
 			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
 			transport.DialTLSContext = httpDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
-			debugLog("[TLS Fingerprint Transport] WARNING: Unknown proxy scheme '%s', falling back to standard proxy (NO TLS fingerprint)", scheme)
+			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
 			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 				return nil, err
 		REDACTED

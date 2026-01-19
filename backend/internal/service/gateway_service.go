@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	mathrand "math/rand"
 	"net/http"
 	"os"
@@ -43,13 +44,6 @@ const (
 func (s *GatewayService) debugModelRoutingEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
-REDACTED
-
-// debugLog prints log only in non-release mode.
-func debugLog(format string, v ...any) {
-	if gin.Mode() != gin.ReleaseMode {
-		log.Printf(format, v...)
-REDACTED
 REDACTED
 
 func shortSessionHash(sessionHash string) string {
@@ -425,8 +419,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	for id := range excludedIDs {
 		excludedIDsList = append(excludedIDsList, id)
 REDACTED
-	debugLog("[AccountScheduling] Starting account selection: groupID=%v model=%s session=%s excludedIDs=%v",
-		derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), excludedIDsList)
+	slog.Debug("account_scheduling_starting",
+		"group_id", derefGroupID(groupID),
+		"model", requestedModel,
+		"session", shortSessionHash(sessionHash),
+		"excluded_ids", excludedIDsList)
 
 	cfg := s.schedulingConfig()
 
@@ -1105,11 +1102,19 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
-			debugLog("[AccountScheduling] listSchedulableAccounts (snapshot): groupID=%v platform=%s useMixed=%v count=%d",
-				derefGroupID(groupID), platform, useMixed, len(accounts))
+			slog.Debug("account_scheduling_list_snapshot",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"use_mixed", useMixed,
+				"count", len(accounts))
 			for _, acc := range accounts {
-				debugLog("[AccountScheduling]   - Account ID=%d Name=%s Platform=%s Type=%s Status=%s TLSFingerprint=%v",
-					acc.ID, acc.Name, acc.Platform, acc.Type, acc.Status, acc.IsTLSFingerprintEnabled())
+				slog.Debug("account_scheduling_account_detail",
+					"account_id", acc.ID,
+					"name", acc.Name,
+					"platform", acc.Platform,
+					"type", acc.Type,
+					"status", acc.Status,
+					"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 		REDACTED
 	REDACTED
 		return accounts, useMixed, err
@@ -1125,7 +1130,10 @@ REDACTED
 			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
 	REDACTED
 		if err != nil {
-			debugLog("[AccountScheduling] listSchedulableAccounts FAILED: groupID=%v platform=%s err=%v", derefGroupID(groupID), platform, err)
+			slog.Debug("account_scheduling_list_failed",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"error", err)
 			return nil, useMixed, err
 	REDACTED
 		filtered := make([]Account, 0, len(accounts))
@@ -1135,11 +1143,19 @@ REDACTED
 		REDACTED
 			filtered = append(filtered, acc)
 	REDACTED
-		debugLog("[AccountScheduling] listSchedulableAccounts (mixed): groupID=%v platform=%s rawCount=%d filteredCount=%d",
-			derefGroupID(groupID), platform, len(accounts), len(filtered))
+		slog.Debug("account_scheduling_list_mixed",
+			"group_id", derefGroupID(groupID),
+			"platform", platform,
+			"raw_count", len(accounts),
+			"filtered_count", len(filtered))
 		for _, acc := range filtered {
-			debugLog("[AccountScheduling]   - Account ID=%d Name=%s Platform=%s Type=%s Status=%s TLSFingerprint=%v",
-				acc.ID, acc.Name, acc.Platform, acc.Type, acc.Status, acc.IsTLSFingerprintEnabled())
+			slog.Debug("account_scheduling_account_detail",
+				"account_id", acc.ID,
+				"name", acc.Name,
+				"platform", acc.Platform,
+				"type", acc.Type,
+				"status", acc.Status,
+				"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 	REDACTED
 		return filtered, useMixed, nil
 REDACTED
@@ -1155,14 +1171,24 @@ REDACTED else {
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 REDACTED
 	if err != nil {
-		debugLog("[AccountScheduling] listSchedulableAccounts FAILED: groupID=%v platform=%s err=%v", derefGroupID(groupID), platform, err)
+		slog.Debug("account_scheduling_list_failed",
+			"group_id", derefGroupID(groupID),
+			"platform", platform,
+			"error", err)
 		return nil, useMixed, err
 REDACTED
-	debugLog("[AccountScheduling] listSchedulableAccounts (single): groupID=%v platform=%s count=%d",
-		derefGroupID(groupID), platform, len(accounts))
+	slog.Debug("account_scheduling_list_single",
+		"group_id", derefGroupID(groupID),
+		"platform", platform,
+		"count", len(accounts))
 	for _, acc := range accounts {
-		debugLog("[AccountScheduling]   - Account ID=%d Name=%s Platform=%s Type=%s Status=%s TLSFingerprint=%v",
-			acc.ID, acc.Name, acc.Platform, acc.Type, acc.Status, acc.IsTLSFingerprintEnabled())
+		slog.Debug("account_scheduling_account_detail",
+			"account_id", acc.ID,
+			"name", acc.Name,
+			"platform", acc.Platform,
+			"type", acc.Type,
+			"status", acc.Status,
+			"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 REDACTED
 	return accounts, useMixed, nil
 REDACTED
@@ -2605,9 +2631,10 @@ REDACTED
 			fingerprint = fp
 
 			// 2. 重写metadata.user_id（需要指纹中的ClientID和账号的account_uuid）
+			// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
 			accountUUID := account.GetExtraString("account_uuid")
 			if accountUUID != "" && fp.ClientID != "" {
-				if newBody, err := s.identityService.RewriteUserID(body, account.ID, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
+				if newBody, err := s.identityService.RewriteUserIDWithMasking(ctx, body, account, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
 					body = newBody
 			REDACTED
 		REDACTED
@@ -3638,12 +3665,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 REDACTED
 
 	// OAuth 账号：应用统一指纹和重写 userID
+	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
 	if account.IsOAuth() && s.identityService != nil {
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 		if err == nil {
 			accountUUID := account.GetExtraString("account_uuid")
 			if accountUUID != "" && fp.ClientID != "" {
-				if newBody, err := s.identityService.RewriteUserID(body, account.ID, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
+				if newBody, err := s.identityService.RewriteUserIDWithMasking(ctx, body, account, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
 					body = newBody
 			REDACTED
 		REDACTED

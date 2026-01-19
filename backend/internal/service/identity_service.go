@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -49,6 +51,13 @@ REDACTED
 type IdentityCache interface {
 	GetFingerprint(ctx context.Context, accountID int64) (*Fingerprint, error)
 	SetFingerprint(ctx context.Context, accountID int64, fp *Fingerprint) error
+	// GetMaskedSessionID 获取固定的会话ID（用于会话ID伪装功能）
+	// 返回的 sessionID 是一个 UUID 格式的字符串
+	// 如果不存在或已过期（15分钟无请求），返回空字符串
+	GetMaskedSessionID(ctx context.Context, accountID int64) (string, error)
+	// SetMaskedSessionID 设置固定的会话ID，TTL 为 15 分钟
+	// 每次调用都会刷新 TTL
+	SetMaskedSessionID(ctx context.Context, accountID int64, sessionID string) error
 REDACTED
 
 // IdentityService 管理OAuth账号的请求身份指纹
@@ -201,6 +210,94 @@ REDACTED
 	reqMap["metadata"] = metadata
 
 	return json.Marshal(reqMap)
+REDACTED
+
+// RewriteUserIDWithMasking 重写body中的metadata.user_id，支持会话ID伪装
+// 如果账号启用了会话ID伪装（session_id_masking_enabled），
+// 则在完成常规重写后，将 session 部分替换为固定的伪装ID（15分钟内保持不变）
+func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []byte, account *Account, accountUUID, cachedClientID string) ([]byte, error) {
+	// 先执行常规的 RewriteUserID 逻辑
+	newBody, err := s.RewriteUserID(body, account.ID, accountUUID, cachedClientID)
+	if err != nil {
+		return newBody, err
+REDACTED
+
+	// 检查是否启用会话ID伪装
+	if !account.IsSessionIDMaskingEnabled() {
+		return newBody, nil
+REDACTED
+
+	// 解析重写后的 body，提取 user_id
+	var reqMap map[string]any
+	if err := json.Unmarshal(newBody, &reqMap); err != nil {
+		return newBody, nil
+REDACTED
+
+	metadata, ok := reqMap["metadata"].(map[string]any)
+	if !ok {
+		return newBody, nil
+REDACTED
+
+	userID, ok := metadata["user_id"].(string)
+	if !ok || userID == "" {
+		return newBody, nil
+REDACTED
+
+	// 查找 _session_ 的位置，替换其后的内容
+	const sessionMarker = "_session_"
+	idx := strings.LastIndex(userID, sessionMarker)
+	if idx == -1 {
+		return newBody, nil
+REDACTED
+
+	// 获取或生成固定的伪装 session ID
+	maskedSessionID, err := s.cache.GetMaskedSessionID(ctx, account.ID)
+	if err != nil {
+		log.Printf("Warning: failed to get masked session ID for account %d: %v", account.ID, err)
+		return newBody, nil
+REDACTED
+
+	if maskedSessionID == "" {
+		// 首次或已过期，生成新的伪装 session ID
+		maskedSessionID = generateRandomUUID()
+		log.Printf("Generated new masked session ID for account %d: %s", account.ID, maskedSessionID)
+REDACTED
+
+	// 刷新 TTL（每次请求都刷新，保持 15 分钟有效期）
+	if err := s.cache.SetMaskedSessionID(ctx, account.ID, maskedSessionID); err != nil {
+		log.Printf("Warning: failed to set masked session ID for account %d: %v", account.ID, err)
+REDACTED
+
+	// 替换 session 部分：保留 _session_ 之前的内容，替换之后的内容
+	newUserID := userID[:idx+len(sessionMarker)] + maskedSessionID
+
+	slog.Debug("session_id_masking_applied",
+		"account_id", account.ID,
+		"before", userID,
+		"after", newUserID,
+	)
+
+	metadata["user_id"] = newUserID
+	reqMap["metadata"] = metadata
+
+	return json.Marshal(reqMap)
+REDACTED
+
+// generateRandomUUID 生成随机 UUID v4 格式字符串
+func generateRandomUUID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// fallback: 使用时间戳生成
+		h := sha256.Sum256([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+		b = h[:16]
+REDACTED
+
+	// 设置 UUID v4 版本和变体位
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 REDACTED
 
 // generateClientID 生成64位十六进制客户端ID（32字节随机数）

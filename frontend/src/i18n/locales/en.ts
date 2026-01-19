@@ -1293,6 +1293,10 @@ export default {
         tlsFingerprint: {
           label: 'TLS Fingerprint Simulation',
           hint: 'Simulate Node.js/Claude Code client TLS fingerprint'
+        REDACTED,
+        sessionIdMasking: {
+          label: 'Session ID Masking',
+          hint: 'When enabled, fixes the session ID in metadata.user_id for 15 minutes, making upstream think requests come from the same session'
         REDACTED
       REDACTED,
       expired: 'Expired',

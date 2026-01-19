@@ -7,22 +7,14 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 
-	"github.com/gin-gonic/gin"
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
 )
-
-// debugLog prints log only in non-release mode.
-func debugLog(format string, v ...any) {
-	if gin.Mode() != gin.ReleaseMode {
-		log.Printf(format, v...)
-REDACTED
-REDACTED
 
 // Profile contains TLS fingerprint configuration.
 type Profile struct {
@@ -229,7 +221,7 @@ REDACTED
 // DialTLSContext establishes a TLS connection through SOCKS5 proxy with the configured fingerprint.
 // Flow: SOCKS5 CONNECT to target -> TLS handshake with utls on the tunnel
 func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	debugLog("[TLS Fingerprint SOCKS5] Connecting through proxy %s for target %s", d.proxyURL.Host, addr)
+	slog.Debug("tls_fingerprint_socks5_connecting", "proxy", d.proxyURL.Host, "target", addr)
 
 	// Step 1: Create SOCKS5 dialer
 	var auth *proxy.Auth
@@ -250,33 +242,37 @@ REDACTED
 
 	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
 	if err != nil {
-		debugLog("[TLS Fingerprint SOCKS5] Failed to create SOCKS5 dialer: %v", err)
+		slog.Debug("tls_fingerprint_socks5_dialer_failed", "error", err)
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
 REDACTED
 
 	// Step 2: Establish SOCKS5 tunnel to target
-	debugLog("[TLS Fingerprint SOCKS5] Establishing SOCKS5 tunnel to %s", addr)
+	slog.Debug("tls_fingerprint_socks5_establishing_tunnel", "target", addr)
 	conn, err := socksDialer.Dial("tcp", addr)
 	if err != nil {
-		debugLog("[TLS Fingerprint SOCKS5] Failed to connect through SOCKS5: %v", err)
+		slog.Debug("tls_fingerprint_socks5_connect_failed", "error", err)
 		return nil, fmt.Errorf("SOCKS5 connect: %w", err)
 REDACTED
-	debugLog("[TLS Fingerprint SOCKS5] SOCKS5 tunnel established")
+	slog.Debug("tls_fingerprint_socks5_tunnel_established")
 
 	// Step 3: Perform TLS handshake on the tunnel with utls fingerprint
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
 REDACTED
-	debugLog("[TLS Fingerprint SOCKS5] Starting TLS handshake to %s", host)
+	slog.Debug("tls_fingerprint_socks5_starting_handshake", "host", host)
 
 	// Build ClientHello specification from profile (Node.js/Claude CLI fingerprint)
 	spec := buildClientHelloSpecFromProfile(d.profile)
-	debugLog("[TLS Fingerprint SOCKS5] ClientHello spec: CipherSuites=%d, Extensions=%d, CompressionMethods=%v, TLSVersMax=0x%04x, TLSVersMin=0x%04x",
-		len(spec.CipherSuites), len(spec.Extensions), spec.CompressionMethods, spec.TLSVersMax, spec.TLSVersMin)
+	slog.Debug("tls_fingerprint_socks5_clienthello_spec",
+		"cipher_suites", len(spec.CipherSuites),
+		"extensions", len(spec.Extensions),
+		"compression_methods", spec.CompressionMethods,
+		"tls_vers_max", fmt.Sprintf("0x%04x", spec.TLSVersMax),
+		"tls_vers_min", fmt.Sprintf("0x%04x", spec.TLSVersMin))
 
 	if d.profile != nil {
-		debugLog("[TLS Fingerprint SOCKS5] Using profile: %s, GREASE: %v", d.profile.Name, d.profile.EnableGREASE)
+		slog.Debug("tls_fingerprint_socks5_using_profile", "name", d.profile.Name, "grease", d.profile.EnableGREASE)
 REDACTED
 
 	// Create uTLS connection on the tunnel
@@ -285,20 +281,22 @@ REDACTED
 REDACTED, utls.HelloCustom)
 
 	if err := tlsConn.ApplyPreset(spec); err != nil {
-		debugLog("[TLS Fingerprint SOCKS5] ApplyPreset failed: %v", err)
+		slog.Debug("tls_fingerprint_socks5_apply_preset_failed", "error", err)
 		_ = conn.Close()
 		return nil, fmt.Errorf("apply TLS preset: %w", err)
 REDACTED
 
 	if err := tlsConn.Handshake(); err != nil {
-		debugLog("[TLS Fingerprint SOCKS5] Handshake FAILED: %v", err)
+		slog.Debug("tls_fingerprint_socks5_handshake_failed", "error", err)
 		_ = conn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 REDACTED
 
 	state := tlsConn.ConnectionState()
-	debugLog("[TLS Fingerprint SOCKS5] Handshake SUCCESS - Version: 0x%04x, CipherSuite: 0x%04x, ALPN: %s",
-		state.Version, state.CipherSuite, state.NegotiatedProtocol)
+	slog.Debug("tls_fingerprint_socks5_handshake_success",
+		"version", fmt.Sprintf("0x%04x", state.Version),
+		"cipher_suite", fmt.Sprintf("0x%04x", state.CipherSuite),
+		"alpn", state.NegotiatedProtocol)
 
 	return tlsConn, nil
 REDACTED
@@ -306,7 +304,7 @@ REDACTED
 // DialTLSContext establishes a TLS connection through HTTP proxy with the configured fingerprint.
 // Flow: TCP connect to proxy -> CONNECT tunnel -> TLS handshake with utls
 func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	debugLog("[TLS Fingerprint HTTPProxy] Connecting to proxy %s for target %s", d.proxyURL.Host, addr)
+	slog.Debug("tls_fingerprint_http_proxy_connecting", "proxy", d.proxyURL.Host, "target", addr)
 
 	// Step 1: TCP connect to proxy server
 	var proxyAddr string
@@ -324,10 +322,10 @@ REDACTED
 	dialer := &net.Dialer{REDACTED
 	conn, err := dialer.DialContext(ctx, "tcp", proxyAddr)
 	if err != nil {
-		debugLog("[TLS Fingerprint HTTPProxy] Failed to connect to proxy: %v", err)
+		slog.Debug("tls_fingerprint_http_proxy_connect_failed", "error", err)
 		return nil, fmt.Errorf("connect to proxy: %w", err)
 REDACTED
-	debugLog("[TLS Fingerprint HTTPProxy] Connected to proxy %s", proxyAddr)
+	slog.Debug("tls_fingerprint_http_proxy_connected", "proxy_addr", proxyAddr)
 
 	// Step 2: Send CONNECT request to establish tunnel
 	req := &http.Request{
@@ -345,10 +343,10 @@ REDACTED
 		req.Header.Set("Proxy-Authorization", "Basic "+auth)
 REDACTED
 
-	debugLog("[TLS Fingerprint HTTPProxy] Sending CONNECT request for %s", addr)
+	slog.Debug("tls_fingerprint_http_proxy_sending_connect", "target", addr)
 	if err := req.Write(conn); err != nil {
 		_ = conn.Close()
-		debugLog("[TLS Fingerprint HTTPProxy] Failed to write CONNECT request: %v", err)
+		slog.Debug("tls_fingerprint_http_proxy_write_failed", "error", err)
 		return nil, fmt.Errorf("write CONNECT request: %w", err)
 REDACTED
 
@@ -357,32 +355,33 @@ REDACTED
 	resp, err := http.ReadResponse(br, req)
 	if err != nil {
 		_ = conn.Close()
-		debugLog("[TLS Fingerprint HTTPProxy] Failed to read CONNECT response: %v", err)
+		slog.Debug("tls_fingerprint_http_proxy_read_response_failed", "error", err)
 		return nil, fmt.Errorf("read CONNECT response: %w", err)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode != http.StatusOK {
 		_ = conn.Close()
-		debugLog("[TLS Fingerprint HTTPProxy] CONNECT failed with status: %d %s", resp.StatusCode, resp.Status)
+		slog.Debug("tls_fingerprint_http_proxy_connect_failed_status", "status_code", resp.StatusCode, "status", resp.Status)
 		return nil, fmt.Errorf("proxy CONNECT failed: %s", resp.Status)
 REDACTED
-	debugLog("[TLS Fingerprint HTTPProxy] CONNECT tunnel established")
+	slog.Debug("tls_fingerprint_http_proxy_tunnel_established")
 
 	// Step 4: Perform TLS handshake on the tunnel with utls fingerprint
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
 REDACTED
-	debugLog("[TLS Fingerprint HTTPProxy] Starting TLS handshake to %s", host)
+	slog.Debug("tls_fingerprint_http_proxy_starting_handshake", "host", host)
 
 	// Build ClientHello specification (reuse the shared method)
 	spec := buildClientHelloSpecFromProfile(d.profile)
-	debugLog("[TLS Fingerprint HTTPProxy] ClientHello spec built with %d cipher suites, %d extensions",
-		len(spec.CipherSuites), len(spec.Extensions))
+	slog.Debug("tls_fingerprint_http_proxy_clienthello_spec",
+		"cipher_suites", len(spec.CipherSuites),
+		"extensions", len(spec.Extensions))
 
 	if d.profile != nil {
-		debugLog("[TLS Fingerprint HTTPProxy] Using profile: %s, GREASE: %v", d.profile.Name, d.profile.EnableGREASE)
+		slog.Debug("tls_fingerprint_http_proxy_using_profile", "name", d.profile.Name, "grease", d.profile.EnableGREASE)
 REDACTED
 
 	// Create uTLS connection on the tunnel
@@ -392,20 +391,22 @@ REDACTED
 REDACTED, utls.HelloCustom)
 
 	if err := tlsConn.ApplyPreset(spec); err != nil {
-		debugLog("[TLS Fingerprint HTTPProxy] ApplyPreset failed: %v", err)
+		slog.Debug("tls_fingerprint_http_proxy_apply_preset_failed", "error", err)
 		_ = conn.Close()
 		return nil, fmt.Errorf("apply TLS preset: %w", err)
 REDACTED
 
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		debugLog("[TLS Fingerprint HTTPProxy] Handshake FAILED: %v", err)
+		slog.Debug("tls_fingerprint_http_proxy_handshake_failed", "error", err)
 		_ = conn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 REDACTED
 
 	state := tlsConn.ConnectionState()
-	debugLog("[TLS Fingerprint HTTPProxy] Handshake SUCCESS - Version: 0x%04x, CipherSuite: 0x%04x, ALPN: %s",
-		state.Version, state.CipherSuite, state.NegotiatedProtocol)
+	slog.Debug("tls_fingerprint_http_proxy_handshake_success",
+		"version", fmt.Sprintf("0x%04x", state.Version),
+		"cipher_suite", fmt.Sprintf("0x%04x", state.CipherSuite),
+		"alpn", state.NegotiatedProtocol)
 
 	return tlsConn, nil
 REDACTED
@@ -414,31 +415,32 @@ REDACTED
 // This method is designed to be used as http.Transport.DialTLSContext.
 func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	// Establish TCP connection using base dialer (supports proxy)
-	debugLog("[TLS Fingerprint] Dialing TCP to %s", addr)
+	slog.Debug("tls_fingerprint_dialing_tcp", "addr", addr)
 	conn, err := d.baseDialer(ctx, network, addr)
 	if err != nil {
-		debugLog("[TLS Fingerprint] TCP dial failed: %v", err)
+		slog.Debug("tls_fingerprint_tcp_dial_failed", "error", err)
 		return nil, err
 REDACTED
-	debugLog("[TLS Fingerprint] TCP connected to %s", addr)
+	slog.Debug("tls_fingerprint_tcp_connected", "addr", addr)
 
 	// Extract hostname for SNI
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
 REDACTED
-	debugLog("[TLS Fingerprint] SNI hostname: %s", host)
+	slog.Debug("tls_fingerprint_sni_hostname", "host", host)
 
 	// Build ClientHello specification
 	spec := d.buildClientHelloSpec()
-	debugLog("[TLS Fingerprint] ClientHello spec built with %d cipher suites, %d extensions",
-		len(spec.CipherSuites), len(spec.Extensions))
+	slog.Debug("tls_fingerprint_clienthello_spec",
+		"cipher_suites", len(spec.CipherSuites),
+		"extensions", len(spec.Extensions))
 
 	// Log profile info
 	if d.profile != nil {
-		debugLog("[TLS Fingerprint] Using profile: %s, GREASE: %v", d.profile.Name, d.profile.EnableGREASE)
+		slog.Debug("tls_fingerprint_using_profile", "name", d.profile.Name, "grease", d.profile.EnableGREASE)
 REDACTED else {
-		debugLog("[TLS Fingerprint] Using default profile (no custom config)")
+		slog.Debug("tls_fingerprint_using_default_profile")
 REDACTED
 
 	// Create uTLS connection
@@ -449,26 +451,28 @@ REDACTED, utls.HelloCustom)
 
 	// Apply fingerprint
 	if err := tlsConn.ApplyPreset(spec); err != nil {
-		debugLog("[TLS Fingerprint] ApplyPreset failed: %v", err)
+		slog.Debug("tls_fingerprint_apply_preset_failed", "error", err)
 		_ = conn.Close()
 		return nil, err
 REDACTED
-	debugLog("[TLS Fingerprint] Preset applied, starting handshake...")
+	slog.Debug("tls_fingerprint_preset_applied")
 
 	// Perform TLS handshake
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		debugLog("[TLS Fingerprint] Handshake FAILED: %v", err)
-		// Log more details about the connection state
-		debugLog("[TLS Fingerprint] Connection state - Local: %v, Remote: %v",
-			conn.LocalAddr(), conn.RemoteAddr())
+		slog.Debug("tls_fingerprint_handshake_failed",
+			"error", err,
+			"local_addr", conn.LocalAddr(),
+			"remote_addr", conn.RemoteAddr())
 		_ = conn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 REDACTED
 
 	// Log successful handshake details
 	state := tlsConn.ConnectionState()
-	debugLog("[TLS Fingerprint] Handshake SUCCESS - Version: 0x%04x, CipherSuite: 0x%04x, ALPN: %s",
-		state.Version, state.CipherSuite, state.NegotiatedProtocol)
+	slog.Debug("tls_fingerprint_handshake_success",
+		"version", fmt.Sprintf("0x%04x", state.Version),
+		"cipher_suite", fmt.Sprintf("0x%04x", state.CipherSuite),
+		"alpn", state.NegotiatedProtocol)
 
 	return tlsConn, nil
 REDACTED

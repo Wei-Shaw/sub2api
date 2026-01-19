@@ -759,6 +759,33 @@
             </button>
           </div>
         </div>
+
+        <!-- Session ID Masking -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.sessionIdMasking.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.sessionIdMasking.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="sessionIdMaskingEnabled = !sessionIdMaskingEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                sessionIdMaskingEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  sessionIdMaskingEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -932,6 +959,7 @@ const sessionLimitEnabled = ref(false)
 const maxSessions = ref<number | null>(null)
 const sessionIdleTimeout = ref<number | null>(null)
 const tlsFingerprintEnabled = ref(false)
+const sessionIdMaskingEnabled = ref(false)
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
@@ -1266,6 +1294,7 @@ function loadQuotaControlSettings(account: Account) {
   maxSessions.value = null
   sessionIdleTimeout.value = null
   tlsFingerprintEnabled.value = false
+  sessionIdMaskingEnabled.value = false
 
   // Only applies to Anthropic OAuth/SetupToken accounts
   if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
@@ -1288,6 +1317,11 @@ function loadQuotaControlSettings(account: Account) {
   // Load TLS fingerprint setting
   if (account.enable_tls_fingerprint === true) {
     tlsFingerprintEnabled.value = true
+  REDACTED
+
+  // Load session ID masking setting
+  if (account.session_id_masking_enabled === true) {
+    sessionIdMaskingEnabled.value = true
   REDACTED
 REDACTED
 
@@ -1446,6 +1480,13 @@ const handleSubmit = async () => {
         newExtra.enable_tls_fingerprint = true
       REDACTED else {
         delete newExtra.enable_tls_fingerprint
+      REDACTED
+
+      // Session ID masking setting
+      if (sessionIdMaskingEnabled.value) {
+        newExtra.session_id_masking_enabled = true
+      REDACTED else {
+        delete newExtra.session_id_masking_enabled
       REDACTED
 
       updatePayload.extra = newExtra

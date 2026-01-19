@@ -2,6 +2,7 @@
 package tlsfingerprint
 
 import (
+	"log/slog"
 	"sort"
 	"sync"
 
@@ -40,7 +41,7 @@ func NewRegistryFromConfig(cfg *config.TLSFingerprintConfig) *Registry {
 	r := NewRegistry()
 
 	if cfg == nil || !cfg.Enabled {
-		debugLog("[TLS Registry] TLS fingerprint disabled or no config, using default profile only")
+		slog.Debug("tls_registry_disabled", "reason", "disabled or no config")
 		return r
 REDACTED
 
@@ -56,10 +57,10 @@ REDACTED
 
 		// If the profile has empty values, they will use defaults in dialer
 		r.RegisterProfile(name, profile)
-		debugLog("[TLS Registry] Loaded custom profile: %s (%s)", name, profileCfg.Name)
+		slog.Debug("tls_registry_loaded_profile", "key", name, "name", profileCfg.Name)
 REDACTED
 
-	debugLog("[TLS Registry] Initialized with %d profiles: %v", len(r.profileNames), r.profileNames)
+	slog.Debug("tls_registry_initialized", "profile_count", len(r.profileNames), "profiles", r.profileNames)
 	return r
 REDACTED
 

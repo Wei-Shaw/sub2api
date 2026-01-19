@@ -595,6 +595,25 @@ REDACTED
 	return false
 REDACTED
 
+// IsSessionIDMaskingEnabled 检查是否启用会话ID伪装
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 启用后将在一段时间内（15分钟）固定 metadata.user_id 中的 session ID，
+// 使上游认为请求来自同一个会话
+func (a *Account) IsSessionIDMaskingEnabled() bool {
+	if !a.IsAnthropicOAuthOrSetupToken() {
+		return false
+REDACTED
+	if a.Extra == nil {
+		return false
+REDACTED
+	if v, ok := a.Extra["session_id_masking_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
 // GetWindowCostLimit 获取 5h 窗口费用阈值（美元）
 // 返回 0 表示未启用
 func (a *Account) GetWindowCostLimit() float64 {

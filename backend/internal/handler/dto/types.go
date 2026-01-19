@@ -116,6 +116,11 @@ type Account struct {
 	// 从 extra 字段提取，方便前端显示和编辑
 	EnableTLSFingerprint *bool `json:"enable_tls_fingerprint,omitempty"`
 
+	// 会话ID伪装（仅 Anthropic OAuth/SetupToken 账号有效）
+	// 启用后将在15分钟内固定 metadata.user_id 中的 session ID
+	// 从 extra 字段提取，方便前端显示和编辑
+	EnableSessionIDMasking *bool `json:"session_id_masking_enabled,omitempty"`
+
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 
