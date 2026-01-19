@@ -3463,9 +3463,15 @@ REDACTED
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 
 	pendingEventLines := make([]string, 0, 4)
-	toolInputBuffers := make(map[int]string)
+	var toolInputBuffers map[int]string
+	if mimicClaudeCode {
+		toolInputBuffers = make(map[int]string)
+REDACTED
 
 	transformToolInputJSON := func(raw string) string {
+		if !mimicClaudeCode {
+			return raw
+	REDACTED
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			return raw
@@ -3522,7 +3528,10 @@ REDACTED
 
 		var event map[string]any
 		if err := json.Unmarshal([]byte(dataLine), &event); err != nil {
-			replaced := replaceToolNamesInText(dataLine, toolNameMap)
+			replaced := dataLine
+			if mimicClaudeCode {
+				replaced = replaceToolNamesInText(dataLine, toolNameMap)
+		REDACTED
 			block := ""
 			if eventName != "" {
 				block = "event: " + eventName + "\n"
@@ -3544,7 +3553,7 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		if eventType == "content_block_delta" {
+		if mimicClaudeCode && eventType == "content_block_delta" {
 			if delta, ok := event["delta"].(map[string]any); ok {
 				if deltaType, _ := delta["type"].(string); deltaType == "input_json_delta" {
 					if indexVal, ok := event["index"].(float64); ok {
@@ -3558,7 +3567,7 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		if eventType == "content_block_stop" {
+		if mimicClaudeCode && eventType == "content_block_stop" {
 			if indexVal, ok := event["index"].(float64); ok {
 				index := int(indexVal)
 				if buffered := toolInputBuffers[index]; buffered != "" {
@@ -3593,10 +3602,15 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		rewriteToolNamesInValue(event, toolNameMap)
+		if mimicClaudeCode {
+			rewriteToolNamesInValue(event, toolNameMap)
+	REDACTED
 		newData, err := json.Marshal(event)
 		if err != nil {
-			replaced := replaceToolNamesInText(dataLine, toolNameMap)
+			replaced := dataLine
+			if mimicClaudeCode {
+				replaced = replaceToolNamesInText(dataLine, toolNameMap)
+		REDACTED
 			block := ""
 			if eventName != "" {
 				block = "event: " + eventName + "\n"
