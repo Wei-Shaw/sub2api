@@ -720,6 +720,21 @@
                 {{ t('admin.settings.site.homeContentIframeWarning') REDACTEDREDACTED
               </p>
             </div>
+
+            <!-- Hide CCS Import Button -->
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.site.hideCcsImportButton')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.site.hideCcsImportButtonHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.hide_ccs_import_button" />
+            </div>
           </div>
         </div>
 
@@ -1007,6 +1022,7 @@ const form = reactive<SettingsForm>({
   contact_info: '',
   doc_url: '',
   home_content: '',
+  hide_ccs_import_button: false,
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -1128,6 +1144,7 @@ async function saveSettings() {
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,
+      hide_ccs_import_button: form.hide_ccs_import_button,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,

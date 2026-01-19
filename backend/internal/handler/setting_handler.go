@@ -43,6 +43,7 @@ REDACTED
 		ContactInfo:         settings.ContactInfo,
 		DocURL:              settings.DocURL,
 		HomeContent:         settings.HomeContent,
+		HideCcsImportButton: settings.HideCcsImportButton,
 		LinuxDoOAuthEnabled: settings.LinuxDoOAuthEnabled,
 		Version:             h.version,
 REDACTED)

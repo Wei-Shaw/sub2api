@@ -23,6 +23,7 @@ export interface SystemSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  hide_ccs_import_button: boolean
   // SMTP settings
   smtp_host: string
   smtp_port: number
@@ -72,6 +73,7 @@ export interface UpdateSettingsRequest {
   contact_info?: string
   doc_url?: string
   home_content?: string
+  hide_ccs_import_button?: boolean
   smtp_host?: string
   smtp_port?: number
   smtp_username?: string

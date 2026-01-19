@@ -69,6 +69,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
+		SettingKeyHideCcsImportButton,
 		SettingKeyLinuxDoConnectEnabled,
 REDACTED
 
@@ -96,6 +97,7 @@ REDACTED
 		ContactInfo:         settings[SettingKeyContactInfo],
 		DocURL:              settings[SettingKeyDocURL],
 		HomeContent:         settings[SettingKeyHomeContent],
+		HideCcsImportButton: settings[SettingKeyHideCcsImportButton] == "true",
 		LinuxDoOAuthEnabled: linuxDoEnabled,
 REDACTED, nil
 REDACTED
@@ -132,6 +134,7 @@ REDACTED
 		ContactInfo         string `json:"contact_info,omitempty"`
 		DocURL              string `json:"doc_url,omitempty"`
 		HomeContent         string `json:"home_content,omitempty"`
+		HideCcsImportButton bool   `json:"hide_ccs_import_button"`
 		LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
 		Version             string `json:"version,omitempty"`
 REDACTED{
@@ -146,6 +149,7 @@ REDACTED{
 		ContactInfo:         settings.ContactInfo,
 		DocURL:              settings.DocURL,
 		HomeContent:         settings.HomeContent,
+		HideCcsImportButton: settings.HideCcsImportButton,
 		LinuxDoOAuthEnabled: settings.LinuxDoOAuthEnabled,
 		Version:             s.version,
 REDACTED, nil
@@ -193,6 +197,7 @@ REDACTED
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
+	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -339,6 +344,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		ContactInfo:                  settings[SettingKeyContactInfo],
 		DocURL:                       settings[SettingKeyDocURL],
 		HomeContent:                  settings[SettingKeyHomeContent],
+		HideCcsImportButton:          settings[SettingKeyHideCcsImportButton] == "true",
 REDACTED
 
 	// 解析整数类型

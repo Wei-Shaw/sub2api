@@ -75,6 +75,7 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  hide_ccs_import_button: boolean
   linuxdo_oauth_enabled: boolean
   version: string
 REDACTED
