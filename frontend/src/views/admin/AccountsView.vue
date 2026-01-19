@@ -16,7 +16,7 @@
             @sync="showSync = true"
             @create="showCreate = true"
           >
-            <template #before>
+            <template #after>
               <!-- Column Settings Dropdown -->
               <div class="relative" ref="columnDropdownRef">
                 <button
