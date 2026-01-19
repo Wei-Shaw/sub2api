@@ -188,8 +188,8 @@ REDACTED
 	if err == nil || !strings.Contains(err.Error(), "stream data interval timeout") {
 		t.Fatalf("expected stream timeout error, got %v", err)
 REDACTED
-	if !strings.Contains(rec.Body.String(), "stream_timeout") {
-		t.Fatalf("expected stream_timeout SSE error, got %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "\"type\":\"error\"") || !strings.Contains(rec.Body.String(), "stream_timeout") {
+		t.Fatalf("expected OpenAI-compatible error SSE event, got %q", rec.Body.String())
 REDACTED
 REDACTED
 
@@ -305,8 +305,8 @@ REDACTED()
 	if !errors.Is(err, bufio.ErrTooLong) {
 		t.Fatalf("expected ErrTooLong, got %v", err)
 REDACTED
-	if !strings.Contains(rec.Body.String(), "response_too_large") {
-		t.Fatalf("expected response_too_large SSE error, got %q", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "\"type\":\"error\"") || !strings.Contains(rec.Body.String(), "response_too_large") {
+		t.Fatalf("expected OpenAI-compatible error SSE event, got %q", rec.Body.String())
 REDACTED
 REDACTED
 

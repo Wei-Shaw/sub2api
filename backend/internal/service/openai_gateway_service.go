@@ -1067,7 +1067,9 @@ REDACTED
 	// 记录上次收到上游数据的时间，用于控制 keepalive 发送频率
 	lastDataAt := time.Now()
 
-	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）
+	// 仅发送一次错误事件，避免多次写入导致协议混乱。
+	// 注意：OpenAI `/v1/responses` streaming 事件必须符合 OpenAI Responses schema；
+	// 否则下游 SDK（例如 OpenCode）会因为类型校验失败而报错。
 	errorEventSent := false
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
 	sendErrorEvent := func(reason string) {
@@ -1075,8 +1077,19 @@ REDACTED
 			return
 	REDACTED
 		errorEventSent = true
-		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"REDACTED\n\n", reason)
-		flusher.Flush()
+		payload := map[string]any{
+			"type":            "error",
+			"sequence_number": 0,
+			"error": map[string]any{
+				"type":    "upstream_error",
+				"message": reason,
+				"code":    reason,
+		REDACTED,
+	REDACTED
+		if b, err := json.Marshal(payload); err == nil {
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
+			flusher.Flush()
+	REDACTED
 REDACTED
 
 	needModelReplace := originalModel != mappedModel
