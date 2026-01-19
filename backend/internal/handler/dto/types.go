@@ -102,6 +102,16 @@ type Account struct {
 	SessionWindowEnd    *time.Time `json:"session_window_end"`
 	SessionWindowStatus string     `json:"session_window_status"`
 
+	// 5h窗口费用控制（仅 Anthropic OAuth/SetupToken 账号有效）
+	// 从 extra 字段提取，方便前端显示和编辑
+	WindowCostLimit         *float64 `json:"window_cost_limit,omitempty"`
+	WindowCostStickyReserve *float64 `json:"window_cost_sticky_reserve,omitempty"`
+
+	// 会话数量控制（仅 Anthropic OAuth/SetupToken 账号有效）
+	// 从 extra 字段提取，方便前端显示和编辑
+	MaxSessions           *int `json:"max_sessions,omitempty"`
+	SessionIdleTimeoutMin *int `json:"session_idle_timeout_minutes,omitempty"`
+
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 

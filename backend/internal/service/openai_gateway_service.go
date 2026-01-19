@@ -1067,15 +1067,29 @@ REDACTED
 	// 记录上次收到上游数据的时间，用于控制 keepalive 发送频率
 	lastDataAt := time.Now()
 
-	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）
+	// 仅发送一次错误事件，避免多次写入导致协议混乱。
+	// 注意：OpenAI `/v1/responses` streaming 事件必须符合 OpenAI Responses schema；
+	// 否则下游 SDK（例如 OpenCode）会因为类型校验失败而报错。
 	errorEventSent := false
+	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
 	sendErrorEvent := func(reason string) {
-		if errorEventSent {
+		if errorEventSent || clientDisconnected {
 			return
 	REDACTED
 		errorEventSent = true
-		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"REDACTED\n\n", reason)
-		flusher.Flush()
+		payload := map[string]any{
+			"type":            "error",
+			"sequence_number": 0,
+			"error": map[string]any{
+				"type":    "upstream_error",
+				"message": reason,
+				"code":    reason,
+		REDACTED,
+	REDACTED
+		if b, err := json.Marshal(payload); err == nil {
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
+			flusher.Flush()
+	REDACTED
 REDACTED
 
 	needModelReplace := originalModel != mappedModel
@@ -1087,6 +1101,17 @@ REDACTED
 				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 		REDACTED
 			if ev.err != nil {
+				// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
+				// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
+				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
+					log.Printf("Context canceled during streaming, returning collected usage")
+					return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
+			REDACTED
+				// 客户端已断开时，上游出错仅影响体验，不影响计费；返回已收集 usage
+				if clientDisconnected {
+					log.Printf("Upstream read error after client disconnect: %v, returning collected usage", ev.err)
+					return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
+			REDACTED
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					log.Printf("SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
 					sendErrorEvent("response_too_large")
@@ -1110,15 +1135,19 @@ REDACTED
 
 				// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 				if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEData(data); corrected {
+					data = correctedData
 					line = "data: " + correctedData
 			REDACTED
 
-				// Forward line
-				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-					sendErrorEvent("write_failed")
-					return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+				// 写入客户端（客户端断开后继续 drain 上游）
+				if !clientDisconnected {
+					if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+						clientDisconnected = true
+						log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+				REDACTED else {
+						flusher.Flush()
+				REDACTED
 			REDACTED
-				flusher.Flush()
 
 				// Record first token time
 				if firstTokenMs == nil && data != "" && data != "[DONE]" {
@@ -1128,17 +1157,24 @@ REDACTED
 				s.parseSSEUsage(data, usage)
 		REDACTED else {
 				// Forward non-data lines as-is
-				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-					sendErrorEvent("write_failed")
-					return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+				if !clientDisconnected {
+					if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+						clientDisconnected = true
+						log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+				REDACTED else {
+						flusher.Flush()
+				REDACTED
 			REDACTED
-				flusher.Flush()
 		REDACTED
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 			if time.Since(lastRead) < streamInterval {
 				continue
+		REDACTED
+			if clientDisconnected {
+				log.Printf("Upstream timeout after client disconnect, returning collected usage")
+				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 		REDACTED
 			log.Printf("Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
@@ -1149,11 +1185,16 @@ REDACTED
 			return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
 
 		case <-keepaliveCh:
+			if clientDisconnected {
+				continue
+		REDACTED
 			if time.Since(lastDataAt) < keepaliveInterval {
 				continue
 		REDACTED
 			if _, err := fmt.Fprint(w, ":\n\n"); err != nil {
-				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
+				clientDisconnected = true
+				log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+				continue
 		REDACTED
 			flusher.Flush()
 	REDACTED
