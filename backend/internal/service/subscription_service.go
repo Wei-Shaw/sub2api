@@ -27,6 +27,7 @@ var (
 	ErrWeeklyLimitExceeded       = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
 	ErrMonthlyLimitExceeded      = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
 	ErrSubscriptionNilInput      = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
+	ErrAdjustWouldExpire         = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
 )
 
 // SubscriptionService 订阅服务
@@ -308,22 +309,33 @@ REDACTED
 	return nil
 REDACTED
 
-// ExtendSubscription 延长订阅
+// ExtendSubscription 调整订阅时长（正数延长，负数缩短）
 func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscriptionID int64, days int) (*UserSubscription, error) {
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
 REDACTED
 
-	// 限制延长天数
+	// 限制调整天数范围
 	if days > MaxValidityDays {
 		days = MaxValidityDays
+REDACTED
+	if days < -MaxValidityDays {
+		days = -MaxValidityDays
 REDACTED
 
 	// 计算新的过期时间
 	newExpiresAt := sub.ExpiresAt.AddDate(0, 0, days)
 	if newExpiresAt.After(MaxExpiresAt) {
 		newExpiresAt = MaxExpiresAt
+REDACTED
+
+	// 如果是缩短（负数），检查新的过期时间必须大于当前时间
+	if days < 0 {
+		now := time.Now()
+		if !newExpiresAt.After(now) {
+			return nil, ErrAdjustWouldExpire
+	REDACTED
 REDACTED
 
 	if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
