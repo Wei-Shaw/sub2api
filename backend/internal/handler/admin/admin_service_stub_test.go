@@ -200,6 +200,10 @@ func (s *stubAdminService) ClearAccountError(ctx context.Context, id int64) (*se
 	return &account, nil
 REDACTED
 
+func (s *stubAdminService) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
+	return nil
+REDACTED
+
 func (s *stubAdminService) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*service.Account, error) {
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive, Schedulable: schedulableREDACTED
 	return &account, nil

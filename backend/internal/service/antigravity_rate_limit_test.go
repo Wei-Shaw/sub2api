@@ -38,6 +38,10 @@ REDACTED
 REDACTED, nil
 REDACTED
 
+func (s *stubAntigravityUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, enableTLSFingerprint bool) (*http.Response, error) {
+	return s.Do(req, proxyURL, accountID, accountConcurrency)
+REDACTED
+
 type scopeLimitCall struct {
 	accountID int64
 	scope     AntigravityQuotaScope
