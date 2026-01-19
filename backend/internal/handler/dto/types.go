@@ -193,7 +193,6 @@ type RedeemCode struct {
 	Status    string     `json:"status"`
 	UsedBy    *int64     `json:"used_by"`
 	UsedAt    *time.Time `json:"used_at"`
-	Notes     string     `json:"notes"`
 	CreatedAt time.Time  `json:"created_at"`
 
 	GroupID      *int64 `json:"group_id"`
@@ -201,6 +200,14 @@ type RedeemCode struct {
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
+REDACTED
+
+// AdminRedeemCode 是管理员接口使用的 redeem code DTO（包含 notes 等字段）。
+// 注意：普通用户接口不得返回 notes 等内部信息。
+type AdminRedeemCode struct {
+	RedeemCode
+
+	Notes string `json:"notes"`
 REDACTED
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。

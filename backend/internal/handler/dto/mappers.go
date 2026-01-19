@@ -304,7 +304,24 @@ func RedeemCodeFromService(rc *service.RedeemCode) *RedeemCode {
 	if rc == nil {
 		return nil
 REDACTED
-	return &RedeemCode{
+	out := redeemCodeFromServiceBase(rc)
+	return &out
+REDACTED
+
+// RedeemCodeFromServiceAdmin converts a service RedeemCode to DTO for admin users.
+// It includes notes - user-facing endpoints must not use this.
+func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
+	if rc == nil {
+		return nil
+REDACTED
+	return &AdminRedeemCode{
+		RedeemCode: redeemCodeFromServiceBase(rc),
+		Notes:     rc.Notes,
+REDACTED
+REDACTED
+
+func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
+	return RedeemCode{
 		ID:           rc.ID,
 		Code:         rc.Code,
 		Type:         rc.Type,
@@ -312,7 +329,6 @@ REDACTED
 		Status:       rc.Status,
 		UsedBy:       rc.UsedBy,
 		UsedAt:       rc.UsedAt,
-		Notes:        rc.Notes,
 		CreatedAt:    rc.CreatedAt,
 		GroupID:      rc.GroupID,
 		ValidityDays: rc.ValidityDays,
