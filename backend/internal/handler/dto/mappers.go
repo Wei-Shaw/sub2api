@@ -302,14 +302,9 @@ REDACTED
 REDACTED
 REDACTED
 
-// usageLogFromServiceBase is a helper that converts service UsageLog to DTO.
-// The account parameter allows caller to control what Account info is included.
-// The includeIPAddress parameter controls whether to include the IP address (admin-only).
-func usageLogFromServiceBase(l *service.UsageLog, account *AccountSummary, includeIPAddress bool) *UsageLog {
-	if l == nil {
-		return nil
-REDACTED
-	result := &UsageLog{
+func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
+	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、ip_address、account）。
+	return UsageLog{
 		ID:                    l.ID,
 		UserID:                l.UserID,
 		APIKeyID:              l.APIKeyID,
@@ -331,7 +326,6 @@ REDACTED
 		TotalCost:             l.TotalCost,
 		ActualCost:            l.ActualCost,
 		RateMultiplier:        l.RateMultiplier,
-		AccountRateMultiplier: l.AccountRateMultiplier,
 		BillingType:           l.BillingType,
 		Stream:                l.Stream,
 		DurationMs:            l.DurationMs,
@@ -342,30 +336,33 @@ REDACTED
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
 		APIKey:                APIKeyFromService(l.APIKey),
-		Account:               account,
 		Group:                 GroupFromServiceShallow(l.Group),
 		Subscription:          UserSubscriptionFromService(l.Subscription),
 REDACTED
-	// IP 地址仅对管理员可见
-	if includeIPAddress {
-		result.IPAddress = l.IPAddress
-REDACTED
-	return result
 REDACTED
 
 // UsageLogFromService converts a service UsageLog to DTO for regular users.
 // It excludes Account details and IP address - users should not see these.
 func UsageLogFromService(l *service.UsageLog) *UsageLog {
-	return usageLogFromServiceBase(l, nil, false)
+	if l == nil {
+		return nil
+REDACTED
+	u := usageLogFromServiceUser(l)
+	return &u
 REDACTED
 
 // UsageLogFromServiceAdmin converts a service UsageLog to DTO for admin users.
 // It includes minimal Account info (ID, Name only) and IP address.
-func UsageLogFromServiceAdmin(l *service.UsageLog) *UsageLog {
+func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	if l == nil {
 		return nil
 REDACTED
-	return usageLogFromServiceBase(l, AccountSummaryFromService(l.Account), true)
+	return &AdminUsageLog{
+		UsageLog:              usageLogFromServiceUser(l),
+		AccountRateMultiplier: l.AccountRateMultiplier,
+		IPAddress:             l.IPAddress,
+		Account:               AccountSummaryFromService(l.Account),
+REDACTED
 REDACTED
 
 func UsageCleanupTaskFromService(task *service.UsageCleanupTask) *UsageCleanupTask {

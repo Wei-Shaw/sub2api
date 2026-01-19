@@ -239,7 +239,7 @@ import { formatDateTime REDACTED from '@/utils/format'
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { UsageLog REDACTED from '@/types'
+import type { AdminUsageLog REDACTED from '@/types'
 
 defineProps(['data', 'loading'])
 const { t REDACTED = useI18n()
@@ -247,12 +247,12 @@ const { t REDACTED = useI18n()
 // Tooltip state - cost
 const tooltipVisible = ref(false)
 const tooltipPosition = ref({ x: 0, y: 0 REDACTED)
-const tooltipData = ref<UsageLog | null>(null)
+const tooltipData = ref<AdminUsageLog | null>(null)
 
 // Tooltip state - token
 const tokenTooltipVisible = ref(false)
 const tokenTooltipPosition = ref({ x: 0, y: 0 REDACTED)
-const tokenTooltipData = ref<UsageLog | null>(null)
+const tokenTooltipData = ref<AdminUsageLog | null>(null)
 
 const cols = computed(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false REDACTED,
@@ -296,7 +296,7 @@ const formatDuration = (ms: number | null | undefined): string => {
 REDACTED
 
 // Cost tooltip functions
-const showTooltip = (event: MouseEvent, row: UsageLog) => {
+const showTooltip = (event: MouseEvent, row: AdminUsageLog) => {
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
   tooltipData.value = row
@@ -311,7 +311,7 @@ const hideTooltip = () => {
 REDACTED
 
 // Token tooltip functions
-const showTokenTooltip = (event: MouseEvent, row: UsageLog) => {
+const showTokenTooltip = (event: MouseEvent, row: AdminUsageLog) => {
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
   tokenTooltipData.value = row

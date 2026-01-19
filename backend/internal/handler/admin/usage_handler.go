@@ -163,7 +163,7 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.UsageLog, 0, len(records))
+	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
 		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
 REDACTED

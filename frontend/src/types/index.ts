@@ -636,7 +636,6 @@ export interface UsageLog {
   total_cost: number
   actual_cost: number
   rate_multiplier: number
-  account_rate_multiplier?: number | null
   billing_type: number
 
   stream: boolean
@@ -650,16 +649,28 @@ export interface UsageLog {
   // User-Agent
   user_agent: string | null
 
-  // IP 地址（仅管理员可见）
-  ip_address: string | null
-
   created_at: string
 
   user?: User
   api_key?: ApiKey
-  account?: Account
   group?: Group
   subscription?: UserSubscription
+REDACTED
+
+export interface UsageLogAccountSummary {
+  id: number
+  name: string
+REDACTED
+
+export interface AdminUsageLog extends UsageLog {
+  // 账号计费倍率（仅管理员可见）
+  account_rate_multiplier?: number | null
+
+  // 用户请求 IP（仅管理员可见）
+  ip_address?: string | null
+
+  // 最小账号信息（仅管理员接口返回）
+  account?: UsageLogAccountSummary
 REDACTED
 
 export interface UsageCleanupFilters {
