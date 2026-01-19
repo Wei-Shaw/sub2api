@@ -6,7 +6,6 @@ type User struct {
 	ID            int64     `json:"id"`
 	Email         string    `json:"email"`
 	Username      string    `json:"username"`
-	Notes         string    `json:"notes"`
 	Role          string    `json:"role"`
 	Balance       float64   `json:"balance"`
 	Concurrency   int       `json:"concurrency"`
@@ -17,6 +16,14 @@ type User struct {
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
+REDACTED
+
+// AdminUser 是管理员接口使用的 user DTO（包含敏感/内部字段）。
+// 注意：普通用户接口不得返回 notes 等管理员备注信息。
+type AdminUser struct {
+	User
+
+	Notes string `json:"notes"`
 REDACTED
 
 type APIKey struct {
@@ -58,12 +65,18 @@ type Group struct {
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+REDACTED
+
+// AdminGroup 是管理员接口使用的 group DTO（包含敏感/内部字段）。
+// 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
+type AdminGroup struct {
+	Group
+
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
-
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
 
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 	AccountCount  int64          `json:"account_count,omitempty"`
@@ -180,7 +193,6 @@ type RedeemCode struct {
 	Status    string     `json:"status"`
 	UsedBy    *int64     `json:"used_by"`
 	UsedAt    *time.Time `json:"used_at"`
-	Notes     string     `json:"notes"`
 	CreatedAt time.Time  `json:"created_at"`
 
 	GroupID      *int64 `json:"group_id"`
@@ -190,6 +202,15 @@ type RedeemCode struct {
 	Group *Group `json:"group,omitempty"`
 REDACTED
 
+// AdminRedeemCode 是管理员接口使用的 redeem code DTO（包含 notes 等字段）。
+// 注意：普通用户接口不得返回 notes 等内部信息。
+type AdminRedeemCode struct {
+	RedeemCode
+
+	Notes string `json:"notes"`
+REDACTED
+
+// UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
 type UsageLog struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
@@ -209,14 +230,13 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
 
-	InputCost             float64  `json:"input_cost"`
-	OutputCost            float64  `json:"output_cost"`
-	CacheCreationCost     float64  `json:"cache_creation_cost"`
-	CacheReadCost         float64  `json:"cache_read_cost"`
-	TotalCost             float64  `json:"total_cost"`
-	ActualCost            float64  `json:"actual_cost"`
-	RateMultiplier        float64  `json:"rate_multiplier"`
-	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
+	InputCost         float64 `json:"input_cost"`
+	OutputCost        float64 `json:"output_cost"`
+	CacheCreationCost float64 `json:"cache_creation_cost"`
+	CacheReadCost     float64 `json:"cache_read_cost"`
+	TotalCost         float64 `json:"total_cost"`
+	ActualCost        float64 `json:"actual_cost"`
+	RateMultiplier    float64 `json:"rate_multiplier"`
 
 	BillingType  int8 `json:"billing_type"`
 	Stream       bool `json:"stream"`
@@ -230,16 +250,26 @@ type UsageLog struct {
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
 
-	// IP 地址（仅管理员可见）
-	IPAddress *string `json:"ip_address,omitempty"`
-
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`
 	APIKey       *APIKey           `json:"api_key,omitempty"`
-	Account      *AccountSummary   `json:"account,omitempty"` // Use minimal AccountSummary to prevent data leakage
 	Group        *Group            `json:"group,omitempty"`
 	Subscription *UserSubscription `json:"subscription,omitempty"`
+REDACTED
+
+// AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
+type AdminUsageLog struct {
+	UsageLog
+
+	// AccountRateMultiplier 账号计费倍率快照（nil 表示按 1.0 处理）
+	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
+
+	// IPAddress 用户请求 IP（仅管理员可见）
+	IPAddress *string `json:"ip_address,omitempty"`
+
+	// Account 最小账号信息（避免泄露敏感字段）
+	Account *AccountSummary `json:"account,omitempty"`
 REDACTED
 
 type UsageCleanupFilters struct {
@@ -300,23 +330,30 @@ type UserSubscription struct {
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
 
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	User  *User  `json:"user,omitempty"`
+	Group *Group `json:"group,omitempty"`
+REDACTED
+
+// AdminUserSubscription 是管理员接口使用的订阅 DTO（包含分配信息/备注等字段）。
+// 注意：普通用户接口不得返回 assigned_by/assigned_at/notes/assigned_by_user 等管理员字段。
+type AdminUserSubscription struct {
+	UserSubscription
+
 	AssignedBy *int64    `json:"assigned_by"`
 	AssignedAt time.Time `json:"assigned_at"`
 	Notes      string    `json:"notes"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-
-	User           *User  `json:"user,omitempty"`
-	Group          *Group `json:"group,omitempty"`
-	AssignedByUser *User  `json:"assigned_by_user,omitempty"`
+	AssignedByUser *User `json:"assigned_by_user,omitempty"`
 REDACTED
 
 type BulkAssignResult struct {
-	SuccessCount  int                `json:"success_count"`
-	FailedCount   int                `json:"failed_count"`
-	Subscriptions []UserSubscription `json:"subscriptions"`
-	Errors        []string           `json:"errors"`
+	SuccessCount  int                     `json:"success_count"`
+	FailedCount   int                     `json:"failed_count"`
+	Subscriptions []AdminUserSubscription `json:"subscriptions"`
+	Errors        []string                `json:"errors"`
 REDACTED
 
 // PromoCode 注册优惠码

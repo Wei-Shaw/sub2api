@@ -1816,7 +1816,7 @@ REDACTED from '@/composables/useAccountOAuth'
 import { useOpenAIOAuth REDACTED from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth REDACTED from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth REDACTED from '@/composables/useAntigravityOAuth'
-import type { Proxy, Group, AccountPlatform, AccountType REDACTED from '@/types'
+import type { Proxy, AdminGroup, AccountPlatform, AccountType REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -1862,7 +1862,7 @@ REDACTED)
 interface Props {
   show: boolean
   proxies: Proxy[]
-  groups: Group[]
+  groups: AdminGroup[]
 REDACTED
 
 const props = defineProps<Props>()

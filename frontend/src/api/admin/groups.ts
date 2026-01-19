@@ -5,7 +5,7 @@
 
 import { apiClient REDACTED from '../client'
 import type {
-  Group,
+  AdminGroup,
   GroupPlatform,
   CreateGroupRequest,
   UpdateGroupRequest,
@@ -31,8 +31,8 @@ export async function list(
   options?: {
     signal?: AbortSignal
   REDACTED
-): Promise<PaginatedResponse<Group>> {
-  const { data REDACTED = await apiClient.get<PaginatedResponse<Group>>('/admin/groups', {
+): Promise<PaginatedResponse<AdminGroup>> {
+  const { data REDACTED = await apiClient.get<PaginatedResponse<AdminGroup>>('/admin/groups', {
     params: {
       page,
       page_size: pageSize,
@@ -48,8 +48,8 @@ REDACTED
  * @param platform - Optional platform filter
  * @returns List of all active groups
  */
-export async function getAll(platform?: GroupPlatform): Promise<Group[]> {
-  const { data REDACTED = await apiClient.get<Group[]>('/admin/groups/all', {
+export async function getAll(platform?: GroupPlatform): Promise<AdminGroup[]> {
+  const { data REDACTED = await apiClient.get<AdminGroup[]>('/admin/groups/all', {
     params: platform ? { platform REDACTED : undefined
   REDACTED)
   return data
@@ -60,7 +60,7 @@ REDACTED
  * @param platform - Platform to filter by
  * @returns List of groups for the specified platform
  */
-export async function getByPlatform(platform: GroupPlatform): Promise<Group[]> {
+export async function getByPlatform(platform: GroupPlatform): Promise<AdminGroup[]> {
   return getAll(platform)
 REDACTED
 
@@ -69,8 +69,8 @@ REDACTED
  * @param id - Group ID
  * @returns Group details
  */
-export async function getById(id: number): Promise<Group> {
-  const { data REDACTED = await apiClient.get<Group>(`/admin/groups/${idREDACTED`)
+export async function getById(id: number): Promise<AdminGroup> {
+  const { data REDACTED = await apiClient.get<AdminGroup>(`/admin/groups/${idREDACTED`)
   return data
 REDACTED
 
@@ -79,8 +79,8 @@ REDACTED
  * @param groupData - Group data
  * @returns Created group
  */
-export async function create(groupData: CreateGroupRequest): Promise<Group> {
-  const { data REDACTED = await apiClient.post<Group>('/admin/groups', groupData)
+export async function create(groupData: CreateGroupRequest): Promise<AdminGroup> {
+  const { data REDACTED = await apiClient.post<AdminGroup>('/admin/groups', groupData)
   return data
 REDACTED
 
@@ -90,8 +90,8 @@ REDACTED
  * @param updates - Fields to update
  * @returns Updated group
  */
-export async function update(id: number, updates: UpdateGroupRequest): Promise<Group> {
-  const { data REDACTED = await apiClient.put<Group>(`/admin/groups/${idREDACTED`, updates)
+export async function update(id: number, updates: UpdateGroupRequest): Promise<AdminGroup> {
+  const { data REDACTED = await apiClient.put<AdminGroup>(`/admin/groups/${idREDACTED`, updates)
   return data
 REDACTED
 
@@ -111,7 +111,7 @@ REDACTED
  * @param status - New status
  * @returns Updated group
  */
-export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<Group> {
+export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<AdminGroup> {
   return update(id, { status REDACTED)
 REDACTED
 

@@ -4,7 +4,7 @@
  */
 
 import { apiClient REDACTED from '../client'
-import type { UsageLog, UsageQueryParams, PaginatedResponse REDACTED from '@/types'
+import type { AdminUsageLog, UsageQueryParams, PaginatedResponse REDACTED from '@/types'
 
 // ==================== Types ====================
 
@@ -85,8 +85,8 @@ REDACTED
 export async function list(
   params: AdminUsageQueryParams,
   options?: { signal?: AbortSignal REDACTED
-): Promise<PaginatedResponse<UsageLog>> {
-  const { data REDACTED = await apiClient.get<PaginatedResponse<UsageLog>>('/admin/usage', {
+): Promise<PaginatedResponse<AdminUsageLog>> {
+  const { data REDACTED = await apiClient.get<PaginatedResponse<AdminUsageLog>>('/admin/usage', {
     params,
     signal: options?.signal
   REDACTED)

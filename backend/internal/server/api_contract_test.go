@@ -51,7 +51,6 @@ REDACTED{
 					"id": 1,
 					"email": "alice@example.com",
 					"username": "alice",
-					"notes": "hello",
 					"role": "user",
 					"balance": 12.5,
 					"concurrency": 5,
@@ -132,6 +131,153 @@ REDACTED{
 		REDACTED`,
 	REDACTED,
 		{
+			name: "GET /api/v1/groups/available",
+			setup: func(t *testing.T, deps *contractDeps) {
+			REDACTED
+				// 普通用户可见的分组列表不应包含内部字段（如 model_routing/account_count）。
+				deps.groupRepo.SetActive([]service.Group{
+					{
+						ID:                  10,
+						Name:                "Group One",
+						Description:         "desc",
+						Platform:            service.PlatformAnthropic,
+						RateMultiplier:      1.5,
+						IsExclusive:         false,
+						Status:              service.StatusActive,
+						SubscriptionType:    service.SubscriptionTypeStandard,
+						ModelRoutingEnabled: true,
+						ModelRouting: map[string][]int64{
+							"claude-3-*": []int64{101, 102REDACTED,
+					REDACTED,
+						AccountCount: 2,
+						CreatedAt:    deps.now,
+						UpdatedAt:    deps.now,
+				REDACTED,
+			REDACTED)
+				deps.userSubRepo.SetActiveByUserID(1, nil)
+		REDACTED,
+			method:     http.MethodGet,
+			path:       "/api/v1/groups/available",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": [
+					{
+						"id": 10,
+						"name": "Group One",
+						"description": "desc",
+						"platform": "anthropic",
+						"rate_multiplier": 1.5,
+						"is_exclusive": false,
+						"status": "active",
+						"subscription_type": "standard",
+						"daily_limit_usd": null,
+						"weekly_limit_usd": null,
+						"monthly_limit_usd": null,
+						"image_price_1k": null,
+						"image_price_2k": null,
+						"image_price_4k": null,
+						"claude_code_only": false,
+						"fallback_group_id": null,
+						"created_at": "2025-01-02T03:04:05Z",
+						"updated_at": "2025-01-02T03:04:05Z"
+				REDACTED
+				]
+		REDACTED`,
+	REDACTED,
+		{
+			name: "GET /api/v1/subscriptions",
+			setup: func(t *testing.T, deps *contractDeps) {
+			REDACTED
+				// 普通用户订阅接口不应包含 assigned_* / notes 等管理员字段。
+				deps.userSubRepo.SetByUserID(1, []service.UserSubscription{
+					{
+						ID:           501,
+						UserID:       1,
+						GroupID:      10,
+						StartsAt:     deps.now,
+						ExpiresAt:    deps.now.Add(24 * time.Hour),
+						Status:       service.SubscriptionStatusActive,
+						DailyUsageUSD:   1.23,
+						WeeklyUsageUSD:  2.34,
+						MonthlyUsageUSD: 3.45,
+						AssignedBy:    ptr(int64(999)),
+						AssignedAt:    deps.now,
+						Notes:         "admin-note",
+						CreatedAt:     deps.now,
+						UpdatedAt:     deps.now,
+				REDACTED,
+			REDACTED)
+		REDACTED,
+			method:     http.MethodGet,
+			path:       "/api/v1/subscriptions",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": [
+					{
+						"id": 501,
+						"user_id": 1,
+						"group_id": 10,
+						"starts_at": "2025-01-02T03:04:05Z",
+						"expires_at": "2025-01-03T03:04:05Z",
+						"status": "active",
+						"daily_window_start": null,
+						"weekly_window_start": null,
+						"monthly_window_start": null,
+						"daily_usage_usd": 1.23,
+						"weekly_usage_usd": 2.34,
+						"monthly_usage_usd": 3.45,
+						"created_at": "2025-01-02T03:04:05Z",
+						"updated_at": "2025-01-02T03:04:05Z"
+				REDACTED
+				]
+		REDACTED`,
+	REDACTED,
+		{
+			name: "GET /api/v1/redeem/history",
+			setup: func(t *testing.T, deps *contractDeps) {
+			REDACTED
+				// 普通用户兑换历史不应包含 notes 等内部字段。
+				deps.redeemRepo.SetByUser(1, []service.RedeemCode{
+					{
+						ID:        900,
+						Code:      "CODE-123",
+						Type:      service.RedeemTypeBalance,
+						Value:     1.25,
+						Status:    service.StatusUsed,
+						UsedBy:    ptr(int64(1)),
+						UsedAt:    ptr(deps.now),
+						Notes:     "internal-note",
+						CreatedAt: deps.now,
+				REDACTED,
+			REDACTED)
+		REDACTED,
+			method:     http.MethodGet,
+			path:       "/api/v1/redeem/history",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": [
+					{
+						"id": 900,
+						"code": "CODE-123",
+						"type": "balance",
+						"value": 1.25,
+						"status": "used",
+						"used_by": 1,
+						"used_at": "2025-01-02T03:04:05Z",
+						"created_at": "2025-01-02T03:04:05Z",
+						"group_id": null,
+						"validity_days": 0
+				REDACTED
+				]
+		REDACTED`,
+	REDACTED,
+		{
 			name: "GET /api/v1/usage/stats",
 			setup: func(t *testing.T, deps *contractDeps) {
 			REDACTED
@@ -190,24 +336,25 @@ REDACTED{
 			REDACTED
 				deps.usageRepo.SetUserLogs(1, []service.UsageLog{
 					{
-						ID:                  1,
-						UserID:              1,
-						APIKeyID:            100,
-						AccountID:           200,
-						RequestID:           "req_123",
-						Model:               "claude-3",
-						InputTokens:         10,
-						OutputTokens:        20,
-						CacheCreationTokens: 1,
-						CacheReadTokens:     2,
-						TotalCost:           0.5,
-						ActualCost:          0.5,
-						RateMultiplier:      1,
-						BillingType:         service.BillingTypeBalance,
-						Stream:              true,
-						DurationMs:          ptr(100),
-						FirstTokenMs:        ptr(50),
-						CreatedAt:           deps.now,
+						ID:                    1,
+						UserID:                1,
+						APIKeyID:              100,
+						AccountID:             200,
+						AccountRateMultiplier: ptr(0.5),
+						RequestID:             "req_123",
+						Model:                 "claude-3",
+						InputTokens:           10,
+						OutputTokens:          20,
+						CacheCreationTokens:   1,
+						CacheReadTokens:       2,
+						TotalCost:             0.5,
+						ActualCost:            0.5,
+						RateMultiplier:        1,
+						BillingType:           service.BillingTypeBalance,
+						Stream:                true,
+						DurationMs:            ptr(100),
+						FirstTokenMs:          ptr(50),
+						CreatedAt:             deps.now,
 				REDACTED,
 			REDACTED)
 		REDACTED,
@@ -238,10 +385,9 @@ REDACTED{
 							"output_cost": 0,
 							"cache_creation_cost": 0,
 							"cache_read_cost": 0,
-							"total_cost": 0.5,
+						"total_cost": 0.5,
 						"actual_cost": 0.5,
 						"rate_multiplier": 1,
-						"account_rate_multiplier": null,
 						"billing_type": 0,
 							"stream": true,
 							"duration_ms": 100,
@@ -386,8 +532,11 @@ type contractDeps struct {
 	now         time.Time
 	router      http.Handler
 	apiKeyRepo  *stubApiKeyRepo
+	groupRepo   *stubGroupRepo
+	userSubRepo *stubUserSubscriptionRepo
 	usageRepo   *stubUsageLogRepo
 	settingRepo *stubSettingRepo
+	redeemRepo  *stubRedeemCodeRepo
 REDACTED
 
 func newContractDeps(t *testing.T) *contractDeps {
@@ -415,11 +564,11 @@ REDACTED
 
 	apiKeyRepo := newStubApiKeyRepo(now)
 	apiKeyCache := stubApiKeyCache{REDACTED
-	groupRepo := stubGroupRepo{REDACTED
-	userSubRepo := stubUserSubscriptionRepo{REDACTED
+	groupRepo := &stubGroupRepo{REDACTED
+	userSubRepo := &stubUserSubscriptionRepo{REDACTED
 	accountRepo := stubAccountRepo{REDACTED
 	proxyRepo := stubProxyRepo{REDACTED
-	redeemRepo := stubRedeemCodeRepo{REDACTED
+	redeemRepo := &stubRedeemCodeRepo{REDACTED
 
 	cfg := &config.Config{
 		Default: config.DefaultConfig{
@@ -433,6 +582,12 @@ REDACTED
 
 	usageRepo := newStubUsageLogRepo()
 	usageService := service.NewUsageService(usageRepo, userRepo, nil, nil)
+
+	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
+
+	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil)
+	redeemHandler := handler.NewRedeemHandler(redeemService)
 
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
@@ -473,11 +628,20 @@ REDACTED
 	v1Keys.Use(jwtAuth)
 	v1Keys.GET("/keys", apiKeyHandler.List)
 	v1Keys.POST("/keys", apiKeyHandler.Create)
+	v1Keys.GET("/groups/available", apiKeyHandler.GetAvailableGroups)
 
 	v1Usage := v1.Group("")
 	v1Usage.Use(jwtAuth)
 	v1Usage.GET("/usage", usageHandler.List)
 	v1Usage.GET("/usage/stats", usageHandler.Stats)
+
+	v1Subs := v1.Group("")
+	v1Subs.Use(jwtAuth)
+	v1Subs.GET("/subscriptions", subscriptionHandler.List)
+
+	v1Redeem := v1.Group("")
+	v1Redeem.Use(jwtAuth)
+	v1Redeem.GET("/redeem/history", redeemHandler.GetHistory)
 
 	v1Admin := v1.Group("/admin")
 	v1Admin.Use(adminAuth)
@@ -488,8 +652,11 @@ REDACTED
 		now:         now,
 		router:      r,
 		apiKeyRepo:  apiKeyRepo,
+		groupRepo:   groupRepo,
+		userSubRepo: userSubRepo,
 		usageRepo:   usageRepo,
 		settingRepo: settingRepo,
+		redeemRepo:  redeemRepo,
 REDACTED
 REDACTED
 
@@ -627,7 +794,13 @@ func (stubApiKeyCache) SubscribeAuthCacheInvalidation(ctx context.Context, handl
 	return nil
 REDACTED
 
-type stubGroupRepo struct{REDACTED
+type stubGroupRepo struct {
+	active []service.Group
+REDACTED
+
+func (r *stubGroupRepo) SetActive(groups []service.Group) {
+	r.active = append([]service.Group(nil), groups...)
+REDACTED
 
 func (stubGroupRepo) Create(ctx context.Context, group *service.Group) error {
 	return errors.New("not implemented")
@@ -661,12 +834,19 @@ func (stubGroupRepo) ListWithFilters(ctx context.Context, params pagination.Pagi
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
-func (stubGroupRepo) ListActive(ctx context.Context) ([]service.Group, error) {
-	return nil, errors.New("not implemented")
+func (r *stubGroupRepo) ListActive(ctx context.Context) ([]service.Group, error) {
+	return append([]service.Group(nil), r.active...), nil
 REDACTED
 
-func (stubGroupRepo) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
-	return nil, errors.New("not implemented")
+func (r *stubGroupRepo) ListActiveByPlatform(ctx context.Context, platform string) ([]service.Group, error) {
+	out := make([]service.Group, 0, len(r.active))
+	for i := range r.active {
+		g := r.active[i]
+		if g.Platform == platform {
+			out = append(out, g)
+	REDACTED
+REDACTED
+	return out, nil
 REDACTED
 
 func (stubGroupRepo) ExistsByName(ctx context.Context, name string) (bool, error) {
@@ -884,7 +1064,16 @@ func (stubProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID 
 	return nil, errors.New("not implemented")
 REDACTED
 
-type stubRedeemCodeRepo struct{REDACTED
+type stubRedeemCodeRepo struct {
+	byUser map[int64][]service.RedeemCode
+REDACTED
+
+func (r *stubRedeemCodeRepo) SetByUser(userID int64, codes []service.RedeemCode) {
+	if r.byUser == nil {
+		r.byUser = make(map[int64][]service.RedeemCode)
+REDACTED
+	r.byUser[userID] = append([]service.RedeemCode(nil), codes...)
+REDACTED
 
 func (stubRedeemCodeRepo) Create(ctx context.Context, code *service.RedeemCode) error {
 	return errors.New("not implemented")
@@ -922,11 +1111,35 @@ func (stubRedeemCodeRepo) ListWithFilters(ctx context.Context, params pagination
 	return nil, nil, errors.New("not implemented")
 REDACTED
 
-func (stubRedeemCodeRepo) ListByUser(ctx context.Context, userID int64, limit int) ([]service.RedeemCode, error) {
-	return nil, errors.New("not implemented")
+func (r *stubRedeemCodeRepo) ListByUser(ctx context.Context, userID int64, limit int) ([]service.RedeemCode, error) {
+	if r.byUser == nil {
+		return nil, nil
+REDACTED
+	codes := r.byUser[userID]
+	if limit > 0 && len(codes) > limit {
+		codes = codes[:limit]
+REDACTED
+	return append([]service.RedeemCode(nil), codes...), nil
 REDACTED
 
-type stubUserSubscriptionRepo struct{REDACTED
+type stubUserSubscriptionRepo struct {
+	byUser       map[int64][]service.UserSubscription
+	activeByUser map[int64][]service.UserSubscription
+REDACTED
+
+func (r *stubUserSubscriptionRepo) SetByUserID(userID int64, subs []service.UserSubscription) {
+	if r.byUser == nil {
+		r.byUser = make(map[int64][]service.UserSubscription)
+REDACTED
+	r.byUser[userID] = append([]service.UserSubscription(nil), subs...)
+REDACTED
+
+func (r *stubUserSubscriptionRepo) SetActiveByUserID(userID int64, subs []service.UserSubscription) {
+	if r.activeByUser == nil {
+		r.activeByUser = make(map[int64][]service.UserSubscription)
+REDACTED
+	r.activeByUser[userID] = append([]service.UserSubscription(nil), subs...)
+REDACTED
 
 func (stubUserSubscriptionRepo) Create(ctx context.Context, sub *service.UserSubscription) error {
 	return errors.New("not implemented")
@@ -946,11 +1159,17 @@ REDACTED
 func (stubUserSubscriptionRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 REDACTED
-func (stubUserSubscriptionRepo) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
-	return nil, errors.New("not implemented")
+func (r *stubUserSubscriptionRepo) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
+	if r.byUser == nil {
+		return nil, nil
 REDACTED
-func (stubUserSubscriptionRepo) ListActiveByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
-	return nil, errors.New("not implemented")
+	return append([]service.UserSubscription(nil), r.byUser[userID]...), nil
+REDACTED
+func (r *stubUserSubscriptionRepo) ListActiveByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
+	if r.activeByUser == nil {
+		return nil, nil
+REDACTED
+	return append([]service.UserSubscription(nil), r.activeByUser[userID]...), nil
 REDACTED
 func (stubUserSubscriptionRepo) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.UserSubscription, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")

@@ -27,7 +27,6 @@ REDACTED
 export interface User {
   id: number
   username: string
-  notes: string
   email: string
   role: 'admin' | 'user' // User role for authorization
   balance: number // User balance for API usage
@@ -37,6 +36,11 @@ export interface User {
   subscriptions?: UserSubscription[] // User's active subscriptions
   created_at: string
   updated_at: string
+REDACTED
+
+export interface AdminUser extends User {
+  // 管理员备注（普通用户接口不返回）
+  notes: string
 REDACTED
 
 export interface LoginRequest {
@@ -270,12 +274,17 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
-  // 模型路由配置（仅 anthropic 平台使用）
-  model_routing: Record<string, number[]> | null
-  model_routing_enabled: boolean
-  account_count?: number
   created_at: string
   updated_at: string
+REDACTED
+
+export interface AdminGroup extends Group {
+  // 模型路由配置（仅管理员可见，内部信息）
+  model_routing: Record<string, number[]> | null
+  model_routing_enabled: boolean
+
+  // 分组下账号数量（仅管理员可见）
+  account_count?: number
 REDACTED
 
 export interface ApiKey {
@@ -637,7 +646,6 @@ export interface UsageLog {
   total_cost: number
   actual_cost: number
   rate_multiplier: number
-  account_rate_multiplier?: number | null
   billing_type: number
 
   stream: boolean
@@ -651,16 +659,28 @@ export interface UsageLog {
   // User-Agent
   user_agent: string | null
 
-  // IP 地址（仅管理员可见）
-  ip_address: string | null
-
   created_at: string
 
   user?: User
   api_key?: ApiKey
-  account?: Account
   group?: Group
   subscription?: UserSubscription
+REDACTED
+
+export interface UsageLogAccountSummary {
+  id: number
+  name: string
+REDACTED
+
+export interface AdminUsageLog extends UsageLog {
+  // 账号计费倍率（仅管理员可见）
+  account_rate_multiplier?: number | null
+
+  // 用户请求 IP（仅管理员可见）
+  ip_address?: string | null
+
+  // 最小账号信息（仅管理员接口返回）
+  account?: UsageLogAccountSummary
 REDACTED
 
 export interface UsageCleanupFilters {

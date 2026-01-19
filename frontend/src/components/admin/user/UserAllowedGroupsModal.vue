@@ -39,10 +39,10 @@ import { ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { User, Group REDACTED from '@/types'
+import type { AdminUser, Group REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 
-const props = defineProps<{ show: boolean, user: User | null REDACTED>()
+const props = defineProps<{ show: boolean, user: AdminUser | null REDACTED>()
 const emit = defineEmits(['close', 'success']); const { t REDACTED = useI18n(); const appStore = useAppStore()
 
 const groups = ref<Group[]>([]); const selectedIds = ref<number[]>([]); const loading = ref(false); const submitting = ref(false)
