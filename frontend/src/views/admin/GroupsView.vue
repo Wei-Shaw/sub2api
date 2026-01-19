@@ -1107,7 +1107,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useOnboardingStore REDACTED from '@/stores/onboarding'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Group, GroupPlatform, SubscriptionType REDACTED from '@/types'
+import type { AdminGroup, GroupPlatform, SubscriptionType REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1202,7 +1202,7 @@ const fallbackGroupOptionsForEdit = computed(() => {
   return options
 REDACTED)
 
-const groups = ref<Group[]>([])
+const groups = ref<AdminGroup[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 const filters = reactive({
@@ -1223,8 +1223,8 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const submitting = ref(false)
-const editingGroup = ref<Group | null>(null)
-const deletingGroup = ref<Group | null>(null)
+const editingGroup = ref<AdminGroup | null>(null)
+const deletingGroup = ref<AdminGroup | null>(null)
 
 const createForm = reactive({
   name: '',
@@ -1529,7 +1529,7 @@ const handleCreateGroup = async () => {
   REDACTED
 REDACTED
 
-const handleEdit = async (group: Group) => {
+const handleEdit = async (group: AdminGroup) => {
   editingGroup.value = group
   editForm.name = group.name
   editForm.description = group.description || ''
@@ -1585,7 +1585,7 @@ const handleUpdateGroup = async () => {
   REDACTED
 REDACTED
 
-const handleDelete = (group: Group) => {
+const handleDelete = (group: AdminGroup) => {
   deletingGroup.value = group
   showDeleteDialog.value = true
 REDACTED

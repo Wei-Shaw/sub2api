@@ -58,12 +58,18 @@ type Group struct {
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+REDACTED
+
+// AdminGroup 是管理员接口使用的 group DTO（包含敏感/内部字段）。
+// 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
+type AdminGroup struct {
+	Group
+
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
-
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
 
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 	AccountCount  int64          `json:"account_count,omitempty"`
