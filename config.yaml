@@ -252,6 +252,27 @@ dashboard_aggregation:
     daily_days: 730
 
 # =============================================================================
+# Usage Cleanup Task Configuration
+# 使用记录清理任务配置（重启生效）
+# =============================================================================
+usage_cleanup:
+  # Enable cleanup task worker
+  # 启用清理任务执行器
+  enabled: true
+  # Max date range (days) per task
+  # 单次任务最大时间跨度（天）
+  max_range_days: 31
+  # Batch delete size
+  # 单批删除数量
+  batch_size: 5000
+  # Worker interval (seconds)
+  # 执行器轮询间隔（秒）
+  worker_interval_seconds: 10
+  # Task execution timeout (seconds)
+  # 单次任务最大执行时长（秒）
+  task_timeout_seconds: 1800
+
+# =============================================================================
 # Concurrency Wait Configuration
 # 并发等待配置
 # =============================================================================

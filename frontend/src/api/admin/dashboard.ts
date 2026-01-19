@@ -50,6 +50,7 @@ export interface TrendParams {
   account_id?: number
   group_id?: number
   stream?: boolean
+  billing_type?: number | null
 REDACTED
 
 export interface TrendResponse {
@@ -78,6 +79,7 @@ export interface ModelStatsParams {
   account_id?: number
   group_id?: number
   stream?: boolean
+  billing_type?: number | null
 REDACTED
 
 export interface ModelStatsResponse {

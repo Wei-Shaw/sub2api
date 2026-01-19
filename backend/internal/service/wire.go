@@ -58,6 +58,13 @@ func ProvideDashboardAggregationService(repo DashboardAggregationRepository, tim
 	return svc
 REDACTED
 
+// ProvideUsageCleanupService 创建并启动使用记录清理任务服务
+func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWheelService, dashboardAgg *DashboardAggregationService, cfg *config.Config) *UsageCleanupService {
+	svc := NewUsageCleanupService(repo, timingWheel, dashboardAgg, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
@@ -251,6 +258,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountExpiryService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
+	ProvideUsageCleanupService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
 	NewUserAttributeService,

@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
@@ -57,6 +58,8 @@ type Client struct {
 	RedeemCode *RedeemCodeClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
+	UsageCleanupTask *UsageCleanupTaskClient
 	// UsageLog is the client for interacting with the UsageLog builders.
 	UsageLog *UsageLogClient
 	// User is the client for interacting with the User builders.
@@ -89,6 +92,7 @@ func (c *Client) init() {
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.Setting = NewSettingClient(c.config)
+	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
@@ -196,6 +200,7 @@ REDACTED
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
@@ -230,6 +235,7 @@ REDACTED
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
@@ -266,8 +272,9 @@ REDACTED
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) REDACTED{
 		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.Setting, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.Proxy, c.RedeemCode, c.Setting, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 REDACTED {
 		n.Use(hooks...)
 REDACTED
@@ -278,8 +285,9 @@ REDACTED
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) REDACTED{
 		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.Setting, c.UsageLog, c.User, c.UserAllowedGroup,
-		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
+		c.Proxy, c.RedeemCode, c.Setting, c.UsageCleanupTask, c.UsageLog, c.User,
+		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 REDACTED {
 		n.Intercept(interceptors...)
 REDACTED
@@ -306,6 +314,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RedeemCode.mutate(ctx, m)
 	case *SettingMutation:
 		return c.Setting.mutate(ctx, m)
+	case *UsageCleanupTaskMutation:
+		return c.UsageCleanupTask.mutate(ctx, m)
 	case *UsageLogMutation:
 		return c.UsageLog.mutate(ctx, m)
 	case *UserMutation:
@@ -1847,6 +1857,139 @@ func (c *SettingClient) mutate(ctx context.Context, m *SettingMutation) (Value, 
 REDACTED
 REDACTED
 
+// UsageCleanupTaskClient is a client for the UsageCleanupTask schema.
+type UsageCleanupTaskClient struct {
+	config
+REDACTED
+
+// NewUsageCleanupTaskClient returns a client for the UsageCleanupTask from the given config.
+func NewUsageCleanupTaskClient(c config) *UsageCleanupTaskClient {
+	return &UsageCleanupTaskClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `usagecleanuptask.Hooks(f(g(h())))`.
+func (c *UsageCleanupTaskClient) Use(hooks ...Hook) {
+	c.hooks.UsageCleanupTask = append(c.hooks.UsageCleanupTask, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `usagecleanuptask.Intercept(f(g(h())))`.
+func (c *UsageCleanupTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UsageCleanupTask = append(c.inters.UsageCleanupTask, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a UsageCleanupTask entity.
+func (c *UsageCleanupTaskClient) Create() *UsageCleanupTaskCreate {
+	mutation := newUsageCleanupTaskMutation(c.config, OpCreate)
+	return &UsageCleanupTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of UsageCleanupTask entities.
+func (c *UsageCleanupTaskClient) CreateBulk(builders ...*UsageCleanupTaskCreate) *UsageCleanupTaskCreateBulk {
+	return &UsageCleanupTaskCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UsageCleanupTaskClient) MapCreateBulk(slice any, setFunc func(*UsageCleanupTaskCreate, int)) *UsageCleanupTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UsageCleanupTaskCreateBulk{err: fmt.Errorf("calling to UsageCleanupTaskClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*UsageCleanupTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &UsageCleanupTaskCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for UsageCleanupTask.
+func (c *UsageCleanupTaskClient) Update() *UsageCleanupTaskUpdate {
+	mutation := newUsageCleanupTaskMutation(c.config, OpUpdate)
+	return &UsageCleanupTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UsageCleanupTaskClient) UpdateOne(_m *UsageCleanupTask) *UsageCleanupTaskUpdateOne {
+	mutation := newUsageCleanupTaskMutation(c.config, OpUpdateOne, withUsageCleanupTask(_m))
+	return &UsageCleanupTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UsageCleanupTaskClient) UpdateOneID(id int64) *UsageCleanupTaskUpdateOne {
+	mutation := newUsageCleanupTaskMutation(c.config, OpUpdateOne, withUsageCleanupTaskID(id))
+	return &UsageCleanupTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for UsageCleanupTask.
+func (c *UsageCleanupTaskClient) Delete() *UsageCleanupTaskDelete {
+	mutation := newUsageCleanupTaskMutation(c.config, OpDelete)
+	return &UsageCleanupTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UsageCleanupTaskClient) DeleteOne(_m *UsageCleanupTask) *UsageCleanupTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UsageCleanupTaskClient) DeleteOneID(id int64) *UsageCleanupTaskDeleteOne {
+	builder := c.Delete().Where(usagecleanuptask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UsageCleanupTaskDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for UsageCleanupTask.
+func (c *UsageCleanupTaskClient) Query() *UsageCleanupTaskQuery {
+	return &UsageCleanupTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUsageCleanupTaskREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a UsageCleanupTask entity by its id.
+func (c *UsageCleanupTaskClient) Get(ctx context.Context, id int64) (*UsageCleanupTask, error) {
+	return c.Query().Where(usagecleanuptask.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UsageCleanupTaskClient) GetX(ctx context.Context, id int64) *UsageCleanupTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *UsageCleanupTaskClient) Hooks() []Hook {
+	return c.hooks.UsageCleanupTask
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *UsageCleanupTaskClient) Interceptors() []Interceptor {
+	return c.inters.UsageCleanupTask
+REDACTED
+
+func (c *UsageCleanupTaskClient) mutate(ctx context.Context, m *UsageCleanupTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UsageCleanupTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&UsageCleanupTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&UsageCleanupTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UsageCleanupTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UsageCleanupTask mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
 // UsageLogClient is a client for the UsageLog schema.
 type UsageLogClient struct {
 	config
@@ -2974,13 +3117,13 @@ REDACTED
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, Setting, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Hook
+		RedeemCode, Setting, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
 REDACTED
 	inters struct {
 		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, Setting, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Interceptor
+		RedeemCode, Setting, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
 REDACTED
 )
 

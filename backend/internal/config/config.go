@@ -55,6 +55,7 @@ type Config struct {
 	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
 	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
 	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
+	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
 	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
 	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
@@ -531,6 +532,20 @@ type DashboardAggregationRetentionConfig struct {
 	DailyDays     int `mapstructure:"daily_days"`
 REDACTED
 
+// UsageCleanupConfig 使用记录清理任务配置
+type UsageCleanupConfig struct {
+	// Enabled: 是否启用清理任务执行器
+	Enabled bool `mapstructure:"enabled"`
+	// MaxRangeDays: 单次任务允许的最大时间跨度（天）
+	MaxRangeDays int `mapstructure:"max_range_days"`
+	// BatchSize: 单批删除数量
+	BatchSize int `mapstructure:"batch_size"`
+	// WorkerIntervalSeconds: 后台任务轮询间隔（秒）
+	WorkerIntervalSeconds int `mapstructure:"worker_interval_seconds"`
+	// TaskTimeoutSeconds: 单次任务最大执行时长（秒）
+	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
+REDACTED
+
 func NormalizeRunMode(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {
@@ -791,6 +806,13 @@ REDACTED)
 	viper.SetDefault("dashboard_aggregation.retention.daily_days", 730)
 	viper.SetDefault("dashboard_aggregation.recompute_days", 2)
 
+	// Usage cleanup task
+	viper.SetDefault("usage_cleanup.enabled", true)
+	viper.SetDefault("usage_cleanup.max_range_days", 31)
+	viper.SetDefault("usage_cleanup.batch_size", 5000)
+	viper.SetDefault("usage_cleanup.worker_interval_seconds", 10)
+	viper.SetDefault("usage_cleanup.task_timeout_seconds", 1800)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", true)
@@ -1031,6 +1053,33 @@ REDACTED else {
 	REDACTED
 		if c.DashboardAgg.RecomputeDays < 0 {
 			return fmt.Errorf("dashboard_aggregation.recompute_days must be non-negative")
+	REDACTED
+REDACTED
+	if c.UsageCleanup.Enabled {
+		if c.UsageCleanup.MaxRangeDays <= 0 {
+			return fmt.Errorf("usage_cleanup.max_range_days must be positive")
+	REDACTED
+		if c.UsageCleanup.BatchSize <= 0 {
+			return fmt.Errorf("usage_cleanup.batch_size must be positive")
+	REDACTED
+		if c.UsageCleanup.WorkerIntervalSeconds <= 0 {
+			return fmt.Errorf("usage_cleanup.worker_interval_seconds must be positive")
+	REDACTED
+		if c.UsageCleanup.TaskTimeoutSeconds <= 0 {
+			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be positive")
+	REDACTED
+REDACTED else {
+		if c.UsageCleanup.MaxRangeDays < 0 {
+			return fmt.Errorf("usage_cleanup.max_range_days must be non-negative")
+	REDACTED
+		if c.UsageCleanup.BatchSize < 0 {
+			return fmt.Errorf("usage_cleanup.batch_size must be non-negative")
+	REDACTED
+		if c.UsageCleanup.WorkerIntervalSeconds < 0 {
+			return fmt.Errorf("usage_cleanup.worker_interval_seconds must be non-negative")
+	REDACTED
+		if c.UsageCleanup.TaskTimeoutSeconds < 0 {
+			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be non-negative")
 	REDACTED
 REDACTED
 	if c.Gateway.MaxBodySize <= 0 {

@@ -237,6 +237,33 @@ type UsageLog struct {
 	Subscription *UserSubscription `json:"subscription,omitempty"`
 REDACTED
 
+type UsageCleanupFilters struct {
+	StartTime   time.Time `json:"start_time"`
+	EndTime     time.Time `json:"end_time"`
+	UserID      *int64    `json:"user_id,omitempty"`
+	APIKeyID    *int64    `json:"api_key_id,omitempty"`
+	AccountID   *int64    `json:"account_id,omitempty"`
+	GroupID     *int64    `json:"group_id,omitempty"`
+	Model       *string   `json:"model,omitempty"`
+	Stream      *bool     `json:"stream,omitempty"`
+	BillingType *int8     `json:"billing_type,omitempty"`
+REDACTED
+
+type UsageCleanupTask struct {
+	ID           int64               `json:"id"`
+	Status       string              `json:"status"`
+	Filters      UsageCleanupFilters `json:"filters"`
+	CreatedBy    int64               `json:"created_by"`
+	DeletedRows  int64               `json:"deleted_rows"`
+	ErrorMessage *string             `json:"error_message,omitempty"`
+	CanceledBy   *int64              `json:"canceled_by,omitempty"`
+	CanceledAt   *time.Time          `json:"canceled_at,omitempty"`
+	StartedAt    *time.Time          `json:"started_at,omitempty"`
+	FinishedAt   *time.Time          `json:"finished_at,omitempty"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
+REDACTED
+
 // AccountSummary is a minimal account info for usage log display.
 // It intentionally excludes sensitive fields like Credentials, Proxy, etc.
 type AccountSummary struct {

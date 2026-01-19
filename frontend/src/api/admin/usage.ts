@@ -31,6 +31,46 @@ export interface SimpleApiKey {
   user_id: number
 REDACTED
 
+export interface UsageCleanupFilters {
+  start_time: string
+  end_time: string
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  group_id?: number
+  model?: string | null
+  stream?: boolean | null
+  billing_type?: number | null
+REDACTED
+
+export interface UsageCleanupTask {
+  id: number
+  status: string
+  filters: UsageCleanupFilters
+  created_by: number
+  deleted_rows: number
+  error_message?: string | null
+  canceled_by?: number | null
+  canceled_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface CreateUsageCleanupTaskRequest {
+  start_date: string
+  end_date: string
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  group_id?: number
+  model?: string | null
+  stream?: boolean | null
+  billing_type?: number | null
+  timezone?: string
+REDACTED
+
 export interface AdminUsageQueryParams extends UsageQueryParams {
   user_id?: number
 REDACTED
@@ -108,11 +148,51 @@ export async function searchApiKeys(userId?: number, keyword?: string): Promise<
   return data
 REDACTED
 
+/**
+ * List usage cleanup tasks (admin only)
+ * @param params - Query parameters for pagination
+ * @returns Paginated list of cleanup tasks
+ */
+export async function listCleanupTasks(
+  params: { page?: number; page_size?: number REDACTED,
+  options?: { signal?: AbortSignal REDACTED
+): Promise<PaginatedResponse<UsageCleanupTask>> {
+  const { data REDACTED = await apiClient.get<PaginatedResponse<UsageCleanupTask>>('/admin/usage/cleanup-tasks', {
+    params,
+    signal: options?.signal
+  REDACTED)
+  return data
+REDACTED
+
+/**
+ * Create a usage cleanup task (admin only)
+ * @param payload - Cleanup task parameters
+ * @returns Created cleanup task
+ */
+export async function createCleanupTask(payload: CreateUsageCleanupTaskRequest): Promise<UsageCleanupTask> {
+  const { data REDACTED = await apiClient.post<UsageCleanupTask>('/admin/usage/cleanup-tasks', payload)
+  return data
+REDACTED
+
+/**
+ * Cancel a usage cleanup task (admin only)
+ * @param taskId - Task ID to cancel
+ */
+export async function cancelCleanupTask(taskId: number): Promise<{ id: number; status: string REDACTED> {
+  const { data REDACTED = await apiClient.post<{ id: number; status: string REDACTED>(
+    `/admin/usage/cleanup-tasks/${taskIdREDACTED/cancel`
+  )
+  return data
+REDACTED
+
 export const adminUsageAPI = {
   list,
   getStats,
   searchUsers,
-  searchApiKeys
+  searchApiKeys,
+  listCleanupTasks,
+  createCleanupTask,
+  cancelCleanupTask
 REDACTED
 
 export default adminUsageAPI

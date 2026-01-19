@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
@@ -495,6 +496,43 @@ REDACTED()
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	usagecleanuptaskMixin := schema.UsageCleanupTask{REDACTED.Mixin()
+	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
+	_ = usagecleanuptaskMixinFields0
+	usagecleanuptaskFields := schema.UsageCleanupTask{REDACTED.Fields()
+	_ = usagecleanuptaskFields
+	// usagecleanuptaskDescCreatedAt is the schema descriptor for created_at field.
+	usagecleanuptaskDescCreatedAt := usagecleanuptaskMixinFields0[0].Descriptor()
+	// usagecleanuptask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	usagecleanuptask.DefaultCreatedAt = usagecleanuptaskDescCreatedAt.Default.(func() time.Time)
+	// usagecleanuptaskDescUpdatedAt is the schema descriptor for updated_at field.
+	usagecleanuptaskDescUpdatedAt := usagecleanuptaskMixinFields0[1].Descriptor()
+	// usagecleanuptask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	usagecleanuptask.DefaultUpdatedAt = usagecleanuptaskDescUpdatedAt.Default.(func() time.Time)
+	// usagecleanuptask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	usagecleanuptask.UpdateDefaultUpdatedAt = usagecleanuptaskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// usagecleanuptaskDescStatus is the schema descriptor for status field.
+	usagecleanuptaskDescStatus := usagecleanuptaskFields[0].Descriptor()
+	// usagecleanuptask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	usagecleanuptask.StatusValidator = func() func(string) error {
+		validators := usagecleanuptaskDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// usagecleanuptaskDescDeletedRows is the schema descriptor for deleted_rows field.
+	usagecleanuptaskDescDeletedRows := usagecleanuptaskFields[3].Descriptor()
+	// usagecleanuptask.DefaultDeletedRows holds the default value on creation for the deleted_rows field.
+	usagecleanuptask.DefaultDeletedRows = usagecleanuptaskDescDeletedRows.Default.(int64)
 	usagelogFields := schema.UsageLog{REDACTED.Fields()
 	_ = usagelogFields
 	// usagelogDescRequestID is the schema descriptor for request_id field.
