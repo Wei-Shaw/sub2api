@@ -401,3 +401,58 @@ sudo systemctl status redis
 2. **Database connection failed**: Check PostgreSQL is running and credentials are correct
 3. **Redis connection failed**: Check Redis is running and password is correct
 4. **Permission denied**: Ensure proper file ownership for binary install
+
+---
+
+## TLS Fingerprint Configuration
+
+Sub2API supports TLS fingerprint simulation to make requests appear as if they come from the official Claude CLI (Node.js client).
+
+### Default Behavior
+
+- Built-in `claude_cli_v2` profile simulates Node.js 20.x + OpenSSL 3.x
+- JA3 Hash: `1a28e69016765d92e3b381168d68922c`
+- JA4: `t13d5911h1_a33745022dd6_1f22a2ca17c4`
+- Profile selection: `accountID % profileCount`
+
+### Configuration
+
+```yaml
+gateway:
+  tls_fingerprint:
+    enabled: true  # Global switch
+    profiles:
+      # Simple profile (uses default cipher suites)
+      profile_1:
+        name: "Profile 1"
+
+      # Profile with custom cipher suites (use compact array format)
+      profile_2:
+        name: "Profile 2"
+        cipher_suites: [4866, 4867, 4865, 49199, 49195, 49200, 49196]
+        curves: [29, 23, 24]
+        point_formats: [0]
+
+      # Another custom profile
+      profile_3:
+        name: "Profile 3"
+        cipher_suites: [4865, 4866, 4867, 49199, 49200]
+        curves: [29, 23, 24, 25]
+```
+
+### Profile Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Display name (required) |
+| `cipher_suites` | []uint16 | Cipher suites in decimal. Empty = default |
+| `curves` | []uint16 | Elliptic curves in decimal. Empty = default |
+| `point_formats` | []uint8 | EC point formats. Empty = default |
+
+### Common Values Reference
+
+**Cipher Suites (TLS 1.3):** `4865` (AES_128_GCM), `4866` (AES_256_GCM), `4867` (CHACHA20)
+
+**Cipher Suites (TLS 1.2):** `49195`, `49196`, `49199`, `49200` (ECDHE variants)
+
+**Curves:** `29` (X25519), `23` (P-256), `24` (P-384), `25` (P-521)

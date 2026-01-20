@@ -161,6 +161,16 @@ REDACTED
 		if idleTimeout := a.GetSessionIdleTimeoutMinutes(); idleTimeout > 0 {
 			out.SessionIdleTimeoutMin = &idleTimeout
 	REDACTED
+		// TLS指纹伪装开关
+		if a.IsTLSFingerprintEnabled() {
+			enabled := true
+			out.EnableTLSFingerprint = &enabled
+	REDACTED
+		// 会话ID伪装开关
+		if a.IsSessionIDMaskingEnabled() {
+			enabled := true
+			out.EnableSessionIDMasking = &enabled
+	REDACTED
 REDACTED
 
 	return out

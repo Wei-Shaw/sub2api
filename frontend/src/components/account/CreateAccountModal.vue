@@ -1191,6 +1191,190 @@
         </div>
       </div>
 
+      <!-- Quota Control Section (Anthropic OAuth/SetupToken only) -->
+      <div
+        v-if="form.platform === 'anthropic' && accountCategory === 'oauth-based'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') REDACTEDREDACTED</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaControl.hint') REDACTEDREDACTED
+          </p>
+        </div>
+
+        <!-- Window Cost Limit -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.windowCost.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.windowCost.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="windowCostEnabled = !windowCostEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                windowCostEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  windowCostEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="windowCostEnabled" class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.windowCost.limit') REDACTEDREDACTED</label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+                <input
+                  v-model.number="windowCostLimit"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="input pl-7"
+                  :placeholder="t('admin.accounts.quotaControl.windowCost.limitPlaceholder')"
+                />
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.windowCost.limitHint') REDACTEDREDACTED</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.windowCost.stickyReserve') REDACTEDREDACTED</label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+                <input
+                  v-model.number="windowCostStickyReserve"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="input pl-7"
+                  :placeholder="t('admin.accounts.quotaControl.windowCost.stickyReservePlaceholder')"
+                />
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.windowCost.stickyReserveHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Session Limit -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.sessionLimit.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.sessionLimit.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="sessionLimitEnabled = !sessionLimitEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                sessionLimitEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  sessionLimitEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="sessionLimitEnabled" class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessions') REDACTEDREDACTED</label>
+              <input
+                v-model.number="maxSessions"
+                type="number"
+                min="1"
+                step="1"
+                class="input"
+                :placeholder="t('admin.accounts.quotaControl.sessionLimit.maxSessionsPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessionsHint') REDACTEDREDACTED</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeout') REDACTEDREDACTED</label>
+              <div class="relative">
+                <input
+                  v-model.number="sessionIdleTimeout"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="input pr-12"
+                  :placeholder="t('admin.accounts.quotaControl.sessionLimit.idleTimeoutPlaceholder')"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">{{ t('common.minutes') REDACTEDREDACTED</span>
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeoutHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TLS Fingerprint -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.tlsFingerprint.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.tlsFingerprint.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="tlsFingerprintEnabled = !tlsFingerprintEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                tlsFingerprintEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  tlsFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- Session ID Masking -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.sessionIdMasking.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.sessionIdMasking.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="sessionIdMaskingEnabled = !sessionIdMaskingEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                sessionIdMaskingEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  sessionIdMaskingEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') REDACTEDREDACTED</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
@@ -1214,7 +1398,7 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') REDACTEDREDACTED</label>
-          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.01" class="input" />
+          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input" />
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') REDACTEDREDACTED</p>
         </div>
       </div>
@@ -1763,6 +1947,16 @@ const geminiAIStudioOAuthEnabled = ref(false)
 const showAdvancedOAuth = ref(false)
 const showGeminiHelpDialog = ref(false)
 
+// Quota control state (Anthropic OAuth/SetupToken only)
+const windowCostEnabled = ref(false)
+const windowCostLimit = ref<number | null>(null)
+const windowCostStickyReserve = ref<number | null>(null)
+const sessionLimitEnabled = ref(false)
+const maxSessions = ref<number | null>(null)
+const sessionIdleTimeout = ref<number | null>(null)
+const tlsFingerprintEnabled = ref(false)
+const sessionIdMaskingEnabled = ref(false)
+
 // Gemini tier selection (used as fallback when auto-detection is unavailable/fails)
 const geminiTierGoogleOne = ref<'google_one_free' | 'google_ai_pro' | 'google_ai_ultra'>('google_one_free')
 const geminiTierGcp = ref<'gcp_standard' | 'gcp_enterprise'>('gcp_standard')
@@ -2140,6 +2334,15 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  // Reset quota control state
+  windowCostEnabled.value = false
+  windowCostLimit.value = null
+  windowCostStickyReserve.value = null
+  sessionLimitEnabled.value = false
+  maxSessions.value = null
+  sessionIdleTimeout.value = null
+  tlsFingerprintEnabled.value = false
+  sessionIdMaskingEnabled.value = false
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
   geminiOAuthType.value = 'code_assist'
@@ -2407,7 +2610,32 @@ const handleAnthropicExchange = async (authCode: string) => {
       ...proxyConfig
     REDACTED)
 
-    const extra = oauth.buildExtraInfo(tokenInfo)
+    // Build extra with quota control settings
+    const baseExtra = oauth.buildExtraInfo(tokenInfo) || {REDACTED
+    const extra: Record<string, unknown> = { ...baseExtra REDACTED
+
+    // Add window cost limit settings
+    if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {
+      extra.window_cost_limit = windowCostLimit.value
+      extra.window_cost_sticky_reserve = windowCostStickyReserve.value ?? 10
+    REDACTED
+
+    // Add session limit settings
+    if (sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
+      extra.max_sessions = maxSessions.value
+      extra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
+    REDACTED
+
+    // Add TLS fingerprint settings
+    if (tlsFingerprintEnabled.value) {
+      extra.enable_tls_fingerprint = true
+    REDACTED
+
+    // Add session ID masking settings
+    if (sessionIdMaskingEnabled.value) {
+      extra.session_id_masking_enabled = true
+    REDACTED
+
     const credentials = {
       ...tokenInfo,
       ...(interceptWarmupRequests.value ? { intercept_warmup_requests: true REDACTED : {REDACTED)
@@ -2475,7 +2703,32 @@ const handleCookieAuth = async (sessionKey: string) => {
           ...proxyConfig
         REDACTED)
 
-        const extra = oauth.buildExtraInfo(tokenInfo)
+        // Build extra with quota control settings
+        const baseExtra = oauth.buildExtraInfo(tokenInfo) || {REDACTED
+        const extra: Record<string, unknown> = { ...baseExtra REDACTED
+
+        // Add window cost limit settings
+        if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {
+          extra.window_cost_limit = windowCostLimit.value
+          extra.window_cost_sticky_reserve = windowCostStickyReserve.value ?? 10
+        REDACTED
+
+        // Add session limit settings
+        if (sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
+          extra.max_sessions = maxSessions.value
+          extra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
+        REDACTED
+
+        // Add TLS fingerprint settings
+        if (tlsFingerprintEnabled.value) {
+          extra.enable_tls_fingerprint = true
+        REDACTED
+
+        // Add session ID masking settings
+        if (sessionIdMaskingEnabled.value) {
+          extra.session_id_masking_enabled = true
+        REDACTED
+
         const accountName = keys.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
 
         // Merge interceptWarmupRequests into credentials

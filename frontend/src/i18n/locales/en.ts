@@ -196,7 +196,8 @@ export default {
     expand: 'Expand',
     logout: 'Logout',
     github: 'GitHub',
-    mySubscriptions: 'My Subscriptions'
+    mySubscriptions: 'My Subscriptions',
+    docs: 'Docs'
   REDACTED,
 
   // Auth
@@ -1288,6 +1289,14 @@ export default {
           idleTimeout: 'Idle Timeout',
           idleTimeoutPlaceholder: '5',
           idleTimeoutHint: 'Sessions will be released after idle timeout'
+        REDACTED,
+        tlsFingerprint: {
+          label: 'TLS Fingerprint Simulation',
+          hint: 'Simulate Node.js/Claude Code client TLS fingerprint'
+        REDACTED,
+        sessionIdMasking: {
+          label: 'Session ID Masking',
+          hint: 'When enabled, fixes the session ID in metadata.user_id for 15 minutes, making upstream think requests come from the same session'
         REDACTED
       REDACTED,
       expired: 'Expired',

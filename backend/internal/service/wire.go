@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
@@ -196,6 +197,8 @@ REDACTED
 
 // ProvideAPIKeyAuthCacheInvalidator 提供 API Key 认证缓存失效能力
 func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthCacheInvalidator {
+	// Start Pub/Sub subscriber for L1 cache invalidation across instances
+	apiKeyService.StartAuthCacheInvalidationSubscriber(context.Background())
 	return apiKeyService
 REDACTED
 

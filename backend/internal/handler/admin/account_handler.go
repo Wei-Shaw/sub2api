@@ -173,6 +173,7 @@ REDACTED
 	// 识别需要查询窗口费用和会话数的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
 	windowCostAccountIDs := make([]int64, 0)
 	sessionLimitAccountIDs := make([]int64, 0)
+	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 	for i := range accounts {
 		acc := &accounts[i]
 		if acc.IsAnthropicOAuthOrSetupToken() {
@@ -181,6 +182,7 @@ REDACTED
 		REDACTED
 			if acc.GetMaxSessions() > 0 {
 				sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
+				sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 		REDACTED
 	REDACTED
 REDACTED
@@ -189,9 +191,9 @@ REDACTED
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 
-	// 获取活跃会话数（批量查询）
+	// 获取活跃会话数（批量查询，传入各账号的 idleTimeout 配置）
 	if len(sessionLimitAccountIDs) > 0 && h.sessionLimitCache != nil {
-		activeSessions, _ = h.sessionLimitCache.GetActiveSessionCountBatch(c.Request.Context(), sessionLimitAccountIDs)
+		activeSessions, _ = h.sessionLimitCache.GetActiveSessionCountBatch(c.Request.Context(), sessionLimitAccountIDs, sessionIdleTimeouts)
 		if activeSessions == nil {
 			activeSessions = make(map[int64]int)
 	REDACTED
@@ -211,12 +213,8 @@ REDACTED
 		REDACTED
 			accCopy := acc // 闭包捕获
 			g.Go(func() error {
-				var startTime time.Time
-				if accCopy.SessionWindowStart != nil {
-					startTime = *accCopy.SessionWindowStart
-			REDACTED else {
-					startTime = time.Now().Add(-5 * time.Hour)
-			REDACTED
+				// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
+				startTime := accCopy.GetCurrentWindowStartTime()
 				stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
 				if err == nil && stats != nil {
 					mu.Lock()
@@ -543,6 +541,36 @@ REDACTED else if account.Platform == service.PlatformAntigravity {
 		for k, v := range account.Credentials {
 			if _, exists := newCredentials[k]; !exists {
 				newCredentials[k] = v
+		REDACTED
+	REDACTED
+
+		// 如果 project_id 获取失败，先更新凭证，再标记账户为 error
+		if tokenInfo.ProjectIDMissing {
+			// 先更新凭证
+			_, updateErr := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+				Credentials: newCredentials,
+		REDACTED)
+			if updateErr != nil {
+				response.InternalError(c, "Failed to update credentials: "+updateErr.Error())
+				return
+		REDACTED
+			// 标记账户为 error
+			if setErr := h.adminService.SetAccountError(c.Request.Context(), accountID, "missing_project_id: 账户缺少project id，可能无法使用Antigravity"); setErr != nil {
+				response.InternalError(c, "Failed to set account error: "+setErr.Error())
+				return
+		REDACTED
+			response.Success(c, gin.H{
+				"message": "Token refreshed but project_id is missing, account marked as error",
+				"warning": "missing_project_id",
+		REDACTED)
+			return
+	REDACTED
+
+		// 成功获取到 project_id，如果之前是 missing_project_id 错误则清除
+		if account.Status == service.StatusError && strings.Contains(account.ErrorMessage, "missing_project_id:") {
+			if _, clearErr := h.adminService.ClearAccountError(c.Request.Context(), accountID); clearErr != nil {
+				response.InternalError(c, "Failed to clear account error: "+clearErr.Error())
+				return
 		REDACTED
 	REDACTED
 REDACTED else {

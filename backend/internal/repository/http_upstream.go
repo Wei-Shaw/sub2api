@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
@@ -148,6 +150,172 @@ REDACTED
 REDACTED)
 
 	return resp, nil
+REDACTED
+
+// DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求
+// 根据 enableTLSFingerprint 参数决定是否使用 TLS 指纹
+//
+// 参数:
+//   - req: HTTP 请求对象
+//   - proxyURL: 代理地址，空字符串表示直连
+//   - accountID: 账户 ID，用于账户级隔离和 TLS 指纹模板选择
+//   - accountConcurrency: 账户并发限制，用于动态调整连接池大小
+//   - enableTLSFingerprint: 是否启用 TLS 指纹伪装
+//
+// TLS 指纹说明:
+//   - 当 enableTLSFingerprint=true 时，使用 utls 库模拟 Claude CLI 的 TLS 指纹
+//   - 指纹模板根据 accountID % len(profiles) 自动选择
+//   - 支持直连、HTTP/HTTPS 代理、SOCKS5 代理三种场景
+func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, enableTLSFingerprint bool) (*http.Response, error) {
+	// 如果未启用 TLS 指纹，直接使用标准请求路径
+	if !enableTLSFingerprint {
+		return s.Do(req, proxyURL, accountID, accountConcurrency)
+REDACTED
+
+	// TLS 指纹已启用，记录调试日志
+	targetHost := ""
+	if req != nil && req.URL != nil {
+		targetHost = req.URL.Host
+REDACTED
+	proxyInfo := "direct"
+	if proxyURL != "" {
+		proxyInfo = proxyURL
+REDACTED
+	slog.Debug("tls_fingerprint_enabled", "account_id", accountID, "target", targetHost, "proxy", proxyInfo)
+
+	if err := s.validateRequestHost(req); err != nil {
+		return nil, err
+REDACTED
+
+	// 获取 TLS 指纹 Profile
+	registry := tlsfingerprint.GlobalRegistry()
+	profile := registry.GetProfileByAccountID(accountID)
+	if profile == nil {
+		// 如果获取不到 profile，回退到普通请求
+		slog.Debug("tls_fingerprint_no_profile", "account_id", accountID, "fallback", "standard_request")
+		return s.Do(req, proxyURL, accountID, accountConcurrency)
+REDACTED
+
+	slog.Debug("tls_fingerprint_using_profile", "account_id", accountID, "profile", profile.Name, "grease", profile.EnableGREASE)
+
+	// 获取或创建带 TLS 指纹的客户端
+	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile)
+	if err != nil {
+		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
+		return nil, err
+REDACTED
+
+	// 执行请求
+	resp, err := entry.client.Do(req)
+	if err != nil {
+		// 请求失败，立即减少计数
+		atomic.AddInt64(&entry.inFlight, -1)
+		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
+		slog.Debug("tls_fingerprint_request_failed", "account_id", accountID, "error", err)
+		return nil, err
+REDACTED
+
+	slog.Debug("tls_fingerprint_request_success", "account_id", accountID, "status", resp.StatusCode)
+
+	// 包装响应体，在关闭时自动减少计数并更新时间戳
+	resp.Body = wrapTrackedBody(resp.Body, func() {
+		atomic.AddInt64(&entry.inFlight, -1)
+		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
+REDACTED)
+
+	return resp, nil
+REDACTED
+
+// acquireClientWithTLS 获取或创建带 TLS 指纹的客户端
+func (s *httpUpstreamService) acquireClientWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*upstreamClientEntry, error) {
+	return s.getClientEntryWithTLS(proxyURL, accountID, accountConcurrency, profile, true, true)
+REDACTED
+
+// getClientEntryWithTLS 获取或创建带 TLS 指纹的客户端条目
+// TLS 指纹客户端使用独立的缓存键，与普通客户端隔离
+func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, markInFlight bool, enforceLimit bool) (*upstreamClientEntry, error) {
+	isolation := s.getIsolationMode()
+	proxyKey, parsedProxy := normalizeProxyURL(proxyURL)
+	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
+	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID)
+	poolKey := s.buildPoolKey(isolation, accountConcurrency) + ":tls"
+
+	now := time.Now()
+	nowUnix := now.UnixNano()
+
+	// 读锁快速路径
+	s.mu.RLock()
+	if entry, ok := s.clients[cacheKey]; ok && s.shouldReuseEntry(entry, isolation, proxyKey, poolKey) {
+		atomic.StoreInt64(&entry.lastUsed, nowUnix)
+		if markInFlight {
+			atomic.AddInt64(&entry.inFlight, 1)
+	REDACTED
+		s.mu.RUnlock()
+		slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "cache_key", cacheKey)
+		return entry, nil
+REDACTED
+	s.mu.RUnlock()
+
+	// 写锁慢路径
+	s.mu.Lock()
+	if entry, ok := s.clients[cacheKey]; ok {
+		if s.shouldReuseEntry(entry, isolation, proxyKey, poolKey) {
+			atomic.StoreInt64(&entry.lastUsed, nowUnix)
+			if markInFlight {
+				atomic.AddInt64(&entry.inFlight, 1)
+		REDACTED
+			s.mu.Unlock()
+			slog.Debug("tls_fingerprint_reusing_client", "account_id", accountID, "cache_key", cacheKey)
+			return entry, nil
+	REDACTED
+		slog.Debug("tls_fingerprint_evicting_stale_client",
+			"account_id", accountID,
+			"cache_key", cacheKey,
+			"proxy_changed", entry.proxyKey != proxyKey,
+			"pool_changed", entry.poolKey != poolKey)
+		s.removeClientLocked(cacheKey, entry)
+REDACTED
+
+	// 超出缓存上限时尝试淘汰
+	if enforceLimit && s.maxUpstreamClients() > 0 {
+		s.evictIdleLocked(now)
+		if len(s.clients) >= s.maxUpstreamClients() {
+			if !s.evictOldestIdleLocked() {
+				s.mu.Unlock()
+				return nil, errUpstreamClientLimitReached
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 创建带 TLS 指纹的 Transport
+	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
+	settings := s.resolvePoolSettings(isolation, accountConcurrency)
+	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
+	if err != nil {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
+REDACTED
+
+	client := &http.Client{Transport: transportREDACTED
+	if s.shouldValidateResolvedIP() {
+		client.CheckRedirect = s.redirectChecker
+REDACTED
+
+	entry := &upstreamClientEntry{
+		client:   client,
+		proxyKey: proxyKey,
+		poolKey:  poolKey,
+REDACTED
+	atomic.StoreInt64(&entry.lastUsed, nowUnix)
+	if markInFlight {
+		atomic.StoreInt64(&entry.inFlight, 1)
+REDACTED
+	s.clients[cacheKey] = entry
+
+	s.evictIdleLocked(now)
+	s.evictOverLimitLocked()
+	s.mu.Unlock()
+	return entry, nil
 REDACTED
 
 func (s *httpUpstreamService) shouldValidateResolvedIP() bool {
@@ -615,6 +783,64 @@ REDACTED
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err
 REDACTED
+	return transport, nil
+REDACTED
+
+// buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 Transport
+// 使用 utls 库模拟 Claude CLI 的 TLS 指纹
+//
+// 参数:
+//   - settings: 连接池配置
+//   - proxyURL: 代理 URL（nil 表示直连）
+//   - profile: TLS 指纹配置
+//
+// 返回:
+//   - *http.Transport: 配置好的 Transport 实例
+//   - error: 配置错误
+//
+// 代理类型处理:
+//   - nil/空: 直连，使用 TLSFingerprintDialer
+//   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
+//   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
+func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
+	transport := &http.Transport{
+		MaxIdleConns:          settings.maxIdleConns,
+		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
+		MaxConnsPerHost:       settings.maxConnsPerHost,
+		IdleConnTimeout:       settings.idleConnTimeout,
+		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
+		ForceAttemptHTTP2: false,
+REDACTED
+
+	// 根据代理类型选择合适的 TLS 指纹 Dialer
+	if proxyURL == nil {
+		// 直连：使用 TLSFingerprintDialer
+		slog.Debug("tls_fingerprint_transport_direct")
+		dialer := tlsfingerprint.NewDialer(profile, nil)
+		transport.DialTLSContext = dialer.DialTLSContext
+REDACTED else {
+		scheme := strings.ToLower(proxyURL.Scheme)
+		switch scheme {
+		case "socks5", "socks5h":
+			// SOCKS5 代理：使用 SOCKS5ProxyDialer
+			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
+			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
+			transport.DialTLSContext = socks5Dialer.DialTLSContext
+		case "http", "https":
+			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
+			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
+			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
+			transport.DialTLSContext = httpDialer.DialTLSContext
+		default:
+			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
+			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
+			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+				return nil, err
+		REDACTED
+	REDACTED
+REDACTED
+
 	return transport, nil
 REDACTED
 

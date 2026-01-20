@@ -193,7 +193,8 @@ export default {
     expand: '展开',
     logout: '退出登录',
     github: 'GitHub',
-    mySubscriptions: '我的订阅'
+    mySubscriptions: '我的订阅',
+    docs: '文档'
   REDACTED,
 
   // Auth
@@ -1420,6 +1421,14 @@ export default {
           idleTimeout: '空闲超时',
           idleTimeoutPlaceholder: '5',
           idleTimeoutHint: '会话空闲超时后自动释放'
+        REDACTED,
+        tlsFingerprint: {
+          label: 'TLS 指纹模拟',
+          hint: '模拟 Node.js/Claude Code 客户端的 TLS 指纹'
+        REDACTED,
+        sessionIdMasking: {
+          label: '会话 ID 伪装',
+          hint: '启用后将在 15 分钟内固定 metadata.user_id 中的 session ID，使上游认为请求来自同一会话'
         REDACTED
       REDACTED,
       expired: '已过期',

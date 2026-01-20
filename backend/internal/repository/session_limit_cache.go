@@ -217,7 +217,7 @@ REDACTED
 REDACTED
 
 // GetActiveSessionCountBatch 批量获取多个账号的活跃会话数
-func (c *sessionLimitCache) GetActiveSessionCountBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+func (c *sessionLimitCache) GetActiveSessionCountBatch(ctx context.Context, accountIDs []int64, idleTimeouts map[int64]time.Duration) (map[int64]int, error) {
 	if len(accountIDs) == 0 {
 		return make(map[int64]int), nil
 REDACTED
@@ -226,11 +226,18 @@ REDACTED
 
 	// 使用 pipeline 批量执行
 	pipe := c.rdb.Pipeline()
-	idleTimeoutSeconds := int(c.defaultIdleTimeout.Seconds())
 
 	cmds := make(map[int64]*redis.Cmd, len(accountIDs))
 	for _, accountID := range accountIDs {
 		key := sessionLimitKey(accountID)
+		// 使用各账号自己的 idleTimeout，如果没有则用默认值
+		idleTimeout := c.defaultIdleTimeout
+		if idleTimeouts != nil {
+			if t, ok := idleTimeouts[accountID]; ok && t > 0 {
+				idleTimeout = t
+		REDACTED
+	REDACTED
+		idleTimeoutSeconds := int(idleTimeout.Seconds())
 		cmds[accountID] = getActiveSessionCountScript.Run(ctx, pipe, []string{keyREDACTED, idleTimeoutSeconds)
 REDACTED
 
