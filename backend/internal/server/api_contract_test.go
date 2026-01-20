@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -342,6 +343,44 @@ REDACTED{
 		REDACTED`,
 	REDACTED,
 		{
+			name: "POST /api/v1/admin/accounts/lookup",
+			setup: func(t *testing.T, deps *contractDeps) {
+			REDACTED
+				deps.accountRepo.lookupAccounts = []service.Account{
+					{
+						ID:       101,
+						Name:     "Alice Account",
+						Platform: "antigravity",
+				REDACTED
+							"email": "alice@example.com",
+					REDACTED,
+				REDACTED,
+			REDACTED
+		REDACTED,
+			method: http.MethodPost,
+			path:   "/api/v1/admin/accounts/lookup",
+			body:   `{"platform":"antigravity","emails":["Alice@Example.com","bob@example.com"]REDACTED`,
+			headers: map[string]string{
+				"Content-Type": "application/json",
+		REDACTED,
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": {
+					"matched": [
+						{
+							"email": "alice@example.com",
+							"account_id": 101,
+							"platform": "antigravity",
+							"name": "Alice Account"
+					REDACTED
+					],
+					"missing": ["bob@example.com"]
+			REDACTED
+		REDACTED`,
+	REDACTED,
+		{
 			name:   "POST /api/v1/admin/accounts/bulk-update",
 			method: http.MethodPost,
 			path:   "/api/v1/admin/accounts/bulk-update",
@@ -387,6 +426,7 @@ type contractDeps struct {
 	apiKeyRepo  *stubApiKeyRepo
 	usageRepo   *stubUsageLogRepo
 	settingRepo *stubSettingRepo
+	accountRepo *stubAccountRepo
 REDACTED
 
 func newContractDeps(t *testing.T) *contractDeps {
@@ -482,6 +522,7 @@ REDACTED
 	v1Admin.Use(adminAuth)
 	v1Admin.GET("/settings", adminSettingHandler.GetSettings)
 	v1Admin.POST("/accounts/bulk-update", adminAccountHandler.BulkUpdate)
+	v1Admin.POST("/accounts/lookup", adminAccountHandler.Lookup)
 
 	return &contractDeps{
 		now:         now,
@@ -489,6 +530,7 @@ REDACTED
 		apiKeyRepo:  apiKeyRepo,
 		usageRepo:   usageRepo,
 		settingRepo: settingRepo,
+		accountRepo: &accountRepo,
 REDACTED
 REDACTED
 
@@ -673,7 +715,8 @@ func (stubGroupRepo) DeleteAccountGroupsByGroupID(ctx context.Context, groupID i
 REDACTED
 
 type stubAccountRepo struct {
-	bulkUpdateIDs []int64
+	bulkUpdateIDs  []int64
+	lookupAccounts []service.Account
 REDACTED
 
 func (s *stubAccountRepo) Create(ctx context.Context, account *service.Account) error {
@@ -722,6 +765,36 @@ REDACTED
 
 func (s *stubAccountRepo) ListByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	return nil, errors.New("not implemented")
+REDACTED
+
+func (s *stubAccountRepo) ListByPlatformAndCredentialEmails(ctx context.Context, platform string, emails []string) ([]service.Account, error) {
+	if len(s.lookupAccounts) == 0 {
+		return nil, nil
+REDACTED
+	emailSet := make(map[string]struct{REDACTED, len(emails))
+	for _, email := range emails {
+		normalized := strings.ToLower(strings.TrimSpace(email))
+		if normalized == "" {
+			continue
+	REDACTED
+		emailSet[normalized] = struct{REDACTED{REDACTED
+REDACTED
+	var matches []service.Account
+	for i := range s.lookupAccounts {
+		account := &s.lookupAccounts[i]
+		if account.Platform != platform {
+			continue
+	REDACTED
+		accountEmail := strings.ToLower(strings.TrimSpace(account.GetCredential("email")))
+		if accountEmail == "" {
+			continue
+	REDACTED
+		if _, ok := emailSet[accountEmail]; !ok {
+			continue
+	REDACTED
+		matches = append(matches, *account)
+REDACTED
+	return matches, nil
 REDACTED
 
 func (s *stubAccountRepo) UpdateLastUsed(ctx context.Context, id int64) error {

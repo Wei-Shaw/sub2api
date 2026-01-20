@@ -473,6 +473,37 @@ REDACTED
 	return r.accountsToService(ctx, accounts)
 REDACTED
 
+func (r *accountRepository) ListByPlatformAndCredentialEmails(
+	ctx context.Context,
+	platform string,
+	emails []string,
+) ([]service.Account, error) {
+	if len(emails) == 0 {
+		return []service.Account{REDACTED, nil
+REDACTED
+	args := make([]any, 0, len(emails))
+	for _, email := range emails {
+		if email == "" {
+			continue
+	REDACTED
+		args = append(args, email)
+REDACTED
+	if len(args) == 0 {
+		return []service.Account{REDACTED, nil
+REDACTED
+
+	accounts, err := r.client.Account.Query().
+		Where(dbaccount.PlatformEQ(platform)).
+		Where(func(s *entsql.Selector) {
+			s.Where(sqljson.ValueIn(dbaccount.FieldCredentials, args, sqljson.Path("email")))
+	REDACTED).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	return r.accountsToService(ctx, accounts)
+REDACTED
+
 func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error {
 	now := time.Now()
 	_, err := r.client.Account.Update().
