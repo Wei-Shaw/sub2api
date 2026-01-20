@@ -4,6 +4,7 @@
     <button @click="$emit('refresh')" :disabled="loading" class="btn btn-secondary">
       <Icon name="refresh" size="md" :class="[loading ? 'animate-spin' : '']" />
     </button>
+    <slot name="after"></slot>
     <button @click="$emit('sync')" class="btn btn-secondary">{{ t('admin.accounts.syncFromCrs') REDACTEDREDACTED</button>
     <button @click="$emit('create')" class="btn btn-primary">{{ t('admin.accounts.createAccount') REDACTEDREDACTED</button>
   </div>
