@@ -41,8 +41,8 @@ import (
 //   - sql: 原生 SQL 执行器，用于复杂查询和批量操作
 //   - schedulerCache: 调度器缓存，用于在账号状态变更时同步快照
 type accountRepository struct {
-	client         *dbent.Client // Ent ORM 客户端
-	sql            sqlExecutor   // 原生 SQL 执行接口
+	client *dbent.Client // Ent ORM 客户端
+	sql    sqlExecutor   // 原生 SQL 执行接口
 	// schedulerCache 用于在账号状态变更时主动同步快照到缓存，
 	// 确保粘性会话能及时感知账号不可用状态。
 	// Used to proactively sync account snapshot to cache when status changes,
