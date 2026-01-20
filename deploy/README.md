@@ -408,6 +408,8 @@ sudo systemctl status redis
 
 Sub2API supports TLS fingerprint simulation to make requests appear as if they come from the official Claude CLI (Node.js client).
 
+> **💡 Tip:** Visit **[tls.sub2api.org](https://tls.sub2api.org/)** to get TLS fingerprint information for different devices and browsers.
+
 ### Default Behavior
 
 - Built-in `claude_cli_v2` profile simulates Node.js 20.x + OpenSSL 3.x
