@@ -1305,6 +1305,14 @@ REDACTED
 		return nil, err
 REDACTED
 
+	// 清理 Schema
+	if cleanedBody, err := cleanGeminiRequest(injectedBody); err == nil {
+		injectedBody = cleanedBody
+		log.Printf("[Antigravity] Cleaned request schema in forwarded request for account %s", account.Name)
+REDACTED else {
+		log.Printf("[Antigravity] Failed to clean schema: %v", err)
+REDACTED
+
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)
 	if err != nil {
@@ -1705,6 +1713,19 @@ REDACTED
 					if u := extractGeminiUsage(parsed); u != nil {
 						usage = u
 				REDACTED
+					// Check for MALFORMED_FUNCTION_CALL
+					if candidates, ok := parsed["candidates"].([]any); ok && len(candidates) > 0 {
+						if cand, ok := candidates[0].(map[string]any); ok {
+							if fr, ok := cand["finishReason"].(string); ok && fr == "MALFORMED_FUNCTION_CALL" {
+								log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in forward stream")
+								if content, ok := cand["content"]; ok {
+									if b, err := json.Marshal(content); err == nil {
+										log.Printf("[Antigravity] Malformed content: %s", string(b))
+								REDACTED
+							REDACTED
+						REDACTED
+					REDACTED
+				REDACTED
 			REDACTED
 
 				if firstTokenMs == nil {
@@ -1852,6 +1873,20 @@ REDACTED
 			// 提取 usage
 			if u := extractGeminiUsage(parsed); u != nil {
 				usage = u
+		REDACTED
+
+			// Check for MALFORMED_FUNCTION_CALL
+			if candidates, ok := parsed["candidates"].([]any); ok && len(candidates) > 0 {
+				if cand, ok := candidates[0].(map[string]any); ok {
+					if fr, ok := cand["finishReason"].(string); ok && fr == "MALFORMED_FUNCTION_CALL" {
+						log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in forward non-stream collect")
+						if content, ok := cand["content"]; ok {
+							if b, err := json.Marshal(content); err == nil {
+								log.Printf("[Antigravity] Malformed content: %s", string(b))
+						REDACTED
+					REDACTED
+				REDACTED
+			REDACTED
 		REDACTED
 
 			// 保留最后一个有 parts 的响应
@@ -2458,4 +2493,56 @@ func isImageGenerationModel(model string) bool {
 		modelLower == "gemini-2.5-flash-image" ||
 		modelLower == "gemini-2.5-flash-image-preview" ||
 		strings.HasPrefix(modelLower, "gemini-2.5-flash-image-")
+REDACTED
+
+// cleanGeminiRequest 清理 Gemini 请求体中的 Schema
+func cleanGeminiRequest(body []byte) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+REDACTED
+
+	modified := false
+
+	// 1. 清理 Tools
+	if tools, ok := payload["tools"].([]any); ok && len(tools) > 0 {
+		for _, t := range tools {
+			toolMap, ok := t.(map[string]any)
+			if !ok {
+				continue
+		REDACTED
+
+			// function_declarations (snake_case) or functionDeclarations (camelCase)
+			var funcs []any
+			if f, ok := toolMap["functionDeclarations"].([]any); ok {
+				funcs = f
+		REDACTED else if f, ok := toolMap["function_declarations"].([]any); ok {
+				funcs = f
+		REDACTED
+
+			if len(funcs) == 0 {
+				continue
+		REDACTED
+
+			for _, f := range funcs {
+				funcMap, ok := f.(map[string]any)
+				if !ok {
+					continue
+			REDACTED
+
+				if params, ok := funcMap["parameters"].(map[string]any); ok {
+					antigravity.DeepCleanUndefined(params)
+					cleaned := antigravity.CleanJSONSchema(params)
+					funcMap["parameters"] = cleaned
+					modified = true
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if !modified {
+		return body, nil
+REDACTED
+
+	return json.Marshal(payload)
 REDACTED
