@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -30,8 +31,9 @@ const (
 )
 
 const (
-	antigravityScopeRateLimitEnv = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
-	antigravityBillingModelEnv   = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
+	antigravityScopeRateLimitEnv  = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
+	antigravityBillingModelEnv    = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
+	antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
 )
 
 // antigravityRetryLoopParams 重试循环的参数
@@ -1541,6 +1543,18 @@ func antigravityUseMappedModelForBilling() bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 REDACTED
 
+func antigravityFallbackCooldownSeconds() (time.Duration, bool) {
+	raw := strings.TrimSpace(os.Getenv(antigravityFallbackSecondsEnv))
+	if raw == "" {
+		return 0, false
+REDACTED
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return 0, false
+REDACTED
+	return time.Duration(seconds) * time.Second, true
+REDACTED
+
 func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope) {
 	// 429 使用 Gemini 格式解析（从 body 解析重置时间）
 	if statusCode == 429 {
@@ -1553,6 +1567,9 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 				fallbackMinutes = s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes
 		REDACTED
 			defaultDur := time.Duration(fallbackMinutes) * time.Minute
+			if override, ok := antigravityFallbackCooldownSeconds(); ok {
+				defaultDur = override
+		REDACTED
 			ra := time.Now().Add(defaultDur)
 			if useScopeLimit {
 				log.Printf("%s status=429 rate_limited scope=%s reset_in=%v (fallback)", prefix, quotaScope, defaultDur)
