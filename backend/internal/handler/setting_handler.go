@@ -34,6 +34,7 @@ REDACTED
 	response.Success(c, dto.PublicSettings{
 		RegistrationEnabled: settings.RegistrationEnabled,
 		EmailVerifyEnabled:  settings.EmailVerifyEnabled,
+		PromoCodeEnabled:    settings.PromoCodeEnabled,
 		TurnstileEnabled:    settings.TurnstileEnabled,
 		TurnstileSiteKey:    settings.TurnstileSiteKey,
 		SiteName:            settings.SiteName,

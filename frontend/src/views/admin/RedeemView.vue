@@ -238,7 +238,30 @@
                   v-model="generateForm.group_id"
                   :options="subscriptionGroupOptions"
                   :placeholder="t('admin.redeem.selectGroupPlaceholder')"
-                />
+                >
+                  <template #selected="{ option REDACTED">
+                    <GroupBadge
+                      v-if="option"
+                      :name="(option as unknown as GroupOption).label"
+                      :platform="(option as unknown as GroupOption).platform"
+                      :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                      :rate-multiplier="(option as unknown as GroupOption).rate"
+                    />
+                    <span v-else class="text-gray-400">{{
+                      t('admin.redeem.selectGroupPlaceholder')
+                    REDACTEDREDACTED</span>
+                  </template>
+                  <template #option="{ option, selected REDACTED">
+                    <GroupOptionItem
+                      :name="(option as unknown as GroupOption).label"
+                      :platform="(option as unknown as GroupOption).platform"
+                      :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                      :rate-multiplier="(option as unknown as GroupOption).rate"
+                      :description="(option as unknown as GroupOption).description"
+                      :selected="selected"
+                    />
+                  </template>
+                </Select>
               </div>
               <div>
                 <label class="input-label">{{ t('admin.redeem.validityDays') REDACTEDREDACTED</label>
@@ -370,7 +393,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { adminAPI REDACTED from '@/api/admin'
 import { formatDateTime REDACTED from '@/utils/format'
-import type { RedeemCode, RedeemCodeType, Group REDACTED from '@/types'
+import type { RedeemCode, RedeemCodeType, Group, GroupPlatform, SubscriptionType REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -378,11 +401,22 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
+import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const { copyToClipboard: clipboardCopy REDACTED = useClipboard()
+
+interface GroupOption {
+  value: number
+  label: string
+  description: string | null
+  platform: GroupPlatform
+  subscriptionType: SubscriptionType
+  rate: number
+REDACTED
 
 const showGenerateDialog = ref(false)
 const showResultDialog = ref(false)
@@ -395,7 +429,11 @@ const subscriptionGroupOptions = computed(() => {
     .filter((g) => g.subscription_type === 'subscription')
     .map((g) => ({
       value: g.id,
-      label: g.name
+      label: g.name,
+      description: g.description,
+      platform: g.platform,
+      subscriptionType: g.subscription_type,
+      rate: g.rate_multiplier
     REDACTED))
 REDACTED)
 

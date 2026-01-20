@@ -2726,7 +2726,9 @@ export default {
         enableRegistration: 'Enable Registration',
         enableRegistrationHint: 'Allow new users to register',
         emailVerification: 'Email Verification',
-        emailVerificationHint: 'Require email verification for new registrations'
+        emailVerificationHint: 'Require email verification for new registrations',
+        promoCode: 'Promo Code',
+        promoCodeHint: 'Allow users to use promo codes during registration'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',

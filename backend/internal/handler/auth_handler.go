@@ -195,6 +195,15 @@ REDACTED
 // ValidatePromoCode 验证优惠码（公开接口，注册前调用）
 // POST /api/v1/auth/validate-promo-code
 func (h *AuthHandler) ValidatePromoCode(c *gin.Context) {
+	// 检查优惠码功能是否启用
+	if h.settingSvc != nil && !h.settingSvc.IsPromoCodeEnabled(c.Request.Context()) {
+		response.Success(c, ValidatePromoCodeResponse{
+			Valid:     false,
+			ErrorCode: "PROMO_CODE_DISABLED",
+	REDACTED)
+		return
+REDACTED
+
 	var req ValidatePromoCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())

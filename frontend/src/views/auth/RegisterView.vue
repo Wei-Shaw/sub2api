@@ -96,7 +96,7 @@
         </div>
 
         <!-- Promo Code Input (Optional) -->
-        <div>
+        <div v-if="promoCodeEnabled">
           <label for="promo_code" class="input-label">
             {{ t('auth.promoCodeLabel') REDACTEDREDACTED
             <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') REDACTEDREDACTED)</span>
@@ -260,6 +260,7 @@ const showPassword = ref<boolean>(false)
 // Public settings
 const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
+const promoCodeEnabled = ref<boolean>(true)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('Sub2API')
@@ -294,22 +295,25 @@ REDACTED)
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
-  // Read promo code from URL parameter
-  const promoParam = route.query.promo as string
-  if (promoParam) {
-    formData.promo_code = promoParam
-    // Validate the promo code from URL
-    await validatePromoCodeDebounced(promoParam)
-  REDACTED
-
   try {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled
     emailVerifyEnabled.value = settings.email_verify_enabled
+    promoCodeEnabled.value = settings.promo_code_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+
+    // Read promo code from URL parameter only if promo code is enabled
+    if (promoCodeEnabled.value) {
+      const promoParam = route.query.promo as string
+      if (promoParam) {
+        formData.promo_code = promoParam
+        // Validate the promo code from URL
+        await validatePromoCodeDebounced(promoParam)
+      REDACTED
+    REDACTED
   REDACTED catch (error) {
     console.error('Failed to load public settings:', error)
   REDACTED finally {

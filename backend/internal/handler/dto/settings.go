@@ -4,6 +4,7 @@ package dto
 type SystemSettings struct {
 	RegistrationEnabled bool `json:"registration_enabled"`
 	EmailVerifyEnabled  bool `json:"email_verify_enabled"`
+	PromoCodeEnabled    bool `json:"promo_code_enabled"`
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -55,6 +56,7 @@ REDACTED
 type PublicSettings struct {
 	RegistrationEnabled bool   `json:"registration_enabled"`
 	EmailVerifyEnabled  bool   `json:"email_verify_enabled"`
+	PromoCodeEnabled    bool   `json:"promo_code_enabled"`
 	TurnstileEnabled    bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey    string `json:"turnstile_site_key"`
 	SiteName            string `json:"site_name"`

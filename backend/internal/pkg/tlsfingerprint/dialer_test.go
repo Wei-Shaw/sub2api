@@ -305,3 +305,139 @@ func mustParseURL(rawURL string) *url.URL {
 REDACTED
 	return u
 REDACTED
+
+// TestProfileExpectation defines expected fingerprint values for a profile.
+type TestProfileExpectation struct {
+	Profile       *Profile
+	ExpectedJA3   string // Expected JA3 hash (empty = don't check)
+	ExpectedJA4   string // Expected full JA4 (empty = don't check)
+	JA4CipherHash string // Expected JA4 cipher hash - the stable middle part (empty = don't check)
+REDACTED
+
+// TestAllProfiles tests multiple TLS fingerprint profiles against tls.peet.ws.
+// Run with: go test -v -run TestAllProfiles ./internal/pkg/tlsfingerprint/...
+func TestAllProfiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+REDACTED
+
+	// Define all profiles to test with their expected fingerprints
+	// These profiles are from config.yaml gateway.tls_fingerprint.profiles
+	profiles := []TestProfileExpectation{
+		{
+			// Linux x64 Node.js v22.17.1
+			// Expected JA3 Hash: 1a28e69016765d92e3b381168d68922c
+			// Expected JA4: t13d5911h1_a33745022dd6_1f22a2ca17c4
+			Profile: &Profile{
+				Name:         "linux_x64_node_v22171",
+				EnableGREASE: false,
+				CipherSuites: []uint16{4866, 4867, 4865, 49199, 49195, 49200, 49196, 158, 49191, 103, 49192, 107, 163, 159, 52393, 52392, 52394, 49327, 49325, 49315, 49311, 49245, 49249, 49239, 49235, 162, 49326, 49324, 49314, 49310, 49244, 49248, 49238, 49234, 49188, 106, 49187, 64, 49162, 49172, 57, 56, 49161, 49171, 51, 50, 157, 49313, 49309, 49233, 156, 49312, 49308, 49232, 61, 60, 53, 47, 255REDACTED,
+				Curves:       []uint16{29, 23, 30, 25, 24, 256, 257, 258, 259, 260REDACTED,
+				PointFormats: []uint8{0, 1, 2REDACTED,
+		REDACTED,
+			JA4CipherHash: "a33745022dd6", // stable part
+	REDACTED,
+		{
+			// MacOS arm64 Node.js v22.18.0
+			// Expected JA3 Hash: 70cb5ca646080902703ffda87036a5ea
+			// Expected JA4: t13d5912h1_a33745022dd6_dbd39dd1d406
+			Profile: &Profile{
+				Name:         "macos_arm64_node_v22180",
+				EnableGREASE: false,
+				CipherSuites: []uint16{4866, 4867, 4865, 49199, 49195, 49200, 49196, 158, 49191, 103, 49192, 107, 163, 159, 52393, 52392, 52394, 49327, 49325, 49315, 49311, 49245, 49249, 49239, 49235, 162, 49326, 49324, 49314, 49310, 49244, 49248, 49238, 49234, 49188, 106, 49187, 64, 49162, 49172, 57, 56, 49161, 49171, 51, 50, 157, 49313, 49309, 49233, 156, 49312, 49308, 49232, 61, 60, 53, 47, 255REDACTED,
+				Curves:       []uint16{29, 23, 30, 25, 24, 256, 257, 258, 259, 260REDACTED,
+				PointFormats: []uint8{0, 1, 2REDACTED,
+		REDACTED,
+			JA4CipherHash: "a33745022dd6", // stable part (same cipher suites)
+	REDACTED,
+REDACTED
+
+	for _, tc := range profiles {
+		tc := tc // capture range variable
+		t.Run(tc.Profile.Name, func(t *testing.T) {
+			fp := fetchFingerprint(t, tc.Profile)
+			if fp == nil {
+				return // fetchFingerprint already called t.Fatal
+		REDACTED
+
+			t.Logf("Profile: %s", tc.Profile.Name)
+			t.Logf("  JA3:           %s", fp.JA3)
+			t.Logf("  JA3 Hash:      %s", fp.JA3Hash)
+			t.Logf("  JA4:           %s", fp.JA4)
+			t.Logf("  PeetPrint:     %s", fp.PeetPrint)
+			t.Logf("  PeetPrintHash: %s", fp.PeetPrintHash)
+
+			// Verify expectations
+			if tc.ExpectedJA3 != "" {
+				if fp.JA3Hash == tc.ExpectedJA3 {
+					t.Logf("  ✓ JA3 hash matches: %s", tc.ExpectedJA3)
+			REDACTED else {
+					t.Errorf("  ✗ JA3 hash mismatch: got %s, expected %s", fp.JA3Hash, tc.ExpectedJA3)
+			REDACTED
+		REDACTED
+
+			if tc.ExpectedJA4 != "" {
+				if fp.JA4 == tc.ExpectedJA4 {
+					t.Logf("  ✓ JA4 matches: %s", tc.ExpectedJA4)
+			REDACTED else {
+					t.Errorf("  ✗ JA4 mismatch: got %s, expected %s", fp.JA4, tc.ExpectedJA4)
+			REDACTED
+		REDACTED
+
+			// Check JA4 cipher hash (stable middle part)
+			// JA4 format: prefix_cipherHash_extHash
+			if tc.JA4CipherHash != "" {
+				if strings.Contains(fp.JA4, "_"+tc.JA4CipherHash+"_") {
+					t.Logf("  ✓ JA4 cipher hash matches: %s", tc.JA4CipherHash)
+			REDACTED else {
+					t.Errorf("  ✗ JA4 cipher hash mismatch: got %s, expected cipher hash %s", fp.JA4, tc.JA4CipherHash)
+			REDACTED
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+// fetchFingerprint makes a request to tls.peet.ws and returns the TLS fingerprint info.
+func fetchFingerprint(t *testing.T, profile *Profile) *TLSInfo {
+REDACTED
+
+	dialer := NewDialer(profile, nil)
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialTLSContext: dialer.DialTLSContext,
+	REDACTED,
+		Timeout: 30 * time.Second,
+REDACTED
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://tls.peet.ws/api/all", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+		return nil
+REDACTED
+	req.Header.Set("User-Agent", "Claude Code/2.0.0 Node.js/20.0.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("failed to get fingerprint: %v", err)
+		return nil
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response: %v", err)
+		return nil
+REDACTED
+
+	var fpResp FingerprintResponse
+	if err := json.Unmarshal(body, &fpResp); err != nil {
+		t.Logf("Response body: %s", string(body))
+		t.Fatalf("failed to parse fingerprint response: %v", err)
+		return nil
+REDACTED
+
+	return &fpResp.TLS
+REDACTED

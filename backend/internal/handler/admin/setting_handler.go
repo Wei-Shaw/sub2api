@@ -47,6 +47,7 @@ REDACTED
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  settings.RegistrationEnabled,
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
+		PromoCodeEnabled:                     settings.PromoCodeEnabled,
 		SMTPHost:                             settings.SMTPHost,
 		SMTPPort:                             settings.SMTPPort,
 		SMTPUsername:                         settings.SMTPUsername,
@@ -90,6 +91,7 @@ type UpdateSettingsRequest struct {
 	// 注册设置
 	RegistrationEnabled bool `json:"registration_enabled"`
 	EmailVerifyEnabled  bool `json:"email_verify_enabled"`
+	PromoCodeEnabled    bool `json:"promo_code_enabled"`
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -240,6 +242,7 @@ REDACTED
 	settings := &service.SystemSettings{
 		RegistrationEnabled:        req.RegistrationEnabled,
 		EmailVerifyEnabled:         req.EmailVerifyEnabled,
+		PromoCodeEnabled:           req.PromoCodeEnabled,
 		SMTPHost:                   req.SMTPHost,
 		SMTPPort:                   req.SMTPPort,
 		SMTPUsername:               req.SMTPUsername,
@@ -314,6 +317,7 @@ REDACTED
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
+		PromoCodeEnabled:                     updatedSettings.PromoCodeEnabled,
 		SMTPHost:                             updatedSettings.SMTPHost,
 		SMTPPort:                             updatedSettings.SMTPPort,
 		SMTPUsername:                         updatedSettings.SMTPUsername,

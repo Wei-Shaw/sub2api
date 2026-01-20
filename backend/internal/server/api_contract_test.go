@@ -412,6 +412,7 @@ REDACTED{
 				deps.settingRepo.SetAll(map[string]string{
 					service.SettingKeyRegistrationEnabled: "true",
 					service.SettingKeyEmailVerifyEnabled:  "false",
+					service.SettingKeyPromoCodeEnabled:    "true",
 
 					service.SettingKeySMTPHost:     "smtp.example.com",
 					service.SettingKeySMTPPort:     "587",
@@ -450,6 +451,7 @@ REDACTED{
 				"data": {
 					"registration_enabled": true,
 					"email_verify_enabled": false,
+					"promo_code_enabled": true,
 					"smtp_host": "smtp.example.com",
 					"smtp_port": 587,
 					"smtp_username": "user",
