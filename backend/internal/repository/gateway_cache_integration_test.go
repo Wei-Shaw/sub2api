@@ -78,6 +78,19 @@ func (s *GatewayCacheSuite) TestRefreshSessionTTL_MissingKey() {
 	require.NoError(s.T(), err, "RefreshSessionTTL on missing key should not error")
 REDACTED
 
+func (s *GatewayCacheSuite) TestDeleteSessionAccountID() {
+	sessionID := "openai:s4"
+	accountID := int64(102)
+	groupID := int64(1)
+	sessionTTL := 1 * time.Minute
+
+	require.NoError(s.T(), s.cache.SetSessionAccountID(s.ctx, groupID, sessionID, accountID, sessionTTL), "SetSessionAccountID")
+	require.NoError(s.T(), s.cache.DeleteSessionAccountID(s.ctx, groupID, sessionID), "DeleteSessionAccountID")
+
+	_, err := s.cache.GetSessionAccountID(s.ctx, groupID, sessionID)
+	require.True(s.T(), errors.Is(err, redis.Nil), "expected redis.Nil after delete")
+REDACTED
+
 func (s *GatewayCacheSuite) TestGetSessionAccountID_CorruptedValue() {
 	sessionID := "corrupted"
 	groupID := int64(1)
