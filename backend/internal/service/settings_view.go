@@ -3,6 +3,7 @@ package service
 type SystemSettings struct {
 	RegistrationEnabled bool
 	EmailVerifyEnabled  bool
+	PromoCodeEnabled    bool
 
 	SMTPHost               string
 	SMTPPort               int
@@ -58,6 +59,7 @@ REDACTED
 type PublicSettings struct {
 	RegistrationEnabled bool
 	EmailVerifyEnabled  bool
+	PromoCodeEnabled    bool
 	TurnstileEnabled    bool
 	TurnstileSiteKey    string
 	SiteName            string

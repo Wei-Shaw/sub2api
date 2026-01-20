@@ -2879,7 +2879,9 @@ export default {
         enableRegistration: '开放注册',
         enableRegistrationHint: '允许新用户注册',
         emailVerification: '邮箱验证',
-        emailVerificationHint: '新用户注册时需要验证邮箱'
+        emailVerificationHint: '新用户注册时需要验证邮箱',
+        promoCode: '优惠码',
+        promoCodeHint: '允许用户在注册时使用优惠码'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',

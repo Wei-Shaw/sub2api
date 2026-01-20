@@ -12,6 +12,7 @@ export interface SystemSettings {
   // Registration settings
   registration_enabled: boolean
   email_verify_enabled: boolean
+  promo_code_enabled: boolean
   // Default settings
   default_balance: number
   default_concurrency: number
@@ -64,6 +65,7 @@ REDACTED
 export interface UpdateSettingsRequest {
   registration_enabled?: boolean
   email_verify_enabled?: boolean
+  promo_code_enabled?: boolean
   default_balance?: number
   default_concurrency?: number
   site_name?: string
