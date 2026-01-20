@@ -31,7 +31,7 @@ const (
 )
 
 const (
-	antigravityMaxRetriesEnv     = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
+	antigravityMaxRetriesEnv      = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
 	antigravityScopeRateLimitEnv  = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
 	antigravityBillingModelEnv    = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
 	antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
