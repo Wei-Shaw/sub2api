@@ -24,13 +24,14 @@ import (
 )
 
 const (
-	antigravityStickySessionTTL = time.Hour
-	antigravityMaxRetries       = 3
-	antigravityRetryBaseDelay   = 1 * time.Second
-	antigravityRetryMaxDelay    = 16 * time.Second
+	antigravityStickySessionTTL  = time.Hour
+	antigravityDefaultMaxRetries = 5
+	antigravityRetryBaseDelay    = 1 * time.Second
+	antigravityRetryMaxDelay     = 16 * time.Second
 )
 
 const (
+	antigravityMaxRetriesEnv     = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
 	antigravityScopeRateLimitEnv  = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
 	antigravityBillingModelEnv    = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
 	antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
@@ -63,6 +64,7 @@ func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopRe
 	if len(availableURLs) == 0 {
 		availableURLs = antigravity.BaseURLs
 REDACTED
+	maxRetries := antigravityMaxRetries()
 
 	var resp *http.Response
 	var usedBaseURL string
@@ -81,7 +83,7 @@ REDACTED
 urlFallbackLoop:
 	for urlIdx, baseURL := range availableURLs {
 		usedBaseURL = baseURL
-		for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
+		for attempt := 1; attempt <= maxRetries; attempt++ {
 			select {
 			case <-p.ctx.Done():
 				log.Printf("%s status=context_canceled error=%v", p.prefix, p.ctx.Err())
@@ -114,8 +116,8 @@ urlFallbackLoop:
 					log.Printf("%s URL fallback (connection error): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
 					continue urlFallbackLoop
 			REDACTED
-				if attempt < antigravityMaxRetries {
-					log.Printf("%s status=request_failed retry=%d/%d error=%v", p.prefix, attempt, antigravityMaxRetries, err)
+				if attempt < maxRetries {
+					log.Printf("%s status=request_failed retry=%d/%d error=%v", p.prefix, attempt, maxRetries, err)
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -138,8 +140,8 @@ urlFallbackLoop:
 					continue urlFallbackLoop
 			REDACTED
 
-				// 账户/模型配额限流，重试 3 次（指数退避）
-				if attempt < antigravityMaxRetries {
+				// 账户/模型配额限流，按最大重试次数做指数退避
+				if attempt < maxRetries {
 					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
@@ -152,7 +154,7 @@ urlFallbackLoop:
 						Message:            upstreamMsg,
 						Detail:             getUpstreamDetail(respBody),
 				REDACTED)
-					log.Printf("%s status=429 retry=%d/%d body=%s", p.prefix, attempt, antigravityMaxRetries, truncateForLog(respBody, 200))
+					log.Printf("%s status=429 retry=%d/%d body=%s", p.prefix, attempt, maxRetries, truncateForLog(respBody, 200))
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -176,7 +178,7 @@ urlFallbackLoop:
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				if attempt < antigravityMaxRetries {
+				if attempt < maxRetries {
 					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
@@ -189,7 +191,7 @@ urlFallbackLoop:
 						Message:            upstreamMsg,
 						Detail:             getUpstreamDetail(respBody),
 				REDACTED)
-					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 500))
+					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, maxRetries, truncateForLog(respBody, 500))
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -1536,6 +1538,18 @@ REDACTED
 func antigravityUseScopeRateLimit() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityScopeRateLimitEnv)))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
+REDACTED
+
+func antigravityMaxRetries() int {
+	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesEnv))
+	if raw == "" {
+		return antigravityDefaultMaxRetries
+REDACTED
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return antigravityDefaultMaxRetries
+REDACTED
+	return value
 REDACTED
 
 func antigravityUseMappedModelForBilling() bool {
