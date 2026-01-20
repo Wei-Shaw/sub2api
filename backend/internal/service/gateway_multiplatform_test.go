@@ -2118,7 +2118,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(testCtx, nil, "sticky", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(testCtx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2249,7 +2249,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2285,7 +2285,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "legacy", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "legacy", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2344,7 +2344,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2398,7 +2398,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2452,7 +2452,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2510,7 +2510,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2568,7 +2568,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route-full", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route-full", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2626,7 +2626,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "fallback", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "fallback", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2663,7 +2663,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2715,7 +2715,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "gemini", "gemini-2.5-pro", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "gemini", "gemini-2.5-pro", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2793,7 +2793,7 @@ REDACTED)
 	REDACTED
 
 		excluded := map[int64]struct{REDACTED{1: {REDACTEDREDACTED
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", excluded)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", excluded, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2847,7 +2847,7 @@ REDACTED)
 			concurrencyService: nil,
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "gemini-2.5-pro", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "gemini-2.5-pro", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2880,7 +2880,7 @@ REDACTED)
 			concurrencyService: nil,
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrClaudeCodeOnly)
@@ -2918,7 +2918,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "wait", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "wait", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2956,7 +2956,7 @@ REDACTED)
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "missing-load", "claude-3-5-sonnet-20241022", nil)
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "missing-load", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
