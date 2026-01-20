@@ -180,67 +180,26 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 REDACTED
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
+// SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
-	// 1. Check sticky session
-	if sessionHash != "" {
-		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), "openai:"+sessionHash)
-		if err == nil && accountID > 0 {
-			if _, excluded := excludedIDs[accountID]; !excluded {
-				account, err := s.getSchedulableAccount(ctx, accountID)
-				if err == nil && account.IsSchedulable() && account.IsOpenAI() && (requestedModel == "" || account.IsModelSupported(requestedModel)) {
-					// Refresh sticky session TTL
-					_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), "openai:"+sessionHash, openaiStickySessionTTL)
-					return account, nil
-			REDACTED
-		REDACTED
-	REDACTED
+	cacheKey := "openai:" + sessionHash
+
+	// 1. 尝试粘性会话命中
+	// Try sticky session hit
+	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs); account != nil {
+		return account, nil
 REDACTED
 
-	// 2. Get schedulable OpenAI accounts
+	// 2. 获取可调度的 OpenAI 账号
+	// Get schedulable OpenAI accounts
 	accounts, err := s.listSchedulableAccounts(ctx, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 REDACTED
 
-	// 3. Select by priority + LRU
-	var selected *Account
-	for i := range accounts {
-		acc := &accounts[i]
-		if _, excluded := excludedIDs[acc.ID]; excluded {
-			continue
-	REDACTED
-		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
-		// avoid selecting accounts that were recently rate-limited/overloaded.
-		if !acc.IsSchedulable() {
-			continue
-	REDACTED
-		// Check model support
-		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
-			continue
-	REDACTED
-		if selected == nil {
-			selected = acc
-			continue
-	REDACTED
-		// Lower priority value means higher priority
-		if acc.Priority < selected.Priority {
-			selected = acc
-	REDACTED else if acc.Priority == selected.Priority {
-			switch {
-			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
-				selected = acc
-			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
-				// keep selected (never used is preferred)
-			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-				// keep selected (both never used)
-			default:
-				// Same priority, select least recently used
-				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
-					selected = acc
-			REDACTED
-		REDACTED
-	REDACTED
-REDACTED
+	// 3. 按优先级 + LRU 选择最佳账号
+	// Select by priority + LRU
+	selected := s.selectBestAccount(accounts, requestedModel, excludedIDs)
 
 	if selected == nil {
 		if requestedModel != "" {
@@ -249,12 +208,136 @@ REDACTED
 		return nil, errors.New("no available OpenAI accounts")
 REDACTED
 
-	// 4. Set sticky session
+	// 4. 设置粘性会话绑定
+	// Set sticky session binding
 	if sessionHash != "" {
-		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), "openai:"+sessionHash, selected.ID, openaiStickySessionTTL)
+		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, openaiStickySessionTTL)
 REDACTED
 
 	return selected, nil
+REDACTED
+
+// tryStickySessionHit 尝试从粘性会话获取账号。
+// 如果命中且账号可用则返回账号；如果账号不可用则清理会话并返回 nil。
+//
+// tryStickySessionHit attempts to get account from sticky session.
+// Returns account if hit and usable; clears session and returns nil if account is unavailable.
+func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID *int64, sessionHash, cacheKey, requestedModel string, excludedIDs map[int64]struct{REDACTED) *Account {
+	if sessionHash == "" {
+		return nil
+REDACTED
+
+	accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	if err != nil || accountID <= 0 {
+		return nil
+REDACTED
+
+	if _, excluded := excludedIDs[accountID]; excluded {
+		return nil
+REDACTED
+
+	account, err := s.getSchedulableAccount(ctx, accountID)
+	if err != nil {
+		return nil
+REDACTED
+
+	// 检查账号是否需要清理粘性会话
+	// Check if sticky session should be cleared
+	if shouldClearStickySession(account) {
+		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+		return nil
+REDACTED
+
+	// 验证账号是否可用于当前请求
+	// Verify account is usable for current request
+	if !account.IsSchedulable() || !account.IsOpenAI() {
+		return nil
+REDACTED
+	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+		return nil
+REDACTED
+
+	// 刷新会话 TTL 并返回账号
+	// Refresh session TTL and return account
+	_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), cacheKey, openaiStickySessionTTL)
+	return account
+REDACTED
+
+// selectBestAccount 从候选账号中选择最佳账号（优先级 + LRU）。
+// 返回 nil 表示无可用账号。
+//
+// selectBestAccount selects the best account from candidates (priority + LRU).
+// Returns nil if no available account.
+func (s *OpenAIGatewayService) selectBestAccount(accounts []Account, requestedModel string, excludedIDs map[int64]struct{REDACTED) *Account {
+	var selected *Account
+
+	for i := range accounts {
+		acc := &accounts[i]
+
+		// 跳过被排除的账号
+		// Skip excluded accounts
+		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+
+		// 调度器快照可能暂时过时，这里重新检查可调度性和平台
+		// Scheduler snapshots can be temporarily stale; re-check schedulability and platform
+		if !acc.IsSchedulable() || !acc.IsOpenAI() {
+			continue
+	REDACTED
+
+		// 检查模型支持
+		// Check model support
+		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+			continue
+	REDACTED
+
+		// 选择优先级最高且最久未使用的账号
+		// Select highest priority and least recently used
+		if selected == nil {
+			selected = acc
+			continue
+	REDACTED
+
+		if s.isBetterAccount(acc, selected) {
+			selected = acc
+	REDACTED
+REDACTED
+
+	return selected
+REDACTED
+
+// isBetterAccount 判断 candidate 是否比 current 更优。
+// 规则：优先级更高（数值更小）优先；同优先级时，未使用过的优先，其次是最久未使用的。
+//
+// isBetterAccount checks if candidate is better than current.
+// Rules: higher priority (lower value) wins; same priority: never used > least recently used.
+func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool {
+	// 优先级更高（数值更小）
+	// Higher priority (lower value)
+	if candidate.Priority < current.Priority {
+		return true
+REDACTED
+	if candidate.Priority > current.Priority {
+		return false
+REDACTED
+
+	// 同优先级，比较最后使用时间
+	// Same priority, compare last used time
+	switch {
+	case candidate.LastUsedAt == nil && current.LastUsedAt != nil:
+		// candidate 从未使用，优先
+		return true
+	case candidate.LastUsedAt != nil && current.LastUsedAt == nil:
+		// current 从未使用，保持
+		return false
+	case candidate.LastUsedAt == nil && current.LastUsedAt == nil:
+		// 都未使用，保持
+		return false
+	default:
+		// 都使用过，选择最久未使用的
+		return candidate.LastUsedAt.Before(*current.LastUsedAt)
+REDACTED
 REDACTED
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
@@ -325,29 +408,35 @@ REDACTED
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), "openai:"+sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
 			account, err := s.getSchedulableAccount(ctx, accountID)
-			if err == nil && account.IsSchedulable() && account.IsOpenAI() &&
-				(requestedModel == "" || account.IsModelSupported(requestedModel)) {
-				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
-				if err == nil && result.Acquired {
-					_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), "openai:"+sessionHash, openaiStickySessionTTL)
-					return &AccountSelectionResult{
-						Account:     account,
-						Acquired:    true,
-						ReleaseFunc: result.ReleaseFunc,
-				REDACTED, nil
+			if err == nil {
+				clearSticky := shouldClearStickySession(account)
+				if clearSticky {
+					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), "openai:"+sessionHash)
 			REDACTED
+				if !clearSticky && account.IsSchedulable() && account.IsOpenAI() &&
+					(requestedModel == "" || account.IsModelSupported(requestedModel)) {
+					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+					if err == nil && result.Acquired {
+						_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), "openai:"+sessionHash, openaiStickySessionTTL)
+						return &AccountSelectionResult{
+							Account:     account,
+							Acquired:    true,
+							ReleaseFunc: result.ReleaseFunc,
+					REDACTED, nil
+				REDACTED
 
-				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
-				if waitingCount < cfg.StickySessionMaxWaiting {
-					return &AccountSelectionResult{
-						Account: account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      accountID,
-							MaxConcurrency: account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-					REDACTED,
-				REDACTED, nil
+					waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
+					if waitingCount < cfg.StickySessionMaxWaiting {
+						return &AccountSelectionResult{
+							Account: account,
+							WaitPlan: &AccountWaitPlan{
+								AccountID:      accountID,
+								MaxConcurrency: account.Concurrency,
+								Timeout:        cfg.StickySessionWaitTimeout,
+								MaxWaiting:     cfg.StickySessionMaxWaiting,
+						REDACTED,
+					REDACTED, nil
+				REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
