@@ -84,7 +84,8 @@ REDACTED
 REDACTED
 	dashboardAggregationService := service.ProvideDashboardAggregationService(dashboardAggregationRepository, timingWheelService, configConfig)
 	dashboardHandler := admin.NewDashboardHandler(dashboardService, dashboardAggregationService)
-	accountRepository := repository.NewAccountRepository(client, db)
+	schedulerCache := repository.NewSchedulerCache(redisClient)
+	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
 	proxyRepository := repository.NewProxyRepository(client, db)
 	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	proxyLatencyCache := repository.NewProxyLatencyCache(redisClient)
@@ -127,7 +128,6 @@ REDACTED
 	adminRedeemHandler := admin.NewRedeemHandler(adminService)
 	promoHandler := admin.NewPromoHandler(promoService)
 	opsRepository := repository.NewOpsRepository(db)
-	schedulerCache := repository.NewSchedulerCache(redisClient)
 	schedulerOutboxRepository := repository.NewSchedulerOutboxRepository(db)
 	schedulerSnapshotService := service.ProvideSchedulerSnapshotService(schedulerCache, schedulerOutboxRepository, accountRepository, groupRepository, configConfig)
 	pricingRemoteClient := repository.ProvidePricingRemoteClient(configConfig)
