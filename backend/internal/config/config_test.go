@@ -280,3 +280,573 @@ REDACTED
 		t.Fatalf("Validate() expected backfill_max_days error, got: %v", err)
 REDACTED
 REDACTED
+
+func TestLoadDefaultUsageCleanupConfig(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if !cfg.UsageCleanup.Enabled {
+		t.Fatalf("UsageCleanup.Enabled = false, want true")
+REDACTED
+	if cfg.UsageCleanup.MaxRangeDays != 31 {
+		t.Fatalf("UsageCleanup.MaxRangeDays = %d, want 31", cfg.UsageCleanup.MaxRangeDays)
+REDACTED
+	if cfg.UsageCleanup.BatchSize != 5000 {
+		t.Fatalf("UsageCleanup.BatchSize = %d, want 5000", cfg.UsageCleanup.BatchSize)
+REDACTED
+	if cfg.UsageCleanup.WorkerIntervalSeconds != 10 {
+		t.Fatalf("UsageCleanup.WorkerIntervalSeconds = %d, want 10", cfg.UsageCleanup.WorkerIntervalSeconds)
+REDACTED
+	if cfg.UsageCleanup.TaskTimeoutSeconds != 1800 {
+		t.Fatalf("UsageCleanup.TaskTimeoutSeconds = %d, want 1800", cfg.UsageCleanup.TaskTimeoutSeconds)
+REDACTED
+REDACTED
+
+func TestValidateUsageCleanupConfigEnabled(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.UsageCleanup.Enabled = true
+	cfg.UsageCleanup.MaxRangeDays = 0
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for usage_cleanup.max_range_days, got nil")
+REDACTED
+	if !strings.Contains(err.Error(), "usage_cleanup.max_range_days") {
+		t.Fatalf("Validate() expected max_range_days error, got: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateUsageCleanupConfigDisabled(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.UsageCleanup.Enabled = false
+	cfg.UsageCleanup.BatchSize = -1
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for usage_cleanup.batch_size, got nil")
+REDACTED
+	if !strings.Contains(err.Error(), "usage_cleanup.batch_size") {
+		t.Fatalf("Validate() expected batch_size error, got: %v", err)
+REDACTED
+REDACTED
+
+func TestConfigAddressHelpers(t *testing.T) {
+	server := ServerConfig{Host: "127.0.0.1", Port: 9000REDACTED
+	if server.Address() != "127.0.0.1:9000" {
+		t.Fatalf("ServerConfig.Address() = %q", server.Address())
+REDACTED
+
+	dbCfg := DatabaseConfig{
+		Host:     "localhost",
+		Port:     5432,
+		User:     "postgres",
+		Password: "",
+		DBName:   "sub2api",
+		SSLMode:  "disable",
+REDACTED
+	if !strings.Contains(dbCfg.DSN(), "password=") {
+REDACTED else {
+		t.Fatalf("DatabaseConfig.DSN() should not include password when empty")
+REDACTED
+
+	dbCfg.Password = "secret"
+	if !strings.Contains(dbCfg.DSN(), "password=secret") {
+		t.Fatalf("DatabaseConfig.DSN() missing password")
+REDACTED
+
+	dbCfg.Password = ""
+	if strings.Contains(dbCfg.DSNWithTimezone("UTC"), "password=") {
+		t.Fatalf("DatabaseConfig.DSNWithTimezone() should omit password when empty")
+REDACTED
+
+	if !strings.Contains(dbCfg.DSNWithTimezone(""), "TimeZone=Asia/Shanghai") {
+		t.Fatalf("DatabaseConfig.DSNWithTimezone() should use default timezone")
+REDACTED
+	if !strings.Contains(dbCfg.DSNWithTimezone("UTC"), "TimeZone=UTC") {
+		t.Fatalf("DatabaseConfig.DSNWithTimezone() should use provided timezone")
+REDACTED
+
+	redis := RedisConfig{Host: "redis", Port: 6379REDACTED
+	if redis.Address() != "redis:6379" {
+		t.Fatalf("RedisConfig.Address() = %q", redis.Address())
+REDACTED
+REDACTED
+
+func TestNormalizeStringSlice(t *testing.T) {
+	values := normalizeStringSlice([]string{" a ", "", "b", "   ", "c"REDACTED)
+	if len(values) != 3 || values[0] != "a" || values[1] != "b" || values[2] != "c" {
+		t.Fatalf("normalizeStringSlice() unexpected result: %#v", values)
+REDACTED
+	if normalizeStringSlice(nil) != nil {
+		t.Fatalf("normalizeStringSlice(nil) expected nil slice")
+REDACTED
+REDACTED
+
+func TestGetServerAddressFromEnv(t *testing.T) {
+	t.Setenv("SERVER_HOST", "127.0.0.1")
+	t.Setenv("SERVER_PORT", "9090")
+
+	address := GetServerAddress()
+	if address != "127.0.0.1:9090" {
+		t.Fatalf("GetServerAddress() = %q", address)
+REDACTED
+REDACTED
+
+func TestValidateAbsoluteHTTPURL(t *testing.T) {
+	if err := ValidateAbsoluteHTTPURL("https://example.com/path"); err != nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL valid url error: %v", err)
+REDACTED
+	if err := ValidateAbsoluteHTTPURL(""); err == nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL should reject empty url")
+REDACTED
+	if err := ValidateAbsoluteHTTPURL("/relative"); err == nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL should reject relative url")
+REDACTED
+	if err := ValidateAbsoluteHTTPURL("ftp://example.com"); err == nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL should reject ftp scheme")
+REDACTED
+	if err := ValidateAbsoluteHTTPURL("https://example.com/#frag"); err == nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL should reject fragment")
+REDACTED
+REDACTED
+
+func TestValidateFrontendRedirectURL(t *testing.T) {
+	if err := ValidateFrontendRedirectURL("/auth/callback"); err != nil {
+		t.Fatalf("ValidateFrontendRedirectURL relative error: %v", err)
+REDACTED
+	if err := ValidateFrontendRedirectURL("https://example.com/auth"); err != nil {
+		t.Fatalf("ValidateFrontendRedirectURL absolute error: %v", err)
+REDACTED
+	if err := ValidateFrontendRedirectURL("example.com/path"); err == nil {
+		t.Fatalf("ValidateFrontendRedirectURL should reject non-absolute url")
+REDACTED
+	if err := ValidateFrontendRedirectURL("//evil.com"); err == nil {
+		t.Fatalf("ValidateFrontendRedirectURL should reject // prefix")
+REDACTED
+	if err := ValidateFrontendRedirectURL("javascript:alert(1)"); err == nil {
+		t.Fatalf("ValidateFrontendRedirectURL should reject javascript scheme")
+REDACTED
+REDACTED
+
+func TestWarnIfInsecureURL(t *testing.T) {
+	warnIfInsecureURL("test", "http://example.com")
+	warnIfInsecureURL("test", "bad://url")
+REDACTED
+
+func TestGenerateJWTSecretDefaultLength(t *testing.T) {
+	secret, err := generateJWTSecret(0)
+	if err != nil {
+		t.Fatalf("generateJWTSecret error: %v", err)
+REDACTED
+	if len(secret) == 0 {
+		t.Fatalf("generateJWTSecret returned empty string")
+REDACTED
+REDACTED
+
+func TestValidateOpsCleanupScheduleRequired(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+	cfg.Ops.Cleanup.Enabled = true
+	cfg.Ops.Cleanup.Schedule = ""
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for ops.cleanup.schedule")
+REDACTED
+	if !strings.Contains(err.Error(), "ops.cleanup.schedule") {
+		t.Fatalf("Validate() expected ops.cleanup.schedule error, got: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateConcurrencyPingInterval(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+	cfg.Concurrency.PingInterval = 3
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for concurrency.ping_interval")
+REDACTED
+	if !strings.Contains(err.Error(), "concurrency.ping_interval") {
+		t.Fatalf("Validate() expected concurrency.ping_interval error, got: %v", err)
+REDACTED
+REDACTED
+
+func TestProvideConfig(t *testing.T) {
+	viper.Reset()
+	if _, err := ProvideConfig(); err != nil {
+		t.Fatalf("ProvideConfig() error: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateConfigWithLinuxDoEnabled(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.Security.CSP.Enabled = true
+	cfg.Security.CSP.Policy = "default-src 'self'"
+
+	cfg.LinuxDo.Enabled = true
+	cfg.LinuxDo.ClientID = "client"
+	cfg.LinuxDo.ClientSecret = "secret"
+	cfg.LinuxDo.AuthorizeURL = "https://example.com/oauth2/authorize"
+	cfg.LinuxDo.TokenURL = "https://example.com/oauth2/token"
+	cfg.LinuxDo.UserInfoURL = "https://example.com/oauth2/userinfo"
+	cfg.LinuxDo.RedirectURL = "https://example.com/api/v1/auth/oauth/linuxdo/callback"
+	cfg.LinuxDo.FrontendRedirectURL = "/auth/linuxdo/callback"
+	cfg.LinuxDo.TokenAuthMethod = "client_secret_post"
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() unexpected error: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateJWTSecretStrength(t *testing.T) {
+	if !isWeakJWTSecret("change-me-in-production") {
+		t.Fatalf("isWeakJWTSecret should detect weak secret")
+REDACTED
+	if isWeakJWTSecret("StrongSecretValue") {
+		t.Fatalf("isWeakJWTSecret should accept strong secret")
+REDACTED
+REDACTED
+
+func TestGenerateJWTSecretWithLength(t *testing.T) {
+	secret, err := generateJWTSecret(16)
+	if err != nil {
+		t.Fatalf("generateJWTSecret error: %v", err)
+REDACTED
+	if len(secret) == 0 {
+		t.Fatalf("generateJWTSecret returned empty string")
+REDACTED
+REDACTED
+
+func TestValidateAbsoluteHTTPURLMissingHost(t *testing.T) {
+	if err := ValidateAbsoluteHTTPURL("https://"); err == nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL should reject missing host")
+REDACTED
+REDACTED
+
+func TestValidateFrontendRedirectURLInvalidChars(t *testing.T) {
+	if err := ValidateFrontendRedirectURL("/auth/\ncallback"); err == nil {
+		t.Fatalf("ValidateFrontendRedirectURL should reject invalid chars")
+REDACTED
+	if err := ValidateFrontendRedirectURL("http://"); err == nil {
+		t.Fatalf("ValidateFrontendRedirectURL should reject missing host")
+REDACTED
+	if err := ValidateFrontendRedirectURL("mailto:user@example.com"); err == nil {
+		t.Fatalf("ValidateFrontendRedirectURL should reject mailto")
+REDACTED
+REDACTED
+
+func TestWarnIfInsecureURLHTTPS(t *testing.T) {
+	warnIfInsecureURL("secure", "https://example.com")
+REDACTED
+
+func TestValidateConfigErrors(t *testing.T) {
+	buildValid := func(t *testing.T) *Config {
+	REDACTED
+		viper.Reset()
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+	REDACTED
+		return cfg
+REDACTED
+
+	cases := []struct {
+		name    string
+		mutate  func(*Config)
+		wantErr string
+REDACTED{
+		{
+			name:    "jwt expire hour positive",
+			mutate:  func(c *Config) { c.JWT.ExpireHour = 0 REDACTED,
+			wantErr: "jwt.expire_hour must be positive",
+	REDACTED,
+		{
+			name:    "jwt expire hour max",
+			mutate:  func(c *Config) { c.JWT.ExpireHour = 200 REDACTED,
+			wantErr: "jwt.expire_hour must be <= 168",
+	REDACTED,
+		{
+			name:    "csp policy required",
+			mutate:  func(c *Config) { c.Security.CSP.Enabled = true; c.Security.CSP.Policy = "" REDACTED,
+			wantErr: "security.csp.policy",
+	REDACTED,
+		{
+			name: "linuxdo client id required",
+			mutate: func(c *Config) {
+				c.LinuxDo.Enabled = true
+				c.LinuxDo.ClientID = ""
+		REDACTED,
+			wantErr: "linuxdo_connect.client_id",
+	REDACTED,
+		{
+			name: "linuxdo token auth method",
+			mutate: func(c *Config) {
+				c.LinuxDo.Enabled = true
+				c.LinuxDo.ClientID = "client"
+				c.LinuxDo.ClientSecret = "secret"
+				c.LinuxDo.AuthorizeURL = "https://example.com/authorize"
+				c.LinuxDo.TokenURL = "https://example.com/token"
+				c.LinuxDo.UserInfoURL = "https://example.com/userinfo"
+				c.LinuxDo.RedirectURL = "https://example.com/callback"
+				c.LinuxDo.FrontendRedirectURL = "/auth/callback"
+				c.LinuxDo.TokenAuthMethod = "invalid"
+		REDACTED,
+			wantErr: "linuxdo_connect.token_auth_method",
+	REDACTED,
+		{
+			name:    "billing circuit breaker threshold",
+			mutate:  func(c *Config) { c.Billing.CircuitBreaker.FailureThreshold = 0 REDACTED,
+			wantErr: "billing.circuit_breaker.failure_threshold",
+	REDACTED,
+		{
+			name:    "billing circuit breaker reset",
+			mutate:  func(c *Config) { c.Billing.CircuitBreaker.ResetTimeoutSeconds = 0 REDACTED,
+			wantErr: "billing.circuit_breaker.reset_timeout_seconds",
+	REDACTED,
+		{
+			name:    "billing circuit breaker half open",
+			mutate:  func(c *Config) { c.Billing.CircuitBreaker.HalfOpenRequests = 0 REDACTED,
+			wantErr: "billing.circuit_breaker.half_open_requests",
+	REDACTED,
+		{
+			name:    "database max open conns",
+			mutate:  func(c *Config) { c.Database.MaxOpenConns = 0 REDACTED,
+			wantErr: "database.max_open_conns",
+	REDACTED,
+		{
+			name:    "database max lifetime",
+			mutate:  func(c *Config) { c.Database.ConnMaxLifetimeMinutes = -1 REDACTED,
+			wantErr: "database.conn_max_lifetime_minutes",
+	REDACTED,
+		{
+			name:    "database idle exceeds open",
+			mutate:  func(c *Config) { c.Database.MaxIdleConns = c.Database.MaxOpenConns + 1 REDACTED,
+			wantErr: "database.max_idle_conns cannot exceed",
+	REDACTED,
+		{
+			name:    "redis dial timeout",
+			mutate:  func(c *Config) { c.Redis.DialTimeoutSeconds = 0 REDACTED,
+			wantErr: "redis.dial_timeout_seconds",
+	REDACTED,
+		{
+			name:    "redis read timeout",
+			mutate:  func(c *Config) { c.Redis.ReadTimeoutSeconds = 0 REDACTED,
+			wantErr: "redis.read_timeout_seconds",
+	REDACTED,
+		{
+			name:    "redis write timeout",
+			mutate:  func(c *Config) { c.Redis.WriteTimeoutSeconds = 0 REDACTED,
+			wantErr: "redis.write_timeout_seconds",
+	REDACTED,
+		{
+			name:    "redis pool size",
+			mutate:  func(c *Config) { c.Redis.PoolSize = 0 REDACTED,
+			wantErr: "redis.pool_size",
+	REDACTED,
+		{
+			name:    "redis idle exceeds pool",
+			mutate:  func(c *Config) { c.Redis.MinIdleConns = c.Redis.PoolSize + 1 REDACTED,
+			wantErr: "redis.min_idle_conns cannot exceed",
+	REDACTED,
+		{
+			name:    "dashboard cache disabled negative",
+			mutate:  func(c *Config) { c.Dashboard.Enabled = false; c.Dashboard.StatsTTLSeconds = -1 REDACTED,
+			wantErr: "dashboard_cache.stats_ttl_seconds",
+	REDACTED,
+		{
+			name:    "dashboard cache fresh ttl positive",
+			mutate:  func(c *Config) { c.Dashboard.Enabled = true; c.Dashboard.StatsFreshTTLSeconds = 0 REDACTED,
+			wantErr: "dashboard_cache.stats_fresh_ttl_seconds",
+	REDACTED,
+		{
+			name:    "dashboard aggregation enabled interval",
+			mutate:  func(c *Config) { c.DashboardAgg.Enabled = true; c.DashboardAgg.IntervalSeconds = 0 REDACTED,
+			wantErr: "dashboard_aggregation.interval_seconds",
+	REDACTED,
+		{
+			name: "dashboard aggregation backfill positive",
+			mutate: func(c *Config) {
+				c.DashboardAgg.Enabled = true
+				c.DashboardAgg.BackfillEnabled = true
+				c.DashboardAgg.BackfillMaxDays = 0
+		REDACTED,
+			wantErr: "dashboard_aggregation.backfill_max_days",
+	REDACTED,
+		{
+			name:    "dashboard aggregation retention",
+			mutate:  func(c *Config) { c.DashboardAgg.Enabled = true; c.DashboardAgg.Retention.UsageLogsDays = 0 REDACTED,
+			wantErr: "dashboard_aggregation.retention.usage_logs_days",
+	REDACTED,
+		{
+			name:    "dashboard aggregation disabled interval",
+			mutate:  func(c *Config) { c.DashboardAgg.Enabled = false; c.DashboardAgg.IntervalSeconds = -1 REDACTED,
+			wantErr: "dashboard_aggregation.interval_seconds",
+	REDACTED,
+		{
+			name:    "usage cleanup max range",
+			mutate:  func(c *Config) { c.UsageCleanup.Enabled = true; c.UsageCleanup.MaxRangeDays = 0 REDACTED,
+			wantErr: "usage_cleanup.max_range_days",
+	REDACTED,
+		{
+			name:    "usage cleanup worker interval",
+			mutate:  func(c *Config) { c.UsageCleanup.Enabled = true; c.UsageCleanup.WorkerIntervalSeconds = 0 REDACTED,
+			wantErr: "usage_cleanup.worker_interval_seconds",
+	REDACTED,
+		{
+			name:    "usage cleanup batch size",
+			mutate:  func(c *Config) { c.UsageCleanup.Enabled = true; c.UsageCleanup.BatchSize = 0 REDACTED,
+			wantErr: "usage_cleanup.batch_size",
+	REDACTED,
+		{
+			name:    "usage cleanup disabled negative",
+			mutate:  func(c *Config) { c.UsageCleanup.Enabled = false; c.UsageCleanup.BatchSize = -1 REDACTED,
+			wantErr: "usage_cleanup.batch_size",
+	REDACTED,
+		{
+			name:    "gateway max body size",
+			mutate:  func(c *Config) { c.Gateway.MaxBodySize = 0 REDACTED,
+			wantErr: "gateway.max_body_size",
+	REDACTED,
+		{
+			name:    "gateway max idle conns",
+			mutate:  func(c *Config) { c.Gateway.MaxIdleConns = 0 REDACTED,
+			wantErr: "gateway.max_idle_conns",
+	REDACTED,
+		{
+			name:    "gateway max idle conns per host",
+			mutate:  func(c *Config) { c.Gateway.MaxIdleConnsPerHost = 0 REDACTED,
+			wantErr: "gateway.max_idle_conns_per_host",
+	REDACTED,
+		{
+			name:    "gateway idle timeout",
+			mutate:  func(c *Config) { c.Gateway.IdleConnTimeoutSeconds = 0 REDACTED,
+			wantErr: "gateway.idle_conn_timeout_seconds",
+	REDACTED,
+		{
+			name:    "gateway max upstream clients",
+			mutate:  func(c *Config) { c.Gateway.MaxUpstreamClients = 0 REDACTED,
+			wantErr: "gateway.max_upstream_clients",
+	REDACTED,
+		{
+			name:    "gateway client idle ttl",
+			mutate:  func(c *Config) { c.Gateway.ClientIdleTTLSeconds = 0 REDACTED,
+			wantErr: "gateway.client_idle_ttl_seconds",
+	REDACTED,
+		{
+			name:    "gateway concurrency slot ttl",
+			mutate:  func(c *Config) { c.Gateway.ConcurrencySlotTTLMinutes = 0 REDACTED,
+			wantErr: "gateway.concurrency_slot_ttl_minutes",
+	REDACTED,
+		{
+			name:    "gateway max conns per host",
+			mutate:  func(c *Config) { c.Gateway.MaxConnsPerHost = -1 REDACTED,
+			wantErr: "gateway.max_conns_per_host",
+	REDACTED,
+		{
+			name:    "gateway connection isolation",
+			mutate:  func(c *Config) { c.Gateway.ConnectionPoolIsolation = "invalid" REDACTED,
+			wantErr: "gateway.connection_pool_isolation",
+	REDACTED,
+		{
+			name:    "gateway stream keepalive range",
+			mutate:  func(c *Config) { c.Gateway.StreamKeepaliveInterval = 4 REDACTED,
+			wantErr: "gateway.stream_keepalive_interval",
+	REDACTED,
+		{
+			name:    "gateway stream data interval range",
+			mutate:  func(c *Config) { c.Gateway.StreamDataIntervalTimeout = 5 REDACTED,
+			wantErr: "gateway.stream_data_interval_timeout",
+	REDACTED,
+		{
+			name:    "gateway stream data interval negative",
+			mutate:  func(c *Config) { c.Gateway.StreamDataIntervalTimeout = -1 REDACTED,
+			wantErr: "gateway.stream_data_interval_timeout must be non-negative",
+	REDACTED,
+		{
+			name:    "gateway max line size",
+			mutate:  func(c *Config) { c.Gateway.MaxLineSize = 1024 REDACTED,
+			wantErr: "gateway.max_line_size must be at least",
+	REDACTED,
+		{
+			name:    "gateway max line size negative",
+			mutate:  func(c *Config) { c.Gateway.MaxLineSize = -1 REDACTED,
+			wantErr: "gateway.max_line_size must be non-negative",
+	REDACTED,
+		{
+			name:    "gateway scheduling sticky waiting",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.StickySessionMaxWaiting = 0 REDACTED,
+			wantErr: "gateway.scheduling.sticky_session_max_waiting",
+	REDACTED,
+		{
+			name:    "gateway scheduling outbox poll",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.OutboxPollIntervalSeconds = 0 REDACTED,
+			wantErr: "gateway.scheduling.outbox_poll_interval_seconds",
+	REDACTED,
+		{
+			name:    "gateway scheduling outbox failures",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.OutboxLagRebuildFailures = 0 REDACTED,
+			wantErr: "gateway.scheduling.outbox_lag_rebuild_failures",
+	REDACTED,
+		{
+			name: "gateway outbox lag rebuild",
+			mutate: func(c *Config) {
+				c.Gateway.Scheduling.OutboxLagWarnSeconds = 10
+				c.Gateway.Scheduling.OutboxLagRebuildSeconds = 5
+		REDACTED,
+			wantErr: "gateway.scheduling.outbox_lag_rebuild_seconds",
+	REDACTED,
+		{
+			name:    "ops metrics collector ttl",
+			mutate:  func(c *Config) { c.Ops.MetricsCollectorCache.TTL = -1 REDACTED,
+			wantErr: "ops.metrics_collector_cache.ttl",
+	REDACTED,
+		{
+			name:    "ops cleanup retention",
+			mutate:  func(c *Config) { c.Ops.Cleanup.ErrorLogRetentionDays = -1 REDACTED,
+			wantErr: "ops.cleanup.error_log_retention_days",
+	REDACTED,
+		{
+			name:    "ops cleanup minute retention",
+			mutate:  func(c *Config) { c.Ops.Cleanup.MinuteMetricsRetentionDays = -1 REDACTED,
+			wantErr: "ops.cleanup.minute_metrics_retention_days",
+	REDACTED,
+REDACTED
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := buildValid(t)
+			tt.mutate(cfg)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want %q", err, tt.wantErr)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED

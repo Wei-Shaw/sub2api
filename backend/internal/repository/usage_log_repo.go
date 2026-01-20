@@ -1411,7 +1411,7 @@ REDACTED
 REDACTED
 
 // GetUsageTrendWithFilters returns usage trend data with optional filters
-func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool) (results []TrendDataPoint, err error) {
+func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool, billingType *int8) (results []TrendDataPoint, err error) {
 	dateFormat := "YYYY-MM-DD"
 	if granularity == "hour" {
 		dateFormat = "YYYY-MM-DD HH24:00"
@@ -1456,6 +1456,10 @@ REDACTED
 		query += fmt.Sprintf(" AND stream = $%d", len(args)+1)
 		args = append(args, *stream)
 REDACTED
+	if billingType != nil {
+		query += fmt.Sprintf(" AND billing_type = $%d", len(args)+1)
+		args = append(args, int16(*billingType))
+REDACTED
 	query += " GROUP BY date ORDER BY date ASC"
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
@@ -1479,7 +1483,7 @@ REDACTED
 REDACTED
 
 // GetModelStatsWithFilters returns model statistics with optional filters
-func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, stream *bool) (results []ModelStat, err error) {
+func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, stream *bool, billingType *int8) (results []ModelStat, err error) {
 	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
 	// 当仅按 account_id 聚合时，实际费用使用账号倍率（total_cost * account_rate_multiplier）。
 	if accountID > 0 && userID == 0 && apiKeyID == 0 {
@@ -1519,6 +1523,10 @@ REDACTED
 	if stream != nil {
 		query += fmt.Sprintf(" AND stream = $%d", len(args)+1)
 		args = append(args, *stream)
+REDACTED
+	if billingType != nil {
+		query += fmt.Sprintf(" AND billing_type = $%d", len(args)+1)
+		args = append(args, int16(*billingType))
 REDACTED
 	query += " GROUP BY model ORDER BY total_tokens DESC"
 
@@ -1825,7 +1833,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	models, err := r.GetModelStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, nil)
+	models, err := r.GetModelStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, nil, nil)
 	if err != nil {
 		models = []ModelStat{REDACTED
 REDACTED

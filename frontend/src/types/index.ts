@@ -27,7 +27,6 @@ REDACTED
 export interface User {
   id: number
   username: string
-  notes: string
   email: string
   role: 'admin' | 'user' // User role for authorization
   balance: number // User balance for API usage
@@ -37,6 +36,11 @@ export interface User {
   subscriptions?: UserSubscription[] // User's active subscriptions
   created_at: string
   updated_at: string
+REDACTED
+
+export interface AdminUser extends User {
+  // 管理员备注（普通用户接口不返回）
+  notes: string
 REDACTED
 
 export interface LoginRequest {
@@ -75,6 +79,7 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  hide_ccs_import_button: boolean
   linuxdo_oauth_enabled: boolean
   version: string
 REDACTED
@@ -269,12 +274,17 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
-  // 模型路由配置（仅 anthropic 平台使用）
-  model_routing: Record<string, number[]> | null
-  model_routing_enabled: boolean
-  account_count?: number
   created_at: string
   updated_at: string
+REDACTED
+
+export interface AdminGroup extends Group {
+  // 模型路由配置（仅管理员可见，内部信息）
+  model_routing: Record<string, number[]> | null
+  model_routing_enabled: boolean
+
+  // 分组下账号数量（仅管理员可见）
+  account_count?: number
 REDACTED
 
 export interface ApiKey {
@@ -480,6 +490,13 @@ export interface Account {
   max_sessions?: number | null
   session_idle_timeout_minutes?: number | null
 
+  // TLS指纹伪装（仅 Anthropic OAuth/SetupToken 账号有效）
+  enable_tls_fingerprint?: boolean | null
+
+  // 会话ID伪装（仅 Anthropic OAuth/SetupToken 账号有效）
+  // 启用后将在15分钟内固定 metadata.user_id 中的 session ID
+  session_id_masking_enabled?: boolean | null
+
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
@@ -629,7 +646,7 @@ export interface UsageLog {
   total_cost: number
   actual_cost: number
   rate_multiplier: number
-  account_rate_multiplier?: number | null
+  billing_type: number
 
   stream: boolean
   duration_ms: number
@@ -642,16 +659,55 @@ export interface UsageLog {
   // User-Agent
   user_agent: string | null
 
-  // IP 地址（仅管理员可见）
-  ip_address: string | null
-
   created_at: string
 
   user?: User
   api_key?: ApiKey
-  account?: Account
   group?: Group
   subscription?: UserSubscription
+REDACTED
+
+export interface UsageLogAccountSummary {
+  id: number
+  name: string
+REDACTED
+
+export interface AdminUsageLog extends UsageLog {
+  // 账号计费倍率（仅管理员可见）
+  account_rate_multiplier?: number | null
+
+  // 用户请求 IP（仅管理员可见）
+  ip_address?: string | null
+
+  // 最小账号信息（仅管理员接口返回）
+  account?: UsageLogAccountSummary
+REDACTED
+
+export interface UsageCleanupFilters {
+  start_time: string
+  end_time: string
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  group_id?: number
+  model?: string | null
+  stream?: boolean | null
+  billing_type?: number | null
+REDACTED
+
+export interface UsageCleanupTask {
+  id: number
+  status: string
+  filters: UsageCleanupFilters
+  created_by: number
+  deleted_rows: number
+  error_message?: string | null
+  canceled_by?: number | null
+  canceled_at?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  created_at: string
+  updated_at: string
 REDACTED
 
 export interface RedeemCode {
@@ -877,6 +933,7 @@ export interface UsageQueryParams {
   group_id?: number
   model?: string
   stream?: boolean
+  billing_type?: number | null
   start_date?: string
   end_date?: string
 REDACTED

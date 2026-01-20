@@ -65,6 +65,10 @@ type APIKeyCache interface {
 	GetAuthCache(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error)
 	SetAuthCache(ctx context.Context, key string, entry *APIKeyAuthCacheEntry, ttl time.Duration) error
 	DeleteAuthCache(ctx context.Context, key string) error
+
+	// Pub/Sub for L1 cache invalidation across instances
+	PublishAuthCacheInvalidation(ctx context.Context, cacheKey string) error
+	SubscribeAuthCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error
 REDACTED
 
 // APIKeyAuthCacheInvalidator 提供认证缓存失效能力

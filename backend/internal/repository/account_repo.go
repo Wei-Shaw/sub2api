@@ -543,6 +543,15 @@ REDACTED
 	return nil
 REDACTED
 
+func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		SetStatus(service.StatusActive).
+		SetErrorMessage("").
+		Save(ctx)
+	return err
+REDACTED
+
 func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID int64, priority int) error {
 	_, err := r.client.AccountGroup.Create().
 		SetAccountID(accountID).
@@ -960,7 +969,16 @@ REDACTED
 		builder.SetSessionWindowEnd(*end)
 REDACTED
 	_, err := builder.Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	// 触发调度器缓存更新（仅当窗口时间有变化时）
+	if start != nil || end != nil {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			log.Printf("[SchedulerOutbox] enqueue session window update failed: account=%d err=%v", id, err)
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {

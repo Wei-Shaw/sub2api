@@ -88,6 +88,9 @@ REDACTED
 func (m *mockAccountRepoForGemini) SetError(ctx context.Context, id int64, errorMsg string) error {
 	return nil
 REDACTED
+func (m *mockAccountRepoForGemini) ClearError(ctx context.Context, id int64) error {
+	return nil
+REDACTED
 func (m *mockAccountRepoForGemini) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
 	return nil
 REDACTED
@@ -599,7 +602,7 @@ REDACTED{
 			name: "Gemini平台-有映射配置-只支持配置的模型",
 			account: &Account{
 				Platform:    PlatformGemini,
-		REDACTED"model_mapping": map[string]any{"gemini-1.5-pro": "x"REDACTEDREDACTED,
+		REDACTED"model_mapping": map[string]any{"gemini-2.5-pro": "x"REDACTEDREDACTED,
 		REDACTED,
 			model:    "gemini-2.5-flash",
 			expected: false,

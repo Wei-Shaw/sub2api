@@ -73,10 +73,14 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		return false
 REDACTED
 
-	tempMatched := false
+	// 先尝试临时不可调度规则（401除外）
+	// 如果匹配成功，直接返回，不执行后续禁用逻辑
 	if statusCode != 401 {
-		tempMatched = s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
+		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return true
+	REDACTED
 REDACTED
+
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 	if upstreamMsg != "" {
@@ -84,6 +88,14 @@ REDACTED
 REDACTED
 
 	switch statusCode {
+	case 400:
+		// 只有当错误信息包含 "organization has been disabled" 时才禁用
+		if strings.Contains(strings.ToLower(upstreamMsg), "organization has been disabled") {
+			msg := "Organization disabled (400): " + upstreamMsg
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+	REDACTED
+		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
 		// 对所有 OAuth 账号在 401 错误时调用缓存失效并强制下次刷新
 		if account.Type == AccountTypeOAuth {
@@ -148,9 +160,6 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if tempMatched {
-		return true
-REDACTED
 	return shouldDisable
 REDACTED
 
@@ -190,7 +199,7 @@ REDACTED
 			start := geminiDailyWindowStart(now)
 			totals, ok := s.getGeminiUsageTotals(account.ID, start, now)
 			if !ok {
-				stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil)
+				stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil)
 				if err != nil {
 					return true, err
 			REDACTED
@@ -237,7 +246,7 @@ REDACTED
 
 		if limit > 0 {
 			start := now.Truncate(time.Minute)
-			stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil)
+			stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil)
 			if err != nil {
 				return true, err
 		REDACTED

@@ -129,6 +129,37 @@ REDACTED
 	require.False(t, hasID)
 REDACTED
 
+func TestApplyCodexOAuthTransform_NormalizeCodexTools_PreservesResponsesFunctionTools(t *testing.T) {
+	setupCodexCache(t)
+
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"tools": []any{
+			map[string]any{
+				"type":        "function",
+				"name":        "bash",
+				"description": "desc",
+				"parameters":  map[string]any{"type": "object"REDACTED,
+		REDACTED,
+			map[string]any{
+				"type":     "function",
+				"function": nil,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	applyCodexOAuthTransform(reqBody)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+
+	first, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function", first["type"])
+	require.Equal(t, "bash", first["name"])
+REDACTED
+
 func TestApplyCodexOAuthTransform_EmptyInput(t *testing.T) {
 	// 空 input 应保持为空且不触发异常。
 	setupCodexCache(t)

@@ -5,6 +5,7 @@ package mixins
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"entgo.io/ent"
@@ -12,7 +13,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/mixin"
-	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/intercept"
 )
 
@@ -113,7 +113,6 @@ func (d SoftDeleteMixin) Hooks() []ent.Hook {
 					SetOp(ent.Op)
 					SetDeletedAt(time.Time)
 					WhereP(...func(*sql.Selector))
-					Client() *dbent.Client
 			REDACTED)
 				if !ok {
 					return nil, fmt.Errorf("unexpected mutation type %T", m)
@@ -124,7 +123,7 @@ func (d SoftDeleteMixin) Hooks() []ent.Hook {
 				mx.SetOp(ent.OpUpdate)
 				// 设置删除时间为当前时间
 				mx.SetDeletedAt(time.Now())
-				return mx.Client().Mutate(ctx, m)
+				return mutateWithClient(ctx, m, next)
 		REDACTED)
 	REDACTED,
 REDACTED
@@ -136,4 +135,42 @@ func (d SoftDeleteMixin) applyPredicate(w interface{ WhereP(...func(*sql.Selecto
 	w.WhereP(
 		sql.FieldIsNull(d.Fields()[0].Descriptor().Name),
 	)
+REDACTED
+
+func mutateWithClient(ctx context.Context, m ent.Mutation, fallback ent.Mutator) (ent.Value, error) {
+	clientMethod := reflect.ValueOf(m).MethodByName("Client")
+	if !clientMethod.IsValid() || clientMethod.Type().NumIn() != 0 || clientMethod.Type().NumOut() != 1 {
+		return nil, fmt.Errorf("soft delete: mutation client method not found for %T", m)
+REDACTED
+	client := clientMethod.Call(nil)[0]
+	mutateMethod := client.MethodByName("Mutate")
+	if !mutateMethod.IsValid() {
+		return nil, fmt.Errorf("soft delete: mutation client missing Mutate for %T", m)
+REDACTED
+	if mutateMethod.Type().NumIn() != 2 || mutateMethod.Type().NumOut() != 2 {
+		return nil, fmt.Errorf("soft delete: mutation client signature mismatch for %T", m)
+REDACTED
+
+	results := mutateMethod.Call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(m)REDACTED)
+	value := results[0].Interface()
+	var err error
+	if !results[1].IsNil() {
+		errValue := results[1].Interface()
+		typedErr, ok := errValue.(error)
+		if !ok {
+			return nil, fmt.Errorf("soft delete: unexpected error type %T for %T", errValue, m)
+	REDACTED
+		err = typedErr
+REDACTED
+	if err != nil {
+		return nil, err
+REDACTED
+	if value == nil {
+		return nil, fmt.Errorf("soft delete: mutation client returned nil for %T", m)
+REDACTED
+	v, ok := value.(ent.Value)
+	if !ok {
+		return nil, fmt.Errorf("soft delete: unexpected value type %T for %T", value, m)
+REDACTED
+	return v, nil
 REDACTED

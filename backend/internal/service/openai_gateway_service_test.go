@@ -68,6 +68,49 @@ REDACTED
 	return out, nil
 REDACTED
 
+func TestOpenAIGatewayService_GenerateSessionHash_Priority(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{REDACTED
+
+	// 1) session_id header wins
+	c.Request.Header.Set("session_id", "sess-123")
+	c.Request.Header.Set("conversation_id", "conv-456")
+	h1 := svc.GenerateSessionHash(c, map[string]any{"prompt_cache_key": "ses_aaa"REDACTED)
+	if h1 == "" {
+		t.Fatalf("expected non-empty hash")
+REDACTED
+
+	// 2) conversation_id used when session_id absent
+	c.Request.Header.Del("session_id")
+	h2 := svc.GenerateSessionHash(c, map[string]any{"prompt_cache_key": "ses_aaa"REDACTED)
+	if h2 == "" {
+		t.Fatalf("expected non-empty hash")
+REDACTED
+	if h1 == h2 {
+		t.Fatalf("expected different hashes for different keys")
+REDACTED
+
+	// 3) prompt_cache_key used when both headers absent
+	c.Request.Header.Del("conversation_id")
+	h3 := svc.GenerateSessionHash(c, map[string]any{"prompt_cache_key": "ses_aaa"REDACTED)
+	if h3 == "" {
+		t.Fatalf("expected non-empty hash")
+REDACTED
+	if h2 == h3 {
+		t.Fatalf("expected different hashes for different keys")
+REDACTED
+
+	// 4) empty when no signals
+	h4 := svc.GenerateSessionHash(c, map[string]any{REDACTED)
+	if h4 != "" {
+		t.Fatalf("expected empty hash when no signals")
+REDACTED
+REDACTED
+
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
 	now := time.Now()
 	resetAt := now.Add(10 * time.Minute)

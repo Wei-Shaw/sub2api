@@ -13,19 +13,25 @@ import (
 	"time"
 )
 
-// Claude OAuth Constants (from CRS project)
+// Claude OAuth Constants
 const (
 	// OAuth Client ID for Claude
 	ClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
 	// OAuth endpoints
 	AuthorizeURL = "https://claude.ai/oauth/authorize"
-	TokenURL     = "https://console.anthropic.com/v1/oauth/token"
-	RedirectURI  = "https://console.anthropic.com/oauth/code/callback"
+	TokenURL     = "https://platform.claude.com/v1/oauth/token"
+	RedirectURI  = "https://platform.claude.com/oauth/code/callback"
 
-	// Scopes
-	ScopeProfile   = "user:profile"
+	// Scopes - Browser URL (includes org:create_api_key for user authorization)
+	ScopeOAuth = "org:create_api_key user:profile user:inference user:sessions:claude_code"
+	// Scopes - Internal API call (org:create_api_key not supported in API)
+	ScopeAPI = "user:profile user:inference user:sessions:claude_code"
+	// Scopes - Setup token (inference only)
 	ScopeInference = "user:inference"
+
+	// Code Verifier character set (RFC 7636 compliant)
+	codeVerifierCharset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
 
 	// Session TTL
 	SessionTTL = 30 * time.Minute
@@ -53,7 +59,6 @@ func NewSessionStore() *SessionStore {
 		sessions: make(map[string]*OAuthSession),
 		stopCh:   make(chan struct{REDACTED),
 REDACTED
-	// Start cleanup goroutine
 	go store.cleanup()
 	return store
 REDACTED
@@ -78,7 +83,6 @@ func (s *SessionStore) Get(sessionID string) (*OAuthSession, bool) {
 	if !ok {
 		return nil, false
 REDACTED
-	// Check if expired
 	if time.Since(session.CreatedAt) > SessionTTL {
 		return nil, false
 REDACTED
@@ -122,13 +126,13 @@ REDACTED
 	return b, nil
 REDACTED
 
-// GenerateState generates a random state string for OAuth
+// GenerateState generates a random state string for OAuth (base64url encoded)
 func GenerateState() (string, error) {
 	bytes, err := GenerateRandomBytes(32)
 	if err != nil {
 		return "", err
 REDACTED
-	return hex.EncodeToString(bytes), nil
+	return base64URLEncode(bytes), nil
 REDACTED
 
 // GenerateSessionID generates a unique session ID
@@ -140,13 +144,30 @@ REDACTED
 	return hex.EncodeToString(bytes), nil
 REDACTED
 
-// GenerateCodeVerifier generates a PKCE code verifier (32 bytes -> base64url)
+// GenerateCodeVerifier generates a PKCE code verifier using character set method
 func GenerateCodeVerifier() (string, error) {
-	bytes, err := GenerateRandomBytes(32)
-	if err != nil {
-		return "", err
+	const targetLen = 32
+	charsetLen := len(codeVerifierCharset)
+	limit := 256 - (256 % charsetLen)
+
+	result := make([]byte, 0, targetLen)
+	randBuf := make([]byte, targetLen*2)
+
+	for len(result) < targetLen {
+		if _, err := rand.Read(randBuf); err != nil {
+			return "", err
+	REDACTED
+		for _, b := range randBuf {
+			if int(b) < limit {
+				result = append(result, codeVerifierCharset[int(b)%charsetLen])
+				if len(result) >= targetLen {
+					break
+			REDACTED
+		REDACTED
+	REDACTED
 REDACTED
-	return base64URLEncode(bytes), nil
+
+	return base64URLEncode(result), nil
 REDACTED
 
 // GenerateCodeChallenge generates a PKCE code challenge using S256 method
@@ -158,42 +179,31 @@ REDACTED
 // base64URLEncode encodes bytes to base64url without padding
 func base64URLEncode(data []byte) string {
 	encoded := base64.URLEncoding.EncodeToString(data)
-	// Remove padding
 	return strings.TrimRight(encoded, "=")
 REDACTED
 
-// BuildAuthorizationURL builds the OAuth authorization URL
+// BuildAuthorizationURL builds the OAuth authorization URL with correct parameter order
 func BuildAuthorizationURL(state, codeChallenge, scope string) string {
-	params := url.Values{REDACTED
-	params.Set("response_type", "code")
-	params.Set("client_id", ClientID)
-	params.Set("redirect_uri", RedirectURI)
-	params.Set("scope", scope)
-	params.Set("state", state)
-	params.Set("code_challenge", codeChallenge)
-	params.Set("code_challenge_method", "S256")
+	encodedRedirectURI := url.QueryEscape(RedirectURI)
+	encodedScope := strings.ReplaceAll(url.QueryEscape(scope), "%20", "+")
 
-	return fmt.Sprintf("%s?%s", AuthorizeURL, params.Encode())
-REDACTED
-
-// TokenRequest represents the token exchange request body
-type TokenRequest struct {
-	GrantType    string `json:"grant_type"`
-	ClientID     string `json:"client_id"`
-	Code         string `json:"code"`
-	RedirectURI  string `json:"redirect_uri"`
-	CodeVerifier string `json:"code_verifier"`
-	State        string `json:"state"`
+	return fmt.Sprintf("%s?code=true&client_id=%s&response_type=code&redirect_uri=%s&scope=%s&code_challenge=%s&code_challenge_method=S256&state=%s",
+		AuthorizeURL,
+		ClientID,
+		encodedRedirectURI,
+		encodedScope,
+		codeChallenge,
+		state,
+	)
 REDACTED
 
 // TokenResponse represents the token response from OAuth provider
 type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int64  `json:"expires_in"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	Scope        string `json:"scope,omitempty"`
-	// Organization and Account info from OAuth response
+	AccessToken  string       `json:"access_token"`
+	TokenType    string       `json:"token_type"`
+	ExpiresIn    int64        `json:"expires_in"`
+	RefreshToken string       `json:"refresh_token,omitempty"`
+	Scope        string       `json:"scope,omitempty"`
 	Organization *OrgInfo     `json:"organization,omitempty"`
 	Account      *AccountInfo `json:"account,omitempty"`
 REDACTED
@@ -206,32 +216,4 @@ REDACTED
 // AccountInfo represents account info from OAuth response
 type AccountInfo struct {
 	UUID string `json:"uuid"`
-REDACTED
-
-// RefreshTokenRequest represents the refresh token request
-type RefreshTokenRequest struct {
-	GrantType    string `json:"grant_type"`
-	RefreshToken string `json:"refresh_token"`
-	ClientID     string `json:"client_id"`
-REDACTED
-
-// BuildTokenRequest creates a token exchange request
-func BuildTokenRequest(code, codeVerifier, state string) *TokenRequest {
-	return &TokenRequest{
-		GrantType:    "authorization_code",
-		ClientID:     ClientID,
-		Code:         code,
-		RedirectURI:  RedirectURI,
-		CodeVerifier: codeVerifier,
-		State:        state,
-REDACTED
-REDACTED
-
-// BuildRefreshTokenRequest creates a refresh token request
-func BuildRefreshTokenRequest(refreshToken string) *RefreshTokenRequest {
-	return &RefreshTokenRequest{
-		GrantType:    "refresh_token",
-		RefreshToken: refreshToken,
-		ClientID:     ClientID,
-REDACTED
 REDACTED

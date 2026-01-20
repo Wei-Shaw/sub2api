@@ -48,8 +48,7 @@ REDACTED
 
 // GenerateAuthURL generates an OAuth authorization URL with full scope
 func (s *OAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64) (*GenerateAuthURLResult, error) {
-	scope := fmt.Sprintf("%s %s", oauth.ScopeProfile, oauth.ScopeInference)
-	return s.generateAuthURLWithScope(ctx, scope, proxyID)
+	return s.generateAuthURLWithScope(ctx, oauth.ScopeOAuth, proxyID)
 REDACTED
 
 // GenerateSetupTokenURL generates an OAuth authorization URL for setup token (inference only)
@@ -176,7 +175,8 @@ func (s *OAuthService) CookieAuth(ctx context.Context, input *CookieAuthInput) (
 REDACTED
 
 	// Determine scope and if this is a setup token
-	scope := fmt.Sprintf("%s %s", oauth.ScopeProfile, oauth.ScopeInference)
+	// Internal API call uses ScopeAPI (org:create_api_key not supported)
+	scope := oauth.ScopeAPI
 	isSetupToken := false
 	if input.Scope == "inference" {
 		scope = oauth.ScopeInference

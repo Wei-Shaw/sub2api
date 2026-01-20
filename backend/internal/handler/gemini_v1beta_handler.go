@@ -220,7 +220,7 @@ REDACTED
 	if sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
 REDACTED
-	const maxAccountSwitches = 3
+	maxAccountSwitches := h.maxAccountSwitchesGemini
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	lastFailoverStatus := 0

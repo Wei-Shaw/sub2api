@@ -171,7 +171,7 @@ REDACTED
 			s.client.baseURL = "http://in-process"
 			s.client.clientFactory = func(string) *req.Client { return newTestReqClient(rt) REDACTED
 
-			code, err := s.client.GetAuthorizationCode(context.Background(), "sess", "org-1", oauth.ScopeProfile, "cc", "st", "")
+			code, err := s.client.GetAuthorizationCode(context.Background(), "sess", "org-1", oauth.ScopeInference, "cc", "st", "")
 
 			if tt.wantErr {
 				require.Error(s.T(), err)

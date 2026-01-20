@@ -37,7 +37,7 @@
         </p>
 
         <!-- Page size selector -->
-        <div class="flex items-center space-x-2">
+        <div v-if="showPageSizeSelector" class="flex items-center space-x-2">
           <span class="text-sm text-gray-700 dark:text-gray-300"
             >{{ t('pagination.perPage') REDACTEDREDACTED:</span
           >
@@ -48,6 +48,22 @@
               @update:model-value="handlePageSizeChange"
             />
           </div>
+        </div>
+
+        <div v-if="showJump" class="flex items-center space-x-2">
+          <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('pagination.jumpTo') REDACTEDREDACTED</span>
+          <input
+            v-model="jumpPage"
+            type="number"
+            min="1"
+            :max="totalPages"
+            class="input w-20 text-sm"
+            :placeholder="t('pagination.jumpPlaceholder')"
+            @keyup.enter="submitJump"
+          />
+          <button type="button" class="btn btn-ghost btn-sm" @click="submitJump">
+            {{ t('pagination.jumpAction') REDACTEDREDACTED
+          </button>
         </div>
       </div>
 
@@ -102,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed REDACTED from 'vue'
+import { computed, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import Select from './Select.vue'
@@ -114,6 +130,8 @@ interface Props {
   page: number
   pageSize: number
   pageSizeOptions?: number[]
+  showPageSizeSelector?: boolean
+  showJump?: boolean
 REDACTED
 
 interface Emits {
@@ -122,7 +140,9 @@ interface Emits {
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
-  pageSizeOptions: () => [10, 20, 50, 100]
+  pageSizeOptions: () => [10, 20, 50, 100],
+  showPageSizeSelector: true,
+  showJump: false
 REDACTED)
 
 const emit = defineEmits<Emits>()
@@ -145,6 +165,8 @@ const pageSizeSelectOptions = computed(() => {
     label: String(size)
   REDACTED))
 REDACTED)
+
+const jumpPage = ref('')
 
 const visiblePages = computed(() => {
   const pages: (number | string)[] = []
@@ -195,6 +217,16 @@ const handlePageSizeChange = (value: string | number | boolean | null) => {
   if (value === null || typeof value === 'boolean') return
   const newPageSize = typeof value === 'string' ? parseInt(value) : value
   emit('update:pageSize', newPageSize)
+REDACTED
+
+const submitJump = () => {
+  const value = jumpPage.value.trim()
+  if (!value) return
+  const pageNum = Number.parseInt(value, 10)
+  if (Number.isNaN(pageNum)) return
+  const nextPage = Math.min(Math.max(pageNum, 1), totalPages.value)
+  jumpPage.value = ''
+  goToPage(nextPage)
 REDACTED
 </script>
 

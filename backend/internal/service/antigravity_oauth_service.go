@@ -82,13 +82,14 @@ REDACTED
 
 // AntigravityTokenInfo token 信息
 type AntigravityTokenInfo struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int64  `json:"expires_in"`
-	ExpiresAt    int64  `json:"expires_at"`
-	TokenType    string `json:"token_type"`
-	Email        string `json:"email,omitempty"`
-	ProjectID    string `json:"project_id,omitempty"`
+	AccessToken      string `json:"access_token"`
+	RefreshToken     string `json:"refresh_token"`
+	ExpiresIn        int64  `json:"expires_in"`
+	ExpiresAt        int64  `json:"expires_at"`
+	TokenType        string `json:"token_type"`
+	Email            string `json:"email,omitempty"`
+	ProjectID        string `json:"project_id,omitempty"`
+	ProjectIDMissing bool   `json:"-"` // LoadCodeAssist 未返回 project_id
 REDACTED
 
 // ExchangeCode 用 authorization code 交换 token
@@ -147,12 +148,6 @@ REDACTED
 		fmt.Printf("[AntigravityOAuth] 警告: 获取 project_id 失败: %v\n", err)
 REDACTED else if loadResp != nil && loadResp.CloudAICompanionProject != "" {
 		result.ProjectID = loadResp.CloudAICompanionProject
-REDACTED
-
-	// 兜底：随机生成 project_id
-	if result.ProjectID == "" {
-		result.ProjectID = antigravity.GenerateMockProjectID()
-		fmt.Printf("[AntigravityOAuth] 使用随机生成的 project_id: %s\n", result.ProjectID)
 REDACTED
 
 	return result, nil
@@ -236,14 +231,22 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 保留原有的 project_id 和 email
-	existingProjectID := strings.TrimSpace(account.GetCredential("project_id"))
-	if existingProjectID != "" {
-		tokenInfo.ProjectID = existingProjectID
-REDACTED
+	// 保留原有的 email
 	existingEmail := strings.TrimSpace(account.GetCredential("email"))
 	if existingEmail != "" {
 		tokenInfo.Email = existingEmail
+REDACTED
+
+	// 每次刷新都调用 LoadCodeAssist 获取 project_id
+	client := antigravity.NewClient(proxyURL)
+	loadResp, _, err := client.LoadCodeAssist(ctx, tokenInfo.AccessToken)
+	if err != nil || loadResp == nil || loadResp.CloudAICompanionProject == "" {
+		// LoadCodeAssist 失败或返回空，保留原有 project_id，标记缺失
+		existingProjectID := strings.TrimSpace(account.GetCredential("project_id"))
+		tokenInfo.ProjectID = existingProjectID
+		tokenInfo.ProjectIDMissing = true
+REDACTED else {
+		tokenInfo.ProjectID = loadResp.CloudAICompanionProject
 REDACTED
 
 	return tokenInfo, nil

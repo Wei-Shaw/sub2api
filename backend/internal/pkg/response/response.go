@@ -162,11 +162,11 @@ REDACTED
 
 	// 支持 page_size 和 limit 两种参数名
 	if ps := c.Query("page_size"); ps != "" {
-		if val, err := parseInt(ps); err == nil && val > 0 && val <= 100 {
+		if val, err := parseInt(ps); err == nil && val > 0 && val <= 1000 {
 			pageSize = val
 	REDACTED
 REDACTED else if l := c.Query("limit"); l != "" {
-		if val, err := parseInt(l); err == nil && val > 0 && val <= 100 {
+		if val, err := parseInt(l); err == nil && val > 0 && val <= 1000 {
 			pageSize = val
 	REDACTED
 REDACTED

@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
@@ -47,6 +49,7 @@ const (
 	TypeProxy                   = "Proxy"
 	TypeRedeemCode              = "RedeemCode"
 	TypeSetting                 = "Setting"
+	TypeUsageCleanupTask        = "UsageCleanupTask"
 	TypeUsageLog                = "UsageLog"
 	TypeUser                    = "User"
 	TypeUserAllowedGroup        = "UserAllowedGroup"
@@ -10368,6 +10371,1089 @@ REDACTED
 // It returns an error if the edge is not defined in the schema.
 func (m *SettingMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Setting edge %s", name)
+REDACTED
+
+// UsageCleanupTaskMutation represents an operation that mutates the UsageCleanupTask nodes in the graph.
+type UsageCleanupTaskMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *int64
+	created_at      *time.Time
+	updated_at      *time.Time
+	status          *string
+	filters         *json.RawMessage
+	appendfilters   json.RawMessage
+	created_by      *int64
+	addcreated_by   *int64
+	deleted_rows    *int64
+	adddeleted_rows *int64
+	error_message   *string
+	canceled_by     *int64
+	addcanceled_by  *int64
+	canceled_at     *time.Time
+	started_at      *time.Time
+	finished_at     *time.Time
+	clearedFields   map[string]struct{REDACTED
+	done            bool
+	oldValue        func(context.Context) (*UsageCleanupTask, error)
+	predicates      []predicate.UsageCleanupTask
+REDACTED
+
+var _ ent.Mutation = (*UsageCleanupTaskMutation)(nil)
+
+// usagecleanuptaskOption allows management of the mutation configuration using functional options.
+type usagecleanuptaskOption func(*UsageCleanupTaskMutation)
+
+// newUsageCleanupTaskMutation creates new mutation for the UsageCleanupTask entity.
+func newUsageCleanupTaskMutation(c config, op Op, opts ...usagecleanuptaskOption) *UsageCleanupTaskMutation {
+	m := &UsageCleanupTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUsageCleanupTask,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withUsageCleanupTaskID sets the ID field of the mutation.
+func withUsageCleanupTaskID(id int64) usagecleanuptaskOption {
+	return func(m *UsageCleanupTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UsageCleanupTask
+		)
+		m.oldValue = func(ctx context.Context) (*UsageCleanupTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().UsageCleanupTask.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withUsageCleanupTask sets the old UsageCleanupTask of the mutation.
+func withUsageCleanupTask(node *UsageCleanupTask) usagecleanuptaskOption {
+	return func(m *UsageCleanupTaskMutation) {
+		m.oldValue = func(context.Context) (*UsageCleanupTask, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UsageCleanupTaskMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UsageCleanupTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UsageCleanupTaskMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UsageCleanupTaskMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UsageCleanupTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *UsageCleanupTaskMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *UsageCleanupTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *UsageCleanupTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *UsageCleanupTaskMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *UsageCleanupTaskMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *UsageCleanupTaskMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// SetStatus sets the "status" field.
+func (m *UsageCleanupTaskMutation) SetStatus(s string) {
+	m.status = &s
+REDACTED
+
+// Status returns the value of the "status" field in the mutation.
+func (m *UsageCleanupTaskMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldStatus returns the old "status" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+REDACTED
+	return oldValue.Status, nil
+REDACTED
+
+// ResetStatus resets all changes to the "status" field.
+func (m *UsageCleanupTaskMutation) ResetStatus() {
+	m.status = nil
+REDACTED
+
+// SetFilters sets the "filters" field.
+func (m *UsageCleanupTaskMutation) SetFilters(jm json.RawMessage) {
+	m.filters = &jm
+	m.appendfilters = nil
+REDACTED
+
+// Filters returns the value of the "filters" field in the mutation.
+func (m *UsageCleanupTaskMutation) Filters() (r json.RawMessage, exists bool) {
+	v := m.filters
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldFilters returns the old "filters" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldFilters(ctx context.Context) (v json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFilters is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFilters requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFilters: %w", err)
+REDACTED
+	return oldValue.Filters, nil
+REDACTED
+
+// AppendFilters adds jm to the "filters" field.
+func (m *UsageCleanupTaskMutation) AppendFilters(jm json.RawMessage) {
+	m.appendfilters = append(m.appendfilters, jm...)
+REDACTED
+
+// AppendedFilters returns the list of values that were appended to the "filters" field in this mutation.
+func (m *UsageCleanupTaskMutation) AppendedFilters() (json.RawMessage, bool) {
+	if len(m.appendfilters) == 0 {
+		return nil, false
+REDACTED
+	return m.appendfilters, true
+REDACTED
+
+// ResetFilters resets all changes to the "filters" field.
+func (m *UsageCleanupTaskMutation) ResetFilters() {
+	m.filters = nil
+	m.appendfilters = nil
+REDACTED
+
+// SetCreatedBy sets the "created_by" field.
+func (m *UsageCleanupTaskMutation) SetCreatedBy(i int64) {
+	m.created_by = &i
+	m.addcreated_by = nil
+REDACTED
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *UsageCleanupTaskMutation) CreatedBy() (r int64, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedBy returns the old "created_by" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldCreatedBy(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+REDACTED
+	return oldValue.CreatedBy, nil
+REDACTED
+
+// AddCreatedBy adds i to the "created_by" field.
+func (m *UsageCleanupTaskMutation) AddCreatedBy(i int64) {
+	if m.addcreated_by != nil {
+		*m.addcreated_by += i
+REDACTED else {
+		m.addcreated_by = &i
+REDACTED
+REDACTED
+
+// AddedCreatedBy returns the value that was added to the "created_by" field in this mutation.
+func (m *UsageCleanupTaskMutation) AddedCreatedBy() (r int64, exists bool) {
+	v := m.addcreated_by
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *UsageCleanupTaskMutation) ResetCreatedBy() {
+	m.created_by = nil
+	m.addcreated_by = nil
+REDACTED
+
+// SetDeletedRows sets the "deleted_rows" field.
+func (m *UsageCleanupTaskMutation) SetDeletedRows(i int64) {
+	m.deleted_rows = &i
+	m.adddeleted_rows = nil
+REDACTED
+
+// DeletedRows returns the value of the "deleted_rows" field in the mutation.
+func (m *UsageCleanupTaskMutation) DeletedRows() (r int64, exists bool) {
+	v := m.deleted_rows
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDeletedRows returns the old "deleted_rows" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldDeletedRows(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedRows is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedRows requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedRows: %w", err)
+REDACTED
+	return oldValue.DeletedRows, nil
+REDACTED
+
+// AddDeletedRows adds i to the "deleted_rows" field.
+func (m *UsageCleanupTaskMutation) AddDeletedRows(i int64) {
+	if m.adddeleted_rows != nil {
+		*m.adddeleted_rows += i
+REDACTED else {
+		m.adddeleted_rows = &i
+REDACTED
+REDACTED
+
+// AddedDeletedRows returns the value that was added to the "deleted_rows" field in this mutation.
+func (m *UsageCleanupTaskMutation) AddedDeletedRows() (r int64, exists bool) {
+	v := m.adddeleted_rows
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetDeletedRows resets all changes to the "deleted_rows" field.
+func (m *UsageCleanupTaskMutation) ResetDeletedRows() {
+	m.deleted_rows = nil
+	m.adddeleted_rows = nil
+REDACTED
+
+// SetErrorMessage sets the "error_message" field.
+func (m *UsageCleanupTaskMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+REDACTED
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *UsageCleanupTaskMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldErrorMessage returns the old "error_message" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+REDACTED
+	return oldValue.ErrorMessage, nil
+REDACTED
+
+// ClearErrorMessage clears the value of the "error_message" field.
+func (m *UsageCleanupTaskMutation) ClearErrorMessage() {
+	m.error_message = nil
+	m.clearedFields[usagecleanuptask.FieldErrorMessage] = struct{REDACTED{REDACTED
+REDACTED
+
+// ErrorMessageCleared returns if the "error_message" field was cleared in this mutation.
+func (m *UsageCleanupTaskMutation) ErrorMessageCleared() bool {
+	_, ok := m.clearedFields[usagecleanuptask.FieldErrorMessage]
+	return ok
+REDACTED
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *UsageCleanupTaskMutation) ResetErrorMessage() {
+	m.error_message = nil
+	delete(m.clearedFields, usagecleanuptask.FieldErrorMessage)
+REDACTED
+
+// SetCanceledBy sets the "canceled_by" field.
+func (m *UsageCleanupTaskMutation) SetCanceledBy(i int64) {
+	m.canceled_by = &i
+	m.addcanceled_by = nil
+REDACTED
+
+// CanceledBy returns the value of the "canceled_by" field in the mutation.
+func (m *UsageCleanupTaskMutation) CanceledBy() (r int64, exists bool) {
+	v := m.canceled_by
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCanceledBy returns the old "canceled_by" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldCanceledBy(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanceledBy is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanceledBy requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanceledBy: %w", err)
+REDACTED
+	return oldValue.CanceledBy, nil
+REDACTED
+
+// AddCanceledBy adds i to the "canceled_by" field.
+func (m *UsageCleanupTaskMutation) AddCanceledBy(i int64) {
+	if m.addcanceled_by != nil {
+		*m.addcanceled_by += i
+REDACTED else {
+		m.addcanceled_by = &i
+REDACTED
+REDACTED
+
+// AddedCanceledBy returns the value that was added to the "canceled_by" field in this mutation.
+func (m *UsageCleanupTaskMutation) AddedCanceledBy() (r int64, exists bool) {
+	v := m.addcanceled_by
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearCanceledBy clears the value of the "canceled_by" field.
+func (m *UsageCleanupTaskMutation) ClearCanceledBy() {
+	m.canceled_by = nil
+	m.addcanceled_by = nil
+	m.clearedFields[usagecleanuptask.FieldCanceledBy] = struct{REDACTED{REDACTED
+REDACTED
+
+// CanceledByCleared returns if the "canceled_by" field was cleared in this mutation.
+func (m *UsageCleanupTaskMutation) CanceledByCleared() bool {
+	_, ok := m.clearedFields[usagecleanuptask.FieldCanceledBy]
+	return ok
+REDACTED
+
+// ResetCanceledBy resets all changes to the "canceled_by" field.
+func (m *UsageCleanupTaskMutation) ResetCanceledBy() {
+	m.canceled_by = nil
+	m.addcanceled_by = nil
+	delete(m.clearedFields, usagecleanuptask.FieldCanceledBy)
+REDACTED
+
+// SetCanceledAt sets the "canceled_at" field.
+func (m *UsageCleanupTaskMutation) SetCanceledAt(t time.Time) {
+	m.canceled_at = &t
+REDACTED
+
+// CanceledAt returns the value of the "canceled_at" field in the mutation.
+func (m *UsageCleanupTaskMutation) CanceledAt() (r time.Time, exists bool) {
+	v := m.canceled_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCanceledAt returns the old "canceled_at" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldCanceledAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanceledAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanceledAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanceledAt: %w", err)
+REDACTED
+	return oldValue.CanceledAt, nil
+REDACTED
+
+// ClearCanceledAt clears the value of the "canceled_at" field.
+func (m *UsageCleanupTaskMutation) ClearCanceledAt() {
+	m.canceled_at = nil
+	m.clearedFields[usagecleanuptask.FieldCanceledAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// CanceledAtCleared returns if the "canceled_at" field was cleared in this mutation.
+func (m *UsageCleanupTaskMutation) CanceledAtCleared() bool {
+	_, ok := m.clearedFields[usagecleanuptask.FieldCanceledAt]
+	return ok
+REDACTED
+
+// ResetCanceledAt resets all changes to the "canceled_at" field.
+func (m *UsageCleanupTaskMutation) ResetCanceledAt() {
+	m.canceled_at = nil
+	delete(m.clearedFields, usagecleanuptask.FieldCanceledAt)
+REDACTED
+
+// SetStartedAt sets the "started_at" field.
+func (m *UsageCleanupTaskMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+REDACTED
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *UsageCleanupTaskMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldStartedAt returns the old "started_at" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldStartedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+REDACTED
+	return oldValue.StartedAt, nil
+REDACTED
+
+// ClearStartedAt clears the value of the "started_at" field.
+func (m *UsageCleanupTaskMutation) ClearStartedAt() {
+	m.started_at = nil
+	m.clearedFields[usagecleanuptask.FieldStartedAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// StartedAtCleared returns if the "started_at" field was cleared in this mutation.
+func (m *UsageCleanupTaskMutation) StartedAtCleared() bool {
+	_, ok := m.clearedFields[usagecleanuptask.FieldStartedAt]
+	return ok
+REDACTED
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *UsageCleanupTaskMutation) ResetStartedAt() {
+	m.started_at = nil
+	delete(m.clearedFields, usagecleanuptask.FieldStartedAt)
+REDACTED
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *UsageCleanupTaskMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+REDACTED
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *UsageCleanupTaskMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldFinishedAt returns the old "finished_at" field's value of the UsageCleanupTask entity.
+// If the UsageCleanupTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageCleanupTaskMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+REDACTED
+	return oldValue.FinishedAt, nil
+REDACTED
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *UsageCleanupTaskMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[usagecleanuptask.FieldFinishedAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *UsageCleanupTaskMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[usagecleanuptask.FieldFinishedAt]
+	return ok
+REDACTED
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *UsageCleanupTaskMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, usagecleanuptask.FieldFinishedAt)
+REDACTED
+
+// Where appends a list predicates to the UsageCleanupTaskMutation builder.
+func (m *UsageCleanupTaskMutation) Where(ps ...predicate.UsageCleanupTask) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the UsageCleanupTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UsageCleanupTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UsageCleanupTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *UsageCleanupTaskMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *UsageCleanupTaskMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (UsageCleanupTask).
+func (m *UsageCleanupTaskMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UsageCleanupTaskMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.created_at != nil {
+		fields = append(fields, usagecleanuptask.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, usagecleanuptask.FieldUpdatedAt)
+REDACTED
+	if m.status != nil {
+		fields = append(fields, usagecleanuptask.FieldStatus)
+REDACTED
+	if m.filters != nil {
+		fields = append(fields, usagecleanuptask.FieldFilters)
+REDACTED
+	if m.created_by != nil {
+		fields = append(fields, usagecleanuptask.FieldCreatedBy)
+REDACTED
+	if m.deleted_rows != nil {
+		fields = append(fields, usagecleanuptask.FieldDeletedRows)
+REDACTED
+	if m.error_message != nil {
+		fields = append(fields, usagecleanuptask.FieldErrorMessage)
+REDACTED
+	if m.canceled_by != nil {
+		fields = append(fields, usagecleanuptask.FieldCanceledBy)
+REDACTED
+	if m.canceled_at != nil {
+		fields = append(fields, usagecleanuptask.FieldCanceledAt)
+REDACTED
+	if m.started_at != nil {
+		fields = append(fields, usagecleanuptask.FieldStartedAt)
+REDACTED
+	if m.finished_at != nil {
+		fields = append(fields, usagecleanuptask.FieldFinishedAt)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UsageCleanupTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case usagecleanuptask.FieldCreatedAt:
+		return m.CreatedAt()
+	case usagecleanuptask.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case usagecleanuptask.FieldStatus:
+		return m.Status()
+	case usagecleanuptask.FieldFilters:
+		return m.Filters()
+	case usagecleanuptask.FieldCreatedBy:
+		return m.CreatedBy()
+	case usagecleanuptask.FieldDeletedRows:
+		return m.DeletedRows()
+	case usagecleanuptask.FieldErrorMessage:
+		return m.ErrorMessage()
+	case usagecleanuptask.FieldCanceledBy:
+		return m.CanceledBy()
+	case usagecleanuptask.FieldCanceledAt:
+		return m.CanceledAt()
+	case usagecleanuptask.FieldStartedAt:
+		return m.StartedAt()
+	case usagecleanuptask.FieldFinishedAt:
+		return m.FinishedAt()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UsageCleanupTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case usagecleanuptask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case usagecleanuptask.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case usagecleanuptask.FieldStatus:
+		return m.OldStatus(ctx)
+	case usagecleanuptask.FieldFilters:
+		return m.OldFilters(ctx)
+	case usagecleanuptask.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case usagecleanuptask.FieldDeletedRows:
+		return m.OldDeletedRows(ctx)
+	case usagecleanuptask.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case usagecleanuptask.FieldCanceledBy:
+		return m.OldCanceledBy(ctx)
+	case usagecleanuptask.FieldCanceledAt:
+		return m.OldCanceledAt(ctx)
+	case usagecleanuptask.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case usagecleanuptask.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown UsageCleanupTask field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UsageCleanupTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case usagecleanuptask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case usagecleanuptask.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+	case usagecleanuptask.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetStatus(v)
+		return nil
+	case usagecleanuptask.FieldFilters:
+		v, ok := value.(json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetFilters(v)
+		return nil
+	case usagecleanuptask.FieldCreatedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedBy(v)
+		return nil
+	case usagecleanuptask.FieldDeletedRows:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDeletedRows(v)
+		return nil
+	case usagecleanuptask.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetErrorMessage(v)
+		return nil
+	case usagecleanuptask.FieldCanceledBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCanceledBy(v)
+		return nil
+	case usagecleanuptask.FieldCanceledAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCanceledAt(v)
+		return nil
+	case usagecleanuptask.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetStartedAt(v)
+		return nil
+	case usagecleanuptask.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetFinishedAt(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UsageCleanupTask field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UsageCleanupTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.addcreated_by != nil {
+		fields = append(fields, usagecleanuptask.FieldCreatedBy)
+REDACTED
+	if m.adddeleted_rows != nil {
+		fields = append(fields, usagecleanuptask.FieldDeletedRows)
+REDACTED
+	if m.addcanceled_by != nil {
+		fields = append(fields, usagecleanuptask.FieldCanceledBy)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UsageCleanupTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case usagecleanuptask.FieldCreatedBy:
+		return m.AddedCreatedBy()
+	case usagecleanuptask.FieldDeletedRows:
+		return m.AddedDeletedRows()
+	case usagecleanuptask.FieldCanceledBy:
+		return m.AddedCanceledBy()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UsageCleanupTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case usagecleanuptask.FieldCreatedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddCreatedBy(v)
+		return nil
+	case usagecleanuptask.FieldDeletedRows:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddDeletedRows(v)
+		return nil
+	case usagecleanuptask.FieldCanceledBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddCanceledBy(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UsageCleanupTask numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UsageCleanupTaskMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(usagecleanuptask.FieldErrorMessage) {
+		fields = append(fields, usagecleanuptask.FieldErrorMessage)
+REDACTED
+	if m.FieldCleared(usagecleanuptask.FieldCanceledBy) {
+		fields = append(fields, usagecleanuptask.FieldCanceledBy)
+REDACTED
+	if m.FieldCleared(usagecleanuptask.FieldCanceledAt) {
+		fields = append(fields, usagecleanuptask.FieldCanceledAt)
+REDACTED
+	if m.FieldCleared(usagecleanuptask.FieldStartedAt) {
+		fields = append(fields, usagecleanuptask.FieldStartedAt)
+REDACTED
+	if m.FieldCleared(usagecleanuptask.FieldFinishedAt) {
+		fields = append(fields, usagecleanuptask.FieldFinishedAt)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UsageCleanupTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UsageCleanupTaskMutation) ClearField(name string) error {
+	switch name {
+	case usagecleanuptask.FieldErrorMessage:
+		m.ClearErrorMessage()
+		return nil
+	case usagecleanuptask.FieldCanceledBy:
+		m.ClearCanceledBy()
+		return nil
+	case usagecleanuptask.FieldCanceledAt:
+		m.ClearCanceledAt()
+		return nil
+	case usagecleanuptask.FieldStartedAt:
+		m.ClearStartedAt()
+		return nil
+	case usagecleanuptask.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UsageCleanupTask nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UsageCleanupTaskMutation) ResetField(name string) error {
+	switch name {
+	case usagecleanuptask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case usagecleanuptask.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case usagecleanuptask.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case usagecleanuptask.FieldFilters:
+		m.ResetFilters()
+		return nil
+	case usagecleanuptask.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case usagecleanuptask.FieldDeletedRows:
+		m.ResetDeletedRows()
+		return nil
+	case usagecleanuptask.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case usagecleanuptask.FieldCanceledBy:
+		m.ResetCanceledBy()
+		return nil
+	case usagecleanuptask.FieldCanceledAt:
+		m.ResetCanceledAt()
+		return nil
+	case usagecleanuptask.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case usagecleanuptask.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UsageCleanupTask field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UsageCleanupTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UsageCleanupTaskMutation) AddedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UsageCleanupTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UsageCleanupTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UsageCleanupTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UsageCleanupTaskMutation) EdgeCleared(name string) bool {
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UsageCleanupTaskMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown UsageCleanupTask unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UsageCleanupTaskMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown UsageCleanupTask edge %s", name)
 REDACTED
 
 // UsageLogMutation represents an operation that mutates the UsageLog nodes in the graph.

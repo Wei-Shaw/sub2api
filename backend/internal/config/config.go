@@ -55,6 +55,7 @@ type Config struct {
 	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
 	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
 	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
+	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
 	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
 	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
@@ -257,8 +258,43 @@ type GatewayConfig struct {
 	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
+	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
+	MaxAccountSwitches int `mapstructure:"max_account_switches"`
+	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
+	MaxAccountSwitchesGemini int `mapstructure:"max_account_switches_gemini"`
+
+	// Antigravity 429 fallback 限流时间（分钟），解析重置时间失败时使用
+	AntigravityFallbackCooldownMinutes int `mapstructure:"antigravity_fallback_cooldown_minutes"`
+
 	// Scheduling: 账号调度相关配置
 	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
+
+	// TLSFingerprint: TLS指纹伪装配置
+	TLSFingerprint TLSFingerprintConfig `mapstructure:"tls_fingerprint"`
+REDACTED
+
+// TLSFingerprintConfig TLS指纹伪装配置
+// 用于模拟 Claude CLI (Node.js) 的 TLS 握手特征，避免被识别为非官方客户端
+type TLSFingerprintConfig struct {
+	// Enabled: 是否全局启用TLS指纹功能
+	Enabled bool `mapstructure:"enabled"`
+	// Profiles: 预定义的TLS指纹配置模板
+	// key 为模板名称，如 "claude_cli_v2", "chrome_120" 等
+	Profiles map[string]TLSProfileConfig `mapstructure:"profiles"`
+REDACTED
+
+// TLSProfileConfig 单个TLS指纹模板的配置
+type TLSProfileConfig struct {
+	// Name: 模板显示名称
+	Name string `mapstructure:"name"`
+	// EnableGREASE: 是否启用GREASE扩展（Chrome使用，Node.js不使用）
+	EnableGREASE bool `mapstructure:"enable_grease"`
+	// CipherSuites: TLS加密套件列表（空则使用内置默认值）
+	CipherSuites []uint16 `mapstructure:"cipher_suites"`
+	// Curves: 椭圆曲线列表（空则使用内置默认值）
+	Curves []uint16 `mapstructure:"curves"`
+	// PointFormats: 点格式列表（空则使用内置默认值）
+	PointFormats []uint8 `mapstructure:"point_formats"`
 REDACTED
 
 // GatewaySchedulingConfig accounts scheduling configuration.
@@ -270,6 +306,9 @@ type GatewaySchedulingConfig struct {
 	// 兜底排队配置
 	FallbackWaitTimeout time.Duration `mapstructure:"fallback_wait_timeout"`
 	FallbackMaxWaiting  int           `mapstructure:"fallback_max_waiting"`
+
+	// 兜底层账户选择策略: "last_used"(按最后使用时间排序，默认) 或 "random"(随机)
+	FallbackSelectionMode string `mapstructure:"fallback_selection_mode"`
 
 	// 负载计算
 	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
@@ -491,6 +530,20 @@ type DashboardAggregationRetentionConfig struct {
 	UsageLogsDays int `mapstructure:"usage_logs_days"`
 	HourlyDays    int `mapstructure:"hourly_days"`
 	DailyDays     int `mapstructure:"daily_days"`
+REDACTED
+
+// UsageCleanupConfig 使用记录清理任务配置
+type UsageCleanupConfig struct {
+	// Enabled: 是否启用清理任务执行器
+	Enabled bool `mapstructure:"enabled"`
+	// MaxRangeDays: 单次任务允许的最大时间跨度（天）
+	MaxRangeDays int `mapstructure:"max_range_days"`
+	// BatchSize: 单批删除数量
+	BatchSize int `mapstructure:"batch_size"`
+	// WorkerIntervalSeconds: 后台任务轮询间隔（秒）
+	WorkerIntervalSeconds int `mapstructure:"worker_interval_seconds"`
+	// TaskTimeoutSeconds: 单次任务最大执行时长（秒）
+	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
 REDACTED
 
 func NormalizeRunMode(value string) string {
@@ -753,12 +806,22 @@ REDACTED)
 	viper.SetDefault("dashboard_aggregation.retention.daily_days", 730)
 	viper.SetDefault("dashboard_aggregation.recompute_days", 2)
 
+	// Usage cleanup task
+	viper.SetDefault("usage_cleanup.enabled", true)
+	viper.SetDefault("usage_cleanup.max_range_days", 31)
+	viper.SetDefault("usage_cleanup.batch_size", 5000)
+	viper.SetDefault("usage_cleanup.worker_interval_seconds", 10)
+	viper.SetDefault("usage_cleanup.task_timeout_seconds", 1800)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
 	viper.SetDefault("gateway.failover_on_400", false)
+	viper.SetDefault("gateway.max_account_switches", 10)
+	viper.SetDefault("gateway.max_account_switches_gemini", 3)
+	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
@@ -771,11 +834,12 @@ REDACTED)
 	viper.SetDefault("gateway.concurrency_slot_ttl_minutes", 30) // 并发槽位过期时间（支持超长请求）
 	viper.SetDefault("gateway.stream_data_interval_timeout", 180)
 	viper.SetDefault("gateway.stream_keepalive_interval", 10)
-	viper.SetDefault("gateway.max_line_size", 10*1024*1024)
+	viper.SetDefault("gateway.max_line_size", 40*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
+	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.db_fallback_enabled", true)
@@ -787,6 +851,8 @@ REDACTED)
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
+	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
+	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh
@@ -987,6 +1053,33 @@ REDACTED else {
 	REDACTED
 		if c.DashboardAgg.RecomputeDays < 0 {
 			return fmt.Errorf("dashboard_aggregation.recompute_days must be non-negative")
+	REDACTED
+REDACTED
+	if c.UsageCleanup.Enabled {
+		if c.UsageCleanup.MaxRangeDays <= 0 {
+			return fmt.Errorf("usage_cleanup.max_range_days must be positive")
+	REDACTED
+		if c.UsageCleanup.BatchSize <= 0 {
+			return fmt.Errorf("usage_cleanup.batch_size must be positive")
+	REDACTED
+		if c.UsageCleanup.WorkerIntervalSeconds <= 0 {
+			return fmt.Errorf("usage_cleanup.worker_interval_seconds must be positive")
+	REDACTED
+		if c.UsageCleanup.TaskTimeoutSeconds <= 0 {
+			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be positive")
+	REDACTED
+REDACTED else {
+		if c.UsageCleanup.MaxRangeDays < 0 {
+			return fmt.Errorf("usage_cleanup.max_range_days must be non-negative")
+	REDACTED
+		if c.UsageCleanup.BatchSize < 0 {
+			return fmt.Errorf("usage_cleanup.batch_size must be non-negative")
+	REDACTED
+		if c.UsageCleanup.WorkerIntervalSeconds < 0 {
+			return fmt.Errorf("usage_cleanup.worker_interval_seconds must be non-negative")
+	REDACTED
+		if c.UsageCleanup.TaskTimeoutSeconds < 0 {
+			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be non-negative")
 	REDACTED
 REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
