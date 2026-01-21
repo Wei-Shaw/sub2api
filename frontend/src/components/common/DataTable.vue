@@ -279,18 +279,143 @@ interface Props {
   expandableActions?: boolean
   actionsCount?: number // 操作按钮总数，用于判断是否需要展开功能
   rowKey?: string | ((row: any) => string | number)
+  /**
+   * Default sort configuration (only applied when there is no persisted sort state)
+   */
+  defaultSortKey?: string
+  defaultSortOrder?: 'asc' | 'desc'
+  /**
+   * Persist sort state (key + order) to localStorage using this key.
+   * If provided, DataTable will load the stored sort state on mount.
+   */
+  sortStorageKey?: string
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   stickyFirstColumn: true,
   stickyActionsColumn: true,
-  expandableActions: true
+  expandableActions: true,
+  defaultSortOrder: 'asc'
 REDACTED)
 
 const sortKey = ref<string>('')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const actionsExpanded = ref(false)
+
+type PersistedSortState = {
+  key: string
+  order: 'asc' | 'desc'
+REDACTED
+
+const collator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base'
+REDACTED)
+
+const getSortableKeys = () => {
+  const keys = new Set<string>()
+  for (const col of props.columns) {
+    if (col.sortable) keys.add(col.key)
+  REDACTED
+  return keys
+REDACTED
+
+const normalizeSortKey = (candidate: string) => {
+  if (!candidate) return ''
+  const sortableKeys = getSortableKeys()
+  return sortableKeys.has(candidate) ? candidate : ''
+REDACTED
+
+const normalizeSortOrder = (candidate: any): 'asc' | 'desc' => {
+  return candidate === 'desc' ? 'desc' : 'asc'
+REDACTED
+
+const readPersistedSortState = (): PersistedSortState | null => {
+  if (!props.sortStorageKey) return null
+  try {
+    const raw = localStorage.getItem(props.sortStorageKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<PersistedSortState>
+    const key = normalizeSortKey(typeof parsed.key === 'string' ? parsed.key : '')
+    if (!key) return null
+    return { key, order: normalizeSortOrder(parsed.order) REDACTED
+  REDACTED catch (e) {
+    console.error('[DataTable] Failed to read persisted sort state:', e)
+    return null
+  REDACTED
+REDACTED
+
+const writePersistedSortState = (state: PersistedSortState) => {
+  if (!props.sortStorageKey) return
+  try {
+    localStorage.setItem(props.sortStorageKey, JSON.stringify(state))
+  REDACTED catch (e) {
+    console.error('[DataTable] Failed to persist sort state:', e)
+  REDACTED
+REDACTED
+
+const resolveInitialSortState = (): PersistedSortState | null => {
+  const persisted = readPersistedSortState()
+  if (persisted) return persisted
+
+  const key = normalizeSortKey(props.defaultSortKey || '')
+  if (!key) return null
+  return { key, order: normalizeSortOrder(props.defaultSortOrder) REDACTED
+REDACTED
+
+const applySortState = (state: PersistedSortState | null) => {
+  if (!state) return
+  sortKey.value = state.key
+  sortOrder.value = state.order
+REDACTED
+
+const isNullishOrEmpty = (value: any) => value === null || value === undefined || value === ''
+
+const toFiniteNumberOrNull = (value: any): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'boolean') return value ? 1 : 0
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const n = Number(trimmed)
+    return Number.isFinite(n) ? n : null
+  REDACTED
+  return null
+REDACTED
+
+const toSortableString = (value: any): string => {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (value instanceof Date) return value.toISOString()
+  try {
+    return JSON.stringify(value)
+  REDACTED catch {
+    return String(value)
+  REDACTED
+REDACTED
+
+const compareSortValues = (a: any, b: any): number => {
+  const aEmpty = isNullishOrEmpty(a)
+  const bEmpty = isNullishOrEmpty(b)
+  if (aEmpty && bEmpty) return 0
+  if (aEmpty) return 1
+  if (bEmpty) return -1
+
+  const aNum = toFiniteNumberOrNull(a)
+  const bNum = toFiniteNumberOrNull(b)
+  if (aNum !== null && bNum !== null) {
+    if (aNum === bNum) return 0
+    return aNum < bNum ? -1 : 1
+  REDACTED
+
+  const aStr = toSortableString(a)
+  const bStr = toSortableString(b)
+  const res = collator.compare(aStr, bStr)
+  if (res === 0) return 0
+  return res < 0 ? -1 : 1
+REDACTED
 const resolveRowKey = (row: any, index: number) => {
   if (typeof props.rowKey === 'function') {
     const key = props.rowKey(row)
@@ -334,15 +459,18 @@ REDACTED
 const sortedData = computed(() => {
   if (!sortKey.value || !props.data) return props.data
 
-  return [...props.data].sort((a, b) => {
-    const aVal = a[sortKey.value]
-    const bVal = b[sortKey.value]
+  const key = sortKey.value
+  const order = sortOrder.value
 
-    if (aVal === bVal) return 0
-
-    const comparison = aVal > bVal ? 1 : -1
-    return sortOrder.value === 'asc' ? comparison : -comparison
-  REDACTED)
+  // Stable sort (tie-break with original index) to avoid jitter when values are equal.
+  return props.data
+    .map((row, index) => ({ row, index REDACTED))
+    .sort((a, b) => {
+      const cmp = compareSortValues(a.row?.[key], b.row?.[key])
+      if (cmp !== 0) return order === 'asc' ? cmp : -cmp
+      return a.index - b.index
+    REDACTED)
+    .map(item => item.row)
 REDACTED)
 
 const hasActionsColumn = computed(() => {
@@ -396,6 +524,51 @@ const getAdaptivePaddingClass = () => {
     return 'px-6' // 24px (原始值)
   REDACTED
 REDACTED
+
+// Init + keep persisted sort state consistent with current columns
+const didInitSort = ref(false)
+
+onMounted(() => {
+  const initial = resolveInitialSortState()
+  applySortState(initial)
+  didInitSort.value = true
+REDACTED)
+
+watch(
+  () => props.columns,
+  () => {
+    // If current sort key is no longer sortable/visible, fall back to default/persisted.
+    const normalized = normalizeSortKey(sortKey.value)
+    if (!sortKey.value) {
+      const initial = resolveInitialSortState()
+      applySortState(initial)
+      return
+    REDACTED
+
+    if (!normalized) {
+      const fallback = resolveInitialSortState()
+      if (fallback) {
+        applySortState(fallback)
+      REDACTED else {
+        sortKey.value = ''
+        sortOrder.value = 'asc'
+      REDACTED
+    REDACTED
+  REDACTED,
+  { deep: true REDACTED
+)
+
+watch(
+  [sortKey, sortOrder],
+  ([nextKey, nextOrder]) => {
+    if (!didInitSort.value) return
+    if (!props.sortStorageKey) return
+    const key = normalizeSortKey(nextKey)
+    if (!key) return
+    writePersistedSortState({ key, order: normalizeSortOrder(nextOrder) REDACTED)
+  REDACTED,
+  { flush: 'post' REDACTED
+)
 </script>
 
 <style scoped>
