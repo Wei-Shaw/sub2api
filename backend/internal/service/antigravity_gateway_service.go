@@ -31,10 +31,13 @@ const (
 )
 
 const (
-	antigravityMaxRetriesEnv      = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
-	antigravityScopeRateLimitEnv  = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
-	antigravityBillingModelEnv    = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
-	antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
+	antigravityMaxRetriesEnv            = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
+	antigravityMaxRetriesClaudeEnv      = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_CLAUDE"
+	antigravityMaxRetriesGeminiTextEnv  = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_TEXT"
+	antigravityMaxRetriesGeminiImageEnv = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_IMAGE"
+	antigravityScopeRateLimitEnv        = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
+	antigravityBillingModelEnv          = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
+	antigravityFallbackSecondsEnv       = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
 )
 
 // antigravityRetryLoopParams 重试循环的参数
@@ -51,6 +54,7 @@ type antigravityRetryLoopParams struct {
 	httpUpstream   HTTPUpstream
 	settingService *SettingService
 	handleError    func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope)
+	maxRetries     int // 可选，0 表示使用平台级默认值
 REDACTED
 
 // antigravityRetryLoopResult 重试循环的结果
@@ -64,7 +68,10 @@ func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopRe
 	if len(availableURLs) == 0 {
 		availableURLs = antigravity.BaseURLs
 REDACTED
-	maxRetries := antigravityMaxRetries()
+	maxRetries := p.maxRetries
+	if maxRetries <= 0 {
+		maxRetries = antigravityMaxRetries()
+REDACTED
 
 	var resp *http.Response
 	var usedBaseURL string
@@ -770,6 +777,7 @@ REDACTED
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		handleError:    s.handleUpstreamError,
+		maxRetries:     antigravityMaxRetriesForModel(originalModel),
 REDACTED)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
@@ -846,6 +854,7 @@ REDACTED
 					httpUpstream:   s.httpUpstream,
 					settingService: s.settingService,
 					handleError:    s.handleUpstreamError,
+					maxRetries:     antigravityMaxRetriesForModel(originalModel),
 			REDACTED)
 				if retryErr != nil {
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -1352,6 +1361,7 @@ REDACTED
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		handleError:    s.handleUpstreamError,
+		maxRetries:     antigravityMaxRetriesForModel(originalModel),
 REDACTED)
 	if err != nil {
 		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
@@ -1558,6 +1568,28 @@ REDACTED
 		return antigravityDefaultMaxRetries
 REDACTED
 	return value
+REDACTED
+
+// antigravityMaxRetriesForModel 根据模型类型获取重试次数
+// 优先使用模型细分配置，未设置则回退到平台级配置
+func antigravityMaxRetriesForModel(model string) int {
+	var envKey string
+	if strings.HasPrefix(model, "claude-") {
+		envKey = antigravityMaxRetriesClaudeEnv
+REDACTED else if isImageGenerationModel(model) {
+		envKey = antigravityMaxRetriesGeminiImageEnv
+REDACTED else if strings.HasPrefix(model, "gemini-") {
+		envKey = antigravityMaxRetriesGeminiTextEnv
+REDACTED
+
+	if envKey != "" {
+		if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
+			if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+				return value
+		REDACTED
+	REDACTED
+REDACTED
+	return antigravityMaxRetries()
 REDACTED
 
 func antigravityUseMappedModelForBilling() bool {
