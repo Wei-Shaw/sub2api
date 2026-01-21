@@ -146,17 +146,10 @@ REDACTED else {
 		for _, v := range schemaMap {
 			if _, isMap := v.(map[string]any); isMap {
 				cleanJSONSchemaRecursive(v)
-		REDACTED else if _, isArr := v.([]any); isArr {
-				// 数组内的对象也要递归
-		REDACTED
-	REDACTED
-		// 稍微补全一下数组递归
-		for k, v := range schemaMap {
-			if arr, ok := v.([]any); ok {
+		REDACTED else if arr, isArr := v.([]any); isArr {
 				for _, item := range arr {
 					cleanJSONSchemaRecursive(item)
 			REDACTED
-				schemaMap[k] = arr
 		REDACTED
 	REDACTED
 REDACTED
@@ -455,18 +448,18 @@ REDACTED
 REDACTED
 	if len(mergedReq) > 0 {
 		existReq, _ := m["required"].([]any)
-		var currentReqs []string
+		var validReqs []any
 		for _, r := range existReq {
 			if s, ok := r.(string); ok {
-				currentReqs = append(currentReqs, s)
+				validReqs = append(validReqs, s)
 				delete(mergedReq, s) // already exists
 		REDACTED
 	REDACTED
 		// append new
 		for r := range mergedReq {
-			existReq = append(existReq, r)
+			validReqs = append(validReqs, r)
 	REDACTED
-		m["required"] = existReq
+		m["required"] = validReqs
 REDACTED
 REDACTED
 
