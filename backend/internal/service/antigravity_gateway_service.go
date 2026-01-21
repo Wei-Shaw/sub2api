@@ -1985,6 +1985,58 @@ REDACTED
 	return result, existingParts, setParts
 REDACTED
 
+// mergeCollectedPartsToResponse 将收集的所有 parts 合并到 Gemini 响应中
+// 这个函数会合并所有类型的 parts：text、thinking、functionCall、inlineData 等
+// 保持原始顺序，只合并连续的普通 text parts
+func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map[string]any) map[string]any {
+	if len(collectedParts) == 0 {
+		return response
+REDACTED
+
+	result, _, setParts := getOrCreateGeminiParts(response)
+	
+	// 合并策略：
+	// 1. 保持原始顺序
+	// 2. 连续的普通 text parts 合并为一个
+	// 3. thinking、functionCall、inlineData 等保持原样
+	var mergedParts []any
+	var textBuffer strings.Builder
+	
+	flushTextBuffer := func() {
+		if textBuffer.Len() > 0 {
+			mergedParts = append(mergedParts, map[string]any{
+				"text": textBuffer.String(),
+		REDACTED)
+			textBuffer.Reset()
+	REDACTED
+REDACTED
+	
+	for _, part := range collectedParts {
+		// 检查是否是普通 text part
+		if text, ok := part["text"].(string); ok {
+			// 检查是否有 thought 标记
+			if thought, _ := part["thought"].(bool); thought {
+				// thinking part，先刷新 text buffer，然后保留原样
+				flushTextBuffer()
+				mergedParts = append(mergedParts, part)
+		REDACTED else {
+				// 普通 text，累积到 buffer
+				_, _ = textBuffer.WriteString(text)
+		REDACTED
+	REDACTED else {
+			// 非 text part（functionCall、inlineData 等），先刷新 text buffer，然后保留原样
+			flushTextBuffer()
+			mergedParts = append(mergedParts, part)
+	REDACTED
+REDACTED
+	
+	// 刷新剩余的 text
+	flushTextBuffer()
+	
+	setParts(mergedParts)
+	return result
+REDACTED
+
 // mergeImagePartsToResponse 将收集到的图片 parts 合并到 Gemini 响应中
 func mergeImagePartsToResponse(response map[string]any, imageParts []map[string]any) map[string]any {
 	if len(imageParts) == 0 {
@@ -2168,6 +2220,7 @@ REDACTED
 	var firstTokenMs *int
 	var last map[string]any
 	var lastWithParts map[string]any
+	var collectedParts []map[string]any // 收集所有 parts（包括 text、thinking、functionCall、inlineData 等）
 
 	type scanEvent struct {
 		line string
@@ -2262,9 +2315,12 @@ REDACTED
 
 			last = parsed
 
-			// 保留最后一个有 parts 的响应
+			// 保留最后一个有 parts 的响应，并收集所有 parts
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
+				
+				// 收集所有 parts（text、thinking、functionCall、inlineData 等）
+				collectedParts = append(collectedParts, parts...)
 		REDACTED
 
 		case <-intervalCh:
@@ -2285,6 +2341,11 @@ returnResponse:
 	if last == nil && lastWithParts == nil {
 		log.Printf("[antigravity-Forward] warning: empty stream response, no valid chunks received")
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Empty response from upstream")
+REDACTED
+
+	// 将收集的所有 parts 合并到最终响应中
+	if len(collectedParts) > 0 {
+		finalResponse = mergeCollectedPartsToResponse(finalResponse, collectedParts)
 REDACTED
 
 	// 序列化为 JSON（Gemini 格式）
