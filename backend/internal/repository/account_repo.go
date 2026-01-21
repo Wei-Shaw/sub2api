@@ -787,6 +787,7 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 		Where(dbaccount.IDEQ(id)).
 		SetRateLimitedAt(now).
 		SetRateLimitResetAt(resetAt).
+		SetLastUsedAt(now).
 		Save(ctx)
 	if err != nil {
 		return err
@@ -812,7 +813,7 @@ REDACTED
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), $1::text[], $2::jsonb, true), updated_at = NOW() WHERE id = $3 AND deleted_at IS NULL",
+		"UPDATE accounts SET extra = jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), $1::text[], $2::jsonb, true), updated_at = NOW(), last_used_at = NOW() WHERE id = $3 AND deleted_at IS NULL",
 		path,
 		raw,
 		id,
