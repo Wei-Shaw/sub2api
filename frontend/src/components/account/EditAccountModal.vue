@@ -512,9 +512,9 @@
         </div>
       </div>
 
-      <!-- Intercept Warmup Requests (Anthropic only) -->
+      <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
-        v-if="account?.platform === 'anthropic'"
+        v-if="account?.platform === 'anthropic' || account?.platform === 'antigravity'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
