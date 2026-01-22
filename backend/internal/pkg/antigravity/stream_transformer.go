@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -102,6 +103,14 @@ REDACTED
 	// 检查是否结束
 	if len(geminiResp.Candidates) > 0 {
 		finishReason := geminiResp.Candidates[0].FinishReason
+		if finishReason == "MALFORMED_FUNCTION_CALL" {
+			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in stream for model %s", p.originalModel)
+			if geminiResp.Candidates[0].Content != nil {
+				if b, err := json.Marshal(geminiResp.Candidates[0].Content); err == nil {
+					log.Printf("[Antigravity] Malformed content: %s", string(b))
+			REDACTED
+		REDACTED
+	REDACTED
 		if finishReason != "" {
 			_, _ = result.Write(p.emitFinish(finishReason))
 	REDACTED
