@@ -13,6 +13,9 @@ A generic data table component with sorting, loading states, and custom cell ren
 - `columns: Column[]` - Array of column definitions with key, label, sortable, and formatter
 - `data: any[]` - Array of data objects to display
 - `loading?: boolean` - Show loading skeleton
+- `defaultSortKey?: string` - Default sort key (only used if no persisted sort state)
+- `defaultSortOrder?: 'asc' | 'desc'` - Default sort order (default: `asc`)
+- `sortStorageKey?: string` - Persist sort state (key + order) to localStorage
 - `rowKey?: string | (row: any) => string | number` - Row key field or resolver (defaults to `row.id`, falls back to index)
 
 **Slots:**

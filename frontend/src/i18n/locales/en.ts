@@ -1022,6 +1022,13 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
+      autoRefresh: 'Auto Refresh',
+      enableAutoRefresh: 'Enable auto refresh',
+      refreshInterval5s: '5 seconds',
+      refreshInterval10s: '10 seconds',
+      refreshInterval15s: '15 seconds',
+      refreshInterval30s: '30 seconds',
+      autoRefreshCountdown: 'Auto refresh: {secondsREDACTEDs',
       syncFromCrs: 'Sync from CRS',
       syncFromCrsTitle: 'Sync Accounts from CRS',
       syncFromCrsDesc:
