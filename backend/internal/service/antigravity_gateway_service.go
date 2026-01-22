@@ -1994,14 +1994,14 @@ func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map
 REDACTED
 
 	result, _, setParts := getOrCreateGeminiParts(response)
-	
+
 	// 合并策略：
 	// 1. 保持原始顺序
 	// 2. 连续的普通 text parts 合并为一个
 	// 3. thinking、functionCall、inlineData 等保持原样
 	var mergedParts []any
 	var textBuffer strings.Builder
-	
+
 	flushTextBuffer := func() {
 		if textBuffer.Len() > 0 {
 			mergedParts = append(mergedParts, map[string]any{
@@ -2010,7 +2010,7 @@ REDACTED
 			textBuffer.Reset()
 	REDACTED
 REDACTED
-	
+
 	for _, part := range collectedParts {
 		// 检查是否是普通 text part
 		if text, ok := part["text"].(string); ok {
@@ -2029,10 +2029,10 @@ REDACTED
 			mergedParts = append(mergedParts, part)
 	REDACTED
 REDACTED
-	
+
 	// 刷新剩余的 text
 	flushTextBuffer()
-	
+
 	setParts(mergedParts)
 	return result
 REDACTED
@@ -2318,7 +2318,7 @@ REDACTED
 			// 保留最后一个有 parts 的响应，并收集所有 parts
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
-				
+
 				// 收集所有 parts（text、thinking、functionCall、inlineData 等）
 				collectedParts = append(collectedParts, parts...)
 		REDACTED
