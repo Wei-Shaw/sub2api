@@ -131,8 +131,8 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 3) Populate cache with TTL.
-	if p.tokenCache != nil {
+	// 3) Populate cache with TTL（验证版本后再写入，避免异步刷新任务与请求线程的竞态条件）
+	if p.tokenCache != nil && !IsTokenVersionStale(ctx, account, p.accountRepo) {
 		ttl := 30 * time.Minute
 		if expiresAt != nil {
 			until := time.Until(*expiresAt)

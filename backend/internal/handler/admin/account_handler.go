@@ -668,6 +668,15 @@ REDACTED
 		return
 REDACTED
 
+	// 清除错误后，同时清除 token 缓存，确保下次请求会获取最新的 token（触发刷新或从 DB 读取）
+	// 这解决了管理员重置账号状态后，旧的失效 token 仍在缓存中导致立即再次 401 的问题
+	if h.tokenCacheInvalidator != nil && account.IsOAuth() {
+		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), account); invalidateErr != nil {
+			// 缓存失效失败只记录日志，不影响主流程
+			_ = c.Error(invalidateErr)
+	REDACTED
+REDACTED
+
 	response.Success(c, dto.AccountFromService(account))
 REDACTED
 

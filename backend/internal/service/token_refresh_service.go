@@ -169,6 +169,10 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 		// 如果有新凭证，先更新（即使有错误也要保存 token）
 		if newCredentials != nil {
+			// 记录刷新版本时间戳，用于解决缓存一致性问题
+			// TokenProvider 写入缓存前会检查此版本，如果版本已更新则跳过写入
+			newCredentials["_token_version"] = time.Now().UnixMilli()
+
 			account.Credentials = newCredentials
 			if saveErr := s.accountRepo.Update(ctx, account); saveErr != nil {
 				return fmt.Errorf("failed to save credentials: %w", saveErr)

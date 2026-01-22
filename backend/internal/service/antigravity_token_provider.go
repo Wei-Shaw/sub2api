@@ -101,8 +101,8 @@ REDACTED
 		return "", errors.New("access_token not found in credentials")
 REDACTED
 
-	// 3. 存入缓存
-	if p.tokenCache != nil {
+	// 3. 存入缓存（验证版本后再写入，避免异步刷新任务与请求线程的竞态条件）
+	if p.tokenCache != nil && !IsTokenVersionStale(ctx, account, p.accountRepo) {
 		ttl := 30 * time.Minute
 		if expiresAt != nil {
 			until := time.Until(*expiresAt)
