@@ -62,6 +62,17 @@ type antigravityRetryLoopResult struct {
 	resp *http.Response
 REDACTED
 
+// PromptTooLongError 表示上游明确返回 prompt too long
+type PromptTooLongError struct {
+	StatusCode int
+	RequestID  string
+	Body       []byte
+REDACTED
+
+func (e *PromptTooLongError) Error() string {
+	return fmt.Sprintf("prompt too long: status=%d", e.StatusCode)
+REDACTED
+
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
 	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLs()
@@ -930,6 +941,39 @@ REDACTED
 
 		// 处理错误响应（重试后仍失败或不触发重试）
 		if resp.StatusCode >= 400 {
+			if resp.StatusCode == http.StatusBadRequest {
+				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				log.Printf("%s status=400 prompt_too_long=%v upstream_message=%q request_id=%s body=%s", prefix, isPromptTooLongError(respBody), upstreamMsg, resp.Header.Get("x-request-id"), truncateForLog(respBody, 500))
+		REDACTED
+			if resp.StatusCode == http.StatusBadRequest && isPromptTooLongError(respBody) {
+				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+				maxBytes := 2048
+				if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+					maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			REDACTED
+				upstreamDetail := ""
+				if logBody {
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "prompt_too_long",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+				return nil, &PromptTooLongError{
+					StatusCode: resp.StatusCode,
+					RequestID:  resp.Header.Get("x-request-id"),
+					Body:       respBody,
+			REDACTED
+		REDACTED
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 
 			if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -1019,21 +1063,55 @@ REDACTED
 	return false
 REDACTED
 
+func isPromptTooLongError(respBody []byte) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+	if msg == "" {
+		msg = strings.ToLower(string(respBody))
+REDACTED
+	return strings.Contains(msg, "prompt is too long")
+REDACTED
+
 func extractAntigravityErrorMessage(body []byte) string {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return ""
 REDACTED
 
+	parseNestedMessage := func(msg string) string {
+		trimmed := strings.TrimSpace(msg)
+		if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
+			return ""
+	REDACTED
+		var nested map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &nested); err != nil {
+			return ""
+	REDACTED
+		if errObj, ok := nested["error"].(map[string]any); ok {
+			if innerMsg, ok := errObj["message"].(string); ok && strings.TrimSpace(innerMsg) != "" {
+				return innerMsg
+		REDACTED
+	REDACTED
+		if innerMsg, ok := nested["message"].(string); ok && strings.TrimSpace(innerMsg) != "" {
+			return innerMsg
+	REDACTED
+		return ""
+REDACTED
+
 	// Google-style: {"error": {"message": "..."REDACTEDREDACTED
 	if errObj, ok := payload["error"].(map[string]any); ok {
 		if msg, ok := errObj["message"].(string); ok && strings.TrimSpace(msg) != "" {
+			if innerMsg := parseNestedMessage(msg); innerMsg != "" {
+				return innerMsg
+		REDACTED
 			return msg
 	REDACTED
 REDACTED
 
 	// Fallback: top-level message
 	if msg, ok := payload["message"].(string); ok && strings.TrimSpace(msg) != "" {
+		if innerMsg := parseNestedMessage(msg); innerMsg != "" {
+			return innerMsg
+	REDACTED
 		return msg
 REDACTED
 
@@ -2207,6 +2285,10 @@ REDACTED)
 		return fmt.Errorf("upstream error: %d", upstreamStatus)
 REDACTED
 	return fmt.Errorf("upstream error: %d message=%s", upstreamStatus, upstreamMsg)
+REDACTED
+
+func (s *AntigravityGatewayService) WriteMappedClaudeError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
+	return s.writeMappedClaudeError(c, account, upstreamStatus, upstreamRequestID, body)
 REDACTED
 
 func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int, message string) error {

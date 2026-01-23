@@ -56,6 +56,8 @@ type Group struct {
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
 	FallbackGroupID *int64 `json:"fallback_group_id,omitempty"`
+	// 无效请求兜底使用的分组 ID
+	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request,omitempty"`
 	// 模型路由配置：模型模式 -> 优先账号ID列表
 	ModelRouting map[string][]int64 `json:"model_routing,omitempty"`
 	// 是否启用模型路由配置
@@ -172,7 +174,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest:
 			values[i] = new(sql.NullInt64)
 		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType:
 			values[i] = new(sql.NullString)
@@ -321,6 +323,13 @@ REDACTED
 		REDACTED else if value.Valid {
 				_m.FallbackGroupID = new(int64)
 				*_m.FallbackGroupID = value.Int64
+		REDACTED
+		case group.FieldFallbackGroupIDOnInvalidRequest:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field fallback_group_id_on_invalid_request", values[i])
+		REDACTED else if value.Valid {
+				_m.FallbackGroupIDOnInvalidRequest = new(int64)
+				*_m.FallbackGroupIDOnInvalidRequest = value.Int64
 		REDACTED
 		case group.FieldModelRouting:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -484,6 +493,11 @@ REDACTED
 	builder.WriteString(", ")
 	if v := _m.FallbackGroupID; v != nil {
 		builder.WriteString("fallback_group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.FallbackGroupIDOnInvalidRequest; v != nil {
+		builder.WriteString("fallback_group_id_on_invalid_request=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 REDACTED
 	builder.WriteString(", ")

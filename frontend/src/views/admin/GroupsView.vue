@@ -460,6 +460,20 @@
           </div>
         </div>
 
+        <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
+        <div
+          v-if="['anthropic', 'antigravity'].includes(createForm.platform) && createForm.subscription_type !== 'subscription'"
+          class="border-t pt-4"
+        >
+          <label class="input-label">{{ t('admin.groups.invalidRequestFallback.title') REDACTEDREDACTED</label>
+          <Select
+            v-model="createForm.fallback_group_id_on_invalid_request"
+            :options="invalidRequestFallbackOptions"
+            :placeholder="t('admin.groups.invalidRequestFallback.noFallback')"
+          />
+          <p class="input-hint">{{ t('admin.groups.invalidRequestFallback.hint') REDACTEDREDACTED</p>
+        </div>
+
         <!-- 模型路由配置（仅 anthropic 平台） -->
         <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -904,6 +918,20 @@
           </div>
         </div>
 
+        <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
+        <div
+          v-if="['anthropic', 'antigravity'].includes(editForm.platform) && editForm.subscription_type !== 'subscription'"
+          class="border-t pt-4"
+        >
+          <label class="input-label">{{ t('admin.groups.invalidRequestFallback.title') REDACTEDREDACTED</label>
+          <Select
+            v-model="editForm.fallback_group_id_on_invalid_request"
+            :options="invalidRequestFallbackOptionsForEdit"
+            :placeholder="t('admin.groups.invalidRequestFallback.noFallback')"
+          />
+          <p class="input-hint">{{ t('admin.groups.invalidRequestFallback.hint') REDACTEDREDACTED</p>
+        </div>
+
         <!-- 模型路由配置（仅 anthropic 平台） -->
         <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -1202,6 +1230,44 @@ const fallbackGroupOptionsForEdit = computed(() => {
   return options
 REDACTED)
 
+// 无效请求兜底分组选项（创建时）- 仅包含 anthropic 平台、非订阅且未配置兜底的分组
+const invalidRequestFallbackOptions = computed(() => {
+  const options: { value: number | null; label: string REDACTED[] = [
+    { value: null, label: t('admin.groups.invalidRequestFallback.noFallback') REDACTED
+  ]
+  const eligibleGroups = groups.value.filter(
+    (g) =>
+      g.platform === 'anthropic' &&
+      g.status === 'active' &&
+      g.subscription_type !== 'subscription' &&
+      g.fallback_group_id_on_invalid_request === null
+  )
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name REDACTED)
+  REDACTED)
+  return options
+REDACTED)
+
+// 无效请求兜底分组选项（编辑时）- 排除自身
+const invalidRequestFallbackOptionsForEdit = computed(() => {
+  const options: { value: number | null; label: string REDACTED[] = [
+    { value: null, label: t('admin.groups.invalidRequestFallback.noFallback') REDACTED
+  ]
+  const currentId = editingGroup.value?.id
+  const eligibleGroups = groups.value.filter(
+    (g) =>
+      g.platform === 'anthropic' &&
+      g.status === 'active' &&
+      g.subscription_type !== 'subscription' &&
+      g.fallback_group_id_on_invalid_request === null &&
+      g.id !== currentId
+  )
+  eligibleGroups.forEach((g) => {
+    options.push({ value: g.id, label: g.name REDACTED)
+  REDACTED)
+  return options
+REDACTED)
+
 const groups = ref<Group[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
@@ -1243,6 +1309,7 @@ const createForm = reactive({
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
+  fallback_group_id_on_invalid_request: null as number | null,
   // 模型路由开关
   model_routing_enabled: false
 REDACTED)
@@ -1414,6 +1481,7 @@ const editForm = reactive({
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
+  fallback_group_id_on_invalid_request: null as number | null,
   // 模型路由开关
   model_routing_enabled: false
 REDACTED)
@@ -1497,6 +1565,7 @@ const closeCreateModal = () => {
   createForm.image_price_4k = null
   createForm.claude_code_only = false
   createForm.fallback_group_id = null
+  createForm.fallback_group_id_on_invalid_request = null
   createModelRoutingRules.value = []
 REDACTED
 
@@ -1546,6 +1615,7 @@ const handleEdit = async (group: Group) => {
   editForm.image_price_4k = group.image_price_4k
   editForm.claude_code_only = group.claude_code_only || false
   editForm.fallback_group_id = group.fallback_group_id
+  editForm.fallback_group_id_on_invalid_request = group.fallback_group_id_on_invalid_request
   editForm.model_routing_enabled = group.model_routing_enabled || false
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(group.model_routing)
@@ -1571,6 +1641,10 @@ const handleUpdateGroup = async () => {
     const payload = {
       ...editForm,
       fallback_group_id: editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
+      fallback_group_id_on_invalid_request:
+        editForm.fallback_group_id_on_invalid_request === null
+          ? 0
+          : editForm.fallback_group_id_on_invalid_request,
       model_routing: convertRoutingRulesToApiFormat(editModelRoutingRules.value)
     REDACTED
     await adminAPI.groups.update(editingGroup.value.id, payload)
@@ -1612,6 +1686,16 @@ watch(
     if (newVal === 'subscription') {
       createForm.rate_multiplier = 1.0
       createForm.is_exclusive = true
+      createForm.fallback_group_id_on_invalid_request = null
+    REDACTED
+  REDACTED
+)
+
+watch(
+  () => createForm.platform,
+  (newVal) => {
+    if (!['anthropic', 'antigravity'].includes(newVal)) {
+      createForm.fallback_group_id_on_invalid_request = null
     REDACTED
   REDACTED
 )

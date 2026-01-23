@@ -269,6 +269,7 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
+  fallback_group_id_on_invalid_request: number | null
   // 模型路由配置（仅 anthropic 平台使用）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
@@ -322,6 +323,7 @@ export interface CreateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  fallback_group_id_on_invalid_request?: number | null
 REDACTED
 
 export interface UpdateGroupRequest {
@@ -340,6 +342,7 @@ export interface UpdateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  fallback_group_id_on_invalid_request?: number | null
 REDACTED
 
 // ==================== Account & Proxy Types ====================
