@@ -24,9 +24,9 @@ const (
 	RedirectURI  = "https://platform.claude.com/oauth/code/callback"
 
 	// Scopes - Browser URL (includes org:create_api_key for user authorization)
-	ScopeOAuth = "org:create_api_key user:profile user:inference user:sessions:claude_code"
+	ScopeOAuth = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers"
 	// Scopes - Internal API call (org:create_api_key not supported in API)
-	ScopeAPI = "user:profile user:inference user:sessions:claude_code"
+	ScopeAPI = "user:profile user:inference user:sessions:claude_code user:mcp_servers"
 	// Scopes - Setup token (inference only)
 	ScopeInference = "user:inference"
 
