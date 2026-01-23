@@ -182,25 +182,36 @@ REDACTED
 REDACTED
 
 	// 3. 存入缓存（验证版本后再写入，避免异步刷新任务与请求线程的竞态条件）
-	if p.tokenCache != nil && !IsTokenVersionStale(ctx, account, p.accountRepo) {
-		ttl := 30 * time.Minute
-		if refreshFailed {
-			// 刷新失败时使用短 TTL，避免失效 token 长时间缓存导致 401 抖动
-			ttl = time.Minute
-			slog.Debug("claude_token_cache_short_ttl", "account_id", account.ID, "reason", "refresh_failed")
-	REDACTED else if expiresAt != nil {
-			until := time.Until(*expiresAt)
-			switch {
-			case until > claudeTokenCacheSkew:
-				ttl = until - claudeTokenCacheSkew
-			case until > 0:
-				ttl = until
-			default:
-				ttl = time.Minute
+	if p.tokenCache != nil {
+		latestAccount, isStale := CheckTokenVersion(ctx, account, p.accountRepo)
+		if isStale && latestAccount != nil {
+			// 版本过时，使用 DB 中的最新 token
+			slog.Debug("claude_token_version_stale_use_latest", "account_id", account.ID)
+			accessToken = latestAccount.GetCredential("access_token")
+			if strings.TrimSpace(accessToken) == "" {
+				return "", errors.New("access_token not found after version check")
 		REDACTED
-	REDACTED
-		if err := p.tokenCache.SetAccessToken(ctx, cacheKey, accessToken, ttl); err != nil {
-			slog.Warn("claude_token_cache_set_failed", "account_id", account.ID, "error", err)
+			// 不写入缓存，让下次请求重新处理
+	REDACTED else {
+			ttl := 30 * time.Minute
+			if refreshFailed {
+				// 刷新失败时使用短 TTL，避免失效 token 长时间缓存导致 401 抖动
+				ttl = time.Minute
+				slog.Debug("claude_token_cache_short_ttl", "account_id", account.ID, "reason", "refresh_failed")
+		REDACTED else if expiresAt != nil {
+				until := time.Until(*expiresAt)
+				switch {
+				case until > claudeTokenCacheSkew:
+					ttl = until - claudeTokenCacheSkew
+				case until > 0:
+					ttl = until
+				default:
+					ttl = time.Minute
+			REDACTED
+		REDACTED
+			if err := p.tokenCache.SetAccessToken(ctx, cacheKey, accessToken, ttl); err != nil {
+				slog.Warn("claude_token_cache_set_failed", "account_id", account.ID, "error", err)
+		REDACTED
 	REDACTED
 REDACTED
 

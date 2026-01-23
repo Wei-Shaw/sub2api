@@ -65,22 +65,24 @@ REDACTED
 	return nil
 REDACTED
 
-// IsTokenVersionStale 检查 account 的 token 版本是否已过时
+// CheckTokenVersion 检查 account 的 token 版本是否已过时，并返回最新的 account
 // 用于解决异步刷新任务与请求线程的竞态条件：
 // 如果刷新任务已更新 token 并删除缓存，此时请求线程的旧 account 对象不应写入缓存
 //
-// 返回 true 表示 token 已过时（不应缓存），false 表示可以缓存
-func IsTokenVersionStale(ctx context.Context, account *Account, repo AccountRepository) bool {
+// 返回值:
+//   - latestAccount: 从 DB 获取的最新 account（如果查询失败则返回 nil）
+//   - isStale: true 表示 token 已过时（应使用 latestAccount），false 表示可以使用当前 account
+func CheckTokenVersion(ctx context.Context, account *Account, repo AccountRepository) (latestAccount *Account, isStale bool) {
 	if account == nil || repo == nil {
-		return false
+		return nil, false
 REDACTED
 
 	currentVersion := account.GetCredentialAsInt64("_token_version")
 
 	latestAccount, err := repo.GetByID(ctx, account.ID)
 	if err != nil || latestAccount == nil {
-		// 查询失败，默认允许缓存
-		return false
+		// 查询失败，默认允许缓存，不返回 latestAccount
+		return nil, false
 REDACTED
 
 	latestVersion := latestAccount.GetCredentialAsInt64("_token_version")
@@ -91,12 +93,12 @@ REDACTED
 		slog.Debug("token_version_stale_no_current_version",
 			"account_id", account.ID,
 			"latest_version", latestVersion)
-		return true
+		return latestAccount, true
 REDACTED
 
 	// 情况2: 两边都没有版本号，说明从未被异步刷新过，允许缓存
 	if currentVersion == 0 && latestVersion == 0 {
-		return false
+		return latestAccount, false
 REDACTED
 
 	// 情况3: 比较版本号，如果 DB 中的版本更新，当前 account 已过时
@@ -105,8 +107,8 @@ REDACTED
 			"account_id", account.ID,
 			"current_version", currentVersion,
 			"latest_version", latestVersion)
-		return true
+		return latestAccount, true
 REDACTED
 
-	return false
+	return latestAccount, false
 REDACTED
