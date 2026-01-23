@@ -113,8 +113,17 @@
           <template #cell-select="{ row REDACTED">
             <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
-          <template #cell-name="{ value REDACTED">
-            <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+          <template #cell-name="{ row, value REDACTED">
+            <div class="flex flex-col">
+              <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+              <span
+                v-if="row.extra?.email_address"
+                class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
+                :title="row.extra.email_address"
+              >
+                {{ row.extra.email_address REDACTEDREDACTED
+              </span>
+            </div>
           </template>
           <template #cell-notes="{ value REDACTED">
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value REDACTEDREDACTED</span>

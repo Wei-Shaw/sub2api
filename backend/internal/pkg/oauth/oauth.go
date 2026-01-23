@@ -215,5 +215,6 @@ REDACTED
 
 // AccountInfo represents account info from OAuth response
 type AccountInfo struct {
-	UUID string `json:"uuid"`
+	UUID         string `json:"uuid"`
+	EmailAddress string `json:"email_address"`
 REDACTED

@@ -122,6 +122,7 @@ type TokenInfo struct {
 	Scope        string `json:"scope,omitempty"`
 	OrgUUID      string `json:"org_uuid,omitempty"`
 	AccountUUID  string `json:"account_uuid,omitempty"`
+	EmailAddress string `json:"email_address,omitempty"`
 REDACTED
 
 // ExchangeCode exchanges authorization code for tokens
@@ -252,9 +253,15 @@ REDACTED
 		tokenInfo.OrgUUID = tokenResp.Organization.UUID
 		log.Printf("[OAuth] Got org_uuid: %s", tokenInfo.OrgUUID)
 REDACTED
-	if tokenResp.Account != nil && tokenResp.Account.UUID != "" {
-		tokenInfo.AccountUUID = tokenResp.Account.UUID
-		log.Printf("[OAuth] Got account_uuid: %s", tokenInfo.AccountUUID)
+	if tokenResp.Account != nil {
+		if tokenResp.Account.UUID != "" {
+			tokenInfo.AccountUUID = tokenResp.Account.UUID
+			log.Printf("[OAuth] Got account_uuid: %s", tokenInfo.AccountUUID)
+	REDACTED
+		if tokenResp.Account.EmailAddress != "" {
+			tokenInfo.EmailAddress = tokenResp.Account.EmailAddress
+			log.Printf("[OAuth] Got email_address: %s", tokenInfo.EmailAddress)
+	REDACTED
 REDACTED
 
 	return tokenInfo, nil
