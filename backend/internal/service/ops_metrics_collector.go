@@ -561,7 +561,7 @@ func (c *OpsMetricsCollector) queryAccountSwitchCount(ctx context.Context, start
 	q := `
 SELECT
   COALESCE(SUM(CASE
-    WHEN ev->>'kind' IN ('failover', 'retry_exhausted_failover', 'failover_on_400') THEN 1
+    WHEN split_part(ev->>'kind', ':', 1) IN ('failover', 'retry_exhausted_failover', 'failover_on_400') THEN 1
     ELSE 0
   END), 0) AS switch_count
 FROM ops_error_logs o
