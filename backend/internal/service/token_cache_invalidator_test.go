@@ -396,9 +396,9 @@ func TestAccount_GetCredentialAsInt64_NilAccount(t *testing.T) {
 	require.Equal(t, int64(0), result)
 REDACTED
 
-// ========== IsTokenVersionStale 测试 ==========
+// ========== CheckTokenVersion 测试 ==========
 
-func TestIsTokenVersionStale(t *testing.T) {
+func TestCheckTokenVersion(t *testing.T) {
 	tests := []struct {
 		name          string
 		account       *Account
@@ -496,16 +496,16 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 由于 IsTokenVersionStale 接受 AccountRepository 接口，而创建完整的 mock 很繁琐
+			// 由于 CheckTokenVersion 接受 AccountRepository 接口，而创建完整的 mock 很繁琐
 			// 这里我们直接测试函数的核心逻辑来验证行为
 
 			if tt.name == "nil_account" {
-				result := IsTokenVersionStale(context.Background(), nil, nil)
-				require.Equal(t, tt.expectedStale, result)
+				_, isStale := CheckTokenVersion(context.Background(), nil, nil)
+				require.Equal(t, tt.expectedStale, isStale)
 				return
 		REDACTED
 
-			// 模拟 IsTokenVersionStale 的核心逻辑
+			// 模拟 CheckTokenVersion 的核心逻辑
 			account := tt.account
 			currentVersion := account.GetCredentialAsInt64("_token_version")
 
@@ -537,11 +537,11 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestIsTokenVersionStale_NilRepo(t *testing.T) {
+func TestCheckTokenVersion_NilRepo(t *testing.T) {
 	account := &Account{
 		ID:          1,
 REDACTED"_token_version": int64(100)REDACTED,
 REDACTED
-	result := IsTokenVersionStale(context.Background(), account, nil)
-	require.False(t, result) // nil repo，默认允许缓存
+	_, isStale := CheckTokenVersion(context.Background(), account, nil)
+	require.False(t, isStale) // nil repo，默认允许缓存
 REDACTED
