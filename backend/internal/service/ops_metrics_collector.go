@@ -285,6 +285,11 @@ REDACTED
 		return fmt.Errorf("query error counts: %w", err)
 REDACTED
 
+	accountSwitchCount, err := c.queryAccountSwitchCount(ctx, windowStart, windowEnd)
+	if err != nil {
+		return fmt.Errorf("query account switch counts: %w", err)
+REDACTED
+
 	windowSeconds := windowEnd.Sub(windowStart).Seconds()
 	if windowSeconds <= 0 {
 		windowSeconds = 60
@@ -310,6 +315,7 @@ REDACTED
 		Upstream529Count:             upstream529,
 
 		TokenConsumed: tokenConsumed,
+		AccountSwitchCount: accountSwitchCount,
 		QPS:           float64Ptr(roundTo1DP(qps)),
 		TPS:           float64Ptr(roundTo1DP(tps)),
 
@@ -549,6 +555,27 @@ WHERE created_at >= $1 AND created_at < $2`
 		return 0, 0, 0, 0, 0, 0, err
 REDACTED
 	return errorTotal, businessLimited, errorSLA, upstreamExcl429529, upstream429, upstream529, nil
+REDACTED
+
+func (c *OpsMetricsCollector) queryAccountSwitchCount(ctx context.Context, start, end time.Time) (int64, error) {
+	q := `
+SELECT
+  COALESCE(SUM(CASE
+    WHEN ev->>'kind' IN ('failover', 'retry_exhausted_failover', 'failover_on_400') THEN 1
+    ELSE 0
+  END), 0) AS switch_count
+FROM ops_error_logs o
+CROSS JOIN LATERAL jsonb_array_elements(
+  COALESCE(NULLIF(o.upstream_errors, 'null'::jsonb), '[]'::jsonb)
+) AS ev
+WHERE o.created_at >= $1 AND o.created_at < $2
+  AND o.is_count_tokens = FALSE`
+
+	var count int64
+	if err := c.db.QueryRowContext(ctx, q, start, end).Scan(&count); err != nil {
+		return 0, err
+REDACTED
+	return count, nil
 REDACTED
 
 type opsCollectedSystemStats struct {

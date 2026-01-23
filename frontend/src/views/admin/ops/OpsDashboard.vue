@@ -40,9 +40,17 @@
       />
 
       <!-- Row: Concurrency + Throughput -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div class="lg:col-span-1 min-h-[360px]">
           <OpsConcurrencyCard :platform-filter="platform" :group-id-filter="groupId" :refresh-token="dashboardRefreshToken" />
+        </div>
+        <div class="lg:col-span-1 min-h-[360px]">
+          <OpsSwitchRateTrendChart
+            :points="switchTrend?.points ?? []"
+            :loading="loadingSwitchTrend"
+            :time-range="switchTrendTimeRange"
+            :fullscreen="isFullscreen"
+          />
         </div>
         <div class="lg:col-span-2 min-h-[360px]">
           <OpsThroughputTrendChart
@@ -138,6 +146,7 @@ import OpsErrorDetailsModal from './components/OpsErrorDetailsModal.vue'
 import OpsErrorTrendChart from './components/OpsErrorTrendChart.vue'
 import OpsLatencyChart from './components/OpsLatencyChart.vue'
 import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
+import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset REDACTED from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
@@ -168,6 +177,9 @@ const groupId = ref<number | null>(null)
 const queryMode = ref<QueryMode>('auto')
 const customStartTime = ref<string | null>(null)
 const customEndTime = ref<string | null>(null)
+const switchTrendWindowHours = 5
+const switchTrendTimeRange = `${switchTrendWindowHoursREDACTEDh`
+const switchTrendWindowMs = switchTrendWindowHours * 60 * 60 * 1000
 
 const QUERY_KEYS = {
   timeRange: 'tr',
@@ -321,6 +333,9 @@ const metricThresholds = ref<OpsMetricThresholds | null>(null)
 
 const throughputTrend = ref<OpsThroughputTrendResponse | null>(null)
 const loadingTrend = ref(false)
+
+const switchTrend = ref<OpsThroughputTrendResponse | null>(null)
+const loadingSwitchTrend = ref(false)
 
 const latencyHistogram = ref<OpsLatencyHistogramResponse | null>(null)
 const loadingLatency = ref(false)
@@ -491,6 +506,19 @@ function buildApiParams() {
   return params
 REDACTED
 
+function buildSwitchTrendParams() {
+  const params: any = {
+    platform: platform.value || undefined,
+    group_id: groupId.value ?? undefined,
+    mode: queryMode.value
+  REDACTED
+  const endTime = new Date()
+  const startTime = new Date(endTime.getTime() - switchTrendWindowMs)
+  params.start_time = startTime.toISOString()
+  params.end_time = endTime.toISOString()
+  return params
+REDACTED
+
 async function refreshOverviewWithCancel(fetchSeq: number, signal: AbortSignal) {
   if (!opsEnabled.value) return
   try {
@@ -501,6 +529,24 @@ async function refreshOverviewWithCancel(fetchSeq: number, signal: AbortSignal) 
     if (fetchSeq !== dashboardFetchSeq || isCanceledRequest(err)) return
     overview.value = null
     appStore.showError(err?.message || t('admin.ops.failedToLoadOverview'))
+  REDACTED
+REDACTED
+
+async function refreshSwitchTrendWithCancel(fetchSeq: number, signal: AbortSignal) {
+  if (!opsEnabled.value) return
+  loadingSwitchTrend.value = true
+  try {
+    const data = await opsAPI.getThroughputTrend(buildSwitchTrendParams(), { signal REDACTED)
+    if (fetchSeq !== dashboardFetchSeq) return
+    switchTrend.value = data
+  REDACTED catch (err: any) {
+    if (fetchSeq !== dashboardFetchSeq || isCanceledRequest(err)) return
+    switchTrend.value = null
+    appStore.showError(err?.message || t('admin.ops.failedToLoadSwitchTrend'))
+  REDACTED finally {
+    if (fetchSeq === dashboardFetchSeq) {
+      loadingSwitchTrend.value = false
+    REDACTED
   REDACTED
 REDACTED
 
@@ -600,6 +646,7 @@ async function fetchData() {
     await Promise.all([
       refreshOverviewWithCancel(fetchSeq, dashboardFetchController.signal),
       refreshThroughputTrendWithCancel(fetchSeq, dashboardFetchController.signal),
+      refreshSwitchTrendWithCancel(fetchSeq, dashboardFetchController.signal),
       refreshLatencyHistogramWithCancel(fetchSeq, dashboardFetchController.signal),
       refreshErrorTrendWithCancel(fetchSeq, dashboardFetchController.signal),
       refreshErrorDistributionWithCancel(fetchSeq, dashboardFetchController.signal)
