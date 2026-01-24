@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -56,22 +57,31 @@ func (r *AntigravityTokenRefresher) Refresh(ctx context.Context, account *Accoun
 REDACTED
 
 	newCredentials := r.antigravityOAuthService.BuildAccountCredentials(tokenInfo)
+	// 合并旧的 credentials，保留新 credentials 中不存在的字段
 	for k, v := range account.Credentials {
 		if _, exists := newCredentials[k]; !exists {
 			newCredentials[k] = v
 	REDACTED
 REDACTED
 
-	// 如果 project_id 获取失败但之前有 project_id，不返回错误（只是临时网络故障）
-	// 只有真正缺失 project_id（从未获取过）时才返回错误
+	// 特殊处理 project_id：如果新值为空但旧值非空，保留旧值
+	// 这确保了即使 LoadCodeAssist 失败，project_id 也不会丢失
+	if newProjectID, _ := newCredentials["project_id"].(string); newProjectID == "" {
+		if oldProjectID := strings.TrimSpace(account.GetCredential("project_id")); oldProjectID != "" {
+			newCredentials["project_id"] = oldProjectID
+	REDACTED
+REDACTED
+
+	// 如果 project_id 获取失败，只记录警告，不返回错误
+	// LoadCodeAssist 失败可能是临时网络问题，应该允许重试而不是立即标记为不可重试错误
+	// Token 刷新本身是成功的（access_token 和 refresh_token 已更新）
 	if tokenInfo.ProjectIDMissing {
-		// 检查是否保留了旧的 project_id
 		if tokenInfo.ProjectID != "" {
-			// 有旧的 project_id，只是本次获取失败，记录警告但不返回错误
+			// 有旧的 project_id，本次获取失败，保留旧值
 			log.Printf("[AntigravityTokenRefresher] Account %d: LoadCodeAssist 临时失败，保留旧 project_id", account.ID)
 	REDACTED else {
-			// 真正缺失 project_id，返回错误
-			return newCredentials, fmt.Errorf("missing_project_id: 账户缺少project id，可能无法使用Antigravity")
+			// 从未获取过 project_id，本次也失败，但不返回错误以允许下次重试
+			log.Printf("[AntigravityTokenRefresher] Account %d: LoadCodeAssist 失败，project_id 缺失，但 token 已更新，将在下次刷新时重试", account.ID)
 	REDACTED
 REDACTED
 
