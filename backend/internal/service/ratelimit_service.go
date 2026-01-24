@@ -343,7 +343,7 @@ REDACTED
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
-	// OpenAI 平台：解析 x-codex-* 响应头
+	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
@@ -353,12 +353,38 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			slog.Info("openai_account_rate_limited", "account_id", account.ID, "reset_at", *resetAt)
 			return
 	REDACTED
-		// 如果解析失败，继续使用默认逻辑
 REDACTED
 
-	// 解析重置时间戳
+	// 2. 尝试从响应头解析重置时间（Anthropic）
 	resetTimestamp := headers.Get("anthropic-ratelimit-unified-reset")
+
+	// 3. 如果响应头没有，尝试从响应体解析（OpenAI usage_limit_reached, Gemini）
 	if resetTimestamp == "" {
+		switch account.Platform {
+		case PlatformOpenAI:
+			// 尝试解析 OpenAI 的 usage_limit_reached 错误
+			if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
+				resetTime := time.Unix(*resetAt, 0)
+				if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
+					slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+					return
+			REDACTED
+				slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform, "reset_at", resetTime, "reset_in", time.Until(resetTime).Truncate(time.Second))
+				return
+		REDACTED
+		case PlatformGemini, PlatformAntigravity:
+			// 尝试解析 Gemini 格式（用于其他平台）
+			if resetAt := ParseGeminiRateLimitResetTime(responseBody); resetAt != nil {
+				resetTime := time.Unix(*resetAt, 0)
+				if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
+					slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+					return
+			REDACTED
+				slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform, "reset_at", resetTime, "reset_in", time.Until(resetTime).Truncate(time.Second))
+				return
+		REDACTED
+	REDACTED
+
 		// 没有重置时间，使用默认5分钟
 		resetAt := time.Now().Add(5 * time.Minute)
 		if s.shouldScopeClaudeSonnetRateLimit(account, responseBody) {
@@ -369,6 +395,7 @@ REDACTED
 		REDACTED
 			return
 	REDACTED
+		slog.Warn("rate_limit_no_reset_time", "account_id", account.ID, "platform", account.Platform, "using_default", "5m")
 		if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
 			slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 	REDACTED
@@ -475,6 +502,60 @@ REDACTED
 		resetAt := now.Add(time.Duration(maxResetSecs) * time.Second)
 		slog.Info("openai_429_using_max_reset", "max_reset_seconds", maxResetSecs, "reset_at", resetAt)
 		return &resetAt
+REDACTED
+
+	return nil
+REDACTED
+
+// parseOpenAIRateLimitResetTime 解析 OpenAI 格式的 429 响应，返回重置时间的 Unix 时间戳
+// OpenAI 的 usage_limit_reached 错误格式：
+//
+//	{
+//	  "error": {
+//	    "message": "The usage limit has been reached",
+//	    "type": "usage_limit_reached",
+//	    "resets_at": 1769404154,
+//	    "resets_in_seconds": 133107
+//	  REDACTED
+//REDACTED
+func parseOpenAIRateLimitResetTime(body []byte) *int64 {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil
+REDACTED
+
+	errObj, ok := parsed["error"].(map[string]any)
+	if !ok {
+		return nil
+REDACTED
+
+	// 检查是否为 usage_limit_reached 或 rate_limit_exceeded 类型
+	errType, _ := errObj["type"].(string)
+	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" {
+		return nil
+REDACTED
+
+	// 优先使用 resets_at（Unix 时间戳）
+	if resetsAt, ok := errObj["resets_at"].(float64); ok {
+		ts := int64(resetsAt)
+		return &ts
+REDACTED
+	if resetsAt, ok := errObj["resets_at"].(string); ok {
+		if ts, err := strconv.ParseInt(resetsAt, 10, 64); err == nil {
+			return &ts
+	REDACTED
+REDACTED
+
+	// 如果没有 resets_at，尝试使用 resets_in_seconds
+	if resetsInSeconds, ok := errObj["resets_in_seconds"].(float64); ok {
+		ts := time.Now().Unix() + int64(resetsInSeconds)
+		return &ts
+REDACTED
+	if resetsInSeconds, ok := errObj["resets_in_seconds"].(string); ok {
+		if sec, err := strconv.ParseInt(resetsInSeconds, 10, 64); err == nil {
+			ts := time.Now().Unix() + sec
+			return &ts
+	REDACTED
 REDACTED
 
 	return nil
