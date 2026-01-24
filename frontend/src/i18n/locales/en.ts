@@ -271,7 +271,36 @@ export default {
       code: 'Code',
       state: 'State',
       fullUrl: 'Full URL'
-    REDACTED
+    REDACTED,
+    // Forgot password
+    forgotPassword: 'Forgot password?',
+    forgotPasswordTitle: 'Reset Your Password',
+    forgotPasswordHint: 'Enter your email address and we will send you a link to reset your password.',
+    sendResetLink: 'Send Reset Link',
+    sendingResetLink: 'Sending...',
+    sendResetLinkFailed: 'Failed to send reset link. Please try again.',
+    resetEmailSent: 'Reset Link Sent',
+    resetEmailSentHint: 'If an account exists with this email, you will receive a password reset link shortly. Please check your inbox and spam folder.',
+    backToLogin: 'Back to Login',
+    rememberedPassword: 'Remembered your password?',
+    // Reset password
+    resetPasswordTitle: 'Set New Password',
+    resetPasswordHint: 'Enter your new password below.',
+    newPassword: 'New Password',
+    newPasswordPlaceholder: 'Enter your new password',
+    confirmPassword: 'Confirm Password',
+    confirmPasswordPlaceholder: 'Confirm your new password',
+    confirmPasswordRequired: 'Please confirm your password',
+    passwordsDoNotMatch: 'Passwords do not match',
+    resetPassword: 'Reset Password',
+    resettingPassword: 'Resetting...',
+    resetPasswordFailed: 'Failed to reset password. Please try again.',
+    passwordResetSuccess: 'Password Reset Successful',
+    passwordResetSuccessHint: 'Your password has been reset. You can now sign in with your new password.',
+    invalidResetLink: 'Invalid Reset Link',
+    invalidResetLinkHint: 'This password reset link is invalid or has expired. Please request a new one.',
+    requestNewResetLink: 'Request New Reset Link',
+    invalidOrExpiredToken: 'The password reset link is invalid or has expired. Please request a new one.'
   REDACTED,
 
   // Dashboard
@@ -2743,7 +2772,9 @@ export default {
         emailVerification: 'Email Verification',
         emailVerificationHint: 'Require email verification for new registrations',
         promoCode: 'Promo Code',
-        promoCodeHint: 'Allow users to use promo codes during registration'
+        promoCodeHint: 'Allow users to use promo codes during registration',
+        passwordReset: 'Password Reset',
+        passwordResetHint: 'Allow users to reset their password via email'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',

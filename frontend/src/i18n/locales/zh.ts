@@ -268,7 +268,36 @@ export default {
       code: '授权码',
       state: '状态',
       fullUrl: '完整URL'
-    REDACTED
+    REDACTED,
+    // 忘记密码
+    forgotPassword: '忘记密码？',
+    forgotPasswordTitle: '重置密码',
+    forgotPasswordHint: '输入您的邮箱地址，我们将向您发送密码重置链接。',
+    sendResetLink: '发送重置链接',
+    sendingResetLink: '发送中...',
+    sendResetLinkFailed: '发送重置链接失败，请重试。',
+    resetEmailSent: '重置链接已发送',
+    resetEmailSentHint: '如果该邮箱已注册，您将很快收到密码重置链接。请检查您的收件箱和垃圾邮件文件夹。',
+    backToLogin: '返回登录',
+    rememberedPassword: '想起密码了？',
+    // 重置密码
+    resetPasswordTitle: '设置新密码',
+    resetPasswordHint: '请在下方输入您的新密码。',
+    newPassword: '新密码',
+    newPasswordPlaceholder: '输入新密码',
+    confirmPassword: '确认密码',
+    confirmPasswordPlaceholder: '再次输入新密码',
+    confirmPasswordRequired: '请确认您的密码',
+    passwordsDoNotMatch: '两次输入的密码不一致',
+    resetPassword: '重置密码',
+    resettingPassword: '重置中...',
+    resetPasswordFailed: '重置密码失败，请重试。',
+    passwordResetSuccess: '密码重置成功',
+    passwordResetSuccessHint: '您的密码已重置。现在可以使用新密码登录。',
+    invalidResetLink: '无效的重置链接',
+    invalidResetLinkHint: '此密码重置链接无效或已过期。请重新请求一个新链接。',
+    requestNewResetLink: '请求新的重置链接',
+    invalidOrExpiredToken: '密码重置链接无效或已过期。请重新请求一个新链接。'
   REDACTED,
 
   // Dashboard
@@ -2896,7 +2925,9 @@ export default {
         emailVerification: '邮箱验证',
         emailVerificationHint: '新用户注册时需要验证邮箱',
         promoCode: '优惠码',
-        promoCodeHint: '允许用户在注册时使用优惠码'
+        promoCodeHint: '允许用户在注册时使用优惠码',
+        passwordReset: '忘记密码',
+        passwordResetHint: '允许用户通过邮箱重置密码'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',

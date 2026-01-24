@@ -48,6 +48,7 @@ REDACTED
 		RegistrationEnabled:                  settings.RegistrationEnabled,
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
 		PromoCodeEnabled:                     settings.PromoCodeEnabled,
+		PasswordResetEnabled:                 settings.PasswordResetEnabled,
 		SMTPHost:                             settings.SMTPHost,
 		SMTPPort:                             settings.SMTPPort,
 		SMTPUsername:                         settings.SMTPUsername,
@@ -89,9 +90,10 @@ REDACTED
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled bool `json:"registration_enabled"`
-	EmailVerifyEnabled  bool `json:"email_verify_enabled"`
-	PromoCodeEnabled    bool `json:"promo_code_enabled"`
+	RegistrationEnabled  bool `json:"registration_enabled"`
+	EmailVerifyEnabled   bool `json:"email_verify_enabled"`
+	PromoCodeEnabled     bool `json:"promo_code_enabled"`
+	PasswordResetEnabled bool `json:"password_reset_enabled"`
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -243,6 +245,7 @@ REDACTED
 		RegistrationEnabled:        req.RegistrationEnabled,
 		EmailVerifyEnabled:         req.EmailVerifyEnabled,
 		PromoCodeEnabled:           req.PromoCodeEnabled,
+		PasswordResetEnabled:       req.PasswordResetEnabled,
 		SMTPHost:                   req.SMTPHost,
 		SMTPPort:                   req.SMTPPort,
 		SMTPUsername:               req.SMTPUsername,
@@ -318,6 +321,7 @@ REDACTED
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
 		PromoCodeEnabled:                     updatedSettings.PromoCodeEnabled,
+		PasswordResetEnabled:                 updatedSettings.PasswordResetEnabled,
 		SMTPHost:                             updatedSettings.SMTPHost,
 		SMTPPort:                             updatedSettings.SMTPPort,
 		SMTPUsername:                         updatedSettings.SMTPUsername,
@@ -383,6 +387,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 REDACTED
 	if before.EmailVerifyEnabled != after.EmailVerifyEnabled {
 		changed = append(changed, "email_verify_enabled")
+REDACTED
+	if before.PasswordResetEnabled != after.PasswordResetEnabled {
+		changed = append(changed, "password_reset_enabled")
 REDACTED
 	if before.SMTPHost != after.SMTPHost {
 		changed = append(changed, "smtp_host")

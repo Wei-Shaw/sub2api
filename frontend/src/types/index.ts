@@ -71,6 +71,7 @@ export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
   promo_code_enabled: boolean
+  password_reset_enabled: boolean
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string

@@ -452,6 +452,7 @@ REDACTED{
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"promo_code_enabled": true,
+					"password_reset_enabled": false,
 					"smtp_host": "smtp.example.com",
 					"smtp_port": 587,
 					"smtp_username": "user",
