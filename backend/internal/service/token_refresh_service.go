@@ -237,7 +237,8 @@ REDACTED
 REDACTED
 
 // isNonRetryableRefreshError 判断是否为不可重试的刷新错误
-// 这些错误通常表示凭证已失效，需要用户重新授权
+// 这些错误通常表示凭证已失效或配置确实缺失，需要用户重新授权
+// 注意：missing_project_id 错误只在真正缺失（从未获取过）时返回，临时获取失败不会返回此错误
 func isNonRetryableRefreshError(err error) bool {
 	if err == nil {
 		return false

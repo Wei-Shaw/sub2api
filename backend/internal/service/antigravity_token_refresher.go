@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -61,9 +62,17 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 如果 project_id 获取失败，返回 credentials 但同时返回错误让账户被标记
+	// 如果 project_id 获取失败但之前有 project_id，不返回错误（只是临时网络故障）
+	// 只有真正缺失 project_id（从未获取过）时才返回错误
 	if tokenInfo.ProjectIDMissing {
-		return newCredentials, fmt.Errorf("missing_project_id: 账户缺少project id，可能无法使用Antigravity")
+		// 检查是否保留了旧的 project_id
+		if tokenInfo.ProjectID != "" {
+			// 有旧的 project_id，只是本次获取失败，记录警告但不返回错误
+			log.Printf("[AntigravityTokenRefresher] Account %d: LoadCodeAssist 临时失败，保留旧 project_id", account.ID)
+	REDACTED else {
+			// 真正缺失 project_id，返回错误
+			return newCredentials, fmt.Errorf("missing_project_id: 账户缺少project id，可能无法使用Antigravity")
+	REDACTED
 REDACTED
 
 	return newCredentials, nil
