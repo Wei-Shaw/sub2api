@@ -24,6 +24,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/web"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 //go:embed VERSION
@@ -122,7 +124,14 @@ REDACTED
 	log.Printf("Setup wizard available at http://%s", addr)
 	log.Println("Complete the setup wizard to configure Sub2API")
 
-	if err := r.Run(addr); err != nil {
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           h2c.NewHandler(r, &http2.Server{REDACTED),
+		ReadHeaderTimeout: 30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+REDACTED
+
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("Failed to start setup server: %v", err)
 REDACTED
 REDACTED

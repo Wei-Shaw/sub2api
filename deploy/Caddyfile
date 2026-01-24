@@ -87,6 +87,7 @@ REDACTED
 		
 		# 连接池优化
 		transport http {
+			versions h2c h1
 			keepalive 120s
 			keepalive_idle_conns 256
 			read_buffer 16KB

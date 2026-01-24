@@ -358,6 +358,29 @@ Invalid base URL: invalid url scheme: http
 ./sub2api
 ```
 
+#### HTTP/2 (h2c) 与 HTTP/1.1 回退
+
+后端明文端口默认支持 h2c，并保留 HTTP/1.1 回退用于 WebSocket 与旧客户端。浏览器通常不支持 h2c，性能收益主要在反向代理或内网链路。
+
+**反向代理示例（Caddy）：**
+
+```caddyfile
+transport http {
+	versions h2c h1
+REDACTED
+```
+
+**验证：**
+
+```bash
+# h2c prior knowledge
+curl --http2-prior-knowledge -I http://localhost:8080/health
+# HTTP/1.1 回退
+curl --http1.1 -I http://localhost:8080/health
+# WebSocket 回退验证（需管理员 token）
+websocat -H="Sec-WebSocket-Protocol: sub2api-admin, jwt.<ADMIN_TOKEN>" ws://localhost:8080/api/v1/admin/ops/ws/qps
+```
+
 #### 开发模式
 
 ```bash
