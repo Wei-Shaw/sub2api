@@ -330,12 +330,10 @@ REDACTED
 		newExpiresAt = MaxExpiresAt
 REDACTED
 
-	// 如果是缩短（负数），检查新的过期时间必须大于当前时间
-	if days < 0 {
-		now := time.Now()
-		if !newExpiresAt.After(now) {
-			return nil, ErrAdjustWouldExpire
-	REDACTED
+	// 检查新的过期时间必须大于当前时间
+	now := time.Now()
+	if !newExpiresAt.After(now) {
+		return nil, ErrAdjustWouldExpire
 REDACTED
 
 	if err := s.userSubRepo.ExtendExpiry(ctx, subscriptionID, newExpiresAt); err != nil {
@@ -383,6 +381,7 @@ func (s *SubscriptionService) ListUserSubscriptions(ctx context.Context, userID 
 		return nil, err
 REDACTED
 	normalizeExpiredWindows(subs)
+	normalizeSubscriptionStatus(subs)
 	return subs, nil
 REDACTED
 
@@ -404,17 +403,19 @@ func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupI
 		return nil, nil, err
 REDACTED
 	normalizeExpiredWindows(subs)
+	normalizeSubscriptionStatus(subs)
 	return subs, pag, nil
 REDACTED
 
-// List 获取所有订阅（分页，支持筛选）
-func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status string) ([]UserSubscription, *pagination.PaginationResult, error) {
+// List 获取所有订阅（分页，支持筛选和排序）
+func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status, sortBy, sortOrder string) ([]UserSubscription, *pagination.PaginationResult, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status)
+	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status, sortBy, sortOrder)
 	if err != nil {
 		return nil, nil, err
 REDACTED
 	normalizeExpiredWindows(subs)
+	normalizeSubscriptionStatus(subs)
 	return subs, pag, nil
 REDACTED
 
@@ -437,6 +438,18 @@ func normalizeExpiredWindows(subs []UserSubscription) {
 		if sub.NeedsMonthlyReset() {
 			sub.MonthlyWindowStart = nil
 			sub.MonthlyUsageUSD = 0
+	REDACTED
+REDACTED
+REDACTED
+
+// normalizeSubscriptionStatus 根据实际过期时间修正状态（仅影响返回数据，不影响数据库）
+// 这确保前端显示正确的状态，即使定时任务尚未更新数据库
+func normalizeSubscriptionStatus(subs []UserSubscription) {
+	now := time.Now()
+	for i := range subs {
+		sub := &subs[i]
+		if sub.Status == SubscriptionStatusActive && !sub.ExpiresAt.After(now) {
+			sub.Status = SubscriptionStatusExpired
 	REDACTED
 REDACTED
 REDACTED
@@ -657,11 +670,6 @@ REDACTED
 REDACTED
 
 	return progresses, nil
-REDACTED
-
-// UpdateExpiredSubscriptions 更新过期订阅状态（定时任务调用）
-func (s *SubscriptionService) UpdateExpiredSubscriptions(ctx context.Context) (int64, error) {
-	return s.userSubRepo.BatchUpdateExpiredStatus(ctx)
 REDACTED
 
 // ValidateSubscription 验证订阅是否有效

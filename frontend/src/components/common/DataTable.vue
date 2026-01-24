@@ -181,6 +181,10 @@ import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 
+const emit = defineEmits<{
+  sort: [key: string, order: 'asc' | 'desc']
+REDACTED>()
+
 // 表格容器引用
 const tableWrapperRef = ref<HTMLElement | null>(null)
 const isScrollable = ref(false)
@@ -289,6 +293,11 @@ interface Props {
    * If provided, DataTable will load the stored sort state on mount.
    */
   sortStorageKey?: string
+  /**
+   * Enable server-side sorting mode. When true, clicking sort headers
+   * will emit 'sort' events instead of performing client-side sorting.
+   */
+  serverSideSort?: boolean
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -296,7 +305,8 @@ const props = withDefaults(defineProps<Props>(), {
   stickyFirstColumn: true,
   stickyActionsColumn: true,
   expandableActions: true,
-  defaultSortOrder: 'asc'
+  defaultSortOrder: 'asc',
+  serverSideSort: false
 REDACTED)
 
 const sortKey = ref<string>('')
@@ -448,16 +458,26 @@ watch(actionsExpanded, async () => {
 REDACTED)
 
 const handleSort = (key: string) => {
+  let newOrder: 'asc' | 'desc' = 'asc'
   if (sortKey.value === key) {
-    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
-  REDACTED else {
+    newOrder = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  REDACTED
+
+  if (props.serverSideSort) {
+    // Server-side sort mode: emit event and update internal state for UI feedback
     sortKey.value = key
-    sortOrder.value = 'asc'
+    sortOrder.value = newOrder
+    emit('sort', key, newOrder)
+  REDACTED else {
+    // Client-side sort mode: just update internal state
+    sortKey.value = key
+    sortOrder.value = newOrder
   REDACTED
 REDACTED
 
 const sortedData = computed(() => {
-  if (!sortKey.value || !props.data) return props.data
+  // Server-side sort mode: return data as-is (server handles sorting)
+  if (props.serverSideSort || !sortKey.value || !props.data) return props.data
 
   const key = sortKey.value
   const order = sortOrder.value
