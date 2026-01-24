@@ -197,7 +197,7 @@ REDACTED{
 						UserID:          1,
 						GroupID:         10,
 						StartsAt:        deps.now,
-						ExpiresAt:       deps.now.Add(24 * time.Hour),
+						ExpiresAt:       time.Date(2099, 1, 2, 3, 4, 5, 0, time.UTC), // 使用未来日期避免 normalizeSubscriptionStatus 标记为过期
 						Status:          service.SubscriptionStatusActive,
 						DailyUsageUSD:   1.23,
 						WeeklyUsageUSD:  2.34,
@@ -222,7 +222,7 @@ REDACTED{
 						"user_id": 1,
 						"group_id": 10,
 						"starts_at": "2025-01-02T03:04:05Z",
-						"expires_at": "2025-01-03T03:04:05Z",
+						"expires_at": "2099-01-02T03:04:05Z",
 						"status": "active",
 						"daily_window_start": null,
 						"weekly_window_start": null,
