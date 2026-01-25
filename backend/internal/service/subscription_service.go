@@ -324,14 +324,29 @@ REDACTED
 		days = -MaxValidityDays
 REDACTED
 
+	now := time.Now()
+	isExpired := !sub.ExpiresAt.After(now)
+
+	// 如果订阅已过期，不允许负向调整
+	if isExpired && days < 0 {
+		return nil, infraerrors.BadRequest("CANNOT_SHORTEN_EXPIRED", "cannot shorten an expired subscription")
+REDACTED
+
 	// 计算新的过期时间
-	newExpiresAt := sub.ExpiresAt.AddDate(0, 0, days)
+	var newExpiresAt time.Time
+	if isExpired {
+		// 已过期：从当前时间开始增加天数
+		newExpiresAt = now.AddDate(0, 0, days)
+REDACTED else {
+		// 未过期：从原过期时间增加/减少天数
+		newExpiresAt = sub.ExpiresAt.AddDate(0, 0, days)
+REDACTED
+
 	if newExpiresAt.After(MaxExpiresAt) {
 		newExpiresAt = MaxExpiresAt
 REDACTED
 
 	// 检查新的过期时间必须大于当前时间
-	now := time.Now()
 	if !newExpiresAt.After(now) {
 		return nil, ErrAdjustWouldExpire
 REDACTED
