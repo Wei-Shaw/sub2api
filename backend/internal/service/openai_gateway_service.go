@@ -60,6 +60,92 @@ type OpenAICodexUsageSnapshot struct {
 	UpdatedAt                   string   `json:"updated_at,omitempty"`
 REDACTED
 
+// NormalizedCodexLimits contains normalized 5h/7d rate limit data
+type NormalizedCodexLimits struct {
+	Used5hPercent   *float64
+	Reset5hSeconds  *int
+	Window5hMinutes *int
+	Used7dPercent   *float64
+	Reset7dSeconds  *int
+	Window7dMinutes *int
+REDACTED
+
+// Normalize converts primary/secondary fields to canonical 5h/7d fields.
+// Strategy: Compare window_minutes to determine which is 5h vs 7d.
+// Returns nil if snapshot is nil or has no useful data.
+func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
+	if s == nil {
+		return nil
+REDACTED
+
+	result := &NormalizedCodexLimits{REDACTED
+
+	primaryMins := 0
+	secondaryMins := 0
+	hasPrimaryWindow := false
+	hasSecondaryWindow := false
+
+	if s.PrimaryWindowMinutes != nil {
+		primaryMins = *s.PrimaryWindowMinutes
+		hasPrimaryWindow = true
+REDACTED
+	if s.SecondaryWindowMinutes != nil {
+		secondaryMins = *s.SecondaryWindowMinutes
+		hasSecondaryWindow = true
+REDACTED
+
+	// Determine mapping based on window_minutes
+	use5hFromPrimary := false
+	use7dFromPrimary := false
+
+	if hasPrimaryWindow && hasSecondaryWindow {
+		// Both known: smaller window is 5h, larger is 7d
+		if primaryMins < secondaryMins {
+			use5hFromPrimary = true
+	REDACTED else {
+			use7dFromPrimary = true
+	REDACTED
+REDACTED else if hasPrimaryWindow {
+		// Only primary known: classify by threshold (<=360 min = 6h -> 5h window)
+		if primaryMins <= 360 {
+			use5hFromPrimary = true
+	REDACTED else {
+			use7dFromPrimary = true
+	REDACTED
+REDACTED else if hasSecondaryWindow {
+		// Only secondary known: classify by threshold
+		if secondaryMins <= 360 {
+			// 5h from secondary, so primary (if any data) is 7d
+			use7dFromPrimary = true
+	REDACTED else {
+			// 7d from secondary, so primary (if any data) is 5h
+			use5hFromPrimary = true
+	REDACTED
+REDACTED else {
+		// No window_minutes: fall back to legacy assumption (primary=7d, secondary=5h)
+		use7dFromPrimary = true
+REDACTED
+
+	// Assign values
+	if use5hFromPrimary {
+		result.Used5hPercent = s.PrimaryUsedPercent
+		result.Reset5hSeconds = s.PrimaryResetAfterSeconds
+		result.Window5hMinutes = s.PrimaryWindowMinutes
+		result.Used7dPercent = s.SecondaryUsedPercent
+		result.Reset7dSeconds = s.SecondaryResetAfterSeconds
+		result.Window7dMinutes = s.SecondaryWindowMinutes
+REDACTED else if use7dFromPrimary {
+		result.Used7dPercent = s.PrimaryUsedPercent
+		result.Reset7dSeconds = s.PrimaryResetAfterSeconds
+		result.Window7dMinutes = s.PrimaryWindowMinutes
+		result.Used5hPercent = s.SecondaryUsedPercent
+		result.Reset5hSeconds = s.SecondaryResetAfterSeconds
+		result.Window5hMinutes = s.SecondaryWindowMinutes
+REDACTED
+
+	return result
+REDACTED
+
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
 	InputTokens              int `json:"input_tokens"`
@@ -867,7 +953,7 @@ REDACTED
 
 	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
 	if account.Type == AccountTypeOAuth {
-		if snapshot := extractCodexUsageHeaders(resp.Header); snapshot != nil {
+		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 	REDACTED
 REDACTED
@@ -1665,8 +1751,9 @@ REDACTED
 	return nil
 REDACTED
 
-// extractCodexUsageHeaders extracts Codex usage limits from response headers
-func extractCodexUsageHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
+// ParseCodexRateLimitHeaders extracts Codex usage limits from response headers.
+// Exported for use in ratelimit_service when handling OpenAI 429 responses.
+func ParseCodexRateLimitHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
 	snapshot := &OpenAICodexUsageSnapshot{REDACTED
 	hasData := false
 
@@ -1740,6 +1827,8 @@ REDACTED
 
 	// Convert snapshot to map for merging into Extra
 	updates := make(map[string]any)
+
+	// Save raw primary/secondary fields for debugging/tracing
 	if snapshot.PrimaryUsedPercent != nil {
 		updates["codex_primary_used_percent"] = *snapshot.PrimaryUsedPercent
 REDACTED
@@ -1763,109 +1852,25 @@ REDACTED
 REDACTED
 	updates["codex_usage_updated_at"] = snapshot.UpdatedAt
 
-	// Normalize to canonical 5h/7d fields based on window_minutes
-	// This fixes the issue where OpenAI's primary/secondary naming is reversed
-	// Strategy: Compare the two windows and assign the smaller one to 5h, larger one to 7d
-
-	// IMPORTANT: We can only reliably determine window type from window_minutes field
-	// The reset_after_seconds is remaining time, not window size, so it cannot be used for comparison
-
-	var primaryWindowMins, secondaryWindowMins int
-	var hasPrimaryWindow, hasSecondaryWindow bool
-
-	// Only use window_minutes for reliable window size comparison
-	if snapshot.PrimaryWindowMinutes != nil {
-		primaryWindowMins = *snapshot.PrimaryWindowMinutes
-		hasPrimaryWindow = true
-REDACTED
-
-	if snapshot.SecondaryWindowMinutes != nil {
-		secondaryWindowMins = *snapshot.SecondaryWindowMinutes
-		hasSecondaryWindow = true
-REDACTED
-
-	// Determine which is 5h and which is 7d
-	var use5hFromPrimary, use7dFromPrimary bool
-	var use5hFromSecondary, use7dFromSecondary bool
-
-	if hasPrimaryWindow && hasSecondaryWindow {
-		// Both window sizes known: compare and assign smaller to 5h, larger to 7d
-		if primaryWindowMins < secondaryWindowMins {
-			use5hFromPrimary = true
-			use7dFromSecondary = true
-	REDACTED else {
-			use5hFromSecondary = true
-			use7dFromPrimary = true
+	// Normalize to canonical 5h/7d fields
+	if normalized := snapshot.Normalize(); normalized != nil {
+		if normalized.Used5hPercent != nil {
+			updates["codex_5h_used_percent"] = *normalized.Used5hPercent
 	REDACTED
-REDACTED else if hasPrimaryWindow {
-		// Only primary window size known: classify by absolute threshold
-		if primaryWindowMins <= 360 {
-			use5hFromPrimary = true
-	REDACTED else {
-			use7dFromPrimary = true
+		if normalized.Reset5hSeconds != nil {
+			updates["codex_5h_reset_after_seconds"] = *normalized.Reset5hSeconds
 	REDACTED
-REDACTED else if hasSecondaryWindow {
-		// Only secondary window size known: classify by absolute threshold
-		if secondaryWindowMins <= 360 {
-			use5hFromSecondary = true
-	REDACTED else {
-			use7dFromSecondary = true
+		if normalized.Window5hMinutes != nil {
+			updates["codex_5h_window_minutes"] = *normalized.Window5hMinutes
 	REDACTED
-REDACTED else {
-		// No window_minutes available: cannot reliably determine window types
-		// Fall back to legacy assumption (may be incorrect)
-		// Assume primary=7d, secondary=5h based on historical observation
-		if snapshot.SecondaryUsedPercent != nil || snapshot.SecondaryResetAfterSeconds != nil || snapshot.SecondaryWindowMinutes != nil {
-			use5hFromSecondary = true
+		if normalized.Used7dPercent != nil {
+			updates["codex_7d_used_percent"] = *normalized.Used7dPercent
 	REDACTED
-		if snapshot.PrimaryUsedPercent != nil || snapshot.PrimaryResetAfterSeconds != nil || snapshot.PrimaryWindowMinutes != nil {
-			use7dFromPrimary = true
+		if normalized.Reset7dSeconds != nil {
+			updates["codex_7d_reset_after_seconds"] = *normalized.Reset7dSeconds
 	REDACTED
-REDACTED
-
-	// Write canonical 5h fields
-	if use5hFromPrimary {
-		if snapshot.PrimaryUsedPercent != nil {
-			updates["codex_5h_used_percent"] = *snapshot.PrimaryUsedPercent
-	REDACTED
-		if snapshot.PrimaryResetAfterSeconds != nil {
-			updates["codex_5h_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
-	REDACTED
-		if snapshot.PrimaryWindowMinutes != nil {
-			updates["codex_5h_window_minutes"] = *snapshot.PrimaryWindowMinutes
-	REDACTED
-REDACTED else if use5hFromSecondary {
-		if snapshot.SecondaryUsedPercent != nil {
-			updates["codex_5h_used_percent"] = *snapshot.SecondaryUsedPercent
-	REDACTED
-		if snapshot.SecondaryResetAfterSeconds != nil {
-			updates["codex_5h_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
-	REDACTED
-		if snapshot.SecondaryWindowMinutes != nil {
-			updates["codex_5h_window_minutes"] = *snapshot.SecondaryWindowMinutes
-	REDACTED
-REDACTED
-
-	// Write canonical 7d fields
-	if use7dFromPrimary {
-		if snapshot.PrimaryUsedPercent != nil {
-			updates["codex_7d_used_percent"] = *snapshot.PrimaryUsedPercent
-	REDACTED
-		if snapshot.PrimaryResetAfterSeconds != nil {
-			updates["codex_7d_reset_after_seconds"] = *snapshot.PrimaryResetAfterSeconds
-	REDACTED
-		if snapshot.PrimaryWindowMinutes != nil {
-			updates["codex_7d_window_minutes"] = *snapshot.PrimaryWindowMinutes
-	REDACTED
-REDACTED else if use7dFromSecondary {
-		if snapshot.SecondaryUsedPercent != nil {
-			updates["codex_7d_used_percent"] = *snapshot.SecondaryUsedPercent
-	REDACTED
-		if snapshot.SecondaryResetAfterSeconds != nil {
-			updates["codex_7d_reset_after_seconds"] = *snapshot.SecondaryResetAfterSeconds
-	REDACTED
-		if snapshot.SecondaryWindowMinutes != nil {
-			updates["codex_7d_window_minutes"] = *snapshot.SecondaryWindowMinutes
+		if normalized.Window7dMinutes != nil {
+			updates["codex_7d_window_minutes"] = *normalized.Window7dMinutes
 	REDACTED
 REDACTED
 

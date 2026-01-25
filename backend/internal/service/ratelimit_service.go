@@ -343,6 +343,19 @@ REDACTED
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
+	// OpenAI 平台：解析 x-codex-* 响应头
+	if account.Platform == PlatformOpenAI {
+		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+				return
+		REDACTED
+			slog.Info("openai_account_rate_limited", "account_id", account.ID, "reset_at", *resetAt)
+			return
+	REDACTED
+		// 如果解析失败，继续使用默认逻辑
+REDACTED
+
 	// 解析重置时间戳
 	resetTimestamp := headers.Get("anthropic-ratelimit-unified-reset")
 	if resetTimestamp == "" {
@@ -417,6 +430,54 @@ REDACTED
 		return false
 REDACTED
 	return strings.Contains(msg, "sonnet")
+REDACTED
+
+// calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间
+// 返回 nil 表示无法从响应头中确定重置时间
+func (s *RateLimitService) calculateOpenAI429ResetTime(headers http.Header) *time.Time {
+	snapshot := ParseCodexRateLimitHeaders(headers)
+	if snapshot == nil {
+		return nil
+REDACTED
+
+	normalized := snapshot.Normalize()
+	if normalized == nil {
+		return nil
+REDACTED
+
+	now := time.Now()
+
+	// 判断哪个限制被触发（used_percent >= 100）
+	is7dExhausted := normalized.Used7dPercent != nil && *normalized.Used7dPercent >= 100
+	is5hExhausted := normalized.Used5hPercent != nil && *normalized.Used5hPercent >= 100
+
+	// 优先使用被触发限制的重置时间
+	if is7dExhausted && normalized.Reset7dSeconds != nil {
+		resetAt := now.Add(time.Duration(*normalized.Reset7dSeconds) * time.Second)
+		slog.Info("openai_429_7d_limit_exhausted", "reset_after_seconds", *normalized.Reset7dSeconds, "reset_at", resetAt)
+		return &resetAt
+REDACTED
+	if is5hExhausted && normalized.Reset5hSeconds != nil {
+		resetAt := now.Add(time.Duration(*normalized.Reset5hSeconds) * time.Second)
+		slog.Info("openai_429_5h_limit_exhausted", "reset_after_seconds", *normalized.Reset5hSeconds, "reset_at", resetAt)
+		return &resetAt
+REDACTED
+
+	// 都未达到100%但收到429，使用较长的重置时间
+	var maxResetSecs int
+	if normalized.Reset7dSeconds != nil && *normalized.Reset7dSeconds > maxResetSecs {
+		maxResetSecs = *normalized.Reset7dSeconds
+REDACTED
+	if normalized.Reset5hSeconds != nil && *normalized.Reset5hSeconds > maxResetSecs {
+		maxResetSecs = *normalized.Reset5hSeconds
+REDACTED
+	if maxResetSecs > 0 {
+		resetAt := now.Add(time.Duration(maxResetSecs) * time.Second)
+		slog.Info("openai_429_using_max_reset", "max_reset_seconds", maxResetSecs, "reset_at", resetAt)
+		return &resetAt
+REDACTED
+
+	return nil
 REDACTED
 
 // handle529 处理529过载错误
