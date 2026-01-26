@@ -305,6 +305,19 @@ REDACTED
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
 REDACTED
 
+// GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
+// Returns 0 if no binding exists or on error.
+func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
+	if sessionHash == "" || s.cache == nil {
+		return 0, nil
+REDACTED
+	accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+	if err != nil {
+		return 0, err
+REDACTED
+	return accountID, nil
+REDACTED
+
 func (s *GatewayService) extractCacheableContent(parsed *ParsedRequest) string {
 	if parsed == nil {
 		return ""

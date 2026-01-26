@@ -367,8 +367,10 @@ REDACTED
 				Text:    block.Thinking,
 				Thought: true,
 		REDACTED
-			// 保留原有 signature（Claude 模型需要有效的 signature）
-			if block.Signature != "" {
+			// signature 处理：
+			// - Claude 模型（allowDummyThought=false）：必须是上游返回的真实 signature（dummy 视为缺失）
+			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
+			if block.Signature != "" && (allowDummyThought || block.Signature != dummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
 		REDACTED else if !allowDummyThought {
 				// Claude 模型需要有效 signature；在缺失时降级为普通文本，并在上层禁用 thinking mode。
@@ -407,12 +409,12 @@ REDACTED
 			REDACTED,
 		REDACTED
 			// tool_use 的 signature 处理：
-			// - Gemini 模型：使用 dummy signature（跳过 thought_signature 校验）
-			// - Claude 模型：透传上游返回的真实 signature（Vertex/Google 需要完整签名链路）
-			if allowDummyThought {
-				part.ThoughtSignature = dummyThoughtSignature
-		REDACTED else if block.Signature != "" && block.Signature != dummyThoughtSignature {
+			// - Claude 模型（allowDummyThought=false）：必须是上游返回的真实 signature（dummy 视为缺失）
+			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
+			if block.Signature != "" && (allowDummyThought || block.Signature != dummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
+		REDACTED else if allowDummyThought {
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
 
