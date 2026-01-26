@@ -169,6 +169,10 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 		// 如果有新凭证，先更新（即使有错误也要保存 token）
 		if newCredentials != nil {
+			// 记录刷新版本时间戳，用于解决缓存一致性问题
+			// TokenProvider 写入缓存前会检查此版本，如果版本已更新则跳过写入
+			newCredentials["_token_version"] = time.Now().UnixMilli()
+
 			account.Credentials = newCredentials
 			if saveErr := s.accountRepo.Update(ctx, account); saveErr != nil {
 				return fmt.Errorf("failed to save credentials: %w", saveErr)
@@ -233,7 +237,8 @@ REDACTED
 REDACTED
 
 // isNonRetryableRefreshError 判断是否为不可重试的刷新错误
-// 这些错误通常表示凭证已失效，需要用户重新授权
+// 这些错误通常表示凭证已失效或配置确实缺失，需要用户重新授权
+// 注意：missing_project_id 错误只在真正缺失（从未获取过）时返回，临时获取失败不会返回此错误
 func isNonRetryableRefreshError(err error) bool {
 	if err == nil {
 		return false

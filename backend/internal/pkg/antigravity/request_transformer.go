@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -369,8 +367,10 @@ REDACTED
 				Text:    block.Thinking,
 				Thought: true,
 		REDACTED
-			// 保留原有 signature（Claude 模型需要有效的 signature）
-			if block.Signature != "" {
+			// signature 处理：
+			// - Claude 模型（allowDummyThought=false）：必须是上游返回的真实 signature（dummy 视为缺失）
+			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
+			if block.Signature != "" && (allowDummyThought || block.Signature != dummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
 		REDACTED else if !allowDummyThought {
 				// Claude 模型需要有效 signature；在缺失时降级为普通文本，并在上层禁用 thinking mode。
@@ -409,12 +409,12 @@ REDACTED
 			REDACTED,
 		REDACTED
 			// tool_use 的 signature 处理：
-			// - Gemini 模型：使用 dummy signature（跳过 thought_signature 校验）
-			// - Claude 模型：透传上游返回的真实 signature（Vertex/Google 需要完整签名链路）
-			if allowDummyThought {
-				part.ThoughtSignature = dummyThoughtSignature
-		REDACTED else if block.Signature != "" && block.Signature != dummyThoughtSignature {
+			// - Claude 模型（allowDummyThought=false）：必须是上游返回的真实 signature（dummy 视为缺失）
+			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
+			if block.Signature != "" && (allowDummyThought || block.Signature != dummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
+		REDACTED else if allowDummyThought {
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
 
@@ -594,11 +594,14 @@ REDACTED
 	REDACTED
 
 		// 清理 JSON Schema
-		params := cleanJSONSchema(inputSchema)
+		// 1. 深度清理 [undefined] 值
+		DeepCleanUndefined(inputSchema)
+		// 2. 转换为符合 Gemini v1internal 的 schema
+		params := CleanJSONSchema(inputSchema)
 		// 为 nil schema 提供默认值
 		if params == nil {
 			params = map[string]any{
-				"type":       "OBJECT",
+				"type":       "object", // lowercase type
 				"properties": map[string]any{REDACTED,
 		REDACTED
 	REDACTED
@@ -630,237 +633,4 @@ REDACTED
 	return []GeminiToolDeclaration{{
 		FunctionDeclarations: funcDecls,
 REDACTEDREDACTED
-REDACTED
-
-// cleanJSONSchema 清理 JSON Schema，移除 Antigravity/Gemini 不支持的字段
-// 参考 proxycast 的实现，确保 schema 符合 JSON Schema draft 2020-12
-func cleanJSONSchema(schema map[string]any) map[string]any {
-	if schema == nil {
-		return nil
-REDACTED
-	cleaned := cleanSchemaValue(schema, "$")
-	result, ok := cleaned.(map[string]any)
-	if !ok {
-		return nil
-REDACTED
-
-	// 确保有 type 字段（默认 OBJECT）
-	if _, hasType := result["type"]; !hasType {
-		result["type"] = "OBJECT"
-REDACTED
-
-	// 确保有 properties 字段（默认空对象）
-	if _, hasProps := result["properties"]; !hasProps {
-		result["properties"] = make(map[string]any)
-REDACTED
-
-	// 验证 required 中的字段都存在于 properties 中
-	if required, ok := result["required"].([]any); ok {
-		if props, ok := result["properties"].(map[string]any); ok {
-			validRequired := make([]any, 0, len(required))
-			for _, r := range required {
-				if reqName, ok := r.(string); ok {
-					if _, exists := props[reqName]; exists {
-						validRequired = append(validRequired, r)
-				REDACTED
-			REDACTED
-		REDACTED
-			if len(validRequired) > 0 {
-				result["required"] = validRequired
-		REDACTED else {
-				delete(result, "required")
-		REDACTED
-	REDACTED
-REDACTED
-
-	return result
-REDACTED
-
-var schemaValidationKeys = map[string]bool{
-	"minLength":         true,
-	"maxLength":         true,
-	"pattern":           true,
-	"minimum":           true,
-	"maximum":           true,
-	"exclusiveMinimum":  true,
-	"exclusiveMaximum":  true,
-	"multipleOf":        true,
-	"uniqueItems":       true,
-	"minItems":          true,
-	"maxItems":          true,
-	"minProperties":     true,
-	"maxProperties":     true,
-	"patternProperties": true,
-	"propertyNames":     true,
-	"dependencies":      true,
-	"dependentSchemas":  true,
-	"dependentRequired": true,
-REDACTED
-
-var warnedSchemaKeys sync.Map
-
-func schemaCleaningWarningsEnabled() bool {
-	// 可通过环境变量强制开关，方便排查：SUB2API_SCHEMA_CLEAN_WARN=true/false
-	if v := strings.TrimSpace(os.Getenv("SUB2API_SCHEMA_CLEAN_WARN")); v != "" {
-		switch strings.ToLower(v) {
-		case "1", "true", "yes", "on":
-			return true
-		case "0", "false", "no", "off":
-			return false
-	REDACTED
-REDACTED
-	// 默认：非 release 模式下输出（debug/test）
-	return gin.Mode() != gin.ReleaseMode
-REDACTED
-
-func warnSchemaKeyRemovedOnce(key, path string) {
-	if !schemaCleaningWarningsEnabled() {
-		return
-REDACTED
-	if !schemaValidationKeys[key] {
-		return
-REDACTED
-	if _, loaded := warnedSchemaKeys.LoadOrStore(key, struct{REDACTED{REDACTED); loaded {
-		return
-REDACTED
-	log.Printf("[SchemaClean] removed unsupported JSON Schema validation field key=%q path=%q", key, path)
-REDACTED
-
-// excludedSchemaKeys 不支持的 schema 字段
-// 基于 Claude API (Vertex AI) 的实际支持情况
-// 支持: type, description, enum, properties, required, additionalProperties, items
-// 不支持: minItems, maxItems, minLength, maxLength, pattern, minimum, maximum 等验证字段
-var excludedSchemaKeys = map[string]bool{
-	// 元 schema 字段
-	"$schema": true,
-	"$id":     true,
-	"$ref":    true,
-
-	// 字符串验证（Gemini 不支持）
-	"minLength": true,
-	"maxLength": true,
-	"pattern":   true,
-
-	// 数字验证（Claude API 通过 Vertex AI 不支持这些字段）
-	"minimum":          true,
-	"maximum":          true,
-	"exclusiveMinimum": true,
-	"exclusiveMaximum": true,
-	"multipleOf":       true,
-
-	// 数组验证（Claude API 通过 Vertex AI 不支持这些字段）
-	"uniqueItems": true,
-	"minItems":    true,
-	"maxItems":    true,
-
-	// 组合 schema（Gemini 不支持）
-	"oneOf":       true,
-	"anyOf":       true,
-	"allOf":       true,
-	"not":         true,
-	"if":          true,
-	"then":        true,
-	"else":        true,
-	"$defs":       true,
-	"definitions": true,
-
-	// 对象验证（仅保留 properties/required/additionalProperties）
-	"minProperties":     true,
-	"maxProperties":     true,
-	"patternProperties": true,
-	"propertyNames":     true,
-	"dependencies":      true,
-	"dependentSchemas":  true,
-	"dependentRequired": true,
-
-	// 其他不支持的字段
-	"default":          true,
-	"const":            true,
-	"examples":         true,
-	"deprecated":       true,
-	"readOnly":         true,
-	"writeOnly":        true,
-	"contentMediaType": true,
-	"contentEncoding":  true,
-
-	// Claude 特有字段
-	"strict": true,
-REDACTED
-
-// cleanSchemaValue 递归清理 schema 值
-func cleanSchemaValue(value any, path string) any {
-	switch v := value.(type) {
-	case map[string]any:
-		result := make(map[string]any)
-		for k, val := range v {
-			// 跳过不支持的字段
-			if excludedSchemaKeys[k] {
-				warnSchemaKeyRemovedOnce(k, path)
-				continue
-		REDACTED
-
-			// 特殊处理 type 字段
-			if k == "type" {
-				result[k] = cleanTypeValue(val)
-				continue
-		REDACTED
-
-			// 特殊处理 format 字段：只保留 Gemini 支持的 format 值
-			if k == "format" {
-				if formatStr, ok := val.(string); ok {
-					// Gemini 只支持 date-time, date, time
-					if formatStr == "date-time" || formatStr == "date" || formatStr == "time" {
-						result[k] = val
-				REDACTED
-					// 其他 format 值直接跳过
-			REDACTED
-				continue
-		REDACTED
-
-			// 特殊处理 additionalProperties：Claude API 只支持布尔值，不支持 schema 对象
-			if k == "additionalProperties" {
-				if boolVal, ok := val.(bool); ok {
-					result[k] = boolVal
-			REDACTED else {
-					// 如果是 schema 对象，转换为 false（更安全的默认值）
-					result[k] = false
-			REDACTED
-				continue
-		REDACTED
-
-			// 递归清理所有值
-			result[k] = cleanSchemaValue(val, path+"."+k)
-	REDACTED
-		return result
-
-	case []any:
-		// 递归处理数组中的每个元素
-		cleaned := make([]any, 0, len(v))
-		for i, item := range v {
-			cleaned = append(cleaned, cleanSchemaValue(item, fmt.Sprintf("%s[%d]", path, i)))
-	REDACTED
-		return cleaned
-
-	default:
-		return value
-REDACTED
-REDACTED
-
-// cleanTypeValue 处理 type 字段，转换为大写
-func cleanTypeValue(value any) any {
-	switch v := value.(type) {
-	case string:
-		return strings.ToUpper(v)
-	case []any:
-		// 联合类型 ["string", "null"] -> 取第一个非 null 类型
-		for _, t := range v {
-			if ts, ok := t.(string); ok && ts != "null" {
-				return strings.ToUpper(ts)
-		REDACTED
-	REDACTED
-		// 如果只有 null，返回 STRING
-		return "STRING"
-	default:
-		return value
-REDACTED
 REDACTED

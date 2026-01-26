@@ -193,20 +193,20 @@ REDACTED{
 				// 普通用户订阅接口不应包含 assigned_* / notes 等管理员字段。
 				deps.userSubRepo.SetByUserID(1, []service.UserSubscription{
 					{
-						ID:           501,
-						UserID:       1,
-						GroupID:      10,
-						StartsAt:     deps.now,
-						ExpiresAt:    deps.now.Add(24 * time.Hour),
-						Status:       service.SubscriptionStatusActive,
+						ID:              501,
+						UserID:          1,
+						GroupID:         10,
+						StartsAt:        deps.now,
+						ExpiresAt:       time.Date(2099, 1, 2, 3, 4, 5, 0, time.UTC), // 使用未来日期避免 normalizeSubscriptionStatus 标记为过期
+						Status:          service.SubscriptionStatusActive,
 						DailyUsageUSD:   1.23,
 						WeeklyUsageUSD:  2.34,
 						MonthlyUsageUSD: 3.45,
-						AssignedBy:    ptr(int64(999)),
-						AssignedAt:    deps.now,
-						Notes:         "admin-note",
-						CreatedAt:     deps.now,
-						UpdatedAt:     deps.now,
+						AssignedBy:      ptr(int64(999)),
+						AssignedAt:      deps.now,
+						Notes:           "admin-note",
+						CreatedAt:       deps.now,
+						UpdatedAt:       deps.now,
 				REDACTED,
 			REDACTED)
 		REDACTED,
@@ -222,7 +222,7 @@ REDACTED{
 						"user_id": 1,
 						"group_id": 10,
 						"starts_at": "2025-01-02T03:04:05Z",
-						"expires_at": "2025-01-03T03:04:05Z",
+						"expires_at": "2099-01-02T03:04:05Z",
 						"status": "active",
 						"daily_window_start": null,
 						"weekly_window_start": null,
@@ -452,6 +452,9 @@ REDACTED{
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"promo_code_enabled": true,
+					"password_reset_enabled": false,
+					"totp_enabled": false,
+					"totp_encryption_key_configured": false,
 					"smtp_host": "smtp.example.com",
 					"smtp_port": 587,
 					"smtp_username": "user",
@@ -595,7 +598,7 @@ REDACTED
 	settingService := service.NewSettingService(settingRepo, cfg)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil)
-	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil)
@@ -752,6 +755,18 @@ REDACTED
 
 func (r *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
 	return 0, errors.New("not implemented")
+REDACTED
+
+func (r *stubUserRepo) UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error {
+	return errors.New("not implemented")
+REDACTED
+
+func (r *stubUserRepo) EnableTotp(ctx context.Context, userID int64) error {
+	return errors.New("not implemented")
+REDACTED
+
+func (r *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
+	return errors.New("not implemented")
 REDACTED
 
 type stubApiKeyCache struct{REDACTED
@@ -1176,7 +1191,7 @@ REDACTED
 func (stubUserSubscriptionRepo) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.UserSubscription, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
-func (stubUserSubscriptionRepo) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
+func (stubUserSubscriptionRepo) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status, sortBy, sortOrder string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
 func (stubUserSubscriptionRepo) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {

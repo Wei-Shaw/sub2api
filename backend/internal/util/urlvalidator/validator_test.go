@@ -21,4 +21,31 @@ REDACTED
 	if _, err := ValidateURLFormat("https://example.com:bad", true); err == nil {
 		t.Fatalf("expected invalid port to fail")
 REDACTED
+
+	// 验证末尾斜杠被移除
+	normalized, err := ValidateURLFormat("https://example.com/", false)
+	if err != nil {
+		t.Fatalf("expected trailing slash url to pass, got %v", err)
+REDACTED
+	if normalized != "https://example.com" {
+		t.Fatalf("expected trailing slash to be removed, got %s", normalized)
+REDACTED
+
+	// 验证多个末尾斜杠被移除
+	normalized, err = ValidateURLFormat("https://example.com///", false)
+	if err != nil {
+		t.Fatalf("expected multiple trailing slashes to pass, got %v", err)
+REDACTED
+	if normalized != "https://example.com" {
+		t.Fatalf("expected all trailing slashes to be removed, got %s", normalized)
+REDACTED
+
+	// 验证带路径的 URL 末尾斜杠被移除
+	normalized, err = ValidateURLFormat("https://example.com/api/v1/", false)
+	if err != nil {
+		t.Fatalf("expected trailing slash url with path to pass, got %v", err)
+REDACTED
+	if normalized != "https://example.com/api/v1" {
+		t.Fatalf("expected trailing slash to be removed from path, got %s", normalized)
+REDACTED
 REDACTED

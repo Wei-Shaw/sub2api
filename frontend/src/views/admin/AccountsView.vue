@@ -17,10 +17,58 @@
             @create="showCreate = true"
           >
             <template #after>
+              <!-- Auto Refresh Dropdown -->
+              <div class="relative" ref="autoRefreshDropdownRef">
+                <button
+                  @click="
+                    showAutoRefreshDropdown = !showAutoRefreshDropdown;
+                    showColumnDropdown = false
+                  "
+                  class="btn btn-secondary px-2 md:px-3"
+                  :title="t('admin.accounts.autoRefresh')"
+                >
+                  <Icon name="refresh" size="sm" :class="[autoRefreshEnabled ? 'animate-spin' : '']" />
+                  <span class="hidden md:inline">
+                    {{
+                      autoRefreshEnabled
+                        ? t('admin.accounts.autoRefreshCountdown', { seconds: autoRefreshCountdown REDACTED)
+                        : t('admin.accounts.autoRefresh')
+                    REDACTEDREDACTED
+                  </span>
+                </button>
+                <div
+                  v-if="showAutoRefreshDropdown"
+                  class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <div class="p-2">
+                    <button
+                      @click="setAutoRefreshEnabled(!autoRefreshEnabled)"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <span>{{ t('admin.accounts.enableAutoRefresh') REDACTEDREDACTED</span>
+                      <Icon v-if="autoRefreshEnabled" name="check" size="sm" class="text-primary-500" />
+                    </button>
+                    <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                    <button
+                      v-for="sec in autoRefreshIntervals"
+                      :key="sec"
+                      @click="setAutoRefreshInterval(sec)"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <span>{{ autoRefreshIntervalLabel(sec) REDACTEDREDACTED</span>
+                      <Icon v-if="autoRefreshIntervalSeconds === sec" name="check" size="sm" class="text-primary-500" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <!-- Column Settings Dropdown -->
               <div class="relative" ref="columnDropdownRef">
                 <button
-                  @click="showColumnDropdown = !showColumnDropdown"
+                  @click="
+                    showColumnDropdown = !showColumnDropdown;
+                    showAutoRefreshDropdown = false
+                  "
                   class="btn btn-secondary px-2 md:px-3"
                   :title="t('admin.users.columnSettings')"
                 >
@@ -53,12 +101,29 @@
       </template>
       <template #table>
         <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @edit="showBulkEdit = true" @clear="selIds = []" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
-        <DataTable :columns="cols" :data="accounts" :loading="loading" row-key="id">
+        <DataTable
+          :columns="cols"
+          :data="accounts"
+          :loading="loading"
+          row-key="id"
+          default-sort-key="name"
+          default-sort-order="asc"
+          :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
+        >
           <template #cell-select="{ row REDACTED">
             <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
-          <template #cell-name="{ value REDACTED">
-            <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+          <template #cell-name="{ row, value REDACTED">
+            <div class="flex flex-col">
+              <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
+              <span
+                v-if="row.extra?.email_address"
+                class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
+                :title="row.extra.email_address"
+              >
+                {{ row.extra.email_address REDACTEDREDACTED
+              </span>
+            </div>
           </template>
           <template #cell-notes="{ value REDACTED">
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value REDACTEDREDACTED</span>
@@ -161,6 +226,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
+import { useIntervalFn REDACTED from '@vueuse/core'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useAuthStore REDACTED from '@/stores/auth'
@@ -221,6 +287,26 @@ const hiddenColumns = reactive<Set<string>>(new Set())
 const DEFAULT_HIDDEN_COLUMNS = ['proxy', 'notes', 'priority', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 
+// Sorting settings
+const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
+
+// Auto refresh settings
+const showAutoRefreshDropdown = ref(false)
+const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
+const AUTO_REFRESH_STORAGE_KEY = 'account-auto-refresh'
+const autoRefreshIntervals = [5, 10, 15, 30] as const
+const autoRefreshEnabled = ref(false)
+const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30)
+const autoRefreshCountdown = ref(0)
+
+const autoRefreshIntervalLabel = (sec: number) => {
+  if (sec === 5) return t('admin.accounts.refreshInterval5s')
+  if (sec === 10) return t('admin.accounts.refreshInterval10s')
+  if (sec === 15) return t('admin.accounts.refreshInterval15s')
+  if (sec === 30) return t('admin.accounts.refreshInterval30s')
+  return `${secREDACTEDs`
+REDACTED
+
 const loadSavedColumns = () => {
   try {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
@@ -244,6 +330,60 @@ const saveColumnsToStorage = () => {
   REDACTED
 REDACTED
 
+const loadSavedAutoRefresh = () => {
+  try {
+    const saved = localStorage.getItem(AUTO_REFRESH_STORAGE_KEY)
+    if (!saved) return
+    const parsed = JSON.parse(saved) as { enabled?: boolean; interval_seconds?: number REDACTED
+    autoRefreshEnabled.value = parsed.enabled === true
+    const interval = Number(parsed.interval_seconds)
+    if (autoRefreshIntervals.includes(interval as any)) {
+      autoRefreshIntervalSeconds.value = interval as any
+    REDACTED
+  REDACTED catch (e) {
+    console.error('Failed to load saved auto refresh settings:', e)
+  REDACTED
+REDACTED
+
+const saveAutoRefreshToStorage = () => {
+  try {
+    localStorage.setItem(
+      AUTO_REFRESH_STORAGE_KEY,
+      JSON.stringify({
+        enabled: autoRefreshEnabled.value,
+        interval_seconds: autoRefreshIntervalSeconds.value
+      REDACTED)
+    )
+  REDACTED catch (e) {
+    console.error('Failed to save auto refresh settings:', e)
+  REDACTED
+REDACTED
+
+if (typeof window !== 'undefined') {
+  loadSavedColumns()
+  loadSavedAutoRefresh()
+REDACTED
+
+const setAutoRefreshEnabled = (enabled: boolean) => {
+  autoRefreshEnabled.value = enabled
+  saveAutoRefreshToStorage()
+  if (enabled) {
+    autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
+    resumeAutoRefresh()
+  REDACTED else {
+    pauseAutoRefresh()
+    autoRefreshCountdown.value = 0
+  REDACTED
+REDACTED
+
+const setAutoRefreshInterval = (seconds: (typeof autoRefreshIntervals)[number]) => {
+  autoRefreshIntervalSeconds.value = seconds
+  saveAutoRefreshToStorage()
+  if (autoRefreshEnabled.value) {
+    autoRefreshCountdown.value = seconds
+  REDACTED
+REDACTED
+
 const toggleColumn = (key: string) => {
   if (hiddenColumns.has(key)) {
     hiddenColumns.delete(key)
@@ -259,6 +399,44 @@ const { items: accounts, loading, params, pagination, load, reload, debouncedRel
   fetchFn: adminAPI.accounts.list,
   initialParams: { platform: '', type: '', status: '', search: '' REDACTED
 REDACTED)
+
+const isAnyModalOpen = computed(() => {
+  return (
+    showCreate.value ||
+    showEdit.value ||
+    showSync.value ||
+    showBulkEdit.value ||
+    showTempUnsched.value ||
+    showDeleteDialog.value ||
+    showReAuth.value ||
+    showTest.value ||
+    showStats.value
+  )
+REDACTED)
+
+const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useIntervalFn(
+  async () => {
+    if (!autoRefreshEnabled.value) return
+    if (document.hidden) return
+    if (loading.value) return
+    if (isAnyModalOpen.value) return
+    if (menu.show) return
+
+    if (autoRefreshCountdown.value <= 0) {
+      autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
+      try {
+        await load()
+      REDACTED catch (e) {
+        console.error('Auto refresh failed:', e)
+      REDACTED
+      return
+    REDACTED
+
+    autoRefreshCountdown.value -= 1
+  REDACTED,
+  1000,
+  { immediate: false REDACTED
+)
 
 // All available columns
 const allColumns = computed(() => {
@@ -512,10 +690,12 @@ const handleClickOutside = (event: MouseEvent) => {
   if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
     showColumnDropdown.value = false
   REDACTED
+  if (autoRefreshDropdownRef.value && !autoRefreshDropdownRef.value.contains(target)) {
+    showAutoRefreshDropdown.value = false
+  REDACTED
 REDACTED
 
 onMounted(async () => {
-  loadSavedColumns()
   load()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
@@ -526,6 +706,13 @@ onMounted(async () => {
   REDACTED
   window.addEventListener('scroll', handleScroll, true)
   document.addEventListener('click', handleClickOutside)
+
+  if (autoRefreshEnabled.value) {
+    autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
+    resumeAutoRefresh()
+  REDACTED else {
+    pauseAutoRefresh()
+  REDACTED
 REDACTED)
 
 onUnmounted(() => {

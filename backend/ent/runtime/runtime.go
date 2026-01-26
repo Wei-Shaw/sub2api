@@ -736,6 +736,10 @@ REDACTED()
 	userDescNotes := userFields[7].Descriptor()
 	// user.DefaultNotes holds the default value on creation for the notes field.
 	user.DefaultNotes = userDescNotes.Default.(string)
+	// userDescTotpEnabled is the schema descriptor for totp_enabled field.
+	userDescTotpEnabled := userFields[9].Descriptor()
+	// user.DefaultTotpEnabled holds the default value on creation for the totp_enabled field.
+	user.DefaultTotpEnabled = userDescTotpEnabled.Default.(bool)
 	userallowedgroupFields := schema.UserAllowedGroup{REDACTED.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

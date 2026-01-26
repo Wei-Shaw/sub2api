@@ -1,18 +1,32 @@
 <template>
   <div class="flex items-center gap-2">
-    <!-- Main Status Badge -->
-    <button
-      v-if="isTempUnschedulable"
-      type="button"
-      :class="['badge text-xs', statusClass, 'cursor-pointer']"
-      :title="t('admin.accounts.status.viewTempUnschedDetails')"
-      @click="handleTempUnschedClick"
-    >
-      {{ statusText REDACTEDREDACTED
-    </button>
-    <span v-else :class="['badge text-xs', statusClass]">
-      {{ statusText REDACTEDREDACTED
-    </span>
+    <!-- Rate Limit Display (429) - Two-line layout -->
+    <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
+      <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') REDACTEDREDACTED</span>
+      <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ rateLimitCountdown REDACTEDREDACTED</span>
+    </div>
+
+    <!-- Overload Display (529) - Two-line layout -->
+    <div v-else-if="isOverloaded" class="flex flex-col items-center gap-1">
+      <span class="badge text-xs badge-danger">{{ t('admin.accounts.status.overloaded') REDACTEDREDACTED</span>
+      <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ overloadCountdown REDACTEDREDACTED</span>
+    </div>
+
+    <!-- Main Status Badge (shown when not rate limited/overloaded) -->
+    <template v-else>
+      <button
+        v-if="isTempUnschedulable"
+        type="button"
+        :class="['badge text-xs', statusClass, 'cursor-pointer']"
+        :title="t('admin.accounts.status.viewTempUnschedDetails')"
+        @click="handleTempUnschedClick"
+      >
+        {{ statusText REDACTEDREDACTED
+      </button>
+      <span v-else :class="['badge text-xs', statusClass]">
+        {{ statusText REDACTEDREDACTED
+      </span>
+    </template>
 
     <!-- Error Info Indicator -->
     <div v-if="hasError && account.error_message" class="group/error relative">
@@ -42,44 +56,6 @@
         ></div>
       </div>
     </div>
-
-    <!-- Rate Limit Indicator (429) -->
-    <div v-if="isRateLimited" class="group relative">
-      <span
-        class="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-      >
-        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
-        429
-      </span>
-      <!-- Tooltip -->
-      <div
-        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
-      >
-        {{ t('admin.accounts.status.rateLimitedUntil', { time: formatTime(account.rate_limit_reset_at) REDACTED) REDACTEDREDACTED
-        <div
-          class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
-        ></div>
-      </div>
-    </div>
-
-    <!-- Overload Indicator (529) -->
-    <div v-if="isOverloaded" class="group relative">
-      <span
-        class="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
-      >
-        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
-        529
-      </span>
-      <!-- Tooltip -->
-      <div
-        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
-      >
-        {{ t('admin.accounts.status.overloadedUntil', { time: formatTime(account.overload_until) REDACTED) REDACTEDREDACTED
-        <div
-          class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
-        ></div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -87,8 +63,7 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import type { Account REDACTED from '@/types'
-import { formatTime REDACTED from '@/utils/format'
-import Icon from '@/components/icons/Icon.vue'
+import { formatCountdownWithSuffix REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 
@@ -123,6 +98,16 @@ const hasError = computed(() => {
   return props.account.status === 'error'
 REDACTED)
 
+// Computed: countdown text for rate limit (429)
+const rateLimitCountdown = computed(() => {
+  return formatCountdownWithSuffix(props.account.rate_limit_reset_at)
+REDACTED)
+
+// Computed: countdown text for overload (529)
+const overloadCountdown = computed(() => {
+  return formatCountdownWithSuffix(props.account.overload_until)
+REDACTED)
+
 // Computed: status badge class
 const statusClass = computed(() => {
   if (hasError.value) {
@@ -131,7 +116,7 @@ const statusClass = computed(() => {
   if (isTempUnschedulable.value) {
     return 'badge-warning'
   REDACTED
-  if (!props.account.schedulable || isRateLimited.value || isOverloaded.value) {
+  if (!props.account.schedulable) {
     return 'badge-gray'
   REDACTED
   switch (props.account.status) {
@@ -157,9 +142,6 @@ const statusText = computed(() => {
   if (!props.account.schedulable) {
     return t('admin.accounts.status.paused')
   REDACTED
-  if (isRateLimited.value || isOverloaded.value) {
-    return t('admin.accounts.status.limited')
-  REDACTED
   return t(`admin.accounts.status.${props.account.statusREDACTED`)
 REDACTED)
 
@@ -167,5 +149,4 @@ const handleTempUnschedClick = () => {
   if (!isTempUnschedulable.value) return
   emit('show-temp-unsched', props.account)
 REDACTED
-
 </script>

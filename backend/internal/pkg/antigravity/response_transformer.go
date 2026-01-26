@@ -3,6 +3,7 @@ package antigravity
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -15,6 +16,15 @@ func TransformGeminiToClaude(geminiResp []byte, originalModel string) ([]byte, *
 		var directResp GeminiResponse
 		if err2 := json.Unmarshal(geminiResp, &directResp); err2 != nil {
 			return nil, nil, fmt.Errorf("parse gemini response: %w", err)
+	REDACTED
+		v1Resp.Response = directResp
+		v1Resp.ResponseID = directResp.ResponseID
+		v1Resp.ModelVersion = directResp.ModelVersion
+REDACTED else if len(v1Resp.Response.Candidates) == 0 {
+		// 第一次解析成功但 candidates 为空，说明是直接的 GeminiResponse 格式
+		var directResp GeminiResponse
+		if err2 := json.Unmarshal(geminiResp, &directResp); err2 != nil {
+			return nil, nil, fmt.Errorf("parse gemini response as direct: %w", err2)
 	REDACTED
 		v1Resp.Response = directResp
 		v1Resp.ResponseID = directResp.ResponseID
@@ -173,16 +183,20 @@ REDACTED
 				p.trailingSignature = ""
 		REDACTED
 
-			p.textBuilder += part.Text
-
-			// 非空 text 带签名 - 立即刷新并输出空 thinking 块
+			// 非空 text 带签名 - 特殊处理：先输出 text，再输出空 thinking 块
 			if signature != "" {
-				p.flushText()
+				p.contentBlocks = append(p.contentBlocks, ClaudeContentItem{
+					Type: "text",
+					Text: part.Text,
+			REDACTED)
 				p.contentBlocks = append(p.contentBlocks, ClaudeContentItem{
 					Type:      "thinking",
 					Thinking:  "",
 					Signature: signature,
 			REDACTED)
+		REDACTED else {
+				// 普通 text (无签名) - 累积到 builder
+				p.textBuilder += part.Text
 		REDACTED
 	REDACTED
 REDACTED
@@ -242,6 +256,14 @@ func (p *NonStreamingProcessor) buildResponse(geminiResp *GeminiResponse, respon
 	var finishReason string
 	if len(geminiResp.Candidates) > 0 {
 		finishReason = geminiResp.Candidates[0].FinishReason
+		if finishReason == "MALFORMED_FUNCTION_CALL" {
+			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in response for model %s", originalModel)
+			if geminiResp.Candidates[0].Content != nil {
+				if b, err := json.Marshal(geminiResp.Candidates[0].Content); err == nil {
+					log.Printf("[Antigravity] Malformed content: %s", string(b))
+			REDACTED
+		REDACTED
+	REDACTED
 REDACTED
 
 	stopReason := "end_turn"

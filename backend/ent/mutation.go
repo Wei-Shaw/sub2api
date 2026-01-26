@@ -14360,6 +14360,9 @@ type UserMutation struct {
 	status                        *string
 	username                      *string
 	notes                         *string
+	totp_secret_encrypted         *string
+	totp_enabled                  *bool
+	totp_enabled_at               *time.Time
 	clearedFields                 map[string]struct{REDACTED
 	api_keys                      map[int64]struct{REDACTED
 	removedapi_keys               map[int64]struct{REDACTED
@@ -14937,6 +14940,140 @@ func (m *UserMutation) ResetNotes() {
 	m.notes = nil
 REDACTED
 
+// SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
+func (m *UserMutation) SetTotpSecretEncrypted(s string) {
+	m.totp_secret_encrypted = &s
+REDACTED
+
+// TotpSecretEncrypted returns the value of the "totp_secret_encrypted" field in the mutation.
+func (m *UserMutation) TotpSecretEncrypted() (r string, exists bool) {
+	v := m.totp_secret_encrypted
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTotpSecretEncrypted returns the old "totp_secret_encrypted" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldTotpSecretEncrypted(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotpSecretEncrypted is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotpSecretEncrypted requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotpSecretEncrypted: %w", err)
+REDACTED
+	return oldValue.TotpSecretEncrypted, nil
+REDACTED
+
+// ClearTotpSecretEncrypted clears the value of the "totp_secret_encrypted" field.
+func (m *UserMutation) ClearTotpSecretEncrypted() {
+	m.totp_secret_encrypted = nil
+	m.clearedFields[user.FieldTotpSecretEncrypted] = struct{REDACTED{REDACTED
+REDACTED
+
+// TotpSecretEncryptedCleared returns if the "totp_secret_encrypted" field was cleared in this mutation.
+func (m *UserMutation) TotpSecretEncryptedCleared() bool {
+	_, ok := m.clearedFields[user.FieldTotpSecretEncrypted]
+	return ok
+REDACTED
+
+// ResetTotpSecretEncrypted resets all changes to the "totp_secret_encrypted" field.
+func (m *UserMutation) ResetTotpSecretEncrypted() {
+	m.totp_secret_encrypted = nil
+	delete(m.clearedFields, user.FieldTotpSecretEncrypted)
+REDACTED
+
+// SetTotpEnabled sets the "totp_enabled" field.
+func (m *UserMutation) SetTotpEnabled(b bool) {
+	m.totp_enabled = &b
+REDACTED
+
+// TotpEnabled returns the value of the "totp_enabled" field in the mutation.
+func (m *UserMutation) TotpEnabled() (r bool, exists bool) {
+	v := m.totp_enabled
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTotpEnabled returns the old "totp_enabled" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldTotpEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotpEnabled is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotpEnabled requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotpEnabled: %w", err)
+REDACTED
+	return oldValue.TotpEnabled, nil
+REDACTED
+
+// ResetTotpEnabled resets all changes to the "totp_enabled" field.
+func (m *UserMutation) ResetTotpEnabled() {
+	m.totp_enabled = nil
+REDACTED
+
+// SetTotpEnabledAt sets the "totp_enabled_at" field.
+func (m *UserMutation) SetTotpEnabledAt(t time.Time) {
+	m.totp_enabled_at = &t
+REDACTED
+
+// TotpEnabledAt returns the value of the "totp_enabled_at" field in the mutation.
+func (m *UserMutation) TotpEnabledAt() (r time.Time, exists bool) {
+	v := m.totp_enabled_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTotpEnabledAt returns the old "totp_enabled_at" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldTotpEnabledAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotpEnabledAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotpEnabledAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotpEnabledAt: %w", err)
+REDACTED
+	return oldValue.TotpEnabledAt, nil
+REDACTED
+
+// ClearTotpEnabledAt clears the value of the "totp_enabled_at" field.
+func (m *UserMutation) ClearTotpEnabledAt() {
+	m.totp_enabled_at = nil
+	m.clearedFields[user.FieldTotpEnabledAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// TotpEnabledAtCleared returns if the "totp_enabled_at" field was cleared in this mutation.
+func (m *UserMutation) TotpEnabledAtCleared() bool {
+	_, ok := m.clearedFields[user.FieldTotpEnabledAt]
+	return ok
+REDACTED
+
+// ResetTotpEnabledAt resets all changes to the "totp_enabled_at" field.
+func (m *UserMutation) ResetTotpEnabledAt() {
+	m.totp_enabled_at = nil
+	delete(m.clearedFields, user.FieldTotpEnabledAt)
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -15403,7 +15540,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 14)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 REDACTED
@@ -15437,6 +15574,15 @@ REDACTED
 	if m.notes != nil {
 		fields = append(fields, user.FieldNotes)
 REDACTED
+	if m.totp_secret_encrypted != nil {
+		fields = append(fields, user.FieldTotpSecretEncrypted)
+REDACTED
+	if m.totp_enabled != nil {
+		fields = append(fields, user.FieldTotpEnabled)
+REDACTED
+	if m.totp_enabled_at != nil {
+		fields = append(fields, user.FieldTotpEnabledAt)
+REDACTED
 	return fields
 REDACTED
 
@@ -15467,6 +15613,12 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Username()
 	case user.FieldNotes:
 		return m.Notes()
+	case user.FieldTotpSecretEncrypted:
+		return m.TotpSecretEncrypted()
+	case user.FieldTotpEnabled:
+		return m.TotpEnabled()
+	case user.FieldTotpEnabledAt:
+		return m.TotpEnabledAt()
 REDACTED
 	return nil, false
 REDACTED
@@ -15498,6 +15650,12 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldUsername(ctx)
 	case user.FieldNotes:
 		return m.OldNotes(ctx)
+	case user.FieldTotpSecretEncrypted:
+		return m.OldTotpSecretEncrypted(ctx)
+	case user.FieldTotpEnabled:
+		return m.OldTotpEnabled(ctx)
+	case user.FieldTotpEnabledAt:
+		return m.OldTotpEnabledAt(ctx)
 REDACTED
 	return nil, fmt.Errorf("unknown User field %s", name)
 REDACTED
@@ -15584,6 +15742,27 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetNotes(v)
 		return nil
+	case user.FieldTotpSecretEncrypted:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTotpSecretEncrypted(v)
+		return nil
+	case user.FieldTotpEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTotpEnabled(v)
+		return nil
+	case user.FieldTotpEnabledAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTotpEnabledAt(v)
+		return nil
 REDACTED
 	return fmt.Errorf("unknown User field %s", name)
 REDACTED
@@ -15644,6 +15823,12 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldDeletedAt) {
 		fields = append(fields, user.FieldDeletedAt)
 REDACTED
+	if m.FieldCleared(user.FieldTotpSecretEncrypted) {
+		fields = append(fields, user.FieldTotpSecretEncrypted)
+REDACTED
+	if m.FieldCleared(user.FieldTotpEnabledAt) {
+		fields = append(fields, user.FieldTotpEnabledAt)
+REDACTED
 	return fields
 REDACTED
 
@@ -15660,6 +15845,12 @@ func (m *UserMutation) ClearField(name string) error {
 	switch name {
 	case user.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case user.FieldTotpSecretEncrypted:
+		m.ClearTotpSecretEncrypted()
+		return nil
+	case user.FieldTotpEnabledAt:
+		m.ClearTotpEnabledAt()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User nullable field %s", name)
@@ -15701,6 +15892,15 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldNotes:
 		m.ResetNotes()
+		return nil
+	case user.FieldTotpSecretEncrypted:
+		m.ResetTotpSecretEncrypted()
+		return nil
+	case user.FieldTotpEnabled:
+		m.ResetTotpEnabled()
+		return nil
+	case user.FieldTotpEnabledAt:
+		m.ResetTotpEnabledAt()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User field %s", name)

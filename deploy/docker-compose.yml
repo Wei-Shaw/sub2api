@@ -80,6 +80,16 @@ services:
       - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24REDACTED
 
       # =======================================================================
+      # TOTP (2FA) Configuration
+      # =======================================================================
+      # IMPORTANT: Set a fixed encryption key for TOTP secrets. If left empty,
+      # a random key will be generated on each startup, causing all existing
+      # TOTP configurations to become invalid (users won't be able to login
+      # with 2FA).
+      # Generate a secure key: openssl rand -hex 32
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-REDACTED
+
+      # =======================================================================
       # Timezone Configuration
       # This affects ALL time operations in the application:
       # - Database timestamps

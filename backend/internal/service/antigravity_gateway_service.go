@@ -1305,6 +1305,14 @@ REDACTED
 		return nil, err
 REDACTED
 
+	// 清理 Schema
+	if cleanedBody, err := cleanGeminiRequest(injectedBody); err == nil {
+		injectedBody = cleanedBody
+		log.Printf("[Antigravity] Cleaned request schema in forwarded request for account %s", account.Name)
+REDACTED else {
+		log.Printf("[Antigravity] Failed to clean schema: %v", err)
+REDACTED
+
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)
 	if err != nil {
@@ -1705,6 +1713,19 @@ REDACTED
 					if u := extractGeminiUsage(parsed); u != nil {
 						usage = u
 				REDACTED
+					// Check for MALFORMED_FUNCTION_CALL
+					if candidates, ok := parsed["candidates"].([]any); ok && len(candidates) > 0 {
+						if cand, ok := candidates[0].(map[string]any); ok {
+							if fr, ok := cand["finishReason"].(string); ok && fr == "MALFORMED_FUNCTION_CALL" {
+								log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in forward stream")
+								if content, ok := cand["content"]; ok {
+									if b, err := json.Marshal(content); err == nil {
+										log.Printf("[Antigravity] Malformed content: %s", string(b))
+								REDACTED
+							REDACTED
+						REDACTED
+					REDACTED
+				REDACTED
 			REDACTED
 
 				if firstTokenMs == nil {
@@ -1854,6 +1875,20 @@ REDACTED
 				usage = u
 		REDACTED
 
+			// Check for MALFORMED_FUNCTION_CALL
+			if candidates, ok := parsed["candidates"].([]any); ok && len(candidates) > 0 {
+				if cand, ok := candidates[0].(map[string]any); ok {
+					if fr, ok := cand["finishReason"].(string); ok && fr == "MALFORMED_FUNCTION_CALL" {
+						log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in forward non-stream collect")
+						if content, ok := cand["content"]; ok {
+							if b, err := json.Marshal(content); err == nil {
+								log.Printf("[Antigravity] Malformed content: %s", string(b))
+						REDACTED
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+
 			// 保留最后一个有 parts 的响应
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
@@ -1948,6 +1983,58 @@ REDACTED
 REDACTED
 
 	return result, existingParts, setParts
+REDACTED
+
+// mergeCollectedPartsToResponse 将收集的所有 parts 合并到 Gemini 响应中
+// 这个函数会合并所有类型的 parts：text、thinking、functionCall、inlineData 等
+// 保持原始顺序，只合并连续的普通 text parts
+func mergeCollectedPartsToResponse(response map[string]any, collectedParts []map[string]any) map[string]any {
+	if len(collectedParts) == 0 {
+		return response
+REDACTED
+
+	result, _, setParts := getOrCreateGeminiParts(response)
+
+	// 合并策略：
+	// 1. 保持原始顺序
+	// 2. 连续的普通 text parts 合并为一个
+	// 3. thinking、functionCall、inlineData 等保持原样
+	var mergedParts []any
+	var textBuffer strings.Builder
+
+	flushTextBuffer := func() {
+		if textBuffer.Len() > 0 {
+			mergedParts = append(mergedParts, map[string]any{
+				"text": textBuffer.String(),
+		REDACTED)
+			textBuffer.Reset()
+	REDACTED
+REDACTED
+
+	for _, part := range collectedParts {
+		// 检查是否是普通 text part
+		if text, ok := part["text"].(string); ok {
+			// 检查是否有 thought 标记
+			if thought, _ := part["thought"].(bool); thought {
+				// thinking part，先刷新 text buffer，然后保留原样
+				flushTextBuffer()
+				mergedParts = append(mergedParts, part)
+		REDACTED else {
+				// 普通 text，累积到 buffer
+				_, _ = textBuffer.WriteString(text)
+		REDACTED
+	REDACTED else {
+			// 非 text part（functionCall、inlineData 等），先刷新 text buffer，然后保留原样
+			flushTextBuffer()
+			mergedParts = append(mergedParts, part)
+	REDACTED
+REDACTED
+
+	// 刷新剩余的 text
+	flushTextBuffer()
+
+	setParts(mergedParts)
+	return result
 REDACTED
 
 // mergeImagePartsToResponse 将收集到的图片 parts 合并到 Gemini 响应中
@@ -2133,6 +2220,7 @@ REDACTED
 	var firstTokenMs *int
 	var last map[string]any
 	var lastWithParts map[string]any
+	var collectedParts []map[string]any // 收集所有 parts（包括 text、thinking、functionCall、inlineData 等）
 
 	type scanEvent struct {
 		line string
@@ -2227,9 +2315,12 @@ REDACTED
 
 			last = parsed
 
-			// 保留最后一个有 parts 的响应
+			// 保留最后一个有 parts 的响应，并收集所有 parts
 			if parts := extractGeminiParts(parsed); len(parts) > 0 {
 				lastWithParts = parsed
+
+				// 收集所有 parts（text、thinking、functionCall、inlineData 等）
+				collectedParts = append(collectedParts, parts...)
 		REDACTED
 
 		case <-intervalCh:
@@ -2250,6 +2341,11 @@ returnResponse:
 	if last == nil && lastWithParts == nil {
 		log.Printf("[antigravity-Forward] warning: empty stream response, no valid chunks received")
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Empty response from upstream")
+REDACTED
+
+	// 将收集的所有 parts 合并到最终响应中
+	if len(collectedParts) > 0 {
+		finalResponse = mergeCollectedPartsToResponse(finalResponse, collectedParts)
 REDACTED
 
 	// 序列化为 JSON（Gemini 格式）
@@ -2458,4 +2554,56 @@ func isImageGenerationModel(model string) bool {
 		modelLower == "gemini-2.5-flash-image" ||
 		modelLower == "gemini-2.5-flash-image-preview" ||
 		strings.HasPrefix(modelLower, "gemini-2.5-flash-image-")
+REDACTED
+
+// cleanGeminiRequest 清理 Gemini 请求体中的 Schema
+func cleanGeminiRequest(body []byte) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+REDACTED
+
+	modified := false
+
+	// 1. 清理 Tools
+	if tools, ok := payload["tools"].([]any); ok && len(tools) > 0 {
+		for _, t := range tools {
+			toolMap, ok := t.(map[string]any)
+			if !ok {
+				continue
+		REDACTED
+
+			// function_declarations (snake_case) or functionDeclarations (camelCase)
+			var funcs []any
+			if f, ok := toolMap["functionDeclarations"].([]any); ok {
+				funcs = f
+		REDACTED else if f, ok := toolMap["function_declarations"].([]any); ok {
+				funcs = f
+		REDACTED
+
+			if len(funcs) == 0 {
+				continue
+		REDACTED
+
+			for _, f := range funcs {
+				funcMap, ok := f.(map[string]any)
+				if !ok {
+					continue
+			REDACTED
+
+				if params, ok := funcMap["parameters"].(map[string]any); ok {
+					antigravity.DeepCleanUndefined(params)
+					cleaned := antigravity.CleanJSONSchema(params)
+					funcMap["parameters"] = cleaned
+					modified = true
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if !modified {
+		return body, nil
+REDACTED
+
+	return json.Marshal(payload)
 REDACTED

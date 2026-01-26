@@ -35,7 +35,9 @@ func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey
 	client := s.clientFactory(proxyURL)
 
 	var orgs []struct {
-		UUID string `json:"uuid"`
+		UUID      string  `json:"uuid"`
+		Name      string  `json:"name"`
+		RavenType *string `json:"raven_type"` // nil for personal, "team" for team organization
 REDACTED
 
 	targetURL := s.baseURL + "/api/organizations"
@@ -65,7 +67,23 @@ REDACTED
 		return "", fmt.Errorf("no organizations found")
 REDACTED
 
-	log.Printf("[OAuth] Step 1 SUCCESS - Got org UUID: %s", orgs[0].UUID)
+	// 如果只有一个组织，直接使用
+	if len(orgs) == 1 {
+		log.Printf("[OAuth] Step 1 SUCCESS - Single org found, UUID: %s, Name: %s", orgs[0].UUID, orgs[0].Name)
+		return orgs[0].UUID, nil
+REDACTED
+
+	// 如果有多个组织，优先选择 raven_type 为 "team" 的组织
+	for _, org := range orgs {
+		if org.RavenType != nil && *org.RavenType == "team" {
+			log.Printf("[OAuth] Step 1 SUCCESS - Selected team org, UUID: %s, Name: %s, RavenType: %s",
+				org.UUID, org.Name, *org.RavenType)
+			return org.UUID, nil
+	REDACTED
+REDACTED
+
+	// 如果没有 team 类型的组织，使用第一个
+	log.Printf("[OAuth] Step 1 SUCCESS - No team org found, using first org, UUID: %s, Name: %s", orgs[0].UUID, orgs[0].Name)
 	return orgs[0].UUID, nil
 REDACTED
 

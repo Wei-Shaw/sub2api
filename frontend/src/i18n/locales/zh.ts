@@ -143,7 +143,10 @@ export default {
     balance: '余额',
     available: '可用',
     copiedToClipboard: '已复制到剪贴板',
+    copied: '已复制',
     copyFailed: '复制失败',
+    verifying: '验证中...',
+    processing: '处理中...',
     contactSupport: '联系客服',
     add: '添加',
     invalidEmail: '请输入有效的邮箱地址',
@@ -166,7 +169,13 @@ export default {
       justNow: '刚刚',
       minutesAgo: '{nREDACTED分钟前',
       hoursAgo: '{nREDACTED小时前',
-      daysAgo: '{nREDACTED天前'
+      daysAgo: '{nREDACTED天前',
+      countdown: {
+        daysHours: '{dREDACTEDd {hREDACTEDh',
+        hoursMinutes: '{hREDACTEDh {mREDACTEDm',
+        minutes: '{mREDACTEDm',
+        withSuffix: '{timeREDACTED 后解除'
+      REDACTED
     REDACTED
   REDACTED,
 
@@ -262,7 +271,36 @@ export default {
       code: '授权码',
       state: '状态',
       fullUrl: '完整URL'
-    REDACTED
+    REDACTED,
+    // 忘记密码
+    forgotPassword: '忘记密码？',
+    forgotPasswordTitle: '重置密码',
+    forgotPasswordHint: '输入您的邮箱地址，我们将向您发送密码重置链接。',
+    sendResetLink: '发送重置链接',
+    sendingResetLink: '发送中...',
+    sendResetLinkFailed: '发送重置链接失败，请重试。',
+    resetEmailSent: '重置链接已发送',
+    resetEmailSentHint: '如果该邮箱已注册，您将很快收到密码重置链接。请检查您的收件箱和垃圾邮件文件夹。',
+    backToLogin: '返回登录',
+    rememberedPassword: '想起密码了？',
+    // 重置密码
+    resetPasswordTitle: '设置新密码',
+    resetPasswordHint: '请在下方输入您的新密码。',
+    newPassword: '新密码',
+    newPasswordPlaceholder: '输入新密码',
+    confirmPassword: '确认密码',
+    confirmPasswordPlaceholder: '再次输入新密码',
+    confirmPasswordRequired: '请确认您的密码',
+    passwordsDoNotMatch: '两次输入的密码不一致',
+    resetPassword: '重置密码',
+    resettingPassword: '重置中...',
+    resetPasswordFailed: '重置密码失败，请重试。',
+    passwordResetSuccess: '密码重置成功',
+    passwordResetSuccessHint: '您的密码已重置。现在可以使用新密码登录。',
+    invalidResetLink: '无效的重置链接',
+    invalidResetLinkHint: '此密码重置链接无效或已过期。请重新请求一个新链接。',
+    requestNewResetLink: '请求新的重置链接',
+    invalidOrExpiredToken: '密码重置链接无效或已过期。请重新请求一个新链接。'
   REDACTED,
 
   // Dashboard
@@ -544,7 +582,46 @@ export default {
     passwordsNotMatch: '两次输入的密码不一致',
     passwordTooShort: '密码至少需要 8 个字符',
     passwordChangeSuccess: '密码修改成功',
-    passwordChangeFailed: '密码修改失败'
+    passwordChangeFailed: '密码修改失败',
+    // TOTP 2FA
+    totp: {
+      title: '双因素认证 (2FA)',
+      description: '使用 Google Authenticator 等应用增强账户安全',
+      enabled: '已启用',
+      enabledAt: '启用时间',
+      notEnabled: '未启用',
+      notEnabledHint: '启用双因素认证可以增强账户安全性',
+      enable: '启用',
+      disable: '禁用',
+      featureDisabled: '功能未开放',
+      featureDisabledHint: '管理员尚未开放双因素认证功能',
+      setupTitle: '设置双因素认证',
+      setupStep1: '使用认证器应用扫描下方二维码',
+      setupStep2: '输入应用显示的 6 位验证码',
+      manualEntry: '无法扫码？手动输入密钥：',
+      enterCode: '输入 6 位验证码',
+      verify: '验证',
+      setupFailed: '获取设置信息失败',
+      verifyFailed: '验证码错误，请重试',
+      enableSuccess: '双因素认证已启用',
+      disableTitle: '禁用双因素认证',
+      disableWarning: '禁用后，登录时将不再需要验证码。这可能会降低您的账户安全性。',
+      enterPassword: '请输入当前密码确认',
+      confirmDisable: '确认禁用',
+      disableSuccess: '双因素认证已禁用',
+      disableFailed: '禁用失败，请检查密码是否正确',
+      loginTitle: '双因素认证',
+      loginHint: '请输入您认证器应用显示的 6 位验证码',
+      loginFailed: '验证失败，请重试',
+      // New translations for email verification
+      verifyEmailFirst: '请先验证您的邮箱',
+      verifyPasswordFirst: '请先验证您的身份',
+      emailCode: '邮箱验证码',
+      enterEmailCode: '请输入 6 位验证码',
+      sendCode: '发送验证码',
+      codeSent: '验证码已发送到您的邮箱',
+      sendCodeFailed: '发送验证码失败'
+    REDACTED
   REDACTED,
 
   // Empty States
@@ -1096,6 +1173,13 @@ export default {
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',
+      autoRefresh: '自动刷新',
+      enableAutoRefresh: '启用自动刷新',
+      refreshInterval5s: '5 秒',
+      refreshInterval10s: '10 秒',
+      refreshInterval15s: '15 秒',
+      refreshInterval30s: '30 秒',
+      autoRefreshCountdown: '自动刷新：{secondsREDACTEDs',
       syncFromCrs: '从 CRS 同步',
       syncFromCrsTitle: '从 CRS 同步账号',
       syncFromCrsDesc:
@@ -1205,6 +1289,8 @@ export default {
         cooldown: '冷却中',
         paused: '暂停',
         limited: '限流',
+        rateLimited: '限流中',
+        overloaded: '过载中',
         tempUnschedulable: '临时不可调度',
         rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
         overloadedUntil: '负载过重，重置时间：{timeREDACTED',
@@ -2881,7 +2967,13 @@ export default {
         emailVerification: '邮箱验证',
         emailVerificationHint: '新用户注册时需要验证邮箱',
         promoCode: '优惠码',
-        promoCodeHint: '允许用户在注册时使用优惠码'
+        promoCodeHint: '允许用户在注册时使用优惠码',
+        passwordReset: '忘记密码',
+        passwordResetHint: '允许用户通过邮箱重置密码',
+        totp: '双因素认证 (2FA)',
+        totpHint: '允许用户使用 Google Authenticator 等应用进行二次验证',
+        totpKeyNotConfigured:
+          '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',
