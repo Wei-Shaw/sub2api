@@ -18,7 +18,7 @@ English | [中文](README_CN.md)
 
 ## Demo
 
-Try Sub2API online: **https://v2.pincc.ai/**
+Try Sub2API online: **https://demo.sub2api.org/**
 
 Demo credentials (shared demo environment; **not** created automatically for self-hosted installs):
 
