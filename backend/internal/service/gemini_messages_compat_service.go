@@ -800,6 +800,13 @@ REDACTED else {
 	REDACTED
 REDACTED
 
+	// 图片生成计费
+	imageCount := 0
+	imageSize := s.extractImageSize(body)
+	if isImageGenerationModel(originalModel) {
+		imageCount = 1
+REDACTED
+
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
@@ -807,6 +814,8 @@ REDACTED
 		Stream:       req.Stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
+		ImageCount:   imageCount,
+		ImageSize:    imageSize,
 REDACTED, nil
 REDACTED
 
@@ -1240,6 +1249,13 @@ REDACTED
 		usage = &ClaudeUsage{REDACTED
 REDACTED
 
+	// 图片生成计费
+	imageCount := 0
+	imageSize := s.extractImageSize(body)
+	if isImageGenerationModel(originalModel) {
+		imageCount = 1
+REDACTED
+
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
@@ -1247,6 +1263,8 @@ REDACTED
 		Stream:       stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
+		ImageCount:   imageCount,
+		ImageSize:    imageSize,
 REDACTED, nil
 REDACTED
 
@@ -2815,4 +2833,27 @@ REDACTED
 		return nil
 REDACTED
 	return out
+REDACTED
+
+// extractImageSize 从 Gemini 请求中提取 image_size 参数
+func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
+	var req struct {
+		GenerationConfig *struct {
+			ImageConfig *struct {
+				ImageSize string `json:"imageSize"`
+		REDACTED `json:"imageConfig"`
+	REDACTED `json:"generationConfig"`
+REDACTED
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "2K"
+REDACTED
+
+	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
+		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
+		if size == "1K" || size == "2K" || size == "4K" {
+			return size
+	REDACTED
+REDACTED
+
+	return "2K"
 REDACTED
