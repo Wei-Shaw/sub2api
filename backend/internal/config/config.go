@@ -47,6 +47,7 @@ type Config struct {
 	Redis        RedisConfig                `mapstructure:"redis"`
 	Ops          OpsConfig                  `mapstructure:"ops"`
 	JWT          JWTConfig                  `mapstructure:"jwt"`
+	Totp         TotpConfig                 `mapstructure:"totp"`
 	LinuxDo      LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
 	Default      DefaultConfig              `mapstructure:"default"`
 	RateLimit    RateLimitConfig            `mapstructure:"rate_limit"`
@@ -466,6 +467,16 @@ type JWTConfig struct {
 	ExpireHour int    `mapstructure:"expire_hour"`
 REDACTED
 
+// TotpConfig TOTP 双因素认证配置
+type TotpConfig struct {
+	// EncryptionKey 用于加密 TOTP 密钥的 AES-256 密钥（32 字节 hex 编码）
+	// 如果为空，将自动生成一个随机密钥（仅适用于开发环境）
+	EncryptionKey string `mapstructure:"encryption_key"`
+	// EncryptionKeyConfigured 标记加密密钥是否为手动配置（非自动生成）
+	// 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
+	EncryptionKeyConfigured bool `mapstructure:"-"`
+REDACTED
+
 type TurnstileConfig struct {
 	Required bool `mapstructure:"required"`
 REDACTED
@@ -626,6 +637,20 @@ REDACTED
 		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
+	// Auto-generate TOTP encryption key if not set (32 bytes = 64 hex chars for AES-256)
+	cfg.Totp.EncryptionKey = strings.TrimSpace(cfg.Totp.EncryptionKey)
+	if cfg.Totp.EncryptionKey == "" {
+		key, err := generateJWTSecret(32) // Reuse the same random generation function
+		if err != nil {
+			return nil, fmt.Errorf("generate totp encryption key error: %w", err)
+	REDACTED
+		cfg.Totp.EncryptionKey = key
+		cfg.Totp.EncryptionKeyConfigured = false
+		log.Println("Warning: TOTP encryption key auto-generated. Consider setting a fixed key for production.")
+REDACTED else {
+		cfg.Totp.EncryptionKeyConfigured = true
+REDACTED
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config error: %w", err)
 REDACTED
@@ -755,6 +780,9 @@ REDACTED)
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
+
+	// TOTP
+	viper.SetDefault("totp.encryption_key", "")
 
 	// Default
 	// Admin credentials are created via the setup flow (web wizard / CLI / AUTO_SETUP).

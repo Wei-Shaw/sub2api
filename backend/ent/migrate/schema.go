@@ -610,6 +610,9 @@ REDACTED
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
 		{Name: "username", Type: field.TypeString, Size: 100, Default: ""REDACTED,
 		{Name: "notes", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "totp_enabled", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: trueREDACTED,
 REDACTED
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

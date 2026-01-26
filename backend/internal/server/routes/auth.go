@@ -26,6 +26,7 @@ func RegisterAuthRoutes(
 	{
 		auth.POST("/register", h.Auth.Register)
 		auth.POST("/login", h.Auth.Login)
+		auth.POST("/login/2fa", h.Auth.Login2FA)
 		auth.POST("/send-verify-code", h.Auth.SendVerifyCode)
 		// 优惠码验证接口添加速率限制：每分钟最多 10 次（Redis 故障时 fail-close）
 		auth.POST("/validate-promo-code", rateLimiter.LimitWithOptions("validate-promo", 10, time.Minute, middleware.RateLimitOptions{

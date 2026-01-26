@@ -38,6 +38,11 @@ type UserRepository interface {
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
+
+	// TOTP 相关方法
+	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
+	EnableTotp(ctx context.Context, userID int64) error
+	DisableTotp(ctx context.Context, userID int64) error
 REDACTED
 
 // UpdateProfileRequest 更新用户资料请求

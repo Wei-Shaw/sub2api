@@ -14,6 +14,8 @@ export interface SystemSettings {
   email_verify_enabled: boolean
   promo_code_enabled: boolean
   password_reset_enabled: boolean
+  totp_enabled: boolean // TOTP 双因素认证
+  totp_encryption_key_configured: boolean // TOTP 加密密钥是否已配置
   // Default settings
   default_balance: number
   default_concurrency: number
@@ -68,6 +70,7 @@ export interface UpdateSettingsRequest {
   email_verify_enabled?: boolean
   promo_code_enabled?: boolean
   password_reset_enabled?: boolean
+  totp_enabled?: boolean // TOTP 双因素认证
   default_balance?: number
   default_concurrency?: number
   site_name?: string

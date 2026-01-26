@@ -11,8 +11,22 @@ import type {
   CurrentUserResponse,
   SendVerifyCodeRequest,
   SendVerifyCodeResponse,
-  PublicSettings
+  PublicSettings,
+  TotpLoginResponse,
+  TotpLogin2FARequest
 REDACTED from '@/types'
+
+/**
+ * Login response type - can be either full auth or 2FA required
+ */
+export type LoginResponse = AuthResponse | TotpLoginResponse
+
+/**
+ * Type guard to check if login response requires 2FA
+ */
+export function isTotp2FARequired(response: LoginResponse): response is TotpLoginResponse {
+  return 'requires_2fa' in response && response.requires_2fa === true
+REDACTED
 
 /**
  * Store authentication token in localStorage
@@ -38,11 +52,28 @@ REDACTED
 
 /**
  * User login
- * @param credentials - Username and password
+ * @param credentials - Email and password
+ * @returns Authentication response with token and user data, or 2FA required response
+ */
+export async function login(credentials: LoginRequest): Promise<LoginResponse> {
+  const { data REDACTED = await apiClient.post<LoginResponse>('/auth/login', credentials)
+
+  // Only store token if 2FA is not required
+  if (!isTotp2FARequired(data)) {
+    setAuthToken(data.access_token)
+    localStorage.setItem('auth_user', JSON.stringify(data.user))
+  REDACTED
+
+  return data
+REDACTED
+
+/**
+ * Complete login with 2FA code
+ * @param request - Temp token and TOTP code
  * @returns Authentication response with token and user data
  */
-export async function login(credentials: LoginRequest): Promise<AuthResponse> {
-  const { data REDACTED = await apiClient.post<AuthResponse>('/auth/login', credentials)
+export async function login2FA(request: TotpLogin2FARequest): Promise<AuthResponse> {
+  const { data REDACTED = await apiClient.post<AuthResponse>('/auth/login/2fa', request)
 
   // Store token and user data
   setAuthToken(data.access_token)
@@ -186,6 +217,8 @@ REDACTED
 
 export const authAPI = {
   login,
+  login2FA,
+  isTotp2FARequired,
   register,
   getCurrentUser,
   logout,

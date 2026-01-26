@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"log/slog"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -18,16 +20,18 @@ type AuthHandler struct {
 	userService  *service.UserService
 	settingSvc   *service.SettingService
 	promoService *service.PromoService
+	totpService  *service.TotpService
 REDACTED
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, totpService *service.TotpService) *AuthHandler {
 	return &AuthHandler{
 		cfg:          cfg,
 		authService:  authService,
 		userService:  userService,
 		settingSvc:   settingService,
 		promoService: promoService,
+		totpService:  totpService,
 REDACTED
 REDACTED
 
@@ -141,6 +145,100 @@ REDACTED
 	token, user, err := h.authService.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// Check if TOTP 2FA is enabled for this user
+	if h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled {
+		// Create a temporary login session for 2FA
+		tempToken, err := h.totpService.CreateLoginSession(c.Request.Context(), user.ID, user.Email)
+		if err != nil {
+			response.InternalError(c, "Failed to create 2FA session")
+			return
+	REDACTED
+
+		response.Success(c, TotpLoginResponse{
+			Requires2FA:     true,
+			TempToken:       tempToken,
+			UserEmailMasked: service.MaskEmail(user.Email),
+	REDACTED)
+		return
+REDACTED
+
+	response.Success(c, AuthResponse{
+		AccessToken: token,
+		TokenType:   "Bearer",
+		User:        dto.UserFromService(user),
+REDACTED)
+REDACTED
+
+// TotpLoginResponse represents the response when 2FA is required
+type TotpLoginResponse struct {
+	Requires2FA     bool   `json:"requires_2fa"`
+	TempToken       string `json:"temp_token,omitempty"`
+	UserEmailMasked string `json:"user_email_masked,omitempty"`
+REDACTED
+
+// Login2FARequest represents the 2FA login request
+type Login2FARequest struct {
+	TempToken string `json:"temp_token" binding:"required"`
+	TotpCode  string `json:"totp_code" binding:"required,len=6"`
+REDACTED
+
+// Login2FA completes the login with 2FA verification
+// POST /api/v1/auth/login/2fa
+func (h *AuthHandler) Login2FA(c *gin.Context) {
+	var req Login2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	slog.Debug("login_2fa_request",
+		"temp_token_len", len(req.TempToken),
+		"totp_code_len", len(req.TotpCode))
+
+	// Get the login session
+	session, err := h.totpService.GetLoginSession(c.Request.Context(), req.TempToken)
+	if err != nil || session == nil {
+		tokenPrefix := ""
+		if len(req.TempToken) >= 8 {
+			tokenPrefix = req.TempToken[:8]
+	REDACTED
+		slog.Debug("login_2fa_session_invalid",
+			"temp_token_prefix", tokenPrefix,
+			"error", err)
+		response.BadRequest(c, "Invalid or expired 2FA session")
+		return
+REDACTED
+
+	slog.Debug("login_2fa_session_found",
+		"user_id", session.UserID,
+		"email", session.Email)
+
+	// Verify the TOTP code
+	if err := h.totpService.VerifyCode(c.Request.Context(), session.UserID, req.TotpCode); err != nil {
+		slog.Debug("login_2fa_verify_failed",
+			"user_id", session.UserID,
+			"error", err)
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// Delete the login session
+	_ = h.totpService.DeleteLoginSession(c.Request.Context(), req.TempToken)
+
+	// Get the user
+	user, err := h.userService.GetByID(c.Request.Context(), session.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// Generate the JWT token
+	token, err := h.authService.GenerateToken(user)
+	if err != nil {
+		response.InternalError(c, "Failed to generate token")
 		return
 REDACTED
 

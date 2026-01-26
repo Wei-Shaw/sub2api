@@ -62,6 +62,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyEmailVerifyEnabled,
 		SettingKeyPromoCodeEnabled,
 		SettingKeyPasswordResetEnabled,
+		SettingKeyTotpEnabled,
 		SettingKeyTurnstileEnabled,
 		SettingKeyTurnstileSiteKey,
 		SettingKeySiteName,
@@ -96,6 +97,7 @@ REDACTED
 		EmailVerifyEnabled:   emailVerifyEnabled,
 		PromoCodeEnabled:     settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled: passwordResetEnabled,
+		TotpEnabled:          settings[SettingKeyTotpEnabled] == "true",
 		TurnstileEnabled:     settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:     settings[SettingKeyTurnstileSiteKey],
 		SiteName:             s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
@@ -135,6 +137,7 @@ REDACTED
 		EmailVerifyEnabled   bool   `json:"email_verify_enabled"`
 		PromoCodeEnabled     bool   `json:"promo_code_enabled"`
 		PasswordResetEnabled bool   `json:"password_reset_enabled"`
+		TotpEnabled          bool   `json:"totp_enabled"`
 		TurnstileEnabled     bool   `json:"turnstile_enabled"`
 		TurnstileSiteKey     string `json:"turnstile_site_key,omitempty"`
 		SiteName             string `json:"site_name"`
@@ -152,6 +155,7 @@ REDACTED{
 		EmailVerifyEnabled:   settings.EmailVerifyEnabled,
 		PromoCodeEnabled:     settings.PromoCodeEnabled,
 		PasswordResetEnabled: settings.PasswordResetEnabled,
+		TotpEnabled:          settings.TotpEnabled,
 		TurnstileEnabled:     settings.TurnstileEnabled,
 		TurnstileSiteKey:     settings.TurnstileSiteKey,
 		SiteName:             settings.SiteName,
@@ -176,6 +180,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
 	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
 	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
+	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 
 	// 邮件服务设置（只有非空才更新密码）
 	updates[SettingKeySMTPHost] = settings.SMTPHost
@@ -285,6 +290,21 @@ REDACTED
 	return value == "true"
 REDACTED
 
+// IsTotpEnabled 检查是否启用 TOTP 双因素认证功能
+func (s *SettingService) IsTotpEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyTotpEnabled)
+	if err != nil {
+		return false // 默认关闭
+REDACTED
+	return value == "true"
+REDACTED
+
+// IsTotpEncryptionKeyConfigured 检查 TOTP 加密密钥是否已手动配置
+// 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
+func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
+	return s.cfg.Totp.EncryptionKeyConfigured
+REDACTED
+
 // GetSiteName 获取网站名称
 func (s *SettingService) GetSiteName(ctx context.Context) string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
@@ -369,6 +389,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		EmailVerifyEnabled:           emailVerifyEnabled,
 		PromoCodeEnabled:             settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
 		PasswordResetEnabled:         emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
+		TotpEnabled:                  settings[SettingKeyTotpEnabled] == "true",
 		SMTPHost:                     settings[SettingKeySMTPHost],
 		SMTPUsername:                 settings[SettingKeySMTPUsername],
 		SMTPFrom:                     settings[SettingKeySMTPFrom],

@@ -49,6 +49,8 @@ REDACTED
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
 		PromoCodeEnabled:                     settings.PromoCodeEnabled,
 		PasswordResetEnabled:                 settings.PasswordResetEnabled,
+		TotpEnabled:                          settings.TotpEnabled,
+		TotpEncryptionKeyConfigured:          h.settingService.IsTotpEncryptionKeyConfigured(),
 		SMTPHost:                             settings.SMTPHost,
 		SMTPPort:                             settings.SMTPPort,
 		SMTPUsername:                         settings.SMTPUsername,
@@ -94,6 +96,7 @@ type UpdateSettingsRequest struct {
 	EmailVerifyEnabled   bool `json:"email_verify_enabled"`
 	PromoCodeEnabled     bool `json:"promo_code_enabled"`
 	PasswordResetEnabled bool `json:"password_reset_enabled"`
+	TotpEnabled          bool `json:"totp_enabled"` // TOTP 双因素认证
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -200,6 +203,16 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// TOTP 双因素认证参数验证
+	// 只有手动配置了加密密钥才允许启用 TOTP 功能
+	if req.TotpEnabled && !previousSettings.TotpEnabled {
+		// 尝试启用 TOTP，检查加密密钥是否已手动配置
+		if !h.settingService.IsTotpEncryptionKeyConfigured() {
+			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
+			return
+	REDACTED
+REDACTED
+
 	// LinuxDo Connect 参数验证
 	if req.LinuxDoConnectEnabled {
 		req.LinuxDoConnectClientID = strings.TrimSpace(req.LinuxDoConnectClientID)
@@ -246,6 +259,7 @@ REDACTED
 		EmailVerifyEnabled:         req.EmailVerifyEnabled,
 		PromoCodeEnabled:           req.PromoCodeEnabled,
 		PasswordResetEnabled:       req.PasswordResetEnabled,
+		TotpEnabled:                req.TotpEnabled,
 		SMTPHost:                   req.SMTPHost,
 		SMTPPort:                   req.SMTPPort,
 		SMTPUsername:               req.SMTPUsername,
@@ -322,6 +336,8 @@ REDACTED
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
 		PromoCodeEnabled:                     updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                 updatedSettings.PasswordResetEnabled,
+		TotpEnabled:                          updatedSettings.TotpEnabled,
+		TotpEncryptionKeyConfigured:          h.settingService.IsTotpEncryptionKeyConfigured(),
 		SMTPHost:                             updatedSettings.SMTPHost,
 		SMTPPort:                             updatedSettings.SMTPPort,
 		SMTPUsername:                         updatedSettings.SMTPUsername,
@@ -390,6 +406,9 @@ REDACTED
 REDACTED
 	if before.PasswordResetEnabled != after.PasswordResetEnabled {
 		changed = append(changed, "password_reset_enabled")
+REDACTED
+	if before.TotpEnabled != after.TotpEnabled {
+		changed = append(changed, "totp_enabled")
 REDACTED
 	if before.SMTPHost != after.SMTPHost {
 		changed = append(changed, "smtp_host")

@@ -61,6 +61,17 @@ func (User) Fields() []ent.Field {
 		field.String("notes").
 			SchemaType(map[string]string{dialect.Postgres: "text"REDACTED).
 			Default(""),
+
+		// TOTP 双因素认证字段
+		field.String("totp_secret_encrypted").
+			SchemaType(map[string]string{dialect.Postgres: "text"REDACTED).
+			Optional().
+			Nillable(),
+		field.Bool("totp_enabled").
+			Default(false),
+		field.Time("totp_enabled_at").
+			Optional().
+			Nillable(),
 REDACTED
 REDACTED
 

@@ -146,7 +146,10 @@ export default {
     balance: 'Balance',
     available: 'Available',
     copiedToClipboard: 'Copied to clipboard',
+    copied: 'Copied',
     copyFailed: 'Failed to copy',
+    verifying: 'Verifying...',
+    processing: 'Processing...',
     contactSupport: 'Contact Support',
     add: 'Add',
     invalidEmail: 'Please enter a valid email address',
@@ -583,7 +586,46 @@ export default {
     passwordsNotMatch: 'New passwords do not match',
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
-    passwordChangeFailed: 'Failed to change password'
+    passwordChangeFailed: 'Failed to change password',
+    // TOTP 2FA
+    totp: {
+      title: 'Two-Factor Authentication (2FA)',
+      description: 'Enhance account security with Google Authenticator or similar apps',
+      enabled: 'Enabled',
+      enabledAt: 'Enabled at',
+      notEnabled: 'Not Enabled',
+      notEnabledHint: 'Enable two-factor authentication to enhance account security',
+      enable: 'Enable',
+      disable: 'Disable',
+      featureDisabled: 'Feature Unavailable',
+      featureDisabledHint: 'Two-factor authentication has not been enabled by the administrator',
+      setupTitle: 'Set Up Two-Factor Authentication',
+      setupStep1: 'Scan the QR code below with your authenticator app',
+      setupStep2: 'Enter the 6-digit code from your app',
+      manualEntry: "Can't scan? Enter the key manually:",
+      enterCode: 'Enter 6-digit code',
+      verify: 'Verify',
+      setupFailed: 'Failed to get setup information',
+      verifyFailed: 'Invalid code, please try again',
+      enableSuccess: 'Two-factor authentication enabled',
+      disableTitle: 'Disable Two-Factor Authentication',
+      disableWarning: 'After disabling, you will no longer need a verification code to log in. This may reduce your account security.',
+      enterPassword: 'Enter your current password to confirm',
+      confirmDisable: 'Confirm Disable',
+      disableSuccess: 'Two-factor authentication disabled',
+      disableFailed: 'Failed to disable, please check your password',
+      loginTitle: 'Two-Factor Authentication',
+      loginHint: 'Enter the 6-digit code from your authenticator app',
+      loginFailed: 'Verification failed, please try again',
+      // New translations for email verification
+      verifyEmailFirst: 'Please verify your email first',
+      verifyPasswordFirst: 'Please verify your identity first',
+      emailCode: 'Email Verification Code',
+      enterEmailCode: 'Enter 6-digit code',
+      sendCode: 'Send Code',
+      codeSent: 'Verification code sent to your email',
+      sendCodeFailed: 'Failed to send verification code'
+    REDACTED
   REDACTED,
 
   // Empty States
@@ -2774,7 +2816,11 @@ export default {
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
         passwordReset: 'Password Reset',
-        passwordResetHint: 'Allow users to reset their password via email'
+        passwordResetHint: 'Allow users to reset their password via email',
+        totp: 'Two-Factor Authentication (2FA)',
+        totpHint: 'Allow users to use authenticator apps like Google Authenticator',
+        totpKeyNotConfigured:
+          'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',

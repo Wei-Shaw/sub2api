@@ -282,8 +282,8 @@ REDACTED
 		return ErrVerifyCodeMaxAttempts
 REDACTED
 
-	// 验证码不匹配
-	if data.Code != code {
+	// 验证码不匹配 (constant-time comparison to prevent timing attacks)
+	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
 		data.Attempts++
 		if err := s.cache.SetVerificationCode(ctx, email, data, verifyCodeTTL); err != nil {
 			log.Printf("[Email] Failed to update verification attempt count: %v", err)

@@ -163,6 +163,16 @@
       </p>
     </template>
   </AuthLayout>
+
+  <!-- 2FA Modal -->
+  <TotpLoginModal
+    v-if="show2FAModal"
+    ref="totpModalRef"
+    :temp-token="totpTempToken"
+    :user-email-masked="totpUserEmailMasked"
+    @verify="handle2FAVerify"
+    @cancel="handle2FACancel"
+  />
 </template>
 
 <script setup lang="ts">
@@ -171,10 +181,12 @@ import { useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
+import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
-import { getPublicSettings REDACTED from '@/api/auth'
+import { getPublicSettings, isTotp2FARequired REDACTED from '@/api/auth'
+import type { TotpLoginResponse REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
 
@@ -199,6 +211,12 @@ const passwordResetEnabled = ref<boolean>(false)
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const turnstileToken = ref<string>('')
+
+// 2FA state
+const show2FAModal = ref<boolean>(false)
+const totpTempToken = ref<string>('')
+const totpUserEmailMasked = ref<string>('')
+const totpModalRef = ref<InstanceType<typeof TotpLoginModal> | null>(null)
 
 const formData = reactive({
   email: '',
@@ -302,11 +320,21 @@ async function handleLogin(): Promise<void> {
 
   try {
     // Call auth store login
-    await authStore.login({
+    const response = await authStore.login({
       email: formData.email,
       password: formData.password,
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
     REDACTED)
+
+    // Check if 2FA is required
+    if (isTotp2FARequired(response)) {
+      const totpResponse = response as TotpLoginResponse
+      totpTempToken.value = totpResponse.temp_token || ''
+      totpUserEmailMasked.value = totpResponse.user_email_masked || ''
+      show2FAModal.value = true
+      isLoading.value = false
+      return
+    REDACTED
 
     // Show success toast
     appStore.showSuccess(t('auth.loginSuccess'))
@@ -337,6 +365,40 @@ async function handleLogin(): Promise<void> {
   REDACTED finally {
     isLoading.value = false
   REDACTED
+REDACTED
+
+// ==================== 2FA Handlers ====================
+
+async function handle2FAVerify(code: string): Promise<void> {
+  if (totpModalRef.value) {
+    totpModalRef.value.setVerifying(true)
+  REDACTED
+
+  try {
+    await authStore.login2FA(totpTempToken.value, code)
+
+    // Close modal and show success
+    show2FAModal.value = false
+    appStore.showSuccess(t('auth.loginSuccess'))
+
+    // Redirect to dashboard or intended route
+    const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
+    await router.push(redirectTo)
+  REDACTED catch (error: unknown) {
+    const err = error as { message?: string; response?: { data?: { message?: string REDACTED REDACTED REDACTED
+    const message = err.response?.data?.message || err.message || t('profile.totp.loginFailed')
+
+    if (totpModalRef.value) {
+      totpModalRef.value.setError(message)
+      totpModalRef.value.setVerifying(false)
+    REDACTED
+  REDACTED
+REDACTED
+
+function handle2FACancel(): void {
+  show2FAModal.value = false
+  totpTempToken.value = ''
+  totpUserEmailMasked.value = ''
 REDACTED
 </script>
 

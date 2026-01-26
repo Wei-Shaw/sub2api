@@ -354,6 +354,31 @@
               </div>
               <Toggle v-model="form.password_reset_enabled" />
             </div>
+
+            <!-- TOTP 2FA -->
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.registration.totp')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.registration.totpHint') REDACTEDREDACTED
+                </p>
+                <!-- Warning when encryption key not configured -->
+                <p
+                  v-if="!form.totp_encryption_key_configured"
+                  class="mt-2 text-sm text-amber-600 dark:text-amber-400"
+                >
+                  {{ t('admin.settings.registration.totpKeyNotConfigured') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle
+                v-model="form.totp_enabled"
+                :disabled="!form.totp_encryption_key_configured"
+              />
+            </div>
           </div>
         </div>
 
@@ -1046,6 +1071,8 @@ const form = reactive<SettingsForm>({
   email_verify_enabled: false,
   promo_code_enabled: true,
   password_reset_enabled: false,
+  totp_enabled: false,
+  totp_encryption_key_configured: false,
   default_balance: 0,
   default_concurrency: 1,
   site_name: 'Sub2API',
@@ -1170,6 +1197,7 @@ async function saveSettings() {
       email_verify_enabled: form.email_verify_enabled,
       promo_code_enabled: form.promo_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
+      totp_enabled: form.totp_enabled,
       default_balance: form.default_balance,
       default_concurrency: form.default_concurrency,
       site_name: form.site_name,

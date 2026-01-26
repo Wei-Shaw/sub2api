@@ -143,7 +143,10 @@ export default {
     balance: '余额',
     available: '可用',
     copiedToClipboard: '已复制到剪贴板',
+    copied: '已复制',
     copyFailed: '复制失败',
+    verifying: '验证中...',
+    processing: '处理中...',
     contactSupport: '联系客服',
     add: '添加',
     invalidEmail: '请输入有效的邮箱地址',
@@ -579,7 +582,46 @@ export default {
     passwordsNotMatch: '两次输入的密码不一致',
     passwordTooShort: '密码至少需要 8 个字符',
     passwordChangeSuccess: '密码修改成功',
-    passwordChangeFailed: '密码修改失败'
+    passwordChangeFailed: '密码修改失败',
+    // TOTP 2FA
+    totp: {
+      title: '双因素认证 (2FA)',
+      description: '使用 Google Authenticator 等应用增强账户安全',
+      enabled: '已启用',
+      enabledAt: '启用时间',
+      notEnabled: '未启用',
+      notEnabledHint: '启用双因素认证可以增强账户安全性',
+      enable: '启用',
+      disable: '禁用',
+      featureDisabled: '功能未开放',
+      featureDisabledHint: '管理员尚未开放双因素认证功能',
+      setupTitle: '设置双因素认证',
+      setupStep1: '使用认证器应用扫描下方二维码',
+      setupStep2: '输入应用显示的 6 位验证码',
+      manualEntry: '无法扫码？手动输入密钥：',
+      enterCode: '输入 6 位验证码',
+      verify: '验证',
+      setupFailed: '获取设置信息失败',
+      verifyFailed: '验证码错误，请重试',
+      enableSuccess: '双因素认证已启用',
+      disableTitle: '禁用双因素认证',
+      disableWarning: '禁用后，登录时将不再需要验证码。这可能会降低您的账户安全性。',
+      enterPassword: '请输入当前密码确认',
+      confirmDisable: '确认禁用',
+      disableSuccess: '双因素认证已禁用',
+      disableFailed: '禁用失败，请检查密码是否正确',
+      loginTitle: '双因素认证',
+      loginHint: '请输入您认证器应用显示的 6 位验证码',
+      loginFailed: '验证失败，请重试',
+      // New translations for email verification
+      verifyEmailFirst: '请先验证您的邮箱',
+      verifyPasswordFirst: '请先验证您的身份',
+      emailCode: '邮箱验证码',
+      enterEmailCode: '请输入 6 位验证码',
+      sendCode: '发送验证码',
+      codeSent: '验证码已发送到您的邮箱',
+      sendCodeFailed: '发送验证码失败'
+    REDACTED
   REDACTED,
 
   // Empty States
@@ -2927,7 +2969,11 @@ export default {
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
         passwordReset: '忘记密码',
-        passwordResetHint: '允许用户通过邮箱重置密码'
+        passwordResetHint: '允许用户通过邮箱重置密码',
+        totp: '双因素认证 (2FA)',
+        totpHint: '允许用户使用 Google Authenticator 等应用进行二次验证',
+        totpKeyNotConfigured:
+          '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',

@@ -404,6 +404,21 @@ jwt:
   expire_hour: 24
 
 # =============================================================================
+# TOTP (2FA) Configuration
+# TOTP 双因素认证配置
+# =============================================================================
+totp:
+  # IMPORTANT: Set a fixed encryption key for TOTP secrets.
+  # 重要：设置固定的 TOTP 加密密钥。
+  # If left empty, a random key will be generated on each startup, causing all
+  # existing TOTP configurations to become invalid (users won't be able to
+  # login with 2FA).
+  # 如果留空，每次启动将生成随机密钥，导致现有的 TOTP 配置失效（用户无法使用
+  # 双因素认证登录）。
+  # Generate with / 生成命令: openssl rand -hex 32
+  encryption_key: ""
+
+# =============================================================================
 # LinuxDo Connect OAuth Login (SSO)
 # LinuxDo Connect OAuth 登录（用于 Sub2API 用户登录）
 # =============================================================================

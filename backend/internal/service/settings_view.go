@@ -5,6 +5,7 @@ type SystemSettings struct {
 	EmailVerifyEnabled   bool
 	PromoCodeEnabled     bool
 	PasswordResetEnabled bool
+	TotpEnabled          bool // TOTP 双因素认证
 
 	SMTPHost               string
 	SMTPPort               int
@@ -62,6 +63,7 @@ type PublicSettings struct {
 	EmailVerifyEnabled   bool
 	PromoCodeEnabled     bool
 	PasswordResetEnabled bool
+	TotpEnabled          bool // TOTP 双因素认证
 	TurnstileEnabled     bool
 	TurnstileSiteKey     string
 	SiteName             string
