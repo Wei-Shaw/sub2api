@@ -161,3 +161,28 @@ REDACTED
 	require.Len(t, events, 1)
 	require.Equal(t, "prompt_too_long", events[0].Kind)
 REDACTED
+
+func TestAntigravityMaxRetriesForModel_AfterSwitch(t *testing.T) {
+	t.Setenv(antigravityMaxRetriesEnv, "4")
+	t.Setenv(antigravityMaxRetriesAfterSwitchEnv, "7")
+	t.Setenv(antigravityMaxRetriesClaudeEnv, "")
+	t.Setenv(antigravityMaxRetriesGeminiTextEnv, "")
+	t.Setenv(antigravityMaxRetriesGeminiImageEnv, "")
+
+	got := antigravityMaxRetriesForModel("claude-sonnet-4-5", false)
+	require.Equal(t, 4, got)
+
+	got = antigravityMaxRetriesForModel("claude-sonnet-4-5", true)
+	require.Equal(t, 7, got)
+REDACTED
+
+func TestAntigravityMaxRetriesForModel_AfterSwitchFallback(t *testing.T) {
+	t.Setenv(antigravityMaxRetriesEnv, "5")
+	t.Setenv(antigravityMaxRetriesAfterSwitchEnv, "")
+	t.Setenv(antigravityMaxRetriesClaudeEnv, "")
+	t.Setenv(antigravityMaxRetriesGeminiTextEnv, "")
+	t.Setenv(antigravityMaxRetriesGeminiImageEnv, "")
+
+	got := antigravityMaxRetriesForModel("gemini-2.5-flash", true)
+	require.Equal(t, 5, got)
+REDACTED

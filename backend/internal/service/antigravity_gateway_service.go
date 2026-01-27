@@ -33,6 +33,7 @@ const (
 
 const (
 	antigravityMaxRetriesEnv            = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
+	antigravityMaxRetriesAfterSwitchEnv = "GATEWAY_ANTIGRAVITY_AFTER_SWITCHMAX_RETRIES"
 	antigravityMaxRetriesClaudeEnv      = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_CLAUDE"
 	antigravityMaxRetriesGeminiTextEnv  = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_TEXT"
 	antigravityMaxRetriesGeminiImageEnv = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_IMAGE"
@@ -745,6 +746,8 @@ REDACTED
 	if antigravityUseMappedModelForBilling() && strings.TrimSpace(mappedModel) != "" {
 		billingModel = mappedModel
 REDACTED
+	afterSwitch := antigravityHasAccountSwitch(ctx)
+	maxRetries := antigravityMaxRetriesForModel(originalModel, afterSwitch)
 
 	// 获取 access_token
 	if s.tokenProvider == nil {
@@ -793,7 +796,7 @@ REDACTED
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		handleError:    s.handleUpstreamError,
-		maxRetries:     antigravityMaxRetriesForModel(originalModel),
+		maxRetries:     maxRetries,
 REDACTED)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
@@ -870,7 +873,7 @@ REDACTED
 					httpUpstream:   s.httpUpstream,
 					settingService: s.settingService,
 					handleError:    s.handleUpstreamError,
-					maxRetries:     antigravityMaxRetriesForModel(originalModel),
+					maxRetries:     maxRetries,
 			REDACTED)
 				if retryErr != nil {
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -1387,6 +1390,8 @@ REDACTED
 	if antigravityUseMappedModelForBilling() && strings.TrimSpace(mappedModel) != "" {
 		billingModel = mappedModel
 REDACTED
+	afterSwitch := antigravityHasAccountSwitch(ctx)
+	maxRetries := antigravityMaxRetriesForModel(originalModel, afterSwitch)
 
 	// 获取 access_token
 	if s.tokenProvider == nil {
@@ -1444,7 +1449,7 @@ REDACTED
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		handleError:    s.handleUpstreamError,
-		maxRetries:     antigravityMaxRetriesForModel(originalModel),
+		maxRetries:     maxRetries,
 REDACTED)
 	if err != nil {
 		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
@@ -1641,6 +1646,16 @@ func antigravityUseScopeRateLimit() bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 REDACTED
 
+func antigravityHasAccountSwitch(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+REDACTED
+	if v, ok := ctx.Value(ctxkey.AccountSwitchCount).(int); ok {
+		return v > 0
+REDACTED
+	return false
+REDACTED
+
 func antigravityMaxRetries() int {
 	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesEnv))
 	if raw == "" {
@@ -1653,9 +1668,21 @@ REDACTED
 	return value
 REDACTED
 
+func antigravityMaxRetriesAfterSwitch() int {
+	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesAfterSwitchEnv))
+	if raw == "" {
+		return antigravityMaxRetries()
+REDACTED
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return antigravityMaxRetries()
+REDACTED
+	return value
+REDACTED
+
 // antigravityMaxRetriesForModel 根据模型类型获取重试次数
 // 优先使用模型细分配置，未设置则回退到平台级配置
-func antigravityMaxRetriesForModel(model string) int {
+func antigravityMaxRetriesForModel(model string, afterSwitch bool) int {
 	var envKey string
 	if strings.HasPrefix(model, "claude-") {
 		envKey = antigravityMaxRetriesClaudeEnv
@@ -1671,6 +1698,9 @@ REDACTED
 				return value
 		REDACTED
 	REDACTED
+REDACTED
+	if afterSwitch {
+		return antigravityMaxRetriesAfterSwitch()
 REDACTED
 	return antigravityMaxRetries()
 REDACTED

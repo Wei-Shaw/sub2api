@@ -276,10 +276,14 @@ REDACTED
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
+			requestCtx := c.Request.Context()
+			if switchCount > 0 {
+				requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
+		REDACTED
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.ForwardGemini(c.Request.Context(), c, account, reqModel, "generateContent", reqStream, body)
+				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body)
 		REDACTED else {
-				result, err = h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
+				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
 		REDACTED
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
@@ -419,10 +423,14 @@ REDACTED
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
+			requestCtx := c.Request.Context()
+			if switchCount > 0 {
+				requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
+		REDACTED
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.Forward(c.Request.Context(), c, account, body)
+				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body)
 		REDACTED else {
-				result, err = h.gatewayService.Forward(c.Request.Context(), c, account, parsedReq)
+				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 		REDACTED
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
