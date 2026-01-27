@@ -4102,19 +4102,12 @@ REDACTED
 	REDACTED `json:"usage"`
 REDACTED
 	if json.Unmarshal([]byte(data), &msgDelta) == nil && msgDelta.Type == "message_delta" {
-		// output_tokens 总是从 message_delta 获取
+		// message_delta 是推理结束后的最终统计，应完全覆盖 message_start 的数据
+		// 这对于 Claude API 和 GLM 等兼容 API 都是正确的行为
+		usage.InputTokens = msgDelta.Usage.InputTokens
 		usage.OutputTokens = msgDelta.Usage.OutputTokens
-
-		// 如果 message_start 中没有值，则从 message_delta 获取（兼容GLM等API）
-		if usage.InputTokens == 0 {
-			usage.InputTokens = msgDelta.Usage.InputTokens
-	REDACTED
-		if usage.CacheCreationInputTokens == 0 {
-			usage.CacheCreationInputTokens = msgDelta.Usage.CacheCreationInputTokens
-	REDACTED
-		if usage.CacheReadInputTokens == 0 {
-			usage.CacheReadInputTokens = msgDelta.Usage.CacheReadInputTokens
-	REDACTED
+		usage.CacheCreationInputTokens = msgDelta.Usage.CacheCreationInputTokens
+		usage.CacheReadInputTokens = msgDelta.Usage.CacheReadInputTokens
 REDACTED
 REDACTED
 
