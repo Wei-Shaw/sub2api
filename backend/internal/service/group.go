@@ -38,6 +38,9 @@ type Group struct {
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool
 
+	// MCP XML 协议注入开关（仅 antigravity 平台使用）
+	MCPXMLInject bool
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

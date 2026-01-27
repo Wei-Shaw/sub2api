@@ -448,6 +448,20 @@ REDACTED
 	return _u
 REDACTED
 
+// SetMcpXMLInject sets the "mcp_xml_inject" field.
+func (_u *GroupUpdate) SetMcpXMLInject(v bool) *GroupUpdate {
+	_u.mutation.SetMcpXMLInject(v)
+	return _u
+REDACTED
+
+// SetNillableMcpXMLInject sets the "mcp_xml_inject" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMcpXMLInject(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetMcpXMLInject(*v)
+REDACTED
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -873,6 +887,9 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.McpXMLInject(); ok {
+		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1602,6 +1619,20 @@ REDACTED
 	return _u
 REDACTED
 
+// SetMcpXMLInject sets the "mcp_xml_inject" field.
+func (_u *GroupUpdateOne) SetMcpXMLInject(v bool) *GroupUpdateOne {
+	_u.mutation.SetMcpXMLInject(v)
+	return _u
+REDACTED
+
+// SetNillableMcpXMLInject sets the "mcp_xml_inject" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMcpXMLInject(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMcpXMLInject(*v)
+REDACTED
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2057,6 +2088,9 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.McpXMLInject(); ok {
+		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

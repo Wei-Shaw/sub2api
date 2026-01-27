@@ -160,6 +160,11 @@ func ModelRoutingEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldModelRoutingEnabled, v))
 REDACTED
 
+// McpXMLInject applies equality check predicate on the "mcp_xml_inject" field. It's identical to McpXMLInjectEQ.
+func McpXMLInject(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMcpXMLInject, v))
+REDACTED
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1143,6 +1148,16 @@ REDACTED
 // ModelRoutingEnabledNEQ applies the NEQ predicate on the "model_routing_enabled" field.
 func ModelRoutingEnabledNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldModelRoutingEnabled, v))
+REDACTED
+
+// McpXMLInjectEQ applies the EQ predicate on the "mcp_xml_inject" field.
+func McpXMLInjectEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldMcpXMLInject, v))
+REDACTED
+
+// McpXMLInjectNEQ applies the NEQ predicate on the "mcp_xml_inject" field.
+func McpXMLInjectNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldMcpXMLInject, v))
 REDACTED
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

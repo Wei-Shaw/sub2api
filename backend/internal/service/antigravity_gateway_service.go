@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -552,6 +553,10 @@ func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Contex
 REDACTED
 	opts.EnableIdentityPatch = s.settingService.IsIdentityPatchEnabled(ctx)
 	opts.IdentityPatch = s.settingService.GetIdentityPatchPrompt(ctx)
+
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && group != nil {
+		opts.EnableMCPXML = group.MCPXMLInject
+REDACTED
 	return opts
 REDACTED
 

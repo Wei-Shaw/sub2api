@@ -59,6 +59,8 @@ const (
 	FieldModelRouting = "model_routing"
 	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
 	FieldModelRoutingEnabled = "model_routing_enabled"
+	// FieldMcpXMLInject holds the string denoting the mcp_xml_inject field in the database.
+	FieldMcpXMLInject = "mcp_xml_inject"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -156,6 +158,7 @@ var Columns = []string{
 	FieldFallbackGroupIDOnInvalidRequest,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
+	FieldMcpXMLInject,
 REDACTED
 
 var (
@@ -215,6 +218,8 @@ var (
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
 	DefaultModelRoutingEnabled bool
+	// DefaultMcpXMLInject holds the default value on creation for the "mcp_xml_inject" field.
+	DefaultMcpXMLInject bool
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -328,6 +333,11 @@ REDACTED
 // ByModelRoutingEnabled orders the results by the model_routing_enabled field.
 func ByModelRoutingEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldModelRoutingEnabled, opts...).ToFunc()
+REDACTED
+
+// ByMcpXMLInject orders the results by the mcp_xml_inject field.
+func ByMcpXMLInject(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMcpXMLInject, opts...).ToFunc()
 REDACTED
 
 // ByAPIKeysCount orders the results by api_keys count.

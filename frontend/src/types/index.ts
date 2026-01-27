@@ -273,6 +273,8 @@ export interface Group {
   // 模型路由配置（仅 anthropic 平台使用）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
+  // MCP XML 协议注入（仅 antigravity 平台使用）
+  mcp_xml_inject: boolean
   account_count?: number
   created_at: string
   updated_at: string

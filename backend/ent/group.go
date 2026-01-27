@@ -62,6 +62,8 @@ type Group struct {
 	ModelRouting map[string][]int64 `json:"model_routing,omitempty"`
 	// 是否启用模型路由配置
 	ModelRoutingEnabled bool `json:"model_routing_enabled,omitempty"`
+	// 是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）
+	McpXMLInject bool `json:"mcp_xml_inject,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -170,7 +172,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled:
+		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
@@ -345,6 +347,12 @@ REDACTED
 		REDACTED else if value.Valid {
 				_m.ModelRoutingEnabled = value.Bool
 		REDACTED
+		case group.FieldMcpXMLInject:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field mcp_xml_inject", values[i])
+		REDACTED else if value.Valid {
+				_m.McpXMLInject = value.Bool
+		REDACTED
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 	REDACTED
@@ -506,6 +514,9 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("model_routing_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ModelRoutingEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("mcp_xml_inject=")
+	builder.WriteString(fmt.Sprintf("%v", _m.McpXMLInject))
 	builder.WriteByte(')')
 	return builder.String()
 REDACTED

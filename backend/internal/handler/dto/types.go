@@ -69,6 +69,9 @@ type Group struct {
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 
+	// MCP XML 协议注入（仅 antigravity 平台使用）
+	MCPXMLInject bool `json:"mcp_xml_inject"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 

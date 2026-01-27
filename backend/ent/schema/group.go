@@ -110,6 +110,11 @@ func (Group) Fields() []ent.Field {
 		field.Bool("model_routing_enabled").
 			Default(false).
 			Comment("是否启用模型路由配置"),
+
+		// MCP XML 协议注入开关 (added by migration 042)
+		field.Bool("mcp_xml_inject").
+			Default(true).
+			Comment("是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）"),
 REDACTED
 REDACTED
 

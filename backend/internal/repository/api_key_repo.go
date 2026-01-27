@@ -139,6 +139,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldFallbackGroupIDOnInvalidRequest,
 				group.FieldModelRoutingEnabled,
 				group.FieldModelRouting,
+				group.FieldMcpXMLInject,
 			)
 	REDACTED).
 		Only(ctx)
@@ -428,6 +429,7 @@ REDACTED
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
 		ModelRouting:                    g.ModelRouting,
 		ModelRoutingEnabled:             g.ModelRoutingEnabled,
+		MCPXMLInject:                    g.McpXMLInject,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 REDACTED

@@ -229,6 +229,7 @@ REDACTED
 		{Name: "fallback_group_id_on_invalid_request", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "model_routing", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
 		{Name: "model_routing_enabled", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "mcp_xml_inject", Type: field.TypeBool, Default: trueREDACTED,
 REDACTED
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
