@@ -2617,6 +2617,7 @@ export default {
         empty: 'No data',
         queued: 'Queue {countREDACTED',
         rateLimited: 'Rate-limited {countREDACTED',
+        scopeRateLimitedTooltip: '{scopeREDACTED rate-limited ({countREDACTED accounts)',
         errorAccounts: 'Errors {countREDACTED',
         loadFailed: 'Failed to load concurrency data'
       REDACTED,

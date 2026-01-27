@@ -49,6 +49,7 @@ interface SummaryRow {
   total_accounts: number
   available_accounts: number
   rate_limited_accounts: number
+  scope_rate_limit_count?: Record<string, number>
   error_accounts: number
   // 并发统计
   total_concurrency: number
@@ -102,6 +103,7 @@ const platformRows = computed((): SummaryRow[] => {
       total_accounts: totalAccounts,
       available_accounts: availableAccounts,
       rate_limited_accounts: safeNumber(avail.rate_limit_count),
+      scope_rate_limit_count: avail.scope_rate_limit_count,
       error_accounts: safeNumber(avail.error_count),
       total_concurrency: totalConcurrency,
       used_concurrency: usedConcurrency,
@@ -141,6 +143,7 @@ const groupRows = computed((): SummaryRow[] => {
         total_accounts: totalAccounts,
         available_accounts: availableAccounts,
         rate_limited_accounts: safeNumber(avail.rate_limit_count),
+        scope_rate_limit_count: avail.scope_rate_limit_count,
         error_accounts: safeNumber(avail.error_count),
         total_concurrency: totalConcurrency,
         used_concurrency: usedConcurrency,
@@ -269,6 +272,15 @@ function formatDuration(seconds: number): string {
   return `${hoursREDACTEDh`
 REDACTED
 
+function formatScopeName(scope: string): string {
+  const names: Record<string, string> = {
+    claude: 'Claude',
+    gemini_text: 'Gemini',
+    gemini_image: 'Image'
+  REDACTED
+  return names[scope] || scope
+REDACTED
+
 watch(
   () => realtimeEnabled.value,
   async (enabled) => {
@@ -386,6 +398,18 @@ watch(
             >
               {{ t('admin.ops.concurrency.rateLimited', { count: row.rate_limited_accounts REDACTED) REDACTEDREDACTED
             </span>
+
+            <!-- Scope 限流 (仅 Antigravity) -->
+            <template v-if="row.scope_rate_limit_count && Object.keys(row.scope_rate_limit_count).length > 0">
+              <span
+                v-for="(count, scope) in row.scope_rate_limit_count"
+                :key="scope"
+                class="rounded-full bg-orange-100 px-1.5 py-0.5 font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                :title="t('admin.ops.concurrency.scopeRateLimitedTooltip', { scope, count REDACTED)"
+              >
+                {{ formatScopeName(scope as string) REDACTEDREDACTED {{ count REDACTEDREDACTED
+              </span>
+            </template>
 
             <!-- 异常账号 -->
             <span

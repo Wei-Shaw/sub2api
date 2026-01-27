@@ -355,6 +355,7 @@ export interface PlatformAvailability {
   total_accounts: number
   available_count: number
   rate_limit_count: number
+  scope_rate_limit_count?: Record<string, number>
   error_count: number
 REDACTED
 
@@ -365,6 +366,7 @@ export interface GroupAvailability {
   total_accounts: number
   available_count: number
   rate_limit_count: number
+  scope_rate_limit_count?: Record<string, number>
   error_count: number
 REDACTED
 
@@ -379,6 +381,7 @@ export interface AccountAvailability {
   is_rate_limited: boolean
   rate_limit_reset_at?: string
   rate_limit_remaining_sec?: number
+  scope_rate_limits?: Record<string, number>
   is_overloaded: boolean
   overload_until?: string
   overload_remaining_sec?: number
