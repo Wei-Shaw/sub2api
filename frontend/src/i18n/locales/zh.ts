@@ -1203,6 +1203,7 @@ export default {
         limited: '限流',
         tempUnschedulable: '临时不可调度',
         rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
+        scopeRateLimitedUntil: '{scopeREDACTED 限流中，重置时间：{timeREDACTED',
         overloadedUntil: '负载过重，重置时间：{timeREDACTED',
         viewTempUnschedDetails: '查看临时不可调度详情'
       REDACTED,
