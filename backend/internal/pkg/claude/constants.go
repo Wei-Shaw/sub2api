@@ -16,7 +16,12 @@ const (
 const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
 
 // MessageBetaHeaderNoTools /v1/messages 在无工具时的 beta header
-const MessageBetaHeaderNoTools = BetaOAuth + "," + BetaInterleavedThinking
+//
+// NOTE: Claude Code OAuth credentials are scoped to Claude Code. When we "mimic"
+// Claude Code for non-Claude-Code clients, we must include the claude-code beta
+// even if the request doesn't use tools, otherwise upstream may reject the
+// request as a non-Claude-Code API request.
+const MessageBetaHeaderNoTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
 
 // MessageBetaHeaderWithTools /v1/messages 在有工具时的 beta header
 const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
