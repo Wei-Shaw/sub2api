@@ -50,6 +50,11 @@ func (s *GatewayService) debugModelRoutingEnabled() bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 REDACTED
 
+func (s *GatewayService) debugClaudeMimicEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+REDACTED
+
 func shortSessionHash(sessionHash string) string {
 	if sessionHash == "" {
 		return ""
@@ -58,6 +63,121 @@ REDACTED
 		return sessionHash
 REDACTED
 	return sessionHash[:8]
+REDACTED
+
+func redactAuthHeaderValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+REDACTED
+	// Keep scheme for debugging, redact secret.
+	if strings.HasPrefix(strings.ToLower(v), "bearer ") {
+		return "Bearer [redacted]"
+REDACTED
+	return "[redacted]"
+REDACTED
+
+func safeHeaderValueForLog(key string, v string) string {
+	key = strings.ToLower(strings.TrimSpace(key))
+	switch key {
+	case "authorization", "x-api-key":
+		return redactAuthHeaderValue(v)
+	default:
+		return strings.TrimSpace(v)
+REDACTED
+REDACTED
+
+func extractSystemPreviewFromBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+REDACTED
+	sys := gjson.GetBytes(body, "system")
+	if !sys.Exists() {
+		return ""
+REDACTED
+
+	switch {
+	case sys.IsArray():
+		for _, item := range sys.Array() {
+			if !item.IsObject() {
+				continue
+		REDACTED
+			if strings.EqualFold(item.Get("type").String(), "text") {
+				if t := item.Get("text").String(); strings.TrimSpace(t) != "" {
+					return t
+			REDACTED
+		REDACTED
+	REDACTED
+		return ""
+	case sys.Type == gjson.String:
+		return sys.String()
+	default:
+		return ""
+REDACTED
+REDACTED
+
+func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
+	if req == nil {
+		return
+REDACTED
+
+	// Only log a minimal fingerprint to avoid leaking user content.
+	interesting := []string{
+		"user-agent",
+		"x-app",
+		"anthropic-dangerous-direct-browser-access",
+		"anthropic-version",
+		"anthropic-beta",
+		"x-stainless-lang",
+		"x-stainless-package-version",
+		"x-stainless-os",
+		"x-stainless-arch",
+		"x-stainless-runtime",
+		"x-stainless-runtime-version",
+		"x-stainless-retry-count",
+		"x-stainless-timeout",
+		"authorization",
+		"x-api-key",
+		"content-type",
+		"accept",
+		"x-stainless-helper-method",
+REDACTED
+
+	h := make([]string, 0, len(interesting))
+	for _, k := range interesting {
+		if v := req.Header.Get(k); v != "" {
+			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
+	REDACTED
+REDACTED
+
+	metaUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
+	sysPreview := strings.TrimSpace(extractSystemPreviewFromBody(body))
+
+	// Truncate preview to keep logs sane.
+	if len(sysPreview) > 300 {
+		sysPreview = sysPreview[:300] + "..."
+REDACTED
+	sysPreview = strings.ReplaceAll(sysPreview, "\n", "\\n")
+	sysPreview = strings.ReplaceAll(sysPreview, "\r", "\\r")
+
+	aid := int64(0)
+	aname := ""
+	if account != nil {
+		aid = account.ID
+		aname = account.Name
+REDACTED
+
+	log.Printf(
+		"[ClaudeMimicDebug] url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%sREDACTED",
+		req.URL.String(),
+		aid,
+		aname,
+		tokenType,
+		mimicClaudeCode,
+		metaUserID,
+		sysPreview,
+		strings.Join(h, " "),
+	)
 REDACTED
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
@@ -3264,6 +3384,10 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 	REDACTED
 REDACTED
 
+	if s.debugClaudeMimicEnabled() {
+		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
+REDACTED
+
 	return req, nil
 REDACTED
 
@@ -4684,6 +4808,10 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 				req.Header.Set("anthropic-beta", beta)
 		REDACTED
 	REDACTED
+REDACTED
+
+	if s.debugClaudeMimicEnabled() {
+		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
 
 	return req, nil
