@@ -73,6 +73,8 @@ REDACTED
 		DocURL:                               settings.DocURL,
 		HomeContent:                          settings.HomeContent,
 		HideCcsImportButton:                  settings.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:          settings.PurchaseSubscriptionEnabled,
+		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		EnableModelFallback:                  settings.EnableModelFallback,
@@ -119,14 +121,16 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
 
 	// OEM设置
-	SiteName            string `json:"site_name"`
-	SiteLogo            string `json:"site_logo"`
-	SiteSubtitle        string `json:"site_subtitle"`
-	APIBaseURL          string `json:"api_base_url"`
-	ContactInfo         string `json:"contact_info"`
-	DocURL              string `json:"doc_url"`
-	HomeContent         string `json:"home_content"`
-	HideCcsImportButton bool   `json:"hide_ccs_import_button"`
+	SiteName                    string  `json:"site_name"`
+	SiteLogo                    string  `json:"site_logo"`
+	SiteSubtitle                string  `json:"site_subtitle"`
+	APIBaseURL                  string  `json:"api_base_url"`
+	ContactInfo                 string  `json:"contact_info"`
+	DocURL                      string  `json:"doc_url"`
+	HomeContent                 string  `json:"home_content"`
+	HideCcsImportButton         bool    `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled *bool   `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     *string `json:"purchase_subscription_url"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
@@ -242,6 +246,34 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// “购买订阅”页面配置验证
+	purchaseEnabled := previousSettings.PurchaseSubscriptionEnabled
+	if req.PurchaseSubscriptionEnabled != nil {
+		purchaseEnabled = *req.PurchaseSubscriptionEnabled
+REDACTED
+	purchaseURL := previousSettings.PurchaseSubscriptionURL
+	if req.PurchaseSubscriptionURL != nil {
+		purchaseURL = strings.TrimSpace(*req.PurchaseSubscriptionURL)
+REDACTED
+
+	// - 启用时要求 URL 合法且非空
+	// - 禁用时允许为空；若提供了 URL 也做基本校验，避免误配置
+	if purchaseEnabled {
+		if purchaseURL == "" {
+			response.BadRequest(c, "Purchase Subscription URL is required when enabled")
+			return
+	REDACTED
+		if err := config.ValidateAbsoluteHTTPURL(purchaseURL); err != nil {
+			response.BadRequest(c, "Purchase Subscription URL must be an absolute http(s) URL")
+			return
+	REDACTED
+REDACTED else if purchaseURL != "" {
+		if err := config.ValidateAbsoluteHTTPURL(purchaseURL); err != nil {
+			response.BadRequest(c, "Purchase Subscription URL must be an absolute http(s) URL")
+			return
+	REDACTED
+REDACTED
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -255,42 +287,44 @@ REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:        req.RegistrationEnabled,
-		EmailVerifyEnabled:         req.EmailVerifyEnabled,
-		PromoCodeEnabled:           req.PromoCodeEnabled,
-		PasswordResetEnabled:       req.PasswordResetEnabled,
-		TotpEnabled:                req.TotpEnabled,
-		SMTPHost:                   req.SMTPHost,
-		SMTPPort:                   req.SMTPPort,
-		SMTPUsername:               req.SMTPUsername,
-		SMTPPassword:               req.SMTPPassword,
-		SMTPFrom:                   req.SMTPFrom,
-		SMTPFromName:               req.SMTPFromName,
-		SMTPUseTLS:                 req.SMTPUseTLS,
-		TurnstileEnabled:           req.TurnstileEnabled,
-		TurnstileSiteKey:           req.TurnstileSiteKey,
-		TurnstileSecretKey:         req.TurnstileSecretKey,
-		LinuxDoConnectEnabled:      req.LinuxDoConnectEnabled,
-		LinuxDoConnectClientID:     req.LinuxDoConnectClientID,
-		LinuxDoConnectClientSecret: req.LinuxDoConnectClientSecret,
-		LinuxDoConnectRedirectURL:  req.LinuxDoConnectRedirectURL,
-		SiteName:                   req.SiteName,
-		SiteLogo:                   req.SiteLogo,
-		SiteSubtitle:               req.SiteSubtitle,
-		APIBaseURL:                 req.APIBaseURL,
-		ContactInfo:                req.ContactInfo,
-		DocURL:                     req.DocURL,
-		HomeContent:                req.HomeContent,
-		HideCcsImportButton:        req.HideCcsImportButton,
-		DefaultConcurrency:         req.DefaultConcurrency,
-		DefaultBalance:             req.DefaultBalance,
-		EnableModelFallback:        req.EnableModelFallback,
-		FallbackModelAnthropic:     req.FallbackModelAnthropic,
-		FallbackModelOpenAI:        req.FallbackModelOpenAI,
-		FallbackModelGemini:        req.FallbackModelGemini,
-		FallbackModelAntigravity:   req.FallbackModelAntigravity,
-		EnableIdentityPatch:        req.EnableIdentityPatch,
-		IdentityPatchPrompt:        req.IdentityPatchPrompt,
+		RegistrationEnabled:         req.RegistrationEnabled,
+		EmailVerifyEnabled:          req.EmailVerifyEnabled,
+		PromoCodeEnabled:            req.PromoCodeEnabled,
+		PasswordResetEnabled:        req.PasswordResetEnabled,
+		TotpEnabled:                 req.TotpEnabled,
+		SMTPHost:                    req.SMTPHost,
+		SMTPPort:                    req.SMTPPort,
+		SMTPUsername:                req.SMTPUsername,
+		SMTPPassword:                req.SMTPPassword,
+		SMTPFrom:                    req.SMTPFrom,
+		SMTPFromName:                req.SMTPFromName,
+		SMTPUseTLS:                  req.SMTPUseTLS,
+		TurnstileEnabled:            req.TurnstileEnabled,
+		TurnstileSiteKey:            req.TurnstileSiteKey,
+		TurnstileSecretKey:          req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:       req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:      req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret:  req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:   req.LinuxDoConnectRedirectURL,
+		SiteName:                    req.SiteName,
+		SiteLogo:                    req.SiteLogo,
+		SiteSubtitle:                req.SiteSubtitle,
+		APIBaseURL:                  req.APIBaseURL,
+		ContactInfo:                 req.ContactInfo,
+		DocURL:                      req.DocURL,
+		HomeContent:                 req.HomeContent,
+		HideCcsImportButton:         req.HideCcsImportButton,
+		PurchaseSubscriptionEnabled: purchaseEnabled,
+		PurchaseSubscriptionURL:     purchaseURL,
+		DefaultConcurrency:          req.DefaultConcurrency,
+		DefaultBalance:              req.DefaultBalance,
+		EnableModelFallback:         req.EnableModelFallback,
+		FallbackModelAnthropic:      req.FallbackModelAnthropic,
+		FallbackModelOpenAI:         req.FallbackModelOpenAI,
+		FallbackModelGemini:         req.FallbackModelGemini,
+		FallbackModelAntigravity:    req.FallbackModelAntigravity,
+		EnableIdentityPatch:         req.EnableIdentityPatch,
+		IdentityPatchPrompt:         req.IdentityPatchPrompt,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -360,6 +394,8 @@ REDACTED
 		DocURL:                               updatedSettings.DocURL,
 		HomeContent:                          updatedSettings.HomeContent,
 		HideCcsImportButton:                  updatedSettings.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:          updatedSettings.PurchaseSubscriptionEnabled,
+		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		EnableModelFallback:                  updatedSettings.EnableModelFallback,
