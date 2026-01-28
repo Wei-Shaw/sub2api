@@ -2479,6 +2479,10 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 		"text":          claudeCodeSystemPrompt,
 		"cache_control": map[string]string{"type": "ephemeral"REDACTED,
 REDACTED
+	// Opencode plugin applies an extra safeguard: it not only prepends the Claude Code
+	// banner, it also prefixes the next system instruction with the same banner plus
+	// a blank line. This helps when upstream concatenates system instructions.
+	claudeCodePrefix := strings.TrimSpace(claudeCodeSystemPrompt)
 
 	var newSystem []any
 
@@ -2490,15 +2494,31 @@ REDACTED
 		if strings.TrimSpace(v) == "" || strings.TrimSpace(v) == strings.TrimSpace(claudeCodeSystemPrompt) {
 			newSystem = []any{claudeCodeBlockREDACTED
 	REDACTED else {
-			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": vREDACTEDREDACTED
+			// Mirror opencode behavior: keep the banner as a separate system entry,
+			// but also prefix the next system text with the banner.
+			merged := v
+			if !strings.HasPrefix(v, claudeCodePrefix) {
+				merged = claudeCodePrefix + "\n\n" + v
+		REDACTED
+			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": mergedREDACTEDREDACTED
 	REDACTED
 	case []any:
 		newSystem = make([]any, 0, len(v)+1)
 		newSystem = append(newSystem, claudeCodeBlock)
+		prefixedNext := false
 		for _, item := range v {
 			if m, ok := item.(map[string]any); ok {
 				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) == strings.TrimSpace(claudeCodeSystemPrompt) {
 					continue
+			REDACTED
+				// Prefix the first subsequent text system block once.
+				if !prefixedNext {
+					if blockType, _ := m["type"].(string); blockType == "text" {
+						if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" && !strings.HasPrefix(text, claudeCodePrefix) {
+							m["text"] = claudeCodePrefix + "\n\n" + text
+							prefixedNext = true
+					REDACTED
+				REDACTED
 			REDACTED
 		REDACTED
 			newSystem = append(newSystem, item)
