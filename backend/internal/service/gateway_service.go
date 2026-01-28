@@ -39,7 +39,9 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 40 * 1024 * 1024
-	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
+	// Keep a trailing blank line so that when upstream concatenates system strings,
+	// the injected Claude Code banner doesn't run into the next system instruction.
+	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude.\n\n"
 	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
 
@@ -2479,7 +2481,8 @@ REDACTED
 	case nil:
 		newSystem = []any{claudeCodeBlockREDACTED
 	case string:
-		if v == "" || v == claudeCodeSystemPrompt {
+		// Be tolerant of older/newer clients that may differ only by trailing whitespace/newlines.
+		if strings.TrimSpace(v) == "" || strings.TrimSpace(v) == strings.TrimSpace(claudeCodeSystemPrompt) {
 			newSystem = []any{claudeCodeBlockREDACTED
 	REDACTED else {
 			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": vREDACTEDREDACTED
@@ -2489,7 +2492,7 @@ REDACTED
 		newSystem = append(newSystem, claudeCodeBlock)
 		for _, item := range v {
 			if m, ok := item.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok && text == claudeCodeSystemPrompt {
+				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) == strings.TrimSpace(claudeCodeSystemPrompt) {
 					continue
 			REDACTED
 		REDACTED
