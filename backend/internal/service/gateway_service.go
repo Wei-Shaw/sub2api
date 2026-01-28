@@ -559,6 +559,14 @@ func sanitizeOpenCodeText(text string) string {
 	if text == "" {
 		return text
 REDACTED
+	// Some clients include a fixed OpenCode identity sentence. Anthropic may treat
+	// this as a non-Claude-Code fingerprint, so rewrite it to the canonical
+	// Claude Code banner before generic "OpenCode"/"opencode" replacements.
+	text = strings.ReplaceAll(
+		text,
+		"You are OpenCode, the best coding agent on the planet.",
+		strings.TrimSpace(claudeCodeSystemPrompt),
+	)
 	text = strings.ReplaceAll(text, "OpenCode", "Claude Code")
 	text = opencodeTextRe.ReplaceAllString(text, "Claude")
 	return text
