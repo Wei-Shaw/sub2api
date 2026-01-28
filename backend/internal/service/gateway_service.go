@@ -42,7 +42,7 @@ const (
 	// Keep a trailing blank line so that when upstream concatenates system strings,
 	// the injected Claude Code banner doesn't run into the next system instruction.
 	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude.\n\n"
-	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
+	maxCacheControlBlocks  = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
 
 func (s *GatewayService) debugModelRoutingEnabled() bool {
