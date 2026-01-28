@@ -26,13 +26,13 @@ var (
 
 // 默认指纹值（当客户端未提供时使用）
 var defaultFingerprint = Fingerprint{
-	UserAgent:               "claude-cli/2.1.2 (external, cli)",
+	UserAgent:               "claude-cli/2.1.22 (external, cli)",
 	StainlessLang:           "js",
 	StainlessPackageVersion: "0.70.0",
 	StainlessOS:             "Linux",
-	StainlessArch:           "x64",
+	StainlessArch:           "arm64",
 	StainlessRuntime:        "node",
-	StainlessRuntimeVersion: "v24.3.0",
+	StainlessRuntimeVersion: "v24.13.0",
 REDACTED
 
 // Fingerprint represents account fingerprint data

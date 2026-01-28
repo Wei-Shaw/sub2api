@@ -40,13 +40,15 @@ const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
 var DefaultHeaders = map[string]string{
-	"User-Agent":                                "claude-cli/2.1.2 (external, cli)",
+	// Keep these in sync with recent Claude CLI traffic to reduce the chance
+	// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
+	"User-Agent":                                "claude-cli/2.1.22 (external, cli)",
 	"X-Stainless-Lang":                          "js",
 	"X-Stainless-Package-Version":               "0.70.0",
 	"X-Stainless-OS":                            "Linux",
-	"X-Stainless-Arch":                          "x64",
+	"X-Stainless-Arch":                          "arm64",
 	"X-Stainless-Runtime":                       "node",
-	"X-Stainless-Runtime-Version":               "v24.3.0",
+	"X-Stainless-Runtime-Version":               "v24.13.0",
 	"X-Stainless-Retry-Count":                   "0",
 	"X-Stainless-Timeout":                       "600",
 	"X-App":                                     "cli",
