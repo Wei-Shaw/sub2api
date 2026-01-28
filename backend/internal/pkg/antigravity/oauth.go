@@ -40,16 +40,47 @@ const (
 
 	// URL 可用性 TTL（不可用 URL 的恢复时间）
 	URLAvailabilityTTL = 5 * time.Minute
+
+	// Antigravity API 端点
+	antigravityProdBaseURL  = "https://cloudcode-pa.googleapis.com"
+	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 )
 
 // BaseURLs 定义 Antigravity API 端点（与 Antigravity-Manager 保持一致）
 var BaseURLs = []string{
-	"https://cloudcode-pa.googleapis.com",               // prod (优先)
-	"https://daily-cloudcode-pa.sandbox.googleapis.com", // daily sandbox (备用)
+	antigravityProdBaseURL,  // prod (优先)
+	antigravityDailyBaseURL, // daily sandbox (备用)
 REDACTED
 
 // BaseURL 默认 URL（保持向后兼容）
 var BaseURL = BaseURLs[0]
+
+// ForwardBaseURLs 返回 API 转发用的 URL 顺序（daily 优先）
+func ForwardBaseURLs() []string {
+	if len(BaseURLs) == 0 {
+		return nil
+REDACTED
+	urls := append([]string(nil), BaseURLs...)
+	dailyIndex := -1
+	for i, url := range urls {
+		if url == antigravityDailyBaseURL {
+			dailyIndex = i
+			break
+	REDACTED
+REDACTED
+	if dailyIndex <= 0 {
+		return urls
+REDACTED
+	reordered := make([]string, 0, len(urls))
+	reordered = append(reordered, urls[dailyIndex])
+	for i, url := range urls {
+		if i == dailyIndex {
+			continue
+	REDACTED
+		reordered = append(reordered, url)
+REDACTED
+	return reordered
+REDACTED
 
 // URLAvailability 管理 URL 可用性状态（带 TTL 自动恢复和动态优先级）
 type URLAvailability struct {
@@ -100,22 +131,37 @@ REDACTED
 // GetAvailableURLs 返回可用的 URL 列表
 // 最近成功的 URL 优先，其他按默认顺序
 func (u *URLAvailability) GetAvailableURLs() []string {
+	return u.GetAvailableURLsWithBase(BaseURLs)
+REDACTED
+
+// GetAvailableURLsWithBase 返回可用的 URL 列表（使用自定义顺序）
+// 最近成功的 URL 优先，其他按传入顺序
+func (u *URLAvailability) GetAvailableURLsWithBase(baseURLs []string) []string {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
 
 	now := time.Now()
-	result := make([]string, 0, len(BaseURLs))
+	result := make([]string, 0, len(baseURLs))
 
 	// 如果有最近成功的 URL 且可用，放在最前面
 	if u.lastSuccess != "" {
-		expiry, exists := u.unavailable[u.lastSuccess]
-		if !exists || now.After(expiry) {
-			result = append(result, u.lastSuccess)
+		found := false
+		for _, url := range baseURLs {
+			if url == u.lastSuccess {
+				found = true
+				break
+		REDACTED
+	REDACTED
+		if found {
+			expiry, exists := u.unavailable[u.lastSuccess]
+			if !exists || now.After(expiry) {
+				result = append(result, u.lastSuccess)
+		REDACTED
 	REDACTED
 REDACTED
 
-	// 添加其他可用的 URL（按默认顺序）
-	for _, url := range BaseURLs {
+	// 添加其他可用的 URL（按传入顺序）
+	for _, url := range baseURLs {
 		// 跳过已添加的 lastSuccess
 		if url == u.lastSuccess {
 			continue

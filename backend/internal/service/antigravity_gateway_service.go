@@ -77,9 +77,10 @@ REDACTED
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
-	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLs()
+	baseURLs := antigravity.ForwardBaseURLs()
+	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLsWithBase(baseURLs)
 	if len(availableURLs) == 0 {
-		availableURLs = antigravity.BaseURLs
+		availableURLs = baseURLs
 REDACTED
 	maxRetries := p.maxRetries
 	if maxRetries <= 0 {
