@@ -2,6 +2,7 @@
 package response
 
 import (
+	"log"
 	"math"
 	"net/http"
 
@@ -74,6 +75,12 @@ func ErrorFrom(c *gin.Context, err error) bool {
 REDACTED
 
 	statusCode, status := infraerrors.ToHTTP(err)
+
+	// Log internal errors with full details for debugging
+	if statusCode >= 500 && c.Request != nil {
+		log.Printf("[ERROR] %s %s\n  Error: %s", c.Request.Method, c.Request.URL.Path, err.Error())
+REDACTED
+
 	ErrorWithDetails(c, statusCode, status.Message, status.Reason, status.Metadata)
 	return true
 REDACTED
