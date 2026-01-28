@@ -175,6 +175,18 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'userSubscriptions.description'
     REDACTED
   REDACTED,
+  {
+    path: '/purchase',
+    name: 'PurchaseSubscription',
+    component: () => import('@/views/user/PurchaseSubscriptionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Purchase Subscription',
+      titleKey: 'purchase.title',
+      descriptionKey: 'purchase.description'
+    REDACTED
+  REDACTED,
 
   // ==================== Admin Routes ====================
   {

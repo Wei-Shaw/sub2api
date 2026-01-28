@@ -489,7 +489,9 @@ REDACTED{
 					"enable_identity_patch": true,
 					"identity_patch_prompt": "",
 					"home_content": "",
-					"hide_ccs_import_button": false
+					"hide_ccs_import_button": false,
+					"purchase_subscription_enabled": false,
+					"purchase_subscription_url": ""
 			REDACTED
 		REDACTED`,
 	REDACTED,

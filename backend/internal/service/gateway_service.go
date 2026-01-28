@@ -4102,12 +4102,21 @@ REDACTED
 	REDACTED `json:"usage"`
 REDACTED
 	if json.Unmarshal([]byte(data), &msgDelta) == nil && msgDelta.Type == "message_delta" {
-		// message_delta 是推理结束后的最终统计，应完全覆盖 message_start 的数据
-		// 这对于 Claude API 和 GLM 等兼容 API 都是正确的行为
-		usage.InputTokens = msgDelta.Usage.InputTokens
-		usage.OutputTokens = msgDelta.Usage.OutputTokens
-		usage.CacheCreationInputTokens = msgDelta.Usage.CacheCreationInputTokens
-		usage.CacheReadInputTokens = msgDelta.Usage.CacheReadInputTokens
+		// message_delta 仅覆盖存在且非0的字段
+		// 避免覆盖 message_start 中已有的值（如 input_tokens）
+		// Claude API 的 message_delta 通常只包含 output_tokens
+		if msgDelta.Usage.InputTokens > 0 {
+			usage.InputTokens = msgDelta.Usage.InputTokens
+	REDACTED
+		if msgDelta.Usage.OutputTokens > 0 {
+			usage.OutputTokens = msgDelta.Usage.OutputTokens
+	REDACTED
+		if msgDelta.Usage.CacheCreationInputTokens > 0 {
+			usage.CacheCreationInputTokens = msgDelta.Usage.CacheCreationInputTokens
+	REDACTED
+		if msgDelta.Usage.CacheReadInputTokens > 0 {
+			usage.CacheReadInputTokens = msgDelta.Usage.CacheReadInputTokens
+	REDACTED
 REDACTED
 REDACTED
 
