@@ -39,9 +39,10 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 40 * 1024 * 1024
-	// Keep a trailing blank line so that when upstream concatenates system strings,
-	// the injected Claude Code banner doesn't run into the next system instruction.
-	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude.\n\n"
+	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
+	// to match real Claude CLI traffic as closely as possible. When we need a visual
+	// separator between system blocks, we add "\n\n" at concatenation time.
+	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
 	maxCacheControlBlocks  = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
 
