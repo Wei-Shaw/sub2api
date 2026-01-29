@@ -584,6 +584,66 @@ gemini:
         cooldown_minutes: 5
 
 # =============================================================================
+# Sora
+# Sora 配置
+# =============================================================================
+sora:
+  # Sora Backend API base URL
+  # Sora 后端 API 基础地址
+  base_url: "https://sora.chatgpt.com/backend"
+  # Request timeout in seconds
+  # 请求超时时间（秒）
+  timeout: 120
+  # Max retry attempts for upstream requests
+  # 上游请求最大重试次数
+  max_retries: 3
+  # Poll interval in seconds for task status
+  # 任务状态轮询间隔（秒）
+  poll_interval: 2.5
+  # Call logic mode: default/native/proxy (default keeps current behavior)
+  # 调用模式：default/native/proxy（default 保持当前默认策略）
+  call_logic_mode: "default"
+  cache:
+    # Enable media caching
+    # 是否启用媒体缓存
+    enabled: false
+    # Base cache directory (temporary files, intermediate downloads)
+    # 缓存根目录（临时文件、中间下载）
+    base_dir: "tmp/sora"
+    # Video cache directory (separated from images)
+    # 视频缓存目录（与图片分离）
+    video_dir: "data/video"
+    # Max bytes for cache dir (0 = unlimited)
+    # 缓存目录最大字节数（0 = 不限制）
+    max_bytes: 0
+    # Allowed hosts for cache download (empty -> fallback to global allowlist)
+    # 缓存下载白名单域名（为空则回退全局 allowlist）
+    allowed_hosts: []
+    # Enable user directory isolation (data/video/u_{user_idREDACTED)
+    # 是否按用户隔离目录（data/video/u_{user_idREDACTED）
+    user_dir_enabled: true
+  watermark_free:
+    # Enable watermark-free flow
+    # 是否启用去水印流程
+    enabled: false
+    # Parse method: third_party/custom
+    # 解析方式：third_party/custom
+    parse_method: "third_party"
+    # Custom parse server URL
+    # 自定义解析服务 URL
+    custom_parse_url: ""
+    # Custom parse token
+    # 自定义解析 token
+    custom_parse_token: ""
+    # Fallback to watermark video when parse fails
+    # 去水印失败时是否回退原视频
+    fallback_on_failure: true
+  token_refresh:
+    # Enable periodic token refresh
+    # 是否启用定时刷新
+    enabled: false
+
+# =============================================================================
 # Update Configuration (在线更新配置)
 # =============================================================================
 update:

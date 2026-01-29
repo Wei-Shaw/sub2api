@@ -49,6 +49,25 @@ type SystemSettings struct {
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
+	// Sora configuration
+	SoraBaseURL                        string
+	SoraTimeout                        int
+	SoraMaxRetries                     int
+	SoraPollInterval                   float64
+	SoraCallLogicMode                  string
+	SoraCacheEnabled                   bool
+	SoraCacheBaseDir                   string
+	SoraCacheVideoDir                  string
+	SoraCacheMaxBytes                  int64
+	SoraCacheAllowedHosts              []string
+	SoraCacheUserDirEnabled            bool
+	SoraWatermarkFreeEnabled           bool
+	SoraWatermarkFreeParseMethod       string
+	SoraWatermarkFreeCustomParseURL    string
+	SoraWatermarkFreeCustomParseToken  string
+	SoraWatermarkFreeFallbackOnFailure bool
+	SoraTokenRefreshEnabled            bool
+
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         bool
 	OpsRealtimeMonitoringEnabled bool

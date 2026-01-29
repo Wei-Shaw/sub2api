@@ -22,6 +22,7 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformSora        = "sora"
 )
 
 // Account type constants
@@ -123,6 +124,28 @@ const (
 	// Request identity patch (Claude -> Gemini systemInstruction injection)
 	SettingKeyEnableIdentityPatch = "enable_identity_patch"
 	SettingKeyIdentityPatchPrompt = "identity_patch_prompt"
+
+	// =========================
+	// Sora Settings
+	// =========================
+
+	SettingKeySoraBaseURL                        = "sora_base_url"
+	SettingKeySoraTimeout                        = "sora_timeout"
+	SettingKeySoraMaxRetries                     = "sora_max_retries"
+	SettingKeySoraPollInterval                   = "sora_poll_interval"
+	SettingKeySoraCallLogicMode                  = "sora_call_logic_mode"
+	SettingKeySoraCacheEnabled                   = "sora_cache_enabled"
+	SettingKeySoraCacheBaseDir                   = "sora_cache_base_dir"
+	SettingKeySoraCacheVideoDir                  = "sora_cache_video_dir"
+	SettingKeySoraCacheMaxBytes                  = "sora_cache_max_bytes"
+	SettingKeySoraCacheAllowedHosts              = "sora_cache_allowed_hosts"
+	SettingKeySoraCacheUserDirEnabled            = "sora_cache_user_dir_enabled"
+	SettingKeySoraWatermarkFreeEnabled           = "sora_watermark_free_enabled"
+	SettingKeySoraWatermarkFreeParseMethod       = "sora_watermark_free_parse_method"
+	SettingKeySoraWatermarkFreeCustomParseURL    = "sora_watermark_free_custom_parse_url"
+	SettingKeySoraWatermarkFreeCustomParseToken  = "sora_watermark_free_custom_parse_token"
+	SettingKeySoraWatermarkFreeFallbackOnFailure = "sora_watermark_free_fallback_on_failure"
+	SettingKeySoraTokenRefreshEnabled            = "sora_token_refresh_enabled"
 
 	// =========================
 	// Ops Monitoring (vNext)

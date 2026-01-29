@@ -51,6 +51,30 @@ func ProvideTokenRefreshService(
 	return svc
 REDACTED
 
+// ProvideSoraTokenRefreshService creates and starts SoraTokenRefreshService.
+func ProvideSoraTokenRefreshService(
+	accountRepo AccountRepository,
+	soraAccountRepo SoraAccountRepository,
+	settingService *SettingService,
+	httpUpstream HTTPUpstream,
+	cfg *config.Config,
+) *SoraTokenRefreshService {
+	svc := NewSoraTokenRefreshService(accountRepo, soraAccountRepo, settingService, httpUpstream, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideSoraCacheCleanupService creates and starts SoraCacheCleanupService.
+func ProvideSoraCacheCleanupService(
+	cacheRepo SoraCacheFileRepository,
+	settingService *SettingService,
+	cfg *config.Config,
+) *SoraCacheCleanupService {
+	svc := NewSoraCacheCleanupService(cacheRepo, settingService, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务
 func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, cfg *config.Config) *DashboardAggregationService {
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
@@ -222,6 +246,8 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
+	NewSoraCacheService,
+	NewSoraGatewayService,
 	NewOAuthService,
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,
@@ -255,6 +281,8 @@ var ProviderSet = wire.NewSet(
 	NewCRSSyncService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
+	ProvideSoraTokenRefreshService,
+	ProvideSoraCacheCleanupService,
 	ProvideAccountExpiryService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,

@@ -46,6 +46,25 @@ type SystemSettings struct {
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
 
+	// Sora configuration
+	SoraBaseURL                        string   `json:"sora_base_url"`
+	SoraTimeout                        int      `json:"sora_timeout"`
+	SoraMaxRetries                     int      `json:"sora_max_retries"`
+	SoraPollInterval                   float64  `json:"sora_poll_interval"`
+	SoraCallLogicMode                  string   `json:"sora_call_logic_mode"`
+	SoraCacheEnabled                   bool     `json:"sora_cache_enabled"`
+	SoraCacheBaseDir                   string   `json:"sora_cache_base_dir"`
+	SoraCacheVideoDir                  string   `json:"sora_cache_video_dir"`
+	SoraCacheMaxBytes                  int64    `json:"sora_cache_max_bytes"`
+	SoraCacheAllowedHosts              []string `json:"sora_cache_allowed_hosts"`
+	SoraCacheUserDirEnabled            bool     `json:"sora_cache_user_dir_enabled"`
+	SoraWatermarkFreeEnabled           bool     `json:"sora_watermark_free_enabled"`
+	SoraWatermarkFreeParseMethod       string   `json:"sora_watermark_free_parse_method"`
+	SoraWatermarkFreeCustomParseURL    string   `json:"sora_watermark_free_custom_parse_url"`
+	SoraWatermarkFreeCustomParseToken  string   `json:"sora_watermark_free_custom_parse_token"`
+	SoraWatermarkFreeFallbackOnFailure bool     `json:"sora_watermark_free_fallback_on_failure"`
+	SoraTokenRefreshEnabled            bool     `json:"sora_token_refresh_enabled"`
+
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         bool   `json:"ops_monitoring_enabled"`
 	OpsRealtimeMonitoringEnabled bool   `json:"ops_realtime_monitoring_enabled"`

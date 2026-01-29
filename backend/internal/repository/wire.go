@@ -64,6 +64,10 @@ var ProviderSet = wire.NewSet(
 	NewUserSubscriptionRepository,
 	NewUserAttributeDefinitionRepository,
 	NewUserAttributeValueRepository,
+	NewSoraAccountRepository,
+	NewSoraUsageStatRepository,
+	NewSoraTaskRepository,
+	NewSoraCacheFileRepository,
 
 	// Cache implementations
 	NewGatewayCache,

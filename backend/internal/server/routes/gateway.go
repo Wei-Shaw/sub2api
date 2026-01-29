@@ -33,6 +33,7 @@ func RegisterGatewayRoutes(
 		gateway.POST("/messages", h.Gateway.Messages)
 		gateway.POST("/messages/count_tokens", h.Gateway.CountTokens)
 		gateway.GET("/models", h.Gateway.Models)
+		gateway.POST("/chat/completions", h.SoraGateway.ChatCompletions)
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API
 		gateway.POST("/responses", h.OpenAIGateway.Responses)

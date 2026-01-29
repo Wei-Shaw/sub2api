@@ -29,6 +29,9 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h)
 
+		// Sora 账号扩展
+		registerSoraRoutes(admin, h)
+
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
 
@@ -226,6 +229,17 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)
 		accounts.POST("/cookie-auth", h.Admin.OAuth.CookieAuth)
 		accounts.POST("/setup-token-cookie-auth", h.Admin.OAuth.SetupTokenCookieAuth)
+REDACTED
+REDACTED
+
+func registerSoraRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	sora := admin.Group("/sora")
+	{
+		sora.GET("/accounts", h.Admin.SoraAccount.List)
+		sora.GET("/accounts/:id", h.Admin.SoraAccount.Get)
+		sora.PUT("/accounts/:id", h.Admin.SoraAccount.Upsert)
+		sora.POST("/accounts/import", h.Admin.SoraAccount.BatchUpsert)
+		sora.GET("/usage", h.Admin.SoraAccount.ListUsage)
 REDACTED
 REDACTED
 

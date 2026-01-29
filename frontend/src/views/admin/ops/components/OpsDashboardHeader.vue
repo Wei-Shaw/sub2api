@@ -111,6 +111,7 @@ const platformOptions = computed(() => [
   { value: 'openai', label: 'OpenAI' REDACTED,
   { value: 'anthropic', label: 'Anthropic' REDACTED,
   { value: 'gemini', label: 'Gemini' REDACTED,
+  { value: 'sora', label: 'Sora' REDACTED,
   { value: 'antigravity', label: 'Antigravity' REDACTED
 ])
 

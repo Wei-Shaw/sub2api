@@ -69,6 +69,8 @@ func provideCleanup(
 	opsScheduledReport *service.OpsScheduledReportService,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
+	soraTokenRefresh *service.SoraTokenRefreshService,
+	soraCacheCleanup *service.SoraCacheCleanupService,
 	accountExpiry *service.AccountExpiryService,
 	usageCleanup *service.UsageCleanupService,
 	pricing *service.PricingService,
@@ -132,6 +134,18 @@ func provideCleanup(
 	REDACTED
 			{"TokenRefreshService", func() error {
 				tokenRefresh.Stop()
+				return nil
+	REDACTED
+			{"SoraTokenRefreshService", func() error {
+				if soraTokenRefresh != nil {
+					soraTokenRefresh.Stop()
+			REDACTED
+				return nil
+	REDACTED
+			{"SoraCacheCleanupService", func() error {
+				if soraCacheCleanup != nil {
+					soraCacheCleanup.Stop()
+			REDACTED
 				return nil
 	REDACTED
 			{"AccountExpiryService", func() error {

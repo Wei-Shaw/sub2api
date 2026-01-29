@@ -15,6 +15,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/soraaccount"
+	"github.com/Wei-Shaw/sub2api/ent/soracachefile"
+	"github.com/Wei-Shaw/sub2api/ent/soratask"
+	"github.com/Wei-Shaw/sub2api/ent/sorausagestat"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -496,6 +500,150 @@ REDACTED()
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	soraaccountMixin := schema.SoraAccount{REDACTED.Mixin()
+	soraaccountMixinFields0 := soraaccountMixin[0].Fields()
+	_ = soraaccountMixinFields0
+	soraaccountFields := schema.SoraAccount{REDACTED.Fields()
+	_ = soraaccountFields
+	// soraaccountDescCreatedAt is the schema descriptor for created_at field.
+	soraaccountDescCreatedAt := soraaccountMixinFields0[0].Descriptor()
+	// soraaccount.DefaultCreatedAt holds the default value on creation for the created_at field.
+	soraaccount.DefaultCreatedAt = soraaccountDescCreatedAt.Default.(func() time.Time)
+	// soraaccountDescUpdatedAt is the schema descriptor for updated_at field.
+	soraaccountDescUpdatedAt := soraaccountMixinFields0[1].Descriptor()
+	// soraaccount.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	soraaccount.DefaultUpdatedAt = soraaccountDescUpdatedAt.Default.(func() time.Time)
+	// soraaccount.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	soraaccount.UpdateDefaultUpdatedAt = soraaccountDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// soraaccountDescUseCount is the schema descriptor for use_count field.
+	soraaccountDescUseCount := soraaccountFields[8].Descriptor()
+	// soraaccount.DefaultUseCount holds the default value on creation for the use_count field.
+	soraaccount.DefaultUseCount = soraaccountDescUseCount.Default.(int)
+	// soraaccountDescSoraSupported is the schema descriptor for sora_supported field.
+	soraaccountDescSoraSupported := soraaccountFields[12].Descriptor()
+	// soraaccount.DefaultSoraSupported holds the default value on creation for the sora_supported field.
+	soraaccount.DefaultSoraSupported = soraaccountDescSoraSupported.Default.(bool)
+	// soraaccountDescSoraRedeemedCount is the schema descriptor for sora_redeemed_count field.
+	soraaccountDescSoraRedeemedCount := soraaccountFields[14].Descriptor()
+	// soraaccount.DefaultSoraRedeemedCount holds the default value on creation for the sora_redeemed_count field.
+	soraaccount.DefaultSoraRedeemedCount = soraaccountDescSoraRedeemedCount.Default.(int)
+	// soraaccountDescSoraRemainingCount is the schema descriptor for sora_remaining_count field.
+	soraaccountDescSoraRemainingCount := soraaccountFields[15].Descriptor()
+	// soraaccount.DefaultSoraRemainingCount holds the default value on creation for the sora_remaining_count field.
+	soraaccount.DefaultSoraRemainingCount = soraaccountDescSoraRemainingCount.Default.(int)
+	// soraaccountDescSoraTotalCount is the schema descriptor for sora_total_count field.
+	soraaccountDescSoraTotalCount := soraaccountFields[16].Descriptor()
+	// soraaccount.DefaultSoraTotalCount holds the default value on creation for the sora_total_count field.
+	soraaccount.DefaultSoraTotalCount = soraaccountDescSoraTotalCount.Default.(int)
+	// soraaccountDescImageEnabled is the schema descriptor for image_enabled field.
+	soraaccountDescImageEnabled := soraaccountFields[19].Descriptor()
+	// soraaccount.DefaultImageEnabled holds the default value on creation for the image_enabled field.
+	soraaccount.DefaultImageEnabled = soraaccountDescImageEnabled.Default.(bool)
+	// soraaccountDescVideoEnabled is the schema descriptor for video_enabled field.
+	soraaccountDescVideoEnabled := soraaccountFields[20].Descriptor()
+	// soraaccount.DefaultVideoEnabled holds the default value on creation for the video_enabled field.
+	soraaccount.DefaultVideoEnabled = soraaccountDescVideoEnabled.Default.(bool)
+	// soraaccountDescImageConcurrency is the schema descriptor for image_concurrency field.
+	soraaccountDescImageConcurrency := soraaccountFields[21].Descriptor()
+	// soraaccount.DefaultImageConcurrency holds the default value on creation for the image_concurrency field.
+	soraaccount.DefaultImageConcurrency = soraaccountDescImageConcurrency.Default.(int)
+	// soraaccountDescVideoConcurrency is the schema descriptor for video_concurrency field.
+	soraaccountDescVideoConcurrency := soraaccountFields[22].Descriptor()
+	// soraaccount.DefaultVideoConcurrency holds the default value on creation for the video_concurrency field.
+	soraaccount.DefaultVideoConcurrency = soraaccountDescVideoConcurrency.Default.(int)
+	// soraaccountDescIsExpired is the schema descriptor for is_expired field.
+	soraaccountDescIsExpired := soraaccountFields[23].Descriptor()
+	// soraaccount.DefaultIsExpired holds the default value on creation for the is_expired field.
+	soraaccount.DefaultIsExpired = soraaccountDescIsExpired.Default.(bool)
+	soracachefileFields := schema.SoraCacheFile{REDACTED.Fields()
+	_ = soracachefileFields
+	// soracachefileDescTaskID is the schema descriptor for task_id field.
+	soracachefileDescTaskID := soracachefileFields[0].Descriptor()
+	// soracachefile.TaskIDValidator is a validator for the "task_id" field. It is called by the builders before save.
+	soracachefile.TaskIDValidator = soracachefileDescTaskID.Validators[0].(func(string) error)
+	// soracachefileDescMediaType is the schema descriptor for media_type field.
+	soracachefileDescMediaType := soracachefileFields[3].Descriptor()
+	// soracachefile.MediaTypeValidator is a validator for the "media_type" field. It is called by the builders before save.
+	soracachefile.MediaTypeValidator = soracachefileDescMediaType.Validators[0].(func(string) error)
+	// soracachefileDescSizeBytes is the schema descriptor for size_bytes field.
+	soracachefileDescSizeBytes := soracachefileFields[7].Descriptor()
+	// soracachefile.DefaultSizeBytes holds the default value on creation for the size_bytes field.
+	soracachefile.DefaultSizeBytes = soracachefileDescSizeBytes.Default.(int64)
+	// soracachefileDescCreatedAt is the schema descriptor for created_at field.
+	soracachefileDescCreatedAt := soracachefileFields[8].Descriptor()
+	// soracachefile.DefaultCreatedAt holds the default value on creation for the created_at field.
+	soracachefile.DefaultCreatedAt = soracachefileDescCreatedAt.Default.(func() time.Time)
+	sorataskFields := schema.SoraTask{REDACTED.Fields()
+	_ = sorataskFields
+	// sorataskDescTaskID is the schema descriptor for task_id field.
+	sorataskDescTaskID := sorataskFields[0].Descriptor()
+	// soratask.TaskIDValidator is a validator for the "task_id" field. It is called by the builders before save.
+	soratask.TaskIDValidator = sorataskDescTaskID.Validators[0].(func(string) error)
+	// sorataskDescModel is the schema descriptor for model field.
+	sorataskDescModel := sorataskFields[2].Descriptor()
+	// soratask.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	soratask.ModelValidator = sorataskDescModel.Validators[0].(func(string) error)
+	// sorataskDescStatus is the schema descriptor for status field.
+	sorataskDescStatus := sorataskFields[4].Descriptor()
+	// soratask.DefaultStatus holds the default value on creation for the status field.
+	soratask.DefaultStatus = sorataskDescStatus.Default.(string)
+	// soratask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	soratask.StatusValidator = sorataskDescStatus.Validators[0].(func(string) error)
+	// sorataskDescProgress is the schema descriptor for progress field.
+	sorataskDescProgress := sorataskFields[5].Descriptor()
+	// soratask.DefaultProgress holds the default value on creation for the progress field.
+	soratask.DefaultProgress = sorataskDescProgress.Default.(float64)
+	// sorataskDescRetryCount is the schema descriptor for retry_count field.
+	sorataskDescRetryCount := sorataskFields[8].Descriptor()
+	// soratask.DefaultRetryCount holds the default value on creation for the retry_count field.
+	soratask.DefaultRetryCount = sorataskDescRetryCount.Default.(int)
+	// sorataskDescCreatedAt is the schema descriptor for created_at field.
+	sorataskDescCreatedAt := sorataskFields[9].Descriptor()
+	// soratask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	soratask.DefaultCreatedAt = sorataskDescCreatedAt.Default.(func() time.Time)
+	sorausagestatMixin := schema.SoraUsageStat{REDACTED.Mixin()
+	sorausagestatMixinFields0 := sorausagestatMixin[0].Fields()
+	_ = sorausagestatMixinFields0
+	sorausagestatFields := schema.SoraUsageStat{REDACTED.Fields()
+	_ = sorausagestatFields
+	// sorausagestatDescCreatedAt is the schema descriptor for created_at field.
+	sorausagestatDescCreatedAt := sorausagestatMixinFields0[0].Descriptor()
+	// sorausagestat.DefaultCreatedAt holds the default value on creation for the created_at field.
+	sorausagestat.DefaultCreatedAt = sorausagestatDescCreatedAt.Default.(func() time.Time)
+	// sorausagestatDescUpdatedAt is the schema descriptor for updated_at field.
+	sorausagestatDescUpdatedAt := sorausagestatMixinFields0[1].Descriptor()
+	// sorausagestat.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	sorausagestat.DefaultUpdatedAt = sorausagestatDescUpdatedAt.Default.(func() time.Time)
+	// sorausagestat.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	sorausagestat.UpdateDefaultUpdatedAt = sorausagestatDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// sorausagestatDescImageCount is the schema descriptor for image_count field.
+	sorausagestatDescImageCount := sorausagestatFields[1].Descriptor()
+	// sorausagestat.DefaultImageCount holds the default value on creation for the image_count field.
+	sorausagestat.DefaultImageCount = sorausagestatDescImageCount.Default.(int)
+	// sorausagestatDescVideoCount is the schema descriptor for video_count field.
+	sorausagestatDescVideoCount := sorausagestatFields[2].Descriptor()
+	// sorausagestat.DefaultVideoCount holds the default value on creation for the video_count field.
+	sorausagestat.DefaultVideoCount = sorausagestatDescVideoCount.Default.(int)
+	// sorausagestatDescErrorCount is the schema descriptor for error_count field.
+	sorausagestatDescErrorCount := sorausagestatFields[3].Descriptor()
+	// sorausagestat.DefaultErrorCount holds the default value on creation for the error_count field.
+	sorausagestat.DefaultErrorCount = sorausagestatDescErrorCount.Default.(int)
+	// sorausagestatDescTodayImageCount is the schema descriptor for today_image_count field.
+	sorausagestatDescTodayImageCount := sorausagestatFields[5].Descriptor()
+	// sorausagestat.DefaultTodayImageCount holds the default value on creation for the today_image_count field.
+	sorausagestat.DefaultTodayImageCount = sorausagestatDescTodayImageCount.Default.(int)
+	// sorausagestatDescTodayVideoCount is the schema descriptor for today_video_count field.
+	sorausagestatDescTodayVideoCount := sorausagestatFields[6].Descriptor()
+	// sorausagestat.DefaultTodayVideoCount holds the default value on creation for the today_video_count field.
+	sorausagestat.DefaultTodayVideoCount = sorausagestatDescTodayVideoCount.Default.(int)
+	// sorausagestatDescTodayErrorCount is the schema descriptor for today_error_count field.
+	sorausagestatDescTodayErrorCount := sorausagestatFields[7].Descriptor()
+	// sorausagestat.DefaultTodayErrorCount holds the default value on creation for the today_error_count field.
+	sorausagestat.DefaultTodayErrorCount = sorausagestatDescTodayErrorCount.Default.(int)
+	// sorausagestatDescConsecutiveErrorCount is the schema descriptor for consecutive_error_count field.
+	sorausagestatDescConsecutiveErrorCount := sorausagestatFields[9].Descriptor()
+	// sorausagestat.DefaultConsecutiveErrorCount holds the default value on creation for the consecutive_error_count field.
+	sorausagestat.DefaultConsecutiveErrorCount = sorausagestatDescConsecutiveErrorCount.Default.(int)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{REDACTED.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

@@ -180,6 +180,8 @@ const defaultClientTab = computed(() => {
   switch (props.platform) {
     case 'openai':
       return 'codex'
+    case 'sora':
+      return 'codex'
     case 'gemini':
       return 'gemini'
     case 'antigravity':
@@ -266,6 +268,7 @@ const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
   switch (props.platform) {
     case 'openai':
+    case 'sora':
       return [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon REDACTED,
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
@@ -306,7 +309,7 @@ const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
-  if (props.platform === 'openai') {
+  if (props.platform === 'openai' || props.platform === 'sora') {
     return openaiTabs
   REDACTED
   return shellTabs
@@ -315,6 +318,7 @@ REDACTED)
 const platformDescription = computed(() => {
   switch (props.platform) {
     case 'openai':
+    case 'sora':
       return t('keys.useKeyModal.openai.description')
     case 'gemini':
       return t('keys.useKeyModal.gemini.description')
@@ -328,6 +332,7 @@ REDACTED)
 const platformNote = computed(() => {
   switch (props.platform) {
     case 'openai':
+    case 'sora':
       return activeTab.value === 'windows'
         ? t('keys.useKeyModal.openai.noteWindows')
         : t('keys.useKeyModal.openai.note')
@@ -386,6 +391,7 @@ const currentFiles = computed((): FileConfig[] => {
       case 'anthropic':
         return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'openai':
+      case 'sora':
         return [generateOpenCodeConfig('openai', apiBase, apiKey)]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
@@ -401,6 +407,7 @@ const currentFiles = computed((): FileConfig[] => {
 
   switch (props.platform) {
     case 'openai':
+    case 'sora':
       return generateOpenAIFiles(baseUrl, apiKey)
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]

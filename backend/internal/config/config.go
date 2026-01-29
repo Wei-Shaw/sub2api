@@ -58,6 +58,7 @@ type Config struct {
 	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
 	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
+	Sora         SoraConfig                 `mapstructure:"sora"`
 	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini       GeminiConfig               `mapstructure:"gemini"`
@@ -67,6 +68,38 @@ REDACTED
 type GeminiConfig struct {
 	OAuth GeminiOAuthConfig `mapstructure:"oauth"`
 	Quota GeminiQuotaConfig `mapstructure:"quota"`
+REDACTED
+
+type SoraConfig struct {
+	BaseURL       string                 `mapstructure:"base_url"`
+	Timeout       int                    `mapstructure:"timeout"`
+	MaxRetries    int                    `mapstructure:"max_retries"`
+	PollInterval  float64                `mapstructure:"poll_interval"`
+	CallLogicMode string                 `mapstructure:"call_logic_mode"`
+	Cache         SoraCacheConfig         `mapstructure:"cache"`
+	WatermarkFree SoraWatermarkFreeConfig `mapstructure:"watermark_free"`
+	TokenRefresh  SoraTokenRefreshConfig  `mapstructure:"token_refresh"`
+REDACTED
+
+type SoraCacheConfig struct {
+	Enabled         bool     `mapstructure:"enabled"`
+	BaseDir         string   `mapstructure:"base_dir"`
+	VideoDir        string   `mapstructure:"video_dir"`
+	MaxBytes        int64    `mapstructure:"max_bytes"`
+	AllowedHosts    []string `mapstructure:"allowed_hosts"`
+	UserDirEnabled  bool     `mapstructure:"user_dir_enabled"`
+REDACTED
+
+type SoraWatermarkFreeConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	ParseMethod        string `mapstructure:"parse_method"`
+	CustomParseURL     string `mapstructure:"custom_parse_url"`
+	CustomParseToken   string `mapstructure:"custom_parse_token"`
+	FallbackOnFailure  bool   `mapstructure:"fallback_on_failure"`
+REDACTED
+
+type SoraTokenRefreshConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 REDACTED
 
 type GeminiOAuthConfig struct {
@@ -861,6 +894,24 @@ REDACTED)
 	viper.SetDefault("token_refresh.refresh_before_expiry_hours", 0.5) // 提前30分钟刷新（适配Google 1小时token）
 	viper.SetDefault("token_refresh.max_retries", 3)                   // 最多重试3次
 	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)         // 重试退避基础2秒
+
+	viper.SetDefault("sora.base_url", "https://sora.chatgpt.com/backend")
+	viper.SetDefault("sora.timeout", 120)
+	viper.SetDefault("sora.max_retries", 3)
+	viper.SetDefault("sora.poll_interval", 2.5)
+	viper.SetDefault("sora.call_logic_mode", "default")
+	viper.SetDefault("sora.cache.enabled", false)
+	viper.SetDefault("sora.cache.base_dir", "tmp/sora")
+	viper.SetDefault("sora.cache.video_dir", "data/video")
+	viper.SetDefault("sora.cache.max_bytes", int64(0))
+	viper.SetDefault("sora.cache.allowed_hosts", []string{REDACTED)
+	viper.SetDefault("sora.cache.user_dir_enabled", true)
+	viper.SetDefault("sora.watermark_free.enabled", false)
+	viper.SetDefault("sora.watermark_free.parse_method", "third_party")
+	viper.SetDefault("sora.watermark_free.custom_parse_url", "")
+	viper.SetDefault("sora.watermark_free.custom_parse_token", "")
+	viper.SetDefault("sora.watermark_free.fallback_on_failure", true)
+	viper.SetDefault("sora.token_refresh.enabled", false)
 
 	// Gemini OAuth - configure via environment variables or config file
 	// GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET

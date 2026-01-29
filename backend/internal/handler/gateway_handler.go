@@ -17,6 +17,7 @@ import (
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/sora"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -505,6 +506,13 @@ REDACTED
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
 			"data":   openai.DefaultModels,
+	REDACTED)
+		return
+REDACTED
+	if platform == service.PlatformSora {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   sora.ListModels(),
 	REDACTED)
 		return
 REDACTED

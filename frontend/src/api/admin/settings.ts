@@ -55,6 +55,25 @@ export interface SystemSettings {
   enable_identity_patch: boolean
   identity_patch_prompt: string
 
+  // Sora configuration
+  sora_base_url: string
+  sora_timeout: number
+  sora_max_retries: number
+  sora_poll_interval: number
+  sora_call_logic_mode: string
+  sora_cache_enabled: boolean
+  sora_cache_base_dir: string
+  sora_cache_video_dir: string
+  sora_cache_max_bytes: number
+  sora_cache_allowed_hosts: string[]
+  sora_cache_user_dir_enabled: boolean
+  sora_watermark_free_enabled: boolean
+  sora_watermark_free_parse_method: string
+  sora_watermark_free_custom_parse_url: string
+  sora_watermark_free_custom_parse_token: string
+  sora_watermark_free_fallback_on_failure: boolean
+  sora_token_refresh_enabled: boolean
+
   // Ops Monitoring (vNext)
   ops_monitoring_enabled: boolean
   ops_realtime_monitoring_enabled: boolean
@@ -97,6 +116,23 @@ export interface UpdateSettingsRequest {
   fallback_model_antigravity?: string
   enable_identity_patch?: boolean
   identity_patch_prompt?: string
+  sora_base_url?: string
+  sora_timeout?: number
+  sora_max_retries?: number
+  sora_poll_interval?: number
+  sora_call_logic_mode?: string
+  sora_cache_enabled?: boolean
+  sora_cache_base_dir?: string
+  sora_cache_video_dir?: string
+  sora_cache_max_bytes?: number
+  sora_cache_allowed_hosts?: string[]
+  sora_cache_user_dir_enabled?: boolean
+  sora_watermark_free_enabled?: boolean
+  sora_watermark_free_parse_method?: string
+  sora_watermark_free_custom_parse_url?: string
+  sora_watermark_free_custom_parse_token?: string
+  sora_watermark_free_fallback_on_failure?: boolean
+  sora_token_refresh_enabled?: boolean
   ops_monitoring_enabled?: boolean
   ops_realtime_monitoring_enabled?: boolean
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string

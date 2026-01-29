@@ -22,6 +22,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/soraaccount"
+	"github.com/Wei-Shaw/sub2api/ent/soracachefile"
+	"github.com/Wei-Shaw/sub2api/ent/soratask"
+	"github.com/Wei-Shaw/sub2api/ent/sorausagestat"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -49,6 +53,10 @@ const (
 	TypeProxy                   = "Proxy"
 	TypeRedeemCode              = "RedeemCode"
 	TypeSetting                 = "Setting"
+	TypeSoraAccount             = "SoraAccount"
+	TypeSoraCacheFile           = "SoraCacheFile"
+	TypeSoraTask                = "SoraTask"
+	TypeSoraUsageStat           = "SoraUsageStat"
 	TypeUsageCleanupTask        = "UsageCleanupTask"
 	TypeUsageLog                = "UsageLog"
 	TypeUser                    = "User"
@@ -10371,6 +10379,5304 @@ REDACTED
 // It returns an error if the edge is not defined in the schema.
 func (m *SettingMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Setting edge %s", name)
+REDACTED
+
+// SoraAccountMutation represents an operation that mutates the SoraAccount nodes in the graph.
+type SoraAccountMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	account_id              *int64
+	addaccount_id           *int64
+	access_token            *string
+	session_token           *string
+	refresh_token           *string
+	client_id               *string
+	email                   *string
+	username                *string
+	remark                  *string
+	use_count               *int
+	adduse_count            *int
+	plan_type               *string
+	plan_title              *string
+	subscription_end        *time.Time
+	sora_supported          *bool
+	sora_invite_code        *string
+	sora_redeemed_count     *int
+	addsora_redeemed_count  *int
+	sora_remaining_count    *int
+	addsora_remaining_count *int
+	sora_total_count        *int
+	addsora_total_count     *int
+	sora_cooldown_until     *time.Time
+	cooled_until            *time.Time
+	image_enabled           *bool
+	video_enabled           *bool
+	image_concurrency       *int
+	addimage_concurrency    *int
+	video_concurrency       *int
+	addvideo_concurrency    *int
+	is_expired              *bool
+	clearedFields           map[string]struct{REDACTED
+	done                    bool
+	oldValue                func(context.Context) (*SoraAccount, error)
+	predicates              []predicate.SoraAccount
+REDACTED
+
+var _ ent.Mutation = (*SoraAccountMutation)(nil)
+
+// soraaccountOption allows management of the mutation configuration using functional options.
+type soraaccountOption func(*SoraAccountMutation)
+
+// newSoraAccountMutation creates new mutation for the SoraAccount entity.
+func newSoraAccountMutation(c config, op Op, opts ...soraaccountOption) *SoraAccountMutation {
+	m := &SoraAccountMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSoraAccount,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withSoraAccountID sets the ID field of the mutation.
+func withSoraAccountID(id int64) soraaccountOption {
+	return func(m *SoraAccountMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SoraAccount
+		)
+		m.oldValue = func(ctx context.Context) (*SoraAccount, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().SoraAccount.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withSoraAccount sets the old SoraAccount of the mutation.
+func withSoraAccount(node *SoraAccount) soraaccountOption {
+	return func(m *SoraAccountMutation) {
+		m.oldValue = func(context.Context) (*SoraAccount, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SoraAccountMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SoraAccountMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SoraAccountMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SoraAccountMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SoraAccount.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SoraAccountMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SoraAccountMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SoraAccountMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SoraAccountMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SoraAccountMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SoraAccountMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// SetAccountID sets the "account_id" field.
+func (m *SoraAccountMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+REDACTED
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *SoraAccountMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAccountID returns the old "account_id" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+REDACTED
+	return oldValue.AccountID, nil
+REDACTED
+
+// AddAccountID adds i to the "account_id" field.
+func (m *SoraAccountMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+REDACTED else {
+		m.addaccount_id = &i
+REDACTED
+REDACTED
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *SoraAccountMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *SoraAccountMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+REDACTED
+
+// SetAccessToken sets the "access_token" field.
+func (m *SoraAccountMutation) SetAccessToken(s string) {
+	m.access_token = &s
+REDACTED
+
+// AccessToken returns the value of the "access_token" field in the mutation.
+func (m *SoraAccountMutation) AccessToken() (r string, exists bool) {
+	v := m.access_token
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAccessToken returns the old "access_token" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldAccessToken(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccessToken is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccessToken requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccessToken: %w", err)
+REDACTED
+	return oldValue.AccessToken, nil
+REDACTED
+
+// ClearAccessToken clears the value of the "access_token" field.
+func (m *SoraAccountMutation) ClearAccessToken() {
+	m.access_token = nil
+	m.clearedFields[soraaccount.FieldAccessToken] = struct{REDACTED{REDACTED
+REDACTED
+
+// AccessTokenCleared returns if the "access_token" field was cleared in this mutation.
+func (m *SoraAccountMutation) AccessTokenCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldAccessToken]
+	return ok
+REDACTED
+
+// ResetAccessToken resets all changes to the "access_token" field.
+func (m *SoraAccountMutation) ResetAccessToken() {
+	m.access_token = nil
+	delete(m.clearedFields, soraaccount.FieldAccessToken)
+REDACTED
+
+// SetSessionToken sets the "session_token" field.
+func (m *SoraAccountMutation) SetSessionToken(s string) {
+	m.session_token = &s
+REDACTED
+
+// SessionToken returns the value of the "session_token" field in the mutation.
+func (m *SoraAccountMutation) SessionToken() (r string, exists bool) {
+	v := m.session_token
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSessionToken returns the old "session_token" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSessionToken(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionToken is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionToken requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionToken: %w", err)
+REDACTED
+	return oldValue.SessionToken, nil
+REDACTED
+
+// ClearSessionToken clears the value of the "session_token" field.
+func (m *SoraAccountMutation) ClearSessionToken() {
+	m.session_token = nil
+	m.clearedFields[soraaccount.FieldSessionToken] = struct{REDACTED{REDACTED
+REDACTED
+
+// SessionTokenCleared returns if the "session_token" field was cleared in this mutation.
+func (m *SoraAccountMutation) SessionTokenCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldSessionToken]
+	return ok
+REDACTED
+
+// ResetSessionToken resets all changes to the "session_token" field.
+func (m *SoraAccountMutation) ResetSessionToken() {
+	m.session_token = nil
+	delete(m.clearedFields, soraaccount.FieldSessionToken)
+REDACTED
+
+// SetRefreshToken sets the "refresh_token" field.
+func (m *SoraAccountMutation) SetRefreshToken(s string) {
+	m.refresh_token = &s
+REDACTED
+
+// RefreshToken returns the value of the "refresh_token" field in the mutation.
+func (m *SoraAccountMutation) RefreshToken() (r string, exists bool) {
+	v := m.refresh_token
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldRefreshToken returns the old "refresh_token" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldRefreshToken(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRefreshToken is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRefreshToken requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRefreshToken: %w", err)
+REDACTED
+	return oldValue.RefreshToken, nil
+REDACTED
+
+// ClearRefreshToken clears the value of the "refresh_token" field.
+func (m *SoraAccountMutation) ClearRefreshToken() {
+	m.refresh_token = nil
+	m.clearedFields[soraaccount.FieldRefreshToken] = struct{REDACTED{REDACTED
+REDACTED
+
+// RefreshTokenCleared returns if the "refresh_token" field was cleared in this mutation.
+func (m *SoraAccountMutation) RefreshTokenCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldRefreshToken]
+	return ok
+REDACTED
+
+// ResetRefreshToken resets all changes to the "refresh_token" field.
+func (m *SoraAccountMutation) ResetRefreshToken() {
+	m.refresh_token = nil
+	delete(m.clearedFields, soraaccount.FieldRefreshToken)
+REDACTED
+
+// SetClientID sets the "client_id" field.
+func (m *SoraAccountMutation) SetClientID(s string) {
+	m.client_id = &s
+REDACTED
+
+// ClientID returns the value of the "client_id" field in the mutation.
+func (m *SoraAccountMutation) ClientID() (r string, exists bool) {
+	v := m.client_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldClientID returns the old "client_id" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldClientID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientID: %w", err)
+REDACTED
+	return oldValue.ClientID, nil
+REDACTED
+
+// ClearClientID clears the value of the "client_id" field.
+func (m *SoraAccountMutation) ClearClientID() {
+	m.client_id = nil
+	m.clearedFields[soraaccount.FieldClientID] = struct{REDACTED{REDACTED
+REDACTED
+
+// ClientIDCleared returns if the "client_id" field was cleared in this mutation.
+func (m *SoraAccountMutation) ClientIDCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldClientID]
+	return ok
+REDACTED
+
+// ResetClientID resets all changes to the "client_id" field.
+func (m *SoraAccountMutation) ResetClientID() {
+	m.client_id = nil
+	delete(m.clearedFields, soraaccount.FieldClientID)
+REDACTED
+
+// SetEmail sets the "email" field.
+func (m *SoraAccountMutation) SetEmail(s string) {
+	m.email = &s
+REDACTED
+
+// Email returns the value of the "email" field in the mutation.
+func (m *SoraAccountMutation) Email() (r string, exists bool) {
+	v := m.email
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldEmail returns the old "email" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldEmail(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEmail is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEmail requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEmail: %w", err)
+REDACTED
+	return oldValue.Email, nil
+REDACTED
+
+// ClearEmail clears the value of the "email" field.
+func (m *SoraAccountMutation) ClearEmail() {
+	m.email = nil
+	m.clearedFields[soraaccount.FieldEmail] = struct{REDACTED{REDACTED
+REDACTED
+
+// EmailCleared returns if the "email" field was cleared in this mutation.
+func (m *SoraAccountMutation) EmailCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldEmail]
+	return ok
+REDACTED
+
+// ResetEmail resets all changes to the "email" field.
+func (m *SoraAccountMutation) ResetEmail() {
+	m.email = nil
+	delete(m.clearedFields, soraaccount.FieldEmail)
+REDACTED
+
+// SetUsername sets the "username" field.
+func (m *SoraAccountMutation) SetUsername(s string) {
+	m.username = &s
+REDACTED
+
+// Username returns the value of the "username" field in the mutation.
+func (m *SoraAccountMutation) Username() (r string, exists bool) {
+	v := m.username
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUsername returns the old "username" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldUsername(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsername is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsername requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsername: %w", err)
+REDACTED
+	return oldValue.Username, nil
+REDACTED
+
+// ClearUsername clears the value of the "username" field.
+func (m *SoraAccountMutation) ClearUsername() {
+	m.username = nil
+	m.clearedFields[soraaccount.FieldUsername] = struct{REDACTED{REDACTED
+REDACTED
+
+// UsernameCleared returns if the "username" field was cleared in this mutation.
+func (m *SoraAccountMutation) UsernameCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldUsername]
+	return ok
+REDACTED
+
+// ResetUsername resets all changes to the "username" field.
+func (m *SoraAccountMutation) ResetUsername() {
+	m.username = nil
+	delete(m.clearedFields, soraaccount.FieldUsername)
+REDACTED
+
+// SetRemark sets the "remark" field.
+func (m *SoraAccountMutation) SetRemark(s string) {
+	m.remark = &s
+REDACTED
+
+// Remark returns the value of the "remark" field in the mutation.
+func (m *SoraAccountMutation) Remark() (r string, exists bool) {
+	v := m.remark
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldRemark returns the old "remark" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldRemark(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemark is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemark requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemark: %w", err)
+REDACTED
+	return oldValue.Remark, nil
+REDACTED
+
+// ClearRemark clears the value of the "remark" field.
+func (m *SoraAccountMutation) ClearRemark() {
+	m.remark = nil
+	m.clearedFields[soraaccount.FieldRemark] = struct{REDACTED{REDACTED
+REDACTED
+
+// RemarkCleared returns if the "remark" field was cleared in this mutation.
+func (m *SoraAccountMutation) RemarkCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldRemark]
+	return ok
+REDACTED
+
+// ResetRemark resets all changes to the "remark" field.
+func (m *SoraAccountMutation) ResetRemark() {
+	m.remark = nil
+	delete(m.clearedFields, soraaccount.FieldRemark)
+REDACTED
+
+// SetUseCount sets the "use_count" field.
+func (m *SoraAccountMutation) SetUseCount(i int) {
+	m.use_count = &i
+	m.adduse_count = nil
+REDACTED
+
+// UseCount returns the value of the "use_count" field in the mutation.
+func (m *SoraAccountMutation) UseCount() (r int, exists bool) {
+	v := m.use_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUseCount returns the old "use_count" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldUseCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUseCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUseCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUseCount: %w", err)
+REDACTED
+	return oldValue.UseCount, nil
+REDACTED
+
+// AddUseCount adds i to the "use_count" field.
+func (m *SoraAccountMutation) AddUseCount(i int) {
+	if m.adduse_count != nil {
+		*m.adduse_count += i
+REDACTED else {
+		m.adduse_count = &i
+REDACTED
+REDACTED
+
+// AddedUseCount returns the value that was added to the "use_count" field in this mutation.
+func (m *SoraAccountMutation) AddedUseCount() (r int, exists bool) {
+	v := m.adduse_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetUseCount resets all changes to the "use_count" field.
+func (m *SoraAccountMutation) ResetUseCount() {
+	m.use_count = nil
+	m.adduse_count = nil
+REDACTED
+
+// SetPlanType sets the "plan_type" field.
+func (m *SoraAccountMutation) SetPlanType(s string) {
+	m.plan_type = &s
+REDACTED
+
+// PlanType returns the value of the "plan_type" field in the mutation.
+func (m *SoraAccountMutation) PlanType() (r string, exists bool) {
+	v := m.plan_type
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldPlanType returns the old "plan_type" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldPlanType(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlanType is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlanType requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlanType: %w", err)
+REDACTED
+	return oldValue.PlanType, nil
+REDACTED
+
+// ClearPlanType clears the value of the "plan_type" field.
+func (m *SoraAccountMutation) ClearPlanType() {
+	m.plan_type = nil
+	m.clearedFields[soraaccount.FieldPlanType] = struct{REDACTED{REDACTED
+REDACTED
+
+// PlanTypeCleared returns if the "plan_type" field was cleared in this mutation.
+func (m *SoraAccountMutation) PlanTypeCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldPlanType]
+	return ok
+REDACTED
+
+// ResetPlanType resets all changes to the "plan_type" field.
+func (m *SoraAccountMutation) ResetPlanType() {
+	m.plan_type = nil
+	delete(m.clearedFields, soraaccount.FieldPlanType)
+REDACTED
+
+// SetPlanTitle sets the "plan_title" field.
+func (m *SoraAccountMutation) SetPlanTitle(s string) {
+	m.plan_title = &s
+REDACTED
+
+// PlanTitle returns the value of the "plan_title" field in the mutation.
+func (m *SoraAccountMutation) PlanTitle() (r string, exists bool) {
+	v := m.plan_title
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldPlanTitle returns the old "plan_title" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldPlanTitle(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlanTitle is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlanTitle requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlanTitle: %w", err)
+REDACTED
+	return oldValue.PlanTitle, nil
+REDACTED
+
+// ClearPlanTitle clears the value of the "plan_title" field.
+func (m *SoraAccountMutation) ClearPlanTitle() {
+	m.plan_title = nil
+	m.clearedFields[soraaccount.FieldPlanTitle] = struct{REDACTED{REDACTED
+REDACTED
+
+// PlanTitleCleared returns if the "plan_title" field was cleared in this mutation.
+func (m *SoraAccountMutation) PlanTitleCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldPlanTitle]
+	return ok
+REDACTED
+
+// ResetPlanTitle resets all changes to the "plan_title" field.
+func (m *SoraAccountMutation) ResetPlanTitle() {
+	m.plan_title = nil
+	delete(m.clearedFields, soraaccount.FieldPlanTitle)
+REDACTED
+
+// SetSubscriptionEnd sets the "subscription_end" field.
+func (m *SoraAccountMutation) SetSubscriptionEnd(t time.Time) {
+	m.subscription_end = &t
+REDACTED
+
+// SubscriptionEnd returns the value of the "subscription_end" field in the mutation.
+func (m *SoraAccountMutation) SubscriptionEnd() (r time.Time, exists bool) {
+	v := m.subscription_end
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSubscriptionEnd returns the old "subscription_end" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSubscriptionEnd(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubscriptionEnd is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubscriptionEnd requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubscriptionEnd: %w", err)
+REDACTED
+	return oldValue.SubscriptionEnd, nil
+REDACTED
+
+// ClearSubscriptionEnd clears the value of the "subscription_end" field.
+func (m *SoraAccountMutation) ClearSubscriptionEnd() {
+	m.subscription_end = nil
+	m.clearedFields[soraaccount.FieldSubscriptionEnd] = struct{REDACTED{REDACTED
+REDACTED
+
+// SubscriptionEndCleared returns if the "subscription_end" field was cleared in this mutation.
+func (m *SoraAccountMutation) SubscriptionEndCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldSubscriptionEnd]
+	return ok
+REDACTED
+
+// ResetSubscriptionEnd resets all changes to the "subscription_end" field.
+func (m *SoraAccountMutation) ResetSubscriptionEnd() {
+	m.subscription_end = nil
+	delete(m.clearedFields, soraaccount.FieldSubscriptionEnd)
+REDACTED
+
+// SetSoraSupported sets the "sora_supported" field.
+func (m *SoraAccountMutation) SetSoraSupported(b bool) {
+	m.sora_supported = &b
+REDACTED
+
+// SoraSupported returns the value of the "sora_supported" field in the mutation.
+func (m *SoraAccountMutation) SoraSupported() (r bool, exists bool) {
+	v := m.sora_supported
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraSupported returns the old "sora_supported" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSoraSupported(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraSupported is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraSupported requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraSupported: %w", err)
+REDACTED
+	return oldValue.SoraSupported, nil
+REDACTED
+
+// ResetSoraSupported resets all changes to the "sora_supported" field.
+func (m *SoraAccountMutation) ResetSoraSupported() {
+	m.sora_supported = nil
+REDACTED
+
+// SetSoraInviteCode sets the "sora_invite_code" field.
+func (m *SoraAccountMutation) SetSoraInviteCode(s string) {
+	m.sora_invite_code = &s
+REDACTED
+
+// SoraInviteCode returns the value of the "sora_invite_code" field in the mutation.
+func (m *SoraAccountMutation) SoraInviteCode() (r string, exists bool) {
+	v := m.sora_invite_code
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraInviteCode returns the old "sora_invite_code" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSoraInviteCode(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraInviteCode is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraInviteCode requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraInviteCode: %w", err)
+REDACTED
+	return oldValue.SoraInviteCode, nil
+REDACTED
+
+// ClearSoraInviteCode clears the value of the "sora_invite_code" field.
+func (m *SoraAccountMutation) ClearSoraInviteCode() {
+	m.sora_invite_code = nil
+	m.clearedFields[soraaccount.FieldSoraInviteCode] = struct{REDACTED{REDACTED
+REDACTED
+
+// SoraInviteCodeCleared returns if the "sora_invite_code" field was cleared in this mutation.
+func (m *SoraAccountMutation) SoraInviteCodeCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldSoraInviteCode]
+	return ok
+REDACTED
+
+// ResetSoraInviteCode resets all changes to the "sora_invite_code" field.
+func (m *SoraAccountMutation) ResetSoraInviteCode() {
+	m.sora_invite_code = nil
+	delete(m.clearedFields, soraaccount.FieldSoraInviteCode)
+REDACTED
+
+// SetSoraRedeemedCount sets the "sora_redeemed_count" field.
+func (m *SoraAccountMutation) SetSoraRedeemedCount(i int) {
+	m.sora_redeemed_count = &i
+	m.addsora_redeemed_count = nil
+REDACTED
+
+// SoraRedeemedCount returns the value of the "sora_redeemed_count" field in the mutation.
+func (m *SoraAccountMutation) SoraRedeemedCount() (r int, exists bool) {
+	v := m.sora_redeemed_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraRedeemedCount returns the old "sora_redeemed_count" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSoraRedeemedCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraRedeemedCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraRedeemedCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraRedeemedCount: %w", err)
+REDACTED
+	return oldValue.SoraRedeemedCount, nil
+REDACTED
+
+// AddSoraRedeemedCount adds i to the "sora_redeemed_count" field.
+func (m *SoraAccountMutation) AddSoraRedeemedCount(i int) {
+	if m.addsora_redeemed_count != nil {
+		*m.addsora_redeemed_count += i
+REDACTED else {
+		m.addsora_redeemed_count = &i
+REDACTED
+REDACTED
+
+// AddedSoraRedeemedCount returns the value that was added to the "sora_redeemed_count" field in this mutation.
+func (m *SoraAccountMutation) AddedSoraRedeemedCount() (r int, exists bool) {
+	v := m.addsora_redeemed_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetSoraRedeemedCount resets all changes to the "sora_redeemed_count" field.
+func (m *SoraAccountMutation) ResetSoraRedeemedCount() {
+	m.sora_redeemed_count = nil
+	m.addsora_redeemed_count = nil
+REDACTED
+
+// SetSoraRemainingCount sets the "sora_remaining_count" field.
+func (m *SoraAccountMutation) SetSoraRemainingCount(i int) {
+	m.sora_remaining_count = &i
+	m.addsora_remaining_count = nil
+REDACTED
+
+// SoraRemainingCount returns the value of the "sora_remaining_count" field in the mutation.
+func (m *SoraAccountMutation) SoraRemainingCount() (r int, exists bool) {
+	v := m.sora_remaining_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraRemainingCount returns the old "sora_remaining_count" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSoraRemainingCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraRemainingCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraRemainingCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraRemainingCount: %w", err)
+REDACTED
+	return oldValue.SoraRemainingCount, nil
+REDACTED
+
+// AddSoraRemainingCount adds i to the "sora_remaining_count" field.
+func (m *SoraAccountMutation) AddSoraRemainingCount(i int) {
+	if m.addsora_remaining_count != nil {
+		*m.addsora_remaining_count += i
+REDACTED else {
+		m.addsora_remaining_count = &i
+REDACTED
+REDACTED
+
+// AddedSoraRemainingCount returns the value that was added to the "sora_remaining_count" field in this mutation.
+func (m *SoraAccountMutation) AddedSoraRemainingCount() (r int, exists bool) {
+	v := m.addsora_remaining_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetSoraRemainingCount resets all changes to the "sora_remaining_count" field.
+func (m *SoraAccountMutation) ResetSoraRemainingCount() {
+	m.sora_remaining_count = nil
+	m.addsora_remaining_count = nil
+REDACTED
+
+// SetSoraTotalCount sets the "sora_total_count" field.
+func (m *SoraAccountMutation) SetSoraTotalCount(i int) {
+	m.sora_total_count = &i
+	m.addsora_total_count = nil
+REDACTED
+
+// SoraTotalCount returns the value of the "sora_total_count" field in the mutation.
+func (m *SoraAccountMutation) SoraTotalCount() (r int, exists bool) {
+	v := m.sora_total_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraTotalCount returns the old "sora_total_count" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSoraTotalCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraTotalCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraTotalCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraTotalCount: %w", err)
+REDACTED
+	return oldValue.SoraTotalCount, nil
+REDACTED
+
+// AddSoraTotalCount adds i to the "sora_total_count" field.
+func (m *SoraAccountMutation) AddSoraTotalCount(i int) {
+	if m.addsora_total_count != nil {
+		*m.addsora_total_count += i
+REDACTED else {
+		m.addsora_total_count = &i
+REDACTED
+REDACTED
+
+// AddedSoraTotalCount returns the value that was added to the "sora_total_count" field in this mutation.
+func (m *SoraAccountMutation) AddedSoraTotalCount() (r int, exists bool) {
+	v := m.addsora_total_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetSoraTotalCount resets all changes to the "sora_total_count" field.
+func (m *SoraAccountMutation) ResetSoraTotalCount() {
+	m.sora_total_count = nil
+	m.addsora_total_count = nil
+REDACTED
+
+// SetSoraCooldownUntil sets the "sora_cooldown_until" field.
+func (m *SoraAccountMutation) SetSoraCooldownUntil(t time.Time) {
+	m.sora_cooldown_until = &t
+REDACTED
+
+// SoraCooldownUntil returns the value of the "sora_cooldown_until" field in the mutation.
+func (m *SoraAccountMutation) SoraCooldownUntil() (r time.Time, exists bool) {
+	v := m.sora_cooldown_until
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraCooldownUntil returns the old "sora_cooldown_until" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldSoraCooldownUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraCooldownUntil is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraCooldownUntil requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraCooldownUntil: %w", err)
+REDACTED
+	return oldValue.SoraCooldownUntil, nil
+REDACTED
+
+// ClearSoraCooldownUntil clears the value of the "sora_cooldown_until" field.
+func (m *SoraAccountMutation) ClearSoraCooldownUntil() {
+	m.sora_cooldown_until = nil
+	m.clearedFields[soraaccount.FieldSoraCooldownUntil] = struct{REDACTED{REDACTED
+REDACTED
+
+// SoraCooldownUntilCleared returns if the "sora_cooldown_until" field was cleared in this mutation.
+func (m *SoraAccountMutation) SoraCooldownUntilCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldSoraCooldownUntil]
+	return ok
+REDACTED
+
+// ResetSoraCooldownUntil resets all changes to the "sora_cooldown_until" field.
+func (m *SoraAccountMutation) ResetSoraCooldownUntil() {
+	m.sora_cooldown_until = nil
+	delete(m.clearedFields, soraaccount.FieldSoraCooldownUntil)
+REDACTED
+
+// SetCooledUntil sets the "cooled_until" field.
+func (m *SoraAccountMutation) SetCooledUntil(t time.Time) {
+	m.cooled_until = &t
+REDACTED
+
+// CooledUntil returns the value of the "cooled_until" field in the mutation.
+func (m *SoraAccountMutation) CooledUntil() (r time.Time, exists bool) {
+	v := m.cooled_until
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCooledUntil returns the old "cooled_until" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldCooledUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCooledUntil is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCooledUntil requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCooledUntil: %w", err)
+REDACTED
+	return oldValue.CooledUntil, nil
+REDACTED
+
+// ClearCooledUntil clears the value of the "cooled_until" field.
+func (m *SoraAccountMutation) ClearCooledUntil() {
+	m.cooled_until = nil
+	m.clearedFields[soraaccount.FieldCooledUntil] = struct{REDACTED{REDACTED
+REDACTED
+
+// CooledUntilCleared returns if the "cooled_until" field was cleared in this mutation.
+func (m *SoraAccountMutation) CooledUntilCleared() bool {
+	_, ok := m.clearedFields[soraaccount.FieldCooledUntil]
+	return ok
+REDACTED
+
+// ResetCooledUntil resets all changes to the "cooled_until" field.
+func (m *SoraAccountMutation) ResetCooledUntil() {
+	m.cooled_until = nil
+	delete(m.clearedFields, soraaccount.FieldCooledUntil)
+REDACTED
+
+// SetImageEnabled sets the "image_enabled" field.
+func (m *SoraAccountMutation) SetImageEnabled(b bool) {
+	m.image_enabled = &b
+REDACTED
+
+// ImageEnabled returns the value of the "image_enabled" field in the mutation.
+func (m *SoraAccountMutation) ImageEnabled() (r bool, exists bool) {
+	v := m.image_enabled
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldImageEnabled returns the old "image_enabled" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldImageEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageEnabled is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageEnabled requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageEnabled: %w", err)
+REDACTED
+	return oldValue.ImageEnabled, nil
+REDACTED
+
+// ResetImageEnabled resets all changes to the "image_enabled" field.
+func (m *SoraAccountMutation) ResetImageEnabled() {
+	m.image_enabled = nil
+REDACTED
+
+// SetVideoEnabled sets the "video_enabled" field.
+func (m *SoraAccountMutation) SetVideoEnabled(b bool) {
+	m.video_enabled = &b
+REDACTED
+
+// VideoEnabled returns the value of the "video_enabled" field in the mutation.
+func (m *SoraAccountMutation) VideoEnabled() (r bool, exists bool) {
+	v := m.video_enabled
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldVideoEnabled returns the old "video_enabled" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldVideoEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoEnabled is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoEnabled requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoEnabled: %w", err)
+REDACTED
+	return oldValue.VideoEnabled, nil
+REDACTED
+
+// ResetVideoEnabled resets all changes to the "video_enabled" field.
+func (m *SoraAccountMutation) ResetVideoEnabled() {
+	m.video_enabled = nil
+REDACTED
+
+// SetImageConcurrency sets the "image_concurrency" field.
+func (m *SoraAccountMutation) SetImageConcurrency(i int) {
+	m.image_concurrency = &i
+	m.addimage_concurrency = nil
+REDACTED
+
+// ImageConcurrency returns the value of the "image_concurrency" field in the mutation.
+func (m *SoraAccountMutation) ImageConcurrency() (r int, exists bool) {
+	v := m.image_concurrency
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldImageConcurrency returns the old "image_concurrency" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldImageConcurrency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageConcurrency is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageConcurrency requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageConcurrency: %w", err)
+REDACTED
+	return oldValue.ImageConcurrency, nil
+REDACTED
+
+// AddImageConcurrency adds i to the "image_concurrency" field.
+func (m *SoraAccountMutation) AddImageConcurrency(i int) {
+	if m.addimage_concurrency != nil {
+		*m.addimage_concurrency += i
+REDACTED else {
+		m.addimage_concurrency = &i
+REDACTED
+REDACTED
+
+// AddedImageConcurrency returns the value that was added to the "image_concurrency" field in this mutation.
+func (m *SoraAccountMutation) AddedImageConcurrency() (r int, exists bool) {
+	v := m.addimage_concurrency
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetImageConcurrency resets all changes to the "image_concurrency" field.
+func (m *SoraAccountMutation) ResetImageConcurrency() {
+	m.image_concurrency = nil
+	m.addimage_concurrency = nil
+REDACTED
+
+// SetVideoConcurrency sets the "video_concurrency" field.
+func (m *SoraAccountMutation) SetVideoConcurrency(i int) {
+	m.video_concurrency = &i
+	m.addvideo_concurrency = nil
+REDACTED
+
+// VideoConcurrency returns the value of the "video_concurrency" field in the mutation.
+func (m *SoraAccountMutation) VideoConcurrency() (r int, exists bool) {
+	v := m.video_concurrency
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldVideoConcurrency returns the old "video_concurrency" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldVideoConcurrency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoConcurrency is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoConcurrency requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoConcurrency: %w", err)
+REDACTED
+	return oldValue.VideoConcurrency, nil
+REDACTED
+
+// AddVideoConcurrency adds i to the "video_concurrency" field.
+func (m *SoraAccountMutation) AddVideoConcurrency(i int) {
+	if m.addvideo_concurrency != nil {
+		*m.addvideo_concurrency += i
+REDACTED else {
+		m.addvideo_concurrency = &i
+REDACTED
+REDACTED
+
+// AddedVideoConcurrency returns the value that was added to the "video_concurrency" field in this mutation.
+func (m *SoraAccountMutation) AddedVideoConcurrency() (r int, exists bool) {
+	v := m.addvideo_concurrency
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetVideoConcurrency resets all changes to the "video_concurrency" field.
+func (m *SoraAccountMutation) ResetVideoConcurrency() {
+	m.video_concurrency = nil
+	m.addvideo_concurrency = nil
+REDACTED
+
+// SetIsExpired sets the "is_expired" field.
+func (m *SoraAccountMutation) SetIsExpired(b bool) {
+	m.is_expired = &b
+REDACTED
+
+// IsExpired returns the value of the "is_expired" field in the mutation.
+func (m *SoraAccountMutation) IsExpired() (r bool, exists bool) {
+	v := m.is_expired
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldIsExpired returns the old "is_expired" field's value of the SoraAccount entity.
+// If the SoraAccount object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraAccountMutation) OldIsExpired(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIsExpired is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIsExpired requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIsExpired: %w", err)
+REDACTED
+	return oldValue.IsExpired, nil
+REDACTED
+
+// ResetIsExpired resets all changes to the "is_expired" field.
+func (m *SoraAccountMutation) ResetIsExpired() {
+	m.is_expired = nil
+REDACTED
+
+// Where appends a list predicates to the SoraAccountMutation builder.
+func (m *SoraAccountMutation) Where(ps ...predicate.SoraAccount) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the SoraAccountMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SoraAccountMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SoraAccount, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *SoraAccountMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *SoraAccountMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (SoraAccount).
+func (m *SoraAccountMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SoraAccountMutation) Fields() []string {
+	fields := make([]string, 0, 26)
+	if m.created_at != nil {
+		fields = append(fields, soraaccount.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, soraaccount.FieldUpdatedAt)
+REDACTED
+	if m.account_id != nil {
+		fields = append(fields, soraaccount.FieldAccountID)
+REDACTED
+	if m.access_token != nil {
+		fields = append(fields, soraaccount.FieldAccessToken)
+REDACTED
+	if m.session_token != nil {
+		fields = append(fields, soraaccount.FieldSessionToken)
+REDACTED
+	if m.refresh_token != nil {
+		fields = append(fields, soraaccount.FieldRefreshToken)
+REDACTED
+	if m.client_id != nil {
+		fields = append(fields, soraaccount.FieldClientID)
+REDACTED
+	if m.email != nil {
+		fields = append(fields, soraaccount.FieldEmail)
+REDACTED
+	if m.username != nil {
+		fields = append(fields, soraaccount.FieldUsername)
+REDACTED
+	if m.remark != nil {
+		fields = append(fields, soraaccount.FieldRemark)
+REDACTED
+	if m.use_count != nil {
+		fields = append(fields, soraaccount.FieldUseCount)
+REDACTED
+	if m.plan_type != nil {
+		fields = append(fields, soraaccount.FieldPlanType)
+REDACTED
+	if m.plan_title != nil {
+		fields = append(fields, soraaccount.FieldPlanTitle)
+REDACTED
+	if m.subscription_end != nil {
+		fields = append(fields, soraaccount.FieldSubscriptionEnd)
+REDACTED
+	if m.sora_supported != nil {
+		fields = append(fields, soraaccount.FieldSoraSupported)
+REDACTED
+	if m.sora_invite_code != nil {
+		fields = append(fields, soraaccount.FieldSoraInviteCode)
+REDACTED
+	if m.sora_redeemed_count != nil {
+		fields = append(fields, soraaccount.FieldSoraRedeemedCount)
+REDACTED
+	if m.sora_remaining_count != nil {
+		fields = append(fields, soraaccount.FieldSoraRemainingCount)
+REDACTED
+	if m.sora_total_count != nil {
+		fields = append(fields, soraaccount.FieldSoraTotalCount)
+REDACTED
+	if m.sora_cooldown_until != nil {
+		fields = append(fields, soraaccount.FieldSoraCooldownUntil)
+REDACTED
+	if m.cooled_until != nil {
+		fields = append(fields, soraaccount.FieldCooledUntil)
+REDACTED
+	if m.image_enabled != nil {
+		fields = append(fields, soraaccount.FieldImageEnabled)
+REDACTED
+	if m.video_enabled != nil {
+		fields = append(fields, soraaccount.FieldVideoEnabled)
+REDACTED
+	if m.image_concurrency != nil {
+		fields = append(fields, soraaccount.FieldImageConcurrency)
+REDACTED
+	if m.video_concurrency != nil {
+		fields = append(fields, soraaccount.FieldVideoConcurrency)
+REDACTED
+	if m.is_expired != nil {
+		fields = append(fields, soraaccount.FieldIsExpired)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SoraAccountMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case soraaccount.FieldCreatedAt:
+		return m.CreatedAt()
+	case soraaccount.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case soraaccount.FieldAccountID:
+		return m.AccountID()
+	case soraaccount.FieldAccessToken:
+		return m.AccessToken()
+	case soraaccount.FieldSessionToken:
+		return m.SessionToken()
+	case soraaccount.FieldRefreshToken:
+		return m.RefreshToken()
+	case soraaccount.FieldClientID:
+		return m.ClientID()
+	case soraaccount.FieldEmail:
+		return m.Email()
+	case soraaccount.FieldUsername:
+		return m.Username()
+	case soraaccount.FieldRemark:
+		return m.Remark()
+	case soraaccount.FieldUseCount:
+		return m.UseCount()
+	case soraaccount.FieldPlanType:
+		return m.PlanType()
+	case soraaccount.FieldPlanTitle:
+		return m.PlanTitle()
+	case soraaccount.FieldSubscriptionEnd:
+		return m.SubscriptionEnd()
+	case soraaccount.FieldSoraSupported:
+		return m.SoraSupported()
+	case soraaccount.FieldSoraInviteCode:
+		return m.SoraInviteCode()
+	case soraaccount.FieldSoraRedeemedCount:
+		return m.SoraRedeemedCount()
+	case soraaccount.FieldSoraRemainingCount:
+		return m.SoraRemainingCount()
+	case soraaccount.FieldSoraTotalCount:
+		return m.SoraTotalCount()
+	case soraaccount.FieldSoraCooldownUntil:
+		return m.SoraCooldownUntil()
+	case soraaccount.FieldCooledUntil:
+		return m.CooledUntil()
+	case soraaccount.FieldImageEnabled:
+		return m.ImageEnabled()
+	case soraaccount.FieldVideoEnabled:
+		return m.VideoEnabled()
+	case soraaccount.FieldImageConcurrency:
+		return m.ImageConcurrency()
+	case soraaccount.FieldVideoConcurrency:
+		return m.VideoConcurrency()
+	case soraaccount.FieldIsExpired:
+		return m.IsExpired()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SoraAccountMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case soraaccount.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case soraaccount.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case soraaccount.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case soraaccount.FieldAccessToken:
+		return m.OldAccessToken(ctx)
+	case soraaccount.FieldSessionToken:
+		return m.OldSessionToken(ctx)
+	case soraaccount.FieldRefreshToken:
+		return m.OldRefreshToken(ctx)
+	case soraaccount.FieldClientID:
+		return m.OldClientID(ctx)
+	case soraaccount.FieldEmail:
+		return m.OldEmail(ctx)
+	case soraaccount.FieldUsername:
+		return m.OldUsername(ctx)
+	case soraaccount.FieldRemark:
+		return m.OldRemark(ctx)
+	case soraaccount.FieldUseCount:
+		return m.OldUseCount(ctx)
+	case soraaccount.FieldPlanType:
+		return m.OldPlanType(ctx)
+	case soraaccount.FieldPlanTitle:
+		return m.OldPlanTitle(ctx)
+	case soraaccount.FieldSubscriptionEnd:
+		return m.OldSubscriptionEnd(ctx)
+	case soraaccount.FieldSoraSupported:
+		return m.OldSoraSupported(ctx)
+	case soraaccount.FieldSoraInviteCode:
+		return m.OldSoraInviteCode(ctx)
+	case soraaccount.FieldSoraRedeemedCount:
+		return m.OldSoraRedeemedCount(ctx)
+	case soraaccount.FieldSoraRemainingCount:
+		return m.OldSoraRemainingCount(ctx)
+	case soraaccount.FieldSoraTotalCount:
+		return m.OldSoraTotalCount(ctx)
+	case soraaccount.FieldSoraCooldownUntil:
+		return m.OldSoraCooldownUntil(ctx)
+	case soraaccount.FieldCooledUntil:
+		return m.OldCooledUntil(ctx)
+	case soraaccount.FieldImageEnabled:
+		return m.OldImageEnabled(ctx)
+	case soraaccount.FieldVideoEnabled:
+		return m.OldVideoEnabled(ctx)
+	case soraaccount.FieldImageConcurrency:
+		return m.OldImageConcurrency(ctx)
+	case soraaccount.FieldVideoConcurrency:
+		return m.OldVideoConcurrency(ctx)
+	case soraaccount.FieldIsExpired:
+		return m.OldIsExpired(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown SoraAccount field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraAccountMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case soraaccount.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case soraaccount.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+	case soraaccount.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAccountID(v)
+		return nil
+	case soraaccount.FieldAccessToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAccessToken(v)
+		return nil
+	case soraaccount.FieldSessionToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSessionToken(v)
+		return nil
+	case soraaccount.FieldRefreshToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetRefreshToken(v)
+		return nil
+	case soraaccount.FieldClientID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetClientID(v)
+		return nil
+	case soraaccount.FieldEmail:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetEmail(v)
+		return nil
+	case soraaccount.FieldUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUsername(v)
+		return nil
+	case soraaccount.FieldRemark:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetRemark(v)
+		return nil
+	case soraaccount.FieldUseCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUseCount(v)
+		return nil
+	case soraaccount.FieldPlanType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetPlanType(v)
+		return nil
+	case soraaccount.FieldPlanTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetPlanTitle(v)
+		return nil
+	case soraaccount.FieldSubscriptionEnd:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSubscriptionEnd(v)
+		return nil
+	case soraaccount.FieldSoraSupported:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraSupported(v)
+		return nil
+	case soraaccount.FieldSoraInviteCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraInviteCode(v)
+		return nil
+	case soraaccount.FieldSoraRedeemedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraRedeemedCount(v)
+		return nil
+	case soraaccount.FieldSoraRemainingCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraRemainingCount(v)
+		return nil
+	case soraaccount.FieldSoraTotalCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraTotalCount(v)
+		return nil
+	case soraaccount.FieldSoraCooldownUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraCooldownUntil(v)
+		return nil
+	case soraaccount.FieldCooledUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCooledUntil(v)
+		return nil
+	case soraaccount.FieldImageEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetImageEnabled(v)
+		return nil
+	case soraaccount.FieldVideoEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetVideoEnabled(v)
+		return nil
+	case soraaccount.FieldImageConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetImageConcurrency(v)
+		return nil
+	case soraaccount.FieldVideoConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetVideoConcurrency(v)
+		return nil
+	case soraaccount.FieldIsExpired:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetIsExpired(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraAccount field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SoraAccountMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, soraaccount.FieldAccountID)
+REDACTED
+	if m.adduse_count != nil {
+		fields = append(fields, soraaccount.FieldUseCount)
+REDACTED
+	if m.addsora_redeemed_count != nil {
+		fields = append(fields, soraaccount.FieldSoraRedeemedCount)
+REDACTED
+	if m.addsora_remaining_count != nil {
+		fields = append(fields, soraaccount.FieldSoraRemainingCount)
+REDACTED
+	if m.addsora_total_count != nil {
+		fields = append(fields, soraaccount.FieldSoraTotalCount)
+REDACTED
+	if m.addimage_concurrency != nil {
+		fields = append(fields, soraaccount.FieldImageConcurrency)
+REDACTED
+	if m.addvideo_concurrency != nil {
+		fields = append(fields, soraaccount.FieldVideoConcurrency)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SoraAccountMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case soraaccount.FieldAccountID:
+		return m.AddedAccountID()
+	case soraaccount.FieldUseCount:
+		return m.AddedUseCount()
+	case soraaccount.FieldSoraRedeemedCount:
+		return m.AddedSoraRedeemedCount()
+	case soraaccount.FieldSoraRemainingCount:
+		return m.AddedSoraRemainingCount()
+	case soraaccount.FieldSoraTotalCount:
+		return m.AddedSoraTotalCount()
+	case soraaccount.FieldImageConcurrency:
+		return m.AddedImageConcurrency()
+	case soraaccount.FieldVideoConcurrency:
+		return m.AddedVideoConcurrency()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraAccountMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case soraaccount.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddAccountID(v)
+		return nil
+	case soraaccount.FieldUseCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddUseCount(v)
+		return nil
+	case soraaccount.FieldSoraRedeemedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSoraRedeemedCount(v)
+		return nil
+	case soraaccount.FieldSoraRemainingCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSoraRemainingCount(v)
+		return nil
+	case soraaccount.FieldSoraTotalCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSoraTotalCount(v)
+		return nil
+	case soraaccount.FieldImageConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddImageConcurrency(v)
+		return nil
+	case soraaccount.FieldVideoConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddVideoConcurrency(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraAccount numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SoraAccountMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(soraaccount.FieldAccessToken) {
+		fields = append(fields, soraaccount.FieldAccessToken)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldSessionToken) {
+		fields = append(fields, soraaccount.FieldSessionToken)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldRefreshToken) {
+		fields = append(fields, soraaccount.FieldRefreshToken)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldClientID) {
+		fields = append(fields, soraaccount.FieldClientID)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldEmail) {
+		fields = append(fields, soraaccount.FieldEmail)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldUsername) {
+		fields = append(fields, soraaccount.FieldUsername)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldRemark) {
+		fields = append(fields, soraaccount.FieldRemark)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldPlanType) {
+		fields = append(fields, soraaccount.FieldPlanType)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldPlanTitle) {
+		fields = append(fields, soraaccount.FieldPlanTitle)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldSubscriptionEnd) {
+		fields = append(fields, soraaccount.FieldSubscriptionEnd)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldSoraInviteCode) {
+		fields = append(fields, soraaccount.FieldSoraInviteCode)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldSoraCooldownUntil) {
+		fields = append(fields, soraaccount.FieldSoraCooldownUntil)
+REDACTED
+	if m.FieldCleared(soraaccount.FieldCooledUntil) {
+		fields = append(fields, soraaccount.FieldCooledUntil)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SoraAccountMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SoraAccountMutation) ClearField(name string) error {
+	switch name {
+	case soraaccount.FieldAccessToken:
+		m.ClearAccessToken()
+		return nil
+	case soraaccount.FieldSessionToken:
+		m.ClearSessionToken()
+		return nil
+	case soraaccount.FieldRefreshToken:
+		m.ClearRefreshToken()
+		return nil
+	case soraaccount.FieldClientID:
+		m.ClearClientID()
+		return nil
+	case soraaccount.FieldEmail:
+		m.ClearEmail()
+		return nil
+	case soraaccount.FieldUsername:
+		m.ClearUsername()
+		return nil
+	case soraaccount.FieldRemark:
+		m.ClearRemark()
+		return nil
+	case soraaccount.FieldPlanType:
+		m.ClearPlanType()
+		return nil
+	case soraaccount.FieldPlanTitle:
+		m.ClearPlanTitle()
+		return nil
+	case soraaccount.FieldSubscriptionEnd:
+		m.ClearSubscriptionEnd()
+		return nil
+	case soraaccount.FieldSoraInviteCode:
+		m.ClearSoraInviteCode()
+		return nil
+	case soraaccount.FieldSoraCooldownUntil:
+		m.ClearSoraCooldownUntil()
+		return nil
+	case soraaccount.FieldCooledUntil:
+		m.ClearCooledUntil()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraAccount nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SoraAccountMutation) ResetField(name string) error {
+	switch name {
+	case soraaccount.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case soraaccount.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case soraaccount.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case soraaccount.FieldAccessToken:
+		m.ResetAccessToken()
+		return nil
+	case soraaccount.FieldSessionToken:
+		m.ResetSessionToken()
+		return nil
+	case soraaccount.FieldRefreshToken:
+		m.ResetRefreshToken()
+		return nil
+	case soraaccount.FieldClientID:
+		m.ResetClientID()
+		return nil
+	case soraaccount.FieldEmail:
+		m.ResetEmail()
+		return nil
+	case soraaccount.FieldUsername:
+		m.ResetUsername()
+		return nil
+	case soraaccount.FieldRemark:
+		m.ResetRemark()
+		return nil
+	case soraaccount.FieldUseCount:
+		m.ResetUseCount()
+		return nil
+	case soraaccount.FieldPlanType:
+		m.ResetPlanType()
+		return nil
+	case soraaccount.FieldPlanTitle:
+		m.ResetPlanTitle()
+		return nil
+	case soraaccount.FieldSubscriptionEnd:
+		m.ResetSubscriptionEnd()
+		return nil
+	case soraaccount.FieldSoraSupported:
+		m.ResetSoraSupported()
+		return nil
+	case soraaccount.FieldSoraInviteCode:
+		m.ResetSoraInviteCode()
+		return nil
+	case soraaccount.FieldSoraRedeemedCount:
+		m.ResetSoraRedeemedCount()
+		return nil
+	case soraaccount.FieldSoraRemainingCount:
+		m.ResetSoraRemainingCount()
+		return nil
+	case soraaccount.FieldSoraTotalCount:
+		m.ResetSoraTotalCount()
+		return nil
+	case soraaccount.FieldSoraCooldownUntil:
+		m.ResetSoraCooldownUntil()
+		return nil
+	case soraaccount.FieldCooledUntil:
+		m.ResetCooledUntil()
+		return nil
+	case soraaccount.FieldImageEnabled:
+		m.ResetImageEnabled()
+		return nil
+	case soraaccount.FieldVideoEnabled:
+		m.ResetVideoEnabled()
+		return nil
+	case soraaccount.FieldImageConcurrency:
+		m.ResetImageConcurrency()
+		return nil
+	case soraaccount.FieldVideoConcurrency:
+		m.ResetVideoConcurrency()
+		return nil
+	case soraaccount.FieldIsExpired:
+		m.ResetIsExpired()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraAccount field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SoraAccountMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SoraAccountMutation) AddedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SoraAccountMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SoraAccountMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SoraAccountMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SoraAccountMutation) EdgeCleared(name string) bool {
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SoraAccountMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SoraAccount unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SoraAccountMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SoraAccount edge %s", name)
+REDACTED
+
+// SoraCacheFileMutation represents an operation that mutates the SoraCacheFile nodes in the graph.
+type SoraCacheFileMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	task_id       *string
+	account_id    *int64
+	addaccount_id *int64
+	user_id       *int64
+	adduser_id    *int64
+	media_type    *string
+	original_url  *string
+	cache_path    *string
+	cache_url     *string
+	size_bytes    *int64
+	addsize_bytes *int64
+	created_at    *time.Time
+	clearedFields map[string]struct{REDACTED
+	done          bool
+	oldValue      func(context.Context) (*SoraCacheFile, error)
+	predicates    []predicate.SoraCacheFile
+REDACTED
+
+var _ ent.Mutation = (*SoraCacheFileMutation)(nil)
+
+// soracachefileOption allows management of the mutation configuration using functional options.
+type soracachefileOption func(*SoraCacheFileMutation)
+
+// newSoraCacheFileMutation creates new mutation for the SoraCacheFile entity.
+func newSoraCacheFileMutation(c config, op Op, opts ...soracachefileOption) *SoraCacheFileMutation {
+	m := &SoraCacheFileMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSoraCacheFile,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withSoraCacheFileID sets the ID field of the mutation.
+func withSoraCacheFileID(id int64) soracachefileOption {
+	return func(m *SoraCacheFileMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SoraCacheFile
+		)
+		m.oldValue = func(ctx context.Context) (*SoraCacheFile, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().SoraCacheFile.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withSoraCacheFile sets the old SoraCacheFile of the mutation.
+func withSoraCacheFile(node *SoraCacheFile) soracachefileOption {
+	return func(m *SoraCacheFileMutation) {
+		m.oldValue = func(context.Context) (*SoraCacheFile, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SoraCacheFileMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SoraCacheFileMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SoraCacheFileMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SoraCacheFileMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SoraCacheFile.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetTaskID sets the "task_id" field.
+func (m *SoraCacheFileMutation) SetTaskID(s string) {
+	m.task_id = &s
+REDACTED
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *SoraCacheFileMutation) TaskID() (r string, exists bool) {
+	v := m.task_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTaskID returns the old "task_id" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldTaskID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+REDACTED
+	return oldValue.TaskID, nil
+REDACTED
+
+// ClearTaskID clears the value of the "task_id" field.
+func (m *SoraCacheFileMutation) ClearTaskID() {
+	m.task_id = nil
+	m.clearedFields[soracachefile.FieldTaskID] = struct{REDACTED{REDACTED
+REDACTED
+
+// TaskIDCleared returns if the "task_id" field was cleared in this mutation.
+func (m *SoraCacheFileMutation) TaskIDCleared() bool {
+	_, ok := m.clearedFields[soracachefile.FieldTaskID]
+	return ok
+REDACTED
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *SoraCacheFileMutation) ResetTaskID() {
+	m.task_id = nil
+	delete(m.clearedFields, soracachefile.FieldTaskID)
+REDACTED
+
+// SetAccountID sets the "account_id" field.
+func (m *SoraCacheFileMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+REDACTED
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *SoraCacheFileMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAccountID returns the old "account_id" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+REDACTED
+	return oldValue.AccountID, nil
+REDACTED
+
+// AddAccountID adds i to the "account_id" field.
+func (m *SoraCacheFileMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+REDACTED else {
+		m.addaccount_id = &i
+REDACTED
+REDACTED
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *SoraCacheFileMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *SoraCacheFileMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+REDACTED
+
+// SetUserID sets the "user_id" field.
+func (m *SoraCacheFileMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+REDACTED
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *SoraCacheFileMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUserID returns the old "user_id" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+REDACTED
+	return oldValue.UserID, nil
+REDACTED
+
+// AddUserID adds i to the "user_id" field.
+func (m *SoraCacheFileMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+REDACTED else {
+		m.adduser_id = &i
+REDACTED
+REDACTED
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *SoraCacheFileMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *SoraCacheFileMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+REDACTED
+
+// SetMediaType sets the "media_type" field.
+func (m *SoraCacheFileMutation) SetMediaType(s string) {
+	m.media_type = &s
+REDACTED
+
+// MediaType returns the value of the "media_type" field in the mutation.
+func (m *SoraCacheFileMutation) MediaType() (r string, exists bool) {
+	v := m.media_type
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldMediaType returns the old "media_type" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldMediaType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMediaType is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMediaType requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMediaType: %w", err)
+REDACTED
+	return oldValue.MediaType, nil
+REDACTED
+
+// ResetMediaType resets all changes to the "media_type" field.
+func (m *SoraCacheFileMutation) ResetMediaType() {
+	m.media_type = nil
+REDACTED
+
+// SetOriginalURL sets the "original_url" field.
+func (m *SoraCacheFileMutation) SetOriginalURL(s string) {
+	m.original_url = &s
+REDACTED
+
+// OriginalURL returns the value of the "original_url" field in the mutation.
+func (m *SoraCacheFileMutation) OriginalURL() (r string, exists bool) {
+	v := m.original_url
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldOriginalURL returns the old "original_url" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldOriginalURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOriginalURL is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOriginalURL requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOriginalURL: %w", err)
+REDACTED
+	return oldValue.OriginalURL, nil
+REDACTED
+
+// ResetOriginalURL resets all changes to the "original_url" field.
+func (m *SoraCacheFileMutation) ResetOriginalURL() {
+	m.original_url = nil
+REDACTED
+
+// SetCachePath sets the "cache_path" field.
+func (m *SoraCacheFileMutation) SetCachePath(s string) {
+	m.cache_path = &s
+REDACTED
+
+// CachePath returns the value of the "cache_path" field in the mutation.
+func (m *SoraCacheFileMutation) CachePath() (r string, exists bool) {
+	v := m.cache_path
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCachePath returns the old "cache_path" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldCachePath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCachePath is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCachePath requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCachePath: %w", err)
+REDACTED
+	return oldValue.CachePath, nil
+REDACTED
+
+// ResetCachePath resets all changes to the "cache_path" field.
+func (m *SoraCacheFileMutation) ResetCachePath() {
+	m.cache_path = nil
+REDACTED
+
+// SetCacheURL sets the "cache_url" field.
+func (m *SoraCacheFileMutation) SetCacheURL(s string) {
+	m.cache_url = &s
+REDACTED
+
+// CacheURL returns the value of the "cache_url" field in the mutation.
+func (m *SoraCacheFileMutation) CacheURL() (r string, exists bool) {
+	v := m.cache_url
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCacheURL returns the old "cache_url" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldCacheURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheURL is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheURL requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheURL: %w", err)
+REDACTED
+	return oldValue.CacheURL, nil
+REDACTED
+
+// ResetCacheURL resets all changes to the "cache_url" field.
+func (m *SoraCacheFileMutation) ResetCacheURL() {
+	m.cache_url = nil
+REDACTED
+
+// SetSizeBytes sets the "size_bytes" field.
+func (m *SoraCacheFileMutation) SetSizeBytes(i int64) {
+	m.size_bytes = &i
+	m.addsize_bytes = nil
+REDACTED
+
+// SizeBytes returns the value of the "size_bytes" field in the mutation.
+func (m *SoraCacheFileMutation) SizeBytes() (r int64, exists bool) {
+	v := m.size_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSizeBytes returns the old "size_bytes" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldSizeBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSizeBytes is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSizeBytes requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSizeBytes: %w", err)
+REDACTED
+	return oldValue.SizeBytes, nil
+REDACTED
+
+// AddSizeBytes adds i to the "size_bytes" field.
+func (m *SoraCacheFileMutation) AddSizeBytes(i int64) {
+	if m.addsize_bytes != nil {
+		*m.addsize_bytes += i
+REDACTED else {
+		m.addsize_bytes = &i
+REDACTED
+REDACTED
+
+// AddedSizeBytes returns the value that was added to the "size_bytes" field in this mutation.
+func (m *SoraCacheFileMutation) AddedSizeBytes() (r int64, exists bool) {
+	v := m.addsize_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetSizeBytes resets all changes to the "size_bytes" field.
+func (m *SoraCacheFileMutation) ResetSizeBytes() {
+	m.size_bytes = nil
+	m.addsize_bytes = nil
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SoraCacheFileMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SoraCacheFileMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the SoraCacheFile entity.
+// If the SoraCacheFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraCacheFileMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SoraCacheFileMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// Where appends a list predicates to the SoraCacheFileMutation builder.
+func (m *SoraCacheFileMutation) Where(ps ...predicate.SoraCacheFile) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the SoraCacheFileMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SoraCacheFileMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SoraCacheFile, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *SoraCacheFileMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *SoraCacheFileMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (SoraCacheFile).
+func (m *SoraCacheFileMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SoraCacheFileMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.task_id != nil {
+		fields = append(fields, soracachefile.FieldTaskID)
+REDACTED
+	if m.account_id != nil {
+		fields = append(fields, soracachefile.FieldAccountID)
+REDACTED
+	if m.user_id != nil {
+		fields = append(fields, soracachefile.FieldUserID)
+REDACTED
+	if m.media_type != nil {
+		fields = append(fields, soracachefile.FieldMediaType)
+REDACTED
+	if m.original_url != nil {
+		fields = append(fields, soracachefile.FieldOriginalURL)
+REDACTED
+	if m.cache_path != nil {
+		fields = append(fields, soracachefile.FieldCachePath)
+REDACTED
+	if m.cache_url != nil {
+		fields = append(fields, soracachefile.FieldCacheURL)
+REDACTED
+	if m.size_bytes != nil {
+		fields = append(fields, soracachefile.FieldSizeBytes)
+REDACTED
+	if m.created_at != nil {
+		fields = append(fields, soracachefile.FieldCreatedAt)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SoraCacheFileMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case soracachefile.FieldTaskID:
+		return m.TaskID()
+	case soracachefile.FieldAccountID:
+		return m.AccountID()
+	case soracachefile.FieldUserID:
+		return m.UserID()
+	case soracachefile.FieldMediaType:
+		return m.MediaType()
+	case soracachefile.FieldOriginalURL:
+		return m.OriginalURL()
+	case soracachefile.FieldCachePath:
+		return m.CachePath()
+	case soracachefile.FieldCacheURL:
+		return m.CacheURL()
+	case soracachefile.FieldSizeBytes:
+		return m.SizeBytes()
+	case soracachefile.FieldCreatedAt:
+		return m.CreatedAt()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SoraCacheFileMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case soracachefile.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case soracachefile.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case soracachefile.FieldUserID:
+		return m.OldUserID(ctx)
+	case soracachefile.FieldMediaType:
+		return m.OldMediaType(ctx)
+	case soracachefile.FieldOriginalURL:
+		return m.OldOriginalURL(ctx)
+	case soracachefile.FieldCachePath:
+		return m.OldCachePath(ctx)
+	case soracachefile.FieldCacheURL:
+		return m.OldCacheURL(ctx)
+	case soracachefile.FieldSizeBytes:
+		return m.OldSizeBytes(ctx)
+	case soracachefile.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown SoraCacheFile field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraCacheFileMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case soracachefile.FieldTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTaskID(v)
+		return nil
+	case soracachefile.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAccountID(v)
+		return nil
+	case soracachefile.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUserID(v)
+		return nil
+	case soracachefile.FieldMediaType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetMediaType(v)
+		return nil
+	case soracachefile.FieldOriginalURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetOriginalURL(v)
+		return nil
+	case soracachefile.FieldCachePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCachePath(v)
+		return nil
+	case soracachefile.FieldCacheURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCacheURL(v)
+		return nil
+	case soracachefile.FieldSizeBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSizeBytes(v)
+		return nil
+	case soracachefile.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraCacheFile field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SoraCacheFileMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, soracachefile.FieldAccountID)
+REDACTED
+	if m.adduser_id != nil {
+		fields = append(fields, soracachefile.FieldUserID)
+REDACTED
+	if m.addsize_bytes != nil {
+		fields = append(fields, soracachefile.FieldSizeBytes)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SoraCacheFileMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case soracachefile.FieldAccountID:
+		return m.AddedAccountID()
+	case soracachefile.FieldUserID:
+		return m.AddedUserID()
+	case soracachefile.FieldSizeBytes:
+		return m.AddedSizeBytes()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraCacheFileMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case soracachefile.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddAccountID(v)
+		return nil
+	case soracachefile.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddUserID(v)
+		return nil
+	case soracachefile.FieldSizeBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSizeBytes(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraCacheFile numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SoraCacheFileMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(soracachefile.FieldTaskID) {
+		fields = append(fields, soracachefile.FieldTaskID)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SoraCacheFileMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SoraCacheFileMutation) ClearField(name string) error {
+	switch name {
+	case soracachefile.FieldTaskID:
+		m.ClearTaskID()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraCacheFile nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SoraCacheFileMutation) ResetField(name string) error {
+	switch name {
+	case soracachefile.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case soracachefile.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case soracachefile.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case soracachefile.FieldMediaType:
+		m.ResetMediaType()
+		return nil
+	case soracachefile.FieldOriginalURL:
+		m.ResetOriginalURL()
+		return nil
+	case soracachefile.FieldCachePath:
+		m.ResetCachePath()
+		return nil
+	case soracachefile.FieldCacheURL:
+		m.ResetCacheURL()
+		return nil
+	case soracachefile.FieldSizeBytes:
+		m.ResetSizeBytes()
+		return nil
+	case soracachefile.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraCacheFile field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SoraCacheFileMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SoraCacheFileMutation) AddedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SoraCacheFileMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SoraCacheFileMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SoraCacheFileMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SoraCacheFileMutation) EdgeCleared(name string) bool {
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SoraCacheFileMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SoraCacheFile unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SoraCacheFileMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SoraCacheFile edge %s", name)
+REDACTED
+
+// SoraTaskMutation represents an operation that mutates the SoraTask nodes in the graph.
+type SoraTaskMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *int64
+	task_id        *string
+	account_id     *int64
+	addaccount_id  *int64
+	model          *string
+	prompt         *string
+	status         *string
+	progress       *float64
+	addprogress    *float64
+	result_urls    *string
+	error_message  *string
+	retry_count    *int
+	addretry_count *int
+	created_at     *time.Time
+	completed_at   *time.Time
+	clearedFields  map[string]struct{REDACTED
+	done           bool
+	oldValue       func(context.Context) (*SoraTask, error)
+	predicates     []predicate.SoraTask
+REDACTED
+
+var _ ent.Mutation = (*SoraTaskMutation)(nil)
+
+// sorataskOption allows management of the mutation configuration using functional options.
+type sorataskOption func(*SoraTaskMutation)
+
+// newSoraTaskMutation creates new mutation for the SoraTask entity.
+func newSoraTaskMutation(c config, op Op, opts ...sorataskOption) *SoraTaskMutation {
+	m := &SoraTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSoraTask,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withSoraTaskID sets the ID field of the mutation.
+func withSoraTaskID(id int64) sorataskOption {
+	return func(m *SoraTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SoraTask
+		)
+		m.oldValue = func(ctx context.Context) (*SoraTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().SoraTask.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withSoraTask sets the old SoraTask of the mutation.
+func withSoraTask(node *SoraTask) sorataskOption {
+	return func(m *SoraTaskMutation) {
+		m.oldValue = func(context.Context) (*SoraTask, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SoraTaskMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SoraTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SoraTaskMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SoraTaskMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SoraTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetTaskID sets the "task_id" field.
+func (m *SoraTaskMutation) SetTaskID(s string) {
+	m.task_id = &s
+REDACTED
+
+// TaskID returns the value of the "task_id" field in the mutation.
+func (m *SoraTaskMutation) TaskID() (r string, exists bool) {
+	v := m.task_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTaskID returns the old "task_id" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldTaskID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTaskID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTaskID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTaskID: %w", err)
+REDACTED
+	return oldValue.TaskID, nil
+REDACTED
+
+// ResetTaskID resets all changes to the "task_id" field.
+func (m *SoraTaskMutation) ResetTaskID() {
+	m.task_id = nil
+REDACTED
+
+// SetAccountID sets the "account_id" field.
+func (m *SoraTaskMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+REDACTED
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *SoraTaskMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAccountID returns the old "account_id" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+REDACTED
+	return oldValue.AccountID, nil
+REDACTED
+
+// AddAccountID adds i to the "account_id" field.
+func (m *SoraTaskMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+REDACTED else {
+		m.addaccount_id = &i
+REDACTED
+REDACTED
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *SoraTaskMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *SoraTaskMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+REDACTED
+
+// SetModel sets the "model" field.
+func (m *SoraTaskMutation) SetModel(s string) {
+	m.model = &s
+REDACTED
+
+// Model returns the value of the "model" field in the mutation.
+func (m *SoraTaskMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldModel returns the old "model" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+REDACTED
+	return oldValue.Model, nil
+REDACTED
+
+// ResetModel resets all changes to the "model" field.
+func (m *SoraTaskMutation) ResetModel() {
+	m.model = nil
+REDACTED
+
+// SetPrompt sets the "prompt" field.
+func (m *SoraTaskMutation) SetPrompt(s string) {
+	m.prompt = &s
+REDACTED
+
+// Prompt returns the value of the "prompt" field in the mutation.
+func (m *SoraTaskMutation) Prompt() (r string, exists bool) {
+	v := m.prompt
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldPrompt returns the old "prompt" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldPrompt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrompt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrompt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrompt: %w", err)
+REDACTED
+	return oldValue.Prompt, nil
+REDACTED
+
+// ResetPrompt resets all changes to the "prompt" field.
+func (m *SoraTaskMutation) ResetPrompt() {
+	m.prompt = nil
+REDACTED
+
+// SetStatus sets the "status" field.
+func (m *SoraTaskMutation) SetStatus(s string) {
+	m.status = &s
+REDACTED
+
+// Status returns the value of the "status" field in the mutation.
+func (m *SoraTaskMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldStatus returns the old "status" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+REDACTED
+	return oldValue.Status, nil
+REDACTED
+
+// ResetStatus resets all changes to the "status" field.
+func (m *SoraTaskMutation) ResetStatus() {
+	m.status = nil
+REDACTED
+
+// SetProgress sets the "progress" field.
+func (m *SoraTaskMutation) SetProgress(f float64) {
+	m.progress = &f
+	m.addprogress = nil
+REDACTED
+
+// Progress returns the value of the "progress" field in the mutation.
+func (m *SoraTaskMutation) Progress() (r float64, exists bool) {
+	v := m.progress
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldProgress returns the old "progress" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldProgress(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProgress is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProgress requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProgress: %w", err)
+REDACTED
+	return oldValue.Progress, nil
+REDACTED
+
+// AddProgress adds f to the "progress" field.
+func (m *SoraTaskMutation) AddProgress(f float64) {
+	if m.addprogress != nil {
+		*m.addprogress += f
+REDACTED else {
+		m.addprogress = &f
+REDACTED
+REDACTED
+
+// AddedProgress returns the value that was added to the "progress" field in this mutation.
+func (m *SoraTaskMutation) AddedProgress() (r float64, exists bool) {
+	v := m.addprogress
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetProgress resets all changes to the "progress" field.
+func (m *SoraTaskMutation) ResetProgress() {
+	m.progress = nil
+	m.addprogress = nil
+REDACTED
+
+// SetResultUrls sets the "result_urls" field.
+func (m *SoraTaskMutation) SetResultUrls(s string) {
+	m.result_urls = &s
+REDACTED
+
+// ResultUrls returns the value of the "result_urls" field in the mutation.
+func (m *SoraTaskMutation) ResultUrls() (r string, exists bool) {
+	v := m.result_urls
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldResultUrls returns the old "result_urls" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldResultUrls(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultUrls is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultUrls requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultUrls: %w", err)
+REDACTED
+	return oldValue.ResultUrls, nil
+REDACTED
+
+// ClearResultUrls clears the value of the "result_urls" field.
+func (m *SoraTaskMutation) ClearResultUrls() {
+	m.result_urls = nil
+	m.clearedFields[soratask.FieldResultUrls] = struct{REDACTED{REDACTED
+REDACTED
+
+// ResultUrlsCleared returns if the "result_urls" field was cleared in this mutation.
+func (m *SoraTaskMutation) ResultUrlsCleared() bool {
+	_, ok := m.clearedFields[soratask.FieldResultUrls]
+	return ok
+REDACTED
+
+// ResetResultUrls resets all changes to the "result_urls" field.
+func (m *SoraTaskMutation) ResetResultUrls() {
+	m.result_urls = nil
+	delete(m.clearedFields, soratask.FieldResultUrls)
+REDACTED
+
+// SetErrorMessage sets the "error_message" field.
+func (m *SoraTaskMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+REDACTED
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *SoraTaskMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldErrorMessage returns the old "error_message" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+REDACTED
+	return oldValue.ErrorMessage, nil
+REDACTED
+
+// ClearErrorMessage clears the value of the "error_message" field.
+func (m *SoraTaskMutation) ClearErrorMessage() {
+	m.error_message = nil
+	m.clearedFields[soratask.FieldErrorMessage] = struct{REDACTED{REDACTED
+REDACTED
+
+// ErrorMessageCleared returns if the "error_message" field was cleared in this mutation.
+func (m *SoraTaskMutation) ErrorMessageCleared() bool {
+	_, ok := m.clearedFields[soratask.FieldErrorMessage]
+	return ok
+REDACTED
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *SoraTaskMutation) ResetErrorMessage() {
+	m.error_message = nil
+	delete(m.clearedFields, soratask.FieldErrorMessage)
+REDACTED
+
+// SetRetryCount sets the "retry_count" field.
+func (m *SoraTaskMutation) SetRetryCount(i int) {
+	m.retry_count = &i
+	m.addretry_count = nil
+REDACTED
+
+// RetryCount returns the value of the "retry_count" field in the mutation.
+func (m *SoraTaskMutation) RetryCount() (r int, exists bool) {
+	v := m.retry_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldRetryCount returns the old "retry_count" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldRetryCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRetryCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRetryCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRetryCount: %w", err)
+REDACTED
+	return oldValue.RetryCount, nil
+REDACTED
+
+// AddRetryCount adds i to the "retry_count" field.
+func (m *SoraTaskMutation) AddRetryCount(i int) {
+	if m.addretry_count != nil {
+		*m.addretry_count += i
+REDACTED else {
+		m.addretry_count = &i
+REDACTED
+REDACTED
+
+// AddedRetryCount returns the value that was added to the "retry_count" field in this mutation.
+func (m *SoraTaskMutation) AddedRetryCount() (r int, exists bool) {
+	v := m.addretry_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetRetryCount resets all changes to the "retry_count" field.
+func (m *SoraTaskMutation) ResetRetryCount() {
+	m.retry_count = nil
+	m.addretry_count = nil
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SoraTaskMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SoraTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SoraTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *SoraTaskMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+REDACTED
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *SoraTaskMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCompletedAt returns the old "completed_at" field's value of the SoraTask entity.
+// If the SoraTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraTaskMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+REDACTED
+	return oldValue.CompletedAt, nil
+REDACTED
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *SoraTaskMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[soratask.FieldCompletedAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *SoraTaskMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[soratask.FieldCompletedAt]
+	return ok
+REDACTED
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *SoraTaskMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, soratask.FieldCompletedAt)
+REDACTED
+
+// Where appends a list predicates to the SoraTaskMutation builder.
+func (m *SoraTaskMutation) Where(ps ...predicate.SoraTask) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the SoraTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SoraTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SoraTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *SoraTaskMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *SoraTaskMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (SoraTask).
+func (m *SoraTaskMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SoraTaskMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.task_id != nil {
+		fields = append(fields, soratask.FieldTaskID)
+REDACTED
+	if m.account_id != nil {
+		fields = append(fields, soratask.FieldAccountID)
+REDACTED
+	if m.model != nil {
+		fields = append(fields, soratask.FieldModel)
+REDACTED
+	if m.prompt != nil {
+		fields = append(fields, soratask.FieldPrompt)
+REDACTED
+	if m.status != nil {
+		fields = append(fields, soratask.FieldStatus)
+REDACTED
+	if m.progress != nil {
+		fields = append(fields, soratask.FieldProgress)
+REDACTED
+	if m.result_urls != nil {
+		fields = append(fields, soratask.FieldResultUrls)
+REDACTED
+	if m.error_message != nil {
+		fields = append(fields, soratask.FieldErrorMessage)
+REDACTED
+	if m.retry_count != nil {
+		fields = append(fields, soratask.FieldRetryCount)
+REDACTED
+	if m.created_at != nil {
+		fields = append(fields, soratask.FieldCreatedAt)
+REDACTED
+	if m.completed_at != nil {
+		fields = append(fields, soratask.FieldCompletedAt)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SoraTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case soratask.FieldTaskID:
+		return m.TaskID()
+	case soratask.FieldAccountID:
+		return m.AccountID()
+	case soratask.FieldModel:
+		return m.Model()
+	case soratask.FieldPrompt:
+		return m.Prompt()
+	case soratask.FieldStatus:
+		return m.Status()
+	case soratask.FieldProgress:
+		return m.Progress()
+	case soratask.FieldResultUrls:
+		return m.ResultUrls()
+	case soratask.FieldErrorMessage:
+		return m.ErrorMessage()
+	case soratask.FieldRetryCount:
+		return m.RetryCount()
+	case soratask.FieldCreatedAt:
+		return m.CreatedAt()
+	case soratask.FieldCompletedAt:
+		return m.CompletedAt()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SoraTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case soratask.FieldTaskID:
+		return m.OldTaskID(ctx)
+	case soratask.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case soratask.FieldModel:
+		return m.OldModel(ctx)
+	case soratask.FieldPrompt:
+		return m.OldPrompt(ctx)
+	case soratask.FieldStatus:
+		return m.OldStatus(ctx)
+	case soratask.FieldProgress:
+		return m.OldProgress(ctx)
+	case soratask.FieldResultUrls:
+		return m.OldResultUrls(ctx)
+	case soratask.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	case soratask.FieldRetryCount:
+		return m.OldRetryCount(ctx)
+	case soratask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case soratask.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown SoraTask field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case soratask.FieldTaskID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTaskID(v)
+		return nil
+	case soratask.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAccountID(v)
+		return nil
+	case soratask.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetModel(v)
+		return nil
+	case soratask.FieldPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetPrompt(v)
+		return nil
+	case soratask.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetStatus(v)
+		return nil
+	case soratask.FieldProgress:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetProgress(v)
+		return nil
+	case soratask.FieldResultUrls:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetResultUrls(v)
+		return nil
+	case soratask.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetErrorMessage(v)
+		return nil
+	case soratask.FieldRetryCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetRetryCount(v)
+		return nil
+	case soratask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case soratask.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCompletedAt(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraTask field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SoraTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, soratask.FieldAccountID)
+REDACTED
+	if m.addprogress != nil {
+		fields = append(fields, soratask.FieldProgress)
+REDACTED
+	if m.addretry_count != nil {
+		fields = append(fields, soratask.FieldRetryCount)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SoraTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case soratask.FieldAccountID:
+		return m.AddedAccountID()
+	case soratask.FieldProgress:
+		return m.AddedProgress()
+	case soratask.FieldRetryCount:
+		return m.AddedRetryCount()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case soratask.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddAccountID(v)
+		return nil
+	case soratask.FieldProgress:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddProgress(v)
+		return nil
+	case soratask.FieldRetryCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddRetryCount(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraTask numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SoraTaskMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(soratask.FieldResultUrls) {
+		fields = append(fields, soratask.FieldResultUrls)
+REDACTED
+	if m.FieldCleared(soratask.FieldErrorMessage) {
+		fields = append(fields, soratask.FieldErrorMessage)
+REDACTED
+	if m.FieldCleared(soratask.FieldCompletedAt) {
+		fields = append(fields, soratask.FieldCompletedAt)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SoraTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SoraTaskMutation) ClearField(name string) error {
+	switch name {
+	case soratask.FieldResultUrls:
+		m.ClearResultUrls()
+		return nil
+	case soratask.FieldErrorMessage:
+		m.ClearErrorMessage()
+		return nil
+	case soratask.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraTask nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SoraTaskMutation) ResetField(name string) error {
+	switch name {
+	case soratask.FieldTaskID:
+		m.ResetTaskID()
+		return nil
+	case soratask.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case soratask.FieldModel:
+		m.ResetModel()
+		return nil
+	case soratask.FieldPrompt:
+		m.ResetPrompt()
+		return nil
+	case soratask.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case soratask.FieldProgress:
+		m.ResetProgress()
+		return nil
+	case soratask.FieldResultUrls:
+		m.ResetResultUrls()
+		return nil
+	case soratask.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	case soratask.FieldRetryCount:
+		m.ResetRetryCount()
+		return nil
+	case soratask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case soratask.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraTask field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SoraTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SoraTaskMutation) AddedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SoraTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SoraTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SoraTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SoraTaskMutation) EdgeCleared(name string) bool {
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SoraTaskMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SoraTask unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SoraTaskMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SoraTask edge %s", name)
+REDACTED
+
+// SoraUsageStatMutation represents an operation that mutates the SoraUsageStat nodes in the graph.
+type SoraUsageStatMutation struct {
+	config
+	op                         Op
+	typ                        string
+	id                         *int64
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	account_id                 *int64
+	addaccount_id              *int64
+	image_count                *int
+	addimage_count             *int
+	video_count                *int
+	addvideo_count             *int
+	error_count                *int
+	adderror_count             *int
+	last_error_at              *time.Time
+	today_image_count          *int
+	addtoday_image_count       *int
+	today_video_count          *int
+	addtoday_video_count       *int
+	today_error_count          *int
+	addtoday_error_count       *int
+	today_date                 *time.Time
+	consecutive_error_count    *int
+	addconsecutive_error_count *int
+	clearedFields              map[string]struct{REDACTED
+	done                       bool
+	oldValue                   func(context.Context) (*SoraUsageStat, error)
+	predicates                 []predicate.SoraUsageStat
+REDACTED
+
+var _ ent.Mutation = (*SoraUsageStatMutation)(nil)
+
+// sorausagestatOption allows management of the mutation configuration using functional options.
+type sorausagestatOption func(*SoraUsageStatMutation)
+
+// newSoraUsageStatMutation creates new mutation for the SoraUsageStat entity.
+func newSoraUsageStatMutation(c config, op Op, opts ...sorausagestatOption) *SoraUsageStatMutation {
+	m := &SoraUsageStatMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSoraUsageStat,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withSoraUsageStatID sets the ID field of the mutation.
+func withSoraUsageStatID(id int64) sorausagestatOption {
+	return func(m *SoraUsageStatMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SoraUsageStat
+		)
+		m.oldValue = func(ctx context.Context) (*SoraUsageStat, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().SoraUsageStat.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withSoraUsageStat sets the old SoraUsageStat of the mutation.
+func withSoraUsageStat(node *SoraUsageStat) sorausagestatOption {
+	return func(m *SoraUsageStatMutation) {
+		m.oldValue = func(context.Context) (*SoraUsageStat, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SoraUsageStatMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SoraUsageStatMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SoraUsageStatMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SoraUsageStatMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SoraUsageStat.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SoraUsageStatMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SoraUsageStatMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SoraUsageStatMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SoraUsageStatMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SoraUsageStatMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SoraUsageStatMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// SetAccountID sets the "account_id" field.
+func (m *SoraUsageStatMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+REDACTED
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *SoraUsageStatMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAccountID returns the old "account_id" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+REDACTED
+	return oldValue.AccountID, nil
+REDACTED
+
+// AddAccountID adds i to the "account_id" field.
+func (m *SoraUsageStatMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+REDACTED else {
+		m.addaccount_id = &i
+REDACTED
+REDACTED
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *SoraUsageStatMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *SoraUsageStatMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+REDACTED
+
+// SetImageCount sets the "image_count" field.
+func (m *SoraUsageStatMutation) SetImageCount(i int) {
+	m.image_count = &i
+	m.addimage_count = nil
+REDACTED
+
+// ImageCount returns the value of the "image_count" field in the mutation.
+func (m *SoraUsageStatMutation) ImageCount() (r int, exists bool) {
+	v := m.image_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldImageCount returns the old "image_count" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldImageCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageCount: %w", err)
+REDACTED
+	return oldValue.ImageCount, nil
+REDACTED
+
+// AddImageCount adds i to the "image_count" field.
+func (m *SoraUsageStatMutation) AddImageCount(i int) {
+	if m.addimage_count != nil {
+		*m.addimage_count += i
+REDACTED else {
+		m.addimage_count = &i
+REDACTED
+REDACTED
+
+// AddedImageCount returns the value that was added to the "image_count" field in this mutation.
+func (m *SoraUsageStatMutation) AddedImageCount() (r int, exists bool) {
+	v := m.addimage_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetImageCount resets all changes to the "image_count" field.
+func (m *SoraUsageStatMutation) ResetImageCount() {
+	m.image_count = nil
+	m.addimage_count = nil
+REDACTED
+
+// SetVideoCount sets the "video_count" field.
+func (m *SoraUsageStatMutation) SetVideoCount(i int) {
+	m.video_count = &i
+	m.addvideo_count = nil
+REDACTED
+
+// VideoCount returns the value of the "video_count" field in the mutation.
+func (m *SoraUsageStatMutation) VideoCount() (r int, exists bool) {
+	v := m.video_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldVideoCount returns the old "video_count" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldVideoCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoCount: %w", err)
+REDACTED
+	return oldValue.VideoCount, nil
+REDACTED
+
+// AddVideoCount adds i to the "video_count" field.
+func (m *SoraUsageStatMutation) AddVideoCount(i int) {
+	if m.addvideo_count != nil {
+		*m.addvideo_count += i
+REDACTED else {
+		m.addvideo_count = &i
+REDACTED
+REDACTED
+
+// AddedVideoCount returns the value that was added to the "video_count" field in this mutation.
+func (m *SoraUsageStatMutation) AddedVideoCount() (r int, exists bool) {
+	v := m.addvideo_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetVideoCount resets all changes to the "video_count" field.
+func (m *SoraUsageStatMutation) ResetVideoCount() {
+	m.video_count = nil
+	m.addvideo_count = nil
+REDACTED
+
+// SetErrorCount sets the "error_count" field.
+func (m *SoraUsageStatMutation) SetErrorCount(i int) {
+	m.error_count = &i
+	m.adderror_count = nil
+REDACTED
+
+// ErrorCount returns the value of the "error_count" field in the mutation.
+func (m *SoraUsageStatMutation) ErrorCount() (r int, exists bool) {
+	v := m.error_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldErrorCount returns the old "error_count" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldErrorCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCount: %w", err)
+REDACTED
+	return oldValue.ErrorCount, nil
+REDACTED
+
+// AddErrorCount adds i to the "error_count" field.
+func (m *SoraUsageStatMutation) AddErrorCount(i int) {
+	if m.adderror_count != nil {
+		*m.adderror_count += i
+REDACTED else {
+		m.adderror_count = &i
+REDACTED
+REDACTED
+
+// AddedErrorCount returns the value that was added to the "error_count" field in this mutation.
+func (m *SoraUsageStatMutation) AddedErrorCount() (r int, exists bool) {
+	v := m.adderror_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetErrorCount resets all changes to the "error_count" field.
+func (m *SoraUsageStatMutation) ResetErrorCount() {
+	m.error_count = nil
+	m.adderror_count = nil
+REDACTED
+
+// SetLastErrorAt sets the "last_error_at" field.
+func (m *SoraUsageStatMutation) SetLastErrorAt(t time.Time) {
+	m.last_error_at = &t
+REDACTED
+
+// LastErrorAt returns the value of the "last_error_at" field in the mutation.
+func (m *SoraUsageStatMutation) LastErrorAt() (r time.Time, exists bool) {
+	v := m.last_error_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldLastErrorAt returns the old "last_error_at" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldLastErrorAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorAt: %w", err)
+REDACTED
+	return oldValue.LastErrorAt, nil
+REDACTED
+
+// ClearLastErrorAt clears the value of the "last_error_at" field.
+func (m *SoraUsageStatMutation) ClearLastErrorAt() {
+	m.last_error_at = nil
+	m.clearedFields[sorausagestat.FieldLastErrorAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// LastErrorAtCleared returns if the "last_error_at" field was cleared in this mutation.
+func (m *SoraUsageStatMutation) LastErrorAtCleared() bool {
+	_, ok := m.clearedFields[sorausagestat.FieldLastErrorAt]
+	return ok
+REDACTED
+
+// ResetLastErrorAt resets all changes to the "last_error_at" field.
+func (m *SoraUsageStatMutation) ResetLastErrorAt() {
+	m.last_error_at = nil
+	delete(m.clearedFields, sorausagestat.FieldLastErrorAt)
+REDACTED
+
+// SetTodayImageCount sets the "today_image_count" field.
+func (m *SoraUsageStatMutation) SetTodayImageCount(i int) {
+	m.today_image_count = &i
+	m.addtoday_image_count = nil
+REDACTED
+
+// TodayImageCount returns the value of the "today_image_count" field in the mutation.
+func (m *SoraUsageStatMutation) TodayImageCount() (r int, exists bool) {
+	v := m.today_image_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTodayImageCount returns the old "today_image_count" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldTodayImageCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTodayImageCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTodayImageCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTodayImageCount: %w", err)
+REDACTED
+	return oldValue.TodayImageCount, nil
+REDACTED
+
+// AddTodayImageCount adds i to the "today_image_count" field.
+func (m *SoraUsageStatMutation) AddTodayImageCount(i int) {
+	if m.addtoday_image_count != nil {
+		*m.addtoday_image_count += i
+REDACTED else {
+		m.addtoday_image_count = &i
+REDACTED
+REDACTED
+
+// AddedTodayImageCount returns the value that was added to the "today_image_count" field in this mutation.
+func (m *SoraUsageStatMutation) AddedTodayImageCount() (r int, exists bool) {
+	v := m.addtoday_image_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetTodayImageCount resets all changes to the "today_image_count" field.
+func (m *SoraUsageStatMutation) ResetTodayImageCount() {
+	m.today_image_count = nil
+	m.addtoday_image_count = nil
+REDACTED
+
+// SetTodayVideoCount sets the "today_video_count" field.
+func (m *SoraUsageStatMutation) SetTodayVideoCount(i int) {
+	m.today_video_count = &i
+	m.addtoday_video_count = nil
+REDACTED
+
+// TodayVideoCount returns the value of the "today_video_count" field in the mutation.
+func (m *SoraUsageStatMutation) TodayVideoCount() (r int, exists bool) {
+	v := m.today_video_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTodayVideoCount returns the old "today_video_count" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldTodayVideoCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTodayVideoCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTodayVideoCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTodayVideoCount: %w", err)
+REDACTED
+	return oldValue.TodayVideoCount, nil
+REDACTED
+
+// AddTodayVideoCount adds i to the "today_video_count" field.
+func (m *SoraUsageStatMutation) AddTodayVideoCount(i int) {
+	if m.addtoday_video_count != nil {
+		*m.addtoday_video_count += i
+REDACTED else {
+		m.addtoday_video_count = &i
+REDACTED
+REDACTED
+
+// AddedTodayVideoCount returns the value that was added to the "today_video_count" field in this mutation.
+func (m *SoraUsageStatMutation) AddedTodayVideoCount() (r int, exists bool) {
+	v := m.addtoday_video_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetTodayVideoCount resets all changes to the "today_video_count" field.
+func (m *SoraUsageStatMutation) ResetTodayVideoCount() {
+	m.today_video_count = nil
+	m.addtoday_video_count = nil
+REDACTED
+
+// SetTodayErrorCount sets the "today_error_count" field.
+func (m *SoraUsageStatMutation) SetTodayErrorCount(i int) {
+	m.today_error_count = &i
+	m.addtoday_error_count = nil
+REDACTED
+
+// TodayErrorCount returns the value of the "today_error_count" field in the mutation.
+func (m *SoraUsageStatMutation) TodayErrorCount() (r int, exists bool) {
+	v := m.today_error_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTodayErrorCount returns the old "today_error_count" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldTodayErrorCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTodayErrorCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTodayErrorCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTodayErrorCount: %w", err)
+REDACTED
+	return oldValue.TodayErrorCount, nil
+REDACTED
+
+// AddTodayErrorCount adds i to the "today_error_count" field.
+func (m *SoraUsageStatMutation) AddTodayErrorCount(i int) {
+	if m.addtoday_error_count != nil {
+		*m.addtoday_error_count += i
+REDACTED else {
+		m.addtoday_error_count = &i
+REDACTED
+REDACTED
+
+// AddedTodayErrorCount returns the value that was added to the "today_error_count" field in this mutation.
+func (m *SoraUsageStatMutation) AddedTodayErrorCount() (r int, exists bool) {
+	v := m.addtoday_error_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetTodayErrorCount resets all changes to the "today_error_count" field.
+func (m *SoraUsageStatMutation) ResetTodayErrorCount() {
+	m.today_error_count = nil
+	m.addtoday_error_count = nil
+REDACTED
+
+// SetTodayDate sets the "today_date" field.
+func (m *SoraUsageStatMutation) SetTodayDate(t time.Time) {
+	m.today_date = &t
+REDACTED
+
+// TodayDate returns the value of the "today_date" field in the mutation.
+func (m *SoraUsageStatMutation) TodayDate() (r time.Time, exists bool) {
+	v := m.today_date
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTodayDate returns the old "today_date" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldTodayDate(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTodayDate is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTodayDate requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTodayDate: %w", err)
+REDACTED
+	return oldValue.TodayDate, nil
+REDACTED
+
+// ClearTodayDate clears the value of the "today_date" field.
+func (m *SoraUsageStatMutation) ClearTodayDate() {
+	m.today_date = nil
+	m.clearedFields[sorausagestat.FieldTodayDate] = struct{REDACTED{REDACTED
+REDACTED
+
+// TodayDateCleared returns if the "today_date" field was cleared in this mutation.
+func (m *SoraUsageStatMutation) TodayDateCleared() bool {
+	_, ok := m.clearedFields[sorausagestat.FieldTodayDate]
+	return ok
+REDACTED
+
+// ResetTodayDate resets all changes to the "today_date" field.
+func (m *SoraUsageStatMutation) ResetTodayDate() {
+	m.today_date = nil
+	delete(m.clearedFields, sorausagestat.FieldTodayDate)
+REDACTED
+
+// SetConsecutiveErrorCount sets the "consecutive_error_count" field.
+func (m *SoraUsageStatMutation) SetConsecutiveErrorCount(i int) {
+	m.consecutive_error_count = &i
+	m.addconsecutive_error_count = nil
+REDACTED
+
+// ConsecutiveErrorCount returns the value of the "consecutive_error_count" field in the mutation.
+func (m *SoraUsageStatMutation) ConsecutiveErrorCount() (r int, exists bool) {
+	v := m.consecutive_error_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldConsecutiveErrorCount returns the old "consecutive_error_count" field's value of the SoraUsageStat entity.
+// If the SoraUsageStat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SoraUsageStatMutation) OldConsecutiveErrorCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConsecutiveErrorCount is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConsecutiveErrorCount requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConsecutiveErrorCount: %w", err)
+REDACTED
+	return oldValue.ConsecutiveErrorCount, nil
+REDACTED
+
+// AddConsecutiveErrorCount adds i to the "consecutive_error_count" field.
+func (m *SoraUsageStatMutation) AddConsecutiveErrorCount(i int) {
+	if m.addconsecutive_error_count != nil {
+		*m.addconsecutive_error_count += i
+REDACTED else {
+		m.addconsecutive_error_count = &i
+REDACTED
+REDACTED
+
+// AddedConsecutiveErrorCount returns the value that was added to the "consecutive_error_count" field in this mutation.
+func (m *SoraUsageStatMutation) AddedConsecutiveErrorCount() (r int, exists bool) {
+	v := m.addconsecutive_error_count
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetConsecutiveErrorCount resets all changes to the "consecutive_error_count" field.
+func (m *SoraUsageStatMutation) ResetConsecutiveErrorCount() {
+	m.consecutive_error_count = nil
+	m.addconsecutive_error_count = nil
+REDACTED
+
+// Where appends a list predicates to the SoraUsageStatMutation builder.
+func (m *SoraUsageStatMutation) Where(ps ...predicate.SoraUsageStat) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the SoraUsageStatMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SoraUsageStatMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SoraUsageStat, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *SoraUsageStatMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *SoraUsageStatMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (SoraUsageStat).
+func (m *SoraUsageStatMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SoraUsageStatMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.created_at != nil {
+		fields = append(fields, sorausagestat.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, sorausagestat.FieldUpdatedAt)
+REDACTED
+	if m.account_id != nil {
+		fields = append(fields, sorausagestat.FieldAccountID)
+REDACTED
+	if m.image_count != nil {
+		fields = append(fields, sorausagestat.FieldImageCount)
+REDACTED
+	if m.video_count != nil {
+		fields = append(fields, sorausagestat.FieldVideoCount)
+REDACTED
+	if m.error_count != nil {
+		fields = append(fields, sorausagestat.FieldErrorCount)
+REDACTED
+	if m.last_error_at != nil {
+		fields = append(fields, sorausagestat.FieldLastErrorAt)
+REDACTED
+	if m.today_image_count != nil {
+		fields = append(fields, sorausagestat.FieldTodayImageCount)
+REDACTED
+	if m.today_video_count != nil {
+		fields = append(fields, sorausagestat.FieldTodayVideoCount)
+REDACTED
+	if m.today_error_count != nil {
+		fields = append(fields, sorausagestat.FieldTodayErrorCount)
+REDACTED
+	if m.today_date != nil {
+		fields = append(fields, sorausagestat.FieldTodayDate)
+REDACTED
+	if m.consecutive_error_count != nil {
+		fields = append(fields, sorausagestat.FieldConsecutiveErrorCount)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SoraUsageStatMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case sorausagestat.FieldCreatedAt:
+		return m.CreatedAt()
+	case sorausagestat.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case sorausagestat.FieldAccountID:
+		return m.AccountID()
+	case sorausagestat.FieldImageCount:
+		return m.ImageCount()
+	case sorausagestat.FieldVideoCount:
+		return m.VideoCount()
+	case sorausagestat.FieldErrorCount:
+		return m.ErrorCount()
+	case sorausagestat.FieldLastErrorAt:
+		return m.LastErrorAt()
+	case sorausagestat.FieldTodayImageCount:
+		return m.TodayImageCount()
+	case sorausagestat.FieldTodayVideoCount:
+		return m.TodayVideoCount()
+	case sorausagestat.FieldTodayErrorCount:
+		return m.TodayErrorCount()
+	case sorausagestat.FieldTodayDate:
+		return m.TodayDate()
+	case sorausagestat.FieldConsecutiveErrorCount:
+		return m.ConsecutiveErrorCount()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SoraUsageStatMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case sorausagestat.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case sorausagestat.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case sorausagestat.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case sorausagestat.FieldImageCount:
+		return m.OldImageCount(ctx)
+	case sorausagestat.FieldVideoCount:
+		return m.OldVideoCount(ctx)
+	case sorausagestat.FieldErrorCount:
+		return m.OldErrorCount(ctx)
+	case sorausagestat.FieldLastErrorAt:
+		return m.OldLastErrorAt(ctx)
+	case sorausagestat.FieldTodayImageCount:
+		return m.OldTodayImageCount(ctx)
+	case sorausagestat.FieldTodayVideoCount:
+		return m.OldTodayVideoCount(ctx)
+	case sorausagestat.FieldTodayErrorCount:
+		return m.OldTodayErrorCount(ctx)
+	case sorausagestat.FieldTodayDate:
+		return m.OldTodayDate(ctx)
+	case sorausagestat.FieldConsecutiveErrorCount:
+		return m.OldConsecutiveErrorCount(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown SoraUsageStat field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraUsageStatMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case sorausagestat.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case sorausagestat.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+	case sorausagestat.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAccountID(v)
+		return nil
+	case sorausagestat.FieldImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetImageCount(v)
+		return nil
+	case sorausagestat.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetVideoCount(v)
+		return nil
+	case sorausagestat.FieldErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetErrorCount(v)
+		return nil
+	case sorausagestat.FieldLastErrorAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetLastErrorAt(v)
+		return nil
+	case sorausagestat.FieldTodayImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTodayImageCount(v)
+		return nil
+	case sorausagestat.FieldTodayVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTodayVideoCount(v)
+		return nil
+	case sorausagestat.FieldTodayErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTodayErrorCount(v)
+		return nil
+	case sorausagestat.FieldTodayDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTodayDate(v)
+		return nil
+	case sorausagestat.FieldConsecutiveErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetConsecutiveErrorCount(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraUsageStat field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SoraUsageStatMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, sorausagestat.FieldAccountID)
+REDACTED
+	if m.addimage_count != nil {
+		fields = append(fields, sorausagestat.FieldImageCount)
+REDACTED
+	if m.addvideo_count != nil {
+		fields = append(fields, sorausagestat.FieldVideoCount)
+REDACTED
+	if m.adderror_count != nil {
+		fields = append(fields, sorausagestat.FieldErrorCount)
+REDACTED
+	if m.addtoday_image_count != nil {
+		fields = append(fields, sorausagestat.FieldTodayImageCount)
+REDACTED
+	if m.addtoday_video_count != nil {
+		fields = append(fields, sorausagestat.FieldTodayVideoCount)
+REDACTED
+	if m.addtoday_error_count != nil {
+		fields = append(fields, sorausagestat.FieldTodayErrorCount)
+REDACTED
+	if m.addconsecutive_error_count != nil {
+		fields = append(fields, sorausagestat.FieldConsecutiveErrorCount)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SoraUsageStatMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case sorausagestat.FieldAccountID:
+		return m.AddedAccountID()
+	case sorausagestat.FieldImageCount:
+		return m.AddedImageCount()
+	case sorausagestat.FieldVideoCount:
+		return m.AddedVideoCount()
+	case sorausagestat.FieldErrorCount:
+		return m.AddedErrorCount()
+	case sorausagestat.FieldTodayImageCount:
+		return m.AddedTodayImageCount()
+	case sorausagestat.FieldTodayVideoCount:
+		return m.AddedTodayVideoCount()
+	case sorausagestat.FieldTodayErrorCount:
+		return m.AddedTodayErrorCount()
+	case sorausagestat.FieldConsecutiveErrorCount:
+		return m.AddedConsecutiveErrorCount()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SoraUsageStatMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case sorausagestat.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddAccountID(v)
+		return nil
+	case sorausagestat.FieldImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddImageCount(v)
+		return nil
+	case sorausagestat.FieldVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddVideoCount(v)
+		return nil
+	case sorausagestat.FieldErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddErrorCount(v)
+		return nil
+	case sorausagestat.FieldTodayImageCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddTodayImageCount(v)
+		return nil
+	case sorausagestat.FieldTodayVideoCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddTodayVideoCount(v)
+		return nil
+	case sorausagestat.FieldTodayErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddTodayErrorCount(v)
+		return nil
+	case sorausagestat.FieldConsecutiveErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddConsecutiveErrorCount(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraUsageStat numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SoraUsageStatMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(sorausagestat.FieldLastErrorAt) {
+		fields = append(fields, sorausagestat.FieldLastErrorAt)
+REDACTED
+	if m.FieldCleared(sorausagestat.FieldTodayDate) {
+		fields = append(fields, sorausagestat.FieldTodayDate)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SoraUsageStatMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SoraUsageStatMutation) ClearField(name string) error {
+	switch name {
+	case sorausagestat.FieldLastErrorAt:
+		m.ClearLastErrorAt()
+		return nil
+	case sorausagestat.FieldTodayDate:
+		m.ClearTodayDate()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraUsageStat nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SoraUsageStatMutation) ResetField(name string) error {
+	switch name {
+	case sorausagestat.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case sorausagestat.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case sorausagestat.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case sorausagestat.FieldImageCount:
+		m.ResetImageCount()
+		return nil
+	case sorausagestat.FieldVideoCount:
+		m.ResetVideoCount()
+		return nil
+	case sorausagestat.FieldErrorCount:
+		m.ResetErrorCount()
+		return nil
+	case sorausagestat.FieldLastErrorAt:
+		m.ResetLastErrorAt()
+		return nil
+	case sorausagestat.FieldTodayImageCount:
+		m.ResetTodayImageCount()
+		return nil
+	case sorausagestat.FieldTodayVideoCount:
+		m.ResetTodayVideoCount()
+		return nil
+	case sorausagestat.FieldTodayErrorCount:
+		m.ResetTodayErrorCount()
+		return nil
+	case sorausagestat.FieldTodayDate:
+		m.ResetTodayDate()
+		return nil
+	case sorausagestat.FieldConsecutiveErrorCount:
+		m.ResetConsecutiveErrorCount()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown SoraUsageStat field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SoraUsageStatMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SoraUsageStatMutation) AddedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SoraUsageStatMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SoraUsageStatMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SoraUsageStatMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SoraUsageStatMutation) EdgeCleared(name string) bool {
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SoraUsageStatMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SoraUsageStat unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SoraUsageStatMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SoraUsageStat edge %s", name)
 REDACTED
 
 // UsageCleanupTaskMutation represents an operation that mutates the UsageCleanupTask nodes in the graph.

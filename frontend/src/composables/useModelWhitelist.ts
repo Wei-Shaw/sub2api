@@ -52,6 +52,38 @@ const geminiModels = [
   'gemini-3-pro-preview'
 ]
 
+// OpenAI Sora
+const soraModels = [
+  'gpt-image',
+  'gpt-image-landscape',
+  'gpt-image-portrait',
+  'sora2-landscape-10s',
+  'sora2-portrait-10s',
+  'sora2-landscape-15s',
+  'sora2-portrait-15s',
+  'sora2-landscape-25s',
+  'sora2-portrait-25s',
+  'sora2pro-landscape-10s',
+  'sora2pro-portrait-10s',
+  'sora2pro-landscape-15s',
+  'sora2pro-portrait-15s',
+  'sora2pro-landscape-25s',
+  'sora2pro-portrait-25s',
+  'sora2pro-hd-landscape-10s',
+  'sora2pro-hd-portrait-10s',
+  'sora2pro-hd-landscape-15s',
+  'sora2pro-hd-portrait-15s',
+  'prompt-enhance-short-10s',
+  'prompt-enhance-short-15s',
+  'prompt-enhance-short-20s',
+  'prompt-enhance-medium-10s',
+  'prompt-enhance-medium-15s',
+  'prompt-enhance-medium-20s',
+  'prompt-enhance-long-10s',
+  'prompt-enhance-long-15s',
+  'prompt-enhance-long-20s'
+]
+
 // 智谱 GLM
 const zhipuModels = [
   'glm-4', 'glm-4v', 'glm-4-plus', 'glm-4-0520',
@@ -182,6 +214,7 @@ const allModelsList: string[] = [
   ...openaiModels,
   ...claudeModels,
   ...geminiModels,
+  ...soraModels,
   ...zhipuModels,
   ...qwenModels,
   ...deepseekModels,
@@ -258,6 +291,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'anthropic':
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
+    case 'sora': return soraModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -281,6 +315,7 @@ REDACTED
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
+  if (platform === 'sora') return []
   return anthropicPresetMappings
 REDACTED
 

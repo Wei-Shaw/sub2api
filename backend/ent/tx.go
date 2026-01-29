@@ -32,6 +32,14 @@ type Tx struct {
 	RedeemCode *RedeemCodeClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// SoraAccount is the client for interacting with the SoraAccount builders.
+	SoraAccount *SoraAccountClient
+	// SoraCacheFile is the client for interacting with the SoraCacheFile builders.
+	SoraCacheFile *SoraCacheFileClient
+	// SoraTask is the client for interacting with the SoraTask builders.
+	SoraTask *SoraTaskClient
+	// SoraUsageStat is the client for interacting with the SoraUsageStat builders.
+	SoraUsageStat *SoraUsageStatClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
 	UsageCleanupTask *UsageCleanupTaskClient
 	// UsageLog is the client for interacting with the UsageLog builders.
@@ -186,6 +194,10 @@ func (tx *Tx) init() {
 	tx.Proxy = NewProxyClient(tx.config)
 	tx.RedeemCode = NewRedeemCodeClient(tx.config)
 	tx.Setting = NewSettingClient(tx.config)
+	tx.SoraAccount = NewSoraAccountClient(tx.config)
+	tx.SoraCacheFile = NewSoraCacheFileClient(tx.config)
+	tx.SoraTask = NewSoraTaskClient(tx.config)
+	tx.SoraUsageStat = NewSoraUsageStatClient(tx.config)
 	tx.UsageCleanupTask = NewUsageCleanupTaskClient(tx.config)
 	tx.UsageLog = NewUsageLogClient(tx.config)
 	tx.User = NewUserClient(tx.config)

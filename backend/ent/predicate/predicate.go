@@ -33,6 +33,18 @@ type RedeemCode func(*sql.Selector)
 // Setting is the predicate function for setting builders.
 type Setting func(*sql.Selector)
 
+// SoraAccount is the predicate function for soraaccount builders.
+type SoraAccount func(*sql.Selector)
+
+// SoraCacheFile is the predicate function for soracachefile builders.
+type SoraCacheFile func(*sql.Selector)
+
+// SoraTask is the predicate function for soratask builders.
+type SoraTask func(*sql.Selector)
+
+// SoraUsageStat is the predicate function for sorausagestat builders.
+type SoraUsageStat func(*sql.Selector)
+
 // UsageCleanupTask is the predicate function for usagecleanuptask builders.
 type UsageCleanupTask func(*sql.Selector)
 

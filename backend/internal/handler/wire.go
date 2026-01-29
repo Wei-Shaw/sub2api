@@ -20,6 +20,7 @@ func ProvideAdminHandlers(
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
 	promoHandler *admin.PromoHandler,
+	soraAccountHandler *admin.SoraAccountHandler,
 	settingHandler *admin.SettingHandler,
 	opsHandler *admin.OpsHandler,
 	systemHandler *admin.SystemHandler,
@@ -39,6 +40,7 @@ func ProvideAdminHandlers(
 		Proxy:            proxyHandler,
 		Redeem:           redeemHandler,
 		Promo:            promoHandler,
+		SoraAccount:      soraAccountHandler,
 		Setting:          settingHandler,
 		Ops:              opsHandler,
 		System:           systemHandler,
@@ -69,6 +71,7 @@ func ProvideHandlers(
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
+	soraGatewayHandler *SoraGatewayHandler,
 	settingHandler *SettingHandler,
 ) *Handlers {
 	return &Handlers{
@@ -81,6 +84,7 @@ func ProvideHandlers(
 		Admin:         adminHandlers,
 		Gateway:       gatewayHandler,
 		OpenAIGateway: openaiGatewayHandler,
+		SoraGateway:   soraGatewayHandler,
 		Setting:       settingHandler,
 REDACTED
 REDACTED
@@ -96,6 +100,7 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
+	NewSoraGatewayHandler,
 	ProvideSettingHandler,
 
 	// Admin handlers
@@ -110,6 +115,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
+	admin.NewSoraAccountHandler,
 	admin.NewSettingHandler,
 	admin.NewOpsHandler,
 	ProvideSystemHandler,

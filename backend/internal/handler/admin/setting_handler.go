@@ -79,6 +79,23 @@ REDACTED
 		FallbackModelAntigravity:             settings.FallbackModelAntigravity,
 		EnableIdentityPatch:                  settings.EnableIdentityPatch,
 		IdentityPatchPrompt:                  settings.IdentityPatchPrompt,
+		SoraBaseURL:                          settings.SoraBaseURL,
+		SoraTimeout:                          settings.SoraTimeout,
+		SoraMaxRetries:                       settings.SoraMaxRetries,
+		SoraPollInterval:                     settings.SoraPollInterval,
+		SoraCallLogicMode:                    settings.SoraCallLogicMode,
+		SoraCacheEnabled:                     settings.SoraCacheEnabled,
+		SoraCacheBaseDir:                     settings.SoraCacheBaseDir,
+		SoraCacheVideoDir:                    settings.SoraCacheVideoDir,
+		SoraCacheMaxBytes:                    settings.SoraCacheMaxBytes,
+		SoraCacheAllowedHosts:                settings.SoraCacheAllowedHosts,
+		SoraCacheUserDirEnabled:              settings.SoraCacheUserDirEnabled,
+		SoraWatermarkFreeEnabled:             settings.SoraWatermarkFreeEnabled,
+		SoraWatermarkFreeParseMethod:         settings.SoraWatermarkFreeParseMethod,
+		SoraWatermarkFreeCustomParseURL:      settings.SoraWatermarkFreeCustomParseURL,
+		SoraWatermarkFreeCustomParseToken:    settings.SoraWatermarkFreeCustomParseToken,
+		SoraWatermarkFreeFallbackOnFailure:   settings.SoraWatermarkFreeFallbackOnFailure,
+		SoraTokenRefreshEnabled:              settings.SoraTokenRefreshEnabled,
 		OpsMonitoringEnabled:                 opsEnabled && settings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:         settings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
@@ -137,6 +154,25 @@ type UpdateSettingsRequest struct {
 	// Identity patch configuration (Claude -> Gemini)
 	EnableIdentityPatch bool   `json:"enable_identity_patch"`
 	IdentityPatchPrompt string `json:"identity_patch_prompt"`
+
+	// Sora configuration
+	SoraBaseURL                        string   `json:"sora_base_url"`
+	SoraTimeout                        int      `json:"sora_timeout"`
+	SoraMaxRetries                     int      `json:"sora_max_retries"`
+	SoraPollInterval                   float64  `json:"sora_poll_interval"`
+	SoraCallLogicMode                  string   `json:"sora_call_logic_mode"`
+	SoraCacheEnabled                   bool     `json:"sora_cache_enabled"`
+	SoraCacheBaseDir                   string   `json:"sora_cache_base_dir"`
+	SoraCacheVideoDir                  string   `json:"sora_cache_video_dir"`
+	SoraCacheMaxBytes                  int64    `json:"sora_cache_max_bytes"`
+	SoraCacheAllowedHosts              []string `json:"sora_cache_allowed_hosts"`
+	SoraCacheUserDirEnabled            bool     `json:"sora_cache_user_dir_enabled"`
+	SoraWatermarkFreeEnabled           bool     `json:"sora_watermark_free_enabled"`
+	SoraWatermarkFreeParseMethod       string   `json:"sora_watermark_free_parse_method"`
+	SoraWatermarkFreeCustomParseURL    string   `json:"sora_watermark_free_custom_parse_url"`
+	SoraWatermarkFreeCustomParseToken  string   `json:"sora_watermark_free_custom_parse_token"`
+	SoraWatermarkFreeFallbackOnFailure bool     `json:"sora_watermark_free_fallback_on_failure"`
+	SoraTokenRefreshEnabled            bool     `json:"sora_token_refresh_enabled"`
 
 	// Ops monitoring (vNext)
 	OpsMonitoringEnabled         *bool   `json:"ops_monitoring_enabled"`
@@ -227,6 +263,32 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// Sora 参数校验与清理
+	req.SoraBaseURL = strings.TrimSpace(req.SoraBaseURL)
+	if req.SoraBaseURL == "" {
+		req.SoraBaseURL = previousSettings.SoraBaseURL
+REDACTED
+	if req.SoraBaseURL != "" {
+		if err := config.ValidateAbsoluteHTTPURL(req.SoraBaseURL); err != nil {
+			response.BadRequest(c, "Sora Base URL must be an absolute http(s) URL")
+			return
+	REDACTED
+REDACTED
+	if req.SoraTimeout <= 0 {
+		req.SoraTimeout = previousSettings.SoraTimeout
+REDACTED
+	if req.SoraMaxRetries < 0 {
+		req.SoraMaxRetries = previousSettings.SoraMaxRetries
+REDACTED
+	if req.SoraPollInterval <= 0 {
+		req.SoraPollInterval = previousSettings.SoraPollInterval
+REDACTED
+	if req.SoraCacheMaxBytes < 0 {
+		req.SoraCacheMaxBytes = 0
+REDACTED
+	req.SoraCacheAllowedHosts = normalizeStringList(req.SoraCacheAllowedHosts)
+	req.SoraWatermarkFreeCustomParseURL = strings.TrimSpace(req.SoraWatermarkFreeCustomParseURL)
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -240,40 +302,57 @@ REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:        req.RegistrationEnabled,
-		EmailVerifyEnabled:         req.EmailVerifyEnabled,
-		PromoCodeEnabled:           req.PromoCodeEnabled,
-		SMTPHost:                   req.SMTPHost,
-		SMTPPort:                   req.SMTPPort,
-		SMTPUsername:               req.SMTPUsername,
-		SMTPPassword:               req.SMTPPassword,
-		SMTPFrom:                   req.SMTPFrom,
-		SMTPFromName:               req.SMTPFromName,
-		SMTPUseTLS:                 req.SMTPUseTLS,
-		TurnstileEnabled:           req.TurnstileEnabled,
-		TurnstileSiteKey:           req.TurnstileSiteKey,
-		TurnstileSecretKey:         req.TurnstileSecretKey,
-		LinuxDoConnectEnabled:      req.LinuxDoConnectEnabled,
-		LinuxDoConnectClientID:     req.LinuxDoConnectClientID,
-		LinuxDoConnectClientSecret: req.LinuxDoConnectClientSecret,
-		LinuxDoConnectRedirectURL:  req.LinuxDoConnectRedirectURL,
-		SiteName:                   req.SiteName,
-		SiteLogo:                   req.SiteLogo,
-		SiteSubtitle:               req.SiteSubtitle,
-		APIBaseURL:                 req.APIBaseURL,
-		ContactInfo:                req.ContactInfo,
-		DocURL:                     req.DocURL,
-		HomeContent:                req.HomeContent,
-		HideCcsImportButton:        req.HideCcsImportButton,
-		DefaultConcurrency:         req.DefaultConcurrency,
-		DefaultBalance:             req.DefaultBalance,
-		EnableModelFallback:        req.EnableModelFallback,
-		FallbackModelAnthropic:     req.FallbackModelAnthropic,
-		FallbackModelOpenAI:        req.FallbackModelOpenAI,
-		FallbackModelGemini:        req.FallbackModelGemini,
-		FallbackModelAntigravity:   req.FallbackModelAntigravity,
-		EnableIdentityPatch:        req.EnableIdentityPatch,
-		IdentityPatchPrompt:        req.IdentityPatchPrompt,
+		RegistrationEnabled:                req.RegistrationEnabled,
+		EmailVerifyEnabled:                 req.EmailVerifyEnabled,
+		PromoCodeEnabled:                   req.PromoCodeEnabled,
+		SMTPHost:                           req.SMTPHost,
+		SMTPPort:                           req.SMTPPort,
+		SMTPUsername:                       req.SMTPUsername,
+		SMTPPassword:                       req.SMTPPassword,
+		SMTPFrom:                           req.SMTPFrom,
+		SMTPFromName:                       req.SMTPFromName,
+		SMTPUseTLS:                         req.SMTPUseTLS,
+		TurnstileEnabled:                   req.TurnstileEnabled,
+		TurnstileSiteKey:                   req.TurnstileSiteKey,
+		TurnstileSecretKey:                 req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:              req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:             req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret:         req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:          req.LinuxDoConnectRedirectURL,
+		SiteName:                           req.SiteName,
+		SiteLogo:                           req.SiteLogo,
+		SiteSubtitle:                       req.SiteSubtitle,
+		APIBaseURL:                         req.APIBaseURL,
+		ContactInfo:                        req.ContactInfo,
+		DocURL:                             req.DocURL,
+		HomeContent:                        req.HomeContent,
+		HideCcsImportButton:                req.HideCcsImportButton,
+		DefaultConcurrency:                 req.DefaultConcurrency,
+		DefaultBalance:                     req.DefaultBalance,
+		EnableModelFallback:                req.EnableModelFallback,
+		FallbackModelAnthropic:             req.FallbackModelAnthropic,
+		FallbackModelOpenAI:                req.FallbackModelOpenAI,
+		FallbackModelGemini:                req.FallbackModelGemini,
+		FallbackModelAntigravity:           req.FallbackModelAntigravity,
+		EnableIdentityPatch:                req.EnableIdentityPatch,
+		IdentityPatchPrompt:                req.IdentityPatchPrompt,
+		SoraBaseURL:                        req.SoraBaseURL,
+		SoraTimeout:                        req.SoraTimeout,
+		SoraMaxRetries:                     req.SoraMaxRetries,
+		SoraPollInterval:                   req.SoraPollInterval,
+		SoraCallLogicMode:                  req.SoraCallLogicMode,
+		SoraCacheEnabled:                   req.SoraCacheEnabled,
+		SoraCacheBaseDir:                   req.SoraCacheBaseDir,
+		SoraCacheVideoDir:                  req.SoraCacheVideoDir,
+		SoraCacheMaxBytes:                  req.SoraCacheMaxBytes,
+		SoraCacheAllowedHosts:              req.SoraCacheAllowedHosts,
+		SoraCacheUserDirEnabled:            req.SoraCacheUserDirEnabled,
+		SoraWatermarkFreeEnabled:           req.SoraWatermarkFreeEnabled,
+		SoraWatermarkFreeParseMethod:       req.SoraWatermarkFreeParseMethod,
+		SoraWatermarkFreeCustomParseURL:    req.SoraWatermarkFreeCustomParseURL,
+		SoraWatermarkFreeCustomParseToken:  req.SoraWatermarkFreeCustomParseToken,
+		SoraWatermarkFreeFallbackOnFailure: req.SoraWatermarkFreeFallbackOnFailure,
+		SoraTokenRefreshEnabled:            req.SoraTokenRefreshEnabled,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -349,6 +428,23 @@ REDACTED
 		FallbackModelAntigravity:             updatedSettings.FallbackModelAntigravity,
 		EnableIdentityPatch:                  updatedSettings.EnableIdentityPatch,
 		IdentityPatchPrompt:                  updatedSettings.IdentityPatchPrompt,
+		SoraBaseURL:                          updatedSettings.SoraBaseURL,
+		SoraTimeout:                          updatedSettings.SoraTimeout,
+		SoraMaxRetries:                       updatedSettings.SoraMaxRetries,
+		SoraPollInterval:                     updatedSettings.SoraPollInterval,
+		SoraCallLogicMode:                    updatedSettings.SoraCallLogicMode,
+		SoraCacheEnabled:                     updatedSettings.SoraCacheEnabled,
+		SoraCacheBaseDir:                     updatedSettings.SoraCacheBaseDir,
+		SoraCacheVideoDir:                    updatedSettings.SoraCacheVideoDir,
+		SoraCacheMaxBytes:                    updatedSettings.SoraCacheMaxBytes,
+		SoraCacheAllowedHosts:                updatedSettings.SoraCacheAllowedHosts,
+		SoraCacheUserDirEnabled:              updatedSettings.SoraCacheUserDirEnabled,
+		SoraWatermarkFreeEnabled:             updatedSettings.SoraWatermarkFreeEnabled,
+		SoraWatermarkFreeParseMethod:         updatedSettings.SoraWatermarkFreeParseMethod,
+		SoraWatermarkFreeCustomParseURL:      updatedSettings.SoraWatermarkFreeCustomParseURL,
+		SoraWatermarkFreeCustomParseToken:    updatedSettings.SoraWatermarkFreeCustomParseToken,
+		SoraWatermarkFreeFallbackOnFailure:   updatedSettings.SoraWatermarkFreeFallbackOnFailure,
+		SoraTokenRefreshEnabled:              updatedSettings.SoraTokenRefreshEnabled,
 		OpsMonitoringEnabled:                 updatedSettings.OpsMonitoringEnabled,
 		OpsRealtimeMonitoringEnabled:         updatedSettings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  updatedSettings.OpsQueryModeDefault,
@@ -477,6 +573,57 @@ REDACTED
 	if before.IdentityPatchPrompt != after.IdentityPatchPrompt {
 		changed = append(changed, "identity_patch_prompt")
 REDACTED
+	if before.SoraBaseURL != after.SoraBaseURL {
+		changed = append(changed, "sora_base_url")
+REDACTED
+	if before.SoraTimeout != after.SoraTimeout {
+		changed = append(changed, "sora_timeout")
+REDACTED
+	if before.SoraMaxRetries != after.SoraMaxRetries {
+		changed = append(changed, "sora_max_retries")
+REDACTED
+	if before.SoraPollInterval != after.SoraPollInterval {
+		changed = append(changed, "sora_poll_interval")
+REDACTED
+	if before.SoraCallLogicMode != after.SoraCallLogicMode {
+		changed = append(changed, "sora_call_logic_mode")
+REDACTED
+	if before.SoraCacheEnabled != after.SoraCacheEnabled {
+		changed = append(changed, "sora_cache_enabled")
+REDACTED
+	if before.SoraCacheBaseDir != after.SoraCacheBaseDir {
+		changed = append(changed, "sora_cache_base_dir")
+REDACTED
+	if before.SoraCacheVideoDir != after.SoraCacheVideoDir {
+		changed = append(changed, "sora_cache_video_dir")
+REDACTED
+	if before.SoraCacheMaxBytes != after.SoraCacheMaxBytes {
+		changed = append(changed, "sora_cache_max_bytes")
+REDACTED
+	if strings.Join(before.SoraCacheAllowedHosts, ",") != strings.Join(after.SoraCacheAllowedHosts, ",") {
+		changed = append(changed, "sora_cache_allowed_hosts")
+REDACTED
+	if before.SoraCacheUserDirEnabled != after.SoraCacheUserDirEnabled {
+		changed = append(changed, "sora_cache_user_dir_enabled")
+REDACTED
+	if before.SoraWatermarkFreeEnabled != after.SoraWatermarkFreeEnabled {
+		changed = append(changed, "sora_watermark_free_enabled")
+REDACTED
+	if before.SoraWatermarkFreeParseMethod != after.SoraWatermarkFreeParseMethod {
+		changed = append(changed, "sora_watermark_free_parse_method")
+REDACTED
+	if before.SoraWatermarkFreeCustomParseURL != after.SoraWatermarkFreeCustomParseURL {
+		changed = append(changed, "sora_watermark_free_custom_parse_url")
+REDACTED
+	if before.SoraWatermarkFreeCustomParseToken != after.SoraWatermarkFreeCustomParseToken {
+		changed = append(changed, "sora_watermark_free_custom_parse_token")
+REDACTED
+	if before.SoraWatermarkFreeFallbackOnFailure != after.SoraWatermarkFreeFallbackOnFailure {
+		changed = append(changed, "sora_watermark_free_fallback_on_failure")
+REDACTED
+	if before.SoraTokenRefreshEnabled != after.SoraTokenRefreshEnabled {
+		changed = append(changed, "sora_token_refresh_enabled")
+REDACTED
 	if before.OpsMonitoringEnabled != after.OpsMonitoringEnabled {
 		changed = append(changed, "ops_monitoring_enabled")
 REDACTED
@@ -490,6 +637,19 @@ REDACTED
 		changed = append(changed, "ops_metrics_interval_seconds")
 REDACTED
 	return changed
+REDACTED
+
+func normalizeStringList(values []string) []string {
+	if len(values) == 0 {
+		return []string{REDACTED
+REDACTED
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			normalized = append(normalized, trimmed)
+	REDACTED
+REDACTED
+	return normalized
 REDACTED
 
 // TestSMTPRequest 测试SMTP连接请求

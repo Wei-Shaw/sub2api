@@ -17,6 +17,7 @@ type AdminHandlers struct {
 	Proxy            *admin.ProxyHandler
 	Redeem           *admin.RedeemHandler
 	Promo            *admin.PromoHandler
+	SoraAccount      *admin.SoraAccountHandler
 	Setting          *admin.SettingHandler
 	Ops              *admin.OpsHandler
 	System           *admin.SystemHandler
@@ -36,6 +37,7 @@ type Handlers struct {
 	Admin         *AdminHandlers
 	Gateway       *GatewayHandler
 	OpenAIGateway *OpenAIGatewayHandler
+	SoraGateway   *SoraGatewayHandler
 	Setting       *SettingHandler
 REDACTED
 

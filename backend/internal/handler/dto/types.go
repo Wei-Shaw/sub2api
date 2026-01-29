@@ -141,6 +141,56 @@ type Account struct {
 	Groups   []*Group `json:"groups,omitempty"`
 REDACTED
 
+type SoraUsageStat struct {
+	AccountID             int64     `json:"account_id"`
+	ImageCount            int       `json:"image_count"`
+	VideoCount            int       `json:"video_count"`
+	ErrorCount            int       `json:"error_count"`
+	LastErrorAt           *int64    `json:"last_error_at"`
+	TodayImageCount       int       `json:"today_image_count"`
+	TodayVideoCount       int       `json:"today_video_count"`
+	TodayErrorCount       int       `json:"today_error_count"`
+	TodayDate             *int64    `json:"today_date"`
+	ConsecutiveErrorCount int       `json:"consecutive_error_count"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+REDACTED
+
+type SoraAccount struct {
+	AccountID          int64          `json:"account_id"`
+	AccountName        string         `json:"account_name"`
+	AccountStatus      string         `json:"account_status"`
+	AccountType        string         `json:"account_type"`
+	AccountConcurrency int            `json:"account_concurrency"`
+	ProxyID            *int64         `json:"proxy_id"`
+	AccessToken        string         `json:"access_token"`
+	SessionToken       string         `json:"session_token"`
+	RefreshToken       string         `json:"refresh_token"`
+	ClientID           string         `json:"client_id"`
+	Email              string         `json:"email"`
+	Username           string         `json:"username"`
+	Remark             string         `json:"remark"`
+	UseCount           int            `json:"use_count"`
+	PlanType           string         `json:"plan_type"`
+	PlanTitle          string         `json:"plan_title"`
+	SubscriptionEnd    *int64         `json:"subscription_end"`
+	SoraSupported      bool           `json:"sora_supported"`
+	SoraInviteCode     string         `json:"sora_invite_code"`
+	SoraRedeemedCount  int            `json:"sora_redeemed_count"`
+	SoraRemainingCount int            `json:"sora_remaining_count"`
+	SoraTotalCount     int            `json:"sora_total_count"`
+	SoraCooldownUntil  *int64         `json:"sora_cooldown_until"`
+	CooledUntil        *int64         `json:"cooled_until"`
+	ImageEnabled       bool           `json:"image_enabled"`
+	VideoEnabled       bool           `json:"video_enabled"`
+	ImageConcurrency   int            `json:"image_concurrency"`
+	VideoConcurrency   int            `json:"video_concurrency"`
+	IsExpired          bool           `json:"is_expired"`
+	Usage              *SoraUsageStat `json:"usage,omitempty"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+REDACTED
+
 type AccountGroup struct {
 	AccountID int64     `json:"account_id"`
 	GroupID   int64     `json:"group_id"`

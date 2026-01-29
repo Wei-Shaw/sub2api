@@ -147,6 +147,19 @@
             <Icon name="cloud" size="sm" />
             Antigravity
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'sora'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'sora'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <Icon name="play" size="sm" />
+            Sora
+          </button>
         </div>
       </div>
 
@@ -672,6 +685,8 @@
                 ? 'https://api.openai.com'
                 : form.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
+                  : form.platform === 'sora'
+                    ? 'https://sora.chatgpt.com/backend'
                   : 'https://api.anthropic.com'
             "
           />
@@ -689,6 +704,8 @@
                 ? 'sk-proj-...'
                 : form.platform === 'gemini'
                   ? 'AIza...'
+                  : form.platform === 'sora'
+                    ? 'access-token...'
                   : 'sk-ant-...'
             "
           />
@@ -1850,12 +1867,14 @@ REDACTED)
 const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (form.platform === 'sora') return t('admin.accounts.sora.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 REDACTED)
 
 const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
+  if (form.platform === 'sora') return t('admin.accounts.sora.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 REDACTED)
 
@@ -2100,7 +2119,9 @@ watch(
         ? 'https://api.openai.com'
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
-          : 'https://api.anthropic.com'
+          : newPlatform === 'sora'
+            ? 'https://sora.chatgpt.com/backend'
+            : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -2111,6 +2132,9 @@ watch(
     // Antigravity only supports OAuth
     if (newPlatform === 'antigravity') {
       accountCategory.value = 'oauth-based'
+    REDACTED
+    if (newPlatform === 'sora') {
+      accountCategory.value = 'apikey'
     REDACTED
     // Reset OAuth states
     oauth.resetState()
@@ -2383,12 +2407,17 @@ const handleSubmit = async () => {
       ? 'https://api.openai.com'
       : form.platform === 'gemini'
         ? 'https://generativelanguage.googleapis.com'
-        : 'https://api.anthropic.com'
+        : form.platform === 'sora'
+          ? 'https://sora.chatgpt.com/backend'
+          : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
-  const credentials: Record<string, unknown> = {
-    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
-    api_key: apiKeyValue.value.trim()
+  const credentials: Record<string, unknown> = {REDACTED
+  if (form.platform === 'sora') {
+    credentials.access_token = apiKeyValue.value.trim()
+  REDACTED else {
+    credentials.base_url = apiKeyBaseUrl.value.trim() || defaultBaseUrl
+    credentials.api_key = apiKeyValue.value.trim()
   REDACTED
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value

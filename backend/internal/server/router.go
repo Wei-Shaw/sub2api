@@ -1,7 +1,10 @@
 package server
 
 import (
+	"context"
 	"log"
+	"path/filepath"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -44,6 +47,22 @@ func SetupRouter(
 			settingService.SetOnUpdateCallback(frontendServer.InvalidateCache)
 			r.Use(frontendServer.Middleware())
 	REDACTED
+REDACTED
+
+	// Serve Sora cached videos when enabled
+	cacheVideoDir := ""
+	cacheEnabled := false
+	if settingService != nil {
+		soraCfg := settingService.GetSoraConfig(context.Background())
+		cacheEnabled = soraCfg.Cache.Enabled
+		cacheVideoDir = strings.TrimSpace(soraCfg.Cache.VideoDir)
+REDACTED else if cfg != nil {
+		cacheEnabled = cfg.Sora.Cache.Enabled
+		cacheVideoDir = strings.TrimSpace(cfg.Sora.Cache.VideoDir)
+REDACTED
+	if cacheEnabled && cacheVideoDir != "" {
+		videoDir := filepath.Clean(cacheVideoDir)
+		r.Static("/data/video", videoDir)
 REDACTED
 
 	// 注册路由

@@ -19,7 +19,7 @@ const props = defineProps(['searchQuery', 'filters']); const emit = defineEmits(
 const updatePlatform = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, platform: value REDACTED) REDACTED
 const updateType = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, type: value REDACTED) REDACTED
 const updateStatus = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, status: value REDACTED) REDACTED
-const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') REDACTED, { value: 'anthropic', label: 'Anthropic' REDACTED, { value: 'openai', label: 'OpenAI' REDACTED, { value: 'gemini', label: 'Gemini' REDACTED, { value: 'antigravity', label: 'Antigravity' REDACTED])
+const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') REDACTED, { value: 'anthropic', label: 'Anthropic' REDACTED, { value: 'openai', label: 'OpenAI' REDACTED, { value: 'gemini', label: 'Gemini' REDACTED, { value: 'sora', label: 'Sora' REDACTED, { value: 'antigravity', label: 'Antigravity' REDACTED])
 const tOpts = computed(() => [{ value: '', label: t('admin.accounts.allTypes') REDACTED, { value: 'oauth', label: t('admin.accounts.oauthType') REDACTED, { value: 'setup-token', label: t('admin.accounts.setupToken') REDACTED, { value: 'apikey', label: t('admin.accounts.apiKey') REDACTED])
 const sOpts = computed(() => [{ value: '', label: t('admin.accounts.allStatus') REDACTED, { value: 'active', label: t('admin.accounts.status.active') REDACTED, { value: 'inactive', label: t('admin.accounts.status.inactive') REDACTED, { value: 'error', label: t('admin.accounts.status.error') REDACTED])
 </script>

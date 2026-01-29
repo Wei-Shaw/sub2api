@@ -941,6 +941,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        sora: 'Sora',
         antigravity: 'Antigravity'
       REDACTED,
       saving: '保存中...',
@@ -1199,6 +1200,7 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         gemini: 'Gemini',
+        sora: 'Sora',
         antigravity: 'Antigravity'
       REDACTED,
       types: {
@@ -1381,6 +1383,11 @@ export default {
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key'
+      REDACTED,
+      // Sora specific hints
+      sora: {
+        baseUrlHint: '留空使用全局 Sora Base URL',
+        apiKeyHint: '您的 Sora access token'
       REDACTED,
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
@@ -2935,6 +2942,47 @@ export default {
         defaultBalanceHint: '新用户的初始余额',
         defaultConcurrency: '默认并发数',
         defaultConcurrencyHint: '新用户的最大并发请求数'
+      REDACTED,
+      sora: {
+        title: 'Sora 设置',
+        description: '配置 Sora 上游请求、缓存与去水印策略',
+        baseUrl: 'Sora Base URL',
+        baseUrlPlaceholder: 'https://sora.chatgpt.com/backend',
+        baseUrlHint: 'Sora 后端 API 基础地址',
+        callLogicMode: '调用模式',
+        callLogicModeDefault: '默认',
+        callLogicModeNative: '原生',
+        callLogicModeProxy: '代理',
+        callLogicModeHint: '默认保持当前策略',
+        timeout: '请求超时（秒）',
+        timeoutHint: '单次任务超时控制',
+        maxRetries: '最大重试次数',
+        maxRetriesHint: '上游请求失败时的重试次数',
+        pollInterval: '轮询间隔（秒）',
+        pollIntervalHint: '任务状态轮询间隔',
+        cacheEnabled: '启用缓存',
+        cacheEnabledHint: '启用生成结果缓存并提供本地下载',
+        cacheBaseDir: '缓存根目录',
+        cacheVideoDir: '视频缓存目录',
+        cacheMaxBytes: '缓存容量（字节）',
+        cacheMaxBytesHint: '0 表示不限制',
+        cacheUserDirEnabled: '按用户隔离缓存目录',
+        cacheUserDirEnabledHint: '开启后按用户创建子目录',
+        cacheAllowedHosts: '缓存下载白名单',
+        cacheAllowedHostsPlaceholder: '每行一个域名，例如: oscdn2.dyysy.com',
+        cacheAllowedHostsHint: '为空时回退全局 URL 白名单',
+        watermarkFreeEnabled: '启用去水印',
+        watermarkFreeEnabledHint: '尝试通过解析服务获取无水印视频',
+        watermarkFreeParseMethod: '解析方式',
+        watermarkFreeParseMethodThirdParty: '第三方解析',
+        watermarkFreeParseMethodCustom: '自定义解析',
+        watermarkFreeParseMethodHint: '选择去水印解析方式',
+        watermarkFreeCustomParseUrl: '自定义解析地址',
+        watermarkFreeCustomParseToken: '自定义解析 Token',
+        watermarkFreeFallback: '解析失败降级',
+        watermarkFreeFallbackHint: '失败时返回原视频',
+        tokenRefreshEnabled: '启用 Token 刷新',
+        tokenRefreshEnabledHint: '定时刷新 Sora Token（需配置调度）'
       REDACTED,
       site: {
         title: '站点设置',

@@ -18,6 +18,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/soraaccount"
+	"github.com/Wei-Shaw/sub2api/ent/soracachefile"
+	"github.com/Wei-Shaw/sub2api/ent/soratask"
+	"github.com/Wei-Shaw/sub2api/ent/sorausagestat"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -326,6 +330,114 @@ REDACTED
 	return fmt.Errorf("unexpected query type %T. expect *ent.SettingQuery", q)
 REDACTED
 
+// The SoraAccountFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SoraAccountFunc func(context.Context, *ent.SoraAccountQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SoraAccountFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SoraAccountQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SoraAccountQuery", q)
+REDACTED
+
+// The TraverseSoraAccount type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSoraAccount func(context.Context, *ent.SoraAccountQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSoraAccount) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseSoraAccount) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SoraAccountQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.SoraAccountQuery", q)
+REDACTED
+
+// The SoraCacheFileFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SoraCacheFileFunc func(context.Context, *ent.SoraCacheFileQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SoraCacheFileFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SoraCacheFileQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SoraCacheFileQuery", q)
+REDACTED
+
+// The TraverseSoraCacheFile type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSoraCacheFile func(context.Context, *ent.SoraCacheFileQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSoraCacheFile) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseSoraCacheFile) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SoraCacheFileQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.SoraCacheFileQuery", q)
+REDACTED
+
+// The SoraTaskFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SoraTaskFunc func(context.Context, *ent.SoraTaskQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SoraTaskFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SoraTaskQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SoraTaskQuery", q)
+REDACTED
+
+// The TraverseSoraTask type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSoraTask func(context.Context, *ent.SoraTaskQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSoraTask) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseSoraTask) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SoraTaskQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.SoraTaskQuery", q)
+REDACTED
+
+// The SoraUsageStatFunc type is an adapter to allow the use of ordinary function as a Querier.
+type SoraUsageStatFunc func(context.Context, *ent.SoraUsageStatQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f SoraUsageStatFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.SoraUsageStatQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.SoraUsageStatQuery", q)
+REDACTED
+
+// The TraverseSoraUsageStat type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseSoraUsageStat func(context.Context, *ent.SoraUsageStatQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseSoraUsageStat) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseSoraUsageStat) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.SoraUsageStatQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.SoraUsageStatQuery", q)
+REDACTED
+
 // The UsageCleanupTaskFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UsageCleanupTaskFunc func(context.Context, *ent.UsageCleanupTaskQuery) (ent.Value, error)
 
@@ -536,6 +648,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.RedeemCodeQuery, predicate.RedeemCode, redeemcode.OrderOption]{typ: ent.TypeRedeemCode, tq: qREDACTED, nil
 	case *ent.SettingQuery:
 		return &query[*ent.SettingQuery, predicate.Setting, setting.OrderOption]{typ: ent.TypeSetting, tq: qREDACTED, nil
+	case *ent.SoraAccountQuery:
+		return &query[*ent.SoraAccountQuery, predicate.SoraAccount, soraaccount.OrderOption]{typ: ent.TypeSoraAccount, tq: qREDACTED, nil
+	case *ent.SoraCacheFileQuery:
+		return &query[*ent.SoraCacheFileQuery, predicate.SoraCacheFile, soracachefile.OrderOption]{typ: ent.TypeSoraCacheFile, tq: qREDACTED, nil
+	case *ent.SoraTaskQuery:
+		return &query[*ent.SoraTaskQuery, predicate.SoraTask, soratask.OrderOption]{typ: ent.TypeSoraTask, tq: qREDACTED, nil
+	case *ent.SoraUsageStatQuery:
+		return &query[*ent.SoraUsageStatQuery, predicate.SoraUsageStat, sorausagestat.OrderOption]{typ: ent.TypeSoraUsageStat, tq: qREDACTED, nil
 	case *ent.UsageCleanupTaskQuery:
 		return &query[*ent.UsageCleanupTaskQuery, predicate.UsageCleanupTask, usagecleanuptask.OrderOption]{typ: ent.TypeUsageCleanupTask, tq: qREDACTED, nil
 	case *ent.UsageLogQuery:

@@ -24,6 +24,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/soraaccount"
+	"github.com/Wei-Shaw/sub2api/ent/soracachefile"
+	"github.com/Wei-Shaw/sub2api/ent/soratask"
+	"github.com/Wei-Shaw/sub2api/ent/sorausagestat"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -58,6 +62,14 @@ type Client struct {
 	RedeemCode *RedeemCodeClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// SoraAccount is the client for interacting with the SoraAccount builders.
+	SoraAccount *SoraAccountClient
+	// SoraCacheFile is the client for interacting with the SoraCacheFile builders.
+	SoraCacheFile *SoraCacheFileClient
+	// SoraTask is the client for interacting with the SoraTask builders.
+	SoraTask *SoraTaskClient
+	// SoraUsageStat is the client for interacting with the SoraUsageStat builders.
+	SoraUsageStat *SoraUsageStatClient
 	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
 	UsageCleanupTask *UsageCleanupTaskClient
 	// UsageLog is the client for interacting with the UsageLog builders.
@@ -92,6 +104,10 @@ func (c *Client) init() {
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.Setting = NewSettingClient(c.config)
+	c.SoraAccount = NewSoraAccountClient(c.config)
+	c.SoraCacheFile = NewSoraCacheFileClient(c.config)
+	c.SoraTask = NewSoraTaskClient(c.config)
+	c.SoraUsageStat = NewSoraUsageStatClient(c.config)
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
@@ -200,6 +216,10 @@ REDACTED
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		SoraAccount:             NewSoraAccountClient(cfg),
+		SoraCacheFile:           NewSoraCacheFileClient(cfg),
+		SoraTask:                NewSoraTaskClient(cfg),
+		SoraUsageStat:           NewSoraUsageStatClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
@@ -235,6 +255,10 @@ REDACTED
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		SoraAccount:             NewSoraAccountClient(cfg),
+		SoraCacheFile:           NewSoraCacheFileClient(cfg),
+		SoraTask:                NewSoraTaskClient(cfg),
+		SoraUsageStat:           NewSoraUsageStatClient(cfg),
 		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
@@ -272,9 +296,9 @@ REDACTED
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) REDACTED{
 		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.Setting, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.Proxy, c.RedeemCode, c.Setting, c.SoraAccount, c.SoraCacheFile, c.SoraTask,
+		c.SoraUsageStat, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 REDACTED {
 		n.Use(hooks...)
 REDACTED
@@ -285,9 +309,9 @@ REDACTED
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) REDACTED{
 		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.Setting, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.Proxy, c.RedeemCode, c.Setting, c.SoraAccount, c.SoraCacheFile, c.SoraTask,
+		c.SoraUsageStat, c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 REDACTED {
 		n.Intercept(interceptors...)
 REDACTED
@@ -314,6 +338,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RedeemCode.mutate(ctx, m)
 	case *SettingMutation:
 		return c.Setting.mutate(ctx, m)
+	case *SoraAccountMutation:
+		return c.SoraAccount.mutate(ctx, m)
+	case *SoraCacheFileMutation:
+		return c.SoraCacheFile.mutate(ctx, m)
+	case *SoraTaskMutation:
+		return c.SoraTask.mutate(ctx, m)
+	case *SoraUsageStatMutation:
+		return c.SoraUsageStat.mutate(ctx, m)
 	case *UsageCleanupTaskMutation:
 		return c.UsageCleanupTask.mutate(ctx, m)
 	case *UsageLogMutation:
@@ -1857,6 +1889,538 @@ func (c *SettingClient) mutate(ctx context.Context, m *SettingMutation) (Value, 
 REDACTED
 REDACTED
 
+// SoraAccountClient is a client for the SoraAccount schema.
+type SoraAccountClient struct {
+	config
+REDACTED
+
+// NewSoraAccountClient returns a client for the SoraAccount from the given config.
+func NewSoraAccountClient(c config) *SoraAccountClient {
+	return &SoraAccountClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `soraaccount.Hooks(f(g(h())))`.
+func (c *SoraAccountClient) Use(hooks ...Hook) {
+	c.hooks.SoraAccount = append(c.hooks.SoraAccount, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `soraaccount.Intercept(f(g(h())))`.
+func (c *SoraAccountClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SoraAccount = append(c.inters.SoraAccount, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a SoraAccount entity.
+func (c *SoraAccountClient) Create() *SoraAccountCreate {
+	mutation := newSoraAccountMutation(c.config, OpCreate)
+	return &SoraAccountCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of SoraAccount entities.
+func (c *SoraAccountClient) CreateBulk(builders ...*SoraAccountCreate) *SoraAccountCreateBulk {
+	return &SoraAccountCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SoraAccountClient) MapCreateBulk(slice any, setFunc func(*SoraAccountCreate, int)) *SoraAccountCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SoraAccountCreateBulk{err: fmt.Errorf("calling to SoraAccountClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*SoraAccountCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &SoraAccountCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for SoraAccount.
+func (c *SoraAccountClient) Update() *SoraAccountUpdate {
+	mutation := newSoraAccountMutation(c.config, OpUpdate)
+	return &SoraAccountUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SoraAccountClient) UpdateOne(_m *SoraAccount) *SoraAccountUpdateOne {
+	mutation := newSoraAccountMutation(c.config, OpUpdateOne, withSoraAccount(_m))
+	return &SoraAccountUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SoraAccountClient) UpdateOneID(id int64) *SoraAccountUpdateOne {
+	mutation := newSoraAccountMutation(c.config, OpUpdateOne, withSoraAccountID(id))
+	return &SoraAccountUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for SoraAccount.
+func (c *SoraAccountClient) Delete() *SoraAccountDelete {
+	mutation := newSoraAccountMutation(c.config, OpDelete)
+	return &SoraAccountDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SoraAccountClient) DeleteOne(_m *SoraAccount) *SoraAccountDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SoraAccountClient) DeleteOneID(id int64) *SoraAccountDeleteOne {
+	builder := c.Delete().Where(soraaccount.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SoraAccountDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for SoraAccount.
+func (c *SoraAccountClient) Query() *SoraAccountQuery {
+	return &SoraAccountQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSoraAccountREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a SoraAccount entity by its id.
+func (c *SoraAccountClient) Get(ctx context.Context, id int64) (*SoraAccount, error) {
+	return c.Query().Where(soraaccount.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SoraAccountClient) GetX(ctx context.Context, id int64) *SoraAccount {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *SoraAccountClient) Hooks() []Hook {
+	return c.hooks.SoraAccount
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *SoraAccountClient) Interceptors() []Interceptor {
+	return c.inters.SoraAccount
+REDACTED
+
+func (c *SoraAccountClient) mutate(ctx context.Context, m *SoraAccountMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SoraAccountCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&SoraAccountUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&SoraAccountUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SoraAccountDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SoraAccount mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
+// SoraCacheFileClient is a client for the SoraCacheFile schema.
+type SoraCacheFileClient struct {
+	config
+REDACTED
+
+// NewSoraCacheFileClient returns a client for the SoraCacheFile from the given config.
+func NewSoraCacheFileClient(c config) *SoraCacheFileClient {
+	return &SoraCacheFileClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `soracachefile.Hooks(f(g(h())))`.
+func (c *SoraCacheFileClient) Use(hooks ...Hook) {
+	c.hooks.SoraCacheFile = append(c.hooks.SoraCacheFile, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `soracachefile.Intercept(f(g(h())))`.
+func (c *SoraCacheFileClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SoraCacheFile = append(c.inters.SoraCacheFile, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a SoraCacheFile entity.
+func (c *SoraCacheFileClient) Create() *SoraCacheFileCreate {
+	mutation := newSoraCacheFileMutation(c.config, OpCreate)
+	return &SoraCacheFileCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of SoraCacheFile entities.
+func (c *SoraCacheFileClient) CreateBulk(builders ...*SoraCacheFileCreate) *SoraCacheFileCreateBulk {
+	return &SoraCacheFileCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SoraCacheFileClient) MapCreateBulk(slice any, setFunc func(*SoraCacheFileCreate, int)) *SoraCacheFileCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SoraCacheFileCreateBulk{err: fmt.Errorf("calling to SoraCacheFileClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*SoraCacheFileCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &SoraCacheFileCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for SoraCacheFile.
+func (c *SoraCacheFileClient) Update() *SoraCacheFileUpdate {
+	mutation := newSoraCacheFileMutation(c.config, OpUpdate)
+	return &SoraCacheFileUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SoraCacheFileClient) UpdateOne(_m *SoraCacheFile) *SoraCacheFileUpdateOne {
+	mutation := newSoraCacheFileMutation(c.config, OpUpdateOne, withSoraCacheFile(_m))
+	return &SoraCacheFileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SoraCacheFileClient) UpdateOneID(id int64) *SoraCacheFileUpdateOne {
+	mutation := newSoraCacheFileMutation(c.config, OpUpdateOne, withSoraCacheFileID(id))
+	return &SoraCacheFileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for SoraCacheFile.
+func (c *SoraCacheFileClient) Delete() *SoraCacheFileDelete {
+	mutation := newSoraCacheFileMutation(c.config, OpDelete)
+	return &SoraCacheFileDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SoraCacheFileClient) DeleteOne(_m *SoraCacheFile) *SoraCacheFileDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SoraCacheFileClient) DeleteOneID(id int64) *SoraCacheFileDeleteOne {
+	builder := c.Delete().Where(soracachefile.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SoraCacheFileDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for SoraCacheFile.
+func (c *SoraCacheFileClient) Query() *SoraCacheFileQuery {
+	return &SoraCacheFileQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSoraCacheFileREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a SoraCacheFile entity by its id.
+func (c *SoraCacheFileClient) Get(ctx context.Context, id int64) (*SoraCacheFile, error) {
+	return c.Query().Where(soracachefile.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SoraCacheFileClient) GetX(ctx context.Context, id int64) *SoraCacheFile {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *SoraCacheFileClient) Hooks() []Hook {
+	return c.hooks.SoraCacheFile
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *SoraCacheFileClient) Interceptors() []Interceptor {
+	return c.inters.SoraCacheFile
+REDACTED
+
+func (c *SoraCacheFileClient) mutate(ctx context.Context, m *SoraCacheFileMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SoraCacheFileCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&SoraCacheFileUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&SoraCacheFileUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SoraCacheFileDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SoraCacheFile mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
+// SoraTaskClient is a client for the SoraTask schema.
+type SoraTaskClient struct {
+	config
+REDACTED
+
+// NewSoraTaskClient returns a client for the SoraTask from the given config.
+func NewSoraTaskClient(c config) *SoraTaskClient {
+	return &SoraTaskClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `soratask.Hooks(f(g(h())))`.
+func (c *SoraTaskClient) Use(hooks ...Hook) {
+	c.hooks.SoraTask = append(c.hooks.SoraTask, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `soratask.Intercept(f(g(h())))`.
+func (c *SoraTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SoraTask = append(c.inters.SoraTask, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a SoraTask entity.
+func (c *SoraTaskClient) Create() *SoraTaskCreate {
+	mutation := newSoraTaskMutation(c.config, OpCreate)
+	return &SoraTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of SoraTask entities.
+func (c *SoraTaskClient) CreateBulk(builders ...*SoraTaskCreate) *SoraTaskCreateBulk {
+	return &SoraTaskCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SoraTaskClient) MapCreateBulk(slice any, setFunc func(*SoraTaskCreate, int)) *SoraTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SoraTaskCreateBulk{err: fmt.Errorf("calling to SoraTaskClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*SoraTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &SoraTaskCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for SoraTask.
+func (c *SoraTaskClient) Update() *SoraTaskUpdate {
+	mutation := newSoraTaskMutation(c.config, OpUpdate)
+	return &SoraTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SoraTaskClient) UpdateOne(_m *SoraTask) *SoraTaskUpdateOne {
+	mutation := newSoraTaskMutation(c.config, OpUpdateOne, withSoraTask(_m))
+	return &SoraTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SoraTaskClient) UpdateOneID(id int64) *SoraTaskUpdateOne {
+	mutation := newSoraTaskMutation(c.config, OpUpdateOne, withSoraTaskID(id))
+	return &SoraTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for SoraTask.
+func (c *SoraTaskClient) Delete() *SoraTaskDelete {
+	mutation := newSoraTaskMutation(c.config, OpDelete)
+	return &SoraTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SoraTaskClient) DeleteOne(_m *SoraTask) *SoraTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SoraTaskClient) DeleteOneID(id int64) *SoraTaskDeleteOne {
+	builder := c.Delete().Where(soratask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SoraTaskDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for SoraTask.
+func (c *SoraTaskClient) Query() *SoraTaskQuery {
+	return &SoraTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSoraTaskREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a SoraTask entity by its id.
+func (c *SoraTaskClient) Get(ctx context.Context, id int64) (*SoraTask, error) {
+	return c.Query().Where(soratask.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SoraTaskClient) GetX(ctx context.Context, id int64) *SoraTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *SoraTaskClient) Hooks() []Hook {
+	return c.hooks.SoraTask
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *SoraTaskClient) Interceptors() []Interceptor {
+	return c.inters.SoraTask
+REDACTED
+
+func (c *SoraTaskClient) mutate(ctx context.Context, m *SoraTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SoraTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&SoraTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&SoraTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SoraTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SoraTask mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
+// SoraUsageStatClient is a client for the SoraUsageStat schema.
+type SoraUsageStatClient struct {
+	config
+REDACTED
+
+// NewSoraUsageStatClient returns a client for the SoraUsageStat from the given config.
+func NewSoraUsageStatClient(c config) *SoraUsageStatClient {
+	return &SoraUsageStatClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `sorausagestat.Hooks(f(g(h())))`.
+func (c *SoraUsageStatClient) Use(hooks ...Hook) {
+	c.hooks.SoraUsageStat = append(c.hooks.SoraUsageStat, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `sorausagestat.Intercept(f(g(h())))`.
+func (c *SoraUsageStatClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SoraUsageStat = append(c.inters.SoraUsageStat, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a SoraUsageStat entity.
+func (c *SoraUsageStatClient) Create() *SoraUsageStatCreate {
+	mutation := newSoraUsageStatMutation(c.config, OpCreate)
+	return &SoraUsageStatCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of SoraUsageStat entities.
+func (c *SoraUsageStatClient) CreateBulk(builders ...*SoraUsageStatCreate) *SoraUsageStatCreateBulk {
+	return &SoraUsageStatCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SoraUsageStatClient) MapCreateBulk(slice any, setFunc func(*SoraUsageStatCreate, int)) *SoraUsageStatCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SoraUsageStatCreateBulk{err: fmt.Errorf("calling to SoraUsageStatClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*SoraUsageStatCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &SoraUsageStatCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for SoraUsageStat.
+func (c *SoraUsageStatClient) Update() *SoraUsageStatUpdate {
+	mutation := newSoraUsageStatMutation(c.config, OpUpdate)
+	return &SoraUsageStatUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SoraUsageStatClient) UpdateOne(_m *SoraUsageStat) *SoraUsageStatUpdateOne {
+	mutation := newSoraUsageStatMutation(c.config, OpUpdateOne, withSoraUsageStat(_m))
+	return &SoraUsageStatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SoraUsageStatClient) UpdateOneID(id int64) *SoraUsageStatUpdateOne {
+	mutation := newSoraUsageStatMutation(c.config, OpUpdateOne, withSoraUsageStatID(id))
+	return &SoraUsageStatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for SoraUsageStat.
+func (c *SoraUsageStatClient) Delete() *SoraUsageStatDelete {
+	mutation := newSoraUsageStatMutation(c.config, OpDelete)
+	return &SoraUsageStatDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SoraUsageStatClient) DeleteOne(_m *SoraUsageStat) *SoraUsageStatDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SoraUsageStatClient) DeleteOneID(id int64) *SoraUsageStatDeleteOne {
+	builder := c.Delete().Where(sorausagestat.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SoraUsageStatDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for SoraUsageStat.
+func (c *SoraUsageStatClient) Query() *SoraUsageStatQuery {
+	return &SoraUsageStatQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSoraUsageStatREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a SoraUsageStat entity by its id.
+func (c *SoraUsageStatClient) Get(ctx context.Context, id int64) (*SoraUsageStat, error) {
+	return c.Query().Where(sorausagestat.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SoraUsageStatClient) GetX(ctx context.Context, id int64) *SoraUsageStat {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *SoraUsageStatClient) Hooks() []Hook {
+	return c.hooks.SoraUsageStat
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *SoraUsageStatClient) Interceptors() []Interceptor {
+	return c.inters.SoraUsageStat
+REDACTED
+
+func (c *SoraUsageStatClient) mutate(ctx context.Context, m *SoraUsageStatMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SoraUsageStatCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&SoraUsageStatUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&SoraUsageStatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SoraUsageStatDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SoraUsageStat mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
 // UsageCleanupTaskClient is a client for the UsageCleanupTask schema.
 type UsageCleanupTaskClient struct {
 	config
@@ -3117,13 +3681,15 @@ REDACTED
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, Setting, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
+		RedeemCode, Setting, SoraAccount, SoraCacheFile, SoraTask, SoraUsageStat,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Hook
 REDACTED
 	inters struct {
 		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, Setting, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
+		RedeemCode, Setting, SoraAccount, SoraCacheFile, SoraTask, SoraUsageStat,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Interceptor
 REDACTED
 )
 

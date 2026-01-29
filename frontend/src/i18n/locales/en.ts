@@ -895,6 +895,7 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        sora: 'Sora',
         antigravity: 'Antigravity'
       REDACTED,
       deleteConfirm:
@@ -1079,6 +1080,7 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini',
+        sora: 'Sora',
         antigravity: 'Antigravity'
       REDACTED,
       types: {
@@ -1246,6 +1248,11 @@ export default {
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key'
+      REDACTED,
+      // Sora specific hints
+      sora: {
+        baseUrlHint: 'Leave empty to use global Sora Base URL',
+        apiKeyHint: 'Your Sora access token'
       REDACTED,
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
@@ -2783,6 +2790,47 @@ export default {
         defaultBalanceHint: 'Initial balance for new users',
         defaultConcurrency: 'Default Concurrency',
         defaultConcurrencyHint: 'Maximum concurrent requests for new users'
+      REDACTED,
+      sora: {
+        title: 'Sora Settings',
+        description: 'Configure Sora upstream requests, cache, and watermark-free flow',
+        baseUrl: 'Sora Base URL',
+        baseUrlPlaceholder: 'https://sora.chatgpt.com/backend',
+        baseUrlHint: 'Base URL for the Sora backend API',
+        callLogicMode: 'Call Mode',
+        callLogicModeDefault: 'Default',
+        callLogicModeNative: 'Native',
+        callLogicModeProxy: 'Proxy',
+        callLogicModeHint: 'Default keeps the existing behavior',
+        timeout: 'Timeout (seconds)',
+        timeoutHint: 'Timeout for single request',
+        maxRetries: 'Max Retries',
+        maxRetriesHint: 'Retry count for upstream failures',
+        pollInterval: 'Poll Interval (seconds)',
+        pollIntervalHint: 'Polling interval for task status',
+        cacheEnabled: 'Enable Cache',
+        cacheEnabledHint: 'Cache generated media for local downloads',
+        cacheBaseDir: 'Cache Base Dir',
+        cacheVideoDir: 'Video Cache Dir',
+        cacheMaxBytes: 'Cache Size (bytes)',
+        cacheMaxBytesHint: '0 means unlimited',
+        cacheUserDirEnabled: 'User Directory Isolation',
+        cacheUserDirEnabledHint: 'Create per-user subdirectories',
+        cacheAllowedHosts: 'Cache Allowlist',
+        cacheAllowedHostsPlaceholder: 'One host per line, e.g. oscdn2.dyysy.com',
+        cacheAllowedHostsHint: 'Empty falls back to the global URL allowlist',
+        watermarkFreeEnabled: 'Enable Watermark-Free',
+        watermarkFreeEnabledHint: 'Try to resolve watermark-free videos',
+        watermarkFreeParseMethod: 'Parse Method',
+        watermarkFreeParseMethodThirdParty: 'Third-party',
+        watermarkFreeParseMethodCustom: 'Custom',
+        watermarkFreeParseMethodHint: 'Select the watermark-free parse method',
+        watermarkFreeCustomParseUrl: 'Custom Parse URL',
+        watermarkFreeCustomParseToken: 'Custom Parse Token',
+        watermarkFreeFallback: 'Fallback on Failure',
+        watermarkFreeFallbackHint: 'Return the original video on failure',
+        tokenRefreshEnabled: 'Enable Token Refresh',
+        tokenRefreshEnabledHint: 'Periodic token refresh (requires scheduler)'
       REDACTED,
       site: {
         title: 'Site Settings',

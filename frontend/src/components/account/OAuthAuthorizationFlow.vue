@@ -428,7 +428,7 @@ interface Props {
   allowMultiple?: boolean
   methodLabel?: string
   showCookieOption?: boolean // Whether to show cookie auto-auth option
-  platform?: 'anthropic' | 'openai' | 'gemini' | 'antigravity' // Platform type for different UI/text
+  platform?: 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'sora' // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
 REDACTED
 

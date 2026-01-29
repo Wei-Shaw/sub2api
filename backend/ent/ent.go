@@ -21,6 +21,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/soraaccount"
+	"github.com/Wei-Shaw/sub2api/ent/soracachefile"
+	"github.com/Wei-Shaw/sub2api/ent/soratask"
+	"github.com/Wei-Shaw/sub2api/ent/sorausagestat"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -97,6 +101,10 @@ func checkColumn(t, c string) error {
 			proxy.Table:                   proxy.ValidColumn,
 			redeemcode.Table:              redeemcode.ValidColumn,
 			setting.Table:                 setting.ValidColumn,
+			soraaccount.Table:             soraaccount.ValidColumn,
+			soracachefile.Table:           soracachefile.ValidColumn,
+			soratask.Table:                soratask.ValidColumn,
+			sorausagestat.Table:           sorausagestat.ValidColumn,
 			usagecleanuptask.Table:        usagecleanuptask.ValidColumn,
 			usagelog.Table:                usagelog.ValidColumn,
 			user.Table:                    user.ValidColumn,

@@ -561,6 +561,221 @@
           </div>
         </div>
 
+        <!-- Sora Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.sora.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.sora.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.sora.baseUrl') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model="form.sora_base_url"
+                  type="text"
+                  class="input font-mono text-sm"
+                  :placeholder="t('admin.settings.sora.baseUrlPlaceholder')"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.sora.baseUrlHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.sora.callLogicMode') REDACTEDREDACTED
+                </label>
+                <select v-model="form.sora_call_logic_mode" class="input">
+                  <option value="default">{{ t('admin.settings.sora.callLogicModeDefault') REDACTEDREDACTED</option>
+                  <option value="native">{{ t('admin.settings.sora.callLogicModeNative') REDACTEDREDACTED</option>
+                  <option value="proxy">{{ t('admin.settings.sora.callLogicModeProxy') REDACTEDREDACTED</option>
+                </select>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.sora.callLogicModeHint') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.sora.timeout') REDACTEDREDACTED
+                </label>
+                <input v-model.number="form.sora_timeout" type="number" min="1" class="input" />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.sora.timeoutHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.sora.maxRetries') REDACTEDREDACTED
+                </label>
+                <input v-model.number="form.sora_max_retries" type="number" min="0" class="input" />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.sora.maxRetriesHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.sora.pollInterval') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model.number="form.sora_poll_interval"
+                  type="number"
+                  min="0.5"
+                  step="0.1"
+                  class="input"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.sora.pollIntervalHint') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+
+            <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t('admin.settings.sora.cacheEnabled')
+                  REDACTEDREDACTED</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.sora.cacheEnabledHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="form.sora_cache_enabled" />
+              </div>
+
+              <div v-if="form.sora_cache_enabled" class="space-y-4">
+                <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.sora.cacheBaseDir') REDACTEDREDACTED
+                    </label>
+                    <input v-model="form.sora_cache_base_dir" type="text" class="input font-mono text-sm" />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.sora.cacheVideoDir') REDACTEDREDACTED
+                    </label>
+                    <input v-model="form.sora_cache_video_dir" type="text" class="input font-mono text-sm" />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.sora.cacheMaxBytes') REDACTEDREDACTED
+                    </label>
+                    <input v-model.number="form.sora_cache_max_bytes" type="number" min="0" class="input" />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.sora.cacheMaxBytesHint') REDACTEDREDACTED
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t('admin.settings.sora.cacheUserDirEnabled')
+                    REDACTEDREDACTED</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.sora.cacheUserDirEnabledHint') REDACTEDREDACTED
+                    </p>
+                  </div>
+                  <Toggle v-model="form.sora_cache_user_dir_enabled" />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.sora.cacheAllowedHosts') REDACTEDREDACTED
+                  </label>
+                  <textarea
+                    v-model="form.sora_cache_allowed_hosts_text"
+                    rows="3"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.sora.cacheAllowedHostsPlaceholder')"
+                  ></textarea>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.sora.cacheAllowedHostsHint') REDACTEDREDACTED
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t('admin.settings.sora.watermarkFreeEnabled')
+                  REDACTEDREDACTED</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.sora.watermarkFreeEnabledHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="form.sora_watermark_free_enabled" />
+              </div>
+
+              <div v-if="form.sora_watermark_free_enabled" class="space-y-4">
+                <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.sora.watermarkFreeParseMethod') REDACTEDREDACTED
+                    </label>
+                    <select v-model="form.sora_watermark_free_parse_method" class="input">
+                      <option value="third_party">{{ t('admin.settings.sora.watermarkFreeParseMethodThirdParty') REDACTEDREDACTED</option>
+                      <option value="custom">{{ t('admin.settings.sora.watermarkFreeParseMethodCustom') REDACTEDREDACTED</option>
+                    </select>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.sora.watermarkFreeParseMethodHint') REDACTEDREDACTED
+                    </p>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t('admin.settings.sora.watermarkFreeFallback')
+                      REDACTEDREDACTED</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.sora.watermarkFreeFallbackHint') REDACTEDREDACTED
+                      </p>
+                    </div>
+                    <Toggle v-model="form.sora_watermark_free_fallback_on_failure" />
+                  </div>
+                </div>
+
+                <div v-if="form.sora_watermark_free_parse_method === 'custom'" class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.sora.watermarkFreeCustomParseUrl') REDACTEDREDACTED
+                    </label>
+                    <input v-model="form.sora_watermark_free_custom_parse_url" type="text" class="input font-mono text-sm" />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.sora.watermarkFreeCustomParseToken') REDACTEDREDACTED
+                    </label>
+                    <input v-model="form.sora_watermark_free_custom_parse_token" type="password" class="input font-mono text-sm" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.sora.tokenRefreshEnabled')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.sora.tokenRefreshEnabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.sora_token_refresh_enabled" />
+            </div>
+          </div>
+        </div>
+
         <!-- Site Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1023,6 +1238,7 @@ type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
+  sora_cache_allowed_hosts_text: string
 REDACTED
 
 const form = reactive<SettingsForm>({
@@ -1067,6 +1283,25 @@ const form = reactive<SettingsForm>({
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: '',
+  // Sora
+  sora_base_url: 'https://sora.chatgpt.com/backend',
+  sora_timeout: 120,
+  sora_max_retries: 3,
+  sora_poll_interval: 2.5,
+  sora_call_logic_mode: 'default',
+  sora_cache_enabled: false,
+  sora_cache_base_dir: 'tmp/sora',
+  sora_cache_video_dir: 'data/video',
+  sora_cache_max_bytes: 0,
+  sora_cache_allowed_hosts: [],
+  sora_cache_user_dir_enabled: true,
+  sora_watermark_free_enabled: false,
+  sora_watermark_free_parse_method: 'third_party',
+  sora_watermark_free_custom_parse_url: '',
+  sora_watermark_free_custom_parse_token: '',
+  sora_watermark_free_fallback_on_failure: true,
+  sora_token_refresh_enabled: false,
+  sora_cache_allowed_hosts_text: '',
   // Ops monitoring (vNext)
   ops_monitoring_enabled: true,
   ops_realtime_monitoring_enabled: true,
@@ -1136,6 +1371,7 @@ async function loadSettings() {
     form.smtp_password = ''
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+    form.sora_cache_allowed_hosts_text = (settings.sora_cache_allowed_hosts || []).join('\n')
   REDACTED catch (error: any) {
     appStore.showError(
       t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError'))
@@ -1148,6 +1384,11 @@ REDACTED
 async function saveSettings() {
   saving.value = true
   try {
+    const soraAllowedHosts = form.sora_cache_allowed_hosts_text
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -1182,13 +1423,31 @@ async function saveSettings() {
       fallback_model_gemini: form.fallback_model_gemini,
       fallback_model_antigravity: form.fallback_model_antigravity,
       enable_identity_patch: form.enable_identity_patch,
-      identity_patch_prompt: form.identity_patch_prompt
+      identity_patch_prompt: form.identity_patch_prompt,
+      sora_base_url: form.sora_base_url,
+      sora_timeout: form.sora_timeout,
+      sora_max_retries: form.sora_max_retries,
+      sora_poll_interval: form.sora_poll_interval,
+      sora_call_logic_mode: form.sora_call_logic_mode,
+      sora_cache_enabled: form.sora_cache_enabled,
+      sora_cache_base_dir: form.sora_cache_base_dir,
+      sora_cache_video_dir: form.sora_cache_video_dir,
+      sora_cache_max_bytes: form.sora_cache_max_bytes,
+      sora_cache_allowed_hosts: soraAllowedHosts,
+      sora_cache_user_dir_enabled: form.sora_cache_user_dir_enabled,
+      sora_watermark_free_enabled: form.sora_watermark_free_enabled,
+      sora_watermark_free_parse_method: form.sora_watermark_free_parse_method,
+      sora_watermark_free_custom_parse_url: form.sora_watermark_free_custom_parse_url,
+      sora_watermark_free_custom_parse_token: form.sora_watermark_free_custom_parse_token,
+      sora_watermark_free_fallback_on_failure: form.sora_watermark_free_fallback_on_failure,
+      sora_token_refresh_enabled: form.sora_token_refresh_enabled
     REDACTED
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)
     form.smtp_password = ''
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+    form.sora_cache_allowed_hosts_text = (updated.sora_cache_allowed_hosts || []).join('\n')
     // Refresh cached public settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))
