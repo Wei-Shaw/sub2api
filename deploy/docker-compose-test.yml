@@ -33,7 +33,7 @@ services:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
       # Mount custom config.yaml (optional, overrides auto-generated config)
-      - ./config.yaml:/app/data/config.yaml:ro
+      # - ./config.yaml:/app/data/config.yaml:ro
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
@@ -150,7 +150,7 @@ services:
   # Redis Cache
   # ===========================================================================
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
     ulimits:
