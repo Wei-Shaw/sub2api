@@ -45,6 +45,10 @@ const (
 	maxCacheControlBlocks  = 4 // Anthropic API 允许的最大 cache_control 块数量
 )
 
+const (
+	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
+)
+
 func (s *GatewayService) debugModelRoutingEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
@@ -116,9 +120,9 @@ REDACTED
 REDACTED
 REDACTED
 
-func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
+func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) string {
 	if req == nil {
-		return
+		return ""
 REDACTED
 
 	// Only log a minimal fingerprint to avoid leaking user content.
@@ -167,8 +171,8 @@ REDACTED
 		aname = account.Name
 REDACTED
 
-	log.Printf(
-		"[ClaudeMimicDebug] url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%sREDACTED",
+	return fmt.Sprintf(
+		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%sREDACTED",
 		req.URL.String(),
 		aid,
 		aname,
@@ -178,6 +182,23 @@ REDACTED
 		sysPreview,
 		strings.Join(h, " "),
 	)
+REDACTED
+
+func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
+	line := buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode)
+	if line == "" {
+		return
+REDACTED
+	log.Printf("[ClaudeMimicDebug] %s", line)
+REDACTED
+
+func isClaudeCodeCredentialScopeError(msg string) bool {
+	m := strings.ToLower(strings.TrimSpace(msg))
+	if m == "" {
+		return false
+REDACTED
+	return strings.Contains(m, "only authorized for use with claude code") &&
+		strings.Contains(m, "cannot be used for other api requests")
 REDACTED
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
@@ -3384,6 +3405,11 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 	REDACTED
 REDACTED
 
+	// Always capture a compact fingerprint line for later error diagnostics.
+	// We only print it when needed (or when the explicit debug flag is enabled).
+	if c != nil && tokenType == "oauth" {
+		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+REDACTED
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
@@ -3640,6 +3666,20 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
+	// Print a compact upstream request fingerprint when we hit the Claude Code OAuth
+	// credential scope error. This avoids requiring env-var tweaks in a fixed deploy.
+	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
+		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
+			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
+				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+					resp.StatusCode,
+					resp.Header.Get("x-request-id"),
+					line,
+				)
+		REDACTED
+	REDACTED
+REDACTED
+
 	// Enrich Ops error logs with upstream status + message, and optionally a truncated body snippet.
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -3769,6 +3809,19 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
+		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
+			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
+				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+					resp.StatusCode,
+					resp.Header.Get("x-request-id"),
+					line,
+				)
+		REDACTED
+	REDACTED
+REDACTED
+
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
@@ -4810,6 +4863,9 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 	REDACTED
 REDACTED
 
+	if c != nil && tokenType == "oauth" {
+		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+REDACTED
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
