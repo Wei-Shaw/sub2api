@@ -6,6 +6,7 @@ type SystemSettings struct {
 	EmailVerifyEnabled          bool `json:"email_verify_enabled"`
 	PromoCodeEnabled            bool `json:"promo_code_enabled"`
 	PasswordResetEnabled        bool `json:"password_reset_enabled"`
+	InvitationCodeEnabled       bool `json:"invitation_code_enabled"`
 	TotpEnabled                 bool `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured bool `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
 
@@ -63,6 +64,7 @@ type PublicSettings struct {
 	EmailVerifyEnabled          bool   `json:"email_verify_enabled"`
 	PromoCodeEnabled            bool   `json:"promo_code_enabled"`
 	PasswordResetEnabled        bool   `json:"password_reset_enabled"`
+	InvitationCodeEnabled       bool   `json:"invitation_code_enabled"`
 	TotpEnabled                 bool   `json:"totp_enabled"` // TOTP 双因素认证
 	TurnstileEnabled            bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey            string `json:"turnstile_site_key"`
