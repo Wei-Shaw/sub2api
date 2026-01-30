@@ -1553,3 +1553,64 @@ REDACTED
 func itoa(v int) string {
 	return strconv.Itoa(v)
 REDACTED
+
+// FindByExtraField 根据 extra 字段中的键值对查找账号。
+// 该方法限定 platform='sora'，避免误查询其他平台的账号。
+// 使用 PostgreSQL JSONB @> 操作符进行高效查询（需要 GIN 索引支持）。
+//
+// 应用场景：查找通过 linked_openai_account_id 关联的 Sora 账号。
+//
+// FindByExtraField finds accounts by key-value pairs in the extra field.
+// Limited to platform='sora' to avoid querying accounts from other platforms.
+// Uses PostgreSQL JSONB @> operator for efficient queries (requires GIN index).
+//
+// Use case: Finding Sora accounts linked via linked_openai_account_id.
+func (r *accountRepository) FindByExtraField(ctx context.Context, key string, value interface{REDACTED) ([]service.Account, error) {
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ("sora"), // 限定平台为 sora
+			dbaccount.DeletedAtIsNil(),
+			func(s *entsql.Selector) {
+				path := sqljson.Path(key)
+				switch v := value.(type) {
+				case string:
+					preds := []*entsql.Predicate{sqljson.ValueEQ(dbaccount.FieldExtra, v, path)REDACTED
+					if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+						preds = append(preds, sqljson.ValueEQ(dbaccount.FieldExtra, parsed, path))
+				REDACTED
+					if len(preds) == 1 {
+						s.Where(preds[0])
+				REDACTED else {
+						s.Where(entsql.Or(preds...))
+				REDACTED
+				case int:
+					s.Where(entsql.Or(
+						sqljson.ValueEQ(dbaccount.FieldExtra, v, path),
+						sqljson.ValueEQ(dbaccount.FieldExtra, strconv.Itoa(v), path),
+					))
+				case int64:
+					s.Where(entsql.Or(
+						sqljson.ValueEQ(dbaccount.FieldExtra, v, path),
+						sqljson.ValueEQ(dbaccount.FieldExtra, strconv.FormatInt(v, 10), path),
+					))
+				case json.Number:
+					if parsed, err := v.Int64(); err == nil {
+						s.Where(entsql.Or(
+							sqljson.ValueEQ(dbaccount.FieldExtra, parsed, path),
+							sqljson.ValueEQ(dbaccount.FieldExtra, v.String(), path),
+						))
+				REDACTED else {
+						s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, v.String(), path))
+				REDACTED
+				default:
+					s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, value, path))
+			REDACTED
+		REDACTED,
+		).
+		All(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrAccountNotFound, nil)
+REDACTED
+
+	return r.accountsToService(ctx, accounts)
+REDACTED

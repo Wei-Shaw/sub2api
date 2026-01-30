@@ -272,6 +272,7 @@ type adminServiceImpl struct {
 	userRepo             UserRepository
 	groupRepo            GroupRepository
 	accountRepo          AccountRepository
+	soraAccountRepo      SoraAccountRepository // Sora 账号扩展表仓储
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
@@ -286,6 +287,7 @@ func NewAdminService(
 	userRepo UserRepository,
 	groupRepo GroupRepository,
 	accountRepo AccountRepository,
+	soraAccountRepo SoraAccountRepository,
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
@@ -298,6 +300,7 @@ func NewAdminService(
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
 		accountRepo:          accountRepo,
+		soraAccountRepo:      soraAccountRepo,
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,
@@ -860,6 +863,18 @@ REDACTED
 REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
+REDACTED
+
+	// 如果是 Sora 平台账号，自动创建 sora_accounts 扩展表记录
+	if account.Platform == PlatformSora && s.soraAccountRepo != nil {
+		soraUpdates := map[string]any{
+			"access_token":  account.GetCredential("access_token"),
+			"refresh_token": account.GetCredential("refresh_token"),
+	REDACTED
+		if err := s.soraAccountRepo.Upsert(ctx, account.ID, soraUpdates); err != nil {
+			// 只记录警告日志，不阻塞账号创建
+			log.Printf("[AdminService] 创建 sora_accounts 记录失败: account_id=%d err=%v", account.ID, err)
+	REDACTED
 REDACTED
 
 	// 绑定分组

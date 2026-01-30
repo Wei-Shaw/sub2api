@@ -1380,7 +1380,9 @@ export default {
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
-        apiKeyHint: '您的 OpenAI API Key'
+        apiKeyHint: '您的 OpenAI API Key',
+        enableSora: '同时启用 Sora',
+        enableSoraHint: 'Sora 使用相同的 OpenAI 账号，开启后将同时创建 Sora 平台账号'
       REDACTED,
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
@@ -1469,6 +1471,8 @@ export default {
       creating: '创建中...',
       updating: '更新中...',
       accountCreated: '账号创建成功',
+      soraAccountCreated: 'Sora 账号已同时创建',
+      soraAccountFailed: 'Sora 账号创建失败，请稍后手动添加',
       accountUpdated: '账号更新成功',
       failedToCreate: '创建账号失败',
       failedToUpdate: '更新账号失败',

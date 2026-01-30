@@ -1482,6 +1482,32 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
+      <!-- 同时启用 Sora 开关 (仅 OpenAI OAuth) -->
+      <div v-if="form.platform === 'openai' && accountCategory === 'oauth-based'" class="mb-4">
+        <label class="flex items-center justify-between rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.accounts.openai.enableSora') REDACTEDREDACTED
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.openai.enableSoraHint') REDACTEDREDACTED
+              </span>
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" v-model="enableSoraOnOpenAIOAuth" />
+            <span class="slider"></span>
+          </label>
+        </label>
+      </div>
+
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
@@ -1939,6 +1965,7 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
+const enableSoraOnOpenAIOAuth = ref(false) // OpenAI OAuth 时同时启用 Sora
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
@@ -2334,6 +2361,7 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  enableSoraOnOpenAIOAuth.value = false
   // Reset quota control state
   windowCostEnabled.value = false
   windowCostLimit.value = null
@@ -2509,7 +2537,72 @@ const handleOpenAIExchange = async (authCode: string) => {
 
     const credentials = openaiOAuth.buildCredentials(tokenInfo)
     const extra = openaiOAuth.buildExtraInfo(tokenInfo)
-    await createAccountAndFinish('openai', 'oauth', credentials, extra)
+
+    // 应用临时不可调度配置
+    if (!applyTempUnschedConfig(credentials)) {
+      return
+    REDACTED
+
+    // 1. 创建 OpenAI 账号
+    const openaiAccount = await adminAPI.accounts.create({
+      name: form.name,
+      notes: form.notes,
+      platform: 'openai',
+      type: 'oauth',
+      credentials,
+      extra,
+      proxy_id: form.proxy_id,
+      concurrency: form.concurrency,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      group_ids: form.group_ids,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value
+    REDACTED)
+
+    appStore.showSuccess(t('admin.accounts.accountCreated'))
+
+    // 2. 如果启用了 Sora，同时创建 Sora 账号
+    if (enableSoraOnOpenAIOAuth.value) {
+      try {
+        // Sora 使用相同的 OAuth credentials
+        const soraCredentials = {
+          access_token: credentials.access_token,
+          refresh_token: credentials.refresh_token,
+          expires_at: credentials.expires_at
+        REDACTED
+
+        // 建立关联关系
+        const soraExtra = {
+          ...extra,
+          linked_openai_account_id: String(openaiAccount.id)
+        REDACTED
+
+        await adminAPI.accounts.create({
+          name: `${form.nameREDACTED (Sora)`,
+          notes: form.notes,
+          platform: 'sora',
+          type: 'oauth',
+          credentials: soraCredentials,
+          extra: soraExtra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        REDACTED)
+
+        appStore.showSuccess(t('admin.accounts.soraAccountCreated'))
+      REDACTED catch (error: any) {
+        console.error('创建 Sora 账号失败:', error)
+        appStore.showWarning(t('admin.accounts.soraAccountFailed'))
+      REDACTED
+    REDACTED
+
+    emit('created')
+    handleClose()
   REDACTED catch (error: any) {
     openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(openaiOAuth.error.value)

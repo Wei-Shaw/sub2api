@@ -15,6 +15,7 @@ import (
 // 定期检查并刷新即将过期的token
 type TokenRefreshService struct {
 	accountRepo      AccountRepository
+	soraAccountRepo  SoraAccountRepository // Sora 扩展表仓储，用于双表同步
 	refreshers       []TokenRefresher
 	cfg              *config.TokenRefreshConfig
 	cacheInvalidator TokenCacheInvalidator
@@ -43,12 +44,25 @@ REDACTED
 	// 注册平台特定的刷新器
 	s.refreshers = []TokenRefresher{
 		NewClaudeTokenRefresher(oauthService),
-		NewOpenAITokenRefresher(openaiOAuthService),
+		NewOpenAITokenRefresher(openaiOAuthService, accountRepo),
 		NewGeminiTokenRefresher(geminiOAuthService),
 		NewAntigravityTokenRefresher(antigravityOAuthService),
 REDACTED
 
 	return s
+REDACTED
+
+// SetSoraAccountRepo 设置 Sora 账号扩展表仓储
+// 用于在 OpenAI Token 刷新时同步更新 sora_accounts 表
+// 需要在 Start() 之前调用
+func (s *TokenRefreshService) SetSoraAccountRepo(repo SoraAccountRepository) {
+	s.soraAccountRepo = repo
+	// 将 soraAccountRepo 注入到 OpenAITokenRefresher
+	for _, refresher := range s.refreshers {
+		if openaiRefresher, ok := refresher.(*OpenAITokenRefresher); ok {
+			openaiRefresher.SetSoraAccountRepo(repo)
+	REDACTED
+REDACTED
 REDACTED
 
 // Start 启动后台刷新服务
