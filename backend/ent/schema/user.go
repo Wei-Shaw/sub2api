@@ -2,7 +2,7 @@ package schema
 
 import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -43,7 +43,7 @@ func (User) Fields() []ent.Field {
 			NotEmpty(),
 		field.String("role").
 			MaxLen(20).
-			Default(service.RoleUser),
+			Default(domain.RoleUser),
 		field.Float("balance").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
 			Default(0),
@@ -51,7 +51,7 @@ func (User) Fields() []ent.Field {
 			Default(5),
 		field.String("status").
 			MaxLen(20).
-			Default(service.StatusActive),
+			Default(domain.StatusActive),
 
 		// Optional profile fields (added later; default '' in DB migration)
 		field.String("username").
@@ -81,6 +81,7 @@ func (User) Edges() []ent.Edge {
 		edge.To("redeem_codes", RedeemCode.Type),
 		edge.To("subscriptions", UserSubscription.Type),
 		edge.To("assigned_subscriptions", UserSubscription.Type),
+		edge.To("announcement_reads", AnnouncementRead.Type),
 		edge.To("allowed_groups", Group.Type).
 			Through("user_allowed_groups", UserAllowedGroup.Type),
 		edge.To("usage_logs", UsageLog.Type),

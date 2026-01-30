@@ -16,6 +16,7 @@ export { userAPI REDACTED from './user'
 export { redeemAPI, type RedeemHistoryItem REDACTED from './redeem'
 export { userGroupsAPI REDACTED from './groups'
 export { totpAPI REDACTED from './totp'
+export { default as announcementsAPI REDACTED from './announcements'
 
 // Admin APIs
 export { adminAPI REDACTED from './admin'

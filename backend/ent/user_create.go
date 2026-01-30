@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
@@ -267,6 +268,21 @@ func (_c *UserCreate) AddAssignedSubscriptions(v ...*UserSubscription) *UserCrea
 		ids[i] = v[i].ID
 REDACTED
 	return _c.AddAssignedSubscriptionIDs(ids...)
+REDACTED
+
+// AddAnnouncementReadIDs adds the "announcement_reads" edge to the AnnouncementRead entity by IDs.
+func (_c *UserCreate) AddAnnouncementReadIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddAnnouncementReadIDs(ids...)
+	return _c
+REDACTED
+
+// AddAnnouncementReads adds the "announcement_reads" edges to the AnnouncementRead entity.
+func (_c *UserCreate) AddAnnouncementReads(v ...*AnnouncementRead) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _c.AddAnnouncementReadIDs(ids...)
 REDACTED
 
 // AddAllowedGroupIDs adds the "allowed_groups" edge to the Group entity by IDs.
@@ -611,6 +627,22 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges = append(_spec.Edges, edge)
+REDACTED
+	if nodes := _c.mutation.AnnouncementReadsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AnnouncementReadsTable,
+			Columns: []string{user.AnnouncementReadsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(announcementread.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {

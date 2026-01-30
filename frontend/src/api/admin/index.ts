@@ -10,6 +10,7 @@ import accountsAPI from './accounts'
 import proxiesAPI from './proxies'
 import redeemAPI from './redeem'
 import promoAPI from './promo'
+import announcementsAPI from './announcements'
 import settingsAPI from './settings'
 import systemAPI from './system'
 import subscriptionsAPI from './subscriptions'
@@ -30,6 +31,7 @@ export const adminAPI = {
   proxies: proxiesAPI,
   redeem: redeemAPI,
   promo: promoAPI,
+  announcements: announcementsAPI,
   settings: settingsAPI,
   system: systemAPI,
   subscriptions: subscriptionsAPI,
@@ -48,6 +50,7 @@ export {
   proxiesAPI,
   redeemAPI,
   promoAPI,
+  announcementsAPI,
   settingsAPI,
   systemAPI,
   subscriptionsAPI,

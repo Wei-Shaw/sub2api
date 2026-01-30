@@ -1,0 +1,195 @@
+package repository
+
+import (
+	"context"
+	"time"
+
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/announcement"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+)
+
+type announcementRepository struct {
+	client *dbent.Client
+REDACTED
+
+func NewAnnouncementRepository(client *dbent.Client) service.AnnouncementRepository {
+	return &announcementRepository{client: clientREDACTED
+REDACTED
+
+func (r *announcementRepository) Create(ctx context.Context, a *service.Announcement) error {
+	client := clientFromContext(ctx, r.client)
+	builder := client.Announcement.Create().
+		SetTitle(a.Title).
+		SetContent(a.Content).
+		SetStatus(a.Status).
+		SetTargeting(a.Targeting)
+
+	if a.StartsAt != nil {
+		builder.SetStartsAt(*a.StartsAt)
+REDACTED
+	if a.EndsAt != nil {
+		builder.SetEndsAt(*a.EndsAt)
+REDACTED
+	if a.CreatedBy != nil {
+		builder.SetCreatedBy(*a.CreatedBy)
+REDACTED
+	if a.UpdatedBy != nil {
+		builder.SetUpdatedBy(*a.UpdatedBy)
+REDACTED
+
+	created, err := builder.Save(ctx)
+	if err != nil {
+		return err
+REDACTED
+
+	applyAnnouncementEntityToService(a, created)
+	return nil
+REDACTED
+
+func (r *announcementRepository) GetByID(ctx context.Context, id int64) (*service.Announcement, error) {
+	m, err := r.client.Announcement.Query().
+		Where(announcement.IDEQ(id)).
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrAnnouncementNotFound, nil)
+REDACTED
+	return announcementEntityToService(m), nil
+REDACTED
+
+func (r *announcementRepository) Update(ctx context.Context, a *service.Announcement) error {
+	client := clientFromContext(ctx, r.client)
+	builder := client.Announcement.UpdateOneID(a.ID).
+		SetTitle(a.Title).
+		SetContent(a.Content).
+		SetStatus(a.Status).
+		SetTargeting(a.Targeting)
+
+	if a.StartsAt != nil {
+		builder.SetStartsAt(*a.StartsAt)
+REDACTED else {
+		builder.ClearStartsAt()
+REDACTED
+	if a.EndsAt != nil {
+		builder.SetEndsAt(*a.EndsAt)
+REDACTED else {
+		builder.ClearEndsAt()
+REDACTED
+	if a.CreatedBy != nil {
+		builder.SetCreatedBy(*a.CreatedBy)
+REDACTED else {
+		builder.ClearCreatedBy()
+REDACTED
+	if a.UpdatedBy != nil {
+		builder.SetUpdatedBy(*a.UpdatedBy)
+REDACTED else {
+		builder.ClearUpdatedBy()
+REDACTED
+
+	updated, err := builder.Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrAnnouncementNotFound, nil)
+REDACTED
+
+	a.UpdatedAt = updated.UpdatedAt
+	return nil
+REDACTED
+
+func (r *announcementRepository) Delete(ctx context.Context, id int64) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.Announcement.Delete().Where(announcement.IDEQ(id)).Exec(ctx)
+	return err
+REDACTED
+
+func (r *announcementRepository) List(
+	ctx context.Context,
+	params pagination.PaginationParams,
+	filters service.AnnouncementListFilters,
+) ([]service.Announcement, *pagination.PaginationResult, error) {
+	q := r.client.Announcement.Query()
+
+	if filters.Status != "" {
+		q = q.Where(announcement.StatusEQ(filters.Status))
+REDACTED
+	if filters.Search != "" {
+		q = q.Where(
+			announcement.Or(
+				announcement.TitleContainsFold(filters.Search),
+				announcement.ContentContainsFold(filters.Search),
+			),
+		)
+REDACTED
+
+	total, err := q.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+
+	items, err := q.
+		Offset(params.Offset()).
+		Limit(params.Limit()).
+		Order(dbent.Desc(announcement.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+
+	out := announcementEntitiesToService(items)
+	return out, paginationResultFromTotal(int64(total), params), nil
+REDACTED
+
+func (r *announcementRepository) ListActive(ctx context.Context, now time.Time) ([]service.Announcement, error) {
+	q := r.client.Announcement.Query().
+		Where(
+			announcement.StatusEQ(service.AnnouncementStatusActive),
+			announcement.Or(announcement.StartsAtIsNil(), announcement.StartsAtLTE(now)),
+			announcement.Or(announcement.EndsAtIsNil(), announcement.EndsAtGT(now)),
+		).
+		Order(dbent.Desc(announcement.FieldID))
+
+	items, err := q.All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	return announcementEntitiesToService(items), nil
+REDACTED
+
+func applyAnnouncementEntityToService(dst *service.Announcement, src *dbent.Announcement) {
+	if dst == nil || src == nil {
+		return
+REDACTED
+	dst.ID = src.ID
+	dst.CreatedAt = src.CreatedAt
+	dst.UpdatedAt = src.UpdatedAt
+REDACTED
+
+func announcementEntityToService(m *dbent.Announcement) *service.Announcement {
+	if m == nil {
+		return nil
+REDACTED
+	return &service.Announcement{
+		ID:        m.ID,
+		Title:     m.Title,
+		Content:   m.Content,
+		Status:    m.Status,
+		Targeting: m.Targeting,
+		StartsAt:  m.StartsAt,
+		EndsAt:    m.EndsAt,
+		CreatedBy: m.CreatedBy,
+		UpdatedBy: m.UpdatedBy,
+		CreatedAt: m.CreatedAt,
+		UpdatedAt: m.UpdatedAt,
+REDACTED
+REDACTED
+
+func announcementEntitiesToService(models []*dbent.Announcement) []service.Announcement {
+	out := make([]service.Announcement, 0, len(models))
+	for i := range models {
+		if s := announcementEntityToService(models[i]); s != nil {
+			out = append(out, *s)
+	REDACTED
+REDACTED
+	return out
+REDACTED
+

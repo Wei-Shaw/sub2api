@@ -10,6 +10,7 @@ type AdminHandlers struct {
 	User             *admin.UserHandler
 	Group            *admin.GroupHandler
 	Account          *admin.AccountHandler
+	Announcement     *admin.AnnouncementHandler
 	OAuth            *admin.OAuthHandler
 	OpenAIOAuth      *admin.OpenAIOAuthHandler
 	GeminiOAuth      *admin.GeminiOAuthHandler
@@ -33,6 +34,7 @@ type Handlers struct {
 	Usage         *UsageHandler
 	Redeem        *RedeemHandler
 	Subscription  *SubscriptionHandler
+	Announcement  *AnnouncementHandler
 	Admin         *AdminHandlers
 	Gateway       *GatewayHandler
 	OpenAIGateway *OpenAIGatewayHandler

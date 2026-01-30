@@ -185,6 +185,7 @@ export default {
   // Navigation
   nav: {
     dashboard: 'Dashboard',
+    announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
@@ -1951,6 +1952,73 @@ export default {
       REDACTED
     REDACTED,
 
+    // Announcements
+    announcements: {
+      title: 'Announcements',
+      description: 'Create announcements and target by conditions',
+      createAnnouncement: 'Create Announcement',
+      editAnnouncement: 'Edit Announcement',
+      deleteAnnouncement: 'Delete Announcement',
+      searchAnnouncements: 'Search announcements...',
+      status: 'Status',
+      allStatus: 'All Status',
+      columns: {
+        title: 'Title',
+        status: 'Status',
+        targeting: 'Targeting',
+        timeRange: 'Schedule',
+        createdAt: 'Created At',
+        actions: 'Actions'
+      REDACTED,
+      statusLabels: {
+        draft: 'Draft',
+        active: 'Active',
+        archived: 'Archived'
+      REDACTED,
+      form: {
+        title: 'Title',
+        content: 'Content (Markdown supported)',
+        status: 'Status',
+        startsAt: 'Starts At',
+        endsAt: 'Ends At',
+        startsAtHint: 'Leave empty to start immediately',
+        endsAtHint: 'Leave empty to never expire',
+        targetingMode: 'Targeting',
+        targetingAll: 'All users',
+        targetingCustom: 'Custom rules',
+        addOrGroup: 'Add OR group',
+        addAndCondition: 'Add AND condition',
+        conditionType: 'Condition type',
+        conditionSubscription: 'Subscription',
+        conditionBalance: 'Balance',
+        operator: 'Operator',
+        balanceValue: 'Balance threshold',
+        selectPackages: 'Select packages'
+      REDACTED,
+      operators: {
+        gt: '>',
+        gte: '≥',
+        lt: '<',
+        lte: '≤',
+        eq: '='
+      REDACTED,
+      targetingSummaryAll: 'All users',
+      targetingSummaryCustom: 'Custom ({groupsREDACTED groups)',
+      timeImmediate: 'Immediate',
+      timeNever: 'Never',
+      readStatus: 'Read Status',
+      eligible: 'Eligible',
+      readAt: 'Read at',
+      unread: 'Unread',
+      searchUsers: 'Search users...',
+      failedToLoad: 'Failed to load announcements',
+      failedToCreate: 'Failed to create announcement',
+      failedToUpdate: 'Failed to update announcement',
+      failedToDelete: 'Failed to delete announcement',
+      failedToLoadReadStatus: 'Failed to load read status',
+      deleteConfirm: 'Are you sure you want to delete this announcement? This action cannot be undone.'
+    REDACTED,
+
     // Promo Codes
     promo: {
       title: 'Promo Code Management',
@@ -3061,6 +3129,21 @@ export default {
     notConfiguredTitle: 'Purchase URL not configured',
     notConfiguredDesc:
       'The administrator enabled the entry but has not configured a purchase URL. Please contact admin.'
+  REDACTED,
+
+  // Announcements Page
+  announcements: {
+    title: 'Announcements',
+    description: 'View system announcements',
+    unreadOnly: 'Show unread only',
+    markRead: 'Mark as read',
+    readAt: 'Read at',
+    read: 'Read',
+    unread: 'Unread',
+    startsAt: 'Starts at',
+    endsAt: 'Ends at',
+    empty: 'No announcements',
+    emptyUnread: 'No unread announcements'
   REDACTED,
 
   // User Subscriptions Page
