@@ -62,6 +62,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-REDACTED
       - REDIS_DB=${REDIS_DB:-0REDACTED
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-falseREDACTED
 
       # =======================================================================
       # Admin Account (auto-created on first run)

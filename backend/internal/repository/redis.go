@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"crypto/tls"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -26,7 +27,7 @@ REDACTED
 // buildRedisOptions 构建 Redis 连接选项
 // 从配置文件读取连接池和超时参数，支持生产环境调优
 func buildRedisOptions(cfg *config.Config) *redis.Options {
-	return &redis.Options{
+	opts := &redis.Options{
 		Addr:         cfg.Redis.Address(),
 		Password:     cfg.Redis.Password,
 		DB:           cfg.Redis.DB,
@@ -36,4 +37,13 @@ func buildRedisOptions(cfg *config.Config) *redis.Options {
 		PoolSize:     cfg.Redis.PoolSize,                                         // 连接池大小
 		MinIdleConns: cfg.Redis.MinIdleConns,                                     // 最小空闲连接
 REDACTED
+
+	if cfg.Redis.EnableTLS {
+		opts.TLSConfig = &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			ServerName:         cfg.Redis.Host,
+	REDACTED
+REDACTED
+
+	return opts
 REDACTED

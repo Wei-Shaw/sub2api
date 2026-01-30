@@ -91,6 +91,18 @@
             </div>
           </div>
 
+          <div class="flex items-center justify-between rounded-xl border border-gray-200 p-3 dark:border-dark-700">
+            <div>
+              <p class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t("setup.redis.enableTls") REDACTEDREDACTED
+              </p>
+              <p class="text-xs text-gray-500 dark:text-dark-400">
+                {{ t("setup.redis.enableTlsHint") REDACTEDREDACTED
+              </p>
+            </div>
+            <Toggle v-model="formData.redis.enable_tls" />
+          </div>
+
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="input-label">{{ t('setup.database.username') REDACTEDREDACTED</label>
@@ -517,7 +529,8 @@ const formData = reactive<InstallRequest>({
     host: 'localhost',
     port: 6379,
     password: '',
-    db: 0
+    db: 0,
+    enable_tls: false
   REDACTED,
   admin: {
     email: '',

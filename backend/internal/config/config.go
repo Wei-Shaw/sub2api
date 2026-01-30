@@ -415,6 +415,8 @@ type RedisConfig struct {
 	PoolSize int `mapstructure:"pool_size"`
 	// MinIdleConns: 最小空闲连接数，保持热连接减少冷启动延迟
 	MinIdleConns int `mapstructure:"min_idle_conns"`
+	// EnableTLS: 是否启用 TLS/SSL 连接
+	EnableTLS bool `mapstructure:"enable_tls"`
 REDACTED
 
 func (r *RedisConfig) Address() string {
@@ -762,6 +764,7 @@ REDACTED)
 	viper.SetDefault("redis.write_timeout_seconds", 3)
 	viper.SetDefault("redis.pool_size", 128)
 	viper.SetDefault("redis.min_idle_conns", 10)
+	viper.SetDefault("redis.enable_tls", false)
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)
