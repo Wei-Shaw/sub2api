@@ -215,7 +215,6 @@ var (
 	modelFieldRe         = regexp.MustCompile(`"model"\s*:\s*"([^"]+)"`)
 	toolDescAbsPathRe    = regexp.MustCompile(`/\/?(?:home|Users|tmp|var|opt|usr|etc)\/[^\s,\)"'\]]+`)
 	toolDescWinPathRe    = regexp.MustCompile(`(?i)[A-Z]:\\[^\s,\)"'\]]+`)
-	opencodeTextRe       = regexp.MustCompile(`(?i)opencode`)
 
 	claudeToolNameOverrides = map[string]string{
 		"bash":      "Bash",
@@ -3320,11 +3319,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	REDACTED
 REDACTED
 
+	clientHeaders := http.Header{REDACTED
+	if c != nil && c.Request != nil {
+		clientHeaders = c.Request.Header
+REDACTED
+
 	// OAuth账号：应用统一指纹
 	var fingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err != nil {
 			log.Printf("Warning: failed to get fingerprint for account %d: %v", account.ID, err)
 			// 失败时降级为透传原始headers
@@ -3355,7 +3359,7 @@ REDACTED else {
 REDACTED
 
 	// 白名单透传headers
-	for key, values := range c.Request.Header {
+	for key, values := range clientHeaders {
 		lowerKey := strings.ToLower(key)
 		if allowedHeaders[lowerKey] {
 			for _, v := range values {
@@ -3475,20 +3479,6 @@ func requestNeedsBetaFeatures(body []byte) bool {
 REDACTED
 	if strings.EqualFold(gjson.GetBytes(body, "thinking.type").String(), "enabled") {
 		return true
-REDACTED
-	return false
-REDACTED
-
-func requestHasTools(body []byte) bool {
-	tools := gjson.GetBytes(body, "tools")
-	if !tools.Exists() {
-		return false
-REDACTED
-	if tools.IsArray() {
-		return len(tools.Array()) > 0
-REDACTED
-	if tools.IsObject() {
-		return len(tools.Map()) > 0
 REDACTED
 	return false
 REDACTED
@@ -4804,10 +4794,15 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	REDACTED
 REDACTED
 
+	clientHeaders := http.Header{REDACTED
+	if c != nil && c.Request != nil {
+		clientHeaders = c.Request.Header
+REDACTED
+
 	// OAuth 账号：应用统一指纹和重写 userID
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
 	if account.IsOAuth() && s.identityService != nil {
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err == nil {
 			accountUUID := account.GetExtraString("account_uuid")
 			if accountUUID != "" && fp.ClientID != "" {
@@ -4831,7 +4826,7 @@ REDACTED else {
 REDACTED
 
 	// 白名单透传 headers
-	for key, values := range c.Request.Header {
+	for key, values := range clientHeaders {
 		lowerKey := strings.ToLower(key)
 		if allowedHeaders[lowerKey] {
 			for _, v := range values {
@@ -4842,7 +4837,7 @@ REDACTED
 
 	// OAuth 账号：应用指纹到请求头
 	if account.IsOAuth() && s.identityService != nil {
-		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if fp != nil {
 			s.identityService.ApplyFingerprint(req, fp)
 	REDACTED
