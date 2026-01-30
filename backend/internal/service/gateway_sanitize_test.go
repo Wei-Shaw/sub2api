@@ -9,12 +9,12 @@ import (
 
 func TestSanitizeOpenCodeText_RewritesCanonicalSentence(t *testing.T) {
 	in := "You are OpenCode, the best coding agent on the planet."
-	got := sanitizeOpenCodeText(in)
+	got := sanitizeSystemText(in)
 	require.Equal(t, strings.TrimSpace(claudeCodeSystemPrompt), got)
 REDACTED
 
-func TestSanitizeOpenCodeText_RewritesOpenCodeKeywords(t *testing.T) {
+func TestSanitizeToolText_RewritesOpenCodeKeywords(t *testing.T) {
 	in := "OpenCode and opencode are mentioned."
-	got := sanitizeOpenCodeText(in)
+	got := sanitizeToolText(in)
 	require.Equal(t, "Claude Code and Claude are mentioned.", got)
 REDACTED

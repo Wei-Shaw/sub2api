@@ -697,7 +697,10 @@ REDACTED
 	return name
 REDACTED
 
-func sanitizeOpenCodeText(text string) string {
+// sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
+// We intentionally avoid broad keyword replacement in system prompts to prevent
+// accidentally changing user-provided instructions.
+func sanitizeSystemText(text string) string {
 	if text == "" {
 		return text
 REDACTED
@@ -709,6 +712,17 @@ REDACTED
 		"You are OpenCode, the best coding agent on the planet.",
 		strings.TrimSpace(claudeCodeSystemPrompt),
 	)
+	return text
+REDACTED
+
+// sanitizeToolText is intentionally more aggressive than sanitizeSystemText because
+// tool descriptions are not user chat content, and some upstreams may flag "opencode"
+// strings as non-Claude-Code fingerprints.
+func sanitizeToolText(text string) string {
+	if text == "" {
+		return text
+REDACTED
+	text = sanitizeSystemText(text)
 	text = strings.ReplaceAll(text, "OpenCode", "Claude Code")
 	text = opencodeTextRe.ReplaceAllString(text, "Claude")
 	return text
@@ -720,7 +734,7 @@ func sanitizeToolDescription(description string) string {
 REDACTED
 	description = toolDescAbsPathRe.ReplaceAllString(description, "[path]")
 	description = toolDescWinPathRe.ReplaceAllString(description, "[path]")
-	return sanitizeOpenCodeText(description)
+	return sanitizeToolText(description)
 REDACTED
 
 func normalizeToolInputSchema(inputSchema any, cache map[string]string) {
@@ -795,7 +809,7 @@ REDACTED
 	if system, ok := req["system"]; ok {
 		switch v := system.(type) {
 		case string:
-			sanitized := sanitizeOpenCodeText(v)
+			sanitized := sanitizeSystemText(v)
 			if sanitized != v {
 				req["system"] = sanitized
 		REDACTED
@@ -812,7 +826,7 @@ REDACTED
 				if !ok || text == "" {
 					continue
 			REDACTED
-				sanitized := sanitizeOpenCodeText(text)
+				sanitized := sanitizeSystemText(text)
 				if sanitized != text {
 					block["text"] = sanitized
 			REDACTED
