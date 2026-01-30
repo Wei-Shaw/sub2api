@@ -115,7 +115,7 @@ jobs:
 
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.25.5'
+          go version | grep -q 'go1.25.6'
 
       # Docker setup for GoReleaser
       - name: Set up QEMU
