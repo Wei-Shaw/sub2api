@@ -13,8 +13,9 @@ func TestSanitizeOpenCodeText_RewritesCanonicalSentence(t *testing.T) {
 	require.Equal(t, strings.TrimSpace(claudeCodeSystemPrompt), got)
 REDACTED
 
-func TestSanitizeToolText_RewritesOpenCodeKeywords(t *testing.T) {
+func TestSanitizeToolDescription_DoesNotRewriteKeywords(t *testing.T) {
 	in := "OpenCode and opencode are mentioned."
-	got := sanitizeToolText(in)
-	require.Equal(t, "Claude Code and Claude are mentioned.", got)
+	got := sanitizeToolDescription(in)
+	// We no longer rewrite tool descriptions; only redact obvious path leaks.
+	require.Equal(t, in, got)
 REDACTED

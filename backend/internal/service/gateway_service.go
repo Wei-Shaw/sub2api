@@ -715,26 +715,15 @@ REDACTED
 	return text
 REDACTED
 
-// sanitizeToolText is intentionally more aggressive than sanitizeSystemText because
-// tool descriptions are not user chat content, and some upstreams may flag "opencode"
-// strings as non-Claude-Code fingerprints.
-func sanitizeToolText(text string) string {
-	if text == "" {
-		return text
-REDACTED
-	text = sanitizeSystemText(text)
-	text = strings.ReplaceAll(text, "OpenCode", "Claude Code")
-	text = opencodeTextRe.ReplaceAllString(text, "Claude")
-	return text
-REDACTED
-
 func sanitizeToolDescription(description string) string {
 	if description == "" {
 		return description
 REDACTED
 	description = toolDescAbsPathRe.ReplaceAllString(description, "[path]")
 	description = toolDescWinPathRe.ReplaceAllString(description, "[path]")
-	return sanitizeToolText(description)
+	// Intentionally do NOT rewrite tool descriptions (OpenCode/Claude strings).
+	// Tool names/skill names may rely on exact wording, and rewriting can be misleading.
+	return description
 REDACTED
 
 func normalizeToolInputSchema(inputSchema any, cache map[string]string) {
