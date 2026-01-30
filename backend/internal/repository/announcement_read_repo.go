@@ -81,4 +81,3 @@ func (r *announcementReadRepository) CountByAnnouncementID(ctx context.Context, 
 REDACTED
 	return int64(count), nil
 REDACTED
-

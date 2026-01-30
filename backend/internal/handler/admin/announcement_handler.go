@@ -27,12 +27,12 @@ REDACTED
 REDACTED
 
 type CreateAnnouncementRequest struct {
-	Title     string                       `json:"title" binding:"required"`
-	Content   string                       `json:"content" binding:"required"`
-	Status    string                       `json:"status" binding:"omitempty,oneof=draft active archived"`
+	Title     string                        `json:"title" binding:"required"`
+	Content   string                        `json:"content" binding:"required"`
+	Status    string                        `json:"status" binding:"omitempty,oneof=draft active archived"`
 	Targeting service.AnnouncementTargeting `json:"targeting"`
-	StartsAt  *int64                       `json:"starts_at"` // Unix seconds, 0/empty = immediate
-	EndsAt    *int64                       `json:"ends_at"`   // Unix seconds, 0/empty = never
+	StartsAt  *int64                        `json:"starts_at"` // Unix seconds, 0/empty = immediate
+	EndsAt    *int64                        `json:"ends_at"`   // Unix seconds, 0/empty = never
 REDACTED
 
 type UpdateAnnouncementRequest struct {
@@ -244,4 +244,3 @@ REDACTED
 
 	response.Paginated(c, items, paginationResult.Total, page, pageSize)
 REDACTED
-

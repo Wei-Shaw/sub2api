@@ -88,4 +88,3 @@ func (Announcement) Indexes() []ent.Index {
 		index.Fields("ends_at"),
 REDACTED
 REDACTED
-

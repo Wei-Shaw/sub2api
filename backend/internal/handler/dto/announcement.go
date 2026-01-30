@@ -72,4 +72,3 @@ REDACTED
 		UpdatedAt: a.Announcement.UpdatedAt,
 REDACTED
 REDACTED
-

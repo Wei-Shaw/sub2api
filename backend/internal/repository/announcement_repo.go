@@ -192,4 +192,3 @@ func announcementEntitiesToService(models []*dbent.Announcement) []service.Annou
 REDACTED
 	return out
 REDACTED
-

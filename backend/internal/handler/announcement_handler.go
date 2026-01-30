@@ -79,4 +79,3 @@ func parseBoolQuery(v string) bool {
 		return false
 REDACTED
 REDACTED
-

@@ -63,4 +63,3 @@ func (AnnouncementRead) Indexes() []ent.Index {
 		index.Fields("announcement_id", "user_id").Unique(),
 REDACTED
 REDACTED
-
