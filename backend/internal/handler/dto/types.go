@@ -61,6 +61,12 @@ type Group struct {
 	ImagePrice2K *float64 `json:"image_price_2k"`
 	ImagePrice4K *float64 `json:"image_price_4k"`
 
+	// Sora 按次计费配置
+	SoraImagePrice360         *float64 `json:"sora_image_price_360"`
+	SoraImagePrice540         *float64 `json:"sora_image_price_540"`
+	SoraVideoPricePerRequest  *float64 `json:"sora_video_price_per_request"`
+	SoraVideoPricePerRequestHD *float64 `json:"sora_video_price_per_request_hd"`
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
@@ -246,6 +252,7 @@ type UsageLog struct {
 	// 图片生成字段
 	ImageCount int     `json:"image_count"`
 	ImageSize  *string `json:"image_size"`
+	MediaType  *string `json:"media_type"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`

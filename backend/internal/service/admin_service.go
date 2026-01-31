@@ -102,11 +102,16 @@ type CreateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	ImagePrice1K    *float64
-	ImagePrice2K    *float64
-	ImagePrice4K    *float64
-	ClaudeCodeOnly  bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID *int64 // 降级分组 ID
+	ImagePrice1K *float64
+	ImagePrice2K *float64
+	ImagePrice4K *float64
+	// Sora 按次计费配置
+	SoraImagePrice360          *float64
+	SoraImagePrice540          *float64
+	SoraVideoPricePerRequest   *float64
+	SoraVideoPricePerRequestHD *float64
+	ClaudeCodeOnly             bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID            *int64 // 降级分组 ID
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool // 是否启用模型路由
@@ -124,11 +129,16 @@ type UpdateGroupInput struct {
 	WeeklyLimitUSD   *float64 // 周限额 (USD)
 	MonthlyLimitUSD  *float64 // 月限额 (USD)
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	ImagePrice1K    *float64
-	ImagePrice2K    *float64
-	ImagePrice4K    *float64
-	ClaudeCodeOnly  *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID *int64 // 降级分组 ID
+	ImagePrice1K *float64
+	ImagePrice2K *float64
+	ImagePrice4K *float64
+	// Sora 按次计费配置
+	SoraImagePrice360          *float64
+	SoraImagePrice540          *float64
+	SoraVideoPricePerRequest   *float64
+	SoraVideoPricePerRequestHD *float64
+	ClaudeCodeOnly             *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID            *int64 // 降级分组 ID
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled *bool // 是否启用模型路由
@@ -273,6 +283,7 @@ type adminServiceImpl struct {
 	groupRepo            GroupRepository
 	accountRepo          AccountRepository
 	soraAccountRepo      SoraAccountRepository // Sora 账号扩展表仓储
+	soraSyncService      *Sora2APISyncService  // Sora2API 同步服务
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
@@ -288,6 +299,7 @@ func NewAdminService(
 	groupRepo GroupRepository,
 	accountRepo AccountRepository,
 	soraAccountRepo SoraAccountRepository,
+	soraSyncService *Sora2APISyncService,
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
@@ -301,6 +313,7 @@ func NewAdminService(
 		groupRepo:            groupRepo,
 		accountRepo:          accountRepo,
 		soraAccountRepo:      soraAccountRepo,
+		soraSyncService:      soraSyncService,
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,
@@ -567,6 +580,10 @@ REDACTED
 	imagePrice1K := normalizePrice(input.ImagePrice1K)
 	imagePrice2K := normalizePrice(input.ImagePrice2K)
 	imagePrice4K := normalizePrice(input.ImagePrice4K)
+	soraImagePrice360 := normalizePrice(input.SoraImagePrice360)
+	soraImagePrice540 := normalizePrice(input.SoraImagePrice540)
+	soraVideoPrice := normalizePrice(input.SoraVideoPricePerRequest)
+	soraVideoPriceHD := normalizePrice(input.SoraVideoPricePerRequestHD)
 
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
@@ -576,22 +593,26 @@ REDACTED
 REDACTED
 
 	group := &Group{
-		Name:             input.Name,
-		Description:      input.Description,
-		Platform:         platform,
-		RateMultiplier:   input.RateMultiplier,
-		IsExclusive:      input.IsExclusive,
-		Status:           StatusActive,
-		SubscriptionType: subscriptionType,
-		DailyLimitUSD:    dailyLimit,
-		WeeklyLimitUSD:   weeklyLimit,
-		MonthlyLimitUSD:  monthlyLimit,
-		ImagePrice1K:     imagePrice1K,
-		ImagePrice2K:     imagePrice2K,
-		ImagePrice4K:     imagePrice4K,
-		ClaudeCodeOnly:   input.ClaudeCodeOnly,
-		FallbackGroupID:  input.FallbackGroupID,
-		ModelRouting:     input.ModelRouting,
+		Name:                       input.Name,
+		Description:                input.Description,
+		Platform:                   platform,
+		RateMultiplier:             input.RateMultiplier,
+		IsExclusive:                input.IsExclusive,
+		Status:                     StatusActive,
+		SubscriptionType:           subscriptionType,
+		DailyLimitUSD:              dailyLimit,
+		WeeklyLimitUSD:             weeklyLimit,
+		MonthlyLimitUSD:            monthlyLimit,
+		ImagePrice1K:               imagePrice1K,
+		ImagePrice2K:               imagePrice2K,
+		ImagePrice4K:               imagePrice4K,
+		SoraImagePrice360:          soraImagePrice360,
+		SoraImagePrice540:          soraImagePrice540,
+		SoraVideoPricePerRequest:   soraVideoPrice,
+		SoraVideoPricePerRequestHD: soraVideoPriceHD,
+		ClaudeCodeOnly:             input.ClaudeCodeOnly,
+		FallbackGroupID:            input.FallbackGroupID,
+		ModelRouting:               input.ModelRouting,
 REDACTED
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
@@ -701,6 +722,18 @@ REDACTED
 REDACTED
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
+REDACTED
+	if input.SoraImagePrice360 != nil {
+		group.SoraImagePrice360 = normalizePrice(input.SoraImagePrice360)
+REDACTED
+	if input.SoraImagePrice540 != nil {
+		group.SoraImagePrice540 = normalizePrice(input.SoraImagePrice540)
+REDACTED
+	if input.SoraVideoPricePerRequest != nil {
+		group.SoraVideoPricePerRequest = normalizePrice(input.SoraVideoPricePerRequest)
+REDACTED
+	if input.SoraVideoPricePerRequestHD != nil {
+		group.SoraVideoPricePerRequestHD = normalizePrice(input.SoraVideoPricePerRequestHD)
 REDACTED
 
 	// Claude Code 客户端限制
@@ -884,6 +917,9 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 同步到 sora2api（异步，不阻塞创建）
+	s.syncSoraAccountAsync(account)
+
 	return account, nil
 REDACTED
 
@@ -974,7 +1010,12 @@ REDACTED
 REDACTED
 
 	// 重新查询以确保返回完整数据（包括正确的 Proxy 关联对象）
-	return s.accountRepo.GetByID(ctx, id)
+	updated, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+REDACTED
+	s.syncSoraAccountAsync(updated)
+	return updated, nil
 REDACTED
 
 // BulkUpdateAccounts updates multiple accounts in one request.
@@ -990,16 +1031,23 @@ REDACTED
 		return result, nil
 REDACTED
 
-	// Preload account platforms for mixed channel risk checks if group bindings are requested.
+	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
+	needSoraSync := s != nil && s.soraSyncService != nil
+
+	// 预加载账号平台信息（混合渠道检查或 Sora 同步需要）。
 	platformByID := map[int64]string{REDACTED
-	if input.GroupIDs != nil && !input.SkipMixedChannelCheck {
+	if needMixedChannelCheck || needSoraSync {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
-			return nil, err
-	REDACTED
-		for _, account := range accounts {
-			if account != nil {
-				platformByID[account.ID] = account.Platform
+			if needMixedChannelCheck {
+				return nil, err
+		REDACTED
+			log.Printf("[AdminService] 预加载账号平台信息失败，将逐个降级同步: err=%v", err)
+	REDACTED else {
+			for _, account := range accounts {
+				if account != nil {
+					platformByID[account.ID] = account.Platform
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
@@ -1086,13 +1134,46 @@ REDACTED
 		result.Success++
 		result.SuccessIDs = append(result.SuccessIDs, accountID)
 		result.Results = append(result.Results, entry)
+
+		// 批量更新后同步 sora2api
+		if needSoraSync {
+			platform := platformByID[accountID]
+			if platform == "" {
+				updated, err := s.accountRepo.GetByID(ctx, accountID)
+				if err != nil {
+					log.Printf("[AdminService] 批量更新后获取账号失败，无法同步 sora2api: account_id=%d err=%v", accountID, err)
+					continue
+			REDACTED
+				if updated.Platform == PlatformSora {
+					s.syncSoraAccountAsync(updated)
+			REDACTED
+				continue
+		REDACTED
+
+			if platform == PlatformSora {
+				updated, err := s.accountRepo.GetByID(ctx, accountID)
+				if err != nil {
+					log.Printf("[AdminService] 批量更新后获取账号失败，无法同步 sora2api: account_id=%d err=%v", accountID, err)
+					continue
+			REDACTED
+				s.syncSoraAccountAsync(updated)
+		REDACTED
+	REDACTED
 REDACTED
 
 	return result, nil
 REDACTED
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
-	return s.accountRepo.Delete(ctx, id)
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+REDACTED
+	if err := s.accountRepo.Delete(ctx, id); err != nil {
+		return err
+REDACTED
+	s.deleteSoraAccountAsync(account)
+	return nil
 REDACTED
 
 func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error) {
@@ -1125,7 +1206,46 @@ func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, 
 	if err := s.accountRepo.SetSchedulable(ctx, id, schedulable); err != nil {
 		return nil, err
 REDACTED
-	return s.accountRepo.GetByID(ctx, id)
+	updated, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+REDACTED
+	s.syncSoraAccountAsync(updated)
+	return updated, nil
+REDACTED
+
+func (s *adminServiceImpl) syncSoraAccountAsync(account *Account) {
+	if s == nil || s.soraSyncService == nil || account == nil {
+		return
+REDACTED
+	if account.Platform != PlatformSora {
+		return
+REDACTED
+	syncAccount := *account
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.soraSyncService.SyncAccount(ctx, &syncAccount); err != nil {
+			log.Printf("[AdminService] 同步 sora2api 失败: account_id=%d err=%v", syncAccount.ID, err)
+	REDACTED
+REDACTED()
+REDACTED
+
+func (s *adminServiceImpl) deleteSoraAccountAsync(account *Account) {
+	if s == nil || s.soraSyncService == nil || account == nil {
+		return
+REDACTED
+	if account.Platform != PlatformSora {
+		return
+REDACTED
+	syncAccount := *account
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.soraSyncService.DeleteAccount(ctx, &syncAccount); err != nil {
+			log.Printf("[AdminService] 删除 sora2api token 失败: account_id=%d err=%v", syncAccount.ID, err)
+	REDACTED
+REDACTED()
 REDACTED
 
 // Proxy management implementations

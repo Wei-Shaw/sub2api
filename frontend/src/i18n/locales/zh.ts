@@ -941,7 +941,8 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -994,6 +995,14 @@ export default {
       imagePricing: {
         title: '图片生成计费',
         description: '配置 gemini-3-pro-image 模型的图片生成价格，留空则使用默认价格'
+      REDACTED,
+      soraPricing: {
+        title: 'Sora 按次计费',
+        description: '配置 Sora 图片/视频按次收费价格，留空则默认不计费',
+        image360: '图片 360px ($)',
+        image540: '图片 540px ($)',
+        video: '视频（标准）($)',
+        videoHd: '视频（Pro-HD）($)'
       REDACTED,
       claudeCode: {
         title: 'Claude Code 客户端限制',
@@ -1199,7 +1208,8 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       types: {
         oauth: 'OAuth',
@@ -1391,6 +1401,9 @@ export default {
       mapRequestModels: '将请求模型映射到实际模型。左边是请求的模型，右边是发送到 API 的实际模型。',
       selectedModels: '已选择 {countREDACTED 个模型',
       supportsAllModels: '（支持所有模型）',
+      soraModelsLoadFailed: '加载 Sora 模型列表失败，已回退到默认列表',
+      soraModelsLoading: '正在加载 Sora 模型...',
+      soraModelsRetry: '加载失败，点击重试',
       requestModel: '请求模型',
       actualModel: '实际模型',
       addMapping: '添加映射',

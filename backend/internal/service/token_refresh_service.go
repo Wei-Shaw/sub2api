@@ -19,6 +19,7 @@ type TokenRefreshService struct {
 	refreshers       []TokenRefresher
 	cfg              *config.TokenRefreshConfig
 	cacheInvalidator TokenCacheInvalidator
+	soraSyncService  *Sora2APISyncService
 
 	stopCh chan struct{REDACTED
 	wg     sync.WaitGroup
@@ -61,6 +62,17 @@ func (s *TokenRefreshService) SetSoraAccountRepo(repo SoraAccountRepository) {
 	for _, refresher := range s.refreshers {
 		if openaiRefresher, ok := refresher.(*OpenAITokenRefresher); ok {
 			openaiRefresher.SetSoraAccountRepo(repo)
+	REDACTED
+REDACTED
+REDACTED
+
+// SetSoraSyncService 设置 Sora2API 同步服务
+// 需要在 Start() 之前调用
+func (s *TokenRefreshService) SetSoraSyncService(svc *Sora2APISyncService) {
+	s.soraSyncService = svc
+	for _, refresher := range s.refreshers {
+		if openaiRefresher, ok := refresher.(*OpenAITokenRefresher); ok {
+			openaiRefresher.SetSoraSyncService(svc)
 	REDACTED
 REDACTED
 REDACTED

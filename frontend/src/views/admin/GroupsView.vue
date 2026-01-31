@@ -404,6 +404,64 @@
           </div>
         </div>
 
+        <!-- Sora 按次计费配置 -->
+        <div v-if="createForm.platform === 'sora'" class="border-t pt-4">
+          <label class="block mb-2 font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.groups.soraPricing.title') REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t('admin.groups.soraPricing.description') REDACTEDREDACTED
+          </p>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image360') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_image_price_360"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.05"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image540') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_image_price_540"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.08"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.video') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_video_price_per_request"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.5"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.videoHd') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_video_price_per_request_hd"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.8"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- Claude Code 客户端限制（仅 anthropic 平台） -->
         <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -848,6 +906,64 @@
           </div>
         </div>
 
+        <!-- Sora 按次计费配置 -->
+        <div v-if="editForm.platform === 'sora'" class="border-t pt-4">
+          <label class="block mb-2 font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.groups.soraPricing.title') REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t('admin.groups.soraPricing.description') REDACTEDREDACTED
+          </p>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image360') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_image_price_360"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.05"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image540') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_image_price_540"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.08"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.video') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_video_price_per_request"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.5"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.videoHd') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_video_price_per_request_hd"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.8"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- Claude Code 客户端限制（仅 anthropic 平台） -->
         <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -1152,7 +1268,8 @@ const platformOptions = computed(() => [
   { value: 'anthropic', label: 'Anthropic' REDACTED,
   { value: 'openai', label: 'OpenAI' REDACTED,
   { value: 'gemini', label: 'Gemini' REDACTED,
-  { value: 'antigravity', label: 'Antigravity' REDACTED
+  { value: 'antigravity', label: 'Antigravity' REDACTED,
+  { value: 'sora', label: 'Sora' REDACTED
 ])
 
 const platformFilterOptions = computed(() => [
@@ -1160,7 +1277,8 @@ const platformFilterOptions = computed(() => [
   { value: 'anthropic', label: 'Anthropic' REDACTED,
   { value: 'openai', label: 'OpenAI' REDACTED,
   { value: 'gemini', label: 'Gemini' REDACTED,
-  { value: 'antigravity', label: 'Antigravity' REDACTED
+  { value: 'antigravity', label: 'Antigravity' REDACTED,
+  { value: 'sora', label: 'Sora' REDACTED
 ])
 
 const editStatusOptions = computed(() => [
@@ -1240,6 +1358,16 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // Sora 按次计费配置
+  sora_image_price_360: null as number | null,
+  sora_image_price_540: null as number | null,
+  sora_video_price_per_request: null as number | null,
+  sora_video_price_per_request_hd: null as number | null,
+  // Sora 按次计费配置
+  sora_image_price_360: null as number | null,
+  sora_image_price_540: null as number | null,
+  sora_video_price_per_request: null as number | null,
+  sora_video_price_per_request_hd: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -1411,6 +1539,11 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // Sora 按次计费配置
+  sora_image_price_360: null as number | null,
+  sora_image_price_540: null as number | null,
+  sora_video_price_per_request: null as number | null,
+  sora_video_price_per_request_hd: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -1495,6 +1628,10 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null
   createForm.image_price_2k = null
   createForm.image_price_4k = null
+  createForm.sora_image_price_360 = null
+  createForm.sora_image_price_540 = null
+  createForm.sora_video_price_per_request = null
+  createForm.sora_video_price_per_request_hd = null
   createForm.claude_code_only = false
   createForm.fallback_group_id = null
   createModelRoutingRules.value = []
@@ -1544,6 +1681,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k
   editForm.image_price_2k = group.image_price_2k
   editForm.image_price_4k = group.image_price_4k
+  editForm.sora_image_price_360 = group.sora_image_price_360
+  editForm.sora_image_price_540 = group.sora_image_price_540
+  editForm.sora_video_price_per_request = group.sora_video_price_per_request
+  editForm.sora_video_price_per_request_hd = group.sora_video_price_per_request_hd
   editForm.claude_code_only = group.claude_code_only || false
   editForm.fallback_group_id = group.fallback_group_id
   editForm.model_routing_enabled = group.model_routing_enabled || false

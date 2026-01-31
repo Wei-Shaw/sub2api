@@ -300,6 +300,27 @@ default:
   rate_multiplier: 1.0
 ```
 
+### Sora 媒体签名 URL（可选）
+
+当配置 `gateway.sora_media_signing_key` 且 `gateway.sora_media_signed_url_ttl_seconds > 0` 时，网关会将 Sora 输出的媒体地址改写为临时签名 URL（`/sora/media-signed/...`）。这样无需 API Key 即可在浏览器中直接访问，且具备过期控制与防篡改能力（签名包含 path + query）。
+
+```yaml
+gateway:
+  # /sora/media 是否强制要求 API Key（默认 false）
+  sora_media_require_api_key: false
+  # 媒体临时签名密钥（为空则禁用签名）
+  sora_media_signing_key: "your-signing-key"
+  # 临时签名 URL 有效期（秒）
+  sora_media_signed_url_ttl_seconds: 900
+```
+
+> 若未配置签名密钥，`/sora/media-signed` 将返回 503。  
+> 如需更严格的访问控制，可将 `sora_media_require_api_key` 设为 true，仅允许携带 API Key 的 `/sora/media` 访问。
+
+访问策略说明：
+- `/sora/media`：内部调用或客户端携带 API Key 才能下载
+- `/sora/media-signed`：外部可访问，但有签名 + 过期控制
+
 `config.yaml` 还支持以下安全相关配置：
 
 - `cors.allowed_origins` 配置 CORS 白名单

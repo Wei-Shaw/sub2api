@@ -86,6 +86,7 @@ type OpenAITokenRefresher struct {
 	openaiOAuthService  *OpenAIOAuthService
 	accountRepo         AccountRepository
 	soraAccountRepo     SoraAccountRepository // Sora 扩展表仓储，用于双表同步
+	soraSyncService     *Sora2APISyncService  // Sora2API 同步服务
 REDACTED
 
 // NewOpenAITokenRefresher 创建 OpenAI token刷新器
@@ -103,17 +104,22 @@ func (r *OpenAITokenRefresher) SetSoraAccountRepo(repo SoraAccountRepository) {
 	r.soraAccountRepo = repo
 REDACTED
 
+// SetSoraSyncService 设置 Sora2API 同步服务
+func (r *OpenAITokenRefresher) SetSoraSyncService(svc *Sora2APISyncService) {
+	r.soraSyncService = svc
+REDACTED
+
 // CanRefresh 检查是否能处理此账号
 // 只处理 openai 平台的 oauth 类型账号
 func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
-	return account.Platform == PlatformOpenAI &&
+	return (account.Platform == PlatformOpenAI || account.Platform == PlatformSora) &&
 		account.Type == AccountTypeOAuth
 REDACTED
 
 // NeedsRefresh 检查token是否需要刷新
 // 基于 expires_at 字段判断是否在刷新窗口内
 func (r *OpenAITokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
-	expiresAt := account.GetOpenAITokenExpiresAt()
+	expiresAt := account.GetCredentialAsTime("expires_at")
 	if expiresAt == nil {
 		return false
 REDACTED
@@ -143,6 +149,17 @@ REDACTED
 	// 异步同步关联的 Sora 账号（不阻塞主流程）
 	if r.accountRepo != nil {
 		go r.syncLinkedSoraAccounts(context.Background(), account.ID, newCredentials)
+REDACTED
+
+	// 如果是 Sora 平台账号，同步到 sora2api（不阻塞主流程）
+	if account.Platform == PlatformSora && r.soraSyncService != nil {
+		syncAccount := *account
+		syncAccount.Credentials = newCredentials
+		go func() {
+			if err := r.soraSyncService.SyncAccount(context.Background(), &syncAccount); err != nil {
+				log.Printf("[TokenSync] 同步 Sora2API 失败: account_id=%d err=%v", syncAccount.ID, err)
+		REDACTED
+	REDACTED()
 REDACTED
 
 	return newCredentials, nil
@@ -198,6 +215,13 @@ REDACTED
 				log.Printf("[TokenSync] 更新 sora_accounts 表失败: account_id=%d openai_account_id=%d err=%v",
 					soraAccount.ID, openaiAccountID, err)
 				// 继续处理其他账号，不中断
+		REDACTED
+	REDACTED
+
+		// 2.3 同步到 sora2api（如果配置）
+		if r.soraSyncService != nil {
+			if err := r.soraSyncService.SyncAccount(ctx, &soraAccount); err != nil {
+				log.Printf("[TokenSync] 同步 sora2api 失败: account_id=%d err=%v", soraAccount.ID, err)
 		REDACTED
 	REDACTED
 

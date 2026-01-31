@@ -40,6 +40,7 @@ REDACTED
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
 	soraAccountRepo SoraAccountRepository, // Sora 扩展表仓储，用于双表同步
+	soraSyncService *Sora2APISyncService,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
@@ -50,6 +51,9 @@ func ProvideTokenRefreshService(
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, cfg)
 	// 注入 Sora 账号扩展表仓储，用于 OpenAI Token 刷新时同步 sora_accounts 表
 	svc.SetSoraAccountRepo(soraAccountRepo)
+	if soraSyncService != nil {
+		svc.SetSoraSyncService(soraSyncService)
+REDACTED
 	svc.Start()
 	return svc
 REDACTED
@@ -224,6 +228,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingCacheService,
 	NewAdminService,
 	NewGatewayService,
+	NewSoraGatewayService,
 	NewOpenAIGatewayService,
 	NewOAuthService,
 	NewOpenAIOAuthService,
@@ -237,6 +242,8 @@ var ProviderSet = wire.NewSet(
 	NewAntigravityTokenProvider,
 	NewOpenAITokenProvider,
 	NewClaudeTokenProvider,
+	NewSora2APIService,
+	NewSora2APISyncService,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
 	NewAccountUsageService,

@@ -184,6 +184,10 @@ type ForwardResult struct {
 	// 图片生成计费字段（仅 gemini-3-pro-image 使用）
 	ImageCount int    // 生成的图片数量
 	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
+
+	// Sora 媒体字段
+	MediaType string // image / video / prompt
+	MediaURL  string // 生成后的媒体地址（可选）
 REDACTED
 
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
@@ -3461,7 +3465,22 @@ REDACTED
 	var cost *CostBreakdown
 
 	// 根据请求类型选择计费方式
-	if result.ImageCount > 0 {
+	if result.MediaType == "image" || result.MediaType == "video" || result.MediaType == "prompt" {
+		var soraConfig *SoraPriceConfig
+		if apiKey.Group != nil {
+			soraConfig = &SoraPriceConfig{
+				ImagePrice360:          apiKey.Group.SoraImagePrice360,
+				ImagePrice540:          apiKey.Group.SoraImagePrice540,
+				VideoPricePerRequest:   apiKey.Group.SoraVideoPricePerRequest,
+				VideoPricePerRequestHD: apiKey.Group.SoraVideoPricePerRequestHD,
+		REDACTED
+	REDACTED
+		if result.MediaType == "image" {
+			cost = s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
+	REDACTED else {
+			cost = s.billingService.CalculateSoraVideoCost(result.Model, soraConfig, multiplier)
+	REDACTED
+REDACTED else if result.ImageCount > 0 {
 		// 图片生成计费
 		var groupConfig *ImagePriceConfig
 		if apiKey.Group != nil {
@@ -3501,6 +3520,10 @@ REDACTED
 	if result.ImageSize != "" {
 		imageSize = &result.ImageSize
 REDACTED
+	var mediaType *string
+	if strings.TrimSpace(result.MediaType) != "" {
+		mediaType = &result.MediaType
+REDACTED
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := &UsageLog{
 		UserID:                user.ID,
@@ -3526,6 +3549,7 @@ REDACTED
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
 		ImageSize:             imageSize,
+		MediaType:             mediaType,
 		CreatedAt:             time.Now(),
 REDACTED
 

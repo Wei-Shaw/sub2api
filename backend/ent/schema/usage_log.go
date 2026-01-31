@@ -118,6 +118,11 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(10).
 			Optional().
 			Nillable(),
+		// 媒体类型字段（sora 使用）
+		field.String("media_type").
+			MaxLen(16).
+			Optional().
+			Nillable(),
 
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").

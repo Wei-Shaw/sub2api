@@ -42,7 +42,7 @@ REDACTED
 		// Antigravity 同样可能有两种缓存键
 		keysToDelete = append(keysToDelete, AntigravityTokenCacheKey(account))
 		keysToDelete = append(keysToDelete, "ag:"+accountIDKey)
-	case PlatformOpenAI:
+	case PlatformOpenAI, PlatformSora:
 		keysToDelete = append(keysToDelete, OpenAITokenCacheKey(account))
 	case PlatformAnthropic:
 		keysToDelete = append(keysToDelete, ClaudeTokenCacheKey(account))

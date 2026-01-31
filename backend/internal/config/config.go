@@ -58,6 +58,7 @@ type Config struct {
 	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
 	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
+	Sora2API     Sora2APIConfig             `mapstructure:"sora2api"`
 	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini       GeminiConfig               `mapstructure:"gemini"`
@@ -204,6 +205,24 @@ type ConcurrencyConfig struct {
 	PingInterval int `mapstructure:"ping_interval"`
 REDACTED
 
+// Sora2APIConfig Sora2API 服务配置
+type Sora2APIConfig struct {
+	// BaseURL Sora2API 服务地址（例如 http://localhost:8000）
+	BaseURL string `mapstructure:"base_url"`
+	// APIKey Sora2API OpenAI 兼容接口的 API Key
+	APIKey string `mapstructure:"api_key"`
+	// AdminUsername 管理员用户名（用于 token 同步）
+	AdminUsername string `mapstructure:"admin_username"`
+	// AdminPassword 管理员密码（用于 token 同步）
+	AdminPassword string `mapstructure:"admin_password"`
+	// AdminTokenTTLSeconds 管理员 Token 缓存时长（秒）
+	AdminTokenTTLSeconds int `mapstructure:"admin_token_ttl_seconds"`
+	// AdminTimeoutSeconds 管理接口请求超时（秒）
+	AdminTimeoutSeconds int `mapstructure:"admin_timeout_seconds"`
+	// TokenImportMode token 导入模式：at/offline
+	TokenImportMode string `mapstructure:"token_import_mode"`
+REDACTED
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -258,6 +277,24 @@ type GatewayConfig struct {
 	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
+	// Sora 专用配置
+	// SoraMaxBodySize: Sora 请求体最大字节数（0 表示使用 gateway.max_body_size）
+	SoraMaxBodySize int64 `mapstructure:"sora_max_body_size"`
+	// SoraStreamTimeoutSeconds: Sora 流式请求总超时（秒，0 表示不限制）
+	SoraStreamTimeoutSeconds int `mapstructure:"sora_stream_timeout_seconds"`
+	// SoraRequestTimeoutSeconds: Sora 非流式请求超时（秒，0 表示不限制）
+	SoraRequestTimeoutSeconds int `mapstructure:"sora_request_timeout_seconds"`
+	// SoraStreamMode: stream 强制策略（force/error）
+	SoraStreamMode string `mapstructure:"sora_stream_mode"`
+	// SoraModelFilters: 模型列表过滤配置
+	SoraModelFilters SoraModelFiltersConfig `mapstructure:"sora_model_filters"`
+	// SoraMediaRequireAPIKey: 是否要求访问 /sora/media 携带 API Key
+	SoraMediaRequireAPIKey bool `mapstructure:"sora_media_require_api_key"`
+	// SoraMediaSigningKey: /sora/media 临时签名密钥（空表示禁用签名）
+	SoraMediaSigningKey string `mapstructure:"sora_media_signing_key"`
+	// SoraMediaSignedURLTTLSeconds: 临时签名 URL 有效期（秒，<=0 表示禁用）
+	SoraMediaSignedURLTTLSeconds int `mapstructure:"sora_media_signed_url_ttl_seconds"`
+
 	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
 	MaxAccountSwitches int `mapstructure:"max_account_switches"`
 	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
@@ -271,6 +308,12 @@ type GatewayConfig struct {
 
 	// TLSFingerprint: TLS指纹伪装配置
 	TLSFingerprint TLSFingerprintConfig `mapstructure:"tls_fingerprint"`
+REDACTED
+
+// SoraModelFiltersConfig Sora 模型过滤配置
+type SoraModelFiltersConfig struct {
+	// HidePromptEnhance 是否隐藏 prompt-enhance 模型
+	HidePromptEnhance bool `mapstructure:"hide_prompt_enhance"`
 REDACTED
 
 // TLSFingerprintConfig TLS指纹伪装配置
@@ -823,6 +866,13 @@ REDACTED)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
+	viper.SetDefault("gateway.sora_max_body_size", int64(256*1024*1024))
+	viper.SetDefault("gateway.sora_stream_timeout_seconds", 900)
+	viper.SetDefault("gateway.sora_request_timeout_seconds", 180)
+	viper.SetDefault("gateway.sora_stream_mode", "force")
+	viper.SetDefault("gateway.sora_model_filters.hide_prompt_enhance", true)
+	viper.SetDefault("gateway.sora_media_require_api_key", true)
+	viper.SetDefault("gateway.sora_media_signed_url_ttl_seconds", 900)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 240)           // 最大空闲连接总数（HTTP/2 场景默认）
@@ -869,6 +919,15 @@ REDACTED)
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
+
+	// Sora2API
+	viper.SetDefault("sora2api.base_url", "")
+	viper.SetDefault("sora2api.api_key", "")
+	viper.SetDefault("sora2api.admin_username", "")
+	viper.SetDefault("sora2api.admin_password", "")
+	viper.SetDefault("sora2api.admin_token_ttl_seconds", 900)
+	viper.SetDefault("sora2api.admin_timeout_seconds", 10)
+	viper.SetDefault("sora2api.token_import_mode", "at")
 REDACTED
 
 func (c *Config) Validate() error {
@@ -1085,6 +1144,25 @@ REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
 REDACTED
+	if c.Gateway.SoraMaxBodySize < 0 {
+		return fmt.Errorf("gateway.sora_max_body_size must be non-negative")
+REDACTED
+	if c.Gateway.SoraStreamTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.sora_stream_timeout_seconds must be non-negative")
+REDACTED
+	if c.Gateway.SoraRequestTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.sora_request_timeout_seconds must be non-negative")
+REDACTED
+	if c.Gateway.SoraMediaSignedURLTTLSeconds < 0 {
+		return fmt.Errorf("gateway.sora_media_signed_url_ttl_seconds must be non-negative")
+REDACTED
+	if mode := strings.TrimSpace(strings.ToLower(c.Gateway.SoraStreamMode)); mode != "" {
+		switch mode {
+		case "force", "error":
+		default:
+			return fmt.Errorf("gateway.sora_stream_mode must be one of: force/error")
+	REDACTED
+REDACTED
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
 		case ConnectionPoolIsolationProxy, ConnectionPoolIsolationAccount, ConnectionPoolIsolationAccountProxy:
@@ -1180,6 +1258,25 @@ REDACTED
 		c.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 &&
 		c.Gateway.Scheduling.OutboxLagRebuildSeconds < c.Gateway.Scheduling.OutboxLagWarnSeconds {
 		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_seconds must be >= outbox_lag_warn_seconds")
+REDACTED
+	if strings.TrimSpace(c.Sora2API.BaseURL) != "" {
+		if err := ValidateAbsoluteHTTPURL(c.Sora2API.BaseURL); err != nil {
+			return fmt.Errorf("sora2api.base_url invalid: %w", err)
+	REDACTED
+		warnIfInsecureURL("sora2api.base_url", c.Sora2API.BaseURL)
+REDACTED
+	if mode := strings.TrimSpace(strings.ToLower(c.Sora2API.TokenImportMode)); mode != "" {
+		switch mode {
+		case "at", "offline":
+		default:
+			return fmt.Errorf("sora2api.token_import_mode must be one of: at/offline")
+	REDACTED
+REDACTED
+	if c.Sora2API.AdminTokenTTLSeconds < 0 {
+		return fmt.Errorf("sora2api.admin_token_ttl_seconds must be non-negative")
+REDACTED
+	if c.Sora2API.AdminTimeoutSeconds < 0 {
+		return fmt.Errorf("sora2api.admin_timeout_seconds must be non-negative")
 REDACTED
 	if c.Ops.MetricsCollectorCache.TTL < 0 {
 		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")

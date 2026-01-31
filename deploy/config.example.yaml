@@ -116,6 +116,33 @@ gateway:
   # Max request body size in bytes (default: 100MB)
   # 请求体最大字节数（默认 100MB）
   max_body_size: 104857600
+  # Sora max request body size in bytes (0=use max_body_size)
+  # Sora 请求体最大字节数（0=使用 max_body_size）
+  sora_max_body_size: 268435456
+  # Sora stream timeout (seconds, 0=disable)
+  # Sora 流式请求总超时（秒，0=禁用）
+  sora_stream_timeout_seconds: 900
+  # Sora non-stream timeout (seconds, 0=disable)
+  # Sora 非流式请求超时（秒，0=禁用）
+  sora_request_timeout_seconds: 180
+  # Sora stream enforcement mode: force/error
+  # Sora stream 强制策略：force/error
+  sora_stream_mode: "force"
+  # Sora model filters
+  # Sora 模型过滤配置
+  sora_model_filters:
+    # Hide prompt-enhance models by default
+    # 默认隐藏 prompt-enhance 模型
+    hide_prompt_enhance: true
+  # Require API key for /sora/media proxy (default: false)
+  # /sora/media 是否强制要求 API Key（默认 true）
+  sora_media_require_api_key: true
+  # Sora media temporary signing key (empty disables signed URL)
+  # Sora 媒体临时签名密钥（为空则禁用签名）
+  sora_media_signing_key: ""
+  # Signed URL TTL seconds (<=0 disables)
+  # 临时签名 URL 有效期（秒，<=0 表示禁用）
+  sora_media_signed_url_ttl_seconds: 900
   # Connection pool isolation strategy:
   # 连接池隔离策略：
   # - proxy: Isolate by proxy, same proxy shares connection pool (suitable for few proxies, many accounts)
@@ -220,6 +247,31 @@ gateway:
     #     name: "Custom Profile 1"
     #   profile_2:
     #     name: "Custom Profile 2"
+
+# =============================================================================
+# Sora2API Configuration
+# Sora2API 配置
+# =============================================================================
+sora2api:
+  # Sora2API base URL
+  # Sora2API 服务地址
+  base_url: "http://127.0.0.1:8000"
+  # Sora2API API Key (for /v1/chat/completions and /v1/models)
+  # Sora2API API Key（用于生成/模型列表）
+  api_key: ""
+  # Admin username/password (for token sync)
+  # 管理口用户名/密码（用于 token 同步）
+  admin_username: "admin"
+  admin_password: "admin"
+  # Admin token cache ttl (seconds)
+  # 管理口 token 缓存时长（秒）
+  admin_token_ttl_seconds: 900
+  # Admin request timeout (seconds)
+  # 管理口请求超时（秒）
+  admin_timeout_seconds: 10
+  # Token import mode: at/offline
+  # Token 导入模式：at/offline
+  token_import_mode: "at"
     #     cipher_suites: [4866, 4867, 4865, 49199, 49195, 49200, 49196]
     #     curves: [29, 23, 24]
     #     point_formats: [0]

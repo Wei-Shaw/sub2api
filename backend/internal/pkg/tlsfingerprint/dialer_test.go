@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -38,9 +39,7 @@ REDACTED
 
 // TestDialerBasicConnection tests that the dialer can establish TLS connections.
 func TestDialerBasicConnection(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping network test in short mode")
-REDACTED
+	skipNetworkTest(t)
 
 	// Create a dialer with default profile
 	profile := &Profile{
@@ -74,10 +73,7 @@ REDACTED
 // Expected JA3 hash: 1a28e69016765d92e3b381168d68922c (Claude CLI / Node.js 20.x)
 // Expected JA4: t13d5911h1_a33745022dd6_1f22a2ca17c4 (d=domain) or t13i5911h1_... (i=IP)
 func TestJA3Fingerprint(t *testing.T) {
-	// Skip if network is unavailable or if running in short mode
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-REDACTED
+	skipNetworkTest(t)
 
 	profile := &Profile{
 		Name:         "Claude CLI Test",
@@ -175,6 +171,15 @@ REDACTED
 		t.Logf("✓ JA3 contains expected extension list: %s", expectedExtensions)
 REDACTED else {
 		t.Logf("Warning: JA3 extension list may differ")
+REDACTED
+REDACTED
+
+func skipNetworkTest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("跳过网络测试（short 模式）")
+REDACTED
+	if os.Getenv("TLSFINGERPRINT_NETWORK_TESTS") != "1" {
+		t.Skip("跳过网络测试（需要设置 TLSFINGERPRINT_NETWORK_TESTS=1）")
 REDACTED
 REDACTED
 
@@ -317,9 +322,7 @@ REDACTED
 // TestAllProfiles tests multiple TLS fingerprint profiles against tls.peet.ws.
 // Run with: go test -v -run TestAllProfiles ./internal/pkg/tlsfingerprint/...
 func TestAllProfiles(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-REDACTED
+	skipNetworkTest(t)
 
 	// Define all profiles to test with their expected fingerprints
 	// These profiles are from config.yaml gateway.tls_fingerprint.profiles
