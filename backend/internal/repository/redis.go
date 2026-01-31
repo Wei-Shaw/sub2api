@@ -40,8 +40,8 @@ REDACTED
 
 	if cfg.Redis.EnableTLS {
 		opts.TLSConfig = &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			ServerName:         cfg.Redis.Host,
+			MinVersion: tls.VersionTLS12,
+			ServerName: cfg.Redis.Host,
 	REDACTED
 REDACTED
 
