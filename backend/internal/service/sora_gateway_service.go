@@ -23,6 +23,8 @@ var soraSSEDataRe = regexp.MustCompile(`^data:\s*`)
 var soraImageMarkdownRe = regexp.MustCompile(`!\[[^\]]*\]\(([^)]+)\)`)
 var soraVideoHTMLRe = regexp.MustCompile(`(?i)<video[^>]+src=['"]([^'"]+)['"]`)
 
+const soraRewriteBufferLimit = 2048
+
 var soraImageSizeMap = map[string]string{
 	"gpt-image":           "360",
 	"gpt-image-landscape": "540",
@@ -30,7 +32,6 @@ var soraImageSizeMap = map[string]string{
 REDACTED
 
 type soraStreamingResult struct {
-	content      string
 	mediaType    string
 	mediaURLs    []string
 	imageCount   int
@@ -307,6 +308,7 @@ REDACTED
 	contentBuilder := strings.Builder{REDACTED
 	var firstTokenMs *int
 	var upstreamError error
+	rewriteBuffer := ""
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -333,12 +335,29 @@ REDACTED
 		if soraSSEDataRe.MatchString(line) {
 			data := soraSSEDataRe.ReplaceAllString(line, "")
 			if data == "[DONE]" {
+				if rewriteBuffer != "" {
+					flushLine, flushContent, err := s.flushSoraRewriteBuffer(rewriteBuffer, originalModel)
+					if err != nil {
+						return nil, err
+				REDACTED
+					if flushLine != "" {
+						if flushContent != "" {
+							if _, err := contentBuilder.WriteString(flushContent); err != nil {
+								return nil, err
+						REDACTED
+					REDACTED
+						if err := sendLine(flushLine); err != nil {
+							return nil, err
+					REDACTED
+				REDACTED
+					rewriteBuffer = ""
+			REDACTED
 				if err := sendLine("data: [DONE]"); err != nil {
 					return nil, err
 			REDACTED
 				break
 		REDACTED
-			updatedLine, contentDelta, errEvent := s.processSoraSSEData(data, originalModel)
+			updatedLine, contentDelta, errEvent := s.processSoraSSEData(data, originalModel, &rewriteBuffer)
 			if errEvent != nil && upstreamError == nil {
 				upstreamError = errEvent
 		REDACTED
@@ -347,7 +366,9 @@ REDACTED
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 			REDACTED
-				contentBuilder.WriteString(contentDelta)
+				if _, err := contentBuilder.WriteString(contentDelta); err != nil {
+					return nil, err
+			REDACTED
 		REDACTED
 			if err := sendLine(updatedLine); err != nil {
 				return nil, err
@@ -417,7 +438,6 @@ REDACTED
 REDACTED
 
 	return &soraStreamingResult{
-		content:      content,
 		mediaType:    mediaType,
 		mediaURLs:    mediaURLs,
 		imageCount:   imageCount,
@@ -426,7 +446,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *SoraGatewayService) processSoraSSEData(data string, originalModel string) (string, string, error) {
+func (s *SoraGatewayService) processSoraSSEData(data string, originalModel string, rewriteBuffer *string) (string, string, error) {
 	if strings.TrimSpace(data) == "" {
 		return "data: ", "", nil
 REDACTED
@@ -448,7 +468,12 @@ REDACTED
 
 	contentDelta, updated := extractSoraContent(payload)
 	if updated {
-		rewritten := s.rewriteSoraContent(contentDelta)
+		var rewritten string
+		if rewriteBuffer != nil {
+			rewritten = s.rewriteSoraContentWithBuffer(contentDelta, rewriteBuffer)
+	REDACTED else {
+			rewritten = s.rewriteSoraContent(contentDelta)
+	REDACTED
 		if rewritten != contentDelta {
 			applySoraContent(payload, rewritten)
 			contentDelta = rewritten
@@ -504,6 +529,78 @@ REDACTED
 REDACTED
 REDACTED
 
+func (s *SoraGatewayService) rewriteSoraContentWithBuffer(contentDelta string, buffer *string) string {
+	if buffer == nil {
+		return s.rewriteSoraContent(contentDelta)
+REDACTED
+	if contentDelta == "" && *buffer == "" {
+		return ""
+REDACTED
+	combined := *buffer + contentDelta
+	rewritten := s.rewriteSoraContent(combined)
+	bufferStart := s.findSoraRewriteBufferStart(rewritten)
+	if bufferStart < 0 {
+		*buffer = ""
+		return rewritten
+REDACTED
+	if len(rewritten)-bufferStart > soraRewriteBufferLimit {
+		bufferStart = len(rewritten) - soraRewriteBufferLimit
+REDACTED
+	output := rewritten[:bufferStart]
+	*buffer = rewritten[bufferStart:]
+	return output
+REDACTED
+
+func (s *SoraGatewayService) findSoraRewriteBufferStart(content string) int {
+	minIndex := -1
+	start := 0
+	for {
+		idx := strings.Index(content[start:], "![")
+		if idx < 0 {
+			break
+	REDACTED
+		idx += start
+		if !hasSoraImageMatchAt(content, idx) {
+			if minIndex == -1 || idx < minIndex {
+				minIndex = idx
+		REDACTED
+	REDACTED
+		start = idx + 2
+REDACTED
+	lower := strings.ToLower(content)
+	start = 0
+	for {
+		idx := strings.Index(lower[start:], "<video")
+		if idx < 0 {
+			break
+	REDACTED
+		idx += start
+		if !hasSoraVideoMatchAt(content, idx) {
+			if minIndex == -1 || idx < minIndex {
+				minIndex = idx
+		REDACTED
+	REDACTED
+		start = idx + len("<video")
+REDACTED
+	return minIndex
+REDACTED
+
+func hasSoraImageMatchAt(content string, idx int) bool {
+	if idx < 0 || idx >= len(content) {
+		return false
+REDACTED
+	loc := soraImageMarkdownRe.FindStringIndex(content[idx:])
+	return loc != nil && loc[0] == 0
+REDACTED
+
+func hasSoraVideoMatchAt(content string, idx int) bool {
+	if idx < 0 || idx >= len(content) {
+		return false
+REDACTED
+	loc := soraVideoHTMLRe.FindStringIndex(content[idx:])
+	return loc != nil && loc[0] == 0
+REDACTED
+
 func (s *SoraGatewayService) rewriteSoraContent(content string) string {
 	if content == "" {
 		return content
@@ -531,6 +628,31 @@ REDACTED)
 		return strings.Replace(match, sub[1], rewritten, 1)
 REDACTED)
 	return content
+REDACTED
+
+func (s *SoraGatewayService) flushSoraRewriteBuffer(buffer string, originalModel string) (string, string, error) {
+	if buffer == "" {
+		return "", "", nil
+REDACTED
+	rewritten := s.rewriteSoraContent(buffer)
+	payload := map[string]any{
+		"choices": []any{
+			map[string]any{
+				"delta": map[string]any{
+					"content": rewritten,
+			REDACTED,
+				"index": 0,
+		REDACTED,
+	REDACTED,
+REDACTED
+	if originalModel != "" {
+		payload["model"] = originalModel
+REDACTED
+	updatedData, err := json.Marshal(payload)
+	if err != nil {
+		return "", "", err
+REDACTED
+	return "data: " + string(updatedData), rewritten, nil
 REDACTED
 
 func (s *SoraGatewayService) rewriteSoraURL(raw string) string {

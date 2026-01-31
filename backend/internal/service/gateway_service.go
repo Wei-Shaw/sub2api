@@ -3465,7 +3465,7 @@ REDACTED
 	var cost *CostBreakdown
 
 	// 根据请求类型选择计费方式
-	if result.MediaType == "image" || result.MediaType == "video" || result.MediaType == "prompt" {
+	if result.MediaType == "image" || result.MediaType == "video" {
 		var soraConfig *SoraPriceConfig
 		if apiKey.Group != nil {
 			soraConfig = &SoraPriceConfig{
@@ -3480,6 +3480,8 @@ REDACTED
 	REDACTED else {
 			cost = s.billingService.CalculateSoraVideoCost(result.Model, soraConfig, multiplier)
 	REDACTED
+REDACTED else if result.MediaType == "prompt" {
+		cost = &CostBreakdown{REDACTED
 REDACTED else if result.ImageCount > 0 {
 		// 图片生成计费
 		var groupConfig *ImagePriceConfig

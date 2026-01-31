@@ -62,9 +62,9 @@ type Group struct {
 	ImagePrice4K *float64 `json:"image_price_4k"`
 
 	// Sora 按次计费配置
-	SoraImagePrice360         *float64 `json:"sora_image_price_360"`
-	SoraImagePrice540         *float64 `json:"sora_image_price_540"`
-	SoraVideoPricePerRequest  *float64 `json:"sora_video_price_per_request"`
+	SoraImagePrice360          *float64 `json:"sora_image_price_360"`
+	SoraImagePrice540          *float64 `json:"sora_image_price_540"`
+	SoraVideoPricePerRequest   *float64 `json:"sora_video_price_per_request"`
 	SoraVideoPricePerRequestHD *float64 `json:"sora_video_price_per_request_hd"`
 
 	// Claude Code 客户端限制

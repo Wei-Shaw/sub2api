@@ -1565,7 +1565,7 @@ REDACTED
 // Uses PostgreSQL JSONB @> operator for efficient queries (requires GIN index).
 //
 // Use case: Finding Sora accounts linked via linked_openai_account_id.
-func (r *accountRepository) FindByExtraField(ctx context.Context, key string, value interface{REDACTED) ([]service.Account, error) {
+func (r *accountRepository) FindByExtraField(ctx context.Context, key string, value any) ([]service.Account, error) {
 	accounts, err := r.client.Account.Query().
 		Where(
 			dbaccount.PlatformEQ("sora"), // 限定平台为 sora

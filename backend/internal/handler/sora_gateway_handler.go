@@ -33,6 +33,7 @@ type SoraGatewayHandler struct {
 	streamMode          string
 	sora2apiBaseURL     string
 	soraMediaSigningKey string
+	mediaClient         *http.Client
 REDACTED
 
 // NewSoraGatewayHandler creates a new SoraGatewayHandler
@@ -61,6 +62,10 @@ REDACTED
 	if cfg != nil {
 		baseURL = strings.TrimRight(strings.TrimSpace(cfg.Sora2API.BaseURL), "/")
 REDACTED
+	mediaTimeout := 180 * time.Second
+	if cfg != nil && cfg.Gateway.SoraRequestTimeoutSeconds > 0 {
+		mediaTimeout = time.Duration(cfg.Gateway.SoraRequestTimeoutSeconds) * time.Second
+REDACTED
 	return &SoraGatewayHandler{
 		gatewayService:      gatewayService,
 		soraGatewayService:  soraGatewayService,
@@ -70,6 +75,7 @@ REDACTED
 		streamMode:          strings.ToLower(streamMode),
 		sora2apiBaseURL:     baseURL,
 		soraMediaSigningKey: signKey,
+		mediaClient:         &http.Client{Timeout: mediaTimeoutREDACTED,
 REDACTED
 REDACTED
 
@@ -457,7 +463,11 @@ REDACTED
 	REDACTED
 REDACTED
 
-	resp, err := http.DefaultClient.Do(req)
+	client := h.mediaClient
+	if client == nil {
+		client = http.DefaultClient
+REDACTED
+	resp, err := client.Do(req)
 	if err != nil {
 		c.Status(http.StatusBadGateway)
 		return

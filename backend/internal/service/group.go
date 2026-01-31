@@ -27,9 +27,9 @@ type Group struct {
 	ImagePrice4K *float64
 
 	// Sora 按次计费配置（阶段 1）
-	SoraImagePrice360         *float64
-	SoraImagePrice540         *float64
-	SoraVideoPricePerRequest  *float64
+	SoraImagePrice360          *float64
+	SoraImagePrice540          *float64
+	SoraVideoPricePerRequest   *float64
 	SoraVideoPricePerRequestHD *float64
 
 	// Claude Code 客户端限制
