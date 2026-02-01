@@ -269,6 +269,12 @@ sora:
     # Max poll attempts
     # 最大轮询次数
     max_poll_attempts: 600
+    # Recent task query limit (image)
+    # 最近任务查询数量（图片轮询）
+    recent_task_limit: 50
+    # Recent task query max limit (fallback)
+    # 最近任务查询最大数量（回退）
+    recent_task_limit_max: 200
     # Enable debug logs for Sora upstream requests
     # 启用 Sora 直连调试日志
     debug: false
@@ -294,6 +300,12 @@ sora:
     # Max concurrent downloads
     # 并发下载上限
     max_concurrent_downloads: 4
+    # Download timeout (seconds)
+    # 下载超时（秒）
+    download_timeout_seconds: 120
+    # Max download bytes
+    # 最大下载字节数
+    max_download_bytes: 209715200
     # Enable debug logs for media storage
     # 启用媒体存储调试日志
     debug: false

@@ -218,6 +218,8 @@ type SoraClientConfig struct {
 	MaxRetries            int               `mapstructure:"max_retries"`
 	PollIntervalSeconds   int               `mapstructure:"poll_interval_seconds"`
 	MaxPollAttempts       int               `mapstructure:"max_poll_attempts"`
+	RecentTaskLimit       int               `mapstructure:"recent_task_limit"`
+	RecentTaskLimitMax    int               `mapstructure:"recent_task_limit_max"`
 	Debug                 bool              `mapstructure:"debug"`
 	Headers               map[string]string `mapstructure:"headers"`
 	UserAgent             string            `mapstructure:"user_agent"`
@@ -230,6 +232,8 @@ type SoraStorageConfig struct {
 	LocalPath              string                   `mapstructure:"local_path"`
 	FallbackToUpstream     bool                     `mapstructure:"fallback_to_upstream"`
 	MaxConcurrentDownloads int                      `mapstructure:"max_concurrent_downloads"`
+	DownloadTimeoutSeconds int                      `mapstructure:"download_timeout_seconds"`
+	MaxDownloadBytes       int64                    `mapstructure:"max_download_bytes"`
 	Debug                  bool                     `mapstructure:"debug"`
 	Cleanup                SoraStorageCleanupConfig `mapstructure:"cleanup"`
 REDACTED
@@ -929,6 +933,8 @@ REDACTED)
 	viper.SetDefault("sora.client.max_retries", 3)
 	viper.SetDefault("sora.client.poll_interval_seconds", 2)
 	viper.SetDefault("sora.client.max_poll_attempts", 600)
+	viper.SetDefault("sora.client.recent_task_limit", 50)
+	viper.SetDefault("sora.client.recent_task_limit_max", 200)
 	viper.SetDefault("sora.client.debug", false)
 	viper.SetDefault("sora.client.headers", map[string]string{REDACTED)
 	viper.SetDefault("sora.client.user_agent", "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)")
@@ -938,6 +944,8 @@ REDACTED)
 	viper.SetDefault("sora.storage.local_path", "")
 	viper.SetDefault("sora.storage.fallback_to_upstream", true)
 	viper.SetDefault("sora.storage.max_concurrent_downloads", 4)
+	viper.SetDefault("sora.storage.download_timeout_seconds", 120)
+	viper.SetDefault("sora.storage.max_download_bytes", int64(200<<20))
 	viper.SetDefault("sora.storage.debug", false)
 	viper.SetDefault("sora.storage.cleanup.enabled", true)
 	viper.SetDefault("sora.storage.cleanup.retention_days", 7)
@@ -1205,8 +1213,24 @@ REDACTED
 	if c.Sora.Client.MaxPollAttempts < 0 {
 		return fmt.Errorf("sora.client.max_poll_attempts must be non-negative")
 REDACTED
+	if c.Sora.Client.RecentTaskLimit < 0 {
+		return fmt.Errorf("sora.client.recent_task_limit must be non-negative")
+REDACTED
+	if c.Sora.Client.RecentTaskLimitMax < 0 {
+		return fmt.Errorf("sora.client.recent_task_limit_max must be non-negative")
+REDACTED
+	if c.Sora.Client.RecentTaskLimitMax > 0 && c.Sora.Client.RecentTaskLimit > 0 &&
+		c.Sora.Client.RecentTaskLimitMax < c.Sora.Client.RecentTaskLimit {
+		c.Sora.Client.RecentTaskLimitMax = c.Sora.Client.RecentTaskLimit
+REDACTED
 	if c.Sora.Storage.MaxConcurrentDownloads < 0 {
 		return fmt.Errorf("sora.storage.max_concurrent_downloads must be non-negative")
+REDACTED
+	if c.Sora.Storage.DownloadTimeoutSeconds < 0 {
+		return fmt.Errorf("sora.storage.download_timeout_seconds must be non-negative")
+REDACTED
+	if c.Sora.Storage.MaxDownloadBytes < 0 {
+		return fmt.Errorf("sora.storage.max_download_bytes must be non-negative")
 REDACTED
 	if c.Sora.Storage.Cleanup.Enabled {
 		if c.Sora.Storage.Cleanup.RetentionDays <= 0 {

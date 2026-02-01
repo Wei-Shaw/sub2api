@@ -67,3 +67,27 @@ REDACTED
 REDACTED
 	require.Equal(t, []string{urlREDACTED, urls)
 REDACTED
+
+func TestSoraMediaStorage_MaxDownloadBytes(t *testing.T) {
+	tmpDir := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("too-large"))
+REDACTED))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Storage: config.SoraStorageConfig{
+				Type:             "local",
+				LocalPath:        tmpDir,
+				MaxDownloadBytes: 1,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	storage := NewSoraMediaStorage(cfg)
+	_, err := storage.StoreFromURLs(context.Background(), "image", []string{server.URL + "/img.png"REDACTED)
+REDACTED
+REDACTED

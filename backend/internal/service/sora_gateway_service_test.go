@@ -97,3 +97,16 @@ REDACTED
 	require.Contains(t, url, "expires=")
 	require.Contains(t, url, "sig=")
 REDACTED
+
+func TestDecodeSoraImageInput_BlockPrivateURL(t *testing.T) {
+	_, _, err := decodeSoraImageInput(context.Background(), "http://127.0.0.1/internal.png")
+REDACTED
+REDACTED
+
+func TestDecodeSoraImageInput_DataURL(t *testing.T) {
+	encoded := "data:image/png;base64,aGVsbG8="
+	data, filename, err := decodeSoraImageInput(context.Background(), encoded)
+REDACTED
+	require.NotEmpty(t, data)
+	require.Contains(t, filename, ".png")
+REDACTED

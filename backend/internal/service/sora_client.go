@@ -359,18 +359,43 @@ REDACTED
 REDACTED
 
 func (c *SoraDirectClient) GetImageTask(ctx context.Context, account *Account, taskID string) (*SoraImageTaskStatus, error) {
-	token, err := c.getAccessToken(ctx, account)
+	status, found, err := c.fetchRecentImageTask(ctx, account, taskID, c.recentTaskLimit())
 	if err != nil {
 		return nil, err
 REDACTED
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
-	respBody, _, err := c.doRequest(ctx, account, http.MethodGet, c.buildURL("/v2/recent_tasks?limit=20"), headers, nil, false)
+	if found {
+		return status, nil
+REDACTED
+	maxLimit := c.recentTaskLimitMax()
+	if maxLimit > 0 && maxLimit != c.recentTaskLimit() {
+		status, found, err = c.fetchRecentImageTask(ctx, account, taskID, maxLimit)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if found {
+			return status, nil
+	REDACTED
+REDACTED
+	return &SoraImageTaskStatus{ID: taskID, Status: "processing"REDACTED, nil
+REDACTED
+
+func (c *SoraDirectClient) fetchRecentImageTask(ctx context.Context, account *Account, taskID string, limit int) (*SoraImageTaskStatus, bool, error) {
+	token, err := c.getAccessToken(ctx, account)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+REDACTED
+	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	if limit <= 0 {
+		limit = 20
+REDACTED
+	endpoint := fmt.Sprintf("/v2/recent_tasks?limit=%d", limit)
+	respBody, _, err := c.doRequest(ctx, account, http.MethodGet, c.buildURL(endpoint), headers, nil, false)
+	if err != nil {
+		return nil, false, err
 REDACTED
 	var resp map[string]any
 	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, err
+		return nil, false, err
 REDACTED
 	taskResponses, _ := resp["task_responses"].([]any)
 	for _, item := range taskResponses {
@@ -401,10 +426,30 @@ REDACTED
 				Status:      status,
 				ProgressPct: progress,
 				URLs:        urls,
-		REDACTED, nil
+		REDACTED, true, nil
 	REDACTED
 REDACTED
-	return &SoraImageTaskStatus{ID: taskID, Status: "processing"REDACTED, nil
+	return &SoraImageTaskStatus{ID: taskID, Status: "processing"REDACTED, false, nil
+REDACTED
+
+func (c *SoraDirectClient) recentTaskLimit() int {
+	if c == nil || c.cfg == nil {
+		return 20
+REDACTED
+	if c.cfg.Sora.Client.RecentTaskLimit > 0 {
+		return c.cfg.Sora.Client.RecentTaskLimit
+REDACTED
+	return 20
+REDACTED
+
+func (c *SoraDirectClient) recentTaskLimitMax() int {
+	if c == nil || c.cfg == nil {
+		return 0
+REDACTED
+	if c.cfg.Sora.Client.RecentTaskLimitMax > 0 {
+		return c.cfg.Sora.Client.RecentTaskLimitMax
+REDACTED
+	return 0
 REDACTED
 
 func (c *SoraDirectClient) GetVideoTask(ctx context.Context, account *Account, taskID string) (*SoraVideoTaskStatus, error) {

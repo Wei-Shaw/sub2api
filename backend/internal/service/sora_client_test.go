@@ -52,3 +52,36 @@ REDACTED
 	require.Equal(t, "yes", headers.Get("X-Test"))
 	require.Empty(t, headers.Get("openai-sentinel-token"))
 REDACTED
+
+func TestSoraDirectClient_GetImageTaskFallbackLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit := r.URL.Query().Get("limit")
+		w.Header().Set("Content-Type", "application/json")
+		switch limit {
+		case "1":
+			_, _ = w.Write([]byte(`{"task_responses":[]REDACTED`))
+		case "2":
+			_, _ = w.Write([]byte(`{"task_responses":[{"id":"task-1","status":"completed","progress_pct":1,"generations":[{"url":"https://example.com/a.png"REDACTED]REDACTED]REDACTED`))
+		default:
+			_, _ = w.Write([]byte(`{"task_responses":[]REDACTED`))
+	REDACTED
+REDACTED))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL:            server.URL,
+				RecentTaskLimit:    1,
+				RecentTaskLimitMax: 2,
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, nil, nil)
+	account := &Account{Credentials: map[string]any{"access_token": "token"REDACTEDREDACTED
+
+	status, err := client.GetImageTask(context.Background(), account, "task-1")
+REDACTED
+	require.Equal(t, "completed", status.Status)
+	require.Equal(t, []string{"https://example.com/a.png"REDACTED, status.URLs)
+REDACTED

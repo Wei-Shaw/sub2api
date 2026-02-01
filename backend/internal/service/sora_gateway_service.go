@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -26,12 +27,38 @@ var soraImageMarkdownRe = regexp.MustCompile(`!\[[^\]]*\]\(([^)]+)\)`)
 var soraVideoHTMLRe = regexp.MustCompile(`(?i)<video[^>]+src=['"]([^'"]+)['"]`)
 
 const soraRewriteBufferLimit = 2048
+const soraImageInputMaxBytes = 20 << 20
+const soraImageInputMaxRedirects = 3
+const soraImageInputTimeout = 20 * time.Second
 
 var soraImageSizeMap = map[string]string{
 	"gpt-image":           "360",
 	"gpt-image-landscape": "540",
 	"gpt-image-portrait":  "540",
 REDACTED
+
+var soraBlockedHostnames = map[string]struct{REDACTED{
+	"localhost":                 {REDACTED,
+	"localhost.localdomain":     {REDACTED,
+	"metadata.google.internal":  {REDACTED,
+	"metadata.google.internal.": {REDACTED,
+REDACTED
+
+var soraBlockedCIDRs = mustParseCIDRs([]string{
+	"0.0.0.0/8",
+	"10.0.0.0/8",
+	"100.64.0.0/10",
+	"127.0.0.0/8",
+	"169.254.0.0/16",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"224.0.0.0/4",
+	"240.0.0.0/4",
+	"::/128",
+	"::1/128",
+	"fc00::/7",
+	"fe80::/10",
+REDACTED)
 
 type soraStreamingResult struct {
 	mediaType    string
@@ -1233,11 +1260,24 @@ REDACTED
 REDACTED
 
 func downloadSoraImageInput(ctx context.Context, rawURL string) ([]byte, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	parsed, err := validateSoraImageURL(rawURL)
 	if err != nil {
 		return nil, "", err
 REDACTED
-	resp, err := http.DefaultClient.Do(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, "", err
+REDACTED
+	client := &http.Client{
+		Timeout: soraImageInputTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= soraImageInputMaxRedirects {
+				return errors.New("too many redirects")
+		REDACTED
+			return validateSoraImageURLValue(req.URL)
+	REDACTED,
+REDACTED
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
 REDACTED
@@ -1245,14 +1285,88 @@ REDACTED
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("download image failed: %d", resp.StatusCode)
 REDACTED
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, soraImageInputMaxBytes))
 	if err != nil {
 		return nil, "", err
 REDACTED
-	ext := fileExtFromURL(rawURL)
+	ext := fileExtFromURL(parsed.String())
 	if ext == "" {
 		ext = fileExtFromContentType(resp.Header.Get("Content-Type"))
 REDACTED
 	filename := "image" + ext
 	return data, filename, nil
+REDACTED
+
+func validateSoraImageURL(raw string) (*url.URL, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, errors.New("empty image url")
+REDACTED
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image url: %w", err)
+REDACTED
+	if err := validateSoraImageURLValue(parsed); err != nil {
+		return nil, err
+REDACTED
+	return parsed, nil
+REDACTED
+
+func validateSoraImageURLValue(parsed *url.URL) error {
+	if parsed == nil {
+		return errors.New("invalid image url")
+REDACTED
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return errors.New("only http/https image url is allowed")
+REDACTED
+	if parsed.User != nil {
+		return errors.New("image url cannot contain userinfo")
+REDACTED
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return errors.New("image url missing host")
+REDACTED
+	if _, blocked := soraBlockedHostnames[host]; blocked {
+		return errors.New("image url is not allowed")
+REDACTED
+	if ip := net.ParseIP(host); ip != nil {
+		if isSoraBlockedIP(ip) {
+			return errors.New("image url is not allowed")
+	REDACTED
+		return nil
+REDACTED
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("resolve image url failed: %w", err)
+REDACTED
+	for _, ip := range ips {
+		if isSoraBlockedIP(ip) {
+			return errors.New("image url is not allowed")
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func isSoraBlockedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+REDACTED
+	for _, cidr := range soraBlockedCIDRs {
+		if cidr.Contains(ip) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func mustParseCIDRs(values []string) []*net.IPNet {
+	out := make([]*net.IPNet, 0, len(values))
+	for _, val := range values {
+		_, cidr, err := net.ParseCIDR(val)
+		if err != nil {
+			continue
+	REDACTED
+		out = append(out, cidr)
+REDACTED
+	return out
 REDACTED
