@@ -105,31 +105,3 @@ REDACTED
 	require.ElementsMatch(t, []int64{2REDACTED, result.FailedIDs)
 	require.Len(t, result.Results, 3)
 REDACTED
-
-// TestAdminService_BulkUpdateAccounts_SoraSyncWithoutGroupIDs 验证无分组更新时仍会触发 Sora 同步。
-func TestAdminService_BulkUpdateAccounts_SoraSyncWithoutGroupIDs(t *testing.T) {
-	repo := &accountRepoStubForBulkUpdate{
-		getByIDsAccounts: []*Account{
-			{ID: 1, Platform: PlatformSoraREDACTED,
-	REDACTED,
-		getByIDAccounts: map[int64]*Account{
-			1: {ID: 1, Platform: PlatformSoraREDACTED,
-	REDACTED,
-REDACTED
-	svc := &adminServiceImpl{
-		accountRepo:     repo,
-		soraSyncService: &Sora2APISyncService{REDACTED,
-REDACTED
-
-	schedulable := true
-	input := &BulkUpdateAccountsInput{
-		AccountIDs:  []int64{1REDACTED,
-		Schedulable: &schedulable,
-REDACTED
-
-	result, err := svc.BulkUpdateAccounts(context.Background(), input)
-REDACTED
-	require.Equal(t, 1, result.Success)
-	require.True(t, repo.getByIDsCalled)
-	require.ElementsMatch(t, []int64{1REDACTED, repo.getByIDCalled)
-REDACTED

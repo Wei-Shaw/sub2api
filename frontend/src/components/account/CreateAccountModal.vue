@@ -1501,9 +1501,9 @@
               </span>
             </div>
           </div>
-          <label class="switch">
-            <input type="checkbox" v-model="enableSoraOnOpenAIOAuth" />
-            <span class="slider"></span>
+          <label :class="['switch', { 'switch-active': enableSoraOnOpenAIOAuth REDACTED]">
+            <input type="checkbox" v-model="enableSoraOnOpenAIOAuth" class="sr-only" />
+            <span class="switch-thumb"></span>
           </label>
         </label>
       </div>

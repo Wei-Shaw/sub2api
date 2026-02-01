@@ -63,16 +63,6 @@ func (s *TokenRefreshService) SetSoraAccountRepo(repo SoraAccountRepository) {
 REDACTED
 REDACTED
 
-// SetSoraSyncService 设置 Sora2API 同步服务
-// 需要在 Start() 之前调用
-func (s *TokenRefreshService) SetSoraSyncService(svc *Sora2APISyncService) {
-	for _, refresher := range s.refreshers {
-		if openaiRefresher, ok := refresher.(*OpenAITokenRefresher); ok {
-			openaiRefresher.SetSoraSyncService(svc)
-	REDACTED
-REDACTED
-REDACTED
-
 // Start 启动后台刷新服务
 func (s *TokenRefreshService) Start() {
 	if !s.cfg.Enabled {

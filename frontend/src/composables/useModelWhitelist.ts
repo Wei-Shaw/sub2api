@@ -52,7 +52,7 @@ const geminiModels = [
   'gemini-3-pro-preview'
 ]
 
-// Sora (sora2api)
+// Sora
 const soraModels = [
   'gpt-image', 'gpt-image-landscape', 'gpt-image-portrait',
   'sora2-landscape-10s', 'sora2-portrait-10s',

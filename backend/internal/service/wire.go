@@ -40,7 +40,6 @@ REDACTED
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
 	soraAccountRepo SoraAccountRepository, // Sora 扩展表仓储，用于双表同步
-	soraSyncService *Sora2APISyncService,
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
@@ -51,7 +50,6 @@ func ProvideTokenRefreshService(
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, cfg)
 	// 注入 Sora 账号扩展表仓储，用于 OpenAI Token 刷新时同步 sora_accounts 表
 	svc.SetSoraAccountRepo(soraAccountRepo)
-	svc.SetSoraSyncService(soraSyncService)
 	svc.Start()
 	return svc
 REDACTED
@@ -187,6 +185,18 @@ func ProvideOpsCleanupService(
 	return svc
 REDACTED
 
+// ProvideSoraMediaStorage 初始化 Sora 媒体存储
+func ProvideSoraMediaStorage(cfg *config.Config) *SoraMediaStorage {
+	return NewSoraMediaStorage(cfg)
+REDACTED
+
+// ProvideSoraMediaCleanupService 创建并启动 Sora 媒体清理服务
+func ProvideSoraMediaCleanupService(storage *SoraMediaStorage, cfg *config.Config) *SoraMediaCleanupService {
+	svc := NewSoraMediaCleanupService(storage, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -226,6 +236,10 @@ var ProviderSet = wire.NewSet(
 	NewBillingCacheService,
 	NewAdminService,
 	NewGatewayService,
+	ProvideSoraMediaStorage,
+	ProvideSoraMediaCleanupService,
+	NewSoraDirectClient,
+	wire.Bind(new(SoraClient), new(*SoraDirectClient)),
 	NewSoraGatewayService,
 	NewOpenAIGatewayService,
 	NewOAuthService,

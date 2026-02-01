@@ -10,7 +10,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -31,9 +33,8 @@ type SoraGatewayHandler struct {
 	concurrencyHelper   *ConcurrencyHelper
 	maxAccountSwitches  int
 	streamMode          string
-	sora2apiBaseURL     string
 	soraMediaSigningKey string
-	mediaClient         *http.Client
+	soraMediaRoot       string
 REDACTED
 
 // NewSoraGatewayHandler creates a new SoraGatewayHandler
@@ -48,6 +49,7 @@ func NewSoraGatewayHandler(
 	maxAccountSwitches := 3
 	streamMode := "force"
 	signKey := ""
+	mediaRoot := "/app/data/sora"
 	if cfg != nil {
 		pingInterval = time.Duration(cfg.Concurrency.PingInterval) * time.Second
 		if cfg.Gateway.MaxAccountSwitches > 0 {
@@ -57,14 +59,9 @@ func NewSoraGatewayHandler(
 			streamMode = mode
 	REDACTED
 		signKey = strings.TrimSpace(cfg.Gateway.SoraMediaSigningKey)
-REDACTED
-	baseURL := ""
-	if cfg != nil {
-		baseURL = strings.TrimRight(strings.TrimSpace(cfg.Sora2API.BaseURL), "/")
-REDACTED
-	mediaTimeout := 180 * time.Second
-	if cfg != nil && cfg.Gateway.SoraRequestTimeoutSeconds > 0 {
-		mediaTimeout = time.Duration(cfg.Gateway.SoraRequestTimeoutSeconds) * time.Second
+		if root := strings.TrimSpace(cfg.Sora.Storage.LocalPath); root != "" {
+			mediaRoot = root
+	REDACTED
 REDACTED
 	return &SoraGatewayHandler{
 		gatewayService:      gatewayService,
@@ -73,9 +70,8 @@ REDACTED
 		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		maxAccountSwitches:  maxAccountSwitches,
 		streamMode:          strings.ToLower(streamMode),
-		sora2apiBaseURL:     baseURL,
 		soraMediaSigningKey: signKey,
-		mediaClient:         &http.Client{Timeout: mediaTimeoutREDACTED,
+		soraMediaRoot:       mediaRoot,
 REDACTED
 REDACTED
 
@@ -377,34 +373,24 @@ func (h *SoraGatewayHandler) errorResponse(c *gin.Context, status int, errType, 
 REDACTED)
 REDACTED
 
-// MediaProxy proxies /tmp or /static media files from sora2api
+// MediaProxy serves local Sora media files.
 func (h *SoraGatewayHandler) MediaProxy(c *gin.Context) {
 	h.proxySoraMedia(c, false)
 REDACTED
 
-// MediaProxySigned proxies /tmp or /static media files with signature verification
+// MediaProxySigned serves local Sora media files with signature verification.
 func (h *SoraGatewayHandler) MediaProxySigned(c *gin.Context) {
 	h.proxySoraMedia(c, true)
 REDACTED
 
 func (h *SoraGatewayHandler) proxySoraMedia(c *gin.Context, requireSignature bool) {
-	if h.sora2apiBaseURL == "" {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": gin.H{
-				"type":    "api_error",
-				"message": "sora2api 未配置",
-		REDACTED,
-	REDACTED)
-		return
-REDACTED
-
 	rawPath := c.Param("filepath")
 	if rawPath == "" {
 		c.Status(http.StatusNotFound)
 		return
 REDACTED
 	cleaned := path.Clean(rawPath)
-	if !strings.HasPrefix(cleaned, "/tmp/") && !strings.HasPrefix(cleaned, "/static/") {
+	if !strings.HasPrefix(cleaned, "/image/") && !strings.HasPrefix(cleaned, "/video/") {
 		c.Status(http.StatusNotFound)
 		return
 REDACTED
@@ -445,40 +431,25 @@ REDACTED
 			return
 	REDACTED
 REDACTED
-
-	targetURL := h.sora2apiBaseURL + cleaned
-	if rawQuery := query.Encode(); rawQuery != "" {
-		targetURL += "?" + rawQuery
-REDACTED
-
-	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, targetURL, nil)
-	if err != nil {
-		c.Status(http.StatusBadGateway)
+	if strings.TrimSpace(h.soraMediaRoot) == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": gin.H{
+				"type":    "api_error",
+				"message": "Sora 媒体目录未配置",
+		REDACTED,
+	REDACTED)
 		return
 REDACTED
-	copyHeaders := []string{"Range", "If-Range", "If-Modified-Since", "If-None-Match", "Accept", "User-Agent"REDACTED
-	for _, key := range copyHeaders {
-		if val := c.GetHeader(key); val != "" {
-			req.Header.Set(key, val)
-	REDACTED
-REDACTED
 
-	client := h.mediaClient
-	if client == nil {
-		client = http.DefaultClient
-REDACTED
-	resp, err := client.Do(req)
-	if err != nil {
-		c.Status(http.StatusBadGateway)
+	relative := strings.TrimPrefix(cleaned, "/")
+	localPath := filepath.Join(h.soraMediaRoot, filepath.FromSlash(relative))
+	if _, err := os.Stat(localPath); err != nil {
+		if os.IsNotExist(err) {
+			c.Status(http.StatusNotFound)
+			return
+	REDACTED
+		c.Status(http.StatusInternalServerError)
 		return
 REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
-
-	for _, key := range []string{"Content-Type", "Content-Length", "Accept-Ranges", "Content-Range", "Cache-Control", "Last-Modified", "ETag"REDACTED {
-		if val := resp.Header.Get(key); val != "" {
-			c.Header(key, val)
-	REDACTED
-REDACTED
-	c.Status(resp.StatusCode)
-	_, _ = io.Copy(c.Writer, resp.Body)
+	c.File(localPath)
 REDACTED

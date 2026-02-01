@@ -178,6 +178,10 @@ REDACTED{
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
+						"sora_image_price_360": null,
+						"sora_image_price_540": null,
+						"sora_video_price_per_request": null,
+						"sora_video_price_per_request_hd": null,
 						"claude_code_only": false,
 						"fallback_group_id": null,
 						"created_at": "2025-01-02T03:04:05Z",
@@ -394,6 +398,7 @@ REDACTED{
 							"first_token_ms": 50,
 							"image_count": 0,
 							"image_size": null,
+							"media_type": null,
 							"created_at": "2025-01-02T03:04:05Z",
 							"user_agent": null
 					REDACTED
@@ -884,6 +889,10 @@ func (s *stubAccountRepo) ExistsByID(ctx context.Context, id int64) (bool, error
 REDACTED
 
 func (s *stubAccountRepo) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*service.Account, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (s *stubAccountRepo) FindByExtraField(ctx context.Context, key string, value any) ([]service.Account, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 

@@ -58,7 +58,7 @@ type Config struct {
 	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
 	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
-	Sora2API     Sora2APIConfig             `mapstructure:"sora2api"`
+	Sora         SoraConfig                 `mapstructure:"sora"`
 	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini       GeminiConfig               `mapstructure:"gemini"`
@@ -205,22 +205,40 @@ type ConcurrencyConfig struct {
 	PingInterval int `mapstructure:"ping_interval"`
 REDACTED
 
-// Sora2APIConfig Sora2API 服务配置
-type Sora2APIConfig struct {
-	// BaseURL Sora2API 服务地址（例如 http://localhost:8000）
-	BaseURL string `mapstructure:"base_url"`
-	// APIKey Sora2API OpenAI 兼容接口的 API Key
-	APIKey string `mapstructure:"api_key"`
-	// AdminUsername 管理员用户名（用于 token 同步）
-	AdminUsername string `mapstructure:"admin_username"`
-	// AdminPassword 管理员密码（用于 token 同步）
-	AdminPassword string `mapstructure:"admin_password"`
-	// AdminTokenTTLSeconds 管理员 Token 缓存时长（秒）
-	AdminTokenTTLSeconds int `mapstructure:"admin_token_ttl_seconds"`
-	// AdminTimeoutSeconds 管理接口请求超时（秒）
-	AdminTimeoutSeconds int `mapstructure:"admin_timeout_seconds"`
-	// TokenImportMode token 导入模式：at/offline
-	TokenImportMode string `mapstructure:"token_import_mode"`
+// SoraConfig 直连 Sora 配置
+type SoraConfig struct {
+	Client  SoraClientConfig  `mapstructure:"client"`
+	Storage SoraStorageConfig `mapstructure:"storage"`
+REDACTED
+
+// SoraClientConfig 直连 Sora 客户端配置
+type SoraClientConfig struct {
+	BaseURL               string            `mapstructure:"base_url"`
+	TimeoutSeconds        int               `mapstructure:"timeout_seconds"`
+	MaxRetries            int               `mapstructure:"max_retries"`
+	PollIntervalSeconds   int               `mapstructure:"poll_interval_seconds"`
+	MaxPollAttempts       int               `mapstructure:"max_poll_attempts"`
+	Debug                 bool              `mapstructure:"debug"`
+	Headers               map[string]string `mapstructure:"headers"`
+	UserAgent             string            `mapstructure:"user_agent"`
+	DisableTLSFingerprint bool              `mapstructure:"disable_tls_fingerprint"`
+REDACTED
+
+// SoraStorageConfig 媒体存储配置
+type SoraStorageConfig struct {
+	Type                   string                   `mapstructure:"type"`
+	LocalPath              string                   `mapstructure:"local_path"`
+	FallbackToUpstream     bool                     `mapstructure:"fallback_to_upstream"`
+	MaxConcurrentDownloads int                      `mapstructure:"max_concurrent_downloads"`
+	Debug                  bool                     `mapstructure:"debug"`
+	Cleanup                SoraStorageCleanupConfig `mapstructure:"cleanup"`
+REDACTED
+
+// SoraStorageCleanupConfig 媒体清理配置
+type SoraStorageCleanupConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	Schedule      string `mapstructure:"schedule"`
+	RetentionDays int    `mapstructure:"retention_days"`
 REDACTED
 
 // GatewayConfig API网关相关配置
@@ -905,6 +923,26 @@ REDACTED)
 	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
+	// Sora 直连配置
+	viper.SetDefault("sora.client.base_url", "https://sora.chatgpt.com/backend")
+	viper.SetDefault("sora.client.timeout_seconds", 120)
+	viper.SetDefault("sora.client.max_retries", 3)
+	viper.SetDefault("sora.client.poll_interval_seconds", 2)
+	viper.SetDefault("sora.client.max_poll_attempts", 600)
+	viper.SetDefault("sora.client.debug", false)
+	viper.SetDefault("sora.client.headers", map[string]string{REDACTED)
+	viper.SetDefault("sora.client.user_agent", "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)")
+	viper.SetDefault("sora.client.disable_tls_fingerprint", false)
+
+	viper.SetDefault("sora.storage.type", "local")
+	viper.SetDefault("sora.storage.local_path", "")
+	viper.SetDefault("sora.storage.fallback_to_upstream", true)
+	viper.SetDefault("sora.storage.max_concurrent_downloads", 4)
+	viper.SetDefault("sora.storage.debug", false)
+	viper.SetDefault("sora.storage.cleanup.enabled", true)
+	viper.SetDefault("sora.storage.cleanup.retention_days", 7)
+	viper.SetDefault("sora.storage.cleanup.schedule", "0 3 * * *")
+
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
 	viper.SetDefault("token_refresh.check_interval_minutes", 5)        // 每5分钟检查一次
@@ -919,15 +957,6 @@ REDACTED)
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
-
-	// Sora2API
-	viper.SetDefault("sora2api.base_url", "")
-	viper.SetDefault("sora2api.api_key", "")
-	viper.SetDefault("sora2api.admin_username", "")
-	viper.SetDefault("sora2api.admin_password", "")
-	viper.SetDefault("sora2api.admin_token_ttl_seconds", 900)
-	viper.SetDefault("sora2api.admin_timeout_seconds", 10)
-	viper.SetDefault("sora2api.token_import_mode", "at")
 
 REDACTED
 
@@ -1164,6 +1193,36 @@ REDACTED
 			return fmt.Errorf("gateway.sora_stream_mode must be one of: force/error")
 	REDACTED
 REDACTED
+	if c.Sora.Client.TimeoutSeconds < 0 {
+		return fmt.Errorf("sora.client.timeout_seconds must be non-negative")
+REDACTED
+	if c.Sora.Client.MaxRetries < 0 {
+		return fmt.Errorf("sora.client.max_retries must be non-negative")
+REDACTED
+	if c.Sora.Client.PollIntervalSeconds < 0 {
+		return fmt.Errorf("sora.client.poll_interval_seconds must be non-negative")
+REDACTED
+	if c.Sora.Client.MaxPollAttempts < 0 {
+		return fmt.Errorf("sora.client.max_poll_attempts must be non-negative")
+REDACTED
+	if c.Sora.Storage.MaxConcurrentDownloads < 0 {
+		return fmt.Errorf("sora.storage.max_concurrent_downloads must be non-negative")
+REDACTED
+	if c.Sora.Storage.Cleanup.Enabled {
+		if c.Sora.Storage.Cleanup.RetentionDays <= 0 {
+			return fmt.Errorf("sora.storage.cleanup.retention_days must be positive")
+	REDACTED
+		if strings.TrimSpace(c.Sora.Storage.Cleanup.Schedule) == "" {
+			return fmt.Errorf("sora.storage.cleanup.schedule is required when cleanup is enabled")
+	REDACTED
+REDACTED else {
+		if c.Sora.Storage.Cleanup.RetentionDays < 0 {
+			return fmt.Errorf("sora.storage.cleanup.retention_days must be non-negative")
+	REDACTED
+REDACTED
+	if storageType := strings.TrimSpace(strings.ToLower(c.Sora.Storage.Type)); storageType != "" && storageType != "local" {
+		return fmt.Errorf("sora.storage.type must be 'local'")
+REDACTED
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
 		case ConnectionPoolIsolationProxy, ConnectionPoolIsolationAccount, ConnectionPoolIsolationAccountProxy:
@@ -1259,11 +1318,6 @@ REDACTED
 		c.Gateway.Scheduling.OutboxLagRebuildSeconds > 0 &&
 		c.Gateway.Scheduling.OutboxLagRebuildSeconds < c.Gateway.Scheduling.OutboxLagWarnSeconds {
 		return fmt.Errorf("gateway.scheduling.outbox_lag_rebuild_seconds must be >= outbox_lag_warn_seconds")
-REDACTED
-	if strings.TrimSpace(c.Sora2API.BaseURL) != "" {
-		if err := ValidateAbsoluteHTTPURL(c.Sora2API.BaseURL); err != nil {
-			return fmt.Errorf("sora2api.base_url invalid: %w", err)
-	REDACTED
 REDACTED
 	if c.Ops.MetricsCollectorCache.TTL < 0 {
 		return fmt.Errorf("ops.metrics_collector_cache.ttl must be non-negative")

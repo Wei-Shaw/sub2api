@@ -249,32 +249,64 @@ gateway:
     #     name: "Custom Profile 2"
 
 # =============================================================================
-# Sora2API Configuration
-# Sora2API 配置
+# Sora Direct Client Configuration
+# Sora 直连配置
 # =============================================================================
-sora2api:
-  # Sora2API base URL
-  # Sora2API 服务地址
-  base_url: "http://127.0.0.1:8000"
-  # Sora2API API Key (for /v1/chat/completions and /v1/models)
-  # Sora2API API Key（用于生成/模型列表）
-  api_key: ""
-  # Admin username/password (for token sync)
-  # 管理口用户名/密码（用于 token 同步）
-  admin_username: "admin"
-  admin_password: "admin"
-  # Admin token cache ttl (seconds)
-  # 管理口 token 缓存时长（秒）
-  admin_token_ttl_seconds: 900
-  # Admin request timeout (seconds)
-  # 管理口请求超时（秒）
-  admin_timeout_seconds: 10
-  # Token import mode: at/offline
-  # Token 导入模式：at/offline
-  token_import_mode: "at"
-    #     cipher_suites: [4866, 4867, 4865, 49199, 49195, 49200, 49196]
-    #     curves: [29, 23, 24]
-    #     point_formats: [0]
+sora:
+  client:
+    # Sora backend base URL
+    # Sora 上游 Base URL
+    base_url: "https://sora.chatgpt.com/backend"
+    # Request timeout (seconds)
+    # 请求超时（秒）
+    timeout_seconds: 120
+    # Max retries for upstream requests
+    # 上游请求最大重试次数
+    max_retries: 3
+    # Poll interval (seconds)
+    # 轮询间隔（秒）
+    poll_interval_seconds: 2
+    # Max poll attempts
+    # 最大轮询次数
+    max_poll_attempts: 600
+    # Enable debug logs for Sora upstream requests
+    # 启用 Sora 直连调试日志
+    debug: false
+    # Optional custom headers (key-value)
+    # 额外请求头（键值对）
+    headers: {REDACTED
+    # Default User-Agent for Sora requests
+    # Sora 默认 User-Agent
+    user_agent: "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)"
+    # Disable TLS fingerprint for Sora upstream
+    # 关闭 Sora 上游 TLS 指纹伪装
+    disable_tls_fingerprint: false
+  storage:
+    # Storage type (local only for now)
+    # 存储类型（首发仅支持 local）
+    type: "local"
+    # Local base path; empty uses /app/data/sora
+    # 本地存储基础路径；为空使用 /app/data/sora
+    local_path: ""
+    # Fallback to upstream URL when download fails
+    # 下载失败时回退到上游 URL
+    fallback_to_upstream: true
+    # Max concurrent downloads
+    # 并发下载上限
+    max_concurrent_downloads: 4
+    # Enable debug logs for media storage
+    # 启用媒体存储调试日志
+    debug: false
+    cleanup:
+      # Enable cleanup task
+      # 启用清理任务
+      enabled: true
+      # Retention days
+      # 保留天数
+      retention_days: 7
+      # Cron schedule
+      # Cron 调度表达式
+      schedule: "0 3 * * *"
 
 # =============================================================================
 # API Key Auth Cache Configuration

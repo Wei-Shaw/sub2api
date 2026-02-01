@@ -1363,11 +1363,6 @@ const createForm = reactive({
   sora_image_price_540: null as number | null,
   sora_video_price_per_request: null as number | null,
   sora_video_price_per_request_hd: null as number | null,
-  // Sora 按次计费配置
-  sora_image_price_360: null as number | null,
-  sora_image_price_540: null as number | null,
-  sora_video_price_per_request: null as number | null,
-  sora_video_price_per_request_hd: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
