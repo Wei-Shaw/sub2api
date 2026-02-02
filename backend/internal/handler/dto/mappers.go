@@ -321,7 +321,7 @@ REDACTED
 REDACTED
 
 func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
-	return RedeemCode{
+	out := RedeemCode{
 		ID:           rc.ID,
 		Code:         rc.Code,
 		Type:         rc.Type,
@@ -335,6 +335,14 @@ func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 		User:         UserFromServiceShallow(rc.User),
 		Group:        GroupFromServiceShallow(rc.Group),
 REDACTED
+
+	// For admin_balance/admin_concurrency types, include notes so users can see
+	// why they were charged or credited by admin
+	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency") && rc.Notes != "" {
+		out.Notes = &rc.Notes
+REDACTED
+
+	return out
 REDACTED
 
 // AccountSummaryFromService returns a minimal AccountSummary for usage log display.
