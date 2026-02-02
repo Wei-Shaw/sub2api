@@ -880,6 +880,14 @@ func (stubGroupRepo) DeleteAccountGroupsByGroupID(ctx context.Context, groupID i
 	return 0, errors.New("not implemented")
 REDACTED
 
+func (stubGroupRepo) BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error {
+	return errors.New("not implemented")
+REDACTED
+
+func (stubGroupRepo) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
 type stubAccountRepo struct {
 	bulkUpdateIDs []int64
 REDACTED
