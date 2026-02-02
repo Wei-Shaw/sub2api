@@ -66,7 +66,9 @@ export default {
       port: '端口',
       password: '密码（可选）',
       database: '数据库',
-      passwordPlaceholder: '密码'
+      passwordPlaceholder: '密码',
+      enableTls: '启用 TLS',
+      enableTlsHint: '连接 Redis 时使用 TLS（公共 CA 证书）'
     REDACTED,
     admin: {
       title: '管理员账户',

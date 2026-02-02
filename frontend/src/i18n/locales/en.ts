@@ -69,7 +69,9 @@ export default {
       port: 'Port',
       password: 'Password (optional)',
       database: 'Database',
-      passwordPlaceholder: 'Password'
+      passwordPlaceholder: 'Password',
+      enableTls: 'Enable TLS',
+      enableTlsHint: 'Use TLS when connecting to Redis (public CA certs)'
     REDACTED,
     admin: {
       title: 'Admin Account',

@@ -376,6 +376,9 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
+  # Enable TLS/SSL connection
+  # 是否启用 TLS/SSL 连接
+  enable_tls: false
 
 # =============================================================================
 # Ops Monitoring (Optional)
