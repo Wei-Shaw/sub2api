@@ -18,6 +18,7 @@ type TokenRefreshService struct {
 	refreshers       []TokenRefresher
 	cfg              *config.TokenRefreshConfig
 	cacheInvalidator TokenCacheInvalidator
+	schedulerCache   SchedulerCache // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
 
 	stopCh chan struct{REDACTED
 	wg     sync.WaitGroup
@@ -31,12 +32,14 @@ func NewTokenRefreshService(
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
+	schedulerCache SchedulerCache,
 	cfg *config.Config,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
 		accountRepo:      accountRepo,
 		cfg:              &cfg.TokenRefresh,
 		cacheInvalidator: cacheInvalidator,
+		schedulerCache:   schedulerCache,
 		stopCh:           make(chan struct{REDACTED),
 REDACTED
 
@@ -196,6 +199,15 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					log.Printf("[TokenRefresh] Failed to invalidate token cache for account %d: %v", account.ID, err)
 			REDACTED else {
 					log.Printf("[TokenRefresh] Token cache invalidated for account %d", account.ID)
+			REDACTED
+		REDACTED
+			// 同步更新调度器缓存，确保调度获取的 Account 对象包含最新的 credentials
+			// 这解决了 token 刷新后调度器缓存数据不一致的问题（#445）
+			if s.schedulerCache != nil {
+				if err := s.schedulerCache.SetAccount(ctx, account); err != nil {
+					log.Printf("[TokenRefresh] Failed to sync scheduler cache for account %d: %v", account.ID, err)
+			REDACTED else {
+					log.Printf("[TokenRefresh] Scheduler cache synced for account %d", account.ID)
 			REDACTED
 		REDACTED
 			return nil
