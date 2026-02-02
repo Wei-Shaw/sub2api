@@ -29,6 +29,9 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h)
 
+		// 公告管理
+		registerAnnouncementRoutes(admin, h)
+
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
 
@@ -226,6 +229,18 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)
 		accounts.POST("/cookie-auth", h.Admin.OAuth.CookieAuth)
 		accounts.POST("/setup-token-cookie-auth", h.Admin.OAuth.SetupTokenCookieAuth)
+REDACTED
+REDACTED
+
+func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	announcements := admin.Group("/announcements")
+	{
+		announcements.GET("", h.Admin.Announcement.List)
+		announcements.POST("", h.Admin.Announcement.Create)
+		announcements.GET("/:id", h.Admin.Announcement.GetByID)
+		announcements.PUT("/:id", h.Admin.Announcement.Update)
+		announcements.DELETE("/:id", h.Admin.Announcement.Delete)
+		announcements.GET("/:id/read-status", h.Admin.Announcement.ListReadStatus)
 REDACTED
 REDACTED
 

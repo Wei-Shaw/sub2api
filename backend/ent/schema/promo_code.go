@@ -3,7 +3,7 @@ package schema
 import (
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -49,7 +49,7 @@ func (PromoCode) Fields() []ent.Field {
 			Comment("已使用次数"),
 		field.String("status").
 			MaxLen(20).
-			Default(service.PromoCodeStatusActive).
+			Default(domain.PromoCodeStatusActive).
 			Comment("状态: active, disabled"),
 		field.Time("expires_at").
 			Optional().

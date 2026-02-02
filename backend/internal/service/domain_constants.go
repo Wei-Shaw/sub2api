@@ -1,66 +1,68 @@
 package service
 
+import "github.com/Wei-Shaw/sub2api/internal/domain"
+
 // Status constants
 const (
-	StatusActive   = "active"
-	StatusDisabled = "disabled"
-	StatusError    = "error"
-	StatusUnused   = "unused"
-	StatusUsed     = "used"
-	StatusExpired  = "expired"
+	StatusActive   = domain.StatusActive
+	StatusDisabled = domain.StatusDisabled
+	StatusError    = domain.StatusError
+	StatusUnused   = domain.StatusUnused
+	StatusUsed     = domain.StatusUsed
+	StatusExpired  = domain.StatusExpired
 )
 
 // Role constants
 const (
-	RoleAdmin = "admin"
-	RoleUser  = "user"
+	RoleAdmin = domain.RoleAdmin
+	RoleUser  = domain.RoleUser
 )
 
 // Platform constants
 const (
-	PlatformAnthropic   = "anthropic"
-	PlatformOpenAI      = "openai"
-	PlatformGemini      = "gemini"
-	PlatformAntigravity = "antigravity"
+	PlatformAnthropic   = domain.PlatformAnthropic
+	PlatformOpenAI      = domain.PlatformOpenAI
+	PlatformGemini      = domain.PlatformGemini
+	PlatformAntigravity = domain.PlatformAntigravity
 )
 
 // Account type constants
 const (
-	AccountTypeOAuth      = "oauth"       // OAuth类型账号（full scope: profile + inference）
-	AccountTypeSetupToken = "setup-token" // Setup Token类型账号（inference only scope）
-	AccountTypeAPIKey     = "apikey"      // API Key类型账号
+	AccountTypeOAuth      = domain.AccountTypeOAuth      // OAuth类型账号（full scope: profile + inference）
+	AccountTypeSetupToken = domain.AccountTypeSetupToken // Setup Token类型账号（inference only scope）
+	AccountTypeAPIKey     = domain.AccountTypeAPIKey     // API Key类型账号
 )
 
 // Redeem type constants
 const (
-	RedeemTypeBalance      = "balance"
-	RedeemTypeConcurrency  = "concurrency"
-	RedeemTypeSubscription = "subscription"
+	RedeemTypeBalance      = domain.RedeemTypeBalance
+	RedeemTypeConcurrency  = domain.RedeemTypeConcurrency
+	RedeemTypeSubscription = domain.RedeemTypeSubscription
 )
 
 // PromoCode status constants
 const (
-	PromoCodeStatusActive   = "active"
-	PromoCodeStatusDisabled = "disabled"
+	PromoCodeStatusActive   = domain.PromoCodeStatusActive
+	PromoCodeStatusDisabled = domain.PromoCodeStatusDisabled
 )
 
 // Admin adjustment type constants
 const (
-	AdjustmentTypeAdminBalance     = "admin_balance"     // 管理员调整余额
-	AdjustmentTypeAdminConcurrency = "admin_concurrency" // 管理员调整并发数
+	AdjustmentTypeAdminBalance     = domain.AdjustmentTypeAdminBalance     // 管理员调整余额
+	AdjustmentTypeAdminConcurrency = domain.AdjustmentTypeAdminConcurrency // 管理员调整并发数
 )
 
 // Group subscription type constants
 const (
-	SubscriptionTypeStandard     = "standard"     // 标准计费模式（按余额扣费）
-	SubscriptionTypeSubscription = "subscription" // 订阅模式（按限额控制）
+	SubscriptionTypeStandard     = domain.SubscriptionTypeStandard     // 标准计费模式（按余额扣费）
+	SubscriptionTypeSubscription = domain.SubscriptionTypeSubscription // 订阅模式（按限额控制）
 )
 
 // Subscription status constants
 const (
-	SubscriptionStatusActive    = "active"
-	SubscriptionStatusExpired   = "expired"
-	SubscriptionStatusSuspended = "suspended"
+	SubscriptionStatusActive    = domain.SubscriptionStatusActive
+	SubscriptionStatusExpired   = domain.SubscriptionStatusExpired
+	SubscriptionStatusSuspended = domain.SubscriptionStatusSuspended
 )
 
 // LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。

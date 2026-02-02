@@ -184,6 +184,7 @@ export default {
   // Navigation
   nav: {
     dashboard: '仪表盘',
+    announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
@@ -2100,6 +2101,73 @@ export default {
       failedToDelete: '删除兑换码失败'
     REDACTED,
 
+    // Announcements
+    announcements: {
+      title: '公告管理',
+      description: '创建公告并按条件投放',
+      createAnnouncement: '创建公告',
+      editAnnouncement: '编辑公告',
+      deleteAnnouncement: '删除公告',
+      searchAnnouncements: '搜索公告...',
+      status: '状态',
+      allStatus: '全部状态',
+      columns: {
+        title: '标题',
+        status: '状态',
+        targeting: '展示条件',
+        timeRange: '有效期',
+        createdAt: '创建时间',
+        actions: '操作'
+      REDACTED,
+      statusLabels: {
+        draft: '草稿',
+        active: '展示中',
+        archived: '已归档'
+      REDACTED,
+      form: {
+        title: '标题',
+        content: '内容（支持 Markdown）',
+        status: '状态',
+        startsAt: '开始时间',
+        endsAt: '结束时间',
+        startsAtHint: '留空表示立即生效',
+        endsAtHint: '留空表示永久生效',
+        targetingMode: '展示条件',
+        targetingAll: '所有用户',
+        targetingCustom: '按条件',
+        addOrGroup: '添加 OR 条件组',
+        addAndCondition: '添加 AND 条件',
+        conditionType: '条件类型',
+        conditionSubscription: '订阅套餐',
+        conditionBalance: '余额',
+        operator: '运算符',
+        balanceValue: '余额阈值',
+        selectPackages: '选择套餐'
+      REDACTED,
+      operators: {
+        gt: '>',
+        gte: '≥',
+        lt: '<',
+        lte: '≤',
+        eq: '='
+      REDACTED,
+      targetingSummaryAll: '全部用户',
+      targetingSummaryCustom: '自定义（{groupsREDACTED 组）',
+      timeImmediate: '立即',
+      timeNever: '永久',
+      readStatus: '已读情况',
+      eligible: '符合条件',
+      readAt: '已读时间',
+      unread: '未读',
+      searchUsers: '搜索用户...',
+      failedToLoad: '加载公告失败',
+      failedToCreate: '创建公告失败',
+      failedToUpdate: '更新公告失败',
+      failedToDelete: '删除公告失败',
+      failedToLoadReadStatus: '加载已读情况失败',
+      deleteConfirm: '确定要删除该公告吗？此操作无法撤销。'
+    REDACTED,
+
     // Promo Codes
     promo: {
       title: '优惠码管理',
@@ -3212,6 +3280,21 @@ export default {
     notEnabledDesc: '管理员暂未开启购买订阅入口，请联系管理员。',
     notConfiguredTitle: '购买链接未配置',
     notConfiguredDesc: '管理员已开启入口，但尚未配置购买订阅链接，请联系管理员。'
+  REDACTED,
+
+  // Announcements Page
+  announcements: {
+    title: '公告',
+    description: '查看系统公告',
+    unreadOnly: '仅显示未读',
+    markRead: '标记已读',
+    readAt: '已读时间',
+    read: '已读',
+    unread: '未读',
+    startsAt: '开始时间',
+    endsAt: '结束时间',
+    empty: '暂无公告',
+    emptyUnread: '暂无未读公告'
   REDACTED,
 
   // User Subscriptions Page

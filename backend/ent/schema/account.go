@@ -4,7 +4,7 @@ package schema
 
 import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -111,7 +111,7 @@ func (Account) Fields() []ent.Field {
 		// status: 账户状态，如 "active", "error", "disabled"
 		field.String("status").
 			MaxLen(20).
-			Default(service.StatusActive),
+			Default(domain.StatusActive),
 
 		// error_message: 错误信息，记录账户异常时的详细信息
 		field.String("error_message").
