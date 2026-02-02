@@ -30,6 +30,7 @@ type GatewayHandler struct {
 	antigravityGatewayService *service.AntigravityGatewayService
 	userService               *service.UserService
 	billingCacheService       *service.BillingCacheService
+	usageService              *service.UsageService
 	concurrencyHelper         *ConcurrencyHelper
 	maxAccountSwitches        int
 	maxAccountSwitchesGemini  int
@@ -43,6 +44,7 @@ func NewGatewayHandler(
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
+	usageService *service.UsageService,
 	cfg *config.Config,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
@@ -63,6 +65,7 @@ REDACTED
 		antigravityGatewayService: antigravityGatewayService,
 		userService:               userService,
 		billingCacheService:       billingCacheService,
+		usageService:              usageService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		maxAccountSwitches:        maxAccountSwitches,
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
@@ -524,7 +527,7 @@ func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 REDACTED)
 REDACTED
 
-// Usage handles getting account balance for CC Switch integration
+// Usage handles getting account balance and usage statistics for CC Switch integration
 // GET /v1/usage
 func (h *GatewayHandler) Usage(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
@@ -539,7 +542,40 @@ REDACTED
 		return
 REDACTED
 
-	// 订阅模式：返回订阅限额信息
+	// Best-effort: 获取用量统计，失败不影响基础响应
+	var usageData gin.H
+	if h.usageService != nil {
+		dashStats, err := h.usageService.GetUserDashboardStats(c.Request.Context(), subject.UserID)
+		if err == nil && dashStats != nil {
+			usageData = gin.H{
+				"today": gin.H{
+					"requests":              dashStats.TodayRequests,
+					"input_tokens":          dashStats.TodayInputTokens,
+					"output_tokens":         dashStats.TodayOutputTokens,
+					"cache_creation_tokens": dashStats.TodayCacheCreationTokens,
+					"cache_read_tokens":     dashStats.TodayCacheReadTokens,
+					"total_tokens":          dashStats.TodayTokens,
+					"cost":                  dashStats.TodayCost,
+					"actual_cost":           dashStats.TodayActualCost,
+			REDACTED,
+				"total": gin.H{
+					"requests":              dashStats.TotalRequests,
+					"input_tokens":          dashStats.TotalInputTokens,
+					"output_tokens":         dashStats.TotalOutputTokens,
+					"cache_creation_tokens": dashStats.TotalCacheCreationTokens,
+					"cache_read_tokens":     dashStats.TotalCacheReadTokens,
+					"total_tokens":          dashStats.TotalTokens,
+					"cost":                  dashStats.TotalCost,
+					"actual_cost":           dashStats.TotalActualCost,
+			REDACTED,
+				"average_duration_ms": dashStats.AverageDurationMs,
+				"rpm":                 dashStats.Rpm,
+				"tpm":                 dashStats.Tpm,
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 订阅模式：返回订阅限额信息 + 用量统计
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
 		subscription, ok := middleware2.GetSubscriptionFromContext(c)
 		if !ok {
@@ -548,28 +584,46 @@ REDACTED
 	REDACTED
 
 		remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
-		c.JSON(http.StatusOK, gin.H{
+		resp := gin.H{
 			"isValid":   true,
 			"planName":  apiKey.Group.Name,
 			"remaining": remaining,
 			"unit":      "USD",
-	REDACTED)
+			"subscription": gin.H{
+				"daily_usage_usd":   subscription.DailyUsageUSD,
+				"weekly_usage_usd":  subscription.WeeklyUsageUSD,
+				"monthly_usage_usd": subscription.MonthlyUsageUSD,
+				"daily_limit_usd":   apiKey.Group.DailyLimitUSD,
+				"weekly_limit_usd":  apiKey.Group.WeeklyLimitUSD,
+				"monthly_limit_usd": apiKey.Group.MonthlyLimitUSD,
+				"expires_at":        subscription.ExpiresAt,
+		REDACTED,
+	REDACTED
+		if usageData != nil {
+			resp["usage"] = usageData
+	REDACTED
+		c.JSON(http.StatusOK, resp)
 		return
 REDACTED
 
-	// 余额模式：返回钱包余额
+	// 余额模式：返回钱包余额 + 用量统计
 	latestUser, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
 	if err != nil {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to get user info")
 		return
 REDACTED
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"isValid":   true,
 		"planName":  "钱包余额",
 		"remaining": latestUser.Balance,
 		"unit":      "USD",
-REDACTED)
+		"balance":   latestUser.Balance,
+REDACTED
+	if usageData != nil {
+		resp["usage"] = usageData
+REDACTED
+	c.JSON(http.StatusOK, resp)
 REDACTED
 
 // calculateSubscriptionRemaining 计算订阅剩余可用额度
