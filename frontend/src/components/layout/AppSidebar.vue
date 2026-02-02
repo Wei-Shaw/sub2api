@@ -433,7 +433,6 @@ REDACTED
 const userNavItems = computed(() => {
   const items = [
     { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
-    { path: '/announcements', label: t('nav.announcements'), icon: BellIcon REDACTED,
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
@@ -456,7 +455,6 @@ REDACTED)
 // Personal navigation items (for admin's "My Account" section, without Dashboard)
 const personalNavItems = computed(() => {
   const items = [
-    { path: '/announcements', label: t('nav.announcements'), icon: BellIcon REDACTED,
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,

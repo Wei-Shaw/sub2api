@@ -261,3 +261,22 @@ export function formatCountdownWithSuffix(targetDate: string | Date | null | und
   if (!countdown) return null
   return i18n.global.t('common.time.countdown.withSuffix', { time: countdown REDACTED)
 REDACTED
+
+/**
+ * 格式化为相对时间 + 具体时间组合
+ * @param date 日期字符串或 Date 对象
+ * @returns 组合时间字符串，如 "5 天前 · 2026-01-27 15:25"
+ */
+export function formatRelativeWithDateTime(date: string | Date | null | undefined): string {
+  if (!date) return ''
+
+  const relativeTime = formatRelativeTime(date)
+  const dateTime = formatDateTime(date)
+
+  // 如果是 "从未" 或空字符串，只返回相对时间
+  if (!dateTime || relativeTime === i18n.global.t('common.time.never')) {
+    return relativeTime
+  REDACTED
+
+  return `${relativeTimeREDACTED · ${dateTimeREDACTED`
+REDACTED

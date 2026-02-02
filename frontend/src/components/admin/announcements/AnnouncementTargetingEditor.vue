@@ -323,6 +323,7 @@ function ensureSelectionPath(groupIndex: number, condIndex: number) {
   if (!subscriptionSelections[groupIndex][condIndex]) subscriptionSelections[groupIndex][condIndex] = []
 REDACTED
 
+// Sync from modelValue to subscriptionSelections (one-way: model -> local state)
 watch(
   () => props.modelValue,
   (v) => {
@@ -333,20 +334,34 @@ watch(
         const c = allOf[ci]
         if (c?.type === 'subscription') {
           ensureSelectionPath(gi, ci)
-          subscriptionSelections[gi][ci] = (c.group_ids ?? []).slice()
+          // Only update if different to avoid triggering unnecessary updates
+          const newIds = (c.group_ids ?? []).slice()
+          const currentIds = subscriptionSelections[gi]?.[ci] ?? []
+          if (JSON.stringify(newIds.sort()) !== JSON.stringify(currentIds.sort())) {
+            subscriptionSelections[gi][ci] = newIds
+          REDACTED
         REDACTED
       REDACTED
     REDACTED
   REDACTED,
-  { immediate: true, deep: true REDACTED
+  { immediate: true REDACTED
 )
 
+// Sync from subscriptionSelections to modelValue (one-way: local state -> model)
+// Use a debounced approach to avoid infinite loops
+let syncTimeout: ReturnType<typeof setTimeout> | null = null
 watch(
   () => subscriptionSelections,
   () => {
-    // sync back to targeting
-    updateTargeting((draft) => {
-      const groups = draft.any_of ?? []
+    // Debounce the sync to avoid rapid fire updates
+    if (syncTimeout) clearTimeout(syncTimeout)
+
+    syncTimeout = setTimeout(() => {
+      // Build the new targeting state
+      const newTargeting: TargetingDraft = JSON.parse(JSON.stringify(props.modelValue ?? { any_of: [] REDACTED))
+      if (!newTargeting.any_of) newTargeting.any_of = []
+
+      const groups = newTargeting.any_of ?? []
       for (let gi = 0; gi < groups.length; gi++) {
         const allOf = groups[gi]?.all_of ?? []
         for (let ci = 0; ci < allOf.length; ci++) {
@@ -358,7 +373,12 @@ watch(
           REDACTED
         REDACTED
       REDACTED
-    REDACTED)
+
+      // Only emit if there's an actual change (deep comparison)
+      if (JSON.stringify(props.modelValue) !== JSON.stringify(newTargeting)) {
+        emit('update:modelValue', newTargeting)
+      REDACTED
+    REDACTED, 0)
   REDACTED,
   { deep: true REDACTED
 )
