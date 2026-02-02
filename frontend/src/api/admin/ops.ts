@@ -776,6 +776,7 @@ export interface OpsAdvancedSettings {
   ignore_count_tokens_errors: boolean
   ignore_context_canceled: boolean
   ignore_no_available_accounts: boolean
+  ignore_invalid_api_key_errors: boolean
   auto_refresh_enabled: boolean
   auto_refresh_interval_seconds: number
 REDACTED
