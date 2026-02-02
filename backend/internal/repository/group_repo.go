@@ -425,3 +425,61 @@ REDACTED
 
 	return counts, nil
 REDACTED
+
+// GetAccountIDsByGroupIDs 获取多个分组的所有账号 ID（去重）
+func (r *groupRepository) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+REDACTED
+
+	rows, err := r.sql.QueryContext(
+		ctx,
+		"SELECT DISTINCT account_id FROM account_groups WHERE group_id = ANY($1) ORDER BY account_id",
+		pq.Array(groupIDs),
+	)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer rows.Close()
+
+	var accountIDs []int64
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return nil, err
+	REDACTED
+		accountIDs = append(accountIDs, accountID)
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+
+	return accountIDs, nil
+REDACTED
+
+// BindAccountsToGroup 将多个账号绑定到指定分组（批量插入，忽略已存在的绑定）
+func (r *groupRepository) BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error {
+	if len(accountIDs) == 0 {
+		return nil
+REDACTED
+
+	// 使用 INSERT ... ON CONFLICT DO NOTHING 忽略已存在的绑定
+	_, err := r.sql.ExecContext(
+		ctx,
+		`INSERT INTO account_groups (account_id, group_id, priority, created_at)
+		 SELECT unnest($1::bigint[]), $2, 50, NOW()
+		 ON CONFLICT (account_id, group_id) DO NOTHING`,
+		pq.Array(accountIDs),
+		groupID,
+	)
+	if err != nil {
+		return err
+REDACTED
+
+	// 发送调度器事件
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupID, nil); err != nil {
+		log.Printf("[SchedulerOutbox] enqueue bind accounts to group failed: group=%d err=%v", groupID, err)
+REDACTED
+
+	return nil
+REDACTED
