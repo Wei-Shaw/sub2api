@@ -70,6 +70,8 @@ func provideCleanup(
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
+	subscriptionExpiry *service.SubscriptionExpiryService,
+	usageCleanup *service.UsageCleanupService,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
@@ -123,12 +125,22 @@ func provideCleanup(
 			REDACTED
 				return nil
 	REDACTED
+			{"UsageCleanupService", func() error {
+				if usageCleanup != nil {
+					usageCleanup.Stop()
+			REDACTED
+				return nil
+	REDACTED
 			{"TokenRefreshService", func() error {
 				tokenRefresh.Stop()
 				return nil
 	REDACTED
 			{"AccountExpiryService", func() error {
 				accountExpiry.Stop()
+				return nil
+	REDACTED
+			{"SubscriptionExpiryService", func() error {
+				subscriptionExpiry.Stop()
 				return nil
 	REDACTED
 			{"PricingService", func() error {

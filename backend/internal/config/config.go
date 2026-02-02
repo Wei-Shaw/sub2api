@@ -47,6 +47,7 @@ type Config struct {
 	Redis        RedisConfig                `mapstructure:"redis"`
 	Ops          OpsConfig                  `mapstructure:"ops"`
 	JWT          JWTConfig                  `mapstructure:"jwt"`
+	Totp         TotpConfig                 `mapstructure:"totp"`
 	LinuxDo      LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
 	Default      DefaultConfig              `mapstructure:"default"`
 	RateLimit    RateLimitConfig            `mapstructure:"rate_limit"`
@@ -55,6 +56,7 @@ type Config struct {
 	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
 	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
 	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
+	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
 	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
 	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
 	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
@@ -267,6 +269,33 @@ type GatewayConfig struct {
 
 	// Scheduling: 账号调度相关配置
 	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
+
+	// TLSFingerprint: TLS指纹伪装配置
+	TLSFingerprint TLSFingerprintConfig `mapstructure:"tls_fingerprint"`
+REDACTED
+
+// TLSFingerprintConfig TLS指纹伪装配置
+// 用于模拟 Claude CLI (Node.js) 的 TLS 握手特征，避免被识别为非官方客户端
+type TLSFingerprintConfig struct {
+	// Enabled: 是否全局启用TLS指纹功能
+	Enabled bool `mapstructure:"enabled"`
+	// Profiles: 预定义的TLS指纹配置模板
+	// key 为模板名称，如 "claude_cli_v2", "chrome_120" 等
+	Profiles map[string]TLSProfileConfig `mapstructure:"profiles"`
+REDACTED
+
+// TLSProfileConfig 单个TLS指纹模板的配置
+type TLSProfileConfig struct {
+	// Name: 模板显示名称
+	Name string `mapstructure:"name"`
+	// EnableGREASE: 是否启用GREASE扩展（Chrome使用，Node.js不使用）
+	EnableGREASE bool `mapstructure:"enable_grease"`
+	// CipherSuites: TLS加密套件列表（空则使用内置默认值）
+	CipherSuites []uint16 `mapstructure:"cipher_suites"`
+	// Curves: 椭圆曲线列表（空则使用内置默认值）
+	Curves []uint16 `mapstructure:"curves"`
+	// PointFormats: 点格式列表（空则使用内置默认值）
+	PointFormats []uint8 `mapstructure:"point_formats"`
 REDACTED
 
 // GatewaySchedulingConfig accounts scheduling configuration.
@@ -386,6 +415,8 @@ type RedisConfig struct {
 	PoolSize int `mapstructure:"pool_size"`
 	// MinIdleConns: 最小空闲连接数，保持热连接减少冷启动延迟
 	MinIdleConns int `mapstructure:"min_idle_conns"`
+	// EnableTLS: 是否启用 TLS/SSL 连接
+	EnableTLS bool `mapstructure:"enable_tls"`
 REDACTED
 
 func (r *RedisConfig) Address() string {
@@ -436,6 +467,16 @@ REDACTED
 type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`
 	ExpireHour int    `mapstructure:"expire_hour"`
+REDACTED
+
+// TotpConfig TOTP 双因素认证配置
+type TotpConfig struct {
+	// EncryptionKey 用于加密 TOTP 密钥的 AES-256 密钥（32 字节 hex 编码）
+	// 如果为空，将自动生成一个随机密钥（仅适用于开发环境）
+	EncryptionKey string `mapstructure:"encryption_key"`
+	// EncryptionKeyConfigured 标记加密密钥是否为手动配置（非自动生成）
+	// 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
+	EncryptionKeyConfigured bool `mapstructure:"-"`
 REDACTED
 
 type TurnstileConfig struct {
@@ -502,6 +543,20 @@ type DashboardAggregationRetentionConfig struct {
 	UsageLogsDays int `mapstructure:"usage_logs_days"`
 	HourlyDays    int `mapstructure:"hourly_days"`
 	DailyDays     int `mapstructure:"daily_days"`
+REDACTED
+
+// UsageCleanupConfig 使用记录清理任务配置
+type UsageCleanupConfig struct {
+	// Enabled: 是否启用清理任务执行器
+	Enabled bool `mapstructure:"enabled"`
+	// MaxRangeDays: 单次任务允许的最大时间跨度（天）
+	MaxRangeDays int `mapstructure:"max_range_days"`
+	// BatchSize: 单批删除数量
+	BatchSize int `mapstructure:"batch_size"`
+	// WorkerIntervalSeconds: 后台任务轮询间隔（秒）
+	WorkerIntervalSeconds int `mapstructure:"worker_interval_seconds"`
+	// TaskTimeoutSeconds: 单次任务最大执行时长（秒）
+	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
 REDACTED
 
 func NormalizeRunMode(value string) string {
@@ -582,6 +637,20 @@ REDACTED
 	REDACTED
 		cfg.JWT.Secret = secret
 		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
+REDACTED
+
+	// Auto-generate TOTP encryption key if not set (32 bytes = 64 hex chars for AES-256)
+	cfg.Totp.EncryptionKey = strings.TrimSpace(cfg.Totp.EncryptionKey)
+	if cfg.Totp.EncryptionKey == "" {
+		key, err := generateJWTSecret(32) // Reuse the same random generation function
+		if err != nil {
+			return nil, fmt.Errorf("generate totp encryption key error: %w", err)
+	REDACTED
+		cfg.Totp.EncryptionKey = key
+		cfg.Totp.EncryptionKeyConfigured = false
+		log.Println("Warning: TOTP encryption key auto-generated. Consider setting a fixed key for production.")
+REDACTED else {
+		cfg.Totp.EncryptionKeyConfigured = true
 REDACTED
 
 	if err := cfg.Validate(); err != nil {
@@ -695,6 +764,7 @@ REDACTED)
 	viper.SetDefault("redis.write_timeout_seconds", 3)
 	viper.SetDefault("redis.pool_size", 128)
 	viper.SetDefault("redis.min_idle_conns", 10)
+	viper.SetDefault("redis.enable_tls", false)
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)
@@ -713,6 +783,9 @@ REDACTED)
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
+
+	// TOTP
+	viper.SetDefault("totp.encryption_key", "")
 
 	// Default
 	// Admin credentials are created via the setup flow (web wizard / CLI / AUTO_SETUP).
@@ -764,6 +837,13 @@ REDACTED)
 	viper.SetDefault("dashboard_aggregation.retention.daily_days", 730)
 	viper.SetDefault("dashboard_aggregation.recompute_days", 2)
 
+	// Usage cleanup task
+	viper.SetDefault("usage_cleanup.enabled", true)
+	viper.SetDefault("usage_cleanup.max_range_days", 31)
+	viper.SetDefault("usage_cleanup.batch_size", 5000)
+	viper.SetDefault("usage_cleanup.worker_interval_seconds", 10)
+	viper.SetDefault("usage_cleanup.task_timeout_seconds", 1800)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", true)
@@ -802,6 +882,8 @@ REDACTED)
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
+	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
+	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// TokenRefresh
@@ -1002,6 +1084,33 @@ REDACTED else {
 	REDACTED
 		if c.DashboardAgg.RecomputeDays < 0 {
 			return fmt.Errorf("dashboard_aggregation.recompute_days must be non-negative")
+	REDACTED
+REDACTED
+	if c.UsageCleanup.Enabled {
+		if c.UsageCleanup.MaxRangeDays <= 0 {
+			return fmt.Errorf("usage_cleanup.max_range_days must be positive")
+	REDACTED
+		if c.UsageCleanup.BatchSize <= 0 {
+			return fmt.Errorf("usage_cleanup.batch_size must be positive")
+	REDACTED
+		if c.UsageCleanup.WorkerIntervalSeconds <= 0 {
+			return fmt.Errorf("usage_cleanup.worker_interval_seconds must be positive")
+	REDACTED
+		if c.UsageCleanup.TaskTimeoutSeconds <= 0 {
+			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be positive")
+	REDACTED
+REDACTED else {
+		if c.UsageCleanup.MaxRangeDays < 0 {
+			return fmt.Errorf("usage_cleanup.max_range_days must be non-negative")
+	REDACTED
+		if c.UsageCleanup.BatchSize < 0 {
+			return fmt.Errorf("usage_cleanup.batch_size must be non-negative")
+	REDACTED
+		if c.UsageCleanup.WorkerIntervalSeconds < 0 {
+			return fmt.Errorf("usage_cleanup.worker_interval_seconds must be non-negative")
+	REDACTED
+		if c.UsageCleanup.TaskTimeoutSeconds < 0 {
+			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be non-negative")
 	REDACTED
 REDACTED
 	if c.Gateway.MaxBodySize <= 0 {

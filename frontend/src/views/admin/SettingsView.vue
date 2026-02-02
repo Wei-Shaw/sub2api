@@ -323,6 +323,62 @@
               </div>
               <Toggle v-model="form.email_verify_enabled" />
             </div>
+
+            <!-- Promo Code -->
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.registration.promoCode')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.registration.promoCodeHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.promo_code_enabled" />
+            </div>
+
+            <!-- Password Reset - Only show when email verification is enabled -->
+            <div
+              v-if="form.email_verify_enabled"
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.registration.passwordReset')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.registration.passwordResetHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.password_reset_enabled" />
+            </div>
+
+            <!-- TOTP 2FA -->
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.registration.totp')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.registration.totpHint') REDACTEDREDACTED
+                </p>
+                <!-- Warning when encryption key not configured -->
+                <p
+                  v-if="!form.totp_encryption_key_configured"
+                  class="mt-2 text-sm text-amber-600 dark:text-amber-400"
+                >
+                  {{ t('admin.settings.registration.totpKeyNotConfigured') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle
+                v-model="form.totp_enabled"
+                :disabled="!form.totp_encryption_key_configured"
+              />
+            </div>
           </div>
         </div>
 
@@ -720,6 +776,21 @@
                 {{ t('admin.settings.site.homeContentIframeWarning') REDACTEDREDACTED
               </p>
             </div>
+
+            <!-- Hide CCS Import Button -->
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.site.hideCcsImportButton')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.site.hideCcsImportButtonHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.hide_ccs_import_button" />
+            </div>
           </div>
         </div>
 
@@ -864,6 +935,51 @@
           </div>
         </div>
 
+        <!-- Purchase Subscription Page -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.purchase.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.purchase.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <!-- Enable Toggle -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.purchase.enabled')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.purchase.enabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.purchase_subscription_enabled" />
+            </div>
+
+            <!-- URL -->
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.purchase.url') REDACTEDREDACTED
+              </label>
+              <input
+                v-model="form.purchase_subscription_url"
+                type="url"
+                class="input font-mono text-sm"
+                :placeholder="t('admin.settings.purchase.urlPlaceholder')"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.purchase.urlHint') REDACTEDREDACTED
+              </p>
+              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {{ t('admin.settings.purchase.iframeWarning') REDACTEDREDACTED
+              </p>
+            </div>
+          </div>
+        </div>
+
         <!-- Send Test Email - Only show when email verification is enabled -->
         <div v-if="form.email_verify_enabled" class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -998,6 +1114,10 @@ REDACTED
 const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
+  promo_code_enabled: true,
+  password_reset_enabled: false,
+  totp_enabled: false,
+  totp_encryption_key_configured: false,
   default_balance: 0,
   default_concurrency: 1,
   site_name: 'Sub2API',
@@ -1007,6 +1127,9 @@ const form = reactive<SettingsForm>({
   contact_info: '',
   doc_url: '',
   home_content: '',
+  hide_ccs_import_button: false,
+  purchase_subscription_enabled: false,
+  purchase_subscription_url: '',
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -1119,6 +1242,9 @@ async function saveSettings() {
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
+      promo_code_enabled: form.promo_code_enabled,
+      password_reset_enabled: form.password_reset_enabled,
+      totp_enabled: form.totp_enabled,
       default_balance: form.default_balance,
       default_concurrency: form.default_concurrency,
       site_name: form.site_name,
@@ -1128,6 +1254,9 @@ async function saveSettings() {
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,
+      hide_ccs_import_button: form.hide_ccs_import_button,
+      purchase_subscription_enabled: form.purchase_subscription_enabled,
+      purchase_subscription_url: form.purchase_subscription_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,

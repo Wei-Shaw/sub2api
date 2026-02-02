@@ -82,70 +82,23 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 REDACTED
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
-	// 优先检查 context 中的强制平台（/antigravity 路由）
-	var platform string
-	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
-	if hasForcePlatform && forcePlatform != "" {
-		platform = forcePlatform
-REDACTED else if groupID != nil {
-		// 根据分组 platform 决定查询哪种账号
-		var group *Group
-		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
-			group = ctxGroup
-	REDACTED else {
-			var err error
-			group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
-			if err != nil {
-				return nil, fmt.Errorf("get group failed: %w", err)
-		REDACTED
-	REDACTED
-		platform = group.Platform
-REDACTED else {
-		// 无分组时只使用原生 gemini 平台
-		platform = PlatformGemini
+	// 1. 确定目标平台和调度模式
+	// Determine target platform and scheduling mode
+	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
+	if err != nil {
+		return nil, err
 REDACTED
-
-	// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
-	// 注意：强制平台模式不走混合调度
-	useMixedScheduling := platform == PlatformGemini && !hasForcePlatform
 
 	cacheKey := "gemini:" + sessionHash
 
-	if sessionHash != "" {
-		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
-		if err == nil && accountID > 0 {
-			if _, excluded := excludedIDs[accountID]; !excluded {
-				account, err := s.getSchedulableAccount(ctx, accountID)
-				// 检查账号是否有效：原生平台直接匹配，antigravity 需要启用混合调度
-				if err == nil && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
-					valid := false
-					if account.Platform == platform {
-						valid = true
-				REDACTED else if useMixedScheduling && account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
-						valid = true
-				REDACTED
-					if valid {
-						usable := true
-						if s.rateLimitService != nil && requestedModel != "" {
-							ok, err := s.rateLimitService.PreCheckUsage(ctx, account, requestedModel)
-							if err != nil {
-								log.Printf("[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
-						REDACTED
-							if !ok {
-								usable = false
-						REDACTED
-					REDACTED
-						if usable {
-							_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), cacheKey, geminiStickySessionTTL)
-							return account, nil
-					REDACTED
-				REDACTED
-			REDACTED
-		REDACTED
-	REDACTED
+	// 2. 尝试粘性会话命中
+	// Try sticky session hit
+	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs, platform, useMixedScheduling); account != nil {
+		return account, nil
 REDACTED
 
-	// 查询可调度账户（强制平台模式：优先按分组查找，找不到再查全部）
+	// 3. 查询可调度账户（强制平台模式：优先按分组查找，找不到再查全部）
+	// Query schedulable accounts (force platform mode: try group first, fallback to all)
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -158,56 +111,9 @@ REDACTED
 	REDACTED
 REDACTED
 
-	var selected *Account
-	for i := range accounts {
-		acc := &accounts[i]
-		if _, excluded := excludedIDs[acc.ID]; excluded {
-			continue
-	REDACTED
-		// 混合调度模式下：原生平台直接通过，antigravity 需要启用 mixed_scheduling
-		// 非混合调度模式（antigravity 分组）：不需要过滤
-		if useMixedScheduling && acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
-			continue
-	REDACTED
-		if !acc.IsSchedulableForModel(requestedModel) {
-			continue
-	REDACTED
-		if requestedModel != "" && !s.isModelSupportedByAccount(acc, requestedModel) {
-			continue
-	REDACTED
-		if s.rateLimitService != nil && requestedModel != "" {
-			ok, err := s.rateLimitService.PreCheckUsage(ctx, acc, requestedModel)
-			if err != nil {
-				log.Printf("[Gemini PreCheck] Account %d precheck error: %v", acc.ID, err)
-		REDACTED
-			if !ok {
-				continue
-		REDACTED
-	REDACTED
-		if selected == nil {
-			selected = acc
-			continue
-	REDACTED
-		if acc.Priority < selected.Priority {
-			selected = acc
-	REDACTED else if acc.Priority == selected.Priority {
-			switch {
-			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
-				selected = acc
-			case acc.LastUsedAt != nil && selected.LastUsedAt == nil:
-				// keep selected (never used is preferred)
-			case acc.LastUsedAt == nil && selected.LastUsedAt == nil:
-				// Prefer OAuth accounts when both are unused (more compatible for Code Assist flows).
-				if acc.Type == AccountTypeOAuth && selected.Type != AccountTypeOAuth {
-					selected = acc
-			REDACTED
-			default:
-				if acc.LastUsedAt.Before(*selected.LastUsedAt) {
-					selected = acc
-			REDACTED
-		REDACTED
-	REDACTED
-REDACTED
+	// 4. 按优先级 + LRU 选择最佳账号
+	// Select best account by priority + LRU
+	selected := s.selectBestGeminiAccount(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling)
 
 	if selected == nil {
 		if requestedModel != "" {
@@ -216,11 +122,236 @@ REDACTED
 		return nil, errors.New("no available Gemini accounts")
 REDACTED
 
+	// 5. 设置粘性会话绑定
+	// Set sticky session binding
 	if sessionHash != "" {
 		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL)
 REDACTED
 
 	return selected, nil
+REDACTED
+
+// resolvePlatformAndSchedulingMode 解析目标平台和调度模式。
+// 返回：平台名称、是否使用混合调度、是否强制平台、错误。
+//
+// resolvePlatformAndSchedulingMode resolves target platform and scheduling mode.
+// Returns: platform name, whether to use mixed scheduling, whether force platform, error.
+func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, err error) {
+	// 优先检查 context 中的强制平台（/antigravity 路由）
+	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
+	if hasForcePlatform && forcePlatform != "" {
+		return forcePlatform, false, true, nil
+REDACTED
+
+	if groupID != nil {
+		// 根据分组 platform 决定查询哪种账号
+		var group *Group
+		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
+			group = ctxGroup
+	REDACTED else {
+			group, err = s.groupRepo.GetByIDLite(ctx, *groupID)
+			if err != nil {
+				return "", false, false, fmt.Errorf("get group failed: %w", err)
+		REDACTED
+	REDACTED
+		// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
+		return group.Platform, group.Platform == PlatformGemini, false, nil
+REDACTED
+
+	// 无分组时只使用原生 gemini 平台
+	return PlatformGemini, true, false, nil
+REDACTED
+
+// tryStickySessionHit 尝试从粘性会话获取账号。
+// 如果命中且账号可用则返回账号；如果账号不可用则清理会话并返回 nil。
+//
+// tryStickySessionHit attempts to get account from sticky session.
+// Returns account if hit and usable; clears session and returns nil if account unavailable.
+func (s *GeminiMessagesCompatService) tryStickySessionHit(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash, cacheKey, requestedModel string,
+	excludedIDs map[int64]struct{REDACTED,
+	platform string,
+	useMixedScheduling bool,
+) *Account {
+	if sessionHash == "" {
+		return nil
+REDACTED
+
+	accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+	if err != nil || accountID <= 0 {
+		return nil
+REDACTED
+
+	if _, excluded := excludedIDs[accountID]; excluded {
+		return nil
+REDACTED
+
+	account, err := s.getSchedulableAccount(ctx, accountID)
+	if err != nil {
+		return nil
+REDACTED
+
+	// 检查账号是否需要清理粘性会话
+	// Check if sticky session should be cleared
+	if shouldClearStickySession(account) {
+		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+		return nil
+REDACTED
+
+	// 验证账号是否可用于当前请求
+	// Verify account is usable for current request
+	if !s.isAccountUsableForRequest(ctx, account, requestedModel, platform, useMixedScheduling) {
+		return nil
+REDACTED
+
+	// 刷新会话 TTL 并返回账号
+	// Refresh session TTL and return account
+	_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), cacheKey, geminiStickySessionTTL)
+	return account
+REDACTED
+
+// isAccountUsableForRequest 检查账号是否可用于当前请求。
+// 验证：模型调度、模型支持、平台匹配、速率限制预检。
+//
+// isAccountUsableForRequest checks if account is usable for current request.
+// Validates: model scheduling, model support, platform matching, rate limit precheck.
+func (s *GeminiMessagesCompatService) isAccountUsableForRequest(
+	ctx context.Context,
+	account *Account,
+	requestedModel, platform string,
+	useMixedScheduling bool,
+) bool {
+	// 检查模型调度能力
+	// Check model scheduling capability
+	if !account.IsSchedulableForModel(requestedModel) {
+		return false
+REDACTED
+
+	// 检查模型支持
+	// Check model support
+	if requestedModel != "" && !s.isModelSupportedByAccount(account, requestedModel) {
+		return false
+REDACTED
+
+	// 检查平台匹配
+	// Check platform matching
+	if !s.isAccountValidForPlatform(account, platform, useMixedScheduling) {
+		return false
+REDACTED
+
+	// 速率限制预检
+	// Rate limit precheck
+	if !s.passesRateLimitPreCheck(ctx, account, requestedModel) {
+		return false
+REDACTED
+
+	return true
+REDACTED
+
+// isAccountValidForPlatform 检查账号是否匹配目标平台。
+// 原生平台直接匹配；混合调度模式下 antigravity 需要启用 mixed_scheduling。
+//
+// isAccountValidForPlatform checks if account matches target platform.
+// Native platform matches directly; mixed scheduling mode requires antigravity to enable mixed_scheduling.
+func (s *GeminiMessagesCompatService) isAccountValidForPlatform(account *Account, platform string, useMixedScheduling bool) bool {
+	if account.Platform == platform {
+		return true
+REDACTED
+	if useMixedScheduling && account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
+		return true
+REDACTED
+	return false
+REDACTED
+
+// passesRateLimitPreCheck 执行速率限制预检。
+// 返回 true 表示通过预检或无需预检。
+//
+// passesRateLimitPreCheck performs rate limit precheck.
+// Returns true if passed or precheck not required.
+func (s *GeminiMessagesCompatService) passesRateLimitPreCheck(ctx context.Context, account *Account, requestedModel string) bool {
+	if s.rateLimitService == nil || requestedModel == "" {
+		return true
+REDACTED
+	ok, err := s.rateLimitService.PreCheckUsage(ctx, account, requestedModel)
+	if err != nil {
+		log.Printf("[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
+REDACTED
+	return ok
+REDACTED
+
+// selectBestGeminiAccount 从候选账号中选择最佳账号（优先级 + LRU + OAuth 优先）。
+// 返回 nil 表示无可用账号。
+//
+// selectBestGeminiAccount selects best account from candidates (priority + LRU + OAuth preferred).
+// Returns nil if no available account.
+func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
+	ctx context.Context,
+	accounts []Account,
+	requestedModel string,
+	excludedIDs map[int64]struct{REDACTED,
+	platform string,
+	useMixedScheduling bool,
+) *Account {
+	var selected *Account
+
+	for i := range accounts {
+		acc := &accounts[i]
+
+		// 跳过被排除的账号
+		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+	REDACTED
+
+		// 检查账号是否可用于当前请求
+		if !s.isAccountUsableForRequest(ctx, acc, requestedModel, platform, useMixedScheduling) {
+			continue
+	REDACTED
+
+		// 选择最佳账号
+		if selected == nil {
+			selected = acc
+			continue
+	REDACTED
+
+		if s.isBetterGeminiAccount(acc, selected) {
+			selected = acc
+	REDACTED
+REDACTED
+
+	return selected
+REDACTED
+
+// isBetterGeminiAccount 判断 candidate 是否比 current 更优。
+// 规则：优先级更高（数值更小）优先；同优先级时，未使用过的优先（OAuth > 非 OAuth），其次是最久未使用的。
+//
+// isBetterGeminiAccount checks if candidate is better than current.
+// Rules: higher priority (lower value) wins; same priority: never used (OAuth > non-OAuth) > least recently used.
+func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *Account) bool {
+	// 优先级更高（数值更小）
+	if candidate.Priority < current.Priority {
+		return true
+REDACTED
+	if candidate.Priority > current.Priority {
+		return false
+REDACTED
+
+	// 同优先级，比较最后使用时间
+	switch {
+	case candidate.LastUsedAt == nil && current.LastUsedAt != nil:
+		// candidate 从未使用，优先
+		return true
+	case candidate.LastUsedAt != nil && current.LastUsedAt == nil:
+		// current 从未使用，保持
+		return false
+	case candidate.LastUsedAt == nil && current.LastUsedAt == nil:
+		// 都未使用，优先选择 OAuth 账号（更兼容 Code Assist 流程）
+		return candidate.Type == AccountTypeOAuth && current.Type != AccountTypeOAuth
+	default:
+		// 都使用过，选择最久未使用的
+		return candidate.LastUsedAt.Before(*current.LastUsedAt)
+REDACTED
 REDACTED
 
 // isModelSupportedByAccount 根据账户平台检查模型支持
@@ -1864,6 +1995,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 
 	var last map[string]any
 	var lastWithParts map[string]any
+	var collectedTextParts []string // Collect all text parts for aggregation
 	usage := &ClaudeUsage{REDACTED
 
 	for {
@@ -1875,7 +2007,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 				switch payload {
 				case "", "[DONE]":
 					if payload == "[DONE]" {
-						return pickGeminiCollectResult(last, lastWithParts), usage, nil
+						return mergeCollectedTextParts(pickGeminiCollectResult(last, lastWithParts), collectedTextParts), usage, nil
 				REDACTED
 				default:
 					var parsed map[string]any
@@ -1894,6 +2026,12 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 					REDACTED
 						if parts := extractGeminiParts(parsed); len(parts) > 0 {
 							lastWithParts = parsed
+							// Collect text from each part for aggregation
+							for _, part := range parts {
+								if text, ok := part["text"].(string); ok && text != "" {
+									collectedTextParts = append(collectedTextParts, text)
+							REDACTED
+						REDACTED
 					REDACTED
 				REDACTED
 			REDACTED
@@ -1908,7 +2046,7 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 	REDACTED
 REDACTED
 
-	return pickGeminiCollectResult(last, lastWithParts), usage, nil
+	return mergeCollectedTextParts(pickGeminiCollectResult(last, lastWithParts), collectedTextParts), usage, nil
 REDACTED
 
 func pickGeminiCollectResult(last map[string]any, lastWithParts map[string]any) map[string]any {
@@ -1919,6 +2057,83 @@ REDACTED
 		return last
 REDACTED
 	return map[string]any{REDACTED
+REDACTED
+
+// mergeCollectedTextParts merges all collected text chunks into the final response.
+// This fixes the issue where non-streaming responses only returned the last chunk
+// instead of the complete aggregated text.
+func mergeCollectedTextParts(response map[string]any, textParts []string) map[string]any {
+	if len(textParts) == 0 {
+		return response
+REDACTED
+
+	// Join all text parts
+	mergedText := strings.Join(textParts, "")
+
+	// Deep copy response
+	result := make(map[string]any)
+	for k, v := range response {
+		result[k] = v
+REDACTED
+
+	// Get or create candidates
+	candidates, ok := result["candidates"].([]any)
+	if !ok || len(candidates) == 0 {
+		candidates = []any{map[string]any{REDACTEDREDACTED
+REDACTED
+
+	// Get first candidate
+	candidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		candidate = make(map[string]any)
+		candidates[0] = candidate
+REDACTED
+
+	// Get or create content
+	content, ok := candidate["content"].(map[string]any)
+	if !ok {
+		content = map[string]any{"role": "model"REDACTED
+		candidate["content"] = content
+REDACTED
+
+	// Get existing parts
+	existingParts, ok := content["parts"].([]any)
+	if !ok {
+		existingParts = []any{REDACTED
+REDACTED
+
+	// Find and update first text part, or create new one
+	newParts := make([]any, 0, len(existingParts)+1)
+	textUpdated := false
+
+	for _, p := range existingParts {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			newParts = append(newParts, p)
+			continue
+	REDACTED
+		if _, hasText := pm["text"]; hasText && !textUpdated {
+			// Replace with merged text
+			newPart := make(map[string]any)
+			for k, v := range pm {
+				newPart[k] = v
+		REDACTED
+			newPart["text"] = mergedText
+			newParts = append(newParts, newPart)
+			textUpdated = true
+	REDACTED else {
+			newParts = append(newParts, pm)
+	REDACTED
+REDACTED
+
+	if !textUpdated {
+		newParts = append([]any{map[string]any{"text": mergedTextREDACTEDREDACTED, newParts...)
+REDACTED
+
+	content["parts"] = newParts
+	result["candidates"] = candidates
+
+	return result
 REDACTED
 
 type geminiNativeStreamResult struct {
@@ -2312,9 +2527,13 @@ func extractGeminiUsage(geminiResp map[string]any) *ClaudeUsage {
 REDACTED
 	prompt, _ := asInt(usageMeta["promptTokenCount"])
 	cand, _ := asInt(usageMeta["candidatesTokenCount"])
+	cached, _ := asInt(usageMeta["cachedContentTokenCount"])
+	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
+	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
 	return &ClaudeUsage{
-		InputTokens:  prompt,
-		OutputTokens: cand,
+		InputTokens:          prompt - cached,
+		OutputTokens:         cand,
+		CacheReadInputTokens: cached,
 REDACTED
 REDACTED
 

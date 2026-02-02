@@ -210,6 +210,19 @@ gateway:
     outbox_backlog_rebuild_rows: 10000
     # 全量重建周期（秒），0 表示禁用
     full_rebuild_interval_seconds: 300
+  # TLS fingerprint simulation / TLS 指纹伪装
+  # Default profile "claude_cli_v2" simulates Node.js 20.x
+  # 默认模板 "claude_cli_v2" 模拟 Node.js 20.x 指纹
+  tls_fingerprint:
+    enabled: true
+    # profiles:
+    #   profile_1:
+    #     name: "Custom Profile 1"
+    #   profile_2:
+    #     name: "Custom Profile 2"
+    #     cipher_suites: [4866, 4867, 4865, 49199, 49195, 49200, 49196]
+    #     curves: [29, 23, 24]
+    #     point_formats: [0]
 
 # =============================================================================
 # API Key Auth Cache Configuration
@@ -293,6 +306,27 @@ dashboard_aggregation:
     daily_days: 730
 
 # =============================================================================
+# Usage Cleanup Task Configuration
+# 使用记录清理任务配置（重启生效）
+# =============================================================================
+usage_cleanup:
+  # Enable cleanup task worker
+  # 启用清理任务执行器
+  enabled: true
+  # Max date range (days) per task
+  # 单次任务最大时间跨度（天）
+  max_range_days: 31
+  # Batch delete size
+  # 单批删除数量
+  batch_size: 5000
+  # Worker interval (seconds)
+  # 执行器轮询间隔（秒）
+  worker_interval_seconds: 10
+  # Task execution timeout (seconds)
+  # 单次任务最大执行时长（秒）
+  task_timeout_seconds: 1800
+
+# =============================================================================
 # Concurrency Wait Configuration
 # 并发等待配置
 # =============================================================================
@@ -342,6 +376,9 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
+  # Enable TLS/SSL connection
+  # 是否启用 TLS/SSL 连接
+  enable_tls: false
 
 # =============================================================================
 # Ops Monitoring (Optional)
@@ -368,6 +405,21 @@ jwt:
   # Token expiration time in hours (max 24)
   # 令牌过期时间（小时，最大 24）
   expire_hour: 24
+
+# =============================================================================
+# TOTP (2FA) Configuration
+# TOTP 双因素认证配置
+# =============================================================================
+totp:
+  # IMPORTANT: Set a fixed encryption key for TOTP secrets.
+  # 重要：设置固定的 TOTP 加密密钥。
+  # If left empty, a random key will be generated on each startup, causing all
+  # existing TOTP configurations to become invalid (users won't be able to
+  # login with 2FA).
+  # 如果留空，每次启动将生成随机密钥，导致现有的 TOTP 配置失效（用户无法使用
+  # 双因素认证登录）。
+  # Generate with / 生成命令: openssl rand -hex 32
+  encryption_key: ""
 
 # =============================================================================
 # LinuxDo Connect OAuth Login (SSO)

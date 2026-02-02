@@ -32,10 +32,10 @@ import { ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import { formatDateTime REDACTED from '@/utils/format'
-import type { User, ApiKey REDACTED from '@/types'
+import type { AdminUser, ApiKey REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 
-const props = defineProps<{ show: boolean, user: User | null REDACTED>()
+const props = defineProps<{ show: boolean, user: AdminUser | null REDACTED>()
 defineEmits(['close']); const { t REDACTED = useI18n()
 const apiKeys = ref<ApiKey[]>([]); const loading = ref(false)
 

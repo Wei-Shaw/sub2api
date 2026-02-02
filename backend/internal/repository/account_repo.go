@@ -39,9 +39,15 @@ import (
 // 设计说明：
 //   - client: Ent 客户端，用于类型安全的 ORM 操作
 //   - sql: 原生 SQL 执行器，用于复杂查询和批量操作
+//   - schedulerCache: 调度器缓存，用于在账号状态变更时同步快照
 type accountRepository struct {
 	client *dbent.Client // Ent ORM 客户端
 	sql    sqlExecutor   // 原生 SQL 执行接口
+	// schedulerCache 用于在账号状态变更时主动同步快照到缓存，
+	// 确保粘性会话能及时感知账号不可用状态。
+	// Used to proactively sync account snapshot to cache when status changes,
+	// ensuring sticky sessions can promptly detect unavailable accounts.
+	schedulerCache service.SchedulerCache
 REDACTED
 
 type tempUnschedSnapshot struct {
@@ -51,14 +57,14 @@ REDACTED
 
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
-func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB) service.AccountRepository {
-	return newAccountRepositoryWithSQL(client, sqlDB)
+func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
+	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
 REDACTED
 
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
 // 这种设计便于单元测试时注入 mock 对象。
-func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *accountRepository {
-	return &accountRepository{client: client, sql: sqlqREDACTED
+func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedulerCache service.SchedulerCache) *accountRepository {
+	return &accountRepository{client: client, sql: sqlq, schedulerCache: schedulerCacheREDACTED
 REDACTED
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
@@ -356,6 +362,9 @@ REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, buildSchedulerGroupPayload(account.GroupIDs)); err != nil {
 		log.Printf("[SchedulerOutbox] enqueue account update failed: account=%d err=%v", account.ID, err)
 REDACTED
+	if account.Status == service.StatusError || account.Status == service.StatusDisabled || !account.Schedulable {
+		r.syncSchedulerAccountSnapshot(ctx, account.ID)
+REDACTED
 	return nil
 REDACTED
 
@@ -473,37 +482,6 @@ REDACTED
 	return r.accountsToService(ctx, accounts)
 REDACTED
 
-func (r *accountRepository) ListByPlatformAndCredentialEmails(
-	ctx context.Context,
-	platform string,
-	emails []string,
-) ([]service.Account, error) {
-	if len(emails) == 0 {
-		return []service.Account{REDACTED, nil
-REDACTED
-	args := make([]any, 0, len(emails))
-	for _, email := range emails {
-		if email == "" {
-			continue
-	REDACTED
-		args = append(args, email)
-REDACTED
-	if len(args) == 0 {
-		return []service.Account{REDACTED, nil
-REDACTED
-
-	accounts, err := r.client.Account.Query().
-		Where(dbaccount.PlatformEQ(platform)).
-		Where(func(s *entsql.Selector) {
-			s.Where(sqljson.ValueIn(dbaccount.FieldCredentials, args, sqljson.Path("email")))
-	REDACTED).
-		All(ctx)
-	if err != nil {
-		return nil, err
-REDACTED
-	return r.accountsToService(ctx, accounts)
-REDACTED
-
 func (r *accountRepository) UpdateLastUsed(ctx context.Context, id int64) error {
 	now := time.Now()
 	_, err := r.client.Account.Update().
@@ -571,7 +549,30 @@ REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		log.Printf("[SchedulerOutbox] enqueue set error failed: account=%d err=%v", id, err)
 REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
+REDACTED
+
+// syncSchedulerAccountSnapshot 在账号状态变更时主动同步快照到调度器缓存。
+// 当账号被设置为错误、禁用、不可调度或临时不可调度时调用，
+// 确保调度器和粘性会话逻辑能及时感知账号的最新状态，避免继续使用不可用账号。
+//
+// syncSchedulerAccountSnapshot proactively syncs account snapshot to scheduler cache
+// when account status changes. Called when account is set to error, disabled,
+// unschedulable, or temporarily unschedulable, ensuring scheduler and sticky session
+// logic can promptly detect the latest account state and avoid using unavailable accounts.
+func (r *accountRepository) syncSchedulerAccountSnapshot(ctx context.Context, accountID int64) {
+	if r == nil || r.schedulerCache == nil || accountID <= 0 {
+		return
+REDACTED
+	account, err := r.GetByID(ctx, accountID)
+	if err != nil {
+		log.Printf("[Scheduler] sync account snapshot read failed: id=%d err=%v", accountID, err)
+		return
+REDACTED
+	if err := r.schedulerCache.SetAccount(ctx, account); err != nil {
+		log.Printf("[Scheduler] sync account snapshot write failed: id=%d err=%v", accountID, err)
+REDACTED
 REDACTED
 
 func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
@@ -787,7 +788,6 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 		Where(dbaccount.IDEQ(id)).
 		SetRateLimitedAt(now).
 		SetRateLimitResetAt(resetAt).
-		SetLastUsedAt(now).
 		Save(ctx)
 	if err != nil {
 		return err
@@ -922,6 +922,7 @@ REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		log.Printf("[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
 REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 REDACTED
 
@@ -1018,7 +1019,16 @@ REDACTED
 		builder.SetSessionWindowEnd(*end)
 REDACTED
 	_, err := builder.Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	// 触发调度器缓存更新（仅当窗口时间有变化时）
+	if start != nil || end != nil {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			log.Printf("[SchedulerOutbox] enqueue session window update failed: account=%d err=%v", id, err)
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
@@ -1031,6 +1041,9 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		log.Printf("[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
+REDACTED
+	if !schedulable {
+		r.syncSchedulerAccountSnapshot(ctx, id)
 REDACTED
 	return nil
 REDACTED
@@ -1185,6 +1198,18 @@ REDACTED
 		payload := map[string]any{"account_ids": idsREDACTED
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
 			log.Printf("[SchedulerOutbox] enqueue bulk update failed: err=%v", err)
+	REDACTED
+		shouldSync := false
+		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
+			shouldSync = true
+	REDACTED
+		if updates.Schedulable != nil && !*updates.Schedulable {
+			shouldSync = true
+	REDACTED
+		if shouldSync {
+			for _, id := range ids {
+				r.syncSchedulerAccountSnapshot(ctx, id)
+		REDACTED
 	REDACTED
 REDACTED
 	return rows, nil

@@ -94,6 +94,20 @@ REDACTED
 	s.authCacheL1 = cache
 REDACTED
 
+// StartAuthCacheInvalidationSubscriber starts the Pub/Sub subscriber for L1 cache invalidation.
+// This should be called after the service is fully initialized.
+func (s *APIKeyService) StartAuthCacheInvalidationSubscriber(ctx context.Context) {
+	if s.cache == nil || s.authCacheL1 == nil {
+		return
+REDACTED
+	if err := s.cache.SubscribeAuthCacheInvalidation(ctx, func(cacheKey string) {
+		s.authCacheL1.Del(cacheKey)
+REDACTED); err != nil {
+		// Log but don't fail - L1 cache will still work, just without cross-instance invalidation
+		println("[Service] Warning: failed to start auth cache invalidation subscriber:", err.Error())
+REDACTED
+REDACTED
+
 func (s *APIKeyService) authCacheKey(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
@@ -149,6 +163,8 @@ REDACTED
 		return
 REDACTED
 	_ = s.cache.DeleteAuthCache(ctx, cacheKey)
+	// Publish invalidation message to other instances
+	_ = s.cache.PublishAuthCacheInvalidation(ctx, cacheKey)
 REDACTED
 
 func (s *APIKeyService) loadAuthCacheEntry(ctx context.Context, key, cacheKey string) (*APIKeyAuthCacheEntry, error) {

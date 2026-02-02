@@ -29,6 +29,9 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h)
 
+		// 公告管理
+		registerAnnouncementRoutes(admin, h)
+
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
 
@@ -197,7 +200,6 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	accounts := admin.Group("/accounts")
 	{
 		accounts.GET("", h.Admin.Account.List)
-		accounts.POST("/lookup", h.Admin.Account.Lookup)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/sync/crs", h.Admin.Account.SyncFromCRS)
@@ -227,6 +229,18 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)
 		accounts.POST("/cookie-auth", h.Admin.OAuth.CookieAuth)
 		accounts.POST("/setup-token-cookie-auth", h.Admin.OAuth.SetupTokenCookieAuth)
+REDACTED
+REDACTED
+
+func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	announcements := admin.Group("/announcements")
+	{
+		announcements.GET("", h.Admin.Announcement.List)
+		announcements.POST("", h.Admin.Announcement.Create)
+		announcements.GET("/:id", h.Admin.Announcement.GetByID)
+		announcements.PUT("/:id", h.Admin.Announcement.Update)
+		announcements.DELETE("/:id", h.Admin.Announcement.Delete)
+		announcements.GET("/:id/read-status", h.Admin.Announcement.ListReadStatus)
 REDACTED
 REDACTED
 
@@ -355,6 +369,9 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.GET("/stats", h.Admin.Usage.Stats)
 		usage.GET("/search-users", h.Admin.Usage.SearchUsers)
 		usage.GET("/search-api-keys", h.Admin.Usage.SearchAPIKeys)
+		usage.GET("/cleanup-tasks", h.Admin.Usage.ListCleanupTasks)
+		usage.POST("/cleanup-tasks", h.Admin.Usage.CreateCleanupTask)
+		usage.POST("/cleanup-tasks/:id/cancel", h.Admin.Usage.CancelCleanupTask)
 REDACTED
 REDACTED
 

@@ -48,8 +48,7 @@ REDACTED
 
 // GenerateAuthURL generates an OAuth authorization URL with full scope
 func (s *OAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64) (*GenerateAuthURLResult, error) {
-	scope := fmt.Sprintf("%s %s", oauth.ScopeProfile, oauth.ScopeInference)
-	return s.generateAuthURLWithScope(ctx, scope, proxyID)
+	return s.generateAuthURLWithScope(ctx, oauth.ScopeOAuth, proxyID)
 REDACTED
 
 // GenerateSetupTokenURL generates an OAuth authorization URL for setup token (inference only)
@@ -123,6 +122,7 @@ type TokenInfo struct {
 	Scope        string `json:"scope,omitempty"`
 	OrgUUID      string `json:"org_uuid,omitempty"`
 	AccountUUID  string `json:"account_uuid,omitempty"`
+	EmailAddress string `json:"email_address,omitempty"`
 REDACTED
 
 // ExchangeCode exchanges authorization code for tokens
@@ -176,7 +176,8 @@ func (s *OAuthService) CookieAuth(ctx context.Context, input *CookieAuthInput) (
 REDACTED
 
 	// Determine scope and if this is a setup token
-	scope := fmt.Sprintf("%s %s", oauth.ScopeProfile, oauth.ScopeInference)
+	// Internal API call uses ScopeAPI (org:create_api_key not supported)
+	scope := oauth.ScopeAPI
 	isSetupToken := false
 	if input.Scope == "inference" {
 		scope = oauth.ScopeInference
@@ -252,9 +253,15 @@ REDACTED
 		tokenInfo.OrgUUID = tokenResp.Organization.UUID
 		log.Printf("[OAuth] Got org_uuid: %s", tokenInfo.OrgUUID)
 REDACTED
-	if tokenResp.Account != nil && tokenResp.Account.UUID != "" {
-		tokenInfo.AccountUUID = tokenResp.Account.UUID
-		log.Printf("[OAuth] Got account_uuid: %s", tokenInfo.AccountUUID)
+	if tokenResp.Account != nil {
+		if tokenResp.Account.UUID != "" {
+			tokenInfo.AccountUUID = tokenResp.Account.UUID
+			log.Printf("[OAuth] Got account_uuid: %s", tokenInfo.AccountUUID)
+	REDACTED
+		if tokenResp.Account.EmailAddress != "" {
+			tokenInfo.EmailAddress = tokenResp.Account.EmailAddress
+			log.Printf("[OAuth] Got email_address: %s", tokenInfo.EmailAddress)
+	REDACTED
 REDACTED
 
 	return tokenInfo, nil

@@ -905,7 +905,7 @@ REDACTED
 
 func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string) bool {
 	switch strings.TrimSpace(code) {
-	case "INSUFFICIENT_BALANCE", "USAGE_LIMIT_EXCEEDED", "SUBSCRIPTION_NOT_FOUND", "SUBSCRIPTION_INVALID":
+	case "INSUFFICIENT_BALANCE", "USAGE_LIMIT_EXCEEDED", "SUBSCRIPTION_NOT_FOUND", "SUBSCRIPTION_INVALID", "USER_INACTIVE":
 		return true
 REDACTED
 	if phase == "billing" || phase == "concurrency" {
@@ -1007,6 +1007,13 @@ REDACTED
 	// Check if "no available accounts" errors should be ignored
 	if settings.IgnoreNoAvailableAccounts {
 		if strings.Contains(msgLower, "no available accounts") || strings.Contains(bodyLower, "no available accounts") {
+			return true
+	REDACTED
+REDACTED
+
+	// Check if invalid/missing API key errors should be ignored (user misconfiguration)
+	if settings.IgnoreInvalidApiKeyErrors {
+		if strings.Contains(bodyLower, "invalid_api_key") || strings.Contains(bodyLower, "api_key_required") {
 			return true
 	REDACTED
 REDACTED

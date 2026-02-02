@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"time"
 
@@ -43,9 +44,10 @@ func ProvideTokenRefreshService(
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
+	schedulerCache SchedulerCache,
 	cfg *config.Config,
 ) *TokenRefreshService {
-	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, cfg)
+	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg)
 	svc.Start()
 	return svc
 REDACTED
@@ -57,9 +59,23 @@ func ProvideDashboardAggregationService(repo DashboardAggregationRepository, tim
 	return svc
 REDACTED
 
+// ProvideUsageCleanupService 创建并启动使用记录清理任务服务
+func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWheelService, dashboardAgg *DashboardAggregationService, cfg *config.Config) *UsageCleanupService {
+	svc := NewUsageCleanupService(repo, timingWheel, dashboardAgg, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
+	svc.Start()
+	return svc
+REDACTED
+
+// ProvideSubscriptionExpiryService creates and starts SubscriptionExpiryService.
+func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository) *SubscriptionExpiryService {
+	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
 	svc.Start()
 	return svc
 REDACTED
@@ -189,6 +205,8 @@ REDACTED
 
 // ProvideAPIKeyAuthCacheInvalidator 提供 API Key 认证缓存失效能力
 func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthCacheInvalidator {
+	// Start Pub/Sub subscriber for L1 cache invalidation across instances
+	apiKeyService.StartAuthCacheInvalidationSubscriber(context.Background())
 	return apiKeyService
 REDACTED
 
@@ -209,6 +227,7 @@ var ProviderSet = wire.NewSet(
 	ProvidePricingService,
 	NewBillingService,
 	NewBillingCacheService,
+	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
@@ -246,10 +265,13 @@ var ProviderSet = wire.NewSet(
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,
+	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
+	ProvideUsageCleanupService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,
 	NewUserAttributeService,
 	NewUsageCache,
+	NewTotpService,
 )

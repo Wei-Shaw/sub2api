@@ -1,4 +1,4 @@
--- 043_add_group_invalid_request_fallback.sql
+-- 043b_add_group_invalid_request_fallback.sql
 -- 添加无效请求兜底分组配置
 
 -- 添加 fallback_group_id_on_invalid_request 字段：无效请求兜底使用的分组

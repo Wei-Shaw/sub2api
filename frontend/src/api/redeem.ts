@@ -14,7 +14,9 @@ export interface RedeemHistoryItem {
   status: string
   used_at: string
   created_at: string
-  // 订阅类型专用字段
+  // Notes from admin for admin_balance/admin_concurrency types
+  notes?: string
+  // Subscription-specific fields
   group_id?: number
   validity_days?: number
   group?: {

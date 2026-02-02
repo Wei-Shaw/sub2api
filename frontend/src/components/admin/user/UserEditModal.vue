@@ -56,12 +56,12 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { adminAPI REDACTED from '@/api/admin'
-import type { User, UserAttributeValuesMap REDACTED from '@/types'
+import type { AdminUser, UserAttributeValuesMap REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 import Icon from '@/components/icons/Icon.vue'
 
-const props = defineProps<{ show: boolean, user: User | null REDACTED>()
+const props = defineProps<{ show: boolean, user: AdminUser | null REDACTED>()
 const emit = defineEmits(['close', 'success'])
 const { t REDACTED = useI18n(); const appStore = useAppStore(); const { copyToClipboard REDACTED = useClipboard()
 

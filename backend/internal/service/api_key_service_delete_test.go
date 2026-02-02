@@ -168,6 +168,14 @@ func (s *apiKeyCacheStub) DeleteAuthCache(ctx context.Context, key string) error
 	return nil
 REDACTED
 
+func (s *apiKeyCacheStub) PublishAuthCacheInvalidation(ctx context.Context, cacheKey string) error {
+	return nil
+REDACTED
+
+func (s *apiKeyCacheStub) SubscribeAuthCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error {
+	return nil
+REDACTED
+
 // TestApiKeyService_Delete_OwnerMismatch 测试非所有者尝试删除时返回权限错误。
 // 预期行为：
 //   - GetKeyAndOwnerID 返回所有者 ID 为 1

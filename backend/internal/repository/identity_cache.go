@@ -11,13 +11,20 @@ import (
 )
 
 const (
-	fingerprintKeyPrefix = "fingerprint:"
-	fingerprintTTL       = 24 * time.Hour
+	fingerprintKeyPrefix   = "fingerprint:"
+	fingerprintTTL         = 24 * time.Hour
+	maskedSessionKeyPrefix = "masked_session:"
+	maskedSessionTTL       = 15 * time.Minute
 )
 
 // fingerprintKey generates the Redis key for account fingerprint cache.
 func fingerprintKey(accountID int64) string {
 	return fmt.Sprintf("%s%d", fingerprintKeyPrefix, accountID)
+REDACTED
+
+// maskedSessionKey generates the Redis key for masked session ID cache.
+func maskedSessionKey(accountID int64) string {
+	return fmt.Sprintf("%s%d", maskedSessionKeyPrefix, accountID)
 REDACTED
 
 type identityCache struct {
@@ -48,4 +55,21 @@ func (c *identityCache) SetFingerprint(ctx context.Context, accountID int64, fp 
 		return err
 REDACTED
 	return c.rdb.Set(ctx, key, val, fingerprintTTL).Err()
+REDACTED
+
+func (c *identityCache) GetMaskedSessionID(ctx context.Context, accountID int64) (string, error) {
+	key := maskedSessionKey(accountID)
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return "", nil
+	REDACTED
+		return "", err
+REDACTED
+	return val, nil
+REDACTED
+
+func (c *identityCache) SetMaskedSessionID(ctx context.Context, accountID int64, sessionID string) error {
+	key := maskedSessionKey(accountID)
+	return c.rdb.Set(ctx, key, sessionID, maskedSessionTTL).Err()
 REDACTED

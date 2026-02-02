@@ -1,0 +1,134 @@
+package admin
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"testing"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParseTimeRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodGet, "/?start_date=2024-01-01&end_date=2024-01-02&timezone=UTC", nil)
+	c.Request = req
+
+	start, end := parseTimeRange(c)
+	require.Equal(t, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), start)
+	require.Equal(t, time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC), end)
+
+	req = httptest.NewRequest(http.MethodGet, "/?start_date=bad&timezone=UTC", nil)
+	c.Request = req
+	start, end = parseTimeRange(c)
+	require.False(t, start.IsZero())
+	require.False(t, end.IsZero())
+REDACTED
+
+func TestParseOpsViewParam(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/?view=excluded", nil)
+	require.Equal(t, opsListViewExcluded, parseOpsViewParam(c))
+
+	c2, _ := gin.CreateTestContext(w)
+	c2.Request = httptest.NewRequest(http.MethodGet, "/?view=all", nil)
+	require.Equal(t, opsListViewAll, parseOpsViewParam(c2))
+
+	c3, _ := gin.CreateTestContext(w)
+	c3.Request = httptest.NewRequest(http.MethodGet, "/?view=unknown", nil)
+	require.Equal(t, opsListViewErrors, parseOpsViewParam(c3))
+
+	require.Equal(t, "", parseOpsViewParam(nil))
+REDACTED
+
+func TestParseOpsDuration(t *testing.T) {
+	dur, ok := parseOpsDuration("1h")
+	require.True(t, ok)
+	require.Equal(t, time.Hour, dur)
+
+	_, ok = parseOpsDuration("invalid")
+	require.False(t, ok)
+REDACTED
+
+func TestParseOpsTimeRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	now := time.Now().UTC()
+	startStr := now.Add(-time.Hour).Format(time.RFC3339)
+	endStr := now.Format(time.RFC3339)
+	c.Request = httptest.NewRequest(http.MethodGet, "/?start_time="+startStr+"&end_time="+endStr, nil)
+	start, end, err := parseOpsTimeRange(c, "1h")
+REDACTED
+	require.True(t, start.Before(end))
+
+	c2, _ := gin.CreateTestContext(w)
+	c2.Request = httptest.NewRequest(http.MethodGet, "/?start_time=bad", nil)
+	_, _, err = parseOpsTimeRange(c2, "1h")
+REDACTED
+REDACTED
+
+func TestParseOpsRealtimeWindow(t *testing.T) {
+	dur, label, ok := parseOpsRealtimeWindow("5m")
+	require.True(t, ok)
+	require.Equal(t, 5*time.Minute, dur)
+	require.Equal(t, "5min", label)
+
+	_, _, ok = parseOpsRealtimeWindow("invalid")
+	require.False(t, ok)
+REDACTED
+
+func TestPickThroughputBucketSeconds(t *testing.T) {
+	require.Equal(t, 60, pickThroughputBucketSeconds(30*time.Minute))
+	require.Equal(t, 300, pickThroughputBucketSeconds(6*time.Hour))
+	require.Equal(t, 3600, pickThroughputBucketSeconds(48*time.Hour))
+REDACTED
+
+func TestParseOpsQueryMode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/?mode=raw", nil)
+	require.Equal(t, service.ParseOpsQueryMode("raw"), parseOpsQueryMode(c))
+	require.Equal(t, service.OpsQueryMode(""), parseOpsQueryMode(nil))
+REDACTED
+
+func TestOpsAlertRuleValidation(t *testing.T) {
+	raw := map[string]json.RawMessage{
+		"name":        json.RawMessage(`"High error rate"`),
+		"metric_type": json.RawMessage(`"error_rate"`),
+		"operator":    json.RawMessage(`">"`),
+		"threshold":   json.RawMessage(`90`),
+REDACTED
+
+	validated, err := validateOpsAlertRulePayload(raw)
+REDACTED
+	require.Equal(t, "High error rate", validated.Name)
+
+	_, err = validateOpsAlertRulePayload(map[string]json.RawMessage{REDACTED)
+REDACTED
+
+	require.True(t, isPercentOrRateMetric("error_rate"))
+	require.False(t, isPercentOrRateMetric("concurrency_queue_depth"))
+REDACTED
+
+func TestOpsWSHelpers(t *testing.T) {
+	prefixes, invalid := parseTrustedProxyList("10.0.0.0/8,invalid")
+	require.Len(t, prefixes, 1)
+	require.Len(t, invalid, 1)
+
+	host := hostWithoutPort("example.com:443")
+	require.Equal(t, "example.com", host)
+
+	addr := netip.MustParseAddr("10.0.0.1")
+	require.True(t, isAddrInTrustedProxies(addr, prefixes))
+	require.False(t, isAddrInTrustedProxies(netip.MustParseAddr("192.168.0.1"), prefixes))
+REDACTED

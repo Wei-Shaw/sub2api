@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"log/slog"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -18,16 +20,18 @@ type AuthHandler struct {
 	userService  *service.UserService
 	settingSvc   *service.SettingService
 	promoService *service.PromoService
+	totpService  *service.TotpService
 REDACTED
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userService *service.UserService, settingService *service.SettingService, promoService *service.PromoService, totpService *service.TotpService) *AuthHandler {
 	return &AuthHandler{
 		cfg:          cfg,
 		authService:  authService,
 		userService:  userService,
 		settingSvc:   settingService,
 		promoService: promoService,
+		totpService:  totpService,
 REDACTED
 REDACTED
 
@@ -144,6 +148,100 @@ REDACTED
 		return
 REDACTED
 
+	// Check if TOTP 2FA is enabled for this user
+	if h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled {
+		// Create a temporary login session for 2FA
+		tempToken, err := h.totpService.CreateLoginSession(c.Request.Context(), user.ID, user.Email)
+		if err != nil {
+			response.InternalError(c, "Failed to create 2FA session")
+			return
+	REDACTED
+
+		response.Success(c, TotpLoginResponse{
+			Requires2FA:     true,
+			TempToken:       tempToken,
+			UserEmailMasked: service.MaskEmail(user.Email),
+	REDACTED)
+		return
+REDACTED
+
+	response.Success(c, AuthResponse{
+		AccessToken: token,
+		TokenType:   "Bearer",
+		User:        dto.UserFromService(user),
+REDACTED)
+REDACTED
+
+// TotpLoginResponse represents the response when 2FA is required
+type TotpLoginResponse struct {
+	Requires2FA     bool   `json:"requires_2fa"`
+	TempToken       string `json:"temp_token,omitempty"`
+	UserEmailMasked string `json:"user_email_masked,omitempty"`
+REDACTED
+
+// Login2FARequest represents the 2FA login request
+type Login2FARequest struct {
+	TempToken string `json:"temp_token" binding:"required"`
+	TotpCode  string `json:"totp_code" binding:"required,len=6"`
+REDACTED
+
+// Login2FA completes the login with 2FA verification
+// POST /api/v1/auth/login/2fa
+func (h *AuthHandler) Login2FA(c *gin.Context) {
+	var req Login2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	slog.Debug("login_2fa_request",
+		"temp_token_len", len(req.TempToken),
+		"totp_code_len", len(req.TotpCode))
+
+	// Get the login session
+	session, err := h.totpService.GetLoginSession(c.Request.Context(), req.TempToken)
+	if err != nil || session == nil {
+		tokenPrefix := ""
+		if len(req.TempToken) >= 8 {
+			tokenPrefix = req.TempToken[:8]
+	REDACTED
+		slog.Debug("login_2fa_session_invalid",
+			"temp_token_prefix", tokenPrefix,
+			"error", err)
+		response.BadRequest(c, "Invalid or expired 2FA session")
+		return
+REDACTED
+
+	slog.Debug("login_2fa_session_found",
+		"user_id", session.UserID,
+		"email", session.Email)
+
+	// Verify the TOTP code
+	if err := h.totpService.VerifyCode(c.Request.Context(), session.UserID, req.TotpCode); err != nil {
+		slog.Debug("login_2fa_verify_failed",
+			"user_id", session.UserID,
+			"error", err)
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// Delete the login session
+	_ = h.totpService.DeleteLoginSession(c.Request.Context(), req.TempToken)
+
+	// Get the user
+	user, err := h.userService.GetByID(c.Request.Context(), session.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// Generate the JWT token
+	token, err := h.authService.GenerateToken(user)
+	if err != nil {
+		response.InternalError(c, "Failed to generate token")
+		return
+REDACTED
+
 	response.Success(c, AuthResponse{
 		AccessToken: token,
 		TokenType:   "Bearer",
@@ -195,6 +293,15 @@ REDACTED
 // ValidatePromoCode 验证优惠码（公开接口，注册前调用）
 // POST /api/v1/auth/validate-promo-code
 func (h *AuthHandler) ValidatePromoCode(c *gin.Context) {
+	// 检查优惠码功能是否启用
+	if h.settingSvc != nil && !h.settingSvc.IsPromoCodeEnabled(c.Request.Context()) {
+		response.Success(c, ValidatePromoCodeResponse{
+			Valid:     false,
+			ErrorCode: "PROMO_CODE_DISABLED",
+	REDACTED)
+		return
+REDACTED
+
 	var req ValidatePromoCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -236,5 +343,87 @@ REDACTED
 	response.Success(c, ValidatePromoCodeResponse{
 		Valid:       true,
 		BonusAmount: promoCode.BonusAmount,
+REDACTED)
+REDACTED
+
+// ForgotPasswordRequest 忘记密码请求
+type ForgotPasswordRequest struct {
+	Email          string `json:"email" binding:"required,email"`
+	TurnstileToken string `json:"turnstile_token"`
+REDACTED
+
+// ForgotPasswordResponse 忘记密码响应
+type ForgotPasswordResponse struct {
+	Message string `json:"message"`
+REDACTED
+
+// ForgotPassword 请求密码重置
+// POST /api/v1/auth/forgot-password
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	// Turnstile 验证
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// Build frontend base URL from request
+	scheme := "https"
+	if c.Request.TLS == nil {
+		// Check X-Forwarded-Proto header (common in reverse proxy setups)
+		if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
+			scheme = proto
+	REDACTED else {
+			scheme = "http"
+	REDACTED
+REDACTED
+	frontendBaseURL := scheme + "://" + c.Request.Host
+
+	// Request password reset (async)
+	// Note: This returns success even if email doesn't exist (to prevent enumeration)
+	if err := h.authService.RequestPasswordResetAsync(c.Request.Context(), req.Email, frontendBaseURL); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, ForgotPasswordResponse{
+		Message: "If your email is registered, you will receive a password reset link shortly.",
+REDACTED)
+REDACTED
+
+// ResetPasswordRequest 重置密码请求
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email"`
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+REDACTED
+
+// ResetPasswordResponse 重置密码响应
+type ResetPasswordResponse struct {
+	Message string `json:"message"`
+REDACTED
+
+// ResetPassword 重置密码
+// POST /api/v1/auth/reset-password
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	// Reset password
+	if err := h.authService.ResetPassword(c.Request.Context(), req.Email, req.Token, req.NewPassword); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, ResetPasswordResponse{
+		Message: "Your password has been reset successfully. You can now log in with your new password.",
 REDACTED)
 REDACTED

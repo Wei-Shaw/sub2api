@@ -45,6 +45,30 @@ REDACTED
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AccountGroupMutation", m)
 REDACTED
 
+// The AnnouncementFunc type is an adapter to allow the use of ordinary
+// function as Announcement mutator.
+type AnnouncementFunc func(context.Context, *ent.AnnouncementMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AnnouncementFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AnnouncementMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementMutation", m)
+REDACTED
+
+// The AnnouncementReadFunc type is an adapter to allow the use of ordinary
+// function as AnnouncementRead mutator.
+type AnnouncementReadFunc func(context.Context, *ent.AnnouncementReadMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AnnouncementReadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AnnouncementReadMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementReadMutation", m)
+REDACTED
+
 // The GroupFunc type is an adapter to allow the use of ordinary
 // function as Group mutator.
 type GroupFunc func(context.Context, *ent.GroupMutation) (ent.Value, error)
@@ -115,6 +139,18 @@ func (f SettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 REDACTED
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SettingMutation", m)
+REDACTED
+
+// The UsageCleanupTaskFunc type is an adapter to allow the use of ordinary
+// function as UsageCleanupTask mutator.
+type UsageCleanupTaskFunc func(context.Context, *ent.UsageCleanupTaskMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UsageCleanupTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UsageCleanupTaskMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UsageCleanupTaskMutation", m)
 REDACTED
 
 // The UsageLogFunc type is an adapter to allow the use of ordinary

@@ -186,7 +186,7 @@ REDACTED
 
 // GetUsageTrend handles getting usage trend data
 // GET /api/v1/admin/dashboard/trend
-// Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), user_id, api_key_id, model, account_id, group_id, stream
+// Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), user_id, api_key_id, model, account_id, group_id, stream, billing_type
 func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
@@ -195,6 +195,7 @@ func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 	var userID, apiKeyID, accountID, groupID int64
 	var model string
 	var stream *bool
+	var billingType *int8
 
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
@@ -224,8 +225,17 @@ REDACTED
 			stream = &streamVal
 	REDACTED
 REDACTED
+	if billingTypeStr := c.Query("billing_type"); billingTypeStr != "" {
+		if v, err := strconv.ParseInt(billingTypeStr, 10, 8); err == nil {
+			bt := int8(v)
+			billingType = &bt
+	REDACTED else {
+			response.BadRequest(c, "Invalid billing_type")
+			return
+	REDACTED
+REDACTED
 
-	trend, err := h.dashboardService.GetUsageTrendWithFilters(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, stream)
+	trend, err := h.dashboardService.GetUsageTrendWithFilters(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, stream, billingType)
 	if err != nil {
 		response.Error(c, 500, "Failed to get usage trend")
 		return
@@ -241,13 +251,14 @@ REDACTED
 
 // GetModelStats handles getting model usage statistics
 // GET /api/v1/admin/dashboard/models
-// Query params: start_date, end_date (YYYY-MM-DD), user_id, api_key_id, account_id, group_id, stream
+// Query params: start_date, end_date (YYYY-MM-DD), user_id, api_key_id, account_id, group_id, stream, billing_type
 func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 
 	// Parse optional filter params
 	var userID, apiKeyID, accountID, groupID int64
 	var stream *bool
+	var billingType *int8
 
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
@@ -274,8 +285,17 @@ REDACTED
 			stream = &streamVal
 	REDACTED
 REDACTED
+	if billingTypeStr := c.Query("billing_type"); billingTypeStr != "" {
+		if v, err := strconv.ParseInt(billingTypeStr, 10, 8); err == nil {
+			bt := int8(v)
+			billingType = &bt
+	REDACTED else {
+			response.BadRequest(c, "Invalid billing_type")
+			return
+	REDACTED
+REDACTED
 
-	stats, err := h.dashboardService.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, stream)
+	stats, err := h.dashboardService.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, stream, billingType)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return

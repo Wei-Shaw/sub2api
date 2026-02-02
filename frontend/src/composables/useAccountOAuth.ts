@@ -17,6 +17,7 @@ REDACTED
 export interface TokenInfo {
   org_uuid?: string
   account_uuid?: string
+  email_address?: string
   [key: string]: unknown
 REDACTED
 
@@ -159,6 +160,9 @@ export function useAccountOAuth() {
     REDACTED
     if (tokenInfo.account_uuid) {
       extra.account_uuid = tokenInfo.account_uuid
+    REDACTED
+    if (tokenInfo.email_address) {
+      extra.email_address = tokenInfo.email_address
     REDACTED
     return Object.keys(extra).length > 0 ? extra : undefined
   REDACTED

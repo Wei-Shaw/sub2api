@@ -648,7 +648,7 @@ import { ref, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Proxy, Group REDACTED from '@/types'
+import type { Proxy, AdminGroup REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -659,7 +659,7 @@ interface Props {
   show: boolean
   accountIds: number[]
   proxies: Proxy[]
-  groups: Group[]
+  groups: AdminGroup[]
 REDACTED
 
 const props = defineProps<Props>()

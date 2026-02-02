@@ -15,7 +15,6 @@ REDACTED
 		ID:            u.ID,
 		Email:         u.Email,
 		Username:      u.Username,
-		Notes:         u.Notes,
 		Role:          u.Role,
 		Balance:       u.Balance,
 		Concurrency:   u.Concurrency,
@@ -48,6 +47,22 @@ REDACTED
 	return out
 REDACTED
 
+// UserFromServiceAdmin converts a service User to DTO for admin users.
+// It includes notes - user-facing endpoints must not use this.
+func UserFromServiceAdmin(u *service.User) *AdminUser {
+	if u == nil {
+		return nil
+REDACTED
+	base := UserFromService(u)
+	if base == nil {
+		return nil
+REDACTED
+	return &AdminUser{
+		User:  *base,
+		Notes: u.Notes,
+REDACTED
+REDACTED
+
 func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k == nil {
 		return nil
@@ -72,38 +87,31 @@ func GroupFromServiceShallow(g *service.Group) *Group {
 	if g == nil {
 		return nil
 REDACTED
-	return &Group{
-		ID:                              g.ID,
-		Name:                            g.Name,
-		Description:                     g.Description,
-		Platform:                        g.Platform,
-		RateMultiplier:                  g.RateMultiplier,
-		IsExclusive:                     g.IsExclusive,
-		Status:                          g.Status,
-		SubscriptionType:                g.SubscriptionType,
-		DailyLimitUSD:                   g.DailyLimitUSD,
-		WeeklyLimitUSD:                  g.WeeklyLimitUSD,
-		MonthlyLimitUSD:                 g.MonthlyLimitUSD,
-		ImagePrice1K:                    g.ImagePrice1K,
-		ImagePrice2K:                    g.ImagePrice2K,
-		ImagePrice4K:                    g.ImagePrice4K,
-		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
-		FallbackGroupID:                 g.FallbackGroupID,
-		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
-		ModelRouting:                    g.ModelRouting,
-		ModelRoutingEnabled:             g.ModelRoutingEnabled,
-		MCPXMLInject:                    g.MCPXMLInject,
-		CreatedAt:                       g.CreatedAt,
-		UpdatedAt:                       g.UpdatedAt,
-		AccountCount:                    g.AccountCount,
-REDACTED
+	out := groupFromServiceBase(g)
+	return &out
 REDACTED
 
 func GroupFromService(g *service.Group) *Group {
 	if g == nil {
 		return nil
 REDACTED
-	out := GroupFromServiceShallow(g)
+	return GroupFromServiceShallow(g)
+REDACTED
+
+// GroupFromServiceAdmin converts a service Group to DTO for admin users.
+// It includes internal fields like model_routing and account_count.
+func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
+	if g == nil {
+		return nil
+REDACTED
+	out := &AdminGroup{
+		Group:               groupFromServiceBase(g),
+		ModelRouting:        g.ModelRouting,
+		ModelRoutingEnabled: g.ModelRoutingEnabled,
+		MCPXMLInject:        g.MCPXMLInject,
+		SupportedModelScopes: g.SupportedModelScopes,
+		AccountCount:        g.AccountCount,
+REDACTED
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
 		for i := range g.AccountGroups {
@@ -112,6 +120,31 @@ REDACTED
 	REDACTED
 REDACTED
 	return out
+REDACTED
+
+func groupFromServiceBase(g *service.Group) Group {
+	return Group{
+		ID:               g.ID,
+		Name:             g.Name,
+		Description:      g.Description,
+		Platform:         g.Platform,
+		RateMultiplier:   g.RateMultiplier,
+		IsExclusive:      g.IsExclusive,
+		Status:           g.Status,
+		SubscriptionType: g.SubscriptionType,
+		DailyLimitUSD:    g.DailyLimitUSD,
+		WeeklyLimitUSD:   g.WeeklyLimitUSD,
+		MonthlyLimitUSD:  g.MonthlyLimitUSD,
+		ImagePrice1K:     g.ImagePrice1K,
+		ImagePrice2K:     g.ImagePrice2K,
+		ImagePrice4K:     g.ImagePrice4K,
+		ClaudeCodeOnly:   g.ClaudeCodeOnly,
+		FallbackGroupID:  g.FallbackGroupID,
+		// 无效请求兜底分组
+		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
+		CreatedAt:        g.CreatedAt,
+		UpdatedAt:        g.UpdatedAt,
+REDACTED
 REDACTED
 
 func AccountFromServiceShallow(a *service.Account) *Account {
@@ -162,6 +195,16 @@ REDACTED
 	REDACTED
 		if idleTimeout := a.GetSessionIdleTimeoutMinutes(); idleTimeout > 0 {
 			out.SessionIdleTimeoutMin = &idleTimeout
+	REDACTED
+		// TLS指纹伪装开关
+		if a.IsTLSFingerprintEnabled() {
+			enabled := true
+			out.EnableTLSFingerprint = &enabled
+	REDACTED
+		// 会话ID伪装开关
+		if a.IsSessionIDMaskingEnabled() {
+			enabled := true
+			out.EnableSessionIDMasking = &enabled
 	REDACTED
 REDACTED
 
@@ -276,7 +319,24 @@ func RedeemCodeFromService(rc *service.RedeemCode) *RedeemCode {
 	if rc == nil {
 		return nil
 REDACTED
-	return &RedeemCode{
+	out := redeemCodeFromServiceBase(rc)
+	return &out
+REDACTED
+
+// RedeemCodeFromServiceAdmin converts a service RedeemCode to DTO for admin users.
+// It includes notes - user-facing endpoints must not use this.
+func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
+	if rc == nil {
+		return nil
+REDACTED
+	return &AdminRedeemCode{
+		RedeemCode: redeemCodeFromServiceBase(rc),
+		Notes:      rc.Notes,
+REDACTED
+REDACTED
+
+func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
+	out := RedeemCode{
 		ID:           rc.ID,
 		Code:         rc.Code,
 		Type:         rc.Type,
@@ -284,13 +344,20 @@ REDACTED
 		Status:       rc.Status,
 		UsedBy:       rc.UsedBy,
 		UsedAt:       rc.UsedAt,
-		Notes:        rc.Notes,
 		CreatedAt:    rc.CreatedAt,
 		GroupID:      rc.GroupID,
 		ValidityDays: rc.ValidityDays,
 		User:         UserFromServiceShallow(rc.User),
 		Group:        GroupFromServiceShallow(rc.Group),
 REDACTED
+
+	// For admin_balance/admin_concurrency types, include notes so users can see
+	// why they were charged or credited by admin
+	if (rc.Type == "admin_balance" || rc.Type == "admin_concurrency") && rc.Notes != "" {
+		out.Notes = &rc.Notes
+REDACTED
+
+	return out
 REDACTED
 
 // AccountSummaryFromService returns a minimal AccountSummary for usage log display.
@@ -305,14 +372,9 @@ REDACTED
 REDACTED
 REDACTED
 
-// usageLogFromServiceBase is a helper that converts service UsageLog to DTO.
-// The account parameter allows caller to control what Account info is included.
-// The includeIPAddress parameter controls whether to include the IP address (admin-only).
-func usageLogFromServiceBase(l *service.UsageLog, account *AccountSummary, includeIPAddress bool) *UsageLog {
-	if l == nil {
-		return nil
-REDACTED
-	result := &UsageLog{
+func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
+	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、ip_address、account）。
+	return UsageLog{
 		ID:                    l.ID,
 		UserID:                l.UserID,
 		APIKeyID:              l.APIKeyID,
@@ -334,7 +396,6 @@ REDACTED
 		TotalCost:             l.TotalCost,
 		ActualCost:            l.ActualCost,
 		RateMultiplier:        l.RateMultiplier,
-		AccountRateMultiplier: l.AccountRateMultiplier,
 		BillingType:           l.BillingType,
 		Stream:                l.Stream,
 		DurationMs:            l.DurationMs,
@@ -345,30 +406,63 @@ REDACTED
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
 		APIKey:                APIKeyFromService(l.APIKey),
-		Account:               account,
 		Group:                 GroupFromServiceShallow(l.Group),
 		Subscription:          UserSubscriptionFromService(l.Subscription),
 REDACTED
-	// IP 地址仅对管理员可见
-	if includeIPAddress {
-		result.IPAddress = l.IPAddress
-REDACTED
-	return result
 REDACTED
 
 // UsageLogFromService converts a service UsageLog to DTO for regular users.
 // It excludes Account details and IP address - users should not see these.
 func UsageLogFromService(l *service.UsageLog) *UsageLog {
-	return usageLogFromServiceBase(l, nil, false)
+	if l == nil {
+		return nil
+REDACTED
+	u := usageLogFromServiceUser(l)
+	return &u
 REDACTED
 
 // UsageLogFromServiceAdmin converts a service UsageLog to DTO for admin users.
 // It includes minimal Account info (ID, Name only) and IP address.
-func UsageLogFromServiceAdmin(l *service.UsageLog) *UsageLog {
+func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	if l == nil {
 		return nil
 REDACTED
-	return usageLogFromServiceBase(l, AccountSummaryFromService(l.Account), true)
+	return &AdminUsageLog{
+		UsageLog:              usageLogFromServiceUser(l),
+		AccountRateMultiplier: l.AccountRateMultiplier,
+		IPAddress:             l.IPAddress,
+		Account:               AccountSummaryFromService(l.Account),
+REDACTED
+REDACTED
+
+func UsageCleanupTaskFromService(task *service.UsageCleanupTask) *UsageCleanupTask {
+	if task == nil {
+		return nil
+REDACTED
+	return &UsageCleanupTask{
+		ID:     task.ID,
+		Status: task.Status,
+		Filters: UsageCleanupFilters{
+			StartTime:   task.Filters.StartTime,
+			EndTime:     task.Filters.EndTime,
+			UserID:      task.Filters.UserID,
+			APIKeyID:    task.Filters.APIKeyID,
+			AccountID:   task.Filters.AccountID,
+			GroupID:     task.Filters.GroupID,
+			Model:       task.Filters.Model,
+			Stream:      task.Filters.Stream,
+			BillingType: task.Filters.BillingType,
+	REDACTED,
+		CreatedBy:    task.CreatedBy,
+		DeletedRows:  task.DeletedRows,
+		ErrorMessage: task.ErrorMsg,
+		CanceledBy:   task.CanceledBy,
+		CanceledAt:   task.CanceledAt,
+		StartedAt:    task.StartedAt,
+		FinishedAt:   task.FinishedAt,
+		CreatedAt:    task.CreatedAt,
+		UpdatedAt:    task.UpdatedAt,
+REDACTED
 REDACTED
 
 func SettingFromService(s *service.Setting) *Setting {
@@ -387,7 +481,27 @@ func UserSubscriptionFromService(sub *service.UserSubscription) *UserSubscriptio
 	if sub == nil {
 		return nil
 REDACTED
-	return &UserSubscription{
+	out := userSubscriptionFromServiceBase(sub)
+	return &out
+REDACTED
+
+// UserSubscriptionFromServiceAdmin converts a service UserSubscription to DTO for admin users.
+// It includes assignment metadata and notes.
+func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserSubscription {
+	if sub == nil {
+		return nil
+REDACTED
+	return &AdminUserSubscription{
+		UserSubscription: userSubscriptionFromServiceBase(sub),
+		AssignedBy:       sub.AssignedBy,
+		AssignedAt:       sub.AssignedAt,
+		Notes:            sub.Notes,
+		AssignedByUser:   UserFromServiceShallow(sub.AssignedByUser),
+REDACTED
+REDACTED
+
+func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscription {
+	return UserSubscription{
 		ID:                 sub.ID,
 		UserID:             sub.UserID,
 		GroupID:            sub.GroupID,
@@ -400,14 +514,10 @@ REDACTED
 		DailyUsageUSD:      sub.DailyUsageUSD,
 		WeeklyUsageUSD:     sub.WeeklyUsageUSD,
 		MonthlyUsageUSD:    sub.MonthlyUsageUSD,
-		AssignedBy:         sub.AssignedBy,
-		AssignedAt:         sub.AssignedAt,
-		Notes:              sub.Notes,
 		CreatedAt:          sub.CreatedAt,
 		UpdatedAt:          sub.UpdatedAt,
 		User:               UserFromServiceShallow(sub.User),
 		Group:              GroupFromServiceShallow(sub.Group),
-		AssignedByUser:     UserFromServiceShallow(sub.AssignedByUser),
 REDACTED
 REDACTED
 
@@ -415,9 +525,9 @@ func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult 
 	if r == nil {
 		return nil
 REDACTED
-	subs := make([]UserSubscription, 0, len(r.Subscriptions))
+	subs := make([]AdminUserSubscription, 0, len(r.Subscriptions))
 	for i := range r.Subscriptions {
-		subs = append(subs, *UserSubscriptionFromService(&r.Subscriptions[i]))
+		subs = append(subs, *UserSubscriptionFromServiceAdmin(&r.Subscriptions[i]))
 REDACTED
 	return &BulkAssignResult{
 		SuccessCount:  r.SuccessCount,

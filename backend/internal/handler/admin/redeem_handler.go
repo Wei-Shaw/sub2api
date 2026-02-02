@@ -54,9 +54,9 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.RedeemCode, 0, len(codes))
+	out := make([]dto.AdminRedeemCode, 0, len(codes))
 	for i := range codes {
-		out = append(out, *dto.RedeemCodeFromService(&codes[i]))
+		out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
 REDACTED
 	response.Paginated(c, out, total, page, pageSize)
 REDACTED
@@ -76,7 +76,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.RedeemCodeFromService(code))
+	response.Success(c, dto.RedeemCodeFromServiceAdmin(code))
 REDACTED
 
 // Generate handles generating new redeem codes
@@ -100,9 +100,9 @@ REDACTED)
 		return
 REDACTED
 
-	out := make([]dto.RedeemCode, 0, len(codes))
+	out := make([]dto.AdminRedeemCode, 0, len(codes))
 	for i := range codes {
-		out = append(out, *dto.RedeemCodeFromService(&codes[i]))
+		out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
 REDACTED
 	response.Success(c, out)
 REDACTED
@@ -163,7 +163,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.RedeemCodeFromService(code))
+	response.Success(c, dto.RedeemCodeFromServiceAdmin(code))
 REDACTED
 
 // GetStats handles getting redeem code statistics

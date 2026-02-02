@@ -216,3 +216,67 @@ export function formatTokensK(tokens: number): string {
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)REDACTEDK`
   return tokens.toString()
 REDACTED
+
+/**
+ * 格式化倒计时（从现在到目标时间的剩余时间）
+ * @param targetDate 目标日期字符串或 Date 对象
+ * @returns 倒计时字符串，如 "2h 41m", "3d 5h", "15m"
+ */
+export function formatCountdown(targetDate: string | Date | null | undefined): string | null {
+  if (!targetDate) return null
+
+  const now = new Date()
+  const target = new Date(targetDate)
+  const diffMs = target.getTime() - now.getTime()
+
+  // 如果目标时间已过或无效
+  if (diffMs <= 0 || isNaN(diffMs)) return null
+
+  const diffMins = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  const remainingHours = diffHours % 24
+  const remainingMins = diffMins % 60
+
+  if (diffDays > 0) {
+    // 超过1天：显示 "Xd Yh"
+    return i18n.global.t('common.time.countdown.daysHours', { d: diffDays, h: remainingHours REDACTED)
+  REDACTED
+  if (diffHours > 0) {
+    // 小于1天：显示 "Xh Ym"
+    return i18n.global.t('common.time.countdown.hoursMinutes', { h: diffHours, m: remainingMins REDACTED)
+  REDACTED
+  // 小于1小时：显示 "Ym"
+  return i18n.global.t('common.time.countdown.minutes', { m: diffMins REDACTED)
+REDACTED
+
+/**
+ * 格式化倒计时并带后缀（如 "2h 41m 后解除"）
+ * @param targetDate 目标日期字符串或 Date 对象
+ * @returns 完整的倒计时字符串，如 "2h 41m to lift", "2小时41分钟后解除"
+ */
+export function formatCountdownWithSuffix(targetDate: string | Date | null | undefined): string | null {
+  const countdown = formatCountdown(targetDate)
+  if (!countdown) return null
+  return i18n.global.t('common.time.countdown.withSuffix', { time: countdown REDACTED)
+REDACTED
+
+/**
+ * 格式化为相对时间 + 具体时间组合
+ * @param date 日期字符串或 Date 对象
+ * @returns 组合时间字符串，如 "5 天前 · 2026-01-27 15:25"
+ */
+export function formatRelativeWithDateTime(date: string | Date | null | undefined): string {
+  if (!date) return ''
+
+  const relativeTime = formatRelativeTime(date)
+  const dateTime = formatDateTime(date)
+
+  // 如果是 "从未" 或空字符串，只返回相对时间
+  if (!dateTime || relativeTime === i18n.global.t('common.time.never')) {
+    return relativeTime
+  REDACTED
+
+  return `${relativeTimeREDACTED · ${dateTimeREDACTED`
+REDACTED

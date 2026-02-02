@@ -27,6 +27,11 @@ var codexToolNameMapping = map[string]string{
 	"executeBash":  "bash",
 	"exec_bash":    "bash",
 	"execBash":     "bash",
+
+	// Some clients output generic fetch names.
+	"fetch":     "webfetch",
+	"web_fetch": "webfetch",
+	"webFetch":  "webfetch",
 REDACTED
 
 // ToolCorrectionStats 记录工具修正的统计信息（导出用于 JSON 序列化）
@@ -208,27 +213,67 @@ REDACTED
 	// 根据工具名称应用特定的参数修正规则
 	switch toolName {
 	case "bash":
-		// 移除 workdir 参数（OpenCode 不支持）
-		if _, exists := argsMap["workdir"]; exists {
-			delete(argsMap, "workdir")
-			corrected = true
-			log.Printf("[CodexToolCorrector] Removed 'workdir' parameter from bash tool")
-	REDACTED
-		if _, exists := argsMap["work_dir"]; exists {
-			delete(argsMap, "work_dir")
-			corrected = true
-			log.Printf("[CodexToolCorrector] Removed 'work_dir' parameter from bash tool")
+		// OpenCode bash 支持 workdir；有些来源会输出 work_dir。
+		if _, hasWorkdir := argsMap["workdir"]; !hasWorkdir {
+			if workDir, exists := argsMap["work_dir"]; exists {
+				argsMap["workdir"] = workDir
+				delete(argsMap, "work_dir")
+				corrected = true
+				log.Printf("[CodexToolCorrector] Renamed 'work_dir' to 'workdir' in bash tool")
+		REDACTED
+	REDACTED else {
+			if _, exists := argsMap["work_dir"]; exists {
+				delete(argsMap, "work_dir")
+				corrected = true
+				log.Printf("[CodexToolCorrector] Removed duplicate 'work_dir' parameter from bash tool")
+		REDACTED
 	REDACTED
 
 	case "edit":
-		// OpenCode edit 使用 old_string/new_string，Codex 可能使用其他名称
-		// 这里可以添加参数名称的映射逻辑
-		if _, exists := argsMap["file_path"]; !exists {
-			if path, exists := argsMap["path"]; exists {
-				argsMap["file_path"] = path
+		// OpenCode edit 参数为 filePath/oldString/newString（camelCase）。
+		if _, exists := argsMap["filePath"]; !exists {
+			if filePath, exists := argsMap["file_path"]; exists {
+				argsMap["filePath"] = filePath
+				delete(argsMap, "file_path")
+				corrected = true
+				log.Printf("[CodexToolCorrector] Renamed 'file_path' to 'filePath' in edit tool")
+		REDACTED else if filePath, exists := argsMap["path"]; exists {
+				argsMap["filePath"] = filePath
 				delete(argsMap, "path")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'path' to 'file_path' in edit tool")
+				log.Printf("[CodexToolCorrector] Renamed 'path' to 'filePath' in edit tool")
+		REDACTED else if filePath, exists := argsMap["file"]; exists {
+				argsMap["filePath"] = filePath
+				delete(argsMap, "file")
+				corrected = true
+				log.Printf("[CodexToolCorrector] Renamed 'file' to 'filePath' in edit tool")
+		REDACTED
+	REDACTED
+
+		if _, exists := argsMap["oldString"]; !exists {
+			if oldString, exists := argsMap["old_string"]; exists {
+				argsMap["oldString"] = oldString
+				delete(argsMap, "old_string")
+				corrected = true
+				log.Printf("[CodexToolCorrector] Renamed 'old_string' to 'oldString' in edit tool")
+		REDACTED
+	REDACTED
+
+		if _, exists := argsMap["newString"]; !exists {
+			if newString, exists := argsMap["new_string"]; exists {
+				argsMap["newString"] = newString
+				delete(argsMap, "new_string")
+				corrected = true
+				log.Printf("[CodexToolCorrector] Renamed 'new_string' to 'newString' in edit tool")
+		REDACTED
+	REDACTED
+
+		if _, exists := argsMap["replaceAll"]; !exists {
+			if replaceAll, exists := argsMap["replace_all"]; exists {
+				argsMap["replaceAll"] = replaceAll
+				delete(argsMap, "replace_all")
+				corrected = true
+				log.Printf("[CodexToolCorrector] Renamed 'replace_all' to 'replaceAll' in edit tool")
 		REDACTED
 	REDACTED
 REDACTED

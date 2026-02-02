@@ -17,6 +17,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/announcement"
+	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
@@ -24,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
@@ -45,6 +48,10 @@ type Client struct {
 	Account *AccountClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
 	AccountGroup *AccountGroupClient
+	// Announcement is the client for interacting with the Announcement builders.
+	Announcement *AnnouncementClient
+	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
+	AnnouncementRead *AnnouncementReadClient
 	// Group is the client for interacting with the Group builders.
 	Group *GroupClient
 	// PromoCode is the client for interacting with the PromoCode builders.
@@ -57,6 +64,8 @@ type Client struct {
 	RedeemCode *RedeemCodeClient
 	// Setting is the client for interacting with the Setting builders.
 	Setting *SettingClient
+	// UsageCleanupTask is the client for interacting with the UsageCleanupTask builders.
+	UsageCleanupTask *UsageCleanupTaskClient
 	// UsageLog is the client for interacting with the UsageLog builders.
 	UsageLog *UsageLogClient
 	// User is the client for interacting with the User builders.
@@ -83,12 +92,15 @@ func (c *Client) init() {
 	c.APIKey = NewAPIKeyClient(c.config)
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
+	c.Announcement = NewAnnouncementClient(c.config)
+	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.PromoCode = NewPromoCodeClient(c.config)
 	c.PromoCodeUsage = NewPromoCodeUsageClient(c.config)
 	c.Proxy = NewProxyClient(c.config)
 	c.RedeemCode = NewRedeemCodeClient(c.config)
 	c.Setting = NewSettingClient(c.config)
+	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
@@ -190,12 +202,15 @@ REDACTED
 		APIKey:                  NewAPIKeyClient(cfg),
 		Account:                 NewAccountClient(cfg),
 		AccountGroup:            NewAccountGroupClient(cfg),
+		Announcement:            NewAnnouncementClient(cfg),
+		AnnouncementRead:        NewAnnouncementReadClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		PromoCode:               NewPromoCodeClient(cfg),
 		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
@@ -224,12 +239,15 @@ REDACTED
 		APIKey:                  NewAPIKeyClient(cfg),
 		Account:                 NewAccountClient(cfg),
 		AccountGroup:            NewAccountGroupClient(cfg),
+		Announcement:            NewAnnouncementClient(cfg),
+		AnnouncementRead:        NewAnnouncementReadClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		PromoCode:               NewPromoCodeClient(cfg),
 		PromoCodeUsage:          NewPromoCodeUsageClient(cfg),
 		Proxy:                   NewProxyClient(cfg),
 		RedeemCode:              NewRedeemCodeClient(cfg),
 		Setting:                 NewSettingClient(cfg),
+		UsageCleanupTask:        NewUsageCleanupTaskClient(cfg),
 		UsageLog:                NewUsageLogClient(cfg),
 		User:                    NewUserClient(cfg),
 		UserAllowedGroup:        NewUserAllowedGroupClient(cfg),
@@ -265,8 +283,9 @@ REDACTED
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) REDACTED{
-		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.Setting, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
+		c.Group, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.Setting,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
 		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 REDACTED {
 		n.Use(hooks...)
@@ -277,8 +296,9 @@ REDACTED
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) REDACTED{
-		c.APIKey, c.Account, c.AccountGroup, c.Group, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.Setting, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
+		c.Group, c.PromoCode, c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.Setting,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
 		c.UserAttributeDefinition, c.UserAttributeValue, c.UserSubscription,
 REDACTED {
 		n.Intercept(interceptors...)
@@ -294,6 +314,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Account.mutate(ctx, m)
 	case *AccountGroupMutation:
 		return c.AccountGroup.mutate(ctx, m)
+	case *AnnouncementMutation:
+		return c.Announcement.mutate(ctx, m)
+	case *AnnouncementReadMutation:
+		return c.AnnouncementRead.mutate(ctx, m)
 	case *GroupMutation:
 		return c.Group.mutate(ctx, m)
 	case *PromoCodeMutation:
@@ -306,6 +330,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RedeemCode.mutate(ctx, m)
 	case *SettingMutation:
 		return c.Setting.mutate(ctx, m)
+	case *UsageCleanupTaskMutation:
+		return c.UsageCleanupTask.mutate(ctx, m)
 	case *UsageLogMutation:
 		return c.UsageLog.mutate(ctx, m)
 	case *UserMutation:
@@ -818,6 +844,320 @@ func (c *AccountGroupClient) mutate(ctx context.Context, m *AccountGroupMutation
 		return (&AccountGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AccountGroup mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
+// AnnouncementClient is a client for the Announcement schema.
+type AnnouncementClient struct {
+	config
+REDACTED
+
+// NewAnnouncementClient returns a client for the Announcement from the given config.
+func NewAnnouncementClient(c config) *AnnouncementClient {
+	return &AnnouncementClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `announcement.Hooks(f(g(h())))`.
+func (c *AnnouncementClient) Use(hooks ...Hook) {
+	c.hooks.Announcement = append(c.hooks.Announcement, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `announcement.Intercept(f(g(h())))`.
+func (c *AnnouncementClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Announcement = append(c.inters.Announcement, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a Announcement entity.
+func (c *AnnouncementClient) Create() *AnnouncementCreate {
+	mutation := newAnnouncementMutation(c.config, OpCreate)
+	return &AnnouncementCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of Announcement entities.
+func (c *AnnouncementClient) CreateBulk(builders ...*AnnouncementCreate) *AnnouncementCreateBulk {
+	return &AnnouncementCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AnnouncementClient) MapCreateBulk(slice any, setFunc func(*AnnouncementCreate, int)) *AnnouncementCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AnnouncementCreateBulk{err: fmt.Errorf("calling to AnnouncementClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*AnnouncementCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &AnnouncementCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for Announcement.
+func (c *AnnouncementClient) Update() *AnnouncementUpdate {
+	mutation := newAnnouncementMutation(c.config, OpUpdate)
+	return &AnnouncementUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AnnouncementClient) UpdateOne(_m *Announcement) *AnnouncementUpdateOne {
+	mutation := newAnnouncementMutation(c.config, OpUpdateOne, withAnnouncement(_m))
+	return &AnnouncementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AnnouncementClient) UpdateOneID(id int64) *AnnouncementUpdateOne {
+	mutation := newAnnouncementMutation(c.config, OpUpdateOne, withAnnouncementID(id))
+	return &AnnouncementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for Announcement.
+func (c *AnnouncementClient) Delete() *AnnouncementDelete {
+	mutation := newAnnouncementMutation(c.config, OpDelete)
+	return &AnnouncementDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AnnouncementClient) DeleteOne(_m *Announcement) *AnnouncementDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AnnouncementClient) DeleteOneID(id int64) *AnnouncementDeleteOne {
+	builder := c.Delete().Where(announcement.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AnnouncementDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for Announcement.
+func (c *AnnouncementClient) Query() *AnnouncementQuery {
+	return &AnnouncementQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAnnouncementREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a Announcement entity by its id.
+func (c *AnnouncementClient) Get(ctx context.Context, id int64) (*Announcement, error) {
+	return c.Query().Where(announcement.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AnnouncementClient) GetX(ctx context.Context, id int64) *Announcement {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// QueryReads queries the reads edge of a Announcement.
+func (c *AnnouncementClient) QueryReads(_m *Announcement) *AnnouncementReadQuery {
+	query := (&AnnouncementReadClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(announcement.Table, announcement.FieldID, id),
+			sqlgraph.To(announcementread.Table, announcementread.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, announcement.ReadsTable, announcement.ReadsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *AnnouncementClient) Hooks() []Hook {
+	return c.hooks.Announcement
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *AnnouncementClient) Interceptors() []Interceptor {
+	return c.inters.Announcement
+REDACTED
+
+func (c *AnnouncementClient) mutate(ctx context.Context, m *AnnouncementMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AnnouncementCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&AnnouncementUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&AnnouncementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AnnouncementDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Announcement mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
+// AnnouncementReadClient is a client for the AnnouncementRead schema.
+type AnnouncementReadClient struct {
+	config
+REDACTED
+
+// NewAnnouncementReadClient returns a client for the AnnouncementRead from the given config.
+func NewAnnouncementReadClient(c config) *AnnouncementReadClient {
+	return &AnnouncementReadClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `announcementread.Hooks(f(g(h())))`.
+func (c *AnnouncementReadClient) Use(hooks ...Hook) {
+	c.hooks.AnnouncementRead = append(c.hooks.AnnouncementRead, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `announcementread.Intercept(f(g(h())))`.
+func (c *AnnouncementReadClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AnnouncementRead = append(c.inters.AnnouncementRead, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a AnnouncementRead entity.
+func (c *AnnouncementReadClient) Create() *AnnouncementReadCreate {
+	mutation := newAnnouncementReadMutation(c.config, OpCreate)
+	return &AnnouncementReadCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of AnnouncementRead entities.
+func (c *AnnouncementReadClient) CreateBulk(builders ...*AnnouncementReadCreate) *AnnouncementReadCreateBulk {
+	return &AnnouncementReadCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AnnouncementReadClient) MapCreateBulk(slice any, setFunc func(*AnnouncementReadCreate, int)) *AnnouncementReadCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AnnouncementReadCreateBulk{err: fmt.Errorf("calling to AnnouncementReadClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*AnnouncementReadCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &AnnouncementReadCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for AnnouncementRead.
+func (c *AnnouncementReadClient) Update() *AnnouncementReadUpdate {
+	mutation := newAnnouncementReadMutation(c.config, OpUpdate)
+	return &AnnouncementReadUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AnnouncementReadClient) UpdateOne(_m *AnnouncementRead) *AnnouncementReadUpdateOne {
+	mutation := newAnnouncementReadMutation(c.config, OpUpdateOne, withAnnouncementRead(_m))
+	return &AnnouncementReadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AnnouncementReadClient) UpdateOneID(id int64) *AnnouncementReadUpdateOne {
+	mutation := newAnnouncementReadMutation(c.config, OpUpdateOne, withAnnouncementReadID(id))
+	return &AnnouncementReadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for AnnouncementRead.
+func (c *AnnouncementReadClient) Delete() *AnnouncementReadDelete {
+	mutation := newAnnouncementReadMutation(c.config, OpDelete)
+	return &AnnouncementReadDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AnnouncementReadClient) DeleteOne(_m *AnnouncementRead) *AnnouncementReadDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AnnouncementReadClient) DeleteOneID(id int64) *AnnouncementReadDeleteOne {
+	builder := c.Delete().Where(announcementread.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AnnouncementReadDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for AnnouncementRead.
+func (c *AnnouncementReadClient) Query() *AnnouncementReadQuery {
+	return &AnnouncementReadQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAnnouncementReadREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a AnnouncementRead entity by its id.
+func (c *AnnouncementReadClient) Get(ctx context.Context, id int64) (*AnnouncementRead, error) {
+	return c.Query().Where(announcementread.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AnnouncementReadClient) GetX(ctx context.Context, id int64) *AnnouncementRead {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// QueryAnnouncement queries the announcement edge of a AnnouncementRead.
+func (c *AnnouncementReadClient) QueryAnnouncement(_m *AnnouncementRead) *AnnouncementQuery {
+	query := (&AnnouncementClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(announcementread.Table, announcementread.FieldID, id),
+			sqlgraph.To(announcement.Table, announcement.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, announcementread.AnnouncementTable, announcementread.AnnouncementColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryUser queries the user edge of a AnnouncementRead.
+func (c *AnnouncementReadClient) QueryUser(_m *AnnouncementRead) *UserQuery {
+	query := (&UserClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(announcementread.Table, announcementread.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, announcementread.UserTable, announcementread.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *AnnouncementReadClient) Hooks() []Hook {
+	return c.hooks.AnnouncementRead
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *AnnouncementReadClient) Interceptors() []Interceptor {
+	return c.inters.AnnouncementRead
+REDACTED
+
+func (c *AnnouncementReadClient) mutate(ctx context.Context, m *AnnouncementReadMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AnnouncementReadCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&AnnouncementReadUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&AnnouncementReadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AnnouncementReadDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AnnouncementRead mutation op: %q", m.Op())
 REDACTED
 REDACTED
 
@@ -1847,6 +2187,139 @@ func (c *SettingClient) mutate(ctx context.Context, m *SettingMutation) (Value, 
 REDACTED
 REDACTED
 
+// UsageCleanupTaskClient is a client for the UsageCleanupTask schema.
+type UsageCleanupTaskClient struct {
+	config
+REDACTED
+
+// NewUsageCleanupTaskClient returns a client for the UsageCleanupTask from the given config.
+func NewUsageCleanupTaskClient(c config) *UsageCleanupTaskClient {
+	return &UsageCleanupTaskClient{config: cREDACTED
+REDACTED
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `usagecleanuptask.Hooks(f(g(h())))`.
+func (c *UsageCleanupTaskClient) Use(hooks ...Hook) {
+	c.hooks.UsageCleanupTask = append(c.hooks.UsageCleanupTask, hooks...)
+REDACTED
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `usagecleanuptask.Intercept(f(g(h())))`.
+func (c *UsageCleanupTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UsageCleanupTask = append(c.inters.UsageCleanupTask, interceptors...)
+REDACTED
+
+// Create returns a builder for creating a UsageCleanupTask entity.
+func (c *UsageCleanupTaskClient) Create() *UsageCleanupTaskCreate {
+	mutation := newUsageCleanupTaskMutation(c.config, OpCreate)
+	return &UsageCleanupTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// CreateBulk returns a builder for creating a bulk of UsageCleanupTask entities.
+func (c *UsageCleanupTaskClient) CreateBulk(builders ...*UsageCleanupTaskCreate) *UsageCleanupTaskCreateBulk {
+	return &UsageCleanupTaskCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UsageCleanupTaskClient) MapCreateBulk(slice any, setFunc func(*UsageCleanupTaskCreate, int)) *UsageCleanupTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UsageCleanupTaskCreateBulk{err: fmt.Errorf("calling to UsageCleanupTaskClient.MapCreateBulk with wrong type %T, need slice", slice)REDACTED
+REDACTED
+	builders := make([]*UsageCleanupTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+REDACTED
+	return &UsageCleanupTaskCreateBulk{config: c.config, builders: buildersREDACTED
+REDACTED
+
+// Update returns an update builder for UsageCleanupTask.
+func (c *UsageCleanupTaskClient) Update() *UsageCleanupTaskUpdate {
+	mutation := newUsageCleanupTaskMutation(c.config, OpUpdate)
+	return &UsageCleanupTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UsageCleanupTaskClient) UpdateOne(_m *UsageCleanupTask) *UsageCleanupTaskUpdateOne {
+	mutation := newUsageCleanupTaskMutation(c.config, OpUpdateOne, withUsageCleanupTask(_m))
+	return &UsageCleanupTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UsageCleanupTaskClient) UpdateOneID(id int64) *UsageCleanupTaskUpdateOne {
+	mutation := newUsageCleanupTaskMutation(c.config, OpUpdateOne, withUsageCleanupTaskID(id))
+	return &UsageCleanupTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// Delete returns a delete builder for UsageCleanupTask.
+func (c *UsageCleanupTaskClient) Delete() *UsageCleanupTaskDelete {
+	mutation := newUsageCleanupTaskMutation(c.config, OpDelete)
+	return &UsageCleanupTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutationREDACTED
+REDACTED
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UsageCleanupTaskClient) DeleteOne(_m *UsageCleanupTask) *UsageCleanupTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+REDACTED
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UsageCleanupTaskClient) DeleteOneID(id int64) *UsageCleanupTaskDeleteOne {
+	builder := c.Delete().Where(usagecleanuptask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UsageCleanupTaskDeleteOne{builderREDACTED
+REDACTED
+
+// Query returns a query builder for UsageCleanupTask.
+func (c *UsageCleanupTaskClient) Query() *UsageCleanupTaskQuery {
+	return &UsageCleanupTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUsageCleanupTaskREDACTED,
+		inters: c.Interceptors(),
+REDACTED
+REDACTED
+
+// Get returns a UsageCleanupTask entity by its id.
+func (c *UsageCleanupTaskClient) Get(ctx context.Context, id int64) (*UsageCleanupTask, error) {
+	return c.Query().Where(usagecleanuptask.ID(id)).Only(ctx)
+REDACTED
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UsageCleanupTaskClient) GetX(ctx context.Context, id int64) *UsageCleanupTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+REDACTED
+	return obj
+REDACTED
+
+// Hooks returns the client hooks.
+func (c *UsageCleanupTaskClient) Hooks() []Hook {
+	return c.hooks.UsageCleanupTask
+REDACTED
+
+// Interceptors returns the client interceptors.
+func (c *UsageCleanupTaskClient) Interceptors() []Interceptor {
+	return c.inters.UsageCleanupTask
+REDACTED
+
+func (c *UsageCleanupTaskClient) mutate(ctx context.Context, m *UsageCleanupTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UsageCleanupTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdate:
+		return (&UsageCleanupTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpUpdateOne:
+		return (&UsageCleanupTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UsageCleanupTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mREDACTED).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UsageCleanupTask mutation op: %q", m.Op())
+REDACTED
+REDACTED
+
 // UsageLogClient is a client for the UsageLog schema.
 type UsageLogClient struct {
 	config
@@ -2225,6 +2698,22 @@ func (c *UserClient) QueryAssignedSubscriptions(_m *User) *UserSubscriptionQuery
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(usersubscription.Table, usersubscription.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.AssignedSubscriptionsTable, user.AssignedSubscriptionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+REDACTED
+	return query
+REDACTED
+
+// QueryAnnouncementReads queries the announcement_reads edge of a User.
+func (c *UserClient) QueryAnnouncementReads(_m *User) *AnnouncementReadQuery {
+	query := (&AnnouncementReadClient{config: c.configREDACTED).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(announcementread.Table, announcementread.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.AnnouncementReadsTable, user.AnnouncementReadsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -2973,14 +3462,16 @@ REDACTED
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, Setting, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Hook
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, Group, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, Setting, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Hook
 REDACTED
 	inters struct {
-		APIKey, Account, AccountGroup, Group, PromoCode, PromoCodeUsage, Proxy,
-		RedeemCode, Setting, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Interceptor
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, Group, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, Setting, UsageCleanupTask, UsageLog, User,
+		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
+		UserSubscription []ent.Interceptor
 REDACTED
 )
 

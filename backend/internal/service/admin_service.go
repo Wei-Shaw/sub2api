@@ -40,7 +40,6 @@ type AdminService interface {
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
 	UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error)
 	DeleteAccount(ctx context.Context, id int64) error
-	LookupAccountsByCredentialEmail(ctx context.Context, platform string, emails []string) ([]Account, error)
 	RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error)
 	ClearAccountError(ctx context.Context, id int64) (*Account, error)
 	SetAccountError(ctx context.Context, id int64, errorMsg string) error
@@ -864,13 +863,6 @@ REDACTED
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
 	return s.accountRepo.GetByID(ctx, id)
-REDACTED
-
-func (s *adminServiceImpl) LookupAccountsByCredentialEmail(ctx context.Context, platform string, emails []string) ([]Account, error) {
-	if platform == "" || len(emails) == 0 {
-		return []Account{REDACTED, nil
-REDACTED
-	return s.accountRepo.ListByPlatformAndCredentialEmails(ctx, platform, emails)
 REDACTED
 
 func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error) {

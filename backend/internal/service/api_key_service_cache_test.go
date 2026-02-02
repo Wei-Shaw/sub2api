@@ -142,6 +142,14 @@ func (s *authCacheStub) DeleteAuthCache(ctx context.Context, key string) error {
 	return nil
 REDACTED
 
+func (s *authCacheStub) PublishAuthCacheInvalidation(ctx context.Context, cacheKey string) error {
+	return nil
+REDACTED
+
+func (s *authCacheStub) SubscribeAuthCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error {
+	return nil
+REDACTED
+
 func TestAPIKeyService_GetByKey_UsesL2Cache(t *testing.T) {
 	cache := &authCacheStub{REDACTED
 	repo := &authRepoStub{

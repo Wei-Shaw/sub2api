@@ -22,6 +22,17 @@ func RegisterUserRoutes(
 			user.GET("/profile", h.User.GetProfile)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
+
+			// TOTP 双因素认证
+			totp := user.Group("/totp")
+			{
+				totp.GET("/status", h.Totp.GetStatus)
+				totp.GET("/verification-method", h.Totp.GetVerificationMethod)
+				totp.POST("/send-code", h.Totp.SendVerifyCode)
+				totp.POST("/setup", h.Totp.InitiateSetup)
+				totp.POST("/enable", h.Totp.Enable)
+				totp.POST("/disable", h.Totp.Disable)
+		REDACTED
 	REDACTED
 
 		// API Key管理
@@ -51,6 +62,13 @@ func RegisterUserRoutes(
 			usage.GET("/dashboard/trend", h.Usage.DashboardTrend)
 			usage.GET("/dashboard/models", h.Usage.DashboardModels)
 			usage.POST("/dashboard/api-keys-usage", h.Usage.DashboardAPIKeysUsage)
+	REDACTED
+
+		// 公告（用户可见）
+		announcements := authenticated.Group("/announcements")
+		{
+			announcements.GET("", h.Announcement.List)
+			announcements.POST("/:id/read", h.Announcement.MarkRead)
 	REDACTED
 
 		// 卡密兑换

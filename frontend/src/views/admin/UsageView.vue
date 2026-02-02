@@ -17,12 +17,19 @@
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
       </div>
-      <UsageFilters v-model="filters" v-model:startDate="startDate" v-model:endDate="endDate" :exporting="exporting" @change="applyFilters" @reset="resetFilters" @export="exportToExcel" />
+      <UsageFilters v-model="filters" v-model:startDate="startDate" v-model:endDate="endDate" :exporting="exporting" @change="applyFilters" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel" />
       <UsageTable :data="usageLogs" :loading="loading" />
       <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
     </div>
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
+  <UsageCleanupDialog
+    :show="cleanupDialogVisible"
+    :filters="filters"
+    :start-date="startDate"
+    :end-date="endDate"
+    @close="cleanupDialogVisible = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -33,15 +40,17 @@ import { useAppStore REDACTED from '@/stores/app'; import { adminAPI REDACTED fr
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
-import type { UsageLog, TrendDataPoint, ModelStat REDACTED from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams REDACTED from '@/api/admin/usage'
+import type { AdminUsageLog, TrendDataPoint, ModelStat REDACTED from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams REDACTED from '@/api/admin/usage'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
-const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = ref<UsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
+const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = ref<AdminUsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const chartsLoading = ref(false); const granularity = ref<'day' | 'hour'>('day')
 let abortController: AbortController | null = null; let exportAbortController: AbortController | null = null
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' REDACTED)
+const cleanupDialogVisible = ref(false)
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') REDACTED, { value: 'hour', label: t('admin.dashboard.hour') REDACTED])
 // Use local timezone to avoid UTC timezone issues
@@ -53,7 +62,7 @@ const formatLD = (d: Date) => {
 REDACTED
 const now = new Date(); const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 6)
 const startDate = ref(formatLD(weekAgo)); const endDate = ref(formatLD(now))
-const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, start_date: startDate.value, end_date: endDate.value REDACTED)
+const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, billing_type: null, start_date: startDate.value, end_date: endDate.value REDACTED)
 const pagination = reactive({ page: 1, page_size: 20, total: 0 REDACTED)
 
 const loadLogs = async () => {
@@ -67,22 +76,23 @@ const loadStats = async () => { try { const s = await adminAPI.usage.getStats(fi
 const loadChartData = async () => {
   chartsLoading.value = true
   try {
-    const params = { start_date: filters.value.start_date || startDate.value, end_date: filters.value.end_date || endDate.value, granularity: granularity.value, user_id: filters.value.user_id, model: filters.value.model, api_key_id: filters.value.api_key_id, account_id: filters.value.account_id, group_id: filters.value.group_id, stream: filters.value.stream REDACTED
-    const [trendRes, modelRes] = await Promise.all([adminAPI.dashboard.getUsageTrend(params), adminAPI.dashboard.getModelStats({ start_date: params.start_date, end_date: params.end_date, user_id: params.user_id, model: params.model, api_key_id: params.api_key_id, account_id: params.account_id, group_id: params.group_id, stream: params.stream REDACTED)])
+    const params = { start_date: filters.value.start_date || startDate.value, end_date: filters.value.end_date || endDate.value, granularity: granularity.value, user_id: filters.value.user_id, model: filters.value.model, api_key_id: filters.value.api_key_id, account_id: filters.value.account_id, group_id: filters.value.group_id, stream: filters.value.stream, billing_type: filters.value.billing_type REDACTED
+    const [trendRes, modelRes] = await Promise.all([adminAPI.dashboard.getUsageTrend(params), adminAPI.dashboard.getModelStats({ start_date: params.start_date, end_date: params.end_date, user_id: params.user_id, model: params.model, api_key_id: params.api_key_id, account_id: params.account_id, group_id: params.group_id, stream: params.stream, billing_type: params.billing_type REDACTED)])
     trendData.value = trendRes.trend || []; modelStats.value = modelRes.models || []
   REDACTED catch (error) { console.error('Failed to load chart data:', error) REDACTED finally { chartsLoading.value = false REDACTED
 REDACTED
 const applyFilters = () => { pagination.page = 1; loadLogs(); loadStats(); loadChartData() REDACTED
-const resetFilters = () => { startDate.value = formatLD(weekAgo); endDate.value = formatLD(now); filters.value = { start_date: startDate.value, end_date: endDate.value REDACTED; granularity.value = 'day'; applyFilters() REDACTED
+const resetFilters = () => { startDate.value = formatLD(weekAgo); endDate.value = formatLD(now); filters.value = { start_date: startDate.value, end_date: endDate.value, billing_type: null REDACTED; granularity.value = 'day'; applyFilters() REDACTED
 const handlePageChange = (p: number) => { pagination.page = p; loadLogs() REDACTED
 const handlePageSizeChange = (s: number) => { pagination.page_size = s; pagination.page = 1; loadLogs() REDACTED
 const cancelExport = () => exportAbortController?.abort()
+const openCleanupDialog = () => { cleanupDialogVisible.value = true REDACTED
 
 const exportToExcel = async () => {
   if (exporting.value) return; exporting.value = true; exportProgress.show = true
   const c = new AbortController(); exportAbortController = c
   try {
-    const all: UsageLog[] = []; let p = 1; let total = pagination.total
+    const all: AdminUsageLog[] = []; let p = 1; let total = pagination.total
     while (true) {
       const res = await adminUsageAPI.list({ page: p, page_size: 100, ...filters.value REDACTED, { signal: c.signal REDACTED)
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total REDACTED

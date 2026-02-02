@@ -192,8 +192,8 @@ REDACTED
 		return
 REDACTED
 
-	// Generate session hash (from header for OpenAI)
-	sessionHash := h.gatewayService.GenerateSessionHash(c)
+	// Generate session hash (header first; fallback to prompt_cache_key)
+	sessionHash := h.gatewayService.GenerateSessionHash(c, reqBody)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0

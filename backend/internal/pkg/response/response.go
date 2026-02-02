@@ -2,6 +2,7 @@
 package response
 
 import (
+	"log"
 	"math"
 	"net/http"
 
@@ -74,6 +75,12 @@ func ErrorFrom(c *gin.Context, err error) bool {
 REDACTED
 
 	statusCode, status := infraerrors.ToHTTP(err)
+
+	// Log internal errors with full details for debugging
+	if statusCode >= 500 && c.Request != nil {
+		log.Printf("[ERROR] %s %s\n  Error: %s", c.Request.Method, c.Request.URL.Path, err.Error())
+REDACTED
+
 	ErrorWithDetails(c, statusCode, status.Message, status.Reason, status.Metadata)
 	return true
 REDACTED
@@ -162,11 +169,11 @@ REDACTED
 
 	// 支持 page_size 和 limit 两种参数名
 	if ps := c.Query("page_size"); ps != "" {
-		if val, err := parseInt(ps); err == nil && val > 0 && val <= 100 {
+		if val, err := parseInt(ps); err == nil && val > 0 && val <= 1000 {
 			pageSize = val
 	REDACTED
 REDACTED else if l := c.Query("limit"); l != "" {
-		if val, err := parseInt(l); err == nil && val > 0 && val <= 100 {
+		if val, err := parseInt(l); err == nil && val > 0 && val <= 1000 {
 			pageSize = val
 	REDACTED
 REDACTED

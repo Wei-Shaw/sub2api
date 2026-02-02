@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -44,7 +45,25 @@ func init() {
 REDACTED
 REDACTED
 
+// initLogger configures the default slog handler based on gin.Mode().
+// In non-release mode, Debug level logs are enabled.
+func initLogger() {
+	var level slog.Level
+	if gin.Mode() == gin.ReleaseMode {
+		level = slog.LevelInfo
+REDACTED else {
+		level = slog.LevelDebug
+REDACTED
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: level,
+REDACTED)
+	slog.SetDefault(slog.New(handler))
+REDACTED
+
 func main() {
+	// Initialize slog logger based on gin mode
+	initLogger()
+
 	// Parse command line flags
 	setupMode := flag.Bool("setup", false, "Run setup wizard in CLI mode")
 	showVersion := flag.Bool("version", false, "Show version information")

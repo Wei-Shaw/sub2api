@@ -416,22 +416,23 @@ func TestCorrectToolParameters(t *testing.T) {
 		expected map[string]bool // key: 期待存在的参数, value: true表示应该存在
 REDACTED{
 		{
-			name: "remove workdir from bash tool",
+			name: "rename work_dir to workdir in bash tool",
 			input: `{
 				"tool_calls": [{
 					"function": {
 						"name": "bash",
-						"arguments": "{\"command\":\"ls\",\"workdir\":\"/tmp\"REDACTED"
+						"arguments": "{\"command\":\"ls\",\"work_dir\":\"/tmp\"REDACTED"
 				REDACTED
 			REDACTED]
 		REDACTED`,
 			expected: map[string]bool{
-				"command": true,
-				"workdir": false,
+				"command":  true,
+				"workdir":  true,
+				"work_dir": false,
 		REDACTED,
 	REDACTED,
 		{
-			name: "rename path to file_path in edit tool",
+			name: "rename snake_case edit params to camelCase",
 			input: `{
 				"tool_calls": [{
 					"function": {
@@ -441,10 +442,12 @@ REDACTED{
 			REDACTED]
 		REDACTED`,
 			expected: map[string]bool{
-				"file_path":  true,
+				"filePath":   true,
 				"path":       false,
-				"old_string": true,
-				"new_string": true,
+				"oldString":  true,
+				"old_string": false,
+				"newString":  true,
+				"new_string": false,
 		REDACTED,
 	REDACTED,
 REDACTED

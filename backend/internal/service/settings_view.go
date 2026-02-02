@@ -1,8 +1,11 @@
 package service
 
 type SystemSettings struct {
-	RegistrationEnabled bool
-	EmailVerifyEnabled  bool
+	RegistrationEnabled  bool
+	EmailVerifyEnabled   bool
+	PromoCodeEnabled     bool
+	PasswordResetEnabled bool
+	TotpEnabled          bool // TOTP 双因素认证
 
 	SMTPHost               string
 	SMTPPort               int
@@ -25,13 +28,16 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecretConfigured bool
 	LinuxDoConnectRedirectURL            string
 
-	SiteName     string
-	SiteLogo     string
-	SiteSubtitle string
-	APIBaseURL   string
-	ContactInfo  string
-	DocURL       string
-	HomeContent  string
+	SiteName                    string
+	SiteLogo                    string
+	SiteSubtitle                string
+	APIBaseURL                  string
+	ContactInfo                 string
+	DocURL                      string
+	HomeContent                 string
+	HideCcsImportButton         bool
+	PurchaseSubscriptionEnabled bool
+	PurchaseSubscriptionURL     string
 
 	DefaultConcurrency int
 	DefaultBalance     float64
@@ -55,17 +61,25 @@ type SystemSettings struct {
 REDACTED
 
 type PublicSettings struct {
-	RegistrationEnabled bool
-	EmailVerifyEnabled  bool
-	TurnstileEnabled    bool
-	TurnstileSiteKey    string
-	SiteName            string
-	SiteLogo            string
-	SiteSubtitle        string
-	APIBaseURL          string
-	ContactInfo         string
-	DocURL              string
-	HomeContent         string
+	RegistrationEnabled  bool
+	EmailVerifyEnabled   bool
+	PromoCodeEnabled     bool
+	PasswordResetEnabled bool
+	TotpEnabled          bool // TOTP 双因素认证
+	TurnstileEnabled     bool
+	TurnstileSiteKey     string
+	SiteName             string
+	SiteLogo             string
+	SiteSubtitle         string
+	APIBaseURL           string
+	ContactInfo          string
+	DocURL               string
+	HomeContent          string
+	HideCcsImportButton  bool
+
+	PurchaseSubscriptionEnabled bool
+	PurchaseSubscriptionURL     string
+
 	LinuxDoOAuthEnabled bool
 	Version             string
 REDACTED

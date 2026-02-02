@@ -93,6 +93,57 @@
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
+            <!-- Column Settings Dropdown -->
+            <div class="relative" ref="columnDropdownRef">
+              <button
+                @click="showColumnDropdown = !showColumnDropdown"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.columnSettings')"
+              >
+                <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                </svg>
+                <span class="hidden md:inline">{{ t('admin.users.columnSettings') REDACTEDREDACTED</span>
+              </button>
+              <!-- Dropdown menu -->
+              <div
+                v-if="showColumnDropdown"
+                class="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div class="p-2">
+                  <!-- User column mode selection -->
+                  <div class="mb-2 border-b border-gray-200 pb-2 dark:border-gray-700">
+                    <div class="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {{ t('admin.subscriptions.columns.user') REDACTEDREDACTED
+                    </div>
+                    <button
+                      @click="setUserColumnMode('email')"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <span>{{ t('admin.users.columns.email') REDACTEDREDACTED</span>
+                      <Icon v-if="userColumnMode === 'email'" name="check" size="sm" class="text-primary-500" />
+                    </button>
+                    <button
+                      @click="setUserColumnMode('username')"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <span>{{ t('admin.users.columns.username') REDACTEDREDACTED</span>
+                      <Icon v-if="userColumnMode === 'username'" name="check" size="sm" class="text-primary-500" />
+                    </button>
+                  </div>
+                  <!-- Other columns toggle -->
+                  <button
+                    v-for="col in toggleableColumns"
+                    :key="col.key"
+                    @click="toggleColumn(col.key)"
+                    class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    <span>{{ col.label REDACTEDREDACTED</span>
+                    <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
+                  </button>
+                </div>
+              </div>
+            </div>
             <button @click="showAssignModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.subscriptions.assignSubscription') REDACTEDREDACTED
@@ -103,19 +154,31 @@
 
       <!-- Subscriptions Table -->
       <template #table>
-        <DataTable :columns="columns" :data="subscriptions" :loading="loading">
+        <DataTable
+          :columns="columns"
+          :data="subscriptions"
+          :loading="loading"
+          :server-side-sort="true"
+          @sort="handleSort"
+        >
           <template #cell-user="{ row REDACTED">
             <div class="flex items-center gap-2">
               <div
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
               >
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
-                  {{ row.user?.email?.charAt(0).toUpperCase() || '?' REDACTEDREDACTED
+                  {{ userColumnMode === 'email'
+                    ? (row.user?.email?.charAt(0).toUpperCase() || '?')
+                    : (row.user?.username?.charAt(0).toUpperCase() || '?')
+                  REDACTEDREDACTED
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{
-                row.user?.email || t('admin.redeem.userPrefix', { id: row.user_id REDACTED)
-              REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">
+                {{ userColumnMode === 'email'
+                  ? (row.user?.email || t('admin.redeem.userPrefix', { id: row.user_id REDACTED))
+                  : (row.user?.username || '-')
+                REDACTEDREDACTED
+              </span>
             </div>
           </template>
 
@@ -300,12 +363,12 @@
           <template #cell-actions="{ row REDACTED">
             <div class="flex items-center gap-1">
               <button
-                v-if="row.status === 'active'"
+                v-if="row.status === 'active' || row.status === 'expired'"
                 @click="handleExtend(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
-                <Icon name="clock" size="sm" />
-                <span class="text-xs">{{ t('admin.subscriptions.extend') REDACTEDREDACTED</span>
+                <Icon name="calendar" size="sm" />
+                <span class="text-xs">{{ t('admin.subscriptions.adjust') REDACTEDREDACTED</span>
               </button>
               <button
                 v-if="row.status === 'active'"
@@ -409,7 +472,28 @@
             v-model="assignForm.group_id"
             :options="subscriptionGroupOptions"
             :placeholder="t('admin.subscriptions.selectGroup')"
-          />
+          >
+            <template #selected="{ option REDACTED">
+              <GroupBadge
+                v-if="option"
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+              />
+              <span v-else class="text-gray-400">{{ t('admin.subscriptions.selectGroup') REDACTEDREDACTED</span>
+            </template>
+            <template #option="{ option, selected REDACTED">
+              <GroupOptionItem
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+                :description="(option as unknown as GroupOption).description"
+                :selected="selected"
+              />
+            </template>
+          </Select>
           <p class="input-hint">{{ t('admin.subscriptions.groupHint') REDACTEDREDACTED</p>
         </div>
         <div>
@@ -455,10 +539,10 @@
       </template>
     </BaseDialog>
 
-    <!-- Extend Subscription Modal -->
+    <!-- Adjust Subscription Modal -->
     <BaseDialog
       :show="showExtendModal"
-      :title="t('admin.subscriptions.extendSubscription')"
+      :title="t('admin.subscriptions.adjustSubscription')"
       width="narrow"
       @close="closeExtendModal"
     >
@@ -470,7 +554,7 @@
       >
         <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
           <p class="text-sm text-gray-600 dark:text-gray-400">
-            {{ t('admin.subscriptions.extendingFor') REDACTEDREDACTED
+            {{ t('admin.subscriptions.adjustingFor') REDACTEDREDACTED
             <span class="font-medium text-gray-900 dark:text-white">{{
               extendingSubscription.user?.email
             REDACTEDREDACTED</span>
@@ -485,10 +569,25 @@
               REDACTEDREDACTED
             </span>
           </p>
+          <p v-if="extendingSubscription.expires_at" class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            {{ t('admin.subscriptions.remainingDays') REDACTEDREDACTED:
+            <span class="font-medium text-gray-900 dark:text-white">
+              {{ getDaysRemaining(extendingSubscription.expires_at) ?? 0 REDACTEDREDACTED
+            </span>
+          </p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.subscriptions.form.extendDays') REDACTEDREDACTED</label>
-          <input v-model.number="extendForm.days" type="number" min="1" required class="input" />
+          <label class="input-label">{{ t('admin.subscriptions.form.adjustDays') REDACTEDREDACTED</label>
+          <div class="flex items-center gap-2">
+            <input
+              v-model.number="extendForm.days"
+              type="number"
+              required
+              class="input text-center"
+              :placeholder="t('admin.subscriptions.adjustDaysPlaceholder')"
+            />
+          </div>
+          <p class="input-hint">{{ t('admin.subscriptions.adjustHint') REDACTEDREDACTED</p>
         </div>
       </form>
       <template #footer>
@@ -502,7 +601,7 @@
             :disabled="submitting"
             class="btn btn-primary"
           >
-            {{ submitting ? t('admin.subscriptions.extending') : t('admin.subscriptions.extend') REDACTEDREDACTED
+            {{ submitting ? t('admin.subscriptions.adjusting') : t('admin.subscriptions.adjust') REDACTEDREDACTED
           </button>
         </div>
       </template>
@@ -527,7 +626,7 @@ import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { UserSubscription, Group REDACTED from '@/types'
+import type { UserSubscription, Group, GroupPlatform, SubscriptionType REDACTED from '@/types'
 import type { SimpleUser REDACTED from '@/api/admin/usage'
 import type { Column REDACTED from '@/components/common/types'
 import { formatDateOnly REDACTED from '@/utils/format'
@@ -540,19 +639,127 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
+import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 
-const columns = computed<Column[]>(() => [
-  { key: 'user', label: t('admin.subscriptions.columns.user'), sortable: true REDACTED,
-  { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: true REDACTED,
+interface GroupOption {
+  value: number
+  label: string
+  description: string | null
+  platform: GroupPlatform
+  subscriptionType: SubscriptionType
+  rate: number
+REDACTED
+
+// User column display mode: 'email' or 'username'
+const userColumnMode = ref<'email' | 'username'>('email')
+const USER_COLUMN_MODE_KEY = 'subscription-user-column-mode'
+
+const loadUserColumnMode = () => {
+  try {
+    const saved = localStorage.getItem(USER_COLUMN_MODE_KEY)
+    if (saved === 'email' || saved === 'username') {
+      userColumnMode.value = saved
+    REDACTED
+  REDACTED catch (e) {
+    console.error('Failed to load user column mode:', e)
+  REDACTED
+REDACTED
+
+const saveUserColumnMode = () => {
+  try {
+    localStorage.setItem(USER_COLUMN_MODE_KEY, userColumnMode.value)
+  REDACTED catch (e) {
+    console.error('Failed to save user column mode:', e)
+  REDACTED
+REDACTED
+
+const setUserColumnMode = (mode: 'email' | 'username') => {
+  userColumnMode.value = mode
+  saveUserColumnMode()
+REDACTED
+
+// All available columns
+const allColumns = computed<Column[]>(() => [
+  {
+    key: 'user',
+    label: userColumnMode.value === 'email'
+      ? t('admin.subscriptions.columns.user')
+      : t('admin.users.columns.username'),
+    sortable: false
+  REDACTED,
+  { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: false REDACTED,
   { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false REDACTED,
   { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true REDACTED,
   { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true REDACTED,
   { key: 'actions', label: t('admin.subscriptions.columns.actions'), sortable: false REDACTED
 ])
+
+// Columns that can be toggled (exclude user and actions which are always visible)
+const toggleableColumns = computed(() =>
+  allColumns.value.filter(col => col.key !== 'user' && col.key !== 'actions')
+)
+
+// Hidden columns set
+const hiddenColumns = reactive<Set<string>>(new Set())
+
+// Default hidden columns
+const DEFAULT_HIDDEN_COLUMNS: string[] = []
+
+// localStorage key
+const HIDDEN_COLUMNS_KEY = 'subscription-hidden-columns'
+
+// Load saved column settings
+const loadSavedColumns = () => {
+  try {
+    const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved) as string[]
+      parsed.forEach(key => hiddenColumns.add(key))
+    REDACTED else {
+      DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+    REDACTED
+  REDACTED catch (e) {
+    console.error('Failed to load saved columns:', e)
+    DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+  REDACTED
+REDACTED
+
+// Save column settings to localStorage
+const saveColumnsToStorage = () => {
+  try {
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+  REDACTED catch (e) {
+    console.error('Failed to save columns:', e)
+  REDACTED
+REDACTED
+
+// Toggle column visibility
+const toggleColumn = (key: string) => {
+  if (hiddenColumns.has(key)) {
+    hiddenColumns.delete(key)
+  REDACTED else {
+    hiddenColumns.add(key)
+  REDACTED
+  saveColumnsToStorage()
+REDACTED
+
+// Check if column is visible
+const isColumnVisible = (key: string) => !hiddenColumns.has(key)
+
+// Filtered columns for display
+const columns = computed<Column[]>(() =>
+  allColumns.value.filter(col =>
+    col.key === 'user' || col.key === 'actions' || !hiddenColumns.has(col.key)
+  )
+)
+
+// Column dropdown state
+const showColumnDropdown = ref(false)
+const columnDropdownRef = ref<HTMLElement | null>(null)
 
 // Filter options
 const statusOptions = computed(() => [
@@ -584,10 +791,17 @@ const selectedUser = ref<SimpleUser | null>(null)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const filters = reactive({
-  status: '',
+  status: 'active',
   group_id: '',
   user_id: null as number | null
 REDACTED)
+
+// Sorting state
+const sortState = reactive({
+  sort_by: 'created_at',
+  sort_order: 'desc' as 'asc' | 'desc'
+REDACTED)
+
 const pagination = reactive({
   page: 1,
   page_size: 20,
@@ -622,7 +836,14 @@ const groupOptions = computed(() => [
 const subscriptionGroupOptions = computed(() =>
   groups.value
     .filter((g) => g.subscription_type === 'subscription' && g.status === 'active')
-    .map((g) => ({ value: g.id, label: g.name REDACTED))
+    .map((g) => ({
+      value: g.id,
+      label: g.name,
+      description: g.description,
+      platform: g.platform,
+      subscriptionType: g.subscription_type,
+      rate: g.rate_multiplier
+    REDACTED))
 )
 
 const applyFilters = () => {
@@ -646,7 +867,9 @@ const loadSubscriptions = async () => {
       {
         status: (filters.status as any) || undefined,
         group_id: filters.group_id ? parseInt(filters.group_id) : undefined,
-        user_id: filters.user_id || undefined
+        user_id: filters.user_id || undefined,
+        sort_by: sortState.sort_by,
+        sort_order: sortState.sort_order
       REDACTED,
       {
         signal
@@ -787,6 +1010,13 @@ const handlePageSizeChange = (pageSize: number) => {
   loadSubscriptions()
 REDACTED
 
+const handleSort = (key: string, order: 'asc' | 'desc') => {
+  sortState.sort_by = key
+  sortState.sort_order = order
+  pagination.page = 1
+  loadSubscriptions()
+REDACTED
+
 const closeAssignModal = () => {
   showAssignModal.value = false
   assignForm.user_id = null
@@ -845,17 +1075,27 @@ REDACTED
 const handleExtendSubscription = async () => {
   if (!extendingSubscription.value) return
 
+  // 前端验证：调整后的过期时间必须在未来
+  if (extendingSubscription.value.expires_at) {
+    const expiresAt = new Date(extendingSubscription.value.expires_at)
+    const newExpiresAt = new Date(expiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000)
+    if (newExpiresAt <= new Date()) {
+      appStore.showError(t('admin.subscriptions.adjustWouldExpire'))
+      return
+    REDACTED
+  REDACTED
+
   submitting.value = true
   try {
     await adminAPI.subscriptions.extend(extendingSubscription.value.id, {
       days: extendForm.days
     REDACTED)
-    appStore.showSuccess(t('admin.subscriptions.subscriptionExtended'))
+    appStore.showSuccess(t('admin.subscriptions.subscriptionAdjusted'))
     closeExtendModal()
     loadSubscriptions()
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToExtend'))
-    console.error('Error extending subscription:', error)
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAdjust'))
+    console.error('Error adjusting subscription:', error)
   REDACTED finally {
     submitting.value = false
   REDACTED
@@ -949,14 +1189,19 @@ const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'mont
   REDACTED
 REDACTED
 
-// Handle click outside to close user dropdown
+// Handle click outside to close dropdowns
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement
   if (!target.closest('[data-assign-user-search]')) showUserDropdown.value = false
   if (!target.closest('[data-filter-user-search]')) showFilterUserDropdown.value = false
+  if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
+    showColumnDropdown.value = false
+  REDACTED
 REDACTED
 
 onMounted(() => {
+  loadUserColumnMode()
+  loadSavedColumns()
   loadSubscriptions()
   loadGroups()
   document.addEventListener('click', handleClickOutside)
