@@ -241,6 +241,65 @@ REDACTED
 	return s.CalculateCost(model, tokens, multiplier)
 REDACTED
 
+// CalculateCostWithLongContext 计算费用，支持长上下文双倍计费
+// threshold: 阈值（如 200000），超过此值的部分按 extraMultiplier 倍计费
+// extraMultiplier: 超出部分的倍率（如 2.0 表示双倍）
+func (s *BillingService) CalculateCostWithLongContext(model string, tokens UsageTokens, rateMultiplier float64, threshold int, extraMultiplier float64) (*CostBreakdown, error) {
+	// 1. 先正常计算全部 token 的成本
+	cost, err := s.CalculateCost(model, tokens, rateMultiplier)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// 2. 如果未启用长上下文计费或未超过阈值，直接返回
+	if threshold <= 0 || extraMultiplier <= 1 {
+		return cost, nil
+REDACTED
+
+	// 计算总输入 token（缓存读取 + 新输入）
+	total := tokens.CacheReadTokens + tokens.InputTokens
+	if total <= threshold {
+		return cost, nil
+REDACTED
+
+	// 3. 拆分超出部分的 token
+	extra := total - threshold
+	var extraCacheTokens, extraInputTokens int
+
+	if tokens.CacheReadTokens >= threshold {
+		// 缓存已超过阈值：超出的缓存 + 全部输入
+		extraCacheTokens = tokens.CacheReadTokens - threshold
+		extraInputTokens = tokens.InputTokens
+REDACTED else {
+		// 缓存未超过阈值：只有输入超出部分
+		extraCacheTokens = 0
+		extraInputTokens = extra
+REDACTED
+
+	// 4. 计算超出部分的成本（只算输入和缓存读取）
+	extraTokens := UsageTokens{
+		InputTokens:     extraInputTokens,
+		CacheReadTokens: extraCacheTokens,
+REDACTED
+	extraCost, err := s.CalculateCost(model, extraTokens, 1.0) // 先按 1 倍算
+	if err != nil {
+		return cost, nil // 出错时返回正常成本
+REDACTED
+
+	// 5. 额外成本 = 超出部分成本 × (倍率 - 1)
+	extraRate := extraMultiplier - 1
+	additionalInputCost := extraCost.InputCost * extraRate
+	additionalCacheCost := extraCost.CacheReadCost * extraRate
+
+	// 6. 累加到总成本
+	cost.InputCost += additionalInputCost
+	cost.CacheReadCost += additionalCacheCost
+	cost.TotalCost += additionalInputCost + additionalCacheCost
+	cost.ActualCost = cost.TotalCost * rateMultiplier
+
+	return cost, nil
+REDACTED
+
 // ListSupportedModels 列出所有支持的模型（现在总是返回true，因为有模糊匹配）
 func (s *BillingService) ListSupportedModels() []string {
 	models := make([]string, 0)

@@ -3606,6 +3606,162 @@ REDACTED
 	return nil
 REDACTED
 
+// RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
+type RecordUsageLongContextInput struct {
+	Result                *ForwardResult
+	APIKey                *APIKey
+	User                  *User
+	Account               *Account
+	Subscription          *UserSubscription // 可选：订阅信息
+	UserAgent             string            // 请求的 User-Agent
+	IPAddress             string            // 请求的客户端 IP 地址
+	LongContextThreshold  int               // 长上下文阈值（如 200000）
+	LongContextMultiplier float64           // 超出阈值部分的倍率（如 2.0）
+REDACTED
+
+// RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
+func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
+	result := input.Result
+	apiKey := input.APIKey
+	user := input.User
+	account := input.Account
+	subscription := input.Subscription
+
+	// 获取费率倍数
+	multiplier := s.cfg.Default.RateMultiplier
+	if apiKey.GroupID != nil && apiKey.Group != nil {
+		multiplier = apiKey.Group.RateMultiplier
+REDACTED
+
+	var cost *CostBreakdown
+
+	// 根据请求类型选择计费方式
+	if result.ImageCount > 0 {
+		// 图片生成计费
+		var groupConfig *ImagePriceConfig
+		if apiKey.Group != nil {
+			groupConfig = &ImagePriceConfig{
+				Price1K: apiKey.Group.ImagePrice1K,
+				Price2K: apiKey.Group.ImagePrice2K,
+				Price4K: apiKey.Group.ImagePrice4K,
+		REDACTED
+	REDACTED
+		cost = s.billingService.CalculateImageCost(result.Model, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+REDACTED else {
+		// Token 计费（使用长上下文计费方法）
+		tokens := UsageTokens{
+			InputTokens:         result.Usage.InputTokens,
+			OutputTokens:        result.Usage.OutputTokens,
+			CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+			CacheReadTokens:     result.Usage.CacheReadInputTokens,
+	REDACTED
+		var err error
+		cost, err = s.billingService.CalculateCostWithLongContext(result.Model, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
+		if err != nil {
+			log.Printf("Calculate cost failed: %v", err)
+			cost = &CostBreakdown{ActualCost: 0REDACTED
+	REDACTED
+REDACTED
+
+	// 判断计费方式：订阅模式 vs 余额模式
+	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	billingType := BillingTypeBalance
+	if isSubscriptionBilling {
+		billingType = BillingTypeSubscription
+REDACTED
+
+	// 创建使用日志
+	durationMs := int(result.Duration.Milliseconds())
+	var imageSize *string
+	if result.ImageSize != "" {
+		imageSize = &result.ImageSize
+REDACTED
+	accountRateMultiplier := account.BillingRateMultiplier()
+	usageLog := &UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             result.RequestID,
+		Model:                 result.Model,
+		InputTokens:           result.Usage.InputTokens,
+		OutputTokens:          result.Usage.OutputTokens,
+		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:       result.Usage.CacheReadInputTokens,
+		InputCost:             cost.InputCost,
+		OutputCost:            cost.OutputCost,
+		CacheCreationCost:     cost.CacheCreationCost,
+		CacheReadCost:         cost.CacheReadCost,
+		TotalCost:             cost.TotalCost,
+		ActualCost:            cost.ActualCost,
+		RateMultiplier:        multiplier,
+		AccountRateMultiplier: &accountRateMultiplier,
+		BillingType:           billingType,
+		Stream:                result.Stream,
+		DurationMs:            &durationMs,
+		FirstTokenMs:          result.FirstTokenMs,
+		ImageCount:            result.ImageCount,
+		ImageSize:             imageSize,
+		CreatedAt:             time.Now(),
+REDACTED
+
+	// 添加 UserAgent
+	if input.UserAgent != "" {
+		usageLog.UserAgent = &input.UserAgent
+REDACTED
+
+	// 添加 IPAddress
+	if input.IPAddress != "" {
+		usageLog.IPAddress = &input.IPAddress
+REDACTED
+
+	// 添加分组和订阅关联
+	if apiKey.GroupID != nil {
+		usageLog.GroupID = apiKey.GroupID
+REDACTED
+	if subscription != nil {
+		usageLog.SubscriptionID = &subscription.ID
+REDACTED
+
+	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
+	if err != nil {
+		log.Printf("Create usage log failed: %v", err)
+REDACTED
+
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		log.Printf("[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		return nil
+REDACTED
+
+	shouldBill := inserted || err != nil
+
+	// 根据计费类型执行扣费
+	if isSubscriptionBilling {
+		// 订阅模式：更新订阅用量（使用 TotalCost 原始费用，不考虑倍率）
+		if shouldBill && cost.TotalCost > 0 {
+			if err := s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost); err != nil {
+				log.Printf("Increment subscription usage failed: %v", err)
+		REDACTED
+			// 异步更新订阅缓存
+			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
+	REDACTED
+REDACTED else {
+		// 余额模式：扣除用户余额（使用 ActualCost 考虑倍率后的费用）
+		if shouldBill && cost.ActualCost > 0 {
+			if err := s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost); err != nil {
+				log.Printf("Deduct balance failed: %v", err)
+		REDACTED
+			// 异步更新余额缓存
+			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
+	REDACTED
+REDACTED
+
+	// Schedule batch update for account last_used_at
+	s.deferredService.ScheduleLastUsedUpdate(account.ID)
+
+	return nil
+REDACTED
+
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
 // 特点：不记录使用量、仅支持非流式响应
 func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) error {
