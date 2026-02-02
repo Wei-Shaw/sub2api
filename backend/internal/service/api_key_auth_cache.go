@@ -44,6 +44,9 @@ type APIKeyAuthGroupSnapshot struct {
 	ModelRouting        map[string][]int64 `json:"model_routing,omitempty"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 	MCPXMLInject        bool               `json:"mcp_xml_inject"`
+
+	// 支持的模型系列（仅 antigravity 平台使用）
+	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 REDACTED
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

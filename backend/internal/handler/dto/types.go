@@ -88,6 +88,8 @@ type AdminGroup struct {
 	// MCP XML 协议注入（仅 antigravity 平台使用）
 	MCPXMLInject bool `json:"mcp_xml_inject"`
 
+	// 支持的模型系列（仅 antigravity 平台使用）
+	SupportedModelScopes []string `json:"supported_model_scopes"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 	AccountCount  int64          `json:"account_count,omitempty"`
 REDACTED

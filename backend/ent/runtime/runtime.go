@@ -341,6 +341,10 @@ REDACTED()
 	groupDescMcpXMLInject := groupFields[19].Descriptor()
 	// group.DefaultMcpXMLInject holds the default value on creation for the mcp_xml_inject field.
 	group.DefaultMcpXMLInject = groupDescMcpXMLInject.Default.(bool)
+	// groupDescSupportedModelScopes is the schema descriptor for supported_model_scopes field.
+	groupDescSupportedModelScopes := groupFields[20].Descriptor()
+	// group.DefaultSupportedModelScopes holds the default value on creation for the supported_model_scopes field.
+	group.DefaultSupportedModelScopes = groupDescSupportedModelScopes.Default.([]string)
 	promocodeFields := schema.PromoCode{REDACTED.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.

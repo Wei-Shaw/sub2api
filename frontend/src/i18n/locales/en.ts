@@ -1034,6 +1034,14 @@ export default {
         tooltip: 'When enabled, if the request contains MCP tools, an XML format call protocol prompt will be injected into the system prompt. Disable this to avoid interference with certain clients.',
         enabled: 'Enabled',
         disabled: 'Disabled'
+      REDACTED,
+      supportedScopes: {
+        title: 'Supported Model Families',
+        tooltip: 'Select the model families this group supports. Unchecked families will not be routed to this group.',
+        claude: 'Claude',
+        geminiText: 'Gemini Text',
+        geminiImage: 'Gemini Image',
+        hint: 'Select at least one model family'
       REDACTED
     REDACTED,
 
@@ -1173,7 +1181,9 @@ export default {
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
-        antigravityOauth: 'Antigravity OAuth'
+        antigravityOauth: 'Antigravity OAuth',
+        upstream: 'Upstream',
+        upstreamDesc: 'Connect via Base URL + API Key'
       REDACTED,
       status: {
         active: 'Active',
@@ -1431,6 +1441,15 @@ export default {
       pleaseEnterApiKey: 'Please enter API Key',
       apiKeyIsRequired: 'API Key is required',
       leaveEmptyToKeep: 'Leave empty to keep current key',
+      // Upstream type
+      upstream: {
+        baseUrl: 'Upstream Base URL',
+        baseUrlHint: 'The address of the upstream Antigravity service, e.g., https://upstream.example.com',
+        apiKey: 'Upstream API Key',
+        apiKeyHint: 'API Key for the upstream service',
+        pleaseEnterBaseUrl: 'Please enter upstream Base URL',
+        pleaseEnterApiKey: 'Please enter upstream API Key'
+      REDACTED,
       // OAuth flow
       oauth: {
         title: 'Claude Account Authorization',

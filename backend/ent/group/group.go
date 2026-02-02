@@ -61,6 +61,8 @@ const (
 	FieldModelRoutingEnabled = "model_routing_enabled"
 	// FieldMcpXMLInject holds the string denoting the mcp_xml_inject field in the database.
 	FieldMcpXMLInject = "mcp_xml_inject"
+	// FieldSupportedModelScopes holds the string denoting the supported_model_scopes field in the database.
+	FieldSupportedModelScopes = "supported_model_scopes"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -159,6 +161,7 @@ var Columns = []string{
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
 	FieldMcpXMLInject,
+	FieldSupportedModelScopes,
 REDACTED
 
 var (
@@ -220,6 +223,8 @@ var (
 	DefaultModelRoutingEnabled bool
 	// DefaultMcpXMLInject holds the default value on creation for the "mcp_xml_inject" field.
 	DefaultMcpXMLInject bool
+	// DefaultSupportedModelScopes holds the default value on creation for the "supported_model_scopes" field.
+	DefaultSupportedModelScopes []string
 )
 
 // OrderOption defines the ordering options for the Group queries.

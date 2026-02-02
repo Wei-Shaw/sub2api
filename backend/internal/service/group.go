@@ -41,6 +41,10 @@ type Group struct {
 	// MCP XML 协议注入开关（仅 antigravity 平台使用）
 	MCPXMLInject bool
 
+	// 支持的模型系列（仅 antigravity 平台使用）
+	// 可选值: claude, gemini_text, gemini_image
+	SupportedModelScopes []string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

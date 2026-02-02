@@ -45,6 +45,8 @@ type CreateGroupRequest struct {
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
+	// 支持的模型系列（仅 antigravity 平台使用）
+	SupportedModelScopes []string `json:"supported_model_scopes"`
 REDACTED
 
 // UpdateGroupRequest represents update group request
@@ -70,6 +72,8 @@ type UpdateGroupRequest struct {
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
+	// 支持的模型系列（仅 antigravity 平台使用）
+	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 REDACTED
 
 // List handles listing all groups with pagination
@@ -177,6 +181,7 @@ REDACTED
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
+		SupportedModelScopes:            req.SupportedModelScopes,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -221,6 +226,7 @@ REDACTED
 		ModelRouting:                    req.ModelRouting,
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
+		SupportedModelScopes:            req.SupportedModelScopes,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

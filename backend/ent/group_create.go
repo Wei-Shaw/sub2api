@@ -334,6 +334,12 @@ REDACTED
 	return _c
 REDACTED
 
+// SetSupportedModelScopes sets the "supported_model_scopes" field.
+func (_c *GroupCreate) SetSupportedModelScopes(v []string) *GroupCreate {
+	_c.mutation.SetSupportedModelScopes(v)
+	return _c
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -511,6 +517,10 @@ REDACTED
 		v := group.DefaultMcpXMLInject
 		_c.mutation.SetMcpXMLInject(v)
 REDACTED
+	if _, ok := _c.mutation.SupportedModelScopes(); !ok {
+		v := group.DefaultSupportedModelScopes
+		_c.mutation.SetSupportedModelScopes(v)
+REDACTED
 	return nil
 REDACTED
 
@@ -571,6 +581,9 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.McpXMLInject(); !ok {
 		return &ValidationError{Name: "mcp_xml_inject", err: errors.New(`ent: missing required field "Group.mcp_xml_inject"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.SupportedModelScopes(); !ok {
+		return &ValidationError{Name: "supported_model_scopes", err: errors.New(`ent: missing required field "Group.supported_model_scopes"`)REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -690,6 +703,10 @@ REDACTED
 	if value, ok := _c.mutation.McpXMLInject(); ok {
 		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)
 		_node.McpXMLInject = value
+REDACTED
+	if value, ok := _c.mutation.SupportedModelScopes(); ok {
+		_spec.SetField(group.FieldSupportedModelScopes, field.TypeJSON, value)
+		_node.SupportedModelScopes = value
 REDACTED
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1237,6 +1254,18 @@ func (u *GroupUpsert) UpdateMcpXMLInject() *GroupUpsert {
 	return u
 REDACTED
 
+// SetSupportedModelScopes sets the "supported_model_scopes" field.
+func (u *GroupUpsert) SetSupportedModelScopes(v []string) *GroupUpsert {
+	u.Set(group.FieldSupportedModelScopes, v)
+	return u
+REDACTED
+
+// UpdateSupportedModelScopes sets the "supported_model_scopes" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSupportedModelScopes() *GroupUpsert {
+	u.SetExcluded(group.FieldSupportedModelScopes)
+	return u
+REDACTED
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1734,6 +1763,20 @@ REDACTED
 func (u *GroupUpsertOne) UpdateMcpXMLInject() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMcpXMLInject()
+REDACTED)
+REDACTED
+
+// SetSupportedModelScopes sets the "supported_model_scopes" field.
+func (u *GroupUpsertOne) SetSupportedModelScopes(v []string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSupportedModelScopes(v)
+REDACTED)
+REDACTED
+
+// UpdateSupportedModelScopes sets the "supported_model_scopes" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSupportedModelScopes() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSupportedModelScopes()
 REDACTED)
 REDACTED
 
@@ -2400,6 +2443,20 @@ REDACTED
 func (u *GroupUpsertBulk) UpdateMcpXMLInject() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMcpXMLInject()
+REDACTED)
+REDACTED
+
+// SetSupportedModelScopes sets the "supported_model_scopes" field.
+func (u *GroupUpsertBulk) SetSupportedModelScopes(v []string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSupportedModelScopes(v)
+REDACTED)
+REDACTED
+
+// UpdateSupportedModelScopes sets the "supported_model_scopes" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSupportedModelScopes() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSupportedModelScopes()
 REDACTED)
 REDACTED
 

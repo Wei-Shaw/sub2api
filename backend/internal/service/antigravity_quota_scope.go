@@ -1,6 +1,7 @@
 package service
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -15,6 +16,21 @@ const (
 	AntigravityQuotaScopeGeminiText  AntigravityQuotaScope = "gemini_text"
 	AntigravityQuotaScopeGeminiImage AntigravityQuotaScope = "gemini_image"
 )
+
+// IsScopeSupported 检查给定的 scope 是否在分组支持的 scope 列表中
+func IsScopeSupported(supportedScopes []string, scope AntigravityQuotaScope) bool {
+	if len(supportedScopes) == 0 {
+		// 未配置时默认全部支持
+		return true
+REDACTED
+	supported := slices.Contains(supportedScopes, string(scope))
+	return supported
+REDACTED
+
+// ResolveAntigravityQuotaScope 根据模型名称解析配额域（导出版本）
+func ResolveAntigravityQuotaScope(requestedModel string) (AntigravityQuotaScope, bool) {
+	return resolveAntigravityQuotaScope(requestedModel)
+REDACTED
 
 // resolveAntigravityQuotaScope 根据模型名称解析配额域
 func resolveAntigravityQuotaScope(requestedModel string) (AntigravityQuotaScope, bool) {

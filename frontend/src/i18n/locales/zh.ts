@@ -1109,6 +1109,14 @@ export default {
         tooltip: '启用后，当请求包含 MCP 工具时，会在 system prompt 中注入 XML 格式调用协议提示词。关闭此选项可避免对某些客户端造成干扰。',
         enabled: '已启用',
         disabled: '已禁用'
+      REDACTED,
+      supportedScopes: {
+        title: '支持的模型系列',
+        tooltip: '选择此分组支持的模型系列。未勾选的系列将不会被路由到此分组。',
+        claude: 'Claude',
+        geminiText: 'Gemini Text',
+        geminiImage: 'Gemini Image',
+        hint: '至少选择一个模型系列'
       REDACTED
     REDACTED,
 
@@ -1294,6 +1302,8 @@ export default {
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
+        upstream: '对接上游',
+        upstreamDesc: '通过 Base URL + API Key 连接上游',
         api_key: 'API Key',
         cookie: 'Cookie'
       REDACTED,
@@ -1563,6 +1573,15 @@ export default {
       pleaseEnterApiKey: '请输入 API Key',
       apiKeyIsRequired: 'API Key 是必需的',
       leaveEmptyToKeep: '留空以保持当前密钥',
+      // Upstream type
+      upstream: {
+        baseUrl: '上游 Base URL',
+        baseUrlHint: '上游 Antigravity 服务的地址，例如：https://upstream.example.com',
+        apiKey: '上游 API Key',
+        apiKeyHint: '上游服务的 API Key',
+        pleaseEnterBaseUrl: '请输入上游 Base URL',
+        pleaseEnterApiKey: '请输入上游 API Key'
+      REDACTED,
       // OAuth flow
       oauth: {
         title: 'Claude 账号授权',

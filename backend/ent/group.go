@@ -64,6 +64,8 @@ type Group struct {
 	ModelRoutingEnabled bool `json:"model_routing_enabled,omitempty"`
 	// 是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）
 	McpXMLInject bool `json:"mcp_xml_inject,omitempty"`
+	// 支持的模型系列：claude, gemini_text, gemini_image
+	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -170,7 +172,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting:
+		case group.FieldModelRouting, group.FieldSupportedModelScopes:
 			values[i] = new([]byte)
 		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject:
 			values[i] = new(sql.NullBool)
@@ -353,6 +355,14 @@ REDACTED
 		REDACTED else if value.Valid {
 				_m.McpXMLInject = value.Bool
 		REDACTED
+		case group.FieldSupportedModelScopes:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field supported_model_scopes", values[i])
+		REDACTED else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.SupportedModelScopes); err != nil {
+					return fmt.Errorf("unmarshal field supported_model_scopes: %w", err)
+			REDACTED
+		REDACTED
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 	REDACTED
@@ -517,6 +527,9 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("mcp_xml_inject=")
 	builder.WriteString(fmt.Sprintf("%v", _m.McpXMLInject))
+	builder.WriteString(", ")
+	builder.WriteString("supported_model_scopes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SupportedModelScopes))
 	builder.WriteByte(')')
 	return builder.String()
 REDACTED

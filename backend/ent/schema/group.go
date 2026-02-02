@@ -115,6 +115,12 @@ func (Group) Fields() []ent.Field {
 		field.Bool("mcp_xml_inject").
 			Default(true).
 			Comment("是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）"),
+
+		// 支持的模型系列 (added by migration 046)
+		field.JSON("supported_model_scopes", []string{REDACTED).
+			Default([]string{"claude", "gemini_text", "gemini_image"REDACTED).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"REDACTED).
+			Comment("支持的模型系列：claude, gemini_text, gemini_image"),
 REDACTED
 REDACTED
 

@@ -59,6 +59,9 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetModelRouting(groupIn.ModelRouting)
 REDACTED
 
+	// 设置支持的模型系列（始终设置，空数组表示不限制）
+	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
+
 	created, err := builder.Save(ctx)
 	if err == nil {
 		groupIn.ID = created.ID
@@ -89,7 +92,6 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 REDACTED
-
 	return groupEntityToService(m), nil
 REDACTED
 
@@ -132,6 +134,9 @@ REDACTED
 REDACTED else {
 		builder = builder.ClearModelRouting()
 REDACTED
+
+	// 处理 SupportedModelScopes（始终设置，空数组表示不限制）
+	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
 	updated, err := builder.Save(ctx)
 	if err != nil {

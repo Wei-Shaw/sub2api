@@ -412,6 +412,11 @@ REDACTED
 // TestConnection 测试 Antigravity 账号连接（非流式，无重试、无计费）
 // 支持 Claude 和 Gemini 两种协议，根据 modelID 前缀自动选择
 func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+	// 上游透传账号使用专用测试方法
+	if account.Type == AccountTypeUpstream {
+		return s.testUpstreamConnection(ctx, account, modelID)
+REDACTED
+
 	// 获取 token
 	if s.tokenProvider == nil {
 		return nil, errors.New("antigravity token provider not configured")
@@ -504,6 +509,87 @@ REDACTED
 REDACTED
 
 	return nil, lastErr
+REDACTED
+
+// testUpstreamConnection 测试上游透传账号连接
+func (s *AntigravityGatewayService) testUpstreamConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, errors.New("upstream account missing base_url or api_key")
+REDACTED
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 使用 Claude 模型进行测试
+	if modelID == "" {
+		modelID = "claude-sonnet-4-20250514"
+REDACTED
+
+	// 构建最小测试请求
+	testReq := map[string]any{
+		"model":      modelID,
+		"max_tokens": 1,
+		"messages": []map[string]any{
+			{"role": "user", "content": "."REDACTED,
+	REDACTED,
+REDACTED
+	requestBody, err := json.Marshal(testReq)
+	if err != nil {
+		return nil, fmt.Errorf("构建请求失败: %w", err)
+REDACTED
+
+	// 构建 HTTP 请求
+	upstreamURL := baseURL + "/v1/messages"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	// 代理 URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	log.Printf("[antigravity-Test-Upstream] account=%s url=%s", account.Name, upstreamURL)
+
+	// 发送请求
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+REDACTED
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("API 返回 %d: %s", resp.StatusCode, string(respBody))
+REDACTED
+
+	// 提取响应文本
+	var respData map[string]any
+	text := ""
+	if json.Unmarshal(respBody, &respData) == nil {
+		if content, ok := respData["content"].([]any); ok && len(content) > 0 {
+			if block, ok := content[0].(map[string]any); ok {
+				if t, ok := block["text"].(string); ok {
+					text = t
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	return &TestConnectionResult{
+		Text:        text,
+		MappedModel: modelID,
+REDACTED, nil
 REDACTED
 
 // buildGeminiTestRequest 构建 Gemini 格式测试请求
@@ -728,6 +814,11 @@ REDACTED
 
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	// 上游透传账号直接转发，不走 OAuth token 刷新
+	if account.Type == AccountTypeUpstream {
+		return s.ForwardUpstream(ctx, c, account, body)
+REDACTED
+
 	startTime := time.Now()
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
@@ -1347,6 +1438,208 @@ REDACTED
 REDACTED
 
 	return changed, nil
+REDACTED
+
+// ForwardUpstream 透传请求到上游 Antigravity 服务
+// 用于 upstream 类型账号，直接使用 base_url + api_key 转发，不走 OAuth token
+func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	startTime := time.Now()
+	sessionID := getSessionID(c)
+	prefix := logPrefix(sessionID, account.Name)
+
+	// 获取上游配置
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+REDACTED
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 解析请求获取模型信息
+	var claudeReq antigravity.ClaudeRequest
+	if err := json.Unmarshal(body, &claudeReq); err != nil {
+		return nil, fmt.Errorf("parse claude request: %w", err)
+REDACTED
+	if strings.TrimSpace(claudeReq.Model) == "" {
+		return nil, fmt.Errorf("missing model")
+REDACTED
+	originalModel := claudeReq.Model
+	billingModel := originalModel
+
+	// 构建上游请求 URL
+	upstreamURL := baseURL + "/v1/messages"
+
+	// 创建请求
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create upstream request: %w", err)
+REDACTED
+
+	// 设置请求头
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey) // Claude API 兼容
+
+	// 透传 Claude 相关 headers
+	if v := c.GetHeader("anthropic-version"); v != "" {
+		req.Header.Set("anthropic-version", v)
+REDACTED
+	if v := c.GetHeader("anthropic-beta"); v != "" {
+		req.Header.Set("anthropic-beta", v)
+REDACTED
+
+	// 代理 URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	// 发送请求
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		log.Printf("%s upstream request failed: %v", prefix, err)
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	// 处理错误响应
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+		// 429 错误时标记账号限流
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, AntigravityQuotaScopeClaude)
+	REDACTED
+
+		// 透传上游错误
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(resp.StatusCode)
+		_, _ = c.Writer.Write(respBody)
+
+		return &ForwardResult{
+			Model: billingModel,
+	REDACTED, nil
+REDACTED
+
+	// 处理成功响应（流式/非流式）
+	var usage *ClaudeUsage
+	var firstTokenMs *int
+
+	if claudeReq.Stream {
+		// 流式响应：透传
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+
+		usage, firstTokenMs = s.streamUpstreamResponse(c, resp, startTime)
+REDACTED else {
+		// 非流式响应：直接透传
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read upstream response: %w", err)
+	REDACTED
+
+		// 提取 usage
+		usage = s.extractClaudeUsage(respBody)
+
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.Write(respBody)
+REDACTED
+
+	// 构建计费结果
+	duration := time.Since(startTime)
+	log.Printf("%s status=success duration_ms=%d", prefix, duration.Milliseconds())
+
+	return &ForwardResult{
+		Model:        billingModel,
+		Stream:       claudeReq.Stream,
+		Duration:     duration,
+		FirstTokenMs: firstTokenMs,
+		Usage: ClaudeUsage{
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
+	REDACTED,
+REDACTED, nil
+REDACTED
+
+// streamUpstreamResponse 透传上游流式响应并提取 usage
+func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*ClaudeUsage, *int) {
+	usage := &ClaudeUsage{REDACTED
+	var firstTokenMs *int
+	var firstTokenRecorded bool
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		// 记录首 token 时间
+		if !firstTokenRecorded && len(line) > 0 {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+			firstTokenRecorded = true
+	REDACTED
+
+		// 尝试从 message_delta 或 message_stop 事件提取 usage
+		if bytes.HasPrefix(line, []byte("data: ")) {
+			dataStr := bytes.TrimPrefix(line, []byte("data: "))
+			var event map[string]any
+			if json.Unmarshal(dataStr, &event) == nil {
+				if u, ok := event["usage"].(map[string]any); ok {
+					if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {
+						usage.InputTokens = int(v)
+				REDACTED
+					if v, ok := u["output_tokens"].(float64); ok && int(v) > 0 {
+						usage.OutputTokens = int(v)
+				REDACTED
+					if v, ok := u["cache_read_input_tokens"].(float64); ok && int(v) > 0 {
+						usage.CacheReadInputTokens = int(v)
+				REDACTED
+					if v, ok := u["cache_creation_input_tokens"].(float64); ok && int(v) > 0 {
+						usage.CacheCreationInputTokens = int(v)
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// 透传行
+		_, _ = c.Writer.Write(line)
+		_, _ = c.Writer.Write([]byte("\n"))
+		c.Writer.Flush()
+REDACTED
+
+	return usage, firstTokenMs
+REDACTED
+
+// extractClaudeUsage 从非流式 Claude 响应提取 usage
+func (s *AntigravityGatewayService) extractClaudeUsage(body []byte) *ClaudeUsage {
+	usage := &ClaudeUsage{REDACTED
+	var resp map[string]any
+	if json.Unmarshal(body, &resp) != nil {
+		return usage
+REDACTED
+	if u, ok := resp["usage"].(map[string]any); ok {
+		if v, ok := u["input_tokens"].(float64); ok {
+			usage.InputTokens = int(v)
+	REDACTED
+		if v, ok := u["output_tokens"].(float64); ok {
+			usage.OutputTokens = int(v)
+	REDACTED
+		if v, ok := u["cache_read_input_tokens"].(float64); ok {
+			usage.CacheReadInputTokens = int(v)
+	REDACTED
+		if v, ok := u["cache_creation_input_tokens"].(float64); ok {
+			usage.CacheCreationInputTokens = int(v)
+	REDACTED
+REDACTED
+	return usage
 REDACTED
 
 // ForwardGemini 转发 Gemini 协议请求

@@ -140,6 +140,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldModelRoutingEnabled,
 				group.FieldModelRouting,
 				group.FieldMcpXMLInject,
+				group.FieldSupportedModelScopes,
 			)
 	REDACTED).
 		Only(ctx)
@@ -433,6 +434,7 @@ REDACTED
 		ModelRouting:                    g.ModelRouting,
 		ModelRoutingEnabled:             g.ModelRoutingEnabled,
 		MCPXMLInject:                    g.McpXMLInject,
+		SupportedModelScopes:            g.SupportedModelScopes,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 REDACTED
