@@ -190,6 +190,7 @@ REDACTED
 			dbuser.Or(
 				dbuser.EmailContainsFold(filters.Search),
 				dbuser.UsernameContainsFold(filters.Search),
+				dbuser.NotesContainsFold(filters.Search),
 			),
 		)
 REDACTED
