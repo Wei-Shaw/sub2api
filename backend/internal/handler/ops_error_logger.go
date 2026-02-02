@@ -905,7 +905,7 @@ REDACTED
 
 func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string) bool {
 	switch strings.TrimSpace(code) {
-	case "INSUFFICIENT_BALANCE", "USAGE_LIMIT_EXCEEDED", "SUBSCRIPTION_NOT_FOUND", "SUBSCRIPTION_INVALID":
+	case "INSUFFICIENT_BALANCE", "USAGE_LIMIT_EXCEEDED", "SUBSCRIPTION_NOT_FOUND", "SUBSCRIPTION_INVALID", "USER_INACTIVE":
 		return true
 REDACTED
 	if phase == "billing" || phase == "concurrency" {
