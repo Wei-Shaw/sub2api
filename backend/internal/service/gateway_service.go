@@ -1893,6 +1893,10 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		// Antigravity 平台使用专门的模型支持检查
 		return IsAntigravityModelSupported(requestedModel)
 REDACTED
+	// Gemini API Key 账户直接透传，由上游判断模型是否支持
+	if account.Platform == PlatformGemini && account.Type == AccountTypeAPIKey {
+		return true
+REDACTED
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
 REDACTED
