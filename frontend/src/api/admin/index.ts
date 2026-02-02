@@ -59,3 +59,6 @@ export {
 REDACTED
 
 export default adminAPI
+
+// Re-export types used by components
+export type { BalanceHistoryItem REDACTED from './users'

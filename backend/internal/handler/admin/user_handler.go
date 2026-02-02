@@ -277,3 +277,44 @@ REDACTED
 
 	response.Success(c, stats)
 REDACTED
+
+// GetBalanceHistory handles getting user's balance/concurrency change history
+// GET /api/v1/admin/users/:id/balance-history
+// Query params:
+//   - type: filter by record type (balance, admin_balance, concurrency, admin_concurrency, subscription)
+func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+REDACTED
+
+	page, pageSize := response.ParsePagination(c)
+	codeType := c.Query("type")
+
+	codes, total, totalRecharged, err := h.adminService.GetUserBalanceHistory(c.Request.Context(), userID, page, pageSize, codeType)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// Convert to admin DTO (includes notes field for admin visibility)
+	out := make([]dto.AdminRedeemCode, 0, len(codes))
+	for i := range codes {
+		out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
+REDACTED
+
+	// Custom response with total_recharged alongside pagination
+	pages := int((total + int64(pageSize) - 1) / int64(pageSize))
+	if pages < 1 {
+		pages = 1
+REDACTED
+	response.Success(c, gin.H{
+		"items":           out,
+		"total":           total,
+		"page":            page,
+		"page_size":       pageSize,
+		"pages":           pages,
+		"total_recharged": totalRecharged,
+REDACTED)
+REDACTED

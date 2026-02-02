@@ -832,6 +832,20 @@ export default {
       failedToDeposit: 'Failed to deposit',
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
+      // Balance History
+      balanceHistory: 'Recharge History',
+      balanceHistoryTip: 'Click to open recharge history',
+      balanceHistoryTitle: 'User Recharge & Concurrency History',
+      noBalanceHistory: 'No records found for this user',
+      allTypes: 'All Types',
+      typeBalance: 'Balance (Redeem)',
+      typeAdminBalance: 'Balance (Admin)',
+      typeConcurrency: 'Concurrency (Redeem)',
+      typeAdminConcurrency: 'Concurrency (Admin)',
+      typeSubscription: 'Subscription',
+      failedToLoadBalanceHistory: 'Failed to load balance history',
+      createdAt: 'Created',
+      totalRecharged: 'Total Recharged',
       roles: {
         admin: 'Admin',
         user: 'User'
