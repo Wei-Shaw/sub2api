@@ -411,6 +411,8 @@ export interface CreateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  // 从指定分组复制账号
+  copy_accounts_from_group_ids?: number[]
 REDACTED
 
 export interface UpdateGroupRequest {
@@ -429,6 +431,7 @@ export interface UpdateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  copy_accounts_from_group_ids?: number[]
 REDACTED
 
 // ==================== Account & Proxy Types ====================
