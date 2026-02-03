@@ -314,10 +314,10 @@ REDACTED
 		Upstream429Count:             upstream429,
 		Upstream529Count:             upstream529,
 
-		TokenConsumed: tokenConsumed,
+		TokenConsumed:      tokenConsumed,
 		AccountSwitchCount: accountSwitchCount,
-		QPS:           float64Ptr(roundTo1DP(qps)),
-		TPS:           float64Ptr(roundTo1DP(tps)),
+		QPS:                float64Ptr(roundTo1DP(qps)),
+		TPS:                float64Ptr(roundTo1DP(tps)),
 
 		DurationP50Ms: duration.p50,
 		DurationP90Ms: duration.p90,
