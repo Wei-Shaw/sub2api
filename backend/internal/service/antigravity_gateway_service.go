@@ -1003,6 +1003,12 @@ REDACTED
 		return true
 REDACTED
 
+	// Detect thinking block modification errors:
+	// "thinking or redacted_thinking blocks in the latest assistant message cannot be modified"
+	if strings.Contains(msg, "cannot be modified") && (strings.Contains(msg, "thinking") || strings.Contains(msg, "redacted_thinking")) {
+		return true
+REDACTED
+
 	return false
 REDACTED
 
