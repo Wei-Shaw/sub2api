@@ -779,6 +779,9 @@ REDACTED
 		return
 REDACTED
 
+	// 检查是否为 Claude Code 客户端，设置到 context 中
+	SetClaudeCodeClientContext(c, body)
+
 	setOpsRequestContext(c, "", false, body)
 
 	parsedReq, err := service.ParseGatewayRequest(body)
