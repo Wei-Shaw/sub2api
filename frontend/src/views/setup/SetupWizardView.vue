@@ -91,18 +91,6 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-between rounded-xl border border-gray-200 p-3 dark:border-dark-700">
-            <div>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ t("setup.redis.enableTls") REDACTEDREDACTED
-              </p>
-              <p class="text-xs text-gray-500 dark:text-dark-400">
-                {{ t("setup.redis.enableTlsHint") REDACTEDREDACTED
-              </p>
-            </div>
-            <Toggle v-model="formData.redis.enable_tls" />
-          </div>
-
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="input-label">{{ t('setup.database.username') REDACTEDREDACTED</label>
@@ -235,6 +223,18 @@
                 placeholder="0"
               />
             </div>
+          </div>
+
+          <div class="flex items-center justify-between rounded-xl border border-gray-200 p-3 dark:border-dark-700">
+            <div>
+              <p class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t("setup.redis.enableTls") REDACTEDREDACTED
+              </p>
+              <p class="text-xs text-gray-500 dark:text-dark-400">
+                {{ t("setup.redis.enableTlsHint") REDACTEDREDACTED
+              </p>
+            </div>
+            <Toggle v-model="formData.redis.enable_tls" />
           </div>
 
           <button
@@ -482,6 +482,7 @@ import { ref, reactive, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { testDatabase, testRedis, install, type InstallRequest REDACTED from '@/api/setup'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
