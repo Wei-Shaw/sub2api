@@ -488,6 +488,7 @@ REDACTED{
 					"fallback_model_openai": "gpt-4o",
 					"enable_identity_patch": true,
 					"identity_patch_prompt": "",
+					"invitation_code_enabled": false,
 					"home_content": "",
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
@@ -600,7 +601,7 @@ REDACTED
 	settingService := service.NewSettingService(settingRepo, cfg)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil)
-	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, nil)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil)

@@ -55,6 +55,7 @@ export interface RegisterRequest {
   verify_code?: string
   turnstile_token?: string
   promo_code?: string
+  invitation_code?: string
 REDACTED
 
 export interface SendVerifyCodeRequest {
@@ -72,6 +73,7 @@ export interface PublicSettings {
   email_verify_enabled: boolean
   promo_code_enabled: boolean
   password_reset_enabled: boolean
+  invitation_code_enabled: boolean
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string
@@ -701,7 +703,7 @@ REDACTED
 
 // ==================== Usage & Redeem Types ====================
 
-export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription'
+export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
 
 export interface UsageLog {
   id: number

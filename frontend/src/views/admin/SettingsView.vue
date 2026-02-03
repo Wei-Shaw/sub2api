@@ -339,6 +339,21 @@
               <Toggle v-model="form.promo_code_enabled" />
             </div>
 
+            <!-- Invitation Code -->
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.registration.invitationCode')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.registration.invitationCodeHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.invitation_code_enabled" />
+            </div>
+
             <!-- Password Reset - Only show when email verification is enabled -->
             <div
               v-if="form.email_verify_enabled"
@@ -1115,6 +1130,7 @@ const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
   promo_code_enabled: true,
+  invitation_code_enabled: false,
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
@@ -1243,6 +1259,7 @@ async function saveSettings() {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
       promo_code_enabled: form.promo_code_enabled,
+      invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
       default_balance: form.default_balance,

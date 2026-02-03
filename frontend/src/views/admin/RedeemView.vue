@@ -213,7 +213,7 @@
               <Select v-model="generateForm.type" :options="typeOptions" />
             </div>
             <!-- 余额/并发类型：显示数值输入 -->
-            <div v-if="generateForm.type !== 'subscription'">
+            <div v-if="generateForm.type !== 'subscription' && generateForm.type !== 'invitation'">
               <label class="input-label">
                 {{
                   generateForm.type === 'balance'
@@ -229,6 +229,12 @@
                 required
                 class="input"
               />
+            </div>
+            <!-- 邀请码类型：显示提示信息 -->
+            <div v-if="generateForm.type === 'invitation'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+              <p class="text-sm text-blue-700 dark:text-blue-300">
+                {{ t('admin.redeem.invitationHint') REDACTEDREDACTED
+              </p>
             </div>
             <!-- 订阅类型：显示分组选择和有效天数 -->
             <template v-if="generateForm.type === 'subscription'">
@@ -387,7 +393,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useClipboard REDACTED from '@/composables/useClipboard'
@@ -499,14 +505,16 @@ const columns = computed<Column[]>(() => [
 const typeOptions = computed(() => [
   { value: 'balance', label: t('admin.redeem.balance') REDACTED,
   { value: 'concurrency', label: t('admin.redeem.concurrency') REDACTED,
-  { value: 'subscription', label: t('admin.redeem.subscription') REDACTED
+  { value: 'subscription', label: t('admin.redeem.subscription') REDACTED,
+  { value: 'invitation', label: t('admin.redeem.invitation') REDACTED
 ])
 
 const filterTypeOptions = computed(() => [
   { value: '', label: t('admin.redeem.allTypes') REDACTED,
   { value: 'balance', label: t('admin.redeem.balance') REDACTED,
   { value: 'concurrency', label: t('admin.redeem.concurrency') REDACTED,
-  { value: 'subscription', label: t('admin.redeem.subscription') REDACTED
+  { value: 'subscription', label: t('admin.redeem.subscription') REDACTED,
+  { value: 'invitation', label: t('admin.redeem.invitation') REDACTED
 ])
 
 const filterStatusOptions = computed(() => [
@@ -545,6 +553,18 @@ const generateForm = reactive({
   group_id: null as number | null,
   validity_days: 30
 REDACTED)
+
+// 监听类型变化，邀请码类型时自动设置 value 为 0
+watch(
+  () => generateForm.type,
+  (newType) => {
+    if (newType === 'invitation') {
+      generateForm.value = 0
+    REDACTED else if (generateForm.value === 0) {
+      generateForm.value = 10
+    REDACTED
+  REDACTED
+)
 
 const loadCodes = async () => {
   if (abortController) {

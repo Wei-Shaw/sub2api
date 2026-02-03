@@ -265,6 +265,13 @@ export default {
     promoCodeAlreadyUsed: 'You have already used this promo code',
     promoCodeValidating: 'Promo code is being validated, please wait',
     promoCodeInvalidCannotRegister: 'Invalid promo code. Please check and try again or clear the promo code field',
+    invitationCodeLabel: 'Invitation Code',
+    invitationCodePlaceholder: 'Enter invitation code',
+    invitationCodeRequired: 'Invitation code is required',
+    invitationCodeValid: 'Invitation code is valid',
+    invitationCodeInvalid: 'Invalid or used invitation code',
+    invitationCodeValidating: 'Validating invitation code...',
+    invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',
@@ -1899,6 +1906,8 @@ export default {
       balance: 'Balance',
       concurrency: 'Concurrency',
       subscription: 'Subscription',
+      invitation: 'Invitation',
+      invitationHint: 'Invitation codes are used to restrict user registration. They are automatically marked as used after use.',
       unused: 'Unused',
       used: 'Used',
       columns: {
@@ -1945,6 +1954,7 @@ export default {
         balance: 'Balance',
         concurrency: 'Concurrency',
         subscription: 'Subscription',
+        invitation: 'Invitation',
         // Admin adjustment types (created when admin modifies user balance/concurrency)
         admin_balance: 'Balance (Admin)',
         admin_concurrency: 'Concurrency (Admin)'
@@ -2896,6 +2906,8 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
+        invitationCode: 'Invitation Code Registration',
+        invitationCodeHint: 'When enabled, users must enter a valid invitation code to register',
         passwordReset: 'Password Reset',
         passwordResetHint: 'Allow users to reset their password via email',
         totp: 'Two-Factor Authentication (2FA)',
