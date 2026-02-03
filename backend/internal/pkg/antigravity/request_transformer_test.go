@@ -86,7 +86,7 @@ REDACTED
 				if len(parts) != 3 {
 					t.Fatalf("expected 3 parts, got %d", len(parts))
 			REDACTED
-				if !parts[1].Thought || parts[1].ThoughtSignature != dummyThoughtSignature {
+				if !parts[1].Thought || parts[1].ThoughtSignature != DummyThoughtSignature {
 					t.Fatalf("expected dummy thought signature, got thought=%v signature=%q",
 						parts[1].Thought, parts[1].ThoughtSignature)
 			REDACTED
@@ -126,8 +126,8 @@ REDACTED)
 		if len(parts) != 1 || parts[0].FunctionCall == nil {
 			t.Fatalf("expected 1 functionCall part, got %+v", parts)
 	REDACTED
-		if parts[0].ThoughtSignature != dummyThoughtSignature {
-			t.Fatalf("expected dummy tool signature %q, got %q", dummyThoughtSignature, parts[0].ThoughtSignature)
+		if parts[0].ThoughtSignature != DummyThoughtSignature {
+			t.Fatalf("expected dummy tool signature %q, got %q", DummyThoughtSignature, parts[0].ThoughtSignature)
 	REDACTED
 REDACTED)
 
