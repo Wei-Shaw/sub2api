@@ -262,6 +262,13 @@ export default {
     promoCodeAlreadyUsed: '您已使用过此优惠码',
     promoCodeValidating: '优惠码正在验证中，请稍候',
     promoCodeInvalidCannotRegister: '优惠码无效，请检查后重试或清空优惠码',
+    invitationCodeLabel: '邀请码',
+    invitationCodePlaceholder: '请输入邀请码',
+    invitationCodeRequired: '请输入邀请码',
+    invitationCodeValid: '邀请码有效',
+    invitationCodeInvalid: '邀请码无效或已被使用',
+    invitationCodeValidating: '正在验证邀请码...',
+    invitationCodeInvalidCannotRegister: '邀请码无效，请检查后重试',
     linuxdo: {
       signIn: '使用 Linux.do 登录',
       orContinue: '或使用邮箱密码继续',
@@ -491,6 +498,7 @@ export default {
     exporting: '导出中...',
     preparingExport: '正在准备导出...',
     model: '模型',
+    reasoningEffort: '推理强度',
     type: '类型',
     tokens: 'Token',
     cost: '费用',
@@ -1083,6 +1091,14 @@ export default {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',
         noFallback: '不兜底'
+      REDACTED,
+      copyAccounts: {
+        title: '从分组复制账号',
+        tooltip: '选择一个或多个相同平台的分组，创建后会自动将这些分组的所有账号绑定到新分组（去重）。',
+        tooltipEdit: '选择一个或多个相同平台的分组，保存后当前分组的账号会被替换为这些分组的账号（去重）。',
+        selectPlaceholder: '选择分组以复制其账号...',
+        hint: '可选多个分组，账号会自动去重',
+        hintEdit: '⚠️ 注意：这会替换当前分组的所有账号绑定'
       REDACTED,
       modelRouting: {
         title: '模型路由配置',
@@ -2045,6 +2061,7 @@ export default {
         balance: '余额',
         concurrency: '并发数',
         subscription: '订阅',
+        invitation: '邀请码',
         // 管理员在用户管理页面调整余额/并发时产生的记录
         admin_balance: '余额（管理员）',
         admin_concurrency: '并发数（管理员）'
@@ -2053,6 +2070,8 @@ export default {
       balance: '余额',
       concurrency: '并发数',
       subscription: '订阅',
+      invitation: '邀请码',
+      invitationHint: '邀请码用于限制用户注册，使用后自动标记为已使用。',
       allTypes: '全部类型',
       allStatus: '全部状态',
       unused: '未使用',
@@ -3078,6 +3097,8 @@ export default {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
+        invitationCode: '邀请码注册',
+        invitationCodeHint: '开启后，用户注册时需要填写有效的邀请码',
         passwordReset: '忘记密码',
         passwordResetHint: '允许用户通过邮箱重置密码',
         totp: '双因素认证 (2FA)',

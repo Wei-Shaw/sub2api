@@ -157,6 +157,12 @@
             <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
           </template>
 
+          <template #cell-reasoning_effort="{ row REDACTED">
+            <span class="text-sm text-gray-900 dark:text-white">
+              {{ formatReasoningEffort(row.reasoning_effort) REDACTEDREDACTED
+            </span>
+          </template>
+
           <template #cell-stream="{ row REDACTED">
             <span
               class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium"
@@ -438,12 +444,12 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import Select from '@/components/common/Select.vue'
-import DateRangePicker from '@/components/common/DateRangePicker.vue'
-import Icon from '@/components/icons/Icon.vue'
-import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse REDACTED from '@/types'
-import type { Column REDACTED from '@/components/common/types'
-import { formatDateTime REDACTED from '@/utils/format'
+  import Select from '@/components/common/Select.vue'
+  import DateRangePicker from '@/components/common/DateRangePicker.vue'
+  import Icon from '@/components/icons/Icon.vue'
+  import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse REDACTED from '@/types'
+  import type { Column REDACTED from '@/components/common/types'
+  import { formatDateTime, formatReasoningEffort REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -466,6 +472,7 @@ const usageStats = ref<UsageStatsResponse | null>(null)
 const columns = computed<Column[]>(() => [
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false REDACTED,
   { key: 'model', label: t('usage.model'), sortable: true REDACTED,
+  { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false REDACTED,
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
@@ -723,6 +730,7 @@ const exportToCSV = async () => {
       'Time',
       'API Key Name',
       'Model',
+      'Reasoning Effort',
       'Type',
       'Input Tokens',
       'Output Tokens',
@@ -739,6 +747,7 @@ const exportToCSV = async () => {
         log.created_at,
         log.api_key?.name || '',
         log.model,
+        formatReasoningEffort(log.reasoning_effort),
         log.stream ? 'Stream' : 'Sync',
         log.input_tokens,
         log.output_tokens,

@@ -24,4 +24,11 @@ WHERE filename = '044_add_group_mcp_xml_inject.sql'
     SELECT 1 FROM schema_migrations WHERE filename = '044b_add_group_mcp_xml_inject.sql'
   );
 
+UPDATE schema_migrations
+SET filename = '046b_add_group_supported_model_scopes.sql'
+WHERE filename = '046_add_group_supported_model_scopes.sql'
+  AND NOT EXISTS (
+    SELECT 1 FROM schema_migrations WHERE filename = '046b_add_group_supported_model_scopes.sql'
+  );
+
 COMMIT;

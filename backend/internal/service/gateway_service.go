@@ -20,12 +20,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
@@ -37,12 +39,24 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 40 * 1024 * 1024
-	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
-	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
+	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
+	// to match real Claude CLI traffic as closely as possible. When we need a visual
+	// separator between system blocks, we add "\n\n" at concatenation time.
+	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
+	maxCacheControlBlocks  = 4 // Anthropic API 允许的最大 cache_control 块数量
+)
+
+const (
+	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
 func (s *GatewayService) debugModelRoutingEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+REDACTED
+
+func (s *GatewayService) debugClaudeMimicEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 REDACTED
 
@@ -65,12 +79,178 @@ REDACTED
 	return requestedModel
 REDACTED
 
+func redactAuthHeaderValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+REDACTED
+	// Keep scheme for debugging, redact secret.
+	if strings.HasPrefix(strings.ToLower(v), "bearer ") {
+		return "Bearer [redacted]"
+REDACTED
+	return "[redacted]"
+REDACTED
+
+func safeHeaderValueForLog(key string, v string) string {
+	key = strings.ToLower(strings.TrimSpace(key))
+	switch key {
+	case "authorization", "x-api-key":
+		return redactAuthHeaderValue(v)
+	default:
+		return strings.TrimSpace(v)
+REDACTED
+REDACTED
+
+func extractSystemPreviewFromBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+REDACTED
+	sys := gjson.GetBytes(body, "system")
+	if !sys.Exists() {
+		return ""
+REDACTED
+
+	switch {
+	case sys.IsArray():
+		for _, item := range sys.Array() {
+			if !item.IsObject() {
+				continue
+		REDACTED
+			if strings.EqualFold(item.Get("type").String(), "text") {
+				if t := item.Get("text").String(); strings.TrimSpace(t) != "" {
+					return t
+			REDACTED
+		REDACTED
+	REDACTED
+		return ""
+	case sys.Type == gjson.String:
+		return sys.String()
+	default:
+		return ""
+REDACTED
+REDACTED
+
+func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) string {
+	if req == nil {
+		return ""
+REDACTED
+
+	// Only log a minimal fingerprint to avoid leaking user content.
+	interesting := []string{
+		"user-agent",
+		"x-app",
+		"anthropic-dangerous-direct-browser-access",
+		"anthropic-version",
+		"anthropic-beta",
+		"x-stainless-lang",
+		"x-stainless-package-version",
+		"x-stainless-os",
+		"x-stainless-arch",
+		"x-stainless-runtime",
+		"x-stainless-runtime-version",
+		"x-stainless-retry-count",
+		"x-stainless-timeout",
+		"authorization",
+		"x-api-key",
+		"content-type",
+		"accept",
+		"x-stainless-helper-method",
+REDACTED
+
+	h := make([]string, 0, len(interesting))
+	for _, k := range interesting {
+		if v := req.Header.Get(k); v != "" {
+			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
+	REDACTED
+REDACTED
+
+	metaUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
+	sysPreview := strings.TrimSpace(extractSystemPreviewFromBody(body))
+
+	// Truncate preview to keep logs sane.
+	if len(sysPreview) > 300 {
+		sysPreview = sysPreview[:300] + "..."
+REDACTED
+	sysPreview = strings.ReplaceAll(sysPreview, "\n", "\\n")
+	sysPreview = strings.ReplaceAll(sysPreview, "\r", "\\r")
+
+	aid := int64(0)
+	aname := ""
+	if account != nil {
+		aid = account.ID
+		aname = account.Name
+REDACTED
+
+	return fmt.Sprintf(
+		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%sREDACTED",
+		req.URL.String(),
+		aid,
+		aname,
+		tokenType,
+		mimicClaudeCode,
+		metaUserID,
+		sysPreview,
+		strings.Join(h, " "),
+	)
+REDACTED
+
+func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
+	line := buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode)
+	if line == "" {
+		return
+REDACTED
+	log.Printf("[ClaudeMimicDebug] %s", line)
+REDACTED
+
+func isClaudeCodeCredentialScopeError(msg string) bool {
+	m := strings.ToLower(strings.TrimSpace(msg))
+	if m == "" {
+		return false
+REDACTED
+	return strings.Contains(m, "only authorized for use with claude code") &&
+		strings.Contains(m, "cannot be used for other api requests")
+REDACTED
+
 // sseDataRe matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var (
 	sseDataRe            = regexp.MustCompile(`^data:\s*`)
 	sessionIDRegex       = regexp.MustCompile(`session_([a-f0-9-]{36REDACTED)`)
 	claudeCliUserAgentRe = regexp.MustCompile(`^claude-cli/\d+\.\d+\.\d+`)
+	toolPrefixRe         = regexp.MustCompile(`(?i)^(?:oc_|mcp_)`)
+	toolNameBoundaryRe   = regexp.MustCompile(`[^a-zA-Z0-9]+`)
+	toolNameCamelRe      = regexp.MustCompile(`([a-z0-9])([A-Z])`)
+	toolNameFieldRe      = regexp.MustCompile(`"name"\s*:\s*"([^"]+)"`)
+	modelFieldRe         = regexp.MustCompile(`"model"\s*:\s*"([^"]+)"`)
+	toolDescAbsPathRe    = regexp.MustCompile(`/\/?(?:home|Users|tmp|var|opt|usr|etc)\/[^\s,\)"'\]]+`)
+	toolDescWinPathRe    = regexp.MustCompile(`(?i)[A-Z]:\\[^\s,\)"'\]]+`)
+
+	claudeToolNameOverrides = map[string]string{
+		"bash":      "Bash",
+		"read":      "Read",
+		"edit":      "Edit",
+		"write":     "Write",
+		"task":      "Task",
+		"glob":      "Glob",
+		"grep":      "Grep",
+		"webfetch":  "WebFetch",
+		"websearch": "WebSearch",
+		"todowrite": "TodoWrite",
+		"question":  "AskUserQuestion",
+REDACTED
+	openCodeToolOverrides = map[string]string{
+		"Bash":            "bash",
+		"Read":            "read",
+		"Edit":            "edit",
+		"Write":           "write",
+		"Task":            "task",
+		"Glob":            "glob",
+		"Grep":            "grep",
+		"WebFetch":        "webfetch",
+		"WebSearch":       "websearch",
+		"TodoWrite":       "todowrite",
+		"AskUserQuestion": "question",
+REDACTED
 
 	// claudeCodePromptPrefixes 用于检测 Claude Code 系统提示词的前缀列表
 	// 支持多种变体：标准版、Agent SDK 版、Explore Agent 版、Compact 版等
@@ -434,6 +614,394 @@ REDACTED
 		return body
 REDACTED
 	return newBody
+REDACTED
+
+type claudeOAuthNormalizeOptions struct {
+	injectMetadata          bool
+	metadataUserID          string
+	stripSystemCacheControl bool
+REDACTED
+
+func stripToolPrefix(value string) string {
+	if value == "" {
+		return value
+REDACTED
+	return toolPrefixRe.ReplaceAllString(value, "")
+REDACTED
+
+func toPascalCase(value string) string {
+	if value == "" {
+		return value
+REDACTED
+	normalized := toolNameBoundaryRe.ReplaceAllString(value, " ")
+	tokens := make([]string, 0)
+	for _, token := range strings.Fields(normalized) {
+		expanded := toolNameCamelRe.ReplaceAllString(token, "$1 $2")
+		parts := strings.Fields(expanded)
+		if len(parts) > 0 {
+			tokens = append(tokens, parts...)
+	REDACTED
+REDACTED
+	if len(tokens) == 0 {
+		return value
+REDACTED
+	var builder strings.Builder
+	for _, token := range tokens {
+		lower := strings.ToLower(token)
+		if lower == "" {
+			continue
+	REDACTED
+		runes := []rune(lower)
+		runes[0] = unicode.ToUpper(runes[0])
+		_, _ = builder.WriteString(string(runes))
+REDACTED
+	return builder.String()
+REDACTED
+
+func toSnakeCase(value string) string {
+	if value == "" {
+		return value
+REDACTED
+	output := toolNameCamelRe.ReplaceAllString(value, "$1_$2")
+	output = toolNameBoundaryRe.ReplaceAllString(output, "_")
+	output = strings.Trim(output, "_")
+	return strings.ToLower(output)
+REDACTED
+
+func normalizeToolNameForClaude(name string, cache map[string]string) string {
+	if name == "" {
+		return name
+REDACTED
+	stripped := stripToolPrefix(name)
+	mapped, ok := claudeToolNameOverrides[strings.ToLower(stripped)]
+	if !ok {
+		mapped = toPascalCase(stripped)
+REDACTED
+	if mapped != "" && cache != nil && mapped != stripped {
+		cache[mapped] = stripped
+REDACTED
+	if mapped == "" {
+		return stripped
+REDACTED
+	return mapped
+REDACTED
+
+func normalizeToolNameForOpenCode(name string, cache map[string]string) string {
+	if name == "" {
+		return name
+REDACTED
+	stripped := stripToolPrefix(name)
+	if cache != nil {
+		if mapped, ok := cache[stripped]; ok {
+			return mapped
+	REDACTED
+REDACTED
+	if mapped, ok := openCodeToolOverrides[stripped]; ok {
+		return mapped
+REDACTED
+	return toSnakeCase(stripped)
+REDACTED
+
+func normalizeParamNameForOpenCode(name string, cache map[string]string) string {
+	if name == "" {
+		return name
+REDACTED
+	if cache != nil {
+		if mapped, ok := cache[name]; ok {
+			return mapped
+	REDACTED
+REDACTED
+	return name
+REDACTED
+
+// sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
+// We intentionally avoid broad keyword replacement in system prompts to prevent
+// accidentally changing user-provided instructions.
+func sanitizeSystemText(text string) string {
+	if text == "" {
+		return text
+REDACTED
+	// Some clients include a fixed OpenCode identity sentence. Anthropic may treat
+	// this as a non-Claude-Code fingerprint, so rewrite it to the canonical
+	// Claude Code banner before generic "OpenCode"/"opencode" replacements.
+	text = strings.ReplaceAll(
+		text,
+		"You are OpenCode, the best coding agent on the planet.",
+		strings.TrimSpace(claudeCodeSystemPrompt),
+	)
+	return text
+REDACTED
+
+func sanitizeToolDescription(description string) string {
+	if description == "" {
+		return description
+REDACTED
+	description = toolDescAbsPathRe.ReplaceAllString(description, "[path]")
+	description = toolDescWinPathRe.ReplaceAllString(description, "[path]")
+	// Intentionally do NOT rewrite tool descriptions (OpenCode/Claude strings).
+	// Tool names/skill names may rely on exact wording, and rewriting can be misleading.
+	return description
+REDACTED
+
+func normalizeToolInputSchema(inputSchema any, cache map[string]string) {
+	schema, ok := inputSchema.(map[string]any)
+	if !ok {
+		return
+REDACTED
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return
+REDACTED
+
+	newProperties := make(map[string]any, len(properties))
+	for key, value := range properties {
+		snakeKey := toSnakeCase(key)
+		newProperties[snakeKey] = value
+		if snakeKey != key && cache != nil {
+			cache[snakeKey] = key
+	REDACTED
+REDACTED
+	schema["properties"] = newProperties
+
+	if required, ok := schema["required"].([]any); ok {
+		newRequired := make([]any, 0, len(required))
+		for _, item := range required {
+			name, ok := item.(string)
+			if !ok {
+				newRequired = append(newRequired, item)
+				continue
+		REDACTED
+			snakeName := toSnakeCase(name)
+			newRequired = append(newRequired, snakeName)
+			if snakeName != name && cache != nil {
+				cache[snakeName] = name
+		REDACTED
+	REDACTED
+		schema["required"] = newRequired
+REDACTED
+REDACTED
+
+func stripCacheControlFromSystemBlocks(system any) bool {
+	blocks, ok := system.([]any)
+	if !ok {
+		return false
+REDACTED
+	changed := false
+	for _, item := range blocks {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		if _, exists := block["cache_control"]; !exists {
+			continue
+	REDACTED
+		delete(block, "cache_control")
+		changed = true
+REDACTED
+	return changed
+REDACTED
+
+func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAuthNormalizeOptions) ([]byte, string, map[string]string) {
+	if len(body) == 0 {
+		return body, modelID, nil
+REDACTED
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body, modelID, nil
+REDACTED
+
+	toolNameMap := make(map[string]string)
+
+	if system, ok := req["system"]; ok {
+		switch v := system.(type) {
+		case string:
+			sanitized := sanitizeSystemText(v)
+			if sanitized != v {
+				req["system"] = sanitized
+		REDACTED
+		case []any:
+			for _, item := range v {
+				block, ok := item.(map[string]any)
+				if !ok {
+					continue
+			REDACTED
+				if blockType, _ := block["type"].(string); blockType != "text" {
+					continue
+			REDACTED
+				text, ok := block["text"].(string)
+				if !ok || text == "" {
+					continue
+			REDACTED
+				sanitized := sanitizeSystemText(text)
+				if sanitized != text {
+					block["text"] = sanitized
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if rawModel, ok := req["model"].(string); ok {
+		normalized := claude.NormalizeModelID(rawModel)
+		if normalized != rawModel {
+			req["model"] = normalized
+			modelID = normalized
+	REDACTED
+REDACTED
+
+	if rawTools, exists := req["tools"]; exists {
+		switch tools := rawTools.(type) {
+		case []any:
+			for idx, tool := range tools {
+				toolMap, ok := tool.(map[string]any)
+				if !ok {
+					continue
+			REDACTED
+				if name, ok := toolMap["name"].(string); ok {
+					normalized := normalizeToolNameForClaude(name, toolNameMap)
+					if normalized != "" && normalized != name {
+						toolMap["name"] = normalized
+				REDACTED
+			REDACTED
+				if desc, ok := toolMap["description"].(string); ok {
+					sanitized := sanitizeToolDescription(desc)
+					if sanitized != desc {
+						toolMap["description"] = sanitized
+				REDACTED
+			REDACTED
+				if schema, ok := toolMap["input_schema"]; ok {
+					normalizeToolInputSchema(schema, toolNameMap)
+			REDACTED
+				tools[idx] = toolMap
+		REDACTED
+			req["tools"] = tools
+		case map[string]any:
+			normalizedTools := make(map[string]any, len(tools))
+			for name, value := range tools {
+				normalized := normalizeToolNameForClaude(name, toolNameMap)
+				if normalized == "" {
+					normalized = name
+			REDACTED
+				if toolMap, ok := value.(map[string]any); ok {
+					toolMap["name"] = normalized
+					if desc, ok := toolMap["description"].(string); ok {
+						sanitized := sanitizeToolDescription(desc)
+						if sanitized != desc {
+							toolMap["description"] = sanitized
+					REDACTED
+				REDACTED
+					if schema, ok := toolMap["input_schema"]; ok {
+						normalizeToolInputSchema(schema, toolNameMap)
+				REDACTED
+					normalizedTools[normalized] = toolMap
+					continue
+			REDACTED
+				normalizedTools[normalized] = value
+		REDACTED
+			req["tools"] = normalizedTools
+	REDACTED
+REDACTED else {
+		req["tools"] = []any{REDACTED
+REDACTED
+
+	if messages, ok := req["messages"].([]any); ok {
+		for _, msg := range messages {
+			msgMap, ok := msg.(map[string]any)
+			if !ok {
+				continue
+		REDACTED
+			content, ok := msgMap["content"].([]any)
+			if !ok {
+				continue
+		REDACTED
+			for _, block := range content {
+				blockMap, ok := block.(map[string]any)
+				if !ok {
+					continue
+			REDACTED
+				if blockType, _ := blockMap["type"].(string); blockType != "tool_use" {
+					continue
+			REDACTED
+				if name, ok := blockMap["name"].(string); ok {
+					normalized := normalizeToolNameForClaude(name, toolNameMap)
+					if normalized != "" && normalized != name {
+						blockMap["name"] = normalized
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if opts.stripSystemCacheControl {
+		if system, ok := req["system"]; ok {
+			_ = stripCacheControlFromSystemBlocks(system)
+	REDACTED
+REDACTED
+
+	if opts.injectMetadata && opts.metadataUserID != "" {
+		metadata, ok := req["metadata"].(map[string]any)
+		if !ok {
+			metadata = map[string]any{REDACTED
+			req["metadata"] = metadata
+	REDACTED
+		if existing, ok := metadata["user_id"].(string); !ok || existing == "" {
+			metadata["user_id"] = opts.metadataUserID
+	REDACTED
+REDACTED
+
+	delete(req, "temperature")
+	delete(req, "tool_choice")
+
+	newBody, err := json.Marshal(req)
+	if err != nil {
+		return body, modelID, toolNameMap
+REDACTED
+	return newBody, modelID, toolNameMap
+REDACTED
+
+func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account *Account, fp *Fingerprint) string {
+	if parsed == nil || account == nil {
+		return ""
+REDACTED
+	if parsed.MetadataUserID != "" {
+		return ""
+REDACTED
+
+	userID := strings.TrimSpace(account.GetClaudeUserID())
+	if userID == "" && fp != nil {
+		userID = fp.ClientID
+REDACTED
+	if userID == "" {
+		// Fall back to a random, well-formed client id so we can still satisfy
+		// Claude Code OAuth requirements when account metadata is incomplete.
+		userID = generateClientID()
+REDACTED
+
+	sessionHash := s.GenerateSessionHash(parsed)
+	sessionID := uuid.NewString()
+	if sessionHash != "" {
+		seed := fmt.Sprintf("%d::%s", account.ID, sessionHash)
+		sessionID = generateSessionUUID(seed)
+REDACTED
+
+	// Prefer the newer format that includes account_uuid (if present),
+	// otherwise fall back to the legacy Claude Code format.
+	accountUUID := strings.TrimSpace(account.GetExtraString("account_uuid"))
+	if accountUUID != "" {
+		return fmt.Sprintf("user_%s_account_%s_session_%s", userID, accountUUID, sessionID)
+REDACTED
+	return fmt.Sprintf("user_%s_account__session_%s", userID, sessionID)
+REDACTED
+
+func generateSessionUUID(seed string) string {
+	if seed == "" {
+		return uuid.NewString()
+REDACTED
+	hash := sha256.Sum256([]byte(seed))
+	bytes := hash[:16]
+	bytes[6] = (bytes[6] & 0x0f) | 0x40
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x",
+		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 REDACTED
 
 // SelectAccount 选择账号（粘性会话+优先级）
@@ -2060,6 +2628,16 @@ REDACTED
 	return claudeCliUserAgentRe.MatchString(userAgent)
 REDACTED
 
+func isClaudeCodeRequest(ctx context.Context, c *gin.Context, parsed *ParsedRequest) bool {
+	if IsClaudeCodeClient(ctx) {
+		return true
+REDACTED
+	if parsed == nil || c == nil {
+		return false
+REDACTED
+	return isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
+REDACTED
+
 // systemIncludesClaudeCodePrompt 检查 system 中是否已包含 Claude Code 提示词
 // 使用前缀匹配支持多种变体（标准版、Agent SDK 版等）
 func systemIncludesClaudeCodePrompt(system any) bool {
@@ -2096,6 +2674,10 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 		"text":          claudeCodeSystemPrompt,
 		"cache_control": map[string]string{"type": "ephemeral"REDACTED,
 REDACTED
+	// Opencode plugin applies an extra safeguard: it not only prepends the Claude Code
+	// banner, it also prefixes the next system instruction with the same banner plus
+	// a blank line. This helps when upstream concatenates system instructions.
+	claudeCodePrefix := strings.TrimSpace(claudeCodeSystemPrompt)
 
 	var newSystem []any
 
@@ -2103,18 +2685,35 @@ REDACTED
 	case nil:
 		newSystem = []any{claudeCodeBlockREDACTED
 	case string:
-		if v == "" || v == claudeCodeSystemPrompt {
+		// Be tolerant of older/newer clients that may differ only by trailing whitespace/newlines.
+		if strings.TrimSpace(v) == "" || strings.TrimSpace(v) == strings.TrimSpace(claudeCodeSystemPrompt) {
 			newSystem = []any{claudeCodeBlockREDACTED
 	REDACTED else {
-			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": vREDACTEDREDACTED
+			// Mirror opencode behavior: keep the banner as a separate system entry,
+			// but also prefix the next system text with the banner.
+			merged := v
+			if !strings.HasPrefix(v, claudeCodePrefix) {
+				merged = claudeCodePrefix + "\n\n" + v
+		REDACTED
+			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": mergedREDACTEDREDACTED
 	REDACTED
 	case []any:
 		newSystem = make([]any, 0, len(v)+1)
 		newSystem = append(newSystem, claudeCodeBlock)
+		prefixedNext := false
 		for _, item := range v {
 			if m, ok := item.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok && text == claudeCodeSystemPrompt {
+				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) == strings.TrimSpace(claudeCodeSystemPrompt) {
 					continue
+			REDACTED
+				// Prefix the first subsequent text system block once.
+				if !prefixedNext {
+					if blockType, _ := m["type"].(string); blockType == "text" {
+						if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" && !strings.HasPrefix(text, claudeCodePrefix) {
+							m["text"] = claudeCodePrefix + "\n\n" + text
+							prefixedNext = true
+					REDACTED
+				REDACTED
 			REDACTED
 		REDACTED
 			newSystem = append(newSystem, item)
@@ -2319,21 +2918,38 @@ REDACTED
 	body := parsed.Body
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
+	originalModel := reqModel
+	var toolNameMap map[string]string
 
-	// 智能注入 Claude Code 系统提示词（仅 OAuth/SetupToken 账号需要）
-	// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
-	if account.IsOAuth() &&
-		!isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID) &&
-		!strings.Contains(strings.ToLower(reqModel), "haiku") &&
-		!systemIncludesClaudeCodePrompt(parsed.System) {
-		body = injectClaudeCodePrompt(body, parsed.System)
+	isClaudeCode := isClaudeCodeRequest(ctx, c, parsed)
+	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
+
+	if shouldMimicClaudeCode {
+		// 智能注入 Claude Code 系统提示词（仅 OAuth/SetupToken 账号需要）
+		// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
+		if !strings.Contains(strings.ToLower(reqModel), "haiku") &&
+			!systemIncludesClaudeCodePrompt(parsed.System) {
+			body = injectClaudeCodePrompt(body, parsed.System)
+	REDACTED
+
+		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: trueREDACTED
+		if s.identityService != nil {
+			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+			if err == nil && fp != nil {
+				if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
+					normalizeOpts.injectMetadata = true
+					normalizeOpts.metadataUserID = metadataUserID
+			REDACTED
+		REDACTED
+	REDACTED
+
+		body, reqModel, toolNameMap = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
 REDACTED
 
 	// 强制执行 cache_control 块数量限制（最多 4 个）
 	body = enforceCacheControlLimit(body)
 
 	// 应用模型映射（APIKey 明确映射优先，其次使用 Anthropic 前缀映射）
-	originalModel := reqModel
 	mappedModel := reqModel
 	mappingSource := ""
 	if account.Type == AccountTypeAPIKey {
@@ -2377,10 +2993,9 @@ REDACTED
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
-		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel)
 		// Capture upstream request body for ops retry of this attempt.
 		c.Set(OpsUpstreamRequestBodyKey, string(body))
-
+		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -2458,7 +3073,7 @@ REDACTED
 					//    also downgrade tool_use/tool_result blocks to text.
 
 					filteredBody := FilterThinkingBlocksForRetry(body)
-					retryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, filteredBody, token, tokenType, reqModel)
+					retryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					if buildErr == nil {
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 						if retryErr == nil {
@@ -2490,7 +3105,7 @@ REDACTED
 								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
 									log.Printf("Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
 									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
-									retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel)
+									retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									if buildErr2 == nil {
 										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 										if retryErr2 == nil {
@@ -2715,7 +3330,7 @@ REDACTED
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if reqStream {
-		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel)
+		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, toolNameMap, shouldMimicClaudeCode)
 		if err != nil {
 			if err.Error() == "have error in stream" {
 				return nil, &UpstreamFailoverError{
@@ -2728,7 +3343,7 @@ REDACTED
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
 REDACTED else {
-		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
+		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel, toolNameMap, shouldMimicClaudeCode)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -2745,7 +3360,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string) (*http.Request, error) {
+func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, error) {
 	// 确定目标URL
 	targetURL := claudeAPIURL
 	if account.Type == AccountTypeAPIKey {
@@ -2759,11 +3374,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	REDACTED
 REDACTED
 
+	clientHeaders := http.Header{REDACTED
+	if c != nil && c.Request != nil {
+		clientHeaders = c.Request.Header
+REDACTED
+
 	// OAuth账号：应用统一指纹
 	var fingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err != nil {
 			log.Printf("Warning: failed to get fingerprint for account %d: %v", account.ID, err)
 			// 失败时降级为透传原始headers
@@ -2794,7 +3414,7 @@ REDACTED else {
 REDACTED
 
 	// 白名单透传headers
-	for key, values := range c.Request.Header {
+	for key, values := range clientHeaders {
 		lowerKey := strings.ToLower(key)
 		if allowedHeaders[lowerKey] {
 			for _, v := range values {
@@ -2815,10 +3435,30 @@ REDACTED
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 REDACTED
-
-	// 处理anthropic-beta header（OAuth账号需要特殊处理）
 	if tokenType == "oauth" {
-		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
+		applyClaudeOAuthHeaderDefaults(req, reqStream)
+REDACTED
+
+	// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
+	if tokenType == "oauth" {
+		if mimicClaudeCode {
+			// 非 Claude Code 客户端：按 opencode 的策略处理：
+			// - 强制 Claude Code 指纹相关请求头（尤其是 user-agent/x-stainless/x-app）
+			// - 保留 incoming beta 的同时，确保 OAuth 所需 beta 存在
+			applyClaudeCodeMimicHeaders(req, reqStream)
+
+			incomingBeta := req.Header.Get("anthropic-beta")
+			// Match real Claude CLI traffic (per mitmproxy reports):
+			// messages requests typically use only oauth + interleaved-thinking.
+			// Also drop claude-code beta if a downstream client added it.
+			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinkingREDACTED
+			drop := map[string]struct{REDACTED{claude.BetaClaudeCode: {REDACTEDREDACTED
+			req.Header.Set("anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, drop))
+	REDACTED else {
+			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
+			clientBetaHeader := req.Header.Get("anthropic-beta")
+			req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, clientBetaHeader))
+	REDACTED
 REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header.Get("anthropic-beta") == "" {
 		// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
 		if requestNeedsBetaFeatures(body) {
@@ -2826,6 +3466,15 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 				req.Header.Set("anthropic-beta", beta)
 		REDACTED
 	REDACTED
+REDACTED
+
+	// Always capture a compact fingerprint line for later error diagnostics.
+	// We only print it when needed (or when the explicit debug flag is enabled).
+	if c != nil && tokenType == "oauth" {
+		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+REDACTED
+	if s.debugClaudeMimicEnabled() {
+		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
 
 	return req, nil
@@ -2895,6 +3544,93 @@ func defaultAPIKeyBetaHeader(body []byte) string {
 		return claude.APIKeyHaikuBetaHeader
 REDACTED
 	return claude.APIKeyBetaHeader
+REDACTED
+
+func applyClaudeOAuthHeaderDefaults(req *http.Request, isStream bool) {
+	if req == nil {
+		return
+REDACTED
+	if req.Header.Get("accept") == "" {
+		req.Header.Set("accept", "application/json")
+REDACTED
+	for key, value := range claude.DefaultHeaders {
+		if value == "" {
+			continue
+	REDACTED
+		if req.Header.Get(key) == "" {
+			req.Header.Set(key, value)
+	REDACTED
+REDACTED
+	if isStream && req.Header.Get("x-stainless-helper-method") == "" {
+		req.Header.Set("x-stainless-helper-method", "stream")
+REDACTED
+REDACTED
+
+func mergeAnthropicBeta(required []string, incoming string) string {
+	seen := make(map[string]struct{REDACTED, len(required)+8)
+	out := make([]string, 0, len(required)+8)
+
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return
+	REDACTED
+		if _, ok := seen[v]; ok {
+			return
+	REDACTED
+		seen[v] = struct{REDACTED{REDACTED
+		out = append(out, v)
+REDACTED
+
+	for _, r := range required {
+		add(r)
+REDACTED
+	for _, p := range strings.Split(incoming, ",") {
+		add(p)
+REDACTED
+	return strings.Join(out, ",")
+REDACTED
+
+func mergeAnthropicBetaDropping(required []string, incoming string, drop map[string]struct{REDACTED) string {
+	merged := mergeAnthropicBeta(required, incoming)
+	if merged == "" || len(drop) == 0 {
+		return merged
+REDACTED
+	out := make([]string, 0, 8)
+	for _, p := range strings.Split(merged, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+	REDACTED
+		if _, ok := drop[p]; ok {
+			continue
+	REDACTED
+		out = append(out, p)
+REDACTED
+	return strings.Join(out, ",")
+REDACTED
+
+// applyClaudeCodeMimicHeaders forces "Claude Code-like" request headers.
+// This mirrors opencode-anthropic-auth behavior: do not trust downstream
+// headers when using Claude Code-scoped OAuth credentials.
+func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
+	if req == nil {
+		return
+REDACTED
+	// Start with the standard defaults (fill missing).
+	applyClaudeOAuthHeaderDefaults(req, isStream)
+	// Then force key headers to match Claude Code fingerprint regardless of what the client sent.
+	for key, value := range claude.DefaultHeaders {
+		if value == "" {
+			continue
+	REDACTED
+		req.Header.Set(key, value)
+REDACTED
+	// Real Claude CLI uses Accept: application/json (even for streaming).
+	req.Header.Set("accept", "application/json")
+	if isStream {
+		req.Header.Set("x-stainless-helper-method", "stream")
+REDACTED
 REDACTED
 
 func truncateForLog(b []byte, maxBytes int) string {
@@ -2999,6 +3735,20 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	// Print a compact upstream request fingerprint when we hit the Claude Code OAuth
+	// credential scope error. This avoids requiring env-var tweaks in a fixed deploy.
+	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
+		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
+			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
+				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+					resp.StatusCode,
+					resp.Header.Get("x-request-id"),
+					line,
+				)
+		REDACTED
+	REDACTED
+REDACTED
 
 	// Enrich Ops error logs with upstream status + message, and optionally a truncated body snippet.
 	upstreamDetail := ""
@@ -3129,6 +3879,19 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
+		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
+			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
+				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+					resp.StatusCode,
+					resp.Header.Get("x-request-id"),
+					line,
+				)
+		REDACTED
+	REDACTED
+REDACTED
+
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
@@ -3181,7 +3944,7 @@ type streamingResult struct {
 	clientDisconnect bool // 客户端是否在流式传输过程中断开
 REDACTED
 
-func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*streamingResult, error) {
+func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, toolNameMap map[string]string, mimicClaudeCode bool) (*streamingResult, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
@@ -3276,6 +4039,171 @@ REDACTED
 	needModelReplace := originalModel != mappedModel
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 
+	pendingEventLines := make([]string, 0, 4)
+	var toolInputBuffers map[int]string
+	if mimicClaudeCode {
+		toolInputBuffers = make(map[int]string)
+REDACTED
+
+	transformToolInputJSON := func(raw string) string {
+		if !mimicClaudeCode {
+			return raw
+	REDACTED
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return raw
+	REDACTED
+
+		var parsed any
+		if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+			return replaceToolNamesInText(raw, toolNameMap)
+	REDACTED
+
+		rewritten, changed := rewriteParamKeysInValue(parsed, toolNameMap)
+		if changed {
+			if bytes, err := json.Marshal(rewritten); err == nil {
+				return string(bytes)
+		REDACTED
+	REDACTED
+		return raw
+REDACTED
+
+	processSSEEvent := func(lines []string) ([]string, string, error) {
+		if len(lines) == 0 {
+			return nil, "", nil
+	REDACTED
+
+		eventName := ""
+		dataLine := ""
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "event:") {
+				eventName = strings.TrimSpace(strings.TrimPrefix(trimmed, "event:"))
+				continue
+		REDACTED
+			if dataLine == "" && sseDataRe.MatchString(trimmed) {
+				dataLine = sseDataRe.ReplaceAllString(trimmed, "")
+		REDACTED
+	REDACTED
+
+		if eventName == "error" {
+			return nil, dataLine, errors.New("have error in stream")
+	REDACTED
+
+		if dataLine == "" {
+			return []string{strings.Join(lines, "\n") + "\n\n"REDACTED, "", nil
+	REDACTED
+
+		if dataLine == "[DONE]" {
+			block := ""
+			if eventName != "" {
+				block = "event: " + eventName + "\n"
+		REDACTED
+			block += "data: " + dataLine + "\n\n"
+			return []string{blockREDACTED, dataLine, nil
+	REDACTED
+
+		var event map[string]any
+		if err := json.Unmarshal([]byte(dataLine), &event); err != nil {
+			replaced := dataLine
+			if mimicClaudeCode {
+				replaced = replaceToolNamesInText(dataLine, toolNameMap)
+		REDACTED
+			block := ""
+			if eventName != "" {
+				block = "event: " + eventName + "\n"
+		REDACTED
+			block += "data: " + replaced + "\n\n"
+			return []string{blockREDACTED, replaced, nil
+	REDACTED
+
+		eventType, _ := event["type"].(string)
+		if eventName == "" {
+			eventName = eventType
+	REDACTED
+
+		if needModelReplace {
+			if msg, ok := event["message"].(map[string]any); ok {
+				if model, ok := msg["model"].(string); ok && model == mappedModel {
+					msg["model"] = originalModel
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if mimicClaudeCode && eventType == "content_block_delta" {
+			if delta, ok := event["delta"].(map[string]any); ok {
+				if deltaType, _ := delta["type"].(string); deltaType == "input_json_delta" {
+					if indexVal, ok := event["index"].(float64); ok {
+						index := int(indexVal)
+						if partial, ok := delta["partial_json"].(string); ok {
+							toolInputBuffers[index] += partial
+					REDACTED
+				REDACTED
+					return nil, dataLine, nil
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if mimicClaudeCode && eventType == "content_block_stop" {
+			if indexVal, ok := event["index"].(float64); ok {
+				index := int(indexVal)
+				if buffered := toolInputBuffers[index]; buffered != "" {
+					delete(toolInputBuffers, index)
+
+					transformed := transformToolInputJSON(buffered)
+					synthetic := map[string]any{
+						"type":  "content_block_delta",
+						"index": index,
+						"delta": map[string]any{
+							"type":         "input_json_delta",
+							"partial_json": transformed,
+					REDACTED,
+				REDACTED
+
+					synthBytes, synthErr := json.Marshal(synthetic)
+					if synthErr == nil {
+						synthBlock := "event: content_block_delta\n" + "data: " + string(synthBytes) + "\n\n"
+
+						rewriteToolNamesInValue(event, toolNameMap)
+						stopBytes, stopErr := json.Marshal(event)
+						if stopErr == nil {
+							stopBlock := ""
+							if eventName != "" {
+								stopBlock = "event: " + eventName + "\n"
+						REDACTED
+							stopBlock += "data: " + string(stopBytes) + "\n\n"
+							return []string{synthBlock, stopBlockREDACTED, string(stopBytes), nil
+					REDACTED
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if mimicClaudeCode {
+			rewriteToolNamesInValue(event, toolNameMap)
+	REDACTED
+		newData, err := json.Marshal(event)
+		if err != nil {
+			replaced := dataLine
+			if mimicClaudeCode {
+				replaced = replaceToolNamesInText(dataLine, toolNameMap)
+		REDACTED
+			block := ""
+			if eventName != "" {
+				block = "event: " + eventName + "\n"
+		REDACTED
+			block += "data: " + replaced + "\n\n"
+			return []string{blockREDACTED, replaced, nil
+	REDACTED
+
+		block := ""
+		if eventName != "" {
+			block = "event: " + eventName + "\n"
+	REDACTED
+		block += "data: " + string(newData) + "\n\n"
+		return []string{blockREDACTED, string(newData), nil
+REDACTED
+
 	for {
 		select {
 		case ev, ok := <-events:
@@ -3304,42 +4232,43 @@ REDACTED
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream read error: %w", ev.err)
 		REDACTED
 			line := ev.line
-			if line == "event: error" {
-				// 上游返回错误事件，如果客户端已断开仍返回已收集的 usage
-				if clientDisconnected {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+			trimmed := strings.TrimSpace(line)
+
+			if trimmed == "" {
+				if len(pendingEventLines) == 0 {
+					continue
 			REDACTED
-				return nil, errors.New("have error in stream")
+
+				outputBlocks, data, err := processSSEEvent(pendingEventLines)
+				pendingEventLines = pendingEventLines[:0]
+				if err != nil {
+					if clientDisconnected {
+						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+				REDACTED
+					return nil, err
+			REDACTED
+
+				for _, block := range outputBlocks {
+					if !clientDisconnected {
+						if _, werr := fmt.Fprint(w, block); werr != nil {
+							clientDisconnected = true
+							log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+							break
+					REDACTED
+						flusher.Flush()
+				REDACTED
+					if data != "" {
+						if firstTokenMs == nil && data != "[DONE]" {
+							ms := int(time.Since(startTime).Milliseconds())
+							firstTokenMs = &ms
+					REDACTED
+						s.parseSSEUsage(data, usage)
+				REDACTED
+			REDACTED
+				continue
 		REDACTED
 
-			// Extract data from SSE line (supports both "data: " and "data:" formats)
-			var data string
-			if sseDataRe.MatchString(line) {
-				data = sseDataRe.ReplaceAllString(line, "")
-				// 如果有模型映射，替换响应中的model字段
-				if needModelReplace {
-					line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-			REDACTED
-		REDACTED
-
-			// 写入客户端（统一处理 data 行和非 data 行）
-			if !clientDisconnected {
-				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-					clientDisconnected = true
-					log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
-			REDACTED else {
-					flusher.Flush()
-			REDACTED
-		REDACTED
-
-			// 无论客户端是否断开，都解析 usage（仅对 data 行）
-			if data != "" {
-				if firstTokenMs == nil && data != "[DONE]" {
-					ms := int(time.Since(startTime).Milliseconds())
-					firstTokenMs = &ms
-			REDACTED
-				s.parseSSEUsage(data, usage)
-		REDACTED
+			pendingEventLines = append(pendingEventLines, line)
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -3363,43 +4292,124 @@ REDACTED
 
 REDACTED
 
-// replaceModelInSSELine 替换SSE数据行中的model字段
-func (s *GatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
-	if !sseDataRe.MatchString(line) {
-		return line
+func rewriteParamKeysInValue(value any, cache map[string]string) (any, bool) {
+	switch v := value.(type) {
+	case map[string]any:
+		changed := false
+		rewritten := make(map[string]any, len(v))
+		for key, item := range v {
+			newKey := normalizeParamNameForOpenCode(key, cache)
+			newItem, childChanged := rewriteParamKeysInValue(item, cache)
+			if childChanged {
+				changed = true
+		REDACTED
+			if newKey != key {
+				changed = true
+		REDACTED
+			rewritten[newKey] = newItem
+	REDACTED
+		if !changed {
+			return value, false
+	REDACTED
+		return rewritten, true
+	case []any:
+		changed := false
+		rewritten := make([]any, len(v))
+		for idx, item := range v {
+			newItem, childChanged := rewriteParamKeysInValue(item, cache)
+			if childChanged {
+				changed = true
+		REDACTED
+			rewritten[idx] = newItem
+	REDACTED
+		if !changed {
+			return value, false
+	REDACTED
+		return rewritten, true
+	default:
+		return value, false
 REDACTED
-	data := sseDataRe.ReplaceAllString(line, "")
-	if data == "" || data == "[DONE]" {
-		return line
 REDACTED
 
-	var event map[string]any
-	if err := json.Unmarshal([]byte(data), &event); err != nil {
-		return line
+func rewriteToolNamesInValue(value any, toolNameMap map[string]string) bool {
+	switch v := value.(type) {
+	case map[string]any:
+		changed := false
+		if blockType, _ := v["type"].(string); blockType == "tool_use" {
+			if name, ok := v["name"].(string); ok {
+				mapped := normalizeToolNameForOpenCode(name, toolNameMap)
+				if mapped != name {
+					v["name"] = mapped
+					changed = true
+			REDACTED
+		REDACTED
+			if input, ok := v["input"].(map[string]any); ok {
+				rewrittenInput, inputChanged := rewriteParamKeysInValue(input, toolNameMap)
+				if inputChanged {
+					if m, ok := rewrittenInput.(map[string]any); ok {
+						v["input"] = m
+						changed = true
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+		for _, item := range v {
+			if rewriteToolNamesInValue(item, toolNameMap) {
+				changed = true
+		REDACTED
+	REDACTED
+		return changed
+	case []any:
+		changed := false
+		for _, item := range v {
+			if rewriteToolNamesInValue(item, toolNameMap) {
+				changed = true
+		REDACTED
+	REDACTED
+		return changed
+	default:
+		return false
+REDACTED
 REDACTED
 
-	// 只替换 message_start 事件中的 message.model
-	if event["type"] != "message_start" {
-		return line
+func replaceToolNamesInText(text string, toolNameMap map[string]string) string {
+	if text == "" {
+		return text
+REDACTED
+	output := toolNameFieldRe.ReplaceAllStringFunc(text, func(match string) string {
+		submatches := toolNameFieldRe.FindStringSubmatch(match)
+		if len(submatches) < 2 {
+			return match
+	REDACTED
+		name := submatches[1]
+		mapped := normalizeToolNameForOpenCode(name, toolNameMap)
+		if mapped == name {
+			return match
+	REDACTED
+		return strings.Replace(match, name, mapped, 1)
+REDACTED)
+	output = modelFieldRe.ReplaceAllStringFunc(output, func(match string) string {
+		submatches := modelFieldRe.FindStringSubmatch(match)
+		if len(submatches) < 2 {
+			return match
+	REDACTED
+		model := submatches[1]
+		mapped := claude.DenormalizeModelID(model)
+		if mapped == model {
+			return match
+	REDACTED
+		return strings.Replace(match, model, mapped, 1)
+REDACTED)
+
+	for mapped, original := range toolNameMap {
+		if mapped == "" || original == "" || mapped == original {
+			continue
+	REDACTED
+		output = strings.ReplaceAll(output, "\""+mapped+"\":", "\""+original+"\":")
+		output = strings.ReplaceAll(output, "\\\""+mapped+"\\\":", "\\\""+original+"\\\":")
 REDACTED
 
-	msg, ok := event["message"].(map[string]any)
-	if !ok {
-		return line
-REDACTED
-
-	model, ok := msg["model"].(string)
-	if !ok || model != fromModel {
-		return line
-REDACTED
-
-	msg["model"] = toModel
-	newData, err := json.Marshal(event)
-	if err != nil {
-		return line
-REDACTED
-
-	return "data: " + string(newData)
+	return output
 REDACTED
 
 func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
@@ -3445,7 +4455,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
+func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string, toolNameMap map[string]string, mimicClaudeCode bool) (*ClaudeUsage, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
@@ -3465,6 +4475,9 @@ REDACTED
 	// 如果有模型映射，替换响应中的model字段
 	if originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+REDACTED
+	if mimicClaudeCode {
+		body = s.replaceToolNamesInResponseBody(body, toolNameMap)
 REDACTED
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
@@ -3500,6 +4513,28 @@ REDACTED
 		return body
 REDACTED
 
+	return newBody
+REDACTED
+
+func (s *GatewayService) replaceToolNamesInResponseBody(body []byte, toolNameMap map[string]string) []byte {
+	if len(body) == 0 {
+		return body
+REDACTED
+	var resp map[string]any
+	if err := json.Unmarshal(body, &resp); err != nil {
+		replaced := replaceToolNamesInText(string(body), toolNameMap)
+		if replaced == string(body) {
+			return body
+	REDACTED
+		return []byte(replaced)
+REDACTED
+	if !rewriteToolNamesInValue(resp, toolNameMap) {
+		return body
+REDACTED
+	newBody, err := json.Marshal(resp)
+	if err != nil {
+		return body
+REDACTED
 	return newBody
 REDACTED
 
@@ -3657,6 +4692,162 @@ REDACTED
 	return nil
 REDACTED
 
+// RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
+type RecordUsageLongContextInput struct {
+	Result                *ForwardResult
+	APIKey                *APIKey
+	User                  *User
+	Account               *Account
+	Subscription          *UserSubscription // 可选：订阅信息
+	UserAgent             string            // 请求的 User-Agent
+	IPAddress             string            // 请求的客户端 IP 地址
+	LongContextThreshold  int               // 长上下文阈值（如 200000）
+	LongContextMultiplier float64           // 超出阈值部分的倍率（如 2.0）
+REDACTED
+
+// RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
+func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
+	result := input.Result
+	apiKey := input.APIKey
+	user := input.User
+	account := input.Account
+	subscription := input.Subscription
+
+	// 获取费率倍数
+	multiplier := s.cfg.Default.RateMultiplier
+	if apiKey.GroupID != nil && apiKey.Group != nil {
+		multiplier = apiKey.Group.RateMultiplier
+REDACTED
+
+	var cost *CostBreakdown
+
+	// 根据请求类型选择计费方式
+	if result.ImageCount > 0 {
+		// 图片生成计费
+		var groupConfig *ImagePriceConfig
+		if apiKey.Group != nil {
+			groupConfig = &ImagePriceConfig{
+				Price1K: apiKey.Group.ImagePrice1K,
+				Price2K: apiKey.Group.ImagePrice2K,
+				Price4K: apiKey.Group.ImagePrice4K,
+		REDACTED
+	REDACTED
+		cost = s.billingService.CalculateImageCost(result.Model, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+REDACTED else {
+		// Token 计费（使用长上下文计费方法）
+		tokens := UsageTokens{
+			InputTokens:         result.Usage.InputTokens,
+			OutputTokens:        result.Usage.OutputTokens,
+			CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+			CacheReadTokens:     result.Usage.CacheReadInputTokens,
+	REDACTED
+		var err error
+		cost, err = s.billingService.CalculateCostWithLongContext(result.Model, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
+		if err != nil {
+			log.Printf("Calculate cost failed: %v", err)
+			cost = &CostBreakdown{ActualCost: 0REDACTED
+	REDACTED
+REDACTED
+
+	// 判断计费方式：订阅模式 vs 余额模式
+	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	billingType := BillingTypeBalance
+	if isSubscriptionBilling {
+		billingType = BillingTypeSubscription
+REDACTED
+
+	// 创建使用日志
+	durationMs := int(result.Duration.Milliseconds())
+	var imageSize *string
+	if result.ImageSize != "" {
+		imageSize = &result.ImageSize
+REDACTED
+	accountRateMultiplier := account.BillingRateMultiplier()
+	usageLog := &UsageLog{
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		RequestID:             result.RequestID,
+		Model:                 result.Model,
+		InputTokens:           result.Usage.InputTokens,
+		OutputTokens:          result.Usage.OutputTokens,
+		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:       result.Usage.CacheReadInputTokens,
+		InputCost:             cost.InputCost,
+		OutputCost:            cost.OutputCost,
+		CacheCreationCost:     cost.CacheCreationCost,
+		CacheReadCost:         cost.CacheReadCost,
+		TotalCost:             cost.TotalCost,
+		ActualCost:            cost.ActualCost,
+		RateMultiplier:        multiplier,
+		AccountRateMultiplier: &accountRateMultiplier,
+		BillingType:           billingType,
+		Stream:                result.Stream,
+		DurationMs:            &durationMs,
+		FirstTokenMs:          result.FirstTokenMs,
+		ImageCount:            result.ImageCount,
+		ImageSize:             imageSize,
+		CreatedAt:             time.Now(),
+REDACTED
+
+	// 添加 UserAgent
+	if input.UserAgent != "" {
+		usageLog.UserAgent = &input.UserAgent
+REDACTED
+
+	// 添加 IPAddress
+	if input.IPAddress != "" {
+		usageLog.IPAddress = &input.IPAddress
+REDACTED
+
+	// 添加分组和订阅关联
+	if apiKey.GroupID != nil {
+		usageLog.GroupID = apiKey.GroupID
+REDACTED
+	if subscription != nil {
+		usageLog.SubscriptionID = &subscription.ID
+REDACTED
+
+	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
+	if err != nil {
+		log.Printf("Create usage log failed: %v", err)
+REDACTED
+
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		log.Printf("[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		return nil
+REDACTED
+
+	shouldBill := inserted || err != nil
+
+	// 根据计费类型执行扣费
+	if isSubscriptionBilling {
+		// 订阅模式：更新订阅用量（使用 TotalCost 原始费用，不考虑倍率）
+		if shouldBill && cost.TotalCost > 0 {
+			if err := s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost); err != nil {
+				log.Printf("Increment subscription usage failed: %v", err)
+		REDACTED
+			// 异步更新订阅缓存
+			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
+	REDACTED
+REDACTED else {
+		// 余额模式：扣除用户余额（使用 ActualCost 考虑倍率后的费用）
+		if shouldBill && cost.ActualCost > 0 {
+			if err := s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost); err != nil {
+				log.Printf("Deduct balance failed: %v", err)
+		REDACTED
+			// 异步更新余额缓存
+			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
+	REDACTED
+REDACTED
+
+	// Schedule batch update for account last_used_at
+	s.deferredService.ScheduleLastUsedUpdate(account.ID)
+
+	return nil
+REDACTED
+
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
 // 特点：不记录使用量、仅支持非流式响应
 func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) error {
@@ -3667,6 +4858,14 @@ REDACTED
 
 	body := parsed.Body
 	reqModel := parsed.Model
+
+	isClaudeCode := isClaudeCodeRequest(ctx, c, parsed)
+	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
+
+	if shouldMimicClaudeCode {
+		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: trueREDACTED
+		body, reqModel, _ = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+REDACTED
 
 	// Antigravity 账户不支持 count_tokens 转发，直接返回空值
 	if account.Platform == PlatformAntigravity {
@@ -3706,7 +4905,7 @@ REDACTED
 REDACTED
 
 	// 构建上游请求
-	upstreamReq, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType, reqModel)
+	upstreamReq, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType, reqModel, shouldMimicClaudeCode)
 	if err != nil {
 		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 		return err
@@ -3739,7 +4938,7 @@ REDACTED
 		log.Printf("Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
 
 		filteredBody := FilterThinkingBlocksForRetry(body)
-		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel)
+		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 		if buildErr == nil {
 			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 			if retryErr == nil {
@@ -3804,7 +5003,7 @@ REDACTED
 REDACTED
 
 // buildCountTokensRequest 构建 count_tokens 上游请求
-func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string) (*http.Request, error) {
+func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, error) {
 	// 确定目标 URL
 	targetURL := claudeAPICountTokensURL
 	if account.Type == AccountTypeAPIKey {
@@ -3818,10 +5017,15 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	REDACTED
 REDACTED
 
+	clientHeaders := http.Header{REDACTED
+	if c != nil && c.Request != nil {
+		clientHeaders = c.Request.Header
+REDACTED
+
 	// OAuth 账号：应用统一指纹和重写 userID
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
 	if account.IsOAuth() && s.identityService != nil {
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err == nil {
 			accountUUID := account.GetExtraString("account_uuid")
 			if accountUUID != "" && fp.ClientID != "" {
@@ -3845,7 +5049,7 @@ REDACTED else {
 REDACTED
 
 	// 白名单透传 headers
-	for key, values := range c.Request.Header {
+	for key, values := range clientHeaders {
 		lowerKey := strings.ToLower(key)
 		if allowedHeaders[lowerKey] {
 			for _, v := range values {
@@ -3856,7 +5060,7 @@ REDACTED
 
 	// OAuth 账号：应用指纹到请求头
 	if account.IsOAuth() && s.identityService != nil {
-		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if fp != nil {
 			s.identityService.ApplyFingerprint(req, fp)
 	REDACTED
@@ -3869,10 +5073,30 @@ REDACTED
 	if req.Header.Get("anthropic-version") == "" {
 		req.Header.Set("anthropic-version", "2023-06-01")
 REDACTED
+	if tokenType == "oauth" {
+		applyClaudeOAuthHeaderDefaults(req, false)
+REDACTED
 
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {
-		req.Header.Set("anthropic-beta", s.getBetaHeader(modelID, c.GetHeader("anthropic-beta")))
+		if mimicClaudeCode {
+			applyClaudeCodeMimicHeaders(req, false)
+
+			incomingBeta := req.Header.Get("anthropic-beta")
+			requiredBetas := []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinking, claude.BetaTokenCountingREDACTED
+			req.Header.Set("anthropic-beta", mergeAnthropicBeta(requiredBetas, incomingBeta))
+	REDACTED else {
+			clientBetaHeader := req.Header.Get("anthropic-beta")
+			if clientBetaHeader == "" {
+				req.Header.Set("anthropic-beta", claude.CountTokensBetaHeader)
+		REDACTED else {
+				beta := s.getBetaHeader(modelID, clientBetaHeader)
+				if !strings.Contains(beta, claude.BetaTokenCounting) {
+					beta = beta + "," + claude.BetaTokenCounting
+			REDACTED
+				req.Header.Set("anthropic-beta", beta)
+		REDACTED
+	REDACTED
 REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header.Get("anthropic-beta") == "" {
 		// API-key：与 messages 同步的按需 beta 注入（默认关闭）
 		if requestNeedsBetaFeatures(body) {
@@ -3880,6 +5104,13 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 				req.Header.Set("anthropic-beta", beta)
 		REDACTED
 	REDACTED
+REDACTED
+
+	if c != nil && tokenType == "oauth" {
+		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+REDACTED
+	if s.debugClaudeMimicEnabled() {
+		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
 
 	return req, nil

@@ -55,6 +55,7 @@ export interface RegisterRequest {
   verify_code?: string
   turnstile_token?: string
   promo_code?: string
+  invitation_code?: string
 REDACTED
 
 export interface SendVerifyCodeRequest {
@@ -72,6 +73,7 @@ export interface PublicSettings {
   email_verify_enabled: boolean
   promo_code_enabled: boolean
   password_reset_enabled: boolean
+  invitation_code_enabled: boolean
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string
@@ -419,7 +421,10 @@ export interface CreateGroupRequest {
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
+  mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
+  // 从指定分组复制账号
+  copy_accounts_from_group_ids?: number[]
 REDACTED
 
 export interface UpdateGroupRequest {
@@ -439,7 +444,9 @@ export interface UpdateGroupRequest {
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
+  mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
+  copy_accounts_from_group_ids?: number[]
 REDACTED
 
 // ==================== Account & Proxy Types ====================
@@ -712,7 +719,7 @@ REDACTED
 
 // ==================== Usage & Redeem Types ====================
 
-export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription'
+export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
 
 export interface UsageLog {
   id: number
@@ -721,6 +728,7 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  reasoning_effort?: string | null
 
   group_id: number | null
   subscription_id: number | null

@@ -47,6 +47,8 @@ type CreateGroupRequest struct {
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes"`
+	// 从指定分组复制账号（创建后自动绑定）
+	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 REDACTED
 
 // UpdateGroupRequest represents update group request
@@ -74,6 +76,8 @@ type UpdateGroupRequest struct {
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
+	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
+	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 REDACTED
 
 // List handles listing all groups with pagination
@@ -182,6 +186,7 @@ REDACTED
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
+		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -227,6 +232,7 @@ REDACTED
 		ModelRoutingEnabled:             req.ModelRoutingEnabled,
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
+		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

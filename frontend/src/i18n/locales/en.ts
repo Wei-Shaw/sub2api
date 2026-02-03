@@ -265,6 +265,13 @@ export default {
     promoCodeAlreadyUsed: 'You have already used this promo code',
     promoCodeValidating: 'Promo code is being validated, please wait',
     promoCodeInvalidCannotRegister: 'Invalid promo code. Please check and try again or clear the promo code field',
+    invitationCodeLabel: 'Invitation Code',
+    invitationCodePlaceholder: 'Enter invitation code',
+    invitationCodeRequired: 'Invitation code is required',
+    invitationCodeValid: 'Invitation code is valid',
+    invitationCodeInvalid: 'Invalid or used invitation code',
+    invitationCodeValidating: 'Validating invitation code...',
+    invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',
@@ -495,6 +502,7 @@ export default {
     exporting: 'Exporting...',
     preparingExport: 'Preparing export...',
     model: 'Model',
+    reasoningEffort: 'Reasoning Effort',
     type: 'Type',
     tokens: 'Tokens',
     cost: 'Cost',
@@ -1008,6 +1016,14 @@ export default {
         title: 'Invalid Request Fallback Group',
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',
         noFallback: 'No Fallback'
+      REDACTED,
+      copyAccounts: {
+        title: 'Copy Accounts from Groups',
+        tooltip: 'Select one or more groups of the same platform. After creation, all accounts from these groups will be automatically bound to the new group (deduplicated).',
+        tooltipEdit: 'Select one or more groups of the same platform. After saving, current group accounts will be replaced with accounts from these groups (deduplicated).',
+        selectPlaceholder: 'Select groups to copy accounts from...',
+        hint: 'Multiple groups can be selected, accounts will be deduplicated',
+        hintEdit: '⚠️ Warning: This will replace all existing account bindings'
       REDACTED,
       modelRouting: {
         title: 'Model Routing',
@@ -1922,6 +1938,8 @@ export default {
       balance: 'Balance',
       concurrency: 'Concurrency',
       subscription: 'Subscription',
+      invitation: 'Invitation',
+      invitationHint: 'Invitation codes are used to restrict user registration. They are automatically marked as used after use.',
       unused: 'Unused',
       used: 'Used',
       columns: {
@@ -1968,6 +1986,7 @@ export default {
         balance: 'Balance',
         concurrency: 'Concurrency',
         subscription: 'Subscription',
+        invitation: 'Invitation',
         // Admin adjustment types (created when admin modifies user balance/concurrency)
         admin_balance: 'Balance (Admin)',
         admin_concurrency: 'Concurrency (Admin)'
@@ -2925,6 +2944,8 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
+        invitationCode: 'Invitation Code Registration',
+        invitationCodeHint: 'When enabled, users must enter a valid invitation code to register',
         passwordReset: 'Password Reset',
         passwordResetHint: 'Allow users to reset their password via email',
         totp: 'Two-Factor Authentication (2FA)',

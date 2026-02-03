@@ -19,17 +19,19 @@ import (
 )
 
 var (
-	ErrInvalidCredentials  = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
-	ErrUserNotActive       = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
-	ErrEmailExists         = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
-	ErrEmailReserved       = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
-	ErrInvalidToken        = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
-	ErrTokenExpired        = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
-	ErrTokenTooLarge       = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
-	ErrTokenRevoked        = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
-	ErrEmailVerifyRequired = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
-	ErrRegDisabled         = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
-	ErrServiceUnavailable  = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
+	ErrInvalidCredentials     = infraerrors.Unauthorized("INVALID_CREDENTIALS", "invalid email or password")
+	ErrUserNotActive          = infraerrors.Forbidden("USER_NOT_ACTIVE", "user is not active")
+	ErrEmailExists            = infraerrors.Conflict("EMAIL_EXISTS", "email already exists")
+	ErrEmailReserved          = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
+	ErrInvalidToken           = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
+	ErrTokenExpired           = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrTokenTooLarge          = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
+	ErrTokenRevoked           = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
+	ErrEmailVerifyRequired    = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrRegDisabled            = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
+	ErrServiceUnavailable     = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
+	ErrInvitationCodeRequired = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
+	ErrInvitationCodeInvalid  = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -47,6 +49,7 @@ REDACTED
 // AuthService 认证服务
 type AuthService struct {
 	userRepo          UserRepository
+	redeemRepo        RedeemCodeRepository
 	cfg               *config.Config
 	settingService    *SettingService
 	emailService      *EmailService
@@ -58,6 +61,7 @@ REDACTED
 // NewAuthService 创建认证服务实例
 func NewAuthService(
 	userRepo UserRepository,
+	redeemRepo RedeemCodeRepository,
 	cfg *config.Config,
 	settingService *SettingService,
 	emailService *EmailService,
@@ -67,6 +71,7 @@ func NewAuthService(
 ) *AuthService {
 	return &AuthService{
 		userRepo:          userRepo,
+		redeemRepo:        redeemRepo,
 		cfg:               cfg,
 		settingService:    settingService,
 		emailService:      emailService,
@@ -78,11 +83,11 @@ REDACTED
 
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "")
+	return s.RegisterWithVerification(ctx, email, password, "", "", "")
 REDACTED
 
-// RegisterWithVerification 用户注册（支持邮件验证和优惠码），返回token和用户
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode string) (string, *User, error) {
+// RegisterWithVerification 用户注册（支持邮件验证、优惠码和邀请码），返回token和用户
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -91,6 +96,26 @@ REDACTED
 	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
 	if isReservedEmail(email) {
 		return "", nil, ErrEmailReserved
+REDACTED
+
+	// 检查是否需要邀请码
+	var invitationRedeemCode *RedeemCode
+	if s.settingService != nil && s.settingService.IsInvitationCodeEnabled(ctx) {
+		if invitationCode == "" {
+			return "", nil, ErrInvitationCodeRequired
+	REDACTED
+		// 验证邀请码
+		redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
+		if err != nil {
+			log.Printf("[Auth] Invalid invitation code: %s, error: %v", invitationCode, err)
+			return "", nil, ErrInvitationCodeInvalid
+	REDACTED
+		// 检查类型和状态
+		if redeemCode.Type != RedeemTypeInvitation || redeemCode.Status != StatusUnused {
+			log.Printf("[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
+			return "", nil, ErrInvitationCodeInvalid
+	REDACTED
+		invitationRedeemCode = redeemCode
 REDACTED
 
 	// 检查是否需要邮件验证
@@ -153,6 +178,13 @@ REDACTED
 		return "", nil, ErrServiceUnavailable
 REDACTED
 
+	// 标记邀请码为已使用（如果使用了邀请码）
+	if invitationRedeemCode != nil {
+		if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
+			// 邀请码标记失败不影响注册，只记录日志
+			log.Printf("[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
+	REDACTED
+REDACTED
 	// 应用优惠码（如果提供且功能已启用）
 	if promoCode != "" && s.promoService != nil && s.settingService != nil && s.settingService.IsPromoCodeEnabled(ctx) {
 		if err := s.promoService.ApplyPromoCode(ctx, user.ID, promoCode); err != nil {

@@ -123,7 +123,7 @@ REDACTED
 		"system": []map[string]any{
 			{
 				"type": "text",
-				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+				"text": claudeCodeSystemPrompt,
 				"cache_control": map[string]string{
 					"type": "ephemeral",
 			REDACTED,
