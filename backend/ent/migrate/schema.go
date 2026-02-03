@@ -204,6 +204,98 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
+	// AnnouncementsColumns holds the columns for the "announcements" table.
+	AnnouncementsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "title", Type: field.TypeString, Size: 200REDACTED,
+		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "draft"REDACTED,
+		{Name: "targeting", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "starts_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "ends_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "created_by", Type: field.TypeInt64, Nullable: trueREDACTED,
+		{Name: "updated_by", Type: field.TypeInt64, Nullable: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+REDACTED
+	// AnnouncementsTable holds the schema information for the "announcements" table.
+	AnnouncementsTable = &schema.Table{
+		Name:       "announcements",
+		Columns:    AnnouncementsColumns,
+		PrimaryKey: []*schema.Column{AnnouncementsColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "announcement_status",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementsColumns[3]REDACTED,
+		REDACTED,
+			{
+				Name:    "announcement_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementsColumns[9]REDACTED,
+		REDACTED,
+			{
+				Name:    "announcement_starts_at",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementsColumns[5]REDACTED,
+		REDACTED,
+			{
+				Name:    "announcement_ends_at",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementsColumns[6]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// AnnouncementReadsColumns holds the columns for the "announcement_reads" table.
+	AnnouncementReadsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "read_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "announcement_id", Type: field.TypeInt64REDACTED,
+		{Name: "user_id", Type: field.TypeInt64REDACTED,
+REDACTED
+	// AnnouncementReadsTable holds the schema information for the "announcement_reads" table.
+	AnnouncementReadsTable = &schema.Table{
+		Name:       "announcement_reads",
+		Columns:    AnnouncementReadsColumns,
+		PrimaryKey: []*schema.Column{AnnouncementReadsColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "announcement_reads_announcements_reads",
+				Columns:    []*schema.Column{AnnouncementReadsColumns[3]REDACTED,
+				RefColumns: []*schema.Column{AnnouncementsColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+			{
+				Symbol:     "announcement_reads_users_announcement_reads",
+				Columns:    []*schema.Column{AnnouncementReadsColumns[4]REDACTED,
+				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+	REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "announcementread_announcement_id",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementReadsColumns[3]REDACTED,
+		REDACTED,
+			{
+				Name:    "announcementread_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementReadsColumns[4]REDACTED,
+		REDACTED,
+			{
+				Name:    "announcementread_read_at",
+				Unique:  false,
+				Columns: []*schema.Column{AnnouncementReadsColumns[1]REDACTED,
+		REDACTED,
+			{
+				Name:    "announcementread_announcement_id_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{AnnouncementReadsColumns[3], AnnouncementReadsColumns[4]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
 	// GroupsColumns holds the columns for the "groups" table.
 	GroupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -615,6 +707,9 @@ REDACTED
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
 		{Name: "username", Type: field.TypeString, Size: 100, Default: ""REDACTED,
 		{Name: "notes", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "totp_enabled", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: trueREDACTED,
 REDACTED
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
@@ -842,6 +937,8 @@ REDACTED
 		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
+		AnnouncementsTable,
+		AnnouncementReadsTable,
 		GroupsTable,
 		PromoCodesTable,
 		PromoCodeUsagesTable,
@@ -872,6 +969,14 @@ REDACTED
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
+REDACTED
+	AnnouncementsTable.Annotation = &entsql.Annotation{
+		Table: "announcements",
+REDACTED
+	AnnouncementReadsTable.ForeignKeys[0].RefTable = AnnouncementsTable
+	AnnouncementReadsTable.ForeignKeys[1].RefTable = UsersTable
+	AnnouncementReadsTable.Annotation = &entsql.Annotation{
+		Table: "announcement_reads",
 REDACTED
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",

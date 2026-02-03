@@ -22,6 +22,10 @@ type AdminService interface {
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
+	// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
+	// codeType is optional - pass empty string to return all types.
+	// Also returns totalRecharged (sum of all positive balance top-ups).
+	GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]RedeemCode, int64, float64, error)
 
 	// Group management
 	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error)
@@ -115,6 +119,8 @@ type CreateGroupInput struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled bool // 是否启用模型路由
+	// 从指定分组复制账号（创建分组后在同一事务内绑定）
+	CopyAccountsFromGroupIDs []int64
 REDACTED
 
 type UpdateGroupInput struct {
@@ -142,6 +148,8 @@ type UpdateGroupInput struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64
 	ModelRoutingEnabled *bool // 是否启用模型路由
+	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
+	CopyAccountsFromGroupIDs []int64
 REDACTED
 
 type CreateAccountInput struct {
@@ -535,6 +543,21 @@ func (s *adminServiceImpl) GetUserUsageStats(ctx context.Context, userID int64, 
 REDACTED, nil
 REDACTED
 
+// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
+func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]RedeemCode, int64, float64, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	codes, result, err := s.redeemCodeRepo.ListByUserPaginated(ctx, userID, params, codeType)
+	if err != nil {
+		return nil, 0, 0, err
+REDACTED
+	// Aggregate total recharged amount (only once, regardless of type filter)
+	totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, 0, err
+REDACTED
+	return codes, result.Total, totalRecharged, nil
+REDACTED
+
 // Group management implementations
 func (s *adminServiceImpl) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
@@ -589,6 +612,38 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 如果指定了复制账号的源分组，先获取账号 ID 列表
+	var accountIDsToCopy []int64
+	if len(input.CopyAccountsFromGroupIDs) > 0 {
+		// 去重源分组 IDs
+		seen := make(map[int64]struct{REDACTED)
+		uniqueSourceGroupIDs := make([]int64, 0, len(input.CopyAccountsFromGroupIDs))
+		for _, srcGroupID := range input.CopyAccountsFromGroupIDs {
+			if _, exists := seen[srcGroupID]; !exists {
+				seen[srcGroupID] = struct{REDACTED{REDACTED
+				uniqueSourceGroupIDs = append(uniqueSourceGroupIDs, srcGroupID)
+		REDACTED
+	REDACTED
+
+		// 校验源分组的平台是否与新分组一致
+		for _, srcGroupID := range uniqueSourceGroupIDs {
+			srcGroup, err := s.groupRepo.GetByIDLite(ctx, srcGroupID)
+			if err != nil {
+				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
+		REDACTED
+			if srcGroup.Platform != platform {
+				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, platform, srcGroup.Platform)
+		REDACTED
+	REDACTED
+
+		// 获取所有源分组的账号（去重）
+		var err error
+		accountIDsToCopy, err = s.groupRepo.GetAccountIDsByGroupIDs(ctx, uniqueSourceGroupIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get accounts from source groups: %w", err)
+	REDACTED
+REDACTED
+
 	group := &Group{
 		Name:                       input.Name,
 		Description:                input.Description,
@@ -614,6 +669,15 @@ REDACTED
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 REDACTED
+
+	// 如果有需要复制的账号，绑定到新分组
+	if len(accountIDsToCopy) > 0 {
+		if err := s.groupRepo.BindAccountsToGroup(ctx, group.ID, accountIDsToCopy); err != nil {
+			return nil, fmt.Errorf("failed to bind accounts to new group: %w", err)
+	REDACTED
+		group.AccountCount = int64(len(accountIDsToCopy))
+REDACTED
+
 	return group, nil
 REDACTED
 
@@ -761,6 +825,54 @@ REDACTED
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
 REDACTED
+
+	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
+	if len(input.CopyAccountsFromGroupIDs) > 0 {
+		// 去重源分组 IDs
+		seen := make(map[int64]struct{REDACTED)
+		uniqueSourceGroupIDs := make([]int64, 0, len(input.CopyAccountsFromGroupIDs))
+		for _, srcGroupID := range input.CopyAccountsFromGroupIDs {
+			// 校验：源分组不能是自身
+			if srcGroupID == id {
+				return nil, fmt.Errorf("cannot copy accounts from self")
+		REDACTED
+			// 去重
+			if _, exists := seen[srcGroupID]; !exists {
+				seen[srcGroupID] = struct{REDACTED{REDACTED
+				uniqueSourceGroupIDs = append(uniqueSourceGroupIDs, srcGroupID)
+		REDACTED
+	REDACTED
+
+		// 校验源分组的平台是否与当前分组一致
+		for _, srcGroupID := range uniqueSourceGroupIDs {
+			srcGroup, err := s.groupRepo.GetByIDLite(ctx, srcGroupID)
+			if err != nil {
+				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
+		REDACTED
+			if srcGroup.Platform != group.Platform {
+				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, group.Platform, srcGroup.Platform)
+		REDACTED
+	REDACTED
+
+		// 获取所有源分组的账号（去重）
+		accountIDsToCopy, err := s.groupRepo.GetAccountIDsByGroupIDs(ctx, uniqueSourceGroupIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get accounts from source groups: %w", err)
+	REDACTED
+
+		// 先清空当前分组的所有账号绑定
+		if _, err := s.groupRepo.DeleteAccountGroupsByGroupID(ctx, id); err != nil {
+			return nil, fmt.Errorf("failed to clear existing account bindings: %w", err)
+	REDACTED
+
+		// 再绑定源分组的账号
+		if len(accountIDsToCopy) > 0 {
+			if err := s.groupRepo.BindAccountsToGroup(ctx, id, accountIDsToCopy); err != nil {
+				return nil, fmt.Errorf("failed to bind accounts to group: %w", err)
+		REDACTED
+	REDACTED
+REDACTED
+
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 REDACTED

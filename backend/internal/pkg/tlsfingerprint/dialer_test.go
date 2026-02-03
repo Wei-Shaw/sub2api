@@ -1,10 +1,11 @@
 // Package tlsfingerprint provides TLS fingerprint simulation for HTTP clients.
 //
-// Integration tests for verifying TLS fingerprint correctness.
-// These tests make actual network requests and should be run manually.
+// Unit tests for TLS fingerprint dialer.
+// Integration tests that require external network are in dialer_integration_test.go
+// and require the 'integration' build tag.
 //
-// Run with: go test -v ./internal/pkg/tlsfingerprint/...
-// Run integration tests: go test -v -run TestJA3 ./internal/pkg/tlsfingerprint/...
+// Run unit tests: go test -v ./internal/pkg/tlsfingerprint/...
+// Run integration tests: go test -v -tags=integration ./internal/pkg/tlsfingerprint/...
 package tlsfingerprint
 
 import (

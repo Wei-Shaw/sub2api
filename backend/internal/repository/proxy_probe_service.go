@@ -28,7 +28,6 @@ REDACTED
 		log.Printf("[ProxyProbe] Warning: insecure_skip_verify is not allowed and will cause probe failure.")
 REDACTED
 	return &proxyProbeService{
-		ipInfoURL:          defaultIPInfoURL,
 		insecureSkipVerify: insecure,
 		allowPrivateHosts:  allowPrivate,
 		validateResolvedIP: validateResolvedIP,
@@ -36,12 +35,20 @@ REDACTED
 REDACTED
 
 const (
-	defaultIPInfoURL         = "http://ip-api.com/json/?lang=zh-CN"
 	defaultProxyProbeTimeout = 30 * time.Second
 )
 
+// probeURLs 按优先级排列的探测 URL 列表
+// 某些 AI API 专用代理只允许访问特定域名，因此需要多个备选
+var probeURLs = []struct {
+	url    string
+	parser string // "ip-api" or "httpbin"
+REDACTED{
+	{"http://ip-api.com/json/?lang=zh-CN", "ip-api"REDACTED,
+	{"http://httpbin.org/ip", "httpbin"REDACTED,
+REDACTED
+
 type proxyProbeService struct {
-	ipInfoURL          string
 	insecureSkipVerify bool
 	allowPrivateHosts  bool
 	validateResolvedIP bool
@@ -60,8 +67,21 @@ REDACTED)
 		return nil, 0, fmt.Errorf("failed to create proxy client: %w", err)
 REDACTED
 
+	var lastErr error
+	for _, probe := range probeURLs {
+		exitInfo, latencyMs, err := s.probeWithURL(ctx, client, probe.url, probe.parser)
+		if err == nil {
+			return exitInfo, latencyMs, nil
+	REDACTED
+		lastErr = err
+REDACTED
+
+	return nil, 0, fmt.Errorf("all probe URLs failed, last error: %w", lastErr)
+REDACTED
+
+func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Client, url string, parser string) (*service.ProxyExitInfo, int64, error) {
 	startTime := time.Now()
-	req, err := http.NewRequestWithContext(ctx, "GET", s.ipInfoURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 REDACTED
@@ -78,6 +98,22 @@ REDACTED
 		return nil, latencyMs, fmt.Errorf("request failed with status: %d", resp.StatusCode)
 REDACTED
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, latencyMs, fmt.Errorf("failed to read response: %w", err)
+REDACTED
+
+	switch parser {
+	case "ip-api":
+		return s.parseIPAPI(body, latencyMs)
+	case "httpbin":
+		return s.parseHTTPBin(body, latencyMs)
+	default:
+		return nil, latencyMs, fmt.Errorf("unknown parser: %s", parser)
+REDACTED
+REDACTED
+
+func (s *proxyProbeService) parseIPAPI(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
 	var ipInfo struct {
 		Status      string `json:"status"`
 		Message     string `json:"message"`
@@ -89,13 +125,12 @@ REDACTED
 		CountryCode string `json:"countryCode"`
 REDACTED
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, latencyMs, fmt.Errorf("failed to read response: %w", err)
-REDACTED
-
 	if err := json.Unmarshal(body, &ipInfo); err != nil {
-		return nil, latencyMs, fmt.Errorf("failed to parse response: %w", err)
+		preview := string(body)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+	REDACTED
+		return nil, latencyMs, fmt.Errorf("failed to parse response: %w (body: %s)", err, preview)
 REDACTED
 	if strings.ToLower(ipInfo.Status) != "success" {
 		if ipInfo.Message == "" {
@@ -114,5 +149,21 @@ REDACTED
 		Region:      region,
 		Country:     ipInfo.Country,
 		CountryCode: ipInfo.CountryCode,
+REDACTED, latencyMs, nil
+REDACTED
+
+func (s *proxyProbeService) parseHTTPBin(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+	// httpbin.org/ip 返回格式: {"origin": "1.2.3.4"REDACTED
+	var result struct {
+		Origin string `json:"origin"`
+REDACTED
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, latencyMs, fmt.Errorf("failed to parse httpbin response: %w", err)
+REDACTED
+	if result.Origin == "" {
+		return nil, latencyMs, fmt.Errorf("httpbin: no IP found in response")
+REDACTED
+	return &service.ProxyExitInfo{
+		IP: result.Origin,
 REDACTED, latencyMs, nil
 REDACTED

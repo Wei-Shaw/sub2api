@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -187,6 +188,60 @@ REDACTED
 	return _u
 REDACTED
 
+// SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
+func (_u *UserUpdate) SetTotpSecretEncrypted(v string) *UserUpdate {
+	_u.mutation.SetTotpSecretEncrypted(v)
+	return _u
+REDACTED
+
+// SetNillableTotpSecretEncrypted sets the "totp_secret_encrypted" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTotpSecretEncrypted(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetTotpSecretEncrypted(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearTotpSecretEncrypted clears the value of the "totp_secret_encrypted" field.
+func (_u *UserUpdate) ClearTotpSecretEncrypted() *UserUpdate {
+	_u.mutation.ClearTotpSecretEncrypted()
+	return _u
+REDACTED
+
+// SetTotpEnabled sets the "totp_enabled" field.
+func (_u *UserUpdate) SetTotpEnabled(v bool) *UserUpdate {
+	_u.mutation.SetTotpEnabled(v)
+	return _u
+REDACTED
+
+// SetNillableTotpEnabled sets the "totp_enabled" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTotpEnabled(v *bool) *UserUpdate {
+	if v != nil {
+		_u.SetTotpEnabled(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetTotpEnabledAt sets the "totp_enabled_at" field.
+func (_u *UserUpdate) SetTotpEnabledAt(v time.Time) *UserUpdate {
+	_u.mutation.SetTotpEnabledAt(v)
+	return _u
+REDACTED
+
+// SetNillableTotpEnabledAt sets the "totp_enabled_at" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTotpEnabledAt(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetTotpEnabledAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearTotpEnabledAt clears the value of the "totp_enabled_at" field.
+func (_u *UserUpdate) ClearTotpEnabledAt() *UserUpdate {
+	_u.mutation.ClearTotpEnabledAt()
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -245,6 +300,21 @@ func (_u *UserUpdate) AddAssignedSubscriptions(v ...*UserSubscription) *UserUpda
 		ids[i] = v[i].ID
 REDACTED
 	return _u.AddAssignedSubscriptionIDs(ids...)
+REDACTED
+
+// AddAnnouncementReadIDs adds the "announcement_reads" edge to the AnnouncementRead entity by IDs.
+func (_u *UserUpdate) AddAnnouncementReadIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddAnnouncementReadIDs(ids...)
+	return _u
+REDACTED
+
+// AddAnnouncementReads adds the "announcement_reads" edges to the AnnouncementRead entity.
+func (_u *UserUpdate) AddAnnouncementReads(v ...*AnnouncementRead) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddAnnouncementReadIDs(ids...)
 REDACTED
 
 // AddAllowedGroupIDs adds the "allowed_groups" edge to the Group entity by IDs.
@@ -394,6 +464,27 @@ func (_u *UserUpdate) RemoveAssignedSubscriptions(v ...*UserSubscription) *UserU
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveAssignedSubscriptionIDs(ids...)
+REDACTED
+
+// ClearAnnouncementReads clears all "announcement_reads" edges to the AnnouncementRead entity.
+func (_u *UserUpdate) ClearAnnouncementReads() *UserUpdate {
+	_u.mutation.ClearAnnouncementReads()
+	return _u
+REDACTED
+
+// RemoveAnnouncementReadIDs removes the "announcement_reads" edge to AnnouncementRead entities by IDs.
+func (_u *UserUpdate) RemoveAnnouncementReadIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveAnnouncementReadIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveAnnouncementReads removes "announcement_reads" edges to AnnouncementRead entities.
+func (_u *UserUpdate) RemoveAnnouncementReads(v ...*AnnouncementRead) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveAnnouncementReadIDs(ids...)
 REDACTED
 
 // ClearAllowedGroups clears all "allowed_groups" edges to the Group entity.
@@ -603,6 +694,21 @@ REDACTED
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
 REDACTED
+	if value, ok := _u.mutation.TotpSecretEncrypted(); ok {
+		_spec.SetField(user.FieldTotpSecretEncrypted, field.TypeString, value)
+REDACTED
+	if _u.mutation.TotpSecretEncryptedCleared() {
+		_spec.ClearField(user.FieldTotpSecretEncrypted, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.TotpEnabled(); ok {
+		_spec.SetField(user.FieldTotpEnabled, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.TotpEnabledAt(); ok {
+		_spec.SetField(user.FieldTotpEnabledAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.TotpEnabledAtCleared() {
+		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
+REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -776,6 +882,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.AnnouncementReadsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AnnouncementReadsTable,
+			Columns: []string{user.AnnouncementReadsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(announcementread.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedAnnouncementReadsIDs(); len(nodes) > 0 && !_u.mutation.AnnouncementReadsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AnnouncementReadsTable,
+			Columns: []string{user.AnnouncementReadsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(announcementread.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.AnnouncementReadsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AnnouncementReadsTable,
+			Columns: []string{user.AnnouncementReadsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(announcementread.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {
@@ -1147,6 +1298,60 @@ REDACTED
 	return _u
 REDACTED
 
+// SetTotpSecretEncrypted sets the "totp_secret_encrypted" field.
+func (_u *UserUpdateOne) SetTotpSecretEncrypted(v string) *UserUpdateOne {
+	_u.mutation.SetTotpSecretEncrypted(v)
+	return _u
+REDACTED
+
+// SetNillableTotpSecretEncrypted sets the "totp_secret_encrypted" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTotpSecretEncrypted(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetTotpSecretEncrypted(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearTotpSecretEncrypted clears the value of the "totp_secret_encrypted" field.
+func (_u *UserUpdateOne) ClearTotpSecretEncrypted() *UserUpdateOne {
+	_u.mutation.ClearTotpSecretEncrypted()
+	return _u
+REDACTED
+
+// SetTotpEnabled sets the "totp_enabled" field.
+func (_u *UserUpdateOne) SetTotpEnabled(v bool) *UserUpdateOne {
+	_u.mutation.SetTotpEnabled(v)
+	return _u
+REDACTED
+
+// SetNillableTotpEnabled sets the "totp_enabled" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTotpEnabled(v *bool) *UserUpdateOne {
+	if v != nil {
+		_u.SetTotpEnabled(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetTotpEnabledAt sets the "totp_enabled_at" field.
+func (_u *UserUpdateOne) SetTotpEnabledAt(v time.Time) *UserUpdateOne {
+	_u.mutation.SetTotpEnabledAt(v)
+	return _u
+REDACTED
+
+// SetNillableTotpEnabledAt sets the "totp_enabled_at" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTotpEnabledAt(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetTotpEnabledAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearTotpEnabledAt clears the value of the "totp_enabled_at" field.
+func (_u *UserUpdateOne) ClearTotpEnabledAt() *UserUpdateOne {
+	_u.mutation.ClearTotpEnabledAt()
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1205,6 +1410,21 @@ func (_u *UserUpdateOne) AddAssignedSubscriptions(v ...*UserSubscription) *UserU
 		ids[i] = v[i].ID
 REDACTED
 	return _u.AddAssignedSubscriptionIDs(ids...)
+REDACTED
+
+// AddAnnouncementReadIDs adds the "announcement_reads" edge to the AnnouncementRead entity by IDs.
+func (_u *UserUpdateOne) AddAnnouncementReadIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddAnnouncementReadIDs(ids...)
+	return _u
+REDACTED
+
+// AddAnnouncementReads adds the "announcement_reads" edges to the AnnouncementRead entity.
+func (_u *UserUpdateOne) AddAnnouncementReads(v ...*AnnouncementRead) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddAnnouncementReadIDs(ids...)
 REDACTED
 
 // AddAllowedGroupIDs adds the "allowed_groups" edge to the Group entity by IDs.
@@ -1354,6 +1574,27 @@ func (_u *UserUpdateOne) RemoveAssignedSubscriptions(v ...*UserSubscription) *Us
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveAssignedSubscriptionIDs(ids...)
+REDACTED
+
+// ClearAnnouncementReads clears all "announcement_reads" edges to the AnnouncementRead entity.
+func (_u *UserUpdateOne) ClearAnnouncementReads() *UserUpdateOne {
+	_u.mutation.ClearAnnouncementReads()
+	return _u
+REDACTED
+
+// RemoveAnnouncementReadIDs removes the "announcement_reads" edge to AnnouncementRead entities by IDs.
+func (_u *UserUpdateOne) RemoveAnnouncementReadIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveAnnouncementReadIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveAnnouncementReads removes "announcement_reads" edges to AnnouncementRead entities.
+func (_u *UserUpdateOne) RemoveAnnouncementReads(v ...*AnnouncementRead) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveAnnouncementReadIDs(ids...)
 REDACTED
 
 // ClearAllowedGroups clears all "allowed_groups" edges to the Group entity.
@@ -1593,6 +1834,21 @@ REDACTED
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
 REDACTED
+	if value, ok := _u.mutation.TotpSecretEncrypted(); ok {
+		_spec.SetField(user.FieldTotpSecretEncrypted, field.TypeString, value)
+REDACTED
+	if _u.mutation.TotpSecretEncryptedCleared() {
+		_spec.ClearField(user.FieldTotpSecretEncrypted, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.TotpEnabled(); ok {
+		_spec.SetField(user.FieldTotpEnabled, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.TotpEnabledAt(); ok {
+		_spec.SetField(user.FieldTotpEnabledAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.TotpEnabledAtCleared() {
+		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
+REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1766,6 +2022,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.AnnouncementReadsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AnnouncementReadsTable,
+			Columns: []string{user.AnnouncementReadsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(announcementread.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedAnnouncementReadsIDs(); len(nodes) > 0 && !_u.mutation.AnnouncementReadsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AnnouncementReadsTable,
+			Columns: []string{user.AnnouncementReadsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(announcementread.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.AnnouncementReadsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.AnnouncementReadsTable,
+			Columns: []string{user.AnnouncementReadsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(announcementread.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {

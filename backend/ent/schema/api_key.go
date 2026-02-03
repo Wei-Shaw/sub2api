@@ -2,7 +2,7 @@ package schema
 
 import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
@@ -45,7 +45,7 @@ func (APIKey) Fields() []ent.Field {
 			Nillable(),
 		field.String("status").
 			MaxLen(20).
-			Default(service.StatusActive),
+			Default(domain.StatusActive),
 		field.JSON("ip_whitelist", []string{REDACTED).
 			Optional().
 			Comment("Allowed IPs/CIDRs, e.g. [\"192.168.1.100\", \"10.0.0.0/8\"]"),

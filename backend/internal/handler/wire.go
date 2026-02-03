@@ -13,6 +13,7 @@ func ProvideAdminHandlers(
 	userHandler *admin.UserHandler,
 	groupHandler *admin.GroupHandler,
 	accountHandler *admin.AccountHandler,
+	announcementHandler *admin.AnnouncementHandler,
 	oauthHandler *admin.OAuthHandler,
 	openaiOAuthHandler *admin.OpenAIOAuthHandler,
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
@@ -32,6 +33,7 @@ func ProvideAdminHandlers(
 		User:             userHandler,
 		Group:            groupHandler,
 		Account:          accountHandler,
+		Announcement:     announcementHandler,
 		OAuth:            oauthHandler,
 		OpenAIOAuth:      openaiOAuthHandler,
 		GeminiOAuth:      geminiOAuthHandler,
@@ -66,11 +68,13 @@ func ProvideHandlers(
 	usageHandler *UsageHandler,
 	redeemHandler *RedeemHandler,
 	subscriptionHandler *SubscriptionHandler,
+	announcementHandler *AnnouncementHandler,
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
 	soraGatewayHandler *SoraGatewayHandler,
 	settingHandler *SettingHandler,
+	totpHandler *TotpHandler,
 ) *Handlers {
 	return &Handlers{
 		Auth:          authHandler,
@@ -79,11 +83,13 @@ func ProvideHandlers(
 		Usage:         usageHandler,
 		Redeem:        redeemHandler,
 		Subscription:  subscriptionHandler,
+		Announcement:  announcementHandler,
 		Admin:         adminHandlers,
 		Gateway:       gatewayHandler,
 		OpenAIGateway: openaiGatewayHandler,
 		SoraGateway:   soraGatewayHandler,
 		Setting:       settingHandler,
+		Totp:          totpHandler,
 REDACTED
 REDACTED
 
@@ -96,9 +102,11 @@ var ProviderSet = wire.NewSet(
 	NewUsageHandler,
 	NewRedeemHandler,
 	NewSubscriptionHandler,
+	NewAnnouncementHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
 	NewSoraGatewayHandler,
+	NewTotpHandler,
 	ProvideSettingHandler,
 
 	// Admin handlers
@@ -106,6 +114,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewUserHandler,
 	admin.NewGroupHandler,
 	admin.NewAccountHandler,
+	admin.NewAnnouncementHandler,
 	admin.NewOAuthHandler,
 	admin.NewOpenAIOAuthHandler,
 	admin.NewGeminiOAuthHandler,

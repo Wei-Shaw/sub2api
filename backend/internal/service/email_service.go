@@ -3,11 +3,14 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"math/big"
 	"net/smtp"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -19,6 +22,9 @@ var (
 	ErrInvalidVerifyCode     = infraerrors.BadRequest("INVALID_VERIFY_CODE", "invalid or expired verification code")
 	ErrVerifyCodeTooFrequent = infraerrors.TooManyRequests("VERIFY_CODE_TOO_FREQUENT", "please wait before requesting a new code")
 	ErrVerifyCodeMaxAttempts = infraerrors.TooManyRequests("VERIFY_CODE_MAX_ATTEMPTS", "too many failed attempts, please request a new code")
+
+	// Password reset errors
+	ErrInvalidResetToken = infraerrors.BadRequest("INVALID_RESET_TOKEN", "invalid or expired password reset token")
 )
 
 // EmailCache defines cache operations for email service
@@ -26,6 +32,16 @@ type EmailCache interface {
 	GetVerificationCode(ctx context.Context, email string) (*VerificationCodeData, error)
 	SetVerificationCode(ctx context.Context, email string, data *VerificationCodeData, ttl time.Duration) error
 	DeleteVerificationCode(ctx context.Context, email string) error
+
+	// Password reset token methods
+	GetPasswordResetToken(ctx context.Context, email string) (*PasswordResetTokenData, error)
+	SetPasswordResetToken(ctx context.Context, email string, data *PasswordResetTokenData, ttl time.Duration) error
+	DeletePasswordResetToken(ctx context.Context, email string) error
+
+	// Password reset email cooldown methods
+	// Returns true if in cooldown period (email was sent recently)
+	IsPasswordResetEmailInCooldown(ctx context.Context, email string) bool
+	SetPasswordResetEmailCooldown(ctx context.Context, email string, ttl time.Duration) error
 REDACTED
 
 // VerificationCodeData represents verification code data
@@ -35,10 +51,22 @@ type VerificationCodeData struct {
 	CreatedAt time.Time
 REDACTED
 
+// PasswordResetTokenData represents password reset token data
+type PasswordResetTokenData struct {
+	Token     string
+	CreatedAt time.Time
+REDACTED
+
 const (
 	verifyCodeTTL         = 15 * time.Minute
 	verifyCodeCooldown    = 1 * time.Minute
 	maxVerifyCodeAttempts = 5
+
+	// Password reset token settings
+	passwordResetTokenTTL = 30 * time.Minute
+
+	// Password reset email cooldown (prevent email bombing)
+	passwordResetEmailCooldown = 30 * time.Second
 )
 
 // SMTPConfig SMTP配置
@@ -254,8 +282,8 @@ REDACTED
 		return ErrVerifyCodeMaxAttempts
 REDACTED
 
-	// 验证码不匹配
-	if data.Code != code {
+	// 验证码不匹配 (constant-time comparison to prevent timing attacks)
+	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
 		data.Attempts++
 		if err := s.cache.SetVerificationCode(ctx, email, data, verifyCodeTTL); err != nil {
 			log.Printf("[Email] Failed to update verification attempt count: %v", err)
@@ -356,4 +384,158 @@ REDACTED
 REDACTED
 
 	return client.Quit()
+REDACTED
+
+// GeneratePasswordResetToken generates a secure 32-byte random token (64 hex characters)
+func (s *EmailService) GeneratePasswordResetToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+REDACTED
+	return hex.EncodeToString(bytes), nil
+REDACTED
+
+// SendPasswordResetEmail sends a password reset email with a reset link
+func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email, siteName, resetURL string) error {
+	var token string
+	var needSaveToken bool
+
+	// Check if token already exists
+	existing, err := s.cache.GetPasswordResetToken(ctx, email)
+	if err == nil && existing != nil {
+		// Token exists, reuse it (allows resending email without generating new token)
+		token = existing.Token
+		needSaveToken = false
+REDACTED else {
+		// Generate new token
+		token, err = s.GeneratePasswordResetToken()
+		if err != nil {
+			return fmt.Errorf("generate token: %w", err)
+	REDACTED
+		needSaveToken = true
+REDACTED
+
+	// Save token to Redis (only if new token generated)
+	if needSaveToken {
+		data := &PasswordResetTokenData{
+			Token:     token,
+			CreatedAt: time.Now(),
+	REDACTED
+		if err := s.cache.SetPasswordResetToken(ctx, email, data, passwordResetTokenTTL); err != nil {
+			return fmt.Errorf("save reset token: %w", err)
+	REDACTED
+REDACTED
+
+	// Build full reset URL with URL-encoded token and email
+	fullResetURL := fmt.Sprintf("%s?email=%s&token=%s", resetURL, url.QueryEscape(email), url.QueryEscape(token))
+
+	// Build email content
+	subject := fmt.Sprintf("[%s] 密码重置请求", siteName)
+	body := s.buildPasswordResetEmailBody(fullResetURL, siteName)
+
+	// Send email
+	if err := s.SendEmail(ctx, email, subject, body); err != nil {
+		return fmt.Errorf("send email: %w", err)
+REDACTED
+
+	return nil
+REDACTED
+
+// SendPasswordResetEmailWithCooldown sends password reset email with cooldown check (called by queue worker)
+// This method wraps SendPasswordResetEmail with email cooldown to prevent email bombing
+func (s *EmailService) SendPasswordResetEmailWithCooldown(ctx context.Context, email, siteName, resetURL string) error {
+	// Check email cooldown to prevent email bombing
+	if s.cache.IsPasswordResetEmailInCooldown(ctx, email) {
+		log.Printf("[Email] Password reset email skipped (cooldown): %s", email)
+		return nil // Silent success to prevent revealing cooldown to attackers
+REDACTED
+
+	// Send email using core method
+	if err := s.SendPasswordResetEmail(ctx, email, siteName, resetURL); err != nil {
+		return err
+REDACTED
+
+	// Set cooldown marker (Redis TTL handles expiration)
+	if err := s.cache.SetPasswordResetEmailCooldown(ctx, email, passwordResetEmailCooldown); err != nil {
+		log.Printf("[Email] Failed to set password reset cooldown for %s: %v", email, err)
+REDACTED
+
+	return nil
+REDACTED
+
+// VerifyPasswordResetToken verifies the password reset token without consuming it
+func (s *EmailService) VerifyPasswordResetToken(ctx context.Context, email, token string) error {
+	data, err := s.cache.GetPasswordResetToken(ctx, email)
+	if err != nil || data == nil {
+		return ErrInvalidResetToken
+REDACTED
+
+	// Use constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(data.Token), []byte(token)) != 1 {
+		return ErrInvalidResetToken
+REDACTED
+
+	return nil
+REDACTED
+
+// ConsumePasswordResetToken verifies and deletes the token (one-time use)
+func (s *EmailService) ConsumePasswordResetToken(ctx context.Context, email, token string) error {
+	// Verify first
+	if err := s.VerifyPasswordResetToken(ctx, email, token); err != nil {
+		return err
+REDACTED
+
+	// Delete after verification (one-time use)
+	if err := s.cache.DeletePasswordResetToken(ctx, email); err != nil {
+		log.Printf("[Email] Failed to delete password reset token after consumption: %v", err)
+REDACTED
+	return nil
+REDACTED
+
+// buildPasswordResetEmailBody builds the HTML content for password reset email
+func (s *EmailService) buildPasswordResetEmailBody(resetURL, siteName string) string {
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; REDACTED
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); REDACTED
+        .header { background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 30px; text-align: center; REDACTED
+        .header h1 { margin: 0; font-size: 24px; REDACTED
+        .content { padding: 40px 30px; text-align: center; REDACTED
+        .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; margin: 20px 0; REDACTED
+        .button:hover { opacity: 0.9; REDACTED
+        .info { color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px; REDACTED
+        .link-fallback { color: #666; font-size: 12px; word-break: break-all; margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 4px; REDACTED
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #999; font-size: 12px; REDACTED
+        .warning { color: #e74c3c; font-weight: 500; REDACTED
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>%s</h1>
+        </div>
+        <div class="content">
+            <p style="font-size: 18px; color: #333;">密码重置请求</p>
+            <p style="color: #666;">您已请求重置密码。请点击下方按钮设置新密码：</p>
+            <a href="%s" class="button">重置密码</a>
+            <div class="info">
+                <p>此链接将在 <strong>30 分钟</strong>后失效。</p>
+                <p class="warning">如果您没有请求重置密码，请忽略此邮件。您的密码将保持不变。</p>
+            </div>
+            <div class="link-fallback">
+                <p>如果按钮无法点击，请复制以下链接到浏览器中打开：</p>
+                <p>%s</p>
+            </div>
+        </div>
+        <div class="footer">
+            <p>这是一封自动发送的邮件，请勿回复。</p>
+        </div>
+    </div>
+</body>
+</html>
+`, siteName, resetURL, resetURL)
 REDACTED

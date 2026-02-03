@@ -93,6 +93,18 @@ func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 REDACTED
 
+func (s *userRepoStub) UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error {
+	panic("unexpected UpdateTotpSecret call")
+REDACTED
+
+func (s *userRepoStub) EnableTotp(ctx context.Context, userID int64) error {
+	panic("unexpected EnableTotp call")
+REDACTED
+
+func (s *userRepoStub) DisableTotp(ctx context.Context, userID int64) error {
+	panic("unexpected DisableTotp call")
+REDACTED
+
 type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
@@ -150,6 +162,14 @@ REDACTED
 
 func (s *groupRepoStub) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	panic("unexpected DeleteAccountGroupsByGroupID call")
+REDACTED
+
+func (s *groupRepoStub) BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error {
+	panic("unexpected BindAccountsToGroup call")
+REDACTED
+
+func (s *groupRepoStub) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	panic("unexpected GetAccountIDsByGroupIDs call")
 REDACTED
 
 type proxyRepoStub struct {
@@ -260,6 +280,14 @@ REDACTED
 
 func (s *redeemRepoStub) ListByUser(ctx context.Context, userID int64, limit int) ([]RedeemCode, error) {
 	panic("unexpected ListByUser call")
+REDACTED
+
+func (s *redeemRepoStub) ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListByUserPaginated call")
+REDACTED
+
+func (s *redeemRepoStub) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
+	panic("unexpected SumPositiveBalanceByUser call")
 REDACTED
 
 type subscriptionInvalidateCall struct {

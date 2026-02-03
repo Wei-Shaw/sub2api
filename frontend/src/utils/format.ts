@@ -175,6 +175,35 @@ export function parseDateTimeLocalInput(value: string): number | null {
 REDACTED
 
 /**
+ * 格式化 OpenAI reasoning effort（用于使用记录展示）
+ * @param effort 原始 effort（如 "low" / "medium" / "high" / "xhigh"）
+ * @returns 格式化后的字符串（Low / Medium / High / Xhigh），无值返回 "-"
+ */
+export function formatReasoningEffort(effort: string | null | undefined): string {
+  const raw = (effort ?? '').toString().trim()
+  if (!raw) return '-'
+
+  const normalized = raw.toLowerCase().replace(/[-_\s]/g, '')
+  switch (normalized) {
+    case 'low':
+      return 'Low'
+    case 'medium':
+      return 'Medium'
+    case 'high':
+      return 'High'
+    case 'xhigh':
+    case 'extrahigh':
+      return 'Xhigh'
+    case 'none':
+    case 'minimal':
+      return '-'
+    default:
+      // best-effort: Title-case first letter
+      return raw.length > 1 ? raw[0].toUpperCase() + raw.slice(1) : raw.toUpperCase()
+  REDACTED
+REDACTED
+
+/**
  * 格式化时间（只显示时分）
  * @param date 日期字符串或 Date 对象
  * @returns 格式化后的时间字符串
@@ -260,4 +289,23 @@ export function formatCountdownWithSuffix(targetDate: string | Date | null | und
   const countdown = formatCountdown(targetDate)
   if (!countdown) return null
   return i18n.global.t('common.time.countdown.withSuffix', { time: countdown REDACTED)
+REDACTED
+
+/**
+ * 格式化为相对时间 + 具体时间组合
+ * @param date 日期字符串或 Date 对象
+ * @returns 组合时间字符串，如 "5 天前 · 2026-01-27 15:25"
+ */
+export function formatRelativeWithDateTime(date: string | Date | null | undefined): string {
+  if (!date) return ''
+
+  const relativeTime = formatRelativeTime(date)
+  const dateTime = formatDateTime(date)
+
+  // 如果是 "从未" 或空字符串，只返回相对时间
+  if (!dateTime || relativeTime === i18n.global.t('common.time.never')) {
+    return relativeTime
+  REDACTED
+
+  return `${relativeTimeREDACTED · ${dateTimeREDACTED`
 REDACTED

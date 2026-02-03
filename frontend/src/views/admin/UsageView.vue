@@ -35,12 +35,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { saveAs REDACTED from 'file-saver'
-import { useAppStore REDACTED from '@/stores/app'; import { adminAPI REDACTED from '@/api/admin'; import { adminUsageAPI REDACTED from '@/api/admin/usage'
-import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'
-import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
-import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
-import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
+  import { saveAs REDACTED from 'file-saver'
+  import { useAppStore REDACTED from '@/stores/app'; import { adminAPI REDACTED from '@/api/admin'; import { adminUsageAPI REDACTED from '@/api/admin/usage'
+  import { formatReasoningEffort REDACTED from '@/utils/format'
+  import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'
+  import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
+  import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+  import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import type { AdminUsageLog, TrendDataPoint, ModelStat REDACTED from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams REDACTED from '@/api/admin/usage'
 
@@ -104,7 +105,7 @@ const exportToExcel = async () => {
       const XLSX = await import('xlsx')
       const headers = [
         t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
-        t('admin.usage.account'), t('usage.model'), t('admin.usage.group'),
+        t('admin.usage.account'), t('usage.model'), t('usage.reasoningEffort'), t('admin.usage.group'),
         t('usage.type'),
         t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
         t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
@@ -120,6 +121,7 @@ const exportToExcel = async () => {
         log.api_key?.name || '',
         log.account?.name || '',
         log.model,
+        formatReasoningEffort(log.reasoning_effort),
         log.group?.name || '',
         log.stream ? t('usage.stream') : t('usage.sync'),
         log.input_tokens,

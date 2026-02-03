@@ -809,12 +809,21 @@ REDACTED
 		return err
 REDACTED
 
-	path := "{antigravity_quota_scopes," + string(scope) + "REDACTED"
+	scopeKey := string(scope)
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), $1::text[], $2::jsonb, true), updated_at = NOW() WHERE id = $3 AND deleted_at IS NULL",
-		path,
+		`UPDATE accounts SET
+			extra = jsonb_set(
+				jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), '{antigravity_quota_scopesREDACTED'::text[], COALESCE(extra->'antigravity_quota_scopes', '{REDACTED'::jsonb), true),
+				ARRAY['antigravity_quota_scopes', $1]::text[],
+				$2::jsonb,
+				true
+			),
+			updated_at = NOW(),
+			last_used_at = NOW()
+		WHERE id = $3 AND deleted_at IS NULL`,
+		scopeKey,
 		raw,
 		id,
 	)
@@ -829,6 +838,7 @@ REDACTED
 	if affected == 0 {
 		return service.ErrAccountNotFound
 REDACTED
+
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		log.Printf("[SchedulerOutbox] enqueue quota scope failed: account=%d err=%v", id, err)
 REDACTED
@@ -849,12 +859,19 @@ REDACTED
 		return err
 REDACTED
 
-	path := "{model_rate_limits," + scope + "REDACTED"
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), $1::text[], $2::jsonb, true), updated_at = NOW() WHERE id = $3 AND deleted_at IS NULL",
-		path,
+		`UPDATE accounts SET 
+			extra = jsonb_set(
+				jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), '{model_rate_limitsREDACTED'::text[], COALESCE(extra->'model_rate_limits', '{REDACTED'::jsonb), true),
+				ARRAY['model_rate_limits', $1]::text[],
+				$2::jsonb,
+				true
+			),
+			updated_at = NOW()
+		WHERE id = $3 AND deleted_at IS NULL`,
+		scope,
 		raw,
 		id,
 	)

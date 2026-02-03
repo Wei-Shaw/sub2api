@@ -14,6 +14,9 @@ type UsageLog struct {
 	AccountID int64
 	RequestID string
 	Model     string
+	// ReasoningEffort is the request's reasoning effort level (OpenAI Responses API),
+	// e.g. "low" / "medium" / "high" / "xhigh". Nil means not provided / not applicable.
+	ReasoningEffort *string
 
 	GroupID        *int64
 	SubscriptionID *int64

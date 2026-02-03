@@ -269,6 +269,14 @@ func (m *mockGroupRepoForGateway) DeleteAccountGroupsByGroupID(ctx context.Conte
 	return 0, nil
 REDACTED
 
+func (m *mockGroupRepoForGateway) BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error {
+	return nil
+REDACTED
+
+func (m *mockGroupRepoForGateway) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	return nil, nil
+REDACTED
+
 func ptr[T any](v T) *T {
 	return &v
 REDACTED

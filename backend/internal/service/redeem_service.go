@@ -49,6 +49,11 @@ type RedeemCodeRepository interface {
 	List(ctx context.Context, params pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error)
 	ListByUser(ctx context.Context, userID int64, limit int) ([]RedeemCode, error)
+	// ListByUserPaginated returns paginated balance/concurrency history for a specific user.
+	// codeType filter is optional - pass empty string to return all types.
+	ListByUserPaginated(ctx context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]RedeemCode, *pagination.PaginationResult, error)
+	// SumPositiveBalanceByUser returns the total recharged amount (sum of positive balance values) for a user.
+	SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error)
 REDACTED
 
 // GenerateCodesRequest 生成兑换码请求
@@ -126,7 +131,8 @@ func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequ
 		return nil, errors.New("count must be greater than 0")
 REDACTED
 
-	if req.Value <= 0 {
+	// 邀请码类型不需要数值，其他类型需要
+	if req.Type != RedeemTypeInvitation && req.Value <= 0 {
 		return nil, errors.New("value must be greater than 0")
 REDACTED
 
@@ -139,6 +145,12 @@ REDACTED
 		codeType = RedeemTypeBalance
 REDACTED
 
+	// 邀请码类型的 value 设为 0
+	value := req.Value
+	if codeType == RedeemTypeInvitation {
+		value = 0
+REDACTED
+
 	codes := make([]RedeemCode, 0, req.Count)
 	for i := 0; i < req.Count; i++ {
 		code, err := s.GenerateRandomCode()
@@ -149,7 +161,7 @@ REDACTED
 		codes = append(codes, RedeemCode{
 			Code:   code,
 			Type:   codeType,
-			Value:  req.Value,
+			Value:  value,
 			Status: StatusUnused,
 	REDACTED)
 REDACTED

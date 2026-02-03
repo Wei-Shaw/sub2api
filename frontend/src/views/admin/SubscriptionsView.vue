@@ -154,7 +154,13 @@
 
       <!-- Subscriptions Table -->
       <template #table>
-        <DataTable :columns="columns" :data="subscriptions" :loading="loading">
+        <DataTable
+          :columns="columns"
+          :data="subscriptions"
+          :loading="loading"
+          :server-side-sort="true"
+          @sort="handleSort"
+        >
           <template #cell-user="{ row REDACTED">
             <div class="flex items-center gap-2">
               <div
@@ -357,7 +363,7 @@
           <template #cell-actions="{ row REDACTED">
             <div class="flex items-center gap-1">
               <button
-                v-if="row.status === 'active'"
+                v-if="row.status === 'active' || row.status === 'expired'"
                 @click="handleExtend(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
@@ -683,9 +689,9 @@ const allColumns = computed<Column[]>(() => [
     label: userColumnMode.value === 'email'
       ? t('admin.subscriptions.columns.user')
       : t('admin.users.columns.username'),
-    sortable: true
+    sortable: false
   REDACTED,
-  { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: true REDACTED,
+  { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: false REDACTED,
   { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false REDACTED,
   { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true REDACTED,
   { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true REDACTED,
@@ -785,10 +791,17 @@ const selectedUser = ref<SimpleUser | null>(null)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const filters = reactive({
-  status: '',
+  status: 'active',
   group_id: '',
   user_id: null as number | null
 REDACTED)
+
+// Sorting state
+const sortState = reactive({
+  sort_by: 'created_at',
+  sort_order: 'desc' as 'asc' | 'desc'
+REDACTED)
+
 const pagination = reactive({
   page: 1,
   page_size: 20,
@@ -854,7 +867,9 @@ const loadSubscriptions = async () => {
       {
         status: (filters.status as any) || undefined,
         group_id: filters.group_id ? parseInt(filters.group_id) : undefined,
-        user_id: filters.user_id || undefined
+        user_id: filters.user_id || undefined,
+        sort_by: sortState.sort_by,
+        sort_order: sortState.sort_order
       REDACTED,
       {
         signal
@@ -995,6 +1010,13 @@ const handlePageSizeChange = (pageSize: number) => {
   loadSubscriptions()
 REDACTED
 
+const handleSort = (key: string, order: 'asc' | 'desc') => {
+  sortState.sort_by = key
+  sortState.sort_order = order
+  pagination.page = 1
+  loadSubscriptions()
+REDACTED
+
 const closeAssignModal = () => {
   showAssignModal.value = false
   assignForm.user_id = null
@@ -1053,11 +1075,11 @@ REDACTED
 const handleExtendSubscription = async () => {
   if (!extendingSubscription.value) return
 
-  // 前端验证：调整后剩余天数必须 > 0
+  // 前端验证：调整后的过期时间必须在未来
   if (extendingSubscription.value.expires_at) {
-    const currentDaysRemaining = getDaysRemaining(extendingSubscription.value.expires_at) ?? 0
-    const newDaysRemaining = currentDaysRemaining + extendForm.days
-    if (newDaysRemaining <= 0) {
+    const expiresAt = new Date(extendingSubscription.value.expires_at)
+    const newExpiresAt = new Date(expiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000)
+    if (newExpiresAt <= new Date()) {
       appStore.showError(t('admin.subscriptions.adjustWouldExpire'))
       return
     REDACTED

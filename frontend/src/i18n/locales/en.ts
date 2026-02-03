@@ -69,7 +69,9 @@ export default {
       port: 'Port',
       password: 'Password (optional)',
       database: 'Database',
-      passwordPlaceholder: 'Password'
+      passwordPlaceholder: 'Password',
+      enableTls: 'Enable TLS',
+      enableTlsHint: 'Use TLS when connecting to Redis (public CA certs)'
     REDACTED,
     admin: {
       title: 'Admin Account',
@@ -146,7 +148,10 @@ export default {
     balance: 'Balance',
     available: 'Available',
     copiedToClipboard: 'Copied to clipboard',
+    copied: 'Copied',
     copyFailed: 'Failed to copy',
+    verifying: 'Verifying...',
+    processing: 'Processing...',
     contactSupport: 'Contact Support',
     add: 'Add',
     invalidEmail: 'Please enter a valid email address',
@@ -182,6 +187,7 @@ export default {
   // Navigation
   nav: {
     dashboard: 'Dashboard',
+    announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
@@ -203,6 +209,7 @@ export default {
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
+    buySubscription: 'Purchase Subscription',
     docs: 'Docs'
   REDACTED,
 
@@ -258,6 +265,13 @@ export default {
     promoCodeAlreadyUsed: 'You have already used this promo code',
     promoCodeValidating: 'Promo code is being validated, please wait',
     promoCodeInvalidCannotRegister: 'Invalid promo code. Please check and try again or clear the promo code field',
+    invitationCodeLabel: 'Invitation Code',
+    invitationCodePlaceholder: 'Enter invitation code',
+    invitationCodeRequired: 'Invitation code is required',
+    invitationCodeValid: 'Invitation code is valid',
+    invitationCodeInvalid: 'Invalid or used invitation code',
+    invitationCodeValidating: 'Validating invitation code...',
+    invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',
@@ -271,7 +285,36 @@ export default {
       code: 'Code',
       state: 'State',
       fullUrl: 'Full URL'
-    REDACTED
+    REDACTED,
+    // Forgot password
+    forgotPassword: 'Forgot password?',
+    forgotPasswordTitle: 'Reset Your Password',
+    forgotPasswordHint: 'Enter your email address and we will send you a link to reset your password.',
+    sendResetLink: 'Send Reset Link',
+    sendingResetLink: 'Sending...',
+    sendResetLinkFailed: 'Failed to send reset link. Please try again.',
+    resetEmailSent: 'Reset Link Sent',
+    resetEmailSentHint: 'If an account exists with this email, you will receive a password reset link shortly. Please check your inbox and spam folder.',
+    backToLogin: 'Back to Login',
+    rememberedPassword: 'Remembered your password?',
+    // Reset password
+    resetPasswordTitle: 'Set New Password',
+    resetPasswordHint: 'Enter your new password below.',
+    newPassword: 'New Password',
+    newPasswordPlaceholder: 'Enter your new password',
+    confirmPassword: 'Confirm Password',
+    confirmPasswordPlaceholder: 'Confirm your new password',
+    confirmPasswordRequired: 'Please confirm your password',
+    passwordsDoNotMatch: 'Passwords do not match',
+    resetPassword: 'Reset Password',
+    resettingPassword: 'Resetting...',
+    resetPasswordFailed: 'Failed to reset password. Please try again.',
+    passwordResetSuccess: 'Password Reset Successful',
+    passwordResetSuccessHint: 'Your password has been reset. You can now sign in with your new password.',
+    invalidResetLink: 'Invalid Reset Link',
+    invalidResetLinkHint: 'This password reset link is invalid or has expired. Please request a new one.',
+    requestNewResetLink: 'Request New Reset Link',
+    invalidOrExpiredToken: 'The password reset link is invalid or has expired. Please request a new one.'
   REDACTED,
 
   // Dashboard
@@ -459,6 +502,7 @@ export default {
     exporting: 'Exporting...',
     preparingExport: 'Preparing export...',
     model: 'Model',
+    reasoningEffort: 'Reasoning Effort',
     type: 'Type',
     tokens: 'Tokens',
     cost: 'Cost',
@@ -554,7 +598,46 @@ export default {
     passwordsNotMatch: 'New passwords do not match',
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
-    passwordChangeFailed: 'Failed to change password'
+    passwordChangeFailed: 'Failed to change password',
+    // TOTP 2FA
+    totp: {
+      title: 'Two-Factor Authentication (2FA)',
+      description: 'Enhance account security with Google Authenticator or similar apps',
+      enabled: 'Enabled',
+      enabledAt: 'Enabled at',
+      notEnabled: 'Not Enabled',
+      notEnabledHint: 'Enable two-factor authentication to enhance account security',
+      enable: 'Enable',
+      disable: 'Disable',
+      featureDisabled: 'Feature Unavailable',
+      featureDisabledHint: 'Two-factor authentication has not been enabled by the administrator',
+      setupTitle: 'Set Up Two-Factor Authentication',
+      setupStep1: 'Scan the QR code below with your authenticator app',
+      setupStep2: 'Enter the 6-digit code from your app',
+      manualEntry: "Can't scan? Enter the key manually:",
+      enterCode: 'Enter 6-digit code',
+      verify: 'Verify',
+      setupFailed: 'Failed to get setup information',
+      verifyFailed: 'Invalid code, please try again',
+      enableSuccess: 'Two-factor authentication enabled',
+      disableTitle: 'Disable Two-Factor Authentication',
+      disableWarning: 'After disabling, you will no longer need a verification code to log in. This may reduce your account security.',
+      enterPassword: 'Enter your current password to confirm',
+      confirmDisable: 'Confirm Disable',
+      disableSuccess: 'Two-factor authentication disabled',
+      disableFailed: 'Failed to disable, please check your password',
+      loginTitle: 'Two-Factor Authentication',
+      loginHint: 'Enter the 6-digit code from your authenticator app',
+      loginFailed: 'Verification failed, please try again',
+      // New translations for email verification
+      verifyEmailFirst: 'Please verify your email first',
+      verifyPasswordFirst: 'Please verify your identity first',
+      emailCode: 'Email Verification Code',
+      enterEmailCode: 'Enter 6-digit code',
+      sendCode: 'Send Code',
+      codeSent: 'Verification code sent to your email',
+      sendCodeFailed: 'Failed to send verification code'
+    REDACTED
   REDACTED,
 
   // Empty States
@@ -760,6 +843,20 @@ export default {
       failedToDeposit: 'Failed to deposit',
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
+      // Balance History
+      balanceHistory: 'Recharge History',
+      balanceHistoryTip: 'Click to open recharge history',
+      balanceHistoryTitle: 'User Recharge & Concurrency History',
+      noBalanceHistory: 'No records found for this user',
+      allTypes: 'All Types',
+      typeBalance: 'Balance (Redeem)',
+      typeAdminBalance: 'Balance (Admin)',
+      typeConcurrency: 'Concurrency (Redeem)',
+      typeAdminConcurrency: 'Concurrency (Admin)',
+      typeSubscription: 'Subscription',
+      failedToLoadBalanceHistory: 'Failed to load balance history',
+      createdAt: 'Created',
+      totalRecharged: 'Total Recharged',
       roles: {
         admin: 'Admin',
         user: 'User'
@@ -938,6 +1035,14 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       REDACTED,
+      copyAccounts: {
+        title: 'Copy Accounts from Groups',
+        tooltip: 'Select one or more groups of the same platform. After creation, all accounts from these groups will be automatically bound to the new group (deduplicated).',
+        tooltipEdit: 'Select one or more groups of the same platform. After saving, current group accounts will be replaced with accounts from these groups (deduplicated).',
+        selectPlaceholder: 'Select groups to copy accounts from...',
+        hint: 'Multiple groups can be selected, accounts will be deduplicated',
+        hintEdit: '⚠️ Warning: This will replace all existing account bindings'
+      REDACTED,
       modelRouting: {
         title: 'Model Routing',
         tooltip: 'Configure specific model requests to be routed to designated accounts. Supports wildcard matching, e.g., claude-opus-* matches all opus models.',
@@ -1110,6 +1215,7 @@ export default {
         overloaded: 'Overloaded',
         tempUnschedulable: 'Temp Unschedulable',
         rateLimitedUntil: 'Rate limited until {timeREDACTED',
+        scopeRateLimitedUntil: '{scopeREDACTED rate limited until {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
         viewTempUnschedDetails: 'View temp unschedulable details'
       REDACTED,
@@ -1357,6 +1463,8 @@ export default {
       accountUpdated: 'Account updated successfully',
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
+      mixedChannelWarningTitle: 'Mixed Channel Warning',
+      mixedChannelWarning: 'Warning: Group "{groupNameREDACTED" contains both {currentPlatformREDACTED and {otherPlatformREDACTED accounts. Mixing different channels may cause thinking block signature validation issues, which will fallback to non-thinking mode. Are you sure you want to continue?',
       pleaseEnterAccountName: 'Please enter account name',
       pleaseEnterApiKey: 'Please enter API Key',
       apiKeyIsRequired: 'API Key is required',
@@ -1833,6 +1941,8 @@ export default {
       balance: 'Balance',
       concurrency: 'Concurrency',
       subscription: 'Subscription',
+      invitation: 'Invitation',
+      invitationHint: 'Invitation codes are used to restrict user registration. They are automatically marked as used after use.',
       unused: 'Unused',
       used: 'Used',
       columns: {
@@ -1879,6 +1989,7 @@ export default {
         balance: 'Balance',
         concurrency: 'Concurrency',
         subscription: 'Subscription',
+        invitation: 'Invitation',
         // Admin adjustment types (created when admin modifies user balance/concurrency)
         admin_balance: 'Balance (Admin)',
         admin_concurrency: 'Concurrency (Admin)'
@@ -1894,6 +2005,73 @@ export default {
         expired: 'Expired',
         disabled: 'Disabled'
       REDACTED
+    REDACTED,
+
+    // Announcements
+    announcements: {
+      title: 'Announcements',
+      description: 'Create announcements and target by conditions',
+      createAnnouncement: 'Create Announcement',
+      editAnnouncement: 'Edit Announcement',
+      deleteAnnouncement: 'Delete Announcement',
+      searchAnnouncements: 'Search announcements...',
+      status: 'Status',
+      allStatus: 'All Status',
+      columns: {
+        title: 'Title',
+        status: 'Status',
+        targeting: 'Targeting',
+        timeRange: 'Schedule',
+        createdAt: 'Created At',
+        actions: 'Actions'
+      REDACTED,
+      statusLabels: {
+        draft: 'Draft',
+        active: 'Active',
+        archived: 'Archived'
+      REDACTED,
+      form: {
+        title: 'Title',
+        content: 'Content (Markdown supported)',
+        status: 'Status',
+        startsAt: 'Starts At',
+        endsAt: 'Ends At',
+        startsAtHint: 'Leave empty to start immediately',
+        endsAtHint: 'Leave empty to never expire',
+        targetingMode: 'Targeting',
+        targetingAll: 'All users',
+        targetingCustom: 'Custom rules',
+        addOrGroup: 'Add OR group',
+        addAndCondition: 'Add AND condition',
+        conditionType: 'Condition type',
+        conditionSubscription: 'Subscription',
+        conditionBalance: 'Balance',
+        operator: 'Operator',
+        balanceValue: 'Balance threshold',
+        selectPackages: 'Select packages'
+      REDACTED,
+      operators: {
+        gt: '>',
+        gte: '≥',
+        lt: '<',
+        lte: '≤',
+        eq: '='
+      REDACTED,
+      targetingSummaryAll: 'All users',
+      targetingSummaryCustom: 'Custom ({groupsREDACTED groups)',
+      timeImmediate: 'Immediate',
+      timeNever: 'Never',
+      readStatus: 'Read Status',
+      eligible: 'Eligible',
+      readAt: 'Read at',
+      unread: 'Unread',
+      searchUsers: 'Search users...',
+      failedToLoad: 'Failed to load announcements',
+      failedToCreate: 'Failed to create announcement',
+      failedToUpdate: 'Failed to update announcement',
+      failedToDelete: 'Failed to delete announcement',
+      failedToLoadReadStatus: 'Failed to load read status',
+      deleteConfirm: 'Are you sure you want to delete this announcement? This action cannot be undone.'
     REDACTED,
 
     // Promo Codes
@@ -2667,6 +2845,8 @@ export default {
         ignoreContextCanceledHint: 'When enabled, client disconnect (context canceled) errors will not be written to the error log.',
         ignoreNoAvailableAccounts: 'Ignore no available accounts errors',
         ignoreNoAvailableAccountsHint: 'When enabled, "No available accounts" errors will not be written to the error log (not recommended; usually a config issue).',
+        ignoreInvalidApiKeyErrors: 'Ignore invalid API key errors',
+        ignoreInvalidApiKeyErrorsHint: 'When enabled, invalid or missing API key errors (INVALID_API_KEY, API_KEY_REQUIRED) will not be written to the error log.',
         autoRefresh: 'Auto Refresh',
         enableAutoRefresh: 'Enable auto refresh',
         enableAutoRefreshHint: 'Automatically refresh dashboard data at a fixed interval.',
@@ -2694,6 +2874,7 @@ export default {
         empty: 'No data',
         queued: 'Queue {countREDACTED',
         rateLimited: 'Rate-limited {countREDACTED',
+        scopeRateLimitedTooltip: '{scopeREDACTED rate-limited ({countREDACTED accounts)',
         errorAccounts: 'Errors {countREDACTED',
         loadFailed: 'Failed to load concurrency data'
       REDACTED,
@@ -2760,7 +2941,15 @@ export default {
         emailVerification: 'Email Verification',
         emailVerificationHint: 'Require email verification for new registrations',
         promoCode: 'Promo Code',
-        promoCodeHint: 'Allow users to use promo codes during registration'
+        promoCodeHint: 'Allow users to use promo codes during registration',
+        invitationCode: 'Invitation Code Registration',
+        invitationCodeHint: 'When enabled, users must enter a valid invitation code to register',
+        passwordReset: 'Password Reset',
+        passwordResetHint: 'Allow users to reset their password via email',
+        totp: 'Two-Factor Authentication (2FA)',
+        totpHint: 'Allow users to use authenticator apps like Google Authenticator',
+        totpKeyNotConfigured:
+          'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',
@@ -2833,6 +3022,17 @@ export default {
         homeContentIframeWarning: '⚠️ iframe mode note: Some websites have X-Frame-Options or CSP security policies that prevent embedding in iframes. If the page appears blank or shows an error, please verify the target website allows embedding, or consider using HTML mode to build your own content.',
         hideCcsImportButton: 'Hide CCS Import Button',
         hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
+      REDACTED,
+      purchase: {
+        title: 'Purchase Page',
+        description: 'Show a "Purchase Subscription" entry in the sidebar and open the configured URL in an iframe',
+        enabled: 'Show Purchase Entry',
+        enabledHint: 'Only shown in standard mode (not simple mode)',
+        url: 'Purchase URL',
+        urlPlaceholder: 'https://example.com/purchase',
+        urlHint: 'Must be an absolute http(s) URL',
+        iframeWarning:
+          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.'
       REDACTED,
       smtp: {
         title: 'SMTP Settings',
@@ -2977,6 +3177,42 @@ export default {
     restartNow: 'Restart Now',
     restarting: 'Restarting...',
     retry: 'Retry'
+  REDACTED,
+
+  // Purchase Subscription Page
+  purchase: {
+    title: 'Purchase Subscription',
+    description: 'Purchase a subscription via the embedded page',
+    openInNewTab: 'Open in new tab',
+    notEnabledTitle: 'Feature not enabled',
+    notEnabledDesc: 'The administrator has not enabled the purchase page. Please contact admin.',
+    notConfiguredTitle: 'Purchase URL not configured',
+    notConfiguredDesc:
+      'The administrator enabled the entry but has not configured a purchase URL. Please contact admin.'
+  REDACTED,
+
+  // Announcements Page
+  announcements: {
+    title: 'Announcements',
+    description: 'View system announcements',
+    unreadOnly: 'Show unread only',
+    markRead: 'Mark as read',
+    markAllRead: 'Mark all as read',
+    viewAll: 'View all announcements',
+    markedAsRead: 'Marked as read',
+    allMarkedAsRead: 'All announcements marked as read',
+    newCount: '{countREDACTED new announcement | {countREDACTED new announcements',
+    readAt: 'Read at',
+    read: 'Read',
+    unread: 'Unread',
+    startsAt: 'Starts at',
+    endsAt: 'Ends at',
+    empty: 'No announcements',
+    emptyUnread: 'No unread announcements',
+    total: 'announcements',
+    emptyDescription: 'There are no system announcements at this time',
+    readStatus: 'You have read this announcement',
+    markReadHint: 'Click "Mark as read" to mark this announcement'
   REDACTED,
 
   // User Subscriptions Page

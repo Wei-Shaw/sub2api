@@ -547,9 +547,18 @@ REDACTED else if account.Platform == service.PlatformAntigravity {
 		REDACTED
 	REDACTED
 
-		// 如果 project_id 获取失败，先更新凭证，再标记账户为 error
+		// 特殊处理 project_id：如果新值为空但旧值非空，保留旧值
+		// 这确保了即使 LoadCodeAssist 失败，project_id 也不会丢失
+		if newProjectID, _ := newCredentials["project_id"].(string); newProjectID == "" {
+			if oldProjectID := strings.TrimSpace(account.GetCredential("project_id")); oldProjectID != "" {
+				newCredentials["project_id"] = oldProjectID
+		REDACTED
+	REDACTED
+
+		// 如果 project_id 获取失败，更新凭证但不标记为 error
+		// LoadCodeAssist 失败可能是临时网络问题，给它机会在下次自动刷新时重试
 		if tokenInfo.ProjectIDMissing {
-			// 先更新凭证
+			// 先更新凭证（token 本身刷新成功了）
 			_, updateErr := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 				Credentials: newCredentials,
 		REDACTED)
@@ -557,14 +566,10 @@ REDACTED else if account.Platform == service.PlatformAntigravity {
 				response.InternalError(c, "Failed to update credentials: "+updateErr.Error())
 				return
 		REDACTED
-			// 标记账户为 error
-			if setErr := h.adminService.SetAccountError(c.Request.Context(), accountID, "missing_project_id: 账户缺少project id，可能无法使用Antigravity"); setErr != nil {
-				response.InternalError(c, "Failed to set account error: "+setErr.Error())
-				return
-		REDACTED
+			// 不标记为 error，只返回警告信息
 			response.Success(c, gin.H{
-				"message": "Token refreshed but project_id is missing, account marked as error",
-				"warning": "missing_project_id",
+				"message": "Token refreshed successfully, but project_id could not be retrieved (will retry automatically)",
+				"warning": "missing_project_id_temporary",
 		REDACTED)
 			return
 	REDACTED

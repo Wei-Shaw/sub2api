@@ -36,6 +36,11 @@ const (
 	geminiRetryMaxDelay  = 16 * time.Second
 )
 
+// Gemini tool calling now requires `thoughtSignature` in parts that include `functionCall`.
+// Many clients don't send it; we inject a known dummy signature to satisfy the validator.
+// Ref: https://ai.google.dev/gemini-api/docs/thought-signatures
+const geminiDummyThoughtSignature = "skip_thought_signature_validator"
+
 type GeminiMessagesCompatService struct {
 	accountRepo               AccountRepository
 	groupRepo                 GroupRepository
@@ -528,6 +533,7 @@ REDACTED
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 REDACTED
+	geminiReq = ensureGeminiFunctionCallThoughtSignatures(geminiReq)
 	originalClaudeBody := body
 
 	proxyURL := ""
@@ -931,6 +937,13 @@ REDACTED else {
 	REDACTED
 REDACTED
 
+	// 图片生成计费
+	imageCount := 0
+	imageSize := s.extractImageSize(body)
+	if isImageGenerationModel(originalModel) {
+		imageCount = 1
+REDACTED
+
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
@@ -938,6 +951,8 @@ REDACTED
 		Stream:       req.Stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
+		ImageCount:   imageCount,
+		ImageSize:    imageSize,
 REDACTED, nil
 REDACTED
 
@@ -968,6 +983,10 @@ REDACTED
 	default:
 		return nil, s.writeGoogleError(c, http.StatusNotFound, "Unsupported action: "+action)
 REDACTED
+
+	// Some Gemini upstreams validate tool call parts strictly; ensure any `functionCall` part includes a
+	// `thoughtSignature` to avoid frequent INVALID_ARGUMENT 400s.
+	body = ensureGeminiFunctionCallThoughtSignatures(body)
 
 	mappedModel := originalModel
 	if account.Type == AccountTypeAPIKey {
@@ -1371,6 +1390,13 @@ REDACTED
 		usage = &ClaudeUsage{REDACTED
 REDACTED
 
+	// 图片生成计费
+	imageCount := 0
+	imageSize := s.extractImageSize(body)
+	if isImageGenerationModel(originalModel) {
+		imageCount = 1
+REDACTED
+
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
@@ -1378,6 +1404,8 @@ REDACTED
 		Stream:       stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
+		ImageCount:   imageCount,
+		ImageSize:    imageSize,
 REDACTED, nil
 REDACTED
 
@@ -2504,9 +2532,13 @@ func extractGeminiUsage(geminiResp map[string]any) *ClaudeUsage {
 REDACTED
 	prompt, _ := asInt(usageMeta["promptTokenCount"])
 	cand, _ := asInt(usageMeta["candidatesTokenCount"])
+	cached, _ := asInt(usageMeta["cachedContentTokenCount"])
+	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
+	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
 	return &ClaudeUsage{
-		InputTokens:  prompt,
-		OutputTokens: cand,
+		InputTokens:          prompt - cached,
+		OutputTokens:         cand,
+		CacheReadInputTokens: cached,
 REDACTED
 REDACTED
 
@@ -2633,6 +2665,58 @@ func nextGeminiDailyResetUnix() *int64 {
 	reset := geminiDailyResetTime(time.Now())
 	ts := reset.Unix()
 	return &ts
+REDACTED
+
+func ensureGeminiFunctionCallThoughtSignatures(body []byte) []byte {
+	// Fast path: only run when functionCall is present.
+	if !bytes.Contains(body, []byte(`"functionCall"`)) {
+		return body
+REDACTED
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+REDACTED
+
+	contentsAny, ok := payload["contents"].([]any)
+	if !ok || len(contentsAny) == 0 {
+		return body
+REDACTED
+
+	modified := false
+	for _, c := range contentsAny {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		partsAny, ok := cm["parts"].([]any)
+		if !ok || len(partsAny) == 0 {
+			continue
+	REDACTED
+		for _, p := range partsAny {
+			pm, ok := p.(map[string]any)
+			if !ok || pm == nil {
+				continue
+		REDACTED
+			if fc, ok := pm["functionCall"].(map[string]any); !ok || fc == nil {
+				continue
+		REDACTED
+			ts, _ := pm["thoughtSignature"].(string)
+			if strings.TrimSpace(ts) == "" {
+				pm["thoughtSignature"] = geminiDummyThoughtSignature
+				modified = true
+		REDACTED
+	REDACTED
+REDACTED
+
+	if !modified {
+		return body
+REDACTED
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return body
+REDACTED
+	return b
 REDACTED
 
 func extractGeminiFinishReason(geminiResp map[string]any) string {
@@ -2834,7 +2918,13 @@ REDACTED
 					if strings.TrimSpace(id) != "" && strings.TrimSpace(name) != "" {
 						toolUseIDToName[id] = name
 				REDACTED
+					signature, _ := bm["signature"].(string)
+					signature = strings.TrimSpace(signature)
+					if signature == "" {
+						signature = geminiDummyThoughtSignature
+				REDACTED
 					parts = append(parts, map[string]any{
+						"thoughtSignature": signature,
 						"functionCall": map[string]any{
 							"name": name,
 							"args": bm["input"],
@@ -3030,4 +3120,27 @@ REDACTED
 		return nil
 REDACTED
 	return out
+REDACTED
+
+// extractImageSize 从 Gemini 请求中提取 image_size 参数
+func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
+	var req struct {
+		GenerationConfig *struct {
+			ImageConfig *struct {
+				ImageSize string `json:"imageSize"`
+		REDACTED `json:"imageConfig"`
+	REDACTED `json:"generationConfig"`
+REDACTED
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "2K"
+REDACTED
+
+	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
+		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
+		if size == "1K" || size == "2K" || size == "4K" {
+			return size
+	REDACTED
+REDACTED
+
+	return "2K"
 REDACTED

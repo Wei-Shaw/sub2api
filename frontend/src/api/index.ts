@@ -7,7 +7,7 @@
 export { apiClient REDACTED from './client'
 
 // Auth API
-export { authAPI REDACTED from './auth'
+export { authAPI, isTotp2FARequired, type LoginResponse REDACTED from './auth'
 
 // User APIs
 export { keysAPI REDACTED from './keys'
@@ -15,6 +15,8 @@ export { usageAPI REDACTED from './usage'
 export { userAPI REDACTED from './user'
 export { redeemAPI, type RedeemHistoryItem REDACTED from './redeem'
 export { userGroupsAPI REDACTED from './groups'
+export { totpAPI REDACTED from './totp'
+export { default as announcementsAPI REDACTED from './announcements'
 
 // Admin APIs
 export { adminAPI REDACTED from './admin'

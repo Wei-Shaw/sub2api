@@ -26,13 +26,13 @@ var (
 
 // 默认指纹值（当客户端未提供时使用）
 var defaultFingerprint = Fingerprint{
-	UserAgent:               "claude-cli/2.0.62 (external, cli)",
+	UserAgent:               "claude-cli/2.1.22 (external, cli)",
 	StainlessLang:           "js",
-	StainlessPackageVersion: "0.52.0",
+	StainlessPackageVersion: "0.70.0",
 	StainlessOS:             "Linux",
-	StainlessArch:           "x64",
+	StainlessArch:           "arm64",
 	StainlessRuntime:        "node",
-	StainlessRuntimeVersion: "v22.14.0",
+	StainlessRuntimeVersion: "v24.13.0",
 REDACTED
 
 // Fingerprint represents account fingerprint data
@@ -327,7 +327,7 @@ func generateUUIDFromSeed(seed string) string {
 REDACTED
 
 // parseUserAgentVersion 解析user-agent版本号
-// 例如：claude-cli/2.0.62 -> (2, 0, 62)
+// 例如：claude-cli/2.1.2 -> (2, 1, 2)
 func parseUserAgentVersion(ua string) (major, minor, patch int, ok bool) {
 	// 匹配 xxx/x.y.z 格式
 	matches := userAgentVersionRegex.FindStringSubmatch(ua)

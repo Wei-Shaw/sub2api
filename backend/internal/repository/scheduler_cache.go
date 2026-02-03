@@ -58,7 +58,9 @@ REDACTED
 		return nil, false, err
 REDACTED
 	if len(ids) == 0 {
-		return []*service.Account{REDACTED, true, nil
+		// 空快照视为缓存未命中，触发数据库回退查询
+		// 这解决了新分组创建后立即绑定账号时的竞态条件问题
+		return nil, false, nil
 REDACTED
 
 	keys := make([]string, 0, len(ids))

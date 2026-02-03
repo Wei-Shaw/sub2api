@@ -312,6 +312,14 @@
                 <p v-else class="text-xs text-gray-400 dark:text-dark-500">
                   {{ t('redeem.adminAdjustment') REDACTEDREDACTED
                 </p>
+                <!-- Display notes for admin adjustments -->
+                <p
+                  v-if="item.notes"
+                  class="mt-1 text-xs text-gray-500 dark:text-dark-400 italic max-w-[200px] truncate"
+                  :title="item.notes"
+                >
+                  {{ item.notes REDACTEDREDACTED
+                </p>
               </div>
             </div>
           </div>

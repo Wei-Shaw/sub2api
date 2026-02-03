@@ -77,7 +77,11 @@ REDACTED
 REDACTED
 	status := c.Query("status")
 
-	subscriptions, pagination, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status)
+	// Parse sorting parameters
+	sortBy := c.DefaultQuery("sort_by", "created_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
+
+	subscriptions, pagination, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

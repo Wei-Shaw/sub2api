@@ -48,6 +48,10 @@ REDACTED
 		RegistrationEnabled:                  settings.RegistrationEnabled,
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
 		PromoCodeEnabled:                     settings.PromoCodeEnabled,
+		PasswordResetEnabled:                 settings.PasswordResetEnabled,
+		InvitationCodeEnabled:                settings.InvitationCodeEnabled,
+		TotpEnabled:                          settings.TotpEnabled,
+		TotpEncryptionKeyConfigured:          h.settingService.IsTotpEncryptionKeyConfigured(),
 		SMTPHost:                             settings.SMTPHost,
 		SMTPPort:                             settings.SMTPPort,
 		SMTPUsername:                         settings.SMTPUsername,
@@ -70,6 +74,8 @@ REDACTED
 		DocURL:                               settings.DocURL,
 		HomeContent:                          settings.HomeContent,
 		HideCcsImportButton:                  settings.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:          settings.PurchaseSubscriptionEnabled,
+		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		EnableModelFallback:                  settings.EnableModelFallback,
@@ -89,9 +95,12 @@ REDACTED
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled bool `json:"registration_enabled"`
-	EmailVerifyEnabled  bool `json:"email_verify_enabled"`
-	PromoCodeEnabled    bool `json:"promo_code_enabled"`
+	RegistrationEnabled   bool `json:"registration_enabled"`
+	EmailVerifyEnabled    bool `json:"email_verify_enabled"`
+	PromoCodeEnabled      bool `json:"promo_code_enabled"`
+	PasswordResetEnabled  bool `json:"password_reset_enabled"`
+	InvitationCodeEnabled bool `json:"invitation_code_enabled"`
+	TotpEnabled           bool `json:"totp_enabled"` // TOTP 双因素认证
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -114,14 +123,16 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
 
 	// OEM设置
-	SiteName            string `json:"site_name"`
-	SiteLogo            string `json:"site_logo"`
-	SiteSubtitle        string `json:"site_subtitle"`
-	APIBaseURL          string `json:"api_base_url"`
-	ContactInfo         string `json:"contact_info"`
-	DocURL              string `json:"doc_url"`
-	HomeContent         string `json:"home_content"`
-	HideCcsImportButton bool   `json:"hide_ccs_import_button"`
+	SiteName                    string  `json:"site_name"`
+	SiteLogo                    string  `json:"site_logo"`
+	SiteSubtitle                string  `json:"site_subtitle"`
+	APIBaseURL                  string  `json:"api_base_url"`
+	ContactInfo                 string  `json:"contact_info"`
+	DocURL                      string  `json:"doc_url"`
+	HomeContent                 string  `json:"home_content"`
+	HideCcsImportButton         bool    `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled *bool   `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     *string `json:"purchase_subscription_url"`
 
 	// 默认配置
 	DefaultConcurrency int     `json:"default_concurrency"`
@@ -198,6 +209,16 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// TOTP 双因素认证参数验证
+	// 只有手动配置了加密密钥才允许启用 TOTP 功能
+	if req.TotpEnabled && !previousSettings.TotpEnabled {
+		// 尝试启用 TOTP，检查加密密钥是否已手动配置
+		if !h.settingService.IsTotpEncryptionKeyConfigured() {
+			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
+			return
+	REDACTED
+REDACTED
+
 	// LinuxDo Connect 参数验证
 	if req.LinuxDoConnectEnabled {
 		req.LinuxDoConnectClientID = strings.TrimSpace(req.LinuxDoConnectClientID)
@@ -227,6 +248,34 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// “购买订阅”页面配置验证
+	purchaseEnabled := previousSettings.PurchaseSubscriptionEnabled
+	if req.PurchaseSubscriptionEnabled != nil {
+		purchaseEnabled = *req.PurchaseSubscriptionEnabled
+REDACTED
+	purchaseURL := previousSettings.PurchaseSubscriptionURL
+	if req.PurchaseSubscriptionURL != nil {
+		purchaseURL = strings.TrimSpace(*req.PurchaseSubscriptionURL)
+REDACTED
+
+	// - 启用时要求 URL 合法且非空
+	// - 禁用时允许为空；若提供了 URL 也做基本校验，避免误配置
+	if purchaseEnabled {
+		if purchaseURL == "" {
+			response.BadRequest(c, "Purchase Subscription URL is required when enabled")
+			return
+	REDACTED
+		if err := config.ValidateAbsoluteHTTPURL(purchaseURL); err != nil {
+			response.BadRequest(c, "Purchase Subscription URL must be an absolute http(s) URL")
+			return
+	REDACTED
+REDACTED else if purchaseURL != "" {
+		if err := config.ValidateAbsoluteHTTPURL(purchaseURL); err != nil {
+			response.BadRequest(c, "Purchase Subscription URL must be an absolute http(s) URL")
+			return
+	REDACTED
+REDACTED
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -240,40 +289,45 @@ REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:        req.RegistrationEnabled,
-		EmailVerifyEnabled:         req.EmailVerifyEnabled,
-		PromoCodeEnabled:           req.PromoCodeEnabled,
-		SMTPHost:                   req.SMTPHost,
-		SMTPPort:                   req.SMTPPort,
-		SMTPUsername:               req.SMTPUsername,
-		SMTPPassword:               req.SMTPPassword,
-		SMTPFrom:                   req.SMTPFrom,
-		SMTPFromName:               req.SMTPFromName,
-		SMTPUseTLS:                 req.SMTPUseTLS,
-		TurnstileEnabled:           req.TurnstileEnabled,
-		TurnstileSiteKey:           req.TurnstileSiteKey,
-		TurnstileSecretKey:         req.TurnstileSecretKey,
-		LinuxDoConnectEnabled:      req.LinuxDoConnectEnabled,
-		LinuxDoConnectClientID:     req.LinuxDoConnectClientID,
-		LinuxDoConnectClientSecret: req.LinuxDoConnectClientSecret,
-		LinuxDoConnectRedirectURL:  req.LinuxDoConnectRedirectURL,
-		SiteName:                   req.SiteName,
-		SiteLogo:                   req.SiteLogo,
-		SiteSubtitle:               req.SiteSubtitle,
-		APIBaseURL:                 req.APIBaseURL,
-		ContactInfo:                req.ContactInfo,
-		DocURL:                     req.DocURL,
-		HomeContent:                req.HomeContent,
-		HideCcsImportButton:        req.HideCcsImportButton,
-		DefaultConcurrency:         req.DefaultConcurrency,
-		DefaultBalance:             req.DefaultBalance,
-		EnableModelFallback:        req.EnableModelFallback,
-		FallbackModelAnthropic:     req.FallbackModelAnthropic,
-		FallbackModelOpenAI:        req.FallbackModelOpenAI,
-		FallbackModelGemini:        req.FallbackModelGemini,
-		FallbackModelAntigravity:   req.FallbackModelAntigravity,
-		EnableIdentityPatch:        req.EnableIdentityPatch,
-		IdentityPatchPrompt:        req.IdentityPatchPrompt,
+		RegistrationEnabled:         req.RegistrationEnabled,
+		EmailVerifyEnabled:          req.EmailVerifyEnabled,
+		PromoCodeEnabled:            req.PromoCodeEnabled,
+		PasswordResetEnabled:        req.PasswordResetEnabled,
+		InvitationCodeEnabled:       req.InvitationCodeEnabled,
+		TotpEnabled:                 req.TotpEnabled,
+		SMTPHost:                    req.SMTPHost,
+		SMTPPort:                    req.SMTPPort,
+		SMTPUsername:                req.SMTPUsername,
+		SMTPPassword:                req.SMTPPassword,
+		SMTPFrom:                    req.SMTPFrom,
+		SMTPFromName:                req.SMTPFromName,
+		SMTPUseTLS:                  req.SMTPUseTLS,
+		TurnstileEnabled:            req.TurnstileEnabled,
+		TurnstileSiteKey:            req.TurnstileSiteKey,
+		TurnstileSecretKey:          req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:       req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:      req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret:  req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:   req.LinuxDoConnectRedirectURL,
+		SiteName:                    req.SiteName,
+		SiteLogo:                    req.SiteLogo,
+		SiteSubtitle:                req.SiteSubtitle,
+		APIBaseURL:                  req.APIBaseURL,
+		ContactInfo:                 req.ContactInfo,
+		DocURL:                      req.DocURL,
+		HomeContent:                 req.HomeContent,
+		HideCcsImportButton:         req.HideCcsImportButton,
+		PurchaseSubscriptionEnabled: purchaseEnabled,
+		PurchaseSubscriptionURL:     purchaseURL,
+		DefaultConcurrency:          req.DefaultConcurrency,
+		DefaultBalance:              req.DefaultBalance,
+		EnableModelFallback:         req.EnableModelFallback,
+		FallbackModelAnthropic:      req.FallbackModelAnthropic,
+		FallbackModelOpenAI:         req.FallbackModelOpenAI,
+		FallbackModelGemini:         req.FallbackModelGemini,
+		FallbackModelAntigravity:    req.FallbackModelAntigravity,
+		EnableIdentityPatch:         req.EnableIdentityPatch,
+		IdentityPatchPrompt:         req.IdentityPatchPrompt,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -318,6 +372,10 @@ REDACTED
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
 		PromoCodeEnabled:                     updatedSettings.PromoCodeEnabled,
+		PasswordResetEnabled:                 updatedSettings.PasswordResetEnabled,
+		InvitationCodeEnabled:                updatedSettings.InvitationCodeEnabled,
+		TotpEnabled:                          updatedSettings.TotpEnabled,
+		TotpEncryptionKeyConfigured:          h.settingService.IsTotpEncryptionKeyConfigured(),
 		SMTPHost:                             updatedSettings.SMTPHost,
 		SMTPPort:                             updatedSettings.SMTPPort,
 		SMTPUsername:                         updatedSettings.SMTPUsername,
@@ -340,6 +398,8 @@ REDACTED
 		DocURL:                               updatedSettings.DocURL,
 		HomeContent:                          updatedSettings.HomeContent,
 		HideCcsImportButton:                  updatedSettings.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:          updatedSettings.PurchaseSubscriptionEnabled,
+		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		EnableModelFallback:                  updatedSettings.EnableModelFallback,
@@ -383,6 +443,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 REDACTED
 	if before.EmailVerifyEnabled != after.EmailVerifyEnabled {
 		changed = append(changed, "email_verify_enabled")
+REDACTED
+	if before.PasswordResetEnabled != after.PasswordResetEnabled {
+		changed = append(changed, "password_reset_enabled")
+REDACTED
+	if before.TotpEnabled != after.TotpEnabled {
+		changed = append(changed, "totp_enabled")
 REDACTED
 	if before.SMTPHost != after.SMTPHost {
 		changed = append(changed, "smtp_host")

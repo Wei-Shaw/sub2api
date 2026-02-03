@@ -4,6 +4,7 @@
       <div
         v-if="show"
         class="modal-overlay"
+        :style="zIndexStyle"
         :aria-labelledby="dialogId"
         role="dialog"
         aria-modal="true"
@@ -60,6 +61,7 @@ interface Props {
   width?: DialogWidth
   closeOnEscape?: boolean
   closeOnClickOutside?: boolean
+  zIndex?: number
 REDACTED
 
 interface Emits {
@@ -69,10 +71,16 @@ REDACTED
 const props = withDefaults(defineProps<Props>(), {
   width: 'normal',
   closeOnEscape: true,
-  closeOnClickOutside: false
+  closeOnClickOutside: false,
+  zIndex: 50
 REDACTED)
 
 const emit = defineEmits<Emits>()
+
+// Custom z-index style (overrides the default z-50 from CSS)
+const zIndexStyle = computed(() => {
+  return props.zIndex !== 50 ? { zIndex: props.zIndex REDACTED : undefined
+REDACTED)
 
 const widthClasses = computed(() => {
   // Width guidance: narrow=confirm/short prompts, normal=standard forms,
