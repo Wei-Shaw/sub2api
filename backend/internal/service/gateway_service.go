@@ -4540,13 +4540,19 @@ REDACTED
 
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
-	Result       *ForwardResult
-	APIKey       *APIKey
-	User         *User
-	Account      *Account
-	Subscription *UserSubscription // 可选：订阅信息
-	UserAgent    string            // 请求的 User-Agent
-	IPAddress    string            // 请求的客户端 IP 地址
+	Result        *ForwardResult
+	APIKey        *APIKey
+	User          *User
+	Account       *Account
+	Subscription  *UserSubscription  // 可选：订阅信息
+	UserAgent     string             // 请求的 User-Agent
+	IPAddress     string             // 请求的客户端 IP 地址
+	APIKeyService APIKeyQuotaUpdater // 可选：用于更新API Key配额
+REDACTED
+
+// APIKeyQuotaUpdater defines the interface for updating API Key quota
+type APIKeyQuotaUpdater interface {
+	UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cost float64) error
 REDACTED
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -4686,6 +4692,13 @@ REDACTED else {
 	REDACTED
 REDACTED
 
+	// 更新 API Key 配额（如果设置了配额限制）
+	if shouldBill && cost.ActualCost > 0 && apiKey.Quota > 0 && input.APIKeyService != nil {
+		if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
+			log.Printf("Update API key quota failed: %v", err)
+	REDACTED
+REDACTED
+
 	// Schedule batch update for account last_used_at
 	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 
@@ -4703,6 +4716,7 @@ type RecordUsageLongContextInput struct {
 	IPAddress             string            // 请求的客户端 IP 地址
 	LongContextThreshold  int               // 长上下文阈值（如 200000）
 	LongContextMultiplier float64           // 超出阈值部分的倍率（如 2.0）
+	APIKeyService         *APIKeyService    // API Key 配额服务（可选）
 REDACTED
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
@@ -4839,6 +4853,12 @@ REDACTED else {
 		REDACTED
 			// 异步更新余额缓存
 			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
+			// API Key 独立配额扣费
+			if input.APIKeyService != nil && apiKey.Quota > 0 {
+				if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
+					log.Printf("Add API key quota used failed: %v", err)
+			REDACTED
+		REDACTED
 	REDACTED
 REDACTED
 

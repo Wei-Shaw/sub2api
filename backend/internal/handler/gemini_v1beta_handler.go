@@ -386,6 +386,7 @@ REDACTED
 				IPAddress:             ip,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
+				APIKeyService:         h.apiKeyService,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED

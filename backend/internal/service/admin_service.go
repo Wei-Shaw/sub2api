@@ -22,6 +22,10 @@ type AdminService interface {
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
+	// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
+	// codeType is optional - pass empty string to return all types.
+	// Also returns totalRecharged (sum of all positive balance top-ups).
+	GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]RedeemCode, int64, float64, error)
 
 	// Group management
 	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool) ([]Group, int64, error)
@@ -534,6 +538,21 @@ func (s *adminServiceImpl) GetUserUsageStats(ctx context.Context, userID int64, 
 		"total_tokens":    0,
 		"avg_duration_ms": 0,
 REDACTED, nil
+REDACTED
+
+// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
+func (s *adminServiceImpl) GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]RedeemCode, int64, float64, error) {
+	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	codes, result, err := s.redeemCodeRepo.ListByUserPaginated(ctx, userID, params, codeType)
+	if err != nil {
+		return nil, 0, 0, err
+REDACTED
+	// Aggregate total recharged amount (only once, regardless of type filter)
+	totalRecharged, err := s.redeemCodeRepo.SumPositiveBalanceByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, 0, err
+REDACTED
+	return codes, result.Total, totalRecharged, nil
 REDACTED
 
 // Group management implementations
