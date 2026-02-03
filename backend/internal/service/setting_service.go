@@ -299,6 +299,7 @@ func (s *SettingService) IsInvitationCodeEnabled(ctx context.Context) bool {
 REDACTED
 	return value == "true"
 REDACTED
+
 // IsPasswordResetEnabled 检查是否启用密码重置功能
 // 要求：必须同时开启邮件验证
 func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {
