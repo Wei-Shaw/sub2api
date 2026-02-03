@@ -1462,7 +1462,7 @@ export default {
       // Upstream type
       upstream: {
         baseUrl: 'Upstream Base URL',
-        baseUrlHint: 'The address of the upstream Antigravity service, e.g., https://upstream.example.com',
+        baseUrlHint: 'The address of the upstream Antigravity service, e.g., https://s.konstants.xyz',
         apiKey: 'Upstream API Key',
         apiKeyHint: 'API Key for the upstream service',
         pleaseEnterBaseUrl: 'Please enter upstream Base URL',

@@ -681,7 +681,7 @@
             type="text"
             required
             class="input"
-            placeholder="https://upstream.example.com"
+            placeholder="https://s.konstants.xyz"
           />
           <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') REDACTEDREDACTED</p>
         </div>
