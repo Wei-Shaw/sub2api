@@ -3,6 +3,7 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -27,11 +28,13 @@ REDACTED
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name        string   `json:"name" binding:"required"`
-	GroupID     *int64   `json:"group_id"`     // nullable
-	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
+	Name          string   `json:"name" binding:"required"`
+	GroupID       *int64   `json:"group_id"`        // nullable
+	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
+	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
+	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
+	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
+	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
 REDACTED
 
 // UpdateAPIKeyRequest represents the update API key request payload
@@ -41,6 +44,9 @@ type UpdateAPIKeyRequest struct {
 	Status      string   `json:"status" binding:"omitempty,oneof=active inactive"`
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
+	Quota       *float64 `json:"quota"`        // 配额限制 (USD), 0=无限制
+	ExpiresAt   *string  `json:"expires_at"`   // 过期时间 (ISO 8601)
+	ResetQuota  *bool    `json:"reset_quota"`  // 重置已用配额
 REDACTED
 
 // List handles listing user's API keys with pagination
@@ -114,11 +120,15 @@ REDACTED
 REDACTED
 
 	svcReq := service.CreateAPIKeyRequest{
-		Name:        req.Name,
-		GroupID:     req.GroupID,
-		CustomKey:   req.CustomKey,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
+		Name:          req.Name,
+		GroupID:       req.GroupID,
+		CustomKey:     req.CustomKey,
+		IPWhitelist:   req.IPWhitelist,
+		IPBlacklist:   req.IPBlacklist,
+		ExpiresInDays: req.ExpiresInDays,
+REDACTED
+	if req.Quota != nil {
+		svcReq.Quota = *req.Quota
 REDACTED
 	key, err := h.apiKeyService.Create(c.Request.Context(), subject.UserID, svcReq)
 	if err != nil {
@@ -153,6 +163,8 @@ REDACTED
 	svcReq := service.UpdateAPIKeyRequest{
 		IPWhitelist: req.IPWhitelist,
 		IPBlacklist: req.IPBlacklist,
+		Quota:       req.Quota,
+		ResetQuota:  req.ResetQuota,
 REDACTED
 	if req.Name != "" {
 		svcReq.Name = &req.Name
@@ -160,6 +172,21 @@ REDACTED
 	svcReq.GroupID = req.GroupID
 	if req.Status != "" {
 		svcReq.Status = &req.Status
+REDACTED
+	// Parse expires_at if provided
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt == "" {
+			// Empty string means clear expiration
+			svcReq.ExpiresAt = nil
+			svcReq.ClearExpiration = true
+	REDACTED else {
+			t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+			if err != nil {
+				response.BadRequest(c, "Invalid expires_at format: "+err.Error())
+				return
+		REDACTED
+			svcReq.ExpiresAt = &t
+	REDACTED
 REDACTED
 
 	key, err := h.apiKeyService.Update(c.Request.Context(), keyID, subject.UserID, svcReq)

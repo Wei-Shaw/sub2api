@@ -1,4 +1,4 @@
-FROM golang:1.25.5-alpine
+FROM golang:1.25.6-alpine
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN go mod download
 COPY . .
 
 # 构建应用
-RUN go build -o main cmd/server/main.go
+RUN go build -o main ./cmd/server/
 
 # 暴露端口
 EXPOSE 8080
