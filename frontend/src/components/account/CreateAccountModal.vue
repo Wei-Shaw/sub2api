@@ -1865,6 +1865,18 @@
       </div>
     </template>
   </BaseDialog>
+
+  <!-- Mixed Channel Warning Dialog -->
+  <ConfirmDialog
+    :show="showMixedChannelWarning"
+    :title="t('admin.accounts.mixedChannelWarningTitle')"
+    :message="mixedChannelWarningDetails ? t('admin.accounts.mixedChannelWarning', mixedChannelWarningDetails) : ''"
+    :confirm-text="t('common.confirm')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="handleMixedChannelConfirm"
+    @cancel="handleMixedChannelCancel"
+  />
 </template>
 
 <script setup lang="ts">
@@ -1884,6 +1896,7 @@ import { useGeminiOAuth REDACTED from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth REDACTED from '@/composables/useAntigravityOAuth'
 import type { Proxy, AdminGroup, AccountPlatform, AccountType REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
@@ -2013,6 +2026,11 @@ const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
+
+// Mixed channel warning dialog state
+const showMixedChannelWarning = ref(false)
+const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: string; otherPlatform: string REDACTED | null>(null)
+const pendingCreatePayload = ref<any>(null)
 const showAdvancedOAuth = ref(false)
 const showGeminiHelpDialog = ref(false)
 
@@ -2444,6 +2462,59 @@ const handleClose = () => {
   emit('close')
 REDACTED
 
+// Helper function to create account with mixed channel warning handling
+const doCreateAccount = async (payload: any) => {
+  submitting.value = true
+  try {
+    await adminAPI.accounts.create(payload)
+    appStore.showSuccess(t('admin.accounts.accountCreated'))
+    emit('created')
+    handleClose()
+  REDACTED catch (error: any) {
+    // Handle 409 mixed_channel_warning - show confirmation dialog
+    if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning') {
+      const details = error.response.data.details || {REDACTED
+      mixedChannelWarningDetails.value = {
+        groupName: details.group_name || 'Unknown',
+        currentPlatform: details.current_platform || 'Unknown',
+        otherPlatform: details.other_platform || 'Unknown'
+      REDACTED
+      pendingCreatePayload.value = payload
+      showMixedChannelWarning.value = true
+    REDACTED else {
+      appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    REDACTED
+  REDACTED finally {
+    submitting.value = false
+  REDACTED
+REDACTED
+
+// Handle mixed channel warning confirmation
+const handleMixedChannelConfirm = async () => {
+  showMixedChannelWarning.value = false
+  if (pendingCreatePayload.value) {
+    pendingCreatePayload.value.confirm_mixed_channel_risk = true
+    submitting.value = true
+    try {
+      await adminAPI.accounts.create(pendingCreatePayload.value)
+      appStore.showSuccess(t('admin.accounts.accountCreated'))
+      emit('created')
+      handleClose()
+    REDACTED catch (error: any) {
+      appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToCreate'))
+    REDACTED finally {
+      submitting.value = false
+      pendingCreatePayload.value = null
+    REDACTED
+  REDACTED
+REDACTED
+
+const handleMixedChannelCancel = () => {
+  showMixedChannelWarning.value = false
+  pendingCreatePayload.value = null
+  mixedChannelWarningDetails.value = null
+REDACTED
+
 const handleSubmit = async () => {
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
@@ -2530,21 +2601,11 @@ const handleSubmit = async () => {
 
   form.credentials = credentials
 
-  submitting.value = true
-  try {
-    await adminAPI.accounts.create({
-      ...form,
-      group_ids: form.group_ids,
-      auto_pause_on_expired: autoPauseOnExpired.value
-    REDACTED)
-    appStore.showSuccess(t('admin.accounts.accountCreated'))
-    emit('created')
-    handleClose()
-  REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToCreate'))
-  REDACTED finally {
-    submitting.value = false
-  REDACTED
+  await doCreateAccount({
+    ...form,
+    group_ids: form.group_ids,
+    auto_pause_on_expired: autoPauseOnExpired.value
+  REDACTED)
 REDACTED
 
 const goBackToBasicInfo = () => {

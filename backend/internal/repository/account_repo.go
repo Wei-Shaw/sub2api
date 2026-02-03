@@ -813,7 +813,7 @@ REDACTED
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		`UPDATE accounts SET 
+		`UPDATE accounts SET
 			extra = jsonb_set(
 				jsonb_set(COALESCE(extra, '{REDACTED'::jsonb), '{antigravity_quota_scopesREDACTED'::text[], COALESCE(extra->'antigravity_quota_scopes', '{REDACTED'::jsonb), true),
 				ARRAY['antigravity_quota_scopes', $1]::text[],

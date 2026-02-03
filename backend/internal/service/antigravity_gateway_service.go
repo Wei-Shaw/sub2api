@@ -1952,7 +1952,11 @@ REDACTED
 
 func antigravityUseScopeRateLimit() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityScopeRateLimitEnv)))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+	// 默认开启按配额域限流，只有明确设置为禁用值时才关闭
+	if v == "0" || v == "false" || v == "no" || v == "off" {
+		return false
+REDACTED
+	return true
 REDACTED
 
 func antigravityHasAccountSwitch(ctx context.Context) bool {
