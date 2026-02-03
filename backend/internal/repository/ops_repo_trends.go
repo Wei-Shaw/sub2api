@@ -56,18 +56,44 @@ error_buckets AS (
     AND COALESCE(status_code, 0) >= 400
   GROUP BY 1
 ),
+switch_buckets AS (
+  SELECT ` + errorBucketExpr + ` AS bucket,
+         COALESCE(SUM(CASE
+           WHEN split_part(ev->>'kind', ':', 1) IN ('failover', 'retry_exhausted_failover', 'failover_on_400') THEN 1
+           ELSE 0
+         END), 0) AS switch_count
+  FROM ops_error_logs
+  CROSS JOIN LATERAL jsonb_array_elements(
+    COALESCE(NULLIF(upstream_errors, 'null'::jsonb), '[]'::jsonb)
+  ) AS ev
+  ` + errorWhere + `
+    AND upstream_errors IS NOT NULL
+  GROUP BY 1
+),
 combined AS (
-  SELECT COALESCE(u.bucket, e.bucket) AS bucket,
-         COALESCE(u.success_count, 0) AS success_count,
-         COALESCE(e.error_count, 0) AS error_count,
-         COALESCE(u.token_consumed, 0) AS token_consumed
-  FROM usage_buckets u
-  FULL OUTER JOIN error_buckets e ON u.bucket = e.bucket
+  SELECT
+    bucket,
+    SUM(success_count) AS success_count,
+    SUM(error_count) AS error_count,
+    SUM(token_consumed) AS token_consumed,
+    SUM(switch_count) AS switch_count
+  FROM (
+    SELECT bucket, success_count, 0 AS error_count, token_consumed, 0 AS switch_count
+    FROM usage_buckets
+    UNION ALL
+    SELECT bucket, 0, error_count, 0, 0
+    FROM error_buckets
+    UNION ALL
+    SELECT bucket, 0, 0, 0, switch_count
+    FROM switch_buckets
+  ) t
+  GROUP BY bucket
 )
 SELECT
   bucket,
   (success_count + error_count) AS request_count,
-  token_consumed
+  token_consumed,
+  switch_count
 FROM combined
 ORDER BY bucket ASC`
 
@@ -84,12 +110,17 @@ REDACTED
 		var bucket time.Time
 		var requests int64
 		var tokens sql.NullInt64
-		if err := rows.Scan(&bucket, &requests, &tokens); err != nil {
+		var switches sql.NullInt64
+		if err := rows.Scan(&bucket, &requests, &tokens, &switches); err != nil {
 			return nil, err
 	REDACTED
 		tokenConsumed := int64(0)
 		if tokens.Valid {
 			tokenConsumed = tokens.Int64
+	REDACTED
+		switchCount := int64(0)
+		if switches.Valid {
+			switchCount = switches.Int64
 	REDACTED
 
 		denom := float64(bucketSeconds)
@@ -103,6 +134,7 @@ REDACTED
 			BucketStart:   bucket.UTC(),
 			RequestCount:  requests,
 			TokenConsumed: tokenConsumed,
+			SwitchCount:   switchCount,
 			QPS:           qps,
 			TPS:           tps,
 	REDACTED)
@@ -385,6 +417,7 @@ REDACTED
 			BucketStart:   cursor,
 			RequestCount:  0,
 			TokenConsumed: 0,
+			SwitchCount:   0,
 			QPS:           0,
 			TPS:           0,
 	REDACTED)

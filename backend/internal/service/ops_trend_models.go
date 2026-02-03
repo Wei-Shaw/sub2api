@@ -6,6 +6,7 @@ type OpsThroughputTrendPoint struct {
 	BucketStart   time.Time `json:"bucket_start"`
 	RequestCount  int64     `json:"request_count"`
 	TokenConsumed int64     `json:"token_consumed"`
+	SwitchCount   int64     `json:"switch_count"`
 	QPS           float64   `json:"qps"`
 	TPS           float64   `json:"tps"`
 REDACTED

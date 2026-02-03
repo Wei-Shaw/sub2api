@@ -70,6 +70,15 @@ REDACTED
 	return sessionHash[:8]
 REDACTED
 
+func normalizeClaudeModelForAnthropic(requestedModel string) string {
+	for _, prefix := range anthropicPrefixMappings {
+		if strings.HasPrefix(requestedModel, prefix) {
+			return prefix
+	REDACTED
+REDACTED
+	return requestedModel
+REDACTED
+
 func redactAuthHeaderValue(v string) string {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -252,10 +261,19 @@ REDACTED
 		"You are a file search specialist for Claude Code",                     // Explore Agent 版
 		"You are a helpful AI assistant tasked with summarizing conversations", // Compact 版
 REDACTED
+
+	anthropicPrefixMappings = []string{
+		"claude-opus-4-5",
+		"claude-haiku-4-5",
+		"claude-sonnet-4-5",
+REDACTED
 )
 
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
+
+// ErrModelScopeNotSupported 表示请求的模型系列不在分组支持的范围内
+var ErrModelScopeNotSupported = errors.New("model scope not supported by this group")
 
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
@@ -1135,6 +1153,13 @@ REDACTED
 		log.Printf("[ModelRoutingDebug] load-aware enabled: group_id=%v model=%s session=%s platform=%s", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), platform)
 REDACTED
 
+	// Antigravity 模型系列检查（在账号选择前检查，确保所有代码路径都经过此检查）
+	if platform == PlatformAntigravity && groupID != nil && requestedModel != "" {
+		if err := s.checkAntigravityModelScope(ctx, *groupID, requestedModel); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
 	accounts, useMixed, err := s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
 		return nil, err
@@ -1632,6 +1657,10 @@ REDACTED
 	return group, nil
 REDACTED
 
+func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*Group, error) {
+	return s.resolveGroupByID(ctx, groupID)
+REDACTED
+
 func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
 	if groupID == nil || requestedModel == "" || platform != PlatformAnthropic {
 		return nil
@@ -1697,7 +1726,7 @@ func (s *GatewayService) checkClaudeCodeRestriction(ctx context.Context, groupID
 REDACTED
 
 	// 强制平台模式不检查 Claude Code 限制
-	if _, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string); hasForcePlatform {
+	if forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string); hasForcePlatform && forcePlatform != "" {
 		return nil, groupID, nil
 REDACTED
 
@@ -2026,6 +2055,13 @@ REDACTED
 
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
 func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platform string) (*Account, error) {
+	// 对 Antigravity 平台，检查请求的模型系列是否在分组支持范围内
+	if platform == PlatformAntigravity && groupID != nil && requestedModel != "" {
+		if err := s.checkAntigravityModelScope(ctx, *groupID, requestedModel); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
 	preferOAuth := platform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
 
@@ -2460,6 +2496,9 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	if account.Platform == PlatformAntigravity {
 		// Antigravity 平台使用专门的模型支持检查
 		return IsAntigravityModelSupported(requestedModel)
+REDACTED
+	if account.Platform == PlatformAnthropic {
+		requestedModel = normalizeClaudeModelForAnthropic(requestedModel)
 REDACTED
 	// Gemini API Key 账户直接透传，由上游判断模型是否支持
 	if account.Platform == PlatformGemini && account.Type == AccountTypeAPIKey {
@@ -2910,15 +2949,27 @@ REDACTED
 	// 强制执行 cache_control 块数量限制（最多 4 个）
 	body = enforceCacheControlLimit(body)
 
-	// 应用模型映射（仅对apikey类型账号）
+	// 应用模型映射（APIKey 明确映射优先，其次使用 Anthropic 前缀映射）
+	mappedModel := reqModel
+	mappingSource := ""
 	if account.Type == AccountTypeAPIKey {
-		mappedModel := account.GetMappedModel(reqModel)
+		mappedModel = account.GetMappedModel(reqModel)
 		if mappedModel != reqModel {
-			// 替换请求体中的模型名
-			body = s.replaceModelInBody(body, mappedModel)
-			reqModel = mappedModel
-			log.Printf("Model mapping applied: %s -> %s (account: %s)", originalModel, mappedModel, account.Name)
+			mappingSource = "account"
 	REDACTED
+REDACTED
+	if mappingSource == "" && account.Platform == PlatformAnthropic {
+		normalized := normalizeClaudeModelForAnthropic(reqModel)
+		if normalized != reqModel {
+			mappedModel = normalized
+			mappingSource = "prefix"
+	REDACTED
+REDACTED
+	if mappedModel != reqModel {
+		// 替换请求体中的模型名
+		body = s.replaceModelInBody(body, mappedModel)
+		reqModel = mappedModel
+		log.Printf("Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
 REDACTED
 
 	// 获取凭证
@@ -4842,15 +4893,27 @@ REDACTED
 		return nil
 REDACTED
 
-	// 应用模型映射（仅对 apikey 类型账号）
-	if account.Type == AccountTypeAPIKey {
-		if reqModel != "" {
-			mappedModel := account.GetMappedModel(reqModel)
+	// 应用模型映射（APIKey 明确映射优先，其次使用 Anthropic 前缀映射）
+	if reqModel != "" {
+		mappedModel := reqModel
+		mappingSource := ""
+		if account.Type == AccountTypeAPIKey {
+			mappedModel = account.GetMappedModel(reqModel)
 			if mappedModel != reqModel {
-				body = s.replaceModelInBody(body, mappedModel)
-				reqModel = mappedModel
-				log.Printf("CountTokens model mapping applied: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
+				mappingSource = "account"
 		REDACTED
+	REDACTED
+		if mappingSource == "" && account.Platform == PlatformAnthropic {
+			normalized := normalizeClaudeModelForAnthropic(reqModel)
+			if normalized != reqModel {
+				mappedModel = normalized
+				mappingSource = "prefix"
+		REDACTED
+	REDACTED
+		if mappedModel != reqModel {
+			body = s.replaceModelInBody(body, mappedModel)
+			reqModel = mappedModel
+			log.Printf("CountTokens model mapping applied: %s -> %s (account: %s, source=%s)", parsed.Model, mappedModel, account.Name, mappingSource)
 	REDACTED
 REDACTED
 
@@ -5101,6 +5164,27 @@ REDACTED)
 		return "", fmt.Errorf("invalid base_url: %w", err)
 REDACTED
 	return normalized, nil
+REDACTED
+
+// checkAntigravityModelScope 检查 Antigravity 平台的模型系列是否在分组支持范围内
+func (s *GatewayService) checkAntigravityModelScope(ctx context.Context, groupID int64, requestedModel string) error {
+	scope, ok := ResolveAntigravityQuotaScope(requestedModel)
+	if !ok {
+		return nil // 无法解析 scope，跳过检查
+REDACTED
+
+	group, err := s.resolveGroupByID(ctx, groupID)
+	if err != nil {
+		return nil // 查询失败时放行
+REDACTED
+	if group == nil {
+		return nil // 分组不存在时放行
+REDACTED
+
+	if !IsScopeSupported(group.SupportedModelScopes, scope) {
+		return ErrModelScopeNotSupported
+REDACTED
+	return nil
 REDACTED
 
 // GetAvailableModels returns the list of models available for a group

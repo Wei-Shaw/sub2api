@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -284,10 +285,14 @@ REDACTED
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
+			requestCtx := c.Request.Context()
+			if switchCount > 0 {
+				requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
+		REDACTED
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.ForwardGemini(c.Request.Context(), c, account, reqModel, "generateContent", reqStream, body)
+				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body)
 		REDACTED else {
-				result, err = h.geminiCompatService.Forward(c.Request.Context(), c, account, body)
+				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
 		REDACTED
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
@@ -335,140 +340,193 @@ REDACTED
 	REDACTED
 REDACTED
 
-	maxAccountSwitches := h.maxAccountSwitches
-	switchCount := 0
-	failedAccountIDs := make(map[int64]struct{REDACTED)
-	lastFailoverStatus := 0
+	currentAPIKey := apiKey
+	currentSubscription := subscription
+	var fallbackGroupID *int64
+	if apiKey.Group != nil {
+		fallbackGroupID = apiKey.Group.FallbackGroupIDOnInvalidRequest
+REDACTED
+	fallbackUsed := false
 
 	for {
-		// 选择支持该模型的账号
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, failedAccountIDs, parsedReq.MetadataUserID)
-		if err != nil {
-			if len(failedAccountIDs) == 0 {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
-				return
-		REDACTED
-			h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
-			return
-	REDACTED
-		account := selection.Account
-		setOpsSelectedAccount(c, account.ID)
+		maxAccountSwitches := h.maxAccountSwitches
+		switchCount := 0
+		failedAccountIDs := make(map[int64]struct{REDACTED)
+		lastFailoverStatus := 0
+		retryWithFallback := false
 
-		// 检查请求拦截（预热请求、SUGGESTION MODE等）
-		if account.IsInterceptWarmupEnabled() {
-			interceptType := detectInterceptType(body)
-			if interceptType != InterceptTypeNone {
-				if selection.Acquired && selection.ReleaseFunc != nil {
-					selection.ReleaseFunc()
-			REDACTED
-				if reqStream {
-					sendMockInterceptStream(c, reqModel, interceptType)
-			REDACTED else {
-					sendMockInterceptResponse(c, reqModel, interceptType)
-			REDACTED
-				return
-		REDACTED
-	REDACTED
-
-		// 3. 获取账号并发槽位
-		accountReleaseFunc := selection.ReleaseFunc
-		if !selection.Acquired {
-			if selection.WaitPlan == nil {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
-				return
-		REDACTED
-			accountWaitCounted := false
-			canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+		for {
+			// 选择支持该模型的账号
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, failedAccountIDs, parsedReq.MetadataUserID)
 			if err != nil {
-				log.Printf("Increment account wait count failed: %v", err)
-		REDACTED else if !canWait {
-				log.Printf("Account wait queue full: account=%d", account.ID)
-				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
-				return
-		REDACTED
-			if err == nil && canWait {
-				accountWaitCounted = true
-		REDACTED
-			defer func() {
-				if accountWaitCounted {
-					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
-			REDACTED
-		REDACTED()
-
-			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
-				c,
-				account.ID,
-				selection.WaitPlan.MaxConcurrency,
-				selection.WaitPlan.Timeout,
-				reqStream,
-				&streamStarted,
-			)
-			if err != nil {
-				log.Printf("Account concurrency acquire failed: %v", err)
-				h.handleConcurrencyError(c, err, "account", streamStarted)
-				return
-		REDACTED
-			if accountWaitCounted {
-				h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
-				accountWaitCounted = false
-		REDACTED
-			if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID); err != nil {
-				log.Printf("Bind sticky session failed: %v", err)
-		REDACTED
-	REDACTED
-		// 账号槽位/等待计数需要在超时或断开时安全回收
-		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
-
-		// 转发请求 - 根据账号平台分流
-		var result *service.ForwardResult
-		if account.Platform == service.PlatformAntigravity {
-			result, err = h.antigravityGatewayService.Forward(c.Request.Context(), c, account, body)
-	REDACTED else {
-			result, err = h.gatewayService.Forward(c.Request.Context(), c, account, parsedReq)
-	REDACTED
-		if accountReleaseFunc != nil {
-			accountReleaseFunc()
-	REDACTED
-		if err != nil {
-			var failoverErr *service.UpstreamFailoverError
-			if errors.As(err, &failoverErr) {
-				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
-				lastFailoverStatus = failoverErr.StatusCode
-				if switchCount >= maxAccountSwitches {
-					h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
+				if len(failedAccountIDs) == 0 {
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 					return
 			REDACTED
-				switchCount++
-				log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
-				continue
+				h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
+				return
 		REDACTED
-			// 错误响应已在Forward中处理，这里只记录日志
-			log.Printf("Account %d: Forward request failed: %v", account.ID, err)
+			account := selection.Account
+			setOpsSelectedAccount(c, account.ID)
+
+			// 检查请求拦截（预热请求、SUGGESTION MODE等）
+			if account.IsInterceptWarmupEnabled() {
+				interceptType := detectInterceptType(body)
+				if interceptType != InterceptTypeNone {
+					if selection.Acquired && selection.ReleaseFunc != nil {
+						selection.ReleaseFunc()
+				REDACTED
+					if reqStream {
+						sendMockInterceptStream(c, reqModel, interceptType)
+				REDACTED else {
+						sendMockInterceptResponse(c, reqModel, interceptType)
+				REDACTED
+					return
+			REDACTED
+		REDACTED
+
+			// 3. 获取账号并发槽位
+			accountReleaseFunc := selection.ReleaseFunc
+			if !selection.Acquired {
+				if selection.WaitPlan == nil {
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+					return
+			REDACTED
+				accountWaitCounted := false
+				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+				if err != nil {
+					log.Printf("Increment account wait count failed: %v", err)
+			REDACTED else if !canWait {
+					log.Printf("Account wait queue full: account=%d", account.ID)
+					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
+					return
+			REDACTED
+				if err == nil && canWait {
+					accountWaitCounted = true
+			REDACTED
+				defer func() {
+					if accountWaitCounted {
+						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+				REDACTED
+			REDACTED()
+
+				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
+					c,
+					account.ID,
+					selection.WaitPlan.MaxConcurrency,
+					selection.WaitPlan.Timeout,
+					reqStream,
+					&streamStarted,
+				)
+				if err != nil {
+					log.Printf("Account concurrency acquire failed: %v", err)
+					h.handleConcurrencyError(c, err, "account", streamStarted)
+					return
+			REDACTED
+				if accountWaitCounted {
+					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+					accountWaitCounted = false
+			REDACTED
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+					log.Printf("Bind sticky session failed: %v", err)
+			REDACTED
+		REDACTED
+			// 账号槽位/等待计数需要在超时或断开时安全回收
+			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+
+			// 转发请求 - 根据账号平台分流
+			var result *service.ForwardResult
+			requestCtx := c.Request.Context()
+			if switchCount > 0 {
+				requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
+		REDACTED
+			if account.Platform == service.PlatformAntigravity {
+				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body)
+		REDACTED else {
+				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
+		REDACTED
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+		REDACTED
+			if err != nil {
+				var promptTooLongErr *service.PromptTooLongError
+				if errors.As(err, &promptTooLongErr) {
+					log.Printf("Prompt too long from antigravity: group=%d fallback_group_id=%v fallback_used=%v", currentAPIKey.GroupID, fallbackGroupID, fallbackUsed)
+					if !fallbackUsed && fallbackGroupID != nil && *fallbackGroupID > 0 {
+						fallbackGroup, err := h.gatewayService.ResolveGroupByID(c.Request.Context(), *fallbackGroupID)
+						if err != nil {
+							log.Printf("Resolve fallback group failed: %v", err)
+							_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
+							return
+					REDACTED
+						if fallbackGroup.Platform != service.PlatformAnthropic ||
+							fallbackGroup.SubscriptionType == service.SubscriptionTypeSubscription ||
+							fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
+							log.Printf("Fallback group invalid: group=%d platform=%s subscription=%s", fallbackGroup.ID, fallbackGroup.Platform, fallbackGroup.SubscriptionType)
+							_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
+							return
+					REDACTED
+						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
+						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
+							status, code, message := billingErrorDetails(err)
+							h.handleStreamingAwareError(c, status, code, message, streamStarted)
+							return
+					REDACTED
+						// 兜底重试按“直接请求兜底分组”处理：清除强制平台，允许按分组平台调度
+						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
+						c.Request = c.Request.WithContext(ctx)
+						currentAPIKey = fallbackAPIKey
+						currentSubscription = nil
+						fallbackUsed = true
+						retryWithFallback = true
+						break
+				REDACTED
+					_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
+					return
+			REDACTED
+				var failoverErr *service.UpstreamFailoverError
+				if errors.As(err, &failoverErr) {
+					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+					lastFailoverStatus = failoverErr.StatusCode
+					if switchCount >= maxAccountSwitches {
+						h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
+						return
+				REDACTED
+					switchCount++
+					log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+					continue
+			REDACTED
+				// 错误响应已在Forward中处理，这里只记录日志
+				log.Printf("Account %d: Forward request failed: %v", account.ID, err)
+				return
+		REDACTED
+
+			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
+			userAgent := c.GetHeader("User-Agent")
+			clientIP := ip.GetClientIP(c)
+
+			// 异步记录使用量（subscription已在函数开头获取）
+			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string) {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+					Result:       result,
+					APIKey:       currentAPIKey,
+					User:         currentAPIKey.User,
+					Account:      usedAccount,
+					Subscription: currentSubscription,
+					UserAgent:    ua,
+					IPAddress:    clientIP,
+          APIKeyService: h.apiKeyService,
+			REDACTED); err != nil {
+					log.Printf("Record usage failed: %v", err)
+			REDACTED
+		REDACTED(result, account, userAgent, clientIP)
 			return
 	REDACTED
-
-		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
-		userAgent := c.GetHeader("User-Agent")
-		clientIP := ip.GetClientIP(c)
-
-		// 异步记录使用量（subscription已在函数开头获取）
-		go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-				Result:        result,
-				APIKey:        apiKey,
-				User:          apiKey.User,
-				Account:       usedAccount,
-				Subscription:  subscription,
-				UserAgent:     ua,
-				IPAddress:     clientIP,
-				APIKeyService: h.apiKeyService,
-		REDACTED); err != nil {
-				log.Printf("Record usage failed: %v", err)
-		REDACTED
-	REDACTED(result, account, userAgent, clientIP)
-		return
+		if !retryWithFallback {
+			return
+	REDACTED
 REDACTED
 REDACTED
 
@@ -530,6 +588,17 @@ func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 		"object": "list",
 		"data":   antigravity.DefaultModels(),
 REDACTED)
+REDACTED
+
+func cloneAPIKeyWithGroup(apiKey *service.APIKey, group *service.Group) *service.APIKey {
+	if apiKey == nil || group == nil {
+		return apiKey
+REDACTED
+	cloned := *apiKey
+	groupID := group.ID
+	cloned.GroupID = &groupID
+	cloned.Group = group
+	return &cloned
 REDACTED
 
 // Usage handles getting account balance and usage statistics for CC Switch integration

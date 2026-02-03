@@ -13,23 +13,34 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 const (
-	antigravityStickySessionTTL = time.Hour
-	antigravityMaxRetries       = 3
-	antigravityRetryBaseDelay   = 1 * time.Second
-	antigravityRetryMaxDelay    = 16 * time.Second
+	antigravityStickySessionTTL  = time.Hour
+	antigravityDefaultMaxRetries = 3
+	antigravityRetryBaseDelay    = 1 * time.Second
+	antigravityRetryMaxDelay     = 16 * time.Second
 )
 
-const antigravityScopeRateLimitEnv = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
+const (
+	antigravityMaxRetriesEnv            = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
+	antigravityMaxRetriesAfterSwitchEnv = "GATEWAY_ANTIGRAVITY_AFTER_SWITCHMAX_RETRIES"
+	antigravityMaxRetriesClaudeEnv      = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_CLAUDE"
+	antigravityMaxRetriesGeminiTextEnv  = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_TEXT"
+	antigravityMaxRetriesGeminiImageEnv = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_IMAGE"
+	antigravityScopeRateLimitEnv        = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
+	antigravityBillingModelEnv          = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
+	antigravityFallbackSecondsEnv       = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
+)
 
 // antigravityRetryLoopParams 重试循环的参数
 type antigravityRetryLoopParams struct {
@@ -41,6 +52,7 @@ type antigravityRetryLoopParams struct {
 	action         string
 	body           []byte
 	quotaScope     AntigravityQuotaScope
+	maxRetries     int
 	c              *gin.Context
 	httpUpstream   HTTPUpstream
 	settingService *SettingService
@@ -52,11 +64,28 @@ type antigravityRetryLoopResult struct {
 	resp *http.Response
 REDACTED
 
+// PromptTooLongError 表示上游明确返回 prompt too long
+type PromptTooLongError struct {
+	StatusCode int
+	RequestID  string
+	Body       []byte
+REDACTED
+
+func (e *PromptTooLongError) Error() string {
+	return fmt.Sprintf("prompt too long: status=%d", e.StatusCode)
+REDACTED
+
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
-	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLs()
+	baseURLs := antigravity.ForwardBaseURLs()
+	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLsWithBase(baseURLs)
 	if len(availableURLs) == 0 {
-		availableURLs = antigravity.BaseURLs
+		availableURLs = baseURLs
+REDACTED
+
+	maxRetries := p.maxRetries
+	if maxRetries <= 0 {
+		maxRetries = antigravityDefaultMaxRetries
 REDACTED
 
 	var resp *http.Response
@@ -76,7 +105,7 @@ REDACTED
 urlFallbackLoop:
 	for urlIdx, baseURL := range availableURLs {
 		usedBaseURL = baseURL
-		for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
+		for attempt := 1; attempt <= maxRetries; attempt++ {
 			select {
 			case <-p.ctx.Done():
 				log.Printf("%s status=context_canceled error=%v", p.prefix, p.ctx.Err())
@@ -109,8 +138,8 @@ urlFallbackLoop:
 					log.Printf("%s URL fallback (connection error): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
 					continue urlFallbackLoop
 			REDACTED
-				if attempt < antigravityMaxRetries {
-					log.Printf("%s status=request_failed retry=%d/%d error=%v", p.prefix, attempt, antigravityMaxRetries, err)
+				if attempt < maxRetries {
+					log.Printf("%s status=request_failed retry=%d/%d error=%v", p.prefix, attempt, maxRetries, err)
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -134,7 +163,7 @@ urlFallbackLoop:
 			REDACTED
 
 				// 账户/模型配额限流，重试 3 次（指数退避）
-				if attempt < antigravityMaxRetries {
+				if attempt < maxRetries {
 					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
@@ -147,7 +176,7 @@ urlFallbackLoop:
 						Message:            upstreamMsg,
 						Detail:             getUpstreamDetail(respBody),
 				REDACTED)
-					log.Printf("%s status=429 retry=%d/%d body=%s", p.prefix, attempt, antigravityMaxRetries, truncateForLog(respBody, 200))
+					log.Printf("%s status=429 retry=%d/%d body=%s", p.prefix, attempt, maxRetries, truncateForLog(respBody, 200))
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -171,7 +200,7 @@ urlFallbackLoop:
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				if attempt < antigravityMaxRetries {
+				if attempt < maxRetries {
 					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
@@ -184,7 +213,7 @@ urlFallbackLoop:
 						Message:            upstreamMsg,
 						Detail:             getUpstreamDetail(respBody),
 				REDACTED)
-					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 500))
+					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, maxRetries, truncateForLog(respBody, 500))
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -390,6 +419,11 @@ REDACTED
 // TestConnection 测试 Antigravity 账号连接（非流式，无重试、无计费）
 // 支持 Claude 和 Gemini 两种协议，根据 modelID 前缀自动选择
 func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+	// 上游透传账号使用专用测试方法
+	if account.Type == AccountTypeUpstream {
+		return s.testUpstreamConnection(ctx, account, modelID)
+REDACTED
+
 	// 获取 token
 	if s.tokenProvider == nil {
 		return nil, errors.New("antigravity token provider not configured")
@@ -484,6 +518,87 @@ REDACTED
 	return nil, lastErr
 REDACTED
 
+// testUpstreamConnection 测试上游透传账号连接
+func (s *AntigravityGatewayService) testUpstreamConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, errors.New("upstream account missing base_url or api_key")
+REDACTED
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 使用 Claude 模型进行测试
+	if modelID == "" {
+		modelID = "claude-sonnet-4-20250514"
+REDACTED
+
+	// 构建最小测试请求
+	testReq := map[string]any{
+		"model":      modelID,
+		"max_tokens": 1,
+		"messages": []map[string]any{
+			{"role": "user", "content": "."REDACTED,
+	REDACTED,
+REDACTED
+	requestBody, err := json.Marshal(testReq)
+	if err != nil {
+		return nil, fmt.Errorf("构建请求失败: %w", err)
+REDACTED
+
+	// 构建 HTTP 请求
+	upstreamURL := baseURL + "/v1/messages"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	// 代理 URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	log.Printf("[antigravity-Test-Upstream] account=%s url=%s", account.Name, upstreamURL)
+
+	// 发送请求
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+REDACTED
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("API 返回 %d: %s", resp.StatusCode, string(respBody))
+REDACTED
+
+	// 提取响应文本
+	var respData map[string]any
+	text := ""
+	if json.Unmarshal(respBody, &respData) == nil {
+		if content, ok := respData["content"].([]any); ok && len(content) > 0 {
+			if block, ok := content[0].(map[string]any); ok {
+				if t, ok := block["text"].(string); ok {
+					text = t
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	return &TestConnectionResult{
+		Text:        text,
+		MappedModel: modelID,
+REDACTED, nil
+REDACTED
+
 // buildGeminiTestRequest 构建 Gemini 格式测试请求
 // 使用最小 token 消耗：输入 "." + maxOutputTokens: 1
 func (s *AntigravityGatewayService) buildGeminiTestRequest(projectID, model string) ([]byte, error) {
@@ -534,6 +649,10 @@ func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Contex
 REDACTED
 	opts.EnableIdentityPatch = s.settingService.IsIdentityPatchEnabled(ctx)
 	opts.IdentityPatch = s.settingService.GetIdentityPatchPrompt(ctx)
+
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && group != nil {
+		opts.EnableMCPXML = group.MCPXMLInject
+REDACTED
 	return opts
 REDACTED
 
@@ -702,6 +821,11 @@ REDACTED
 
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	// 上游透传账号直接转发，不走 OAuth token 刷新
+	if account.Type == AccountTypeUpstream {
+		return s.ForwardUpstream(ctx, c, account, body)
+REDACTED
+
 	startTime := time.Now()
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
@@ -718,6 +842,12 @@ REDACTED
 	originalModel := claudeReq.Model
 	mappedModel := s.getMappedModel(account, claudeReq.Model)
 	quotaScope, _ := resolveAntigravityQuotaScope(originalModel)
+	billingModel := originalModel
+	if antigravityUseMappedModelForBilling() && strings.TrimSpace(mappedModel) != "" {
+		billingModel = mappedModel
+REDACTED
+	afterSwitch := antigravityHasAccountSwitch(ctx)
+	maxRetries := antigravityMaxRetriesForModel(originalModel, afterSwitch)
 
 	// 获取 access_token
 	if s.tokenProvider == nil {
@@ -766,6 +896,7 @@ REDACTED
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		handleError:    s.handleUpstreamError,
+		maxRetries:     maxRetries,
 REDACTED)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
@@ -842,6 +973,7 @@ REDACTED
 					httpUpstream:   s.httpUpstream,
 					settingService: s.settingService,
 					handleError:    s.handleUpstreamError,
+					maxRetries:     maxRetries,
 			REDACTED)
 				if retryErr != nil {
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -917,6 +1049,39 @@ REDACTED
 
 		// 处理错误响应（重试后仍失败或不触发重试）
 		if resp.StatusCode >= 400 {
+			if resp.StatusCode == http.StatusBadRequest {
+				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				log.Printf("%s status=400 prompt_too_long=%v upstream_message=%q request_id=%s body=%s", prefix, isPromptTooLongError(respBody), upstreamMsg, resp.Header.Get("x-request-id"), truncateForLog(respBody, 500))
+		REDACTED
+			if resp.StatusCode == http.StatusBadRequest && isPromptTooLongError(respBody) {
+				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
+				maxBytes := 2048
+				if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
+					maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+			REDACTED
+				upstreamDetail := ""
+				if logBody {
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "prompt_too_long",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+				return nil, &PromptTooLongError{
+					StatusCode: resp.StatusCode,
+					RequestID:  resp.Header.Get("x-request-id"),
+					Body:       respBody,
+			REDACTED
+		REDACTED
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
 
 			if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -978,7 +1143,7 @@ REDACTED
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
-		Model:        originalModel, // 使用原始模型用于计费和日志
+		Model:        billingModel, // 计费模型（可按映射模型覆盖）
 		Stream:       claudeReq.Stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
@@ -1006,21 +1171,55 @@ REDACTED
 	return false
 REDACTED
 
+func isPromptTooLongError(respBody []byte) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+	if msg == "" {
+		msg = strings.ToLower(string(respBody))
+REDACTED
+	return strings.Contains(msg, "prompt is too long")
+REDACTED
+
 func extractAntigravityErrorMessage(body []byte) string {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return ""
 REDACTED
 
+	parseNestedMessage := func(msg string) string {
+		trimmed := strings.TrimSpace(msg)
+		if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
+			return ""
+	REDACTED
+		var nested map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &nested); err != nil {
+			return ""
+	REDACTED
+		if errObj, ok := nested["error"].(map[string]any); ok {
+			if innerMsg, ok := errObj["message"].(string); ok && strings.TrimSpace(innerMsg) != "" {
+				return innerMsg
+		REDACTED
+	REDACTED
+		if innerMsg, ok := nested["message"].(string); ok && strings.TrimSpace(innerMsg) != "" {
+			return innerMsg
+	REDACTED
+		return ""
+REDACTED
+
 	// Google-style: {"error": {"message": "..."REDACTEDREDACTED
 	if errObj, ok := payload["error"].(map[string]any); ok {
 		if msg, ok := errObj["message"].(string); ok && strings.TrimSpace(msg) != "" {
+			if innerMsg := parseNestedMessage(msg); innerMsg != "" {
+				return innerMsg
+		REDACTED
 			return msg
 	REDACTED
 REDACTED
 
 	// Fallback: top-level message
 	if msg, ok := payload["message"].(string); ok && strings.TrimSpace(msg) != "" {
+		if innerMsg := parseNestedMessage(msg); innerMsg != "" {
+			return innerMsg
+	REDACTED
 		return msg
 REDACTED
 
@@ -1248,6 +1447,208 @@ REDACTED
 	return changed, nil
 REDACTED
 
+// ForwardUpstream 透传请求到上游 Antigravity 服务
+// 用于 upstream 类型账号，直接使用 base_url + api_key 转发，不走 OAuth token
+func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	startTime := time.Now()
+	sessionID := getSessionID(c)
+	prefix := logPrefix(sessionID, account.Name)
+
+	// 获取上游配置
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+REDACTED
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 解析请求获取模型信息
+	var claudeReq antigravity.ClaudeRequest
+	if err := json.Unmarshal(body, &claudeReq); err != nil {
+		return nil, fmt.Errorf("parse claude request: %w", err)
+REDACTED
+	if strings.TrimSpace(claudeReq.Model) == "" {
+		return nil, fmt.Errorf("missing model")
+REDACTED
+	originalModel := claudeReq.Model
+	billingModel := originalModel
+
+	// 构建上游请求 URL
+	upstreamURL := baseURL + "/v1/messages"
+
+	// 创建请求
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create upstream request: %w", err)
+REDACTED
+
+	// 设置请求头
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey) // Claude API 兼容
+
+	// 透传 Claude 相关 headers
+	if v := c.GetHeader("anthropic-version"); v != "" {
+		req.Header.Set("anthropic-version", v)
+REDACTED
+	if v := c.GetHeader("anthropic-beta"); v != "" {
+		req.Header.Set("anthropic-beta", v)
+REDACTED
+
+	// 代理 URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	// 发送请求
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		log.Printf("%s upstream request failed: %v", prefix, err)
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	// 处理错误响应
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+		// 429 错误时标记账号限流
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, AntigravityQuotaScopeClaude)
+	REDACTED
+
+		// 透传上游错误
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(resp.StatusCode)
+		_, _ = c.Writer.Write(respBody)
+
+		return &ForwardResult{
+			Model: billingModel,
+	REDACTED, nil
+REDACTED
+
+	// 处理成功响应（流式/非流式）
+	var usage *ClaudeUsage
+	var firstTokenMs *int
+
+	if claudeReq.Stream {
+		// 流式响应：透传
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+
+		usage, firstTokenMs = s.streamUpstreamResponse(c, resp, startTime)
+REDACTED else {
+		// 非流式响应：直接透传
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read upstream response: %w", err)
+	REDACTED
+
+		// 提取 usage
+		usage = s.extractClaudeUsage(respBody)
+
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.Write(respBody)
+REDACTED
+
+	// 构建计费结果
+	duration := time.Since(startTime)
+	log.Printf("%s status=success duration_ms=%d", prefix, duration.Milliseconds())
+
+	return &ForwardResult{
+		Model:        billingModel,
+		Stream:       claudeReq.Stream,
+		Duration:     duration,
+		FirstTokenMs: firstTokenMs,
+		Usage: ClaudeUsage{
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
+	REDACTED,
+REDACTED, nil
+REDACTED
+
+// streamUpstreamResponse 透传上游流式响应并提取 usage
+func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*ClaudeUsage, *int) {
+	usage := &ClaudeUsage{REDACTED
+	var firstTokenMs *int
+	var firstTokenRecorded bool
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		// 记录首 token 时间
+		if !firstTokenRecorded && len(line) > 0 {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+			firstTokenRecorded = true
+	REDACTED
+
+		// 尝试从 message_delta 或 message_stop 事件提取 usage
+		if bytes.HasPrefix(line, []byte("data: ")) {
+			dataStr := bytes.TrimPrefix(line, []byte("data: "))
+			var event map[string]any
+			if json.Unmarshal(dataStr, &event) == nil {
+				if u, ok := event["usage"].(map[string]any); ok {
+					if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {
+						usage.InputTokens = int(v)
+				REDACTED
+					if v, ok := u["output_tokens"].(float64); ok && int(v) > 0 {
+						usage.OutputTokens = int(v)
+				REDACTED
+					if v, ok := u["cache_read_input_tokens"].(float64); ok && int(v) > 0 {
+						usage.CacheReadInputTokens = int(v)
+				REDACTED
+					if v, ok := u["cache_creation_input_tokens"].(float64); ok && int(v) > 0 {
+						usage.CacheCreationInputTokens = int(v)
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// 透传行
+		_, _ = c.Writer.Write(line)
+		_, _ = c.Writer.Write([]byte("\n"))
+		c.Writer.Flush()
+REDACTED
+
+	return usage, firstTokenMs
+REDACTED
+
+// extractClaudeUsage 从非流式 Claude 响应提取 usage
+func (s *AntigravityGatewayService) extractClaudeUsage(body []byte) *ClaudeUsage {
+	usage := &ClaudeUsage{REDACTED
+	var resp map[string]any
+	if json.Unmarshal(body, &resp) != nil {
+		return usage
+REDACTED
+	if u, ok := resp["usage"].(map[string]any); ok {
+		if v, ok := u["input_tokens"].(float64); ok {
+			usage.InputTokens = int(v)
+	REDACTED
+		if v, ok := u["output_tokens"].(float64); ok {
+			usage.OutputTokens = int(v)
+	REDACTED
+		if v, ok := u["cache_read_input_tokens"].(float64); ok {
+			usage.CacheReadInputTokens = int(v)
+	REDACTED
+		if v, ok := u["cache_creation_input_tokens"].(float64); ok {
+			usage.CacheCreationInputTokens = int(v)
+	REDACTED
+REDACTED
+	return usage
+REDACTED
+
 // ForwardGemini 转发 Gemini 协议请求
 func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {
 	startTime := time.Now()
@@ -1287,6 +1688,12 @@ REDACTED
 REDACTED
 
 	mappedModel := s.getMappedModel(account, originalModel)
+	billingModel := originalModel
+	if antigravityUseMappedModelForBilling() && strings.TrimSpace(mappedModel) != "" {
+		billingModel = mappedModel
+REDACTED
+	afterSwitch := antigravityHasAccountSwitch(ctx)
+	maxRetries := antigravityMaxRetriesForModel(originalModel, afterSwitch)
 
 	// 获取 access_token
 	if s.tokenProvider == nil {
@@ -1306,8 +1713,15 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
+	// 过滤掉 parts 为空的消息（Gemini API 不接受空 parts）
+	filteredBody, err := filterEmptyPartsFromGeminiRequest(body)
+	if err != nil {
+		log.Printf("[Antigravity] Failed to filter empty parts: %v", err)
+		filteredBody = body
+REDACTED
+
 	// Antigravity 上游要求必须包含身份提示词，注入到请求中
-	injectedBody, err := injectIdentityPatchToGeminiRequest(body)
+	injectedBody, err := injectIdentityPatchToGeminiRequest(filteredBody)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -1344,6 +1758,7 @@ REDACTED
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		handleError:    s.handleUpstreamError,
+		maxRetries:     maxRetries,
 REDACTED)
 	if err != nil {
 		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
@@ -1493,7 +1908,7 @@ REDACTED
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
-		Model:        originalModel,
+		Model:        billingModel,
 		Stream:       stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
@@ -1544,6 +1959,81 @@ REDACTED
 	return true
 REDACTED
 
+func antigravityHasAccountSwitch(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+REDACTED
+	if v, ok := ctx.Value(ctxkey.AccountSwitchCount).(int); ok {
+		return v > 0
+REDACTED
+	return false
+REDACTED
+
+func antigravityMaxRetries() int {
+	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesEnv))
+	if raw == "" {
+		return antigravityDefaultMaxRetries
+REDACTED
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return antigravityDefaultMaxRetries
+REDACTED
+	return value
+REDACTED
+
+func antigravityMaxRetriesAfterSwitch() int {
+	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesAfterSwitchEnv))
+	if raw == "" {
+		return antigravityMaxRetries()
+REDACTED
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return antigravityMaxRetries()
+REDACTED
+	return value
+REDACTED
+
+// antigravityMaxRetriesForModel 根据模型类型获取重试次数
+// 优先使用模型细分配置，未设置则回退到平台级配置
+func antigravityMaxRetriesForModel(model string, afterSwitch bool) int {
+	var envKey string
+	if strings.HasPrefix(model, "claude-") {
+		envKey = antigravityMaxRetriesClaudeEnv
+REDACTED else if isImageGenerationModel(model) {
+		envKey = antigravityMaxRetriesGeminiImageEnv
+REDACTED else if strings.HasPrefix(model, "gemini-") {
+		envKey = antigravityMaxRetriesGeminiTextEnv
+REDACTED
+
+	if envKey != "" {
+		if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
+			if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+				return value
+		REDACTED
+	REDACTED
+REDACTED
+	if afterSwitch {
+		return antigravityMaxRetriesAfterSwitch()
+REDACTED
+	return antigravityMaxRetries()
+REDACTED
+
+func antigravityUseMappedModelForBilling() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityBillingModelEnv)))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+REDACTED
+
+func antigravityFallbackCooldownSeconds() (time.Duration, bool) {
+	raw := strings.TrimSpace(os.Getenv(antigravityFallbackSecondsEnv))
+	if raw == "" {
+		return 0, false
+REDACTED
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return 0, false
+REDACTED
+	return time.Duration(seconds) * time.Second, true
+REDACTED
 func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope) {
 	// 429 使用 Gemini 格式解析（从 body 解析重置时间）
 	if statusCode == 429 {
@@ -1556,6 +2046,9 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 				fallbackMinutes = s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes
 		REDACTED
 			defaultDur := time.Duration(fallbackMinutes) * time.Minute
+			if fallbackDur, ok := antigravityFallbackCooldownSeconds(); ok {
+				defaultDur = fallbackDur
+		REDACTED
 			ra := time.Now().Add(defaultDur)
 			if useScopeLimit {
 				log.Printf("%s status=429 rate_limited scope=%s reset_in=%v (fallback)", prefix, quotaScope, defaultDur)
@@ -2193,6 +2686,10 @@ REDACTED
 	return fmt.Errorf("upstream error: %d message=%s", upstreamStatus, upstreamMsg)
 REDACTED
 
+func (s *AntigravityGatewayService) WriteMappedClaudeError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
+	return s.writeMappedClaudeError(c, account, upstreamStatus, upstreamRequestID, body)
+REDACTED
+
 func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int, message string) error {
 	statusStr := "UNKNOWN"
 	switch status {
@@ -2616,5 +3113,57 @@ REDACTED
 		return body, nil
 REDACTED
 
+	return json.Marshal(payload)
+REDACTED
+
+// filterEmptyPartsFromGeminiRequest 过滤 Gemini 请求中 parts 为空的消息
+// Gemini API 不接受 parts 为空数组的消息，会返回 400 错误
+func filterEmptyPartsFromGeminiRequest(body []byte) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+REDACTED
+
+	contents, ok := payload["contents"].([]any)
+	if !ok || len(contents) == 0 {
+		return body, nil
+REDACTED
+
+	filtered := make([]any, 0, len(contents))
+	modified := false
+
+	for _, c := range contents {
+		contentMap, ok := c.(map[string]any)
+		if !ok {
+			filtered = append(filtered, c)
+			continue
+	REDACTED
+
+		parts, hasParts := contentMap["parts"]
+		if !hasParts {
+			filtered = append(filtered, c)
+			continue
+	REDACTED
+
+		partsSlice, ok := parts.([]any)
+		if !ok {
+			filtered = append(filtered, c)
+			continue
+	REDACTED
+
+		// 跳过 parts 为空数组的消息
+		if len(partsSlice) == 0 {
+			modified = true
+			continue
+	REDACTED
+
+		filtered = append(filtered, c)
+REDACTED
+
+	if !modified {
+		return body, nil
+REDACTED
+
+	payload["contents"] = filtered
 	return json.Marshal(payload)
 REDACTED

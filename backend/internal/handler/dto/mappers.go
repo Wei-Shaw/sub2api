@@ -108,10 +108,12 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		return nil
 REDACTED
 	out := &AdminGroup{
-		Group:               groupFromServiceBase(g),
-		ModelRouting:        g.ModelRouting,
-		ModelRoutingEnabled: g.ModelRoutingEnabled,
-		AccountCount:        g.AccountCount,
+		Group:                groupFromServiceBase(g),
+		ModelRouting:         g.ModelRouting,
+		ModelRoutingEnabled:  g.ModelRoutingEnabled,
+		MCPXMLInject:         g.MCPXMLInject,
+		SupportedModelScopes: g.SupportedModelScopes,
+		AccountCount:         g.AccountCount,
 REDACTED
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
@@ -141,8 +143,10 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImagePrice4K:     g.ImagePrice4K,
 		ClaudeCodeOnly:   g.ClaudeCodeOnly,
 		FallbackGroupID:  g.FallbackGroupID,
-		CreatedAt:        g.CreatedAt,
-		UpdatedAt:        g.UpdatedAt,
+		// 无效请求兜底分组
+		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
+		CreatedAt:                       g.CreatedAt,
+		UpdatedAt:                       g.UpdatedAt,
 REDACTED
 REDACTED
 

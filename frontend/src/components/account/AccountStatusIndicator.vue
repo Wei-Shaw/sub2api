@@ -56,7 +56,6 @@
         ></div>
       </div>
     </div>
-
     <!-- Rate Limit Indicator (429) -->
     <div v-if="isRateLimited" class="group relative">
       <span

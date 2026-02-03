@@ -1054,6 +1054,11 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       REDACTED,
+      invalidRequestFallback: {
+        title: 'Invalid Request Fallback Group',
+        hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',
+        noFallback: 'No Fallback'
+      REDACTED,
       copyAccounts: {
         title: 'Copy Accounts from Groups',
         tooltip: 'Select one or more groups of the same platform. After creation, all accounts from these groups will be automatically bound to the new group (deduplicated).',
@@ -1081,6 +1086,20 @@ export default {
         noRulesHint: 'Add routing rules to route specific model requests to designated accounts',
         searchAccountPlaceholder: 'Search accounts...',
         accountsHint: 'Select accounts to prioritize for this model pattern'
+      REDACTED,
+      mcpXml: {
+        title: 'MCP XML Protocol Injection',
+        tooltip: 'When enabled, if the request contains MCP tools, an XML format call protocol prompt will be injected into the system prompt. Disable this to avoid interference with certain clients.',
+        enabled: 'Enabled',
+        disabled: 'Disabled'
+      REDACTED,
+      supportedScopes: {
+        title: 'Supported Model Families',
+        tooltip: 'Select the model families this group supports. Unchecked families will not be routed to this group.',
+        claude: 'Claude',
+        geminiText: 'Gemini Text',
+        geminiImage: 'Gemini Image',
+        hint: 'Select at least one model family'
       REDACTED
     REDACTED,
 
@@ -1220,7 +1239,9 @@ export default {
         responsesApi: 'Responses API',
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
-        antigravityOauth: 'Antigravity OAuth'
+        antigravityOauth: 'Antigravity OAuth',
+        upstream: 'Upstream',
+        upstreamDesc: 'Connect via Base URL + API Key'
       REDACTED,
       status: {
         active: 'Active',
@@ -1480,6 +1501,15 @@ export default {
       pleaseEnterApiKey: 'Please enter API Key',
       apiKeyIsRequired: 'API Key is required',
       leaveEmptyToKeep: 'Leave empty to keep current key',
+      // Upstream type
+      upstream: {
+        baseUrl: 'Upstream Base URL',
+        baseUrlHint: 'The address of the upstream Antigravity service, e.g., https://s.konstants.xyz',
+        apiKey: 'Upstream API Key',
+        apiKeyHint: 'API Key for the upstream service',
+        pleaseEnterBaseUrl: 'Please enter upstream Base URL',
+        pleaseEnterApiKey: 'Please enter upstream API Key'
+      REDACTED,
       // OAuth flow
       oauth: {
         title: 'Claude Account Authorization',
@@ -2230,6 +2260,7 @@ export default {
       waiting: 'waiting',
       conns: 'conns',
       queue: 'queue',
+      accountSwitches: 'Account switches',
       ok: 'ok',
       lastRun: 'last_run:',
       lastSuccess: 'last_success:',
@@ -2278,6 +2309,7 @@ export default {
       failedToLoadData: 'Failed to load ops data.',
       failedToLoadOverview: 'Failed to load overview',
       failedToLoadThroughputTrend: 'Failed to load throughput trend',
+      failedToLoadSwitchTrend: 'Failed to load avg account switches trend',
       failedToLoadLatencyHistogram: 'Failed to load request duration histogram',
       failedToLoadErrorTrend: 'Failed to load error trend',
       failedToLoadErrorDistribution: 'Failed to load error distribution',
@@ -2286,9 +2318,11 @@ export default {
       tpsK: 'TPS (K)',
       top: 'Top:',
       throughputTrend: 'Throughput Trend',
+      switchRateTrend: 'Avg Account Switches',
       latencyHistogram: 'Request Duration Histogram',
       errorTrend: 'Error Trend',
       errorDistribution: 'Error Distribution',
+      switchRate: 'Avg switches',
       // Health Score & Diagnosis
       health: 'Health',
       healthCondition: 'Health Condition',
@@ -2911,6 +2945,7 @@ export default {
       tooltips: {
         totalRequests: 'Total number of requests (including both successful and failed requests) in the selected time window.',
         throughputTrend: 'Requests/QPS + Tokens/TPS in the selected window.',
+        switchRateTrend: 'Trend of account switches / total requests over the last 5 hours (avg switches).',
         latencyHistogram: 'Request duration distribution (ms) for successful requests.',
         errorTrend: 'Error counts over time (SLA scope excludes business limits; upstream excludes 429/529).',
         errorDistribution: 'Error distribution by status code.',

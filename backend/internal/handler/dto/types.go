@@ -72,6 +72,8 @@ type Group struct {
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
+	// 无效请求兜底分组
+	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -86,8 +88,13 @@ type AdminGroup struct {
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 
-	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
-	AccountCount  int64          `json:"account_count,omitempty"`
+	// MCP XML 协议注入（仅 antigravity 平台使用）
+	MCPXMLInject bool `json:"mcp_xml_inject"`
+
+	// 支持的模型系列（仅 antigravity 平台使用）
+	SupportedModelScopes []string       `json:"supported_model_scopes"`
+	AccountGroups        []AccountGroup `json:"account_groups,omitempty"`
+	AccountCount         int64          `json:"account_count,omitempty"`
 REDACTED
 
 type Account struct {
