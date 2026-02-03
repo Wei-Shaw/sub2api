@@ -510,14 +510,14 @@ REDACTED
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-					Result:       result,
-					APIKey:       currentAPIKey,
-					User:         currentAPIKey.User,
-					Account:      usedAccount,
-					Subscription: currentSubscription,
-					UserAgent:    ua,
-					IPAddress:    clientIP,
-          APIKeyService: h.apiKeyService,
+					Result:        result,
+					APIKey:        currentAPIKey,
+					User:          currentAPIKey.User,
+					Account:       usedAccount,
+					Subscription:  currentSubscription,
+					UserAgent:     ua,
+					IPAddress:     clientIP,
+					APIKeyService: h.apiKeyService,
 			REDACTED); err != nil {
 					log.Printf("Record usage failed: %v", err)
 			REDACTED
