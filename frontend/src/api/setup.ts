@@ -31,6 +31,7 @@ export interface RedisConfig {
   port: number
   password: string
   db: number
+  enable_tls: boolean
 REDACTED
 
 export interface AdminConfig {

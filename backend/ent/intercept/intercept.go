@@ -10,6 +10,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/announcement"
+	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -162,6 +164,60 @@ func (f TraverseAccountGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 REDACTED
 	return fmt.Errorf("unexpected query type %T. expect *ent.AccountGroupQuery", q)
+REDACTED
+
+// The AnnouncementFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AnnouncementFunc func(context.Context, *ent.AnnouncementQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AnnouncementFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AnnouncementQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AnnouncementQuery", q)
+REDACTED
+
+// The TraverseAnnouncement type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAnnouncement func(context.Context, *ent.AnnouncementQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAnnouncement) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseAnnouncement) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AnnouncementQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.AnnouncementQuery", q)
+REDACTED
+
+// The AnnouncementReadFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AnnouncementReadFunc func(context.Context, *ent.AnnouncementReadQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AnnouncementReadFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AnnouncementReadQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AnnouncementReadQuery", q)
+REDACTED
+
+// The TraverseAnnouncementRead type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAnnouncementRead func(context.Context, *ent.AnnouncementReadQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAnnouncementRead) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseAnnouncementRead) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AnnouncementReadQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.AnnouncementReadQuery", q)
 REDACTED
 
 // The GroupFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -524,6 +580,10 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AccountQuery, predicate.Account, account.OrderOption]{typ: ent.TypeAccount, tq: qREDACTED, nil
 	case *ent.AccountGroupQuery:
 		return &query[*ent.AccountGroupQuery, predicate.AccountGroup, accountgroup.OrderOption]{typ: ent.TypeAccountGroup, tq: qREDACTED, nil
+	case *ent.AnnouncementQuery:
+		return &query[*ent.AnnouncementQuery, predicate.Announcement, announcement.OrderOption]{typ: ent.TypeAnnouncement, tq: qREDACTED, nil
+	case *ent.AnnouncementReadQuery:
+		return &query[*ent.AnnouncementReadQuery, predicate.AnnouncementRead, announcementread.OrderOption]{typ: ent.TypeAnnouncementRead, tq: qREDACTED, nil
 	case *ent.GroupQuery:
 		return &query[*ent.GroupQuery, predicate.Group, group.OrderOption]{typ: ent.TypeGroup, tq: qREDACTED, nil
 	case *ent.PromoCodeQuery:

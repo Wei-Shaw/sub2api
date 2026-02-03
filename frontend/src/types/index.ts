@@ -55,6 +55,7 @@ export interface RegisterRequest {
   verify_code?: string
   turnstile_token?: string
   promo_code?: string
+  invitation_code?: string
 REDACTED
 
 export interface SendVerifyCodeRequest {
@@ -71,6 +72,8 @@ export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
   promo_code_enabled: boolean
+  password_reset_enabled: boolean
+  invitation_code_enabled: boolean
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string
@@ -81,6 +84,8 @@ export interface PublicSettings {
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
+  purchase_subscription_enabled: boolean
+  purchase_subscription_url: string
   linuxdo_oauth_enabled: boolean
   version: string
 REDACTED
@@ -124,6 +129,81 @@ export interface UpdateSubscriptionRequest {
   type?: Subscription['type']
   update_interval?: number
   is_active?: boolean
+REDACTED
+
+// ==================== Announcement Types ====================
+
+export type AnnouncementStatus = 'draft' | 'active' | 'archived'
+
+export type AnnouncementConditionType = 'subscription' | 'balance'
+
+export type AnnouncementOperator = 'in' | 'gt' | 'gte' | 'lt' | 'lte' | 'eq'
+
+export interface AnnouncementCondition {
+  type: AnnouncementConditionType
+  operator: AnnouncementOperator
+  group_ids?: number[]
+  value?: number
+REDACTED
+
+export interface AnnouncementConditionGroup {
+  all_of?: AnnouncementCondition[]
+REDACTED
+
+export interface AnnouncementTargeting {
+  any_of?: AnnouncementConditionGroup[]
+REDACTED
+
+export interface Announcement {
+  id: number
+  title: string
+  content: string
+  status: AnnouncementStatus
+  targeting: AnnouncementTargeting
+  starts_at?: string
+  ends_at?: string
+  created_by?: number
+  updated_by?: number
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface UserAnnouncement {
+  id: number
+  title: string
+  content: string
+  starts_at?: string
+  ends_at?: string
+  read_at?: string
+  created_at: string
+  updated_at: string
+REDACTED
+
+export interface CreateAnnouncementRequest {
+  title: string
+  content: string
+  status?: AnnouncementStatus
+  targeting: AnnouncementTargeting
+  starts_at?: number
+  ends_at?: number
+REDACTED
+
+export interface UpdateAnnouncementRequest {
+  title?: string
+  content?: string
+  status?: AnnouncementStatus
+  targeting?: AnnouncementTargeting
+  starts_at?: number
+  ends_at?: number
+REDACTED
+
+export interface AnnouncementUserReadStatus {
+  user_id: number
+  email: string
+  username: string
+  balance: number
+  eligible: boolean
+  read_at?: string
 REDACTED
 
 // ==================== Proxy Node Types ====================
@@ -333,6 +413,8 @@ export interface CreateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  // 从指定分组复制账号
+  copy_accounts_from_group_ids?: number[]
 REDACTED
 
 export interface UpdateGroupRequest {
@@ -351,6 +433,7 @@ export interface UpdateGroupRequest {
   image_price_4k?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  copy_accounts_from_group_ids?: number[]
 REDACTED
 
 // ==================== Account & Proxy Types ====================
@@ -477,6 +560,9 @@ export interface Account {
   overload_until: string | null
   temp_unschedulable_until: string | null
   temp_unschedulable_reason: string | null
+
+  // Antigravity scope 级限流状态
+  scope_rate_limits?: Record<string, { reset_at: string; remaining_sec: number REDACTED>
 
   // Session window fields (5-hour window)
   session_window_start: string | null
@@ -620,7 +706,7 @@ REDACTED
 
 // ==================== Usage & Redeem Types ====================
 
-export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription'
+export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
 
 export interface UsageLog {
   id: number
@@ -629,6 +715,7 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  reasoning_effort?: string | null
 
   group_id: number | null
   subscription_id: number | null
@@ -1106,4 +1193,53 @@ export interface UpdatePromoCodeRequest {
   status?: 'active' | 'disabled'
   expires_at?: number | null
   notes?: string
+REDACTED
+
+// ==================== TOTP (2FA) Types ====================
+
+export interface TotpStatus {
+  enabled: boolean
+  enabled_at: number | null  // Unix timestamp in seconds
+  feature_enabled: boolean
+REDACTED
+
+export interface TotpSetupRequest {
+  email_code?: string
+  password?: string
+REDACTED
+
+export interface TotpSetupResponse {
+  secret: string
+  qr_code_url: string
+  setup_token: string
+  countdown: number
+REDACTED
+
+export interface TotpEnableRequest {
+  totp_code: string
+  setup_token: string
+REDACTED
+
+export interface TotpEnableResponse {
+  success: boolean
+REDACTED
+
+export interface TotpDisableRequest {
+  email_code?: string
+  password?: string
+REDACTED
+
+export interface TotpVerificationMethod {
+  method: 'email' | 'password'
+REDACTED
+
+export interface TotpLoginResponse {
+  requires_2fa: boolean
+  temp_token?: string
+  user_email_masked?: string
+REDACTED
+
+export interface TotpLogin2FARequest {
+  temp_token: string
+  totp_code: string
 REDACTED

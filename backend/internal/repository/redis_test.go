@@ -32,4 +32,16 @@ REDACTED
 	require.Equal(t, 4*time.Second, opts.WriteTimeout)
 	require.Equal(t, 100, opts.PoolSize)
 	require.Equal(t, 10, opts.MinIdleConns)
+	require.Nil(t, opts.TLSConfig)
+
+	// Test case with TLS enabled
+	cfgTLS := &config.Config{
+		Redis: config.RedisConfig{
+			Host:      "localhost",
+			EnableTLS: true,
+	REDACTED,
+REDACTED
+	optsTLS := buildRedisOptions(cfgTLS)
+	require.NotNil(t, optsTLS.TLSConfig)
+	require.Equal(t, "localhost", optsTLS.TLSConfig.ServerName)
 REDACTED

@@ -77,21 +77,9 @@ REDACTED
 	require.Equal(t, "http://proxy.local:8080|4s|true|false", buildReqClientKey(opts))
 REDACTED
 
-func TestCreateOpenAIReqClient_ForceHTTP2Enabled(t *testing.T) {
-	sharedReqClients = sync.Map{REDACTED
-	client := createOpenAIReqClient("https://auth.openai.com/oauth/token", "http://proxy.local:8080")
-	require.Equal(t, "2", forceHTTPVersion(t, client))
-REDACTED
-
-func TestCreateOpenAIReqClient_ForceHTTP2DisabledForHTTP(t *testing.T) {
-	sharedReqClients = sync.Map{REDACTED
-	client := createOpenAIReqClient("http://localhost/oauth/token", "http://proxy.local:8080")
-	require.Equal(t, "", forceHTTPVersion(t, client))
-REDACTED
-
 func TestCreateOpenAIReqClient_Timeout120Seconds(t *testing.T) {
 	sharedReqClients = sync.Map{REDACTED
-	client := createOpenAIReqClient("https://auth.openai.com/oauth/token", "http://proxy.local:8080")
+	client := createOpenAIReqClient("http://proxy.local:8080")
 	require.Equal(t, 120*time.Second, client.GetClient().Timeout)
 REDACTED
 

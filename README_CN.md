@@ -135,7 +135,7 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 ---
 
-### 方式二：Docker Compose
+### 方式二：Docker Compose（推荐）
 
 使用 Docker Compose 部署，包含 PostgreSQL 和 Redis 容器。
 
@@ -144,28 +144,58 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 - Docker 20.10+
 - Docker Compose v2+
 
-#### 安装步骤
+#### 快速开始（一键部署）
+
+使用自动化部署脚本快速搭建：
+
+```bash
+# 创建部署目录
+mkdir -p sub2api-deploy && cd sub2api-deploy
+
+# 下载并运行部署准备脚本
+curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+
+# 启动服务
+docker-compose -f docker-compose.local.yml up -d
+
+# 查看日志
+docker-compose -f docker-compose.local.yml logs -f sub2api
+```
+
+**脚本功能：**
+- 下载 `docker-compose.local.yml` 和 `.env.example`
+- 自动生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
+- 创建 `.env` 文件并填充自动生成的密钥
+- 创建数据目录（使用本地目录，便于备份和迁移）
+- 显示生成的凭证供你记录
+
+#### 手动部署
+
+如果你希望手动配置：
 
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api
+cd sub2api/deploy
 
-# 2. 进入 deploy 目录
-cd deploy
-
-# 3. 复制环境配置文件
+# 2. 复制环境配置文件
 cp .env.example .env
 
-# 4. 编辑配置（设置密码等）
+# 3. 编辑配置（生成安全密码）
 nano .env
 ```
 
 **`.env` 必须配置项：**
 
 ```bash
-# PostgreSQL 密码（必须修改！）
+# PostgreSQL 密码（必需）
 POSTGRES_PASSWORD=your_secure_password_here
+
+# JWT 密钥（推荐 - 重启后保持用户登录状态）
+JWT_SECRET=your_jwt_secret_here
+
+# TOTP 加密密钥（推荐 - 重启后保留双因素认证）
+TOTP_ENCRYPTION_KEY=your_totp_key_here
 
 # 可选：管理员账号
 ADMIN_EMAIL=admin@example.com
@@ -173,58 +203,98 @@ ADMIN_PASSWORD=your_admin_password
 
 # 可选：自定义端口
 SERVER_PORT=8080
+```
 
-# 可选：安全配置
-# 启用 URL 白名单验证（false 则跳过白名单检查，仅做基本格式校验）
-SECURITY_URL_ALLOWLIST_ENABLED=false
+**生成安全密钥：**
+```bash
+# 生成 JWT_SECRET
+openssl rand -hex 32
 
-# 关闭白名单时，是否允许 http:// URL（默认 false，只允许 https://）
-# ⚠️ 警告：允许 HTTP 会暴露 API 密钥（明文传输）
-#          仅建议在以下场景使用：
-#          - 开发/测试环境
-#          - 内部可信网络
-#          - 本地测试服务器（http://localhost）
-# 生产环境：保持 false 或仅使用 HTTPS URL
-SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
+# 生成 TOTP_ENCRYPTION_KEY
+openssl rand -hex 32
 
-# 是否允许私有 IP 地址用于上游/定价/CRS（内网部署时使用）
-SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=false
+# 生成 POSTGRES_PASSWORD
+openssl rand -hex 32
 ```
 
 ```bash
+# 4. 创建数据目录（本地版）
+mkdir -p data postgres_data redis_data
+
 # 5. 启动所有服务
+# 选项 A：本地目录版（推荐 - 易于迁移）
+docker-compose -f docker-compose.local.yml up -d
+
+# 选项 B：命名卷版（简单设置）
 docker-compose up -d
 
 # 6. 查看状态
-docker-compose ps
+docker-compose -f docker-compose.local.yml ps
 
 # 7. 查看日志
-docker-compose logs -f sub2api
+docker-compose -f docker-compose.local.yml logs -f sub2api
 ```
+
+#### 部署版本对比
+
+| 版本 | 数据存储 | 迁移便利性 | 适用场景 |
+|------|---------|-----------|---------|
+| **docker-compose.local.yml** | 本地目录 | ✅ 简单（打包整个目录） | 生产环境、频繁备份 |
+| **docker-compose.yml** | 命名卷 | ⚠️ 需要 docker 命令 | 简单设置 |
+
+**推荐：** 使用 `docker-compose.local.yml`（脚本部署）以便更轻松地管理数据。
 
 #### 访问
 
 在浏览器中打开 `http://你的服务器IP:8080`
 
+如果管理员密码是自动生成的，在日志中查找：
+```bash
+docker-compose -f docker-compose.local.yml logs sub2api | grep "admin password"
+```
+
 #### 升级
 
 ```bash
 # 拉取最新镜像并重建容器
-docker-compose pull
-docker-compose up -d
+docker-compose -f docker-compose.local.yml pull
+docker-compose -f docker-compose.local.yml up -d
+```
+
+#### 轻松迁移（本地目录版）
+
+使用 `docker-compose.local.yml` 时，可以轻松迁移到新服务器：
+
+```bash
+# 源服务器
+docker-compose -f docker-compose.local.yml down
+cd ..
+tar czf sub2api-complete.tar.gz sub2api-deploy/
+
+# 传输到新服务器
+scp sub2api-complete.tar.gz user@new-server:/path/
+
+# 新服务器
+tar xzf sub2api-complete.tar.gz
+cd sub2api-deploy/
+docker-compose -f docker-compose.local.yml up -d
 ```
 
 #### 常用命令
 
 ```bash
 # 停止所有服务
-docker-compose down
+docker-compose -f docker-compose.local.yml down
 
 # 重启
-docker-compose restart
+docker-compose -f docker-compose.local.yml restart
 
 # 查看所有日志
-docker-compose logs -f
+docker-compose -f docker-compose.local.yml logs -f
+
+# 删除所有数据（谨慎！）
+docker-compose -f docker-compose.local.yml down
+rm -rf data/ postgres_data/ redis_data/
 ```
 
 ---

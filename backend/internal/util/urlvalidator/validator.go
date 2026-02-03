@@ -46,7 +46,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	return trimmed, nil
+	return strings.TrimRight(trimmed, "/"), nil
 REDACTED
 
 func ValidateHTTPSURL(raw string, opts ValidationOptions) (string, error) {

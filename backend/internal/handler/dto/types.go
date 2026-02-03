@@ -2,6 +2,11 @@ package dto
 
 import "time"
 
+type ScopeRateLimitInfo struct {
+	ResetAt      time.Time `json:"reset_at"`
+	RemainingSec int64     `json:"remaining_sec"`
+REDACTED
+
 type User struct {
 	ID            int64     `json:"id"`
 	Email         string    `json:"email"`
@@ -108,6 +113,9 @@ type Account struct {
 	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`
 	OverloadUntil    *time.Time `json:"overload_until"`
 
+	// Antigravity scope 级限流状态（从 extra 提取）
+	ScopeRateLimits map[string]ScopeRateLimitInfo `json:"scope_rate_limits,omitempty"`
+
 	TempUnschedulableUntil  *time.Time `json:"temp_unschedulable_until"`
 	TempUnschedulableReason string     `json:"temp_unschedulable_reason"`
 
@@ -198,6 +206,10 @@ type RedeemCode struct {
 	GroupID      *int64 `json:"group_id"`
 	ValidityDays int    `json:"validity_days"`
 
+	// Notes is only populated for admin_balance/admin_concurrency types
+	// so users can see why they were charged or credited
+	Notes *string `json:"notes,omitempty"`
+
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
 REDACTED
@@ -218,6 +230,9 @@ type UsageLog struct {
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
+	// ReasoningEffort is the request's reasoning effort level (OpenAI Responses API).
+	// nil means not provided / not applicable.
+	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
 
 	GroupID        *int64 `json:"group_id"`
 	SubscriptionID *int64 `json:"subscription_id"`

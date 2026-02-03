@@ -11,8 +11,22 @@ import type {
   CurrentUserResponse,
   SendVerifyCodeRequest,
   SendVerifyCodeResponse,
-  PublicSettings
+  PublicSettings,
+  TotpLoginResponse,
+  TotpLogin2FARequest
 REDACTED from '@/types'
+
+/**
+ * Login response type - can be either full auth or 2FA required
+ */
+export type LoginResponse = AuthResponse | TotpLoginResponse
+
+/**
+ * Type guard to check if login response requires 2FA
+ */
+export function isTotp2FARequired(response: LoginResponse): response is TotpLoginResponse {
+  return 'requires_2fa' in response && response.requires_2fa === true
+REDACTED
 
 /**
  * Store authentication token in localStorage
@@ -38,11 +52,28 @@ REDACTED
 
 /**
  * User login
- * @param credentials - Username and password
+ * @param credentials - Email and password
+ * @returns Authentication response with token and user data, or 2FA required response
+ */
+export async function login(credentials: LoginRequest): Promise<LoginResponse> {
+  const { data REDACTED = await apiClient.post<LoginResponse>('/auth/login', credentials)
+
+  // Only store token if 2FA is not required
+  if (!isTotp2FARequired(data)) {
+    setAuthToken(data.access_token)
+    localStorage.setItem('auth_user', JSON.stringify(data.user))
+  REDACTED
+
+  return data
+REDACTED
+
+/**
+ * Complete login with 2FA code
+ * @param request - Temp token and TOTP code
  * @returns Authentication response with token and user data
  */
-export async function login(credentials: LoginRequest): Promise<AuthResponse> {
-  const { data REDACTED = await apiClient.post<AuthResponse>('/auth/login', credentials)
+export async function login2FA(request: TotpLogin2FARequest): Promise<AuthResponse> {
+  const { data REDACTED = await apiClient.post<AuthResponse>('/auth/login/2fa', request)
 
   // Store token and user data
   setAuthToken(data.access_token)
@@ -133,8 +164,79 @@ export async function validatePromoCode(code: string): Promise<ValidatePromoCode
   return data
 REDACTED
 
+/**
+ * Validate invitation code response
+ */
+export interface ValidateInvitationCodeResponse {
+  valid: boolean
+  error_code?: string
+REDACTED
+
+/**
+ * Validate invitation code (public endpoint, no auth required)
+ * @param code - Invitation code to validate
+ * @returns Validation result
+ */
+export async function validateInvitationCode(code: string): Promise<ValidateInvitationCodeResponse> {
+  const { data REDACTED = await apiClient.post<ValidateInvitationCodeResponse>('/auth/validate-invitation-code', { code REDACTED)
+  return data
+REDACTED
+
+/**
+ * Forgot password request
+ */
+export interface ForgotPasswordRequest {
+  email: string
+  turnstile_token?: string
+REDACTED
+
+/**
+ * Forgot password response
+ */
+export interface ForgotPasswordResponse {
+  message: string
+REDACTED
+
+/**
+ * Request password reset link
+ * @param request - Email and optional Turnstile token
+ * @returns Response with message
+ */
+export async function forgotPassword(request: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
+  const { data REDACTED = await apiClient.post<ForgotPasswordResponse>('/auth/forgot-password', request)
+  return data
+REDACTED
+
+/**
+ * Reset password request
+ */
+export interface ResetPasswordRequest {
+  email: string
+  token: string
+  new_password: string
+REDACTED
+
+/**
+ * Reset password response
+ */
+export interface ResetPasswordResponse {
+  message: string
+REDACTED
+
+/**
+ * Reset password with token
+ * @param request - Email, token, and new password
+ * @returns Response with message
+ */
+export async function resetPassword(request: ResetPasswordRequest): Promise<ResetPasswordResponse> {
+  const { data REDACTED = await apiClient.post<ResetPasswordResponse>('/auth/reset-password', request)
+  return data
+REDACTED
+
 export const authAPI = {
   login,
+  login2FA,
+  isTotp2FARequired,
   register,
   getCurrentUser,
   logout,
@@ -144,7 +246,10 @@ export const authAPI = {
   clearAuthToken,
   getPublicSettings,
   sendVerifyCode,
-  validatePromoCode
+  validatePromoCode,
+  validateInvitationCode,
+  forgotPassword,
+  resetPassword
 REDACTED
 
 export default authAPI
