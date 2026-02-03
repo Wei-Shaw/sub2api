@@ -498,6 +498,7 @@ export default {
     exporting: '导出中...',
     preparingExport: '正在准备导出...',
     model: '模型',
+    reasoningEffort: '推理强度',
     type: '类型',
     tokens: 'Token',
     cost: '费用',

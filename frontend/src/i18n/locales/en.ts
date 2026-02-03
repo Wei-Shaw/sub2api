@@ -502,6 +502,7 @@ export default {
     exporting: 'Exporting...',
     preparingExport: 'Preparing export...',
     model: 'Model',
+    reasoningEffort: 'Reasoning Effort',
     type: 'Type',
     tokens: 'Tokens',
     cost: 'Cost',

@@ -712,6 +712,7 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  reasoning_effort?: string | null
 
   group_id: number | null
   subscription_id: number | null
