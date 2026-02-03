@@ -72,7 +72,7 @@ type opencodeCacheMetadata struct {
 	LastChecked int64  `json:"lastChecked"`
 REDACTED
 
-func applyCodexOAuthTransform(reqBody map[string]any) codexTransformResult {
+func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool) codexTransformResult {
 	result := codexTransformResult{REDACTED
 	// 工具续链需求会影响存储策略与 input 过滤逻辑。
 	needsToolContinuation := NeedsToolContinuation(reqBody)
@@ -118,22 +118,9 @@ REDACTED
 		result.PromptCacheKey = strings.TrimSpace(v)
 REDACTED
 
-	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
-	existingInstructions, _ := reqBody["instructions"].(string)
-	existingInstructions = strings.TrimSpace(existingInstructions)
-
-	if instructions != "" {
-		if existingInstructions != instructions {
-			reqBody["instructions"] = instructions
-			result.Modified = true
-	REDACTED
-REDACTED else if existingInstructions == "" {
-		// 未获取到 opencode 指令时，回退使用 Codex CLI 指令。
-		codexInstructions := strings.TrimSpace(getCodexCLIInstructions())
-		if codexInstructions != "" {
-			reqBody["instructions"] = codexInstructions
-			result.Modified = true
-	REDACTED
+	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
+	if applyInstructions(reqBody, isCodexCLI) {
+		result.Modified = true
 REDACTED
 
 	// 续链场景保留 item_reference 与 id，避免 call_id 上下文丢失。
@@ -274,6 +261,72 @@ REDACTED
 // GetCodexCLIInstructions 返回内置的 Codex CLI 指令内容。
 func GetCodexCLIInstructions() string {
 	return getCodexCLIInstructions()
+REDACTED
+
+// applyInstructions 处理 instructions 字段
+// isCodexCLI=true: 仅补充缺失的 instructions（使用 opencode 指令）
+// isCodexCLI=false: 优先使用 opencode 指令覆盖
+func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+	if isCodexCLI {
+		return applyCodexCLIInstructions(reqBody)
+REDACTED
+	return applyOpenCodeInstructions(reqBody)
+REDACTED
+
+// applyCodexCLIInstructions 为 Codex CLI 请求补充缺失的 instructions
+// 仅在 instructions 为空时添加 opencode 指令
+func applyCodexCLIInstructions(reqBody map[string]any) bool {
+	if !isInstructionsEmpty(reqBody) {
+		return false // 已有有效 instructions，不修改
+REDACTED
+
+	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
+	if instructions != "" {
+		reqBody["instructions"] = instructions
+		return true
+REDACTED
+
+	return false
+REDACTED
+
+// applyOpenCodeInstructions 为非 Codex CLI 请求应用 opencode 指令
+// 优先使用 opencode 指令覆盖
+func applyOpenCodeInstructions(reqBody map[string]any) bool {
+	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
+	existingInstructions, _ := reqBody["instructions"].(string)
+	existingInstructions = strings.TrimSpace(existingInstructions)
+
+	if instructions != "" {
+		if existingInstructions != instructions {
+			reqBody["instructions"] = instructions
+			return true
+	REDACTED
+REDACTED else if existingInstructions == "" {
+		codexInstructions := strings.TrimSpace(getCodexCLIInstructions())
+		if codexInstructions != "" {
+			reqBody["instructions"] = codexInstructions
+			return true
+	REDACTED
+REDACTED
+
+	return false
+REDACTED
+
+// isInstructionsEmpty 检查 instructions 字段是否为空
+// 处理以下情况：字段不存在、nil、空字符串、纯空白字符串
+func isInstructionsEmpty(reqBody map[string]any) bool {
+	val, exists := reqBody["instructions"]
+	if !exists {
+		return true
+REDACTED
+	if val == nil {
+		return true
+REDACTED
+	str, ok := val.(string)
+	if !ok {
+		return true
+REDACTED
+	return strings.TrimSpace(str) == ""
 REDACTED
 
 // ReplaceWithCodexInstructions 将请求 instructions 替换为内置 Codex 指令（必要时）。
