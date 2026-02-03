@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -124,5 +126,80 @@ REDACTED
 					tt.description, expectedFuncCount, len(funcDecls))
 		REDACTED
 	REDACTED)
+REDACTED
+REDACTED
+
+func TestConvertClaudeMessagesToGeminiGenerateContent_AddsThoughtSignatureForToolUse(t *testing.T) {
+	claudeReq := map[string]any{
+		"model":      "REDACTED",
+		"max_tokens": 10,
+		"messages": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "text", "text": "hi"REDACTED,
+			REDACTED,
+		REDACTED,
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "text", "text": "ok"REDACTED,
+					map[string]any{
+						"type":  "tool_use",
+						"id":    "toolu_123",
+						"name":  "default_api:write_file",
+						"input": map[string]any{"path": "a.txt", "content": "x"REDACTED,
+						// no signature on purpose
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		"tools": []any{
+			map[string]any{
+				"name":        "default_api:write_file",
+				"description": "write file",
+				"input_schema": map[string]any{
+					"type":       "object",
+					"properties": map[string]any{"path": map[string]any{"type": "string"REDACTEDREDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	b, _ := json.Marshal(claudeReq)
+
+	out, err := convertClaudeMessagesToGeminiGenerateContent(b)
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+REDACTED
+	s := string(out)
+	if !strings.Contains(s, "\"functionCall\"") {
+		t.Fatalf("expected functionCall in output, got: %s", s)
+REDACTED
+	if !strings.Contains(s, "\"thoughtSignature\":\""+geminiDummyThoughtSignature+"\"") {
+		t.Fatalf("expected injected thoughtSignature %q, got: %s", geminiDummyThoughtSignature, s)
+REDACTED
+REDACTED
+
+func TestEnsureGeminiFunctionCallThoughtSignatures_InsertsWhenMissing(t *testing.T) {
+	geminiReq := map[string]any{
+		"contents": []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{
+						"functionCall": map[string]any{
+							"name": "default_api:write_file",
+							"args": map[string]any{"path": "a.txt"REDACTED,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	b, _ := json.Marshal(geminiReq)
+	out := ensureGeminiFunctionCallThoughtSignatures(b)
+	s := string(out)
+	if !strings.Contains(s, "\"thoughtSignature\":\""+geminiDummyThoughtSignature+"\"") {
+		t.Fatalf("expected injected thoughtSignature %q, got: %s", geminiDummyThoughtSignature, s)
 REDACTED
 REDACTED
