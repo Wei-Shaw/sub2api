@@ -1313,6 +1313,7 @@ export default {
         overloaded: '过载中',
         tempUnschedulable: '临时不可调度',
         rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
+        scopeRateLimitedUntil: '{scopeREDACTED 限流中，重置时间：{timeREDACTED',
         overloadedUntil: '负载过重，重置时间：{timeREDACTED',
         viewTempUnschedDetails: '查看临时不可调度详情'
       REDACTED,
@@ -2993,6 +2994,7 @@ export default {
         empty: '暂无数据',
         queued: '队列 {countREDACTED',
         rateLimited: '限流 {countREDACTED',
+        scopeRateLimitedTooltip: '{scopeREDACTED 限流中 ({countREDACTED 个账号)',
         errorAccounts: '异常 {countREDACTED',
         loadFailed: '加载并发数据失败'
       REDACTED,

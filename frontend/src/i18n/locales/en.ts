@@ -1191,6 +1191,7 @@ export default {
         overloaded: 'Overloaded',
         tempUnschedulable: 'Temp Unschedulable',
         rateLimitedUntil: 'Rate limited until {timeREDACTED',
+        scopeRateLimitedUntil: '{scopeREDACTED rate limited until {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
         viewTempUnschedDetails: 'View temp unschedulable details'
       REDACTED,
@@ -2840,6 +2841,7 @@ export default {
         empty: 'No data',
         queued: 'Queue {countREDACTED',
         rateLimited: 'Rate-limited {countREDACTED',
+        scopeRateLimitedTooltip: '{scopeREDACTED rate-limited ({countREDACTED accounts)',
         errorAccounts: 'Errors {countREDACTED',
         loadFailed: 'Failed to load concurrency data'
       REDACTED,
