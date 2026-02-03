@@ -56,6 +56,65 @@
         ></div>
       </div>
     </div>
+
+    <!-- Rate Limit Indicator (429) -->
+    <div v-if="isRateLimited" class="group relative">
+      <span
+        class="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+      >
+        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+        429
+      </span>
+      <!-- Tooltip -->
+      <div
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+      >
+        {{ t('admin.accounts.status.rateLimitedUntil', { time: formatTime(account.rate_limit_reset_at) REDACTED) REDACTEDREDACTED
+        <div
+          class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
+        ></div>
+      </div>
+    </div>
+
+    <!-- Scope Rate Limit Indicators (Antigravity) -->
+    <template v-if="activeScopeRateLimits.length > 0">
+      <div v-for="item in activeScopeRateLimits" :key="item.scope" class="group relative">
+        <span
+          class="inline-flex items-center gap-1 rounded bg-orange-100 px-1.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+        >
+          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+          {{ formatScopeName(item.scope) REDACTEDREDACTED
+        </span>
+        <!-- Tooltip -->
+        <div
+          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+        >
+          {{ t('admin.accounts.status.scopeRateLimitedUntil', { scope: formatScopeName(item.scope), time: formatTime(item.reset_at) REDACTED) REDACTEDREDACTED
+          <div
+            class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
+          ></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Overload Indicator (529) -->
+    <div v-if="isOverloaded" class="group relative">
+      <span
+        class="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+      >
+        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+        529
+      </span>
+      <!-- Tooltip -->
+      <div
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+      >
+        {{ t('admin.accounts.status.overloadedUntil', { time: formatTime(account.overload_until) REDACTED) REDACTEDREDACTED
+        <div
+          class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
+        ></div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -80,6 +139,25 @@ const isRateLimited = computed(() => {
   if (!props.account.rate_limit_reset_at) return false
   return new Date(props.account.rate_limit_reset_at) > new Date()
 REDACTED)
+
+// Computed: active scope rate limits (Antigravity)
+const activeScopeRateLimits = computed(() => {
+  const scopeLimits = props.account.scope_rate_limits
+  if (!scopeLimits) return []
+  const now = new Date()
+  return Object.entries(scopeLimits)
+    .filter(([, info]) => new Date(info.reset_at) > now)
+    .map(([scope, info]) => ({ scope, reset_at: info.reset_at REDACTED))
+REDACTED)
+
+const formatScopeName = (scope: string): string => {
+  const names: Record<string, string> = {
+    claude: 'Claude',
+    gemini_text: 'Gemini',
+    gemini_image: 'Image'
+  REDACTED
+  return names[scope] || scope
+REDACTED
 
 // Computed: is overloaded (529)
 const isOverloaded = computed(() => {
