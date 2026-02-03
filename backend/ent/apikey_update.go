@@ -170,6 +170,68 @@ func (_u *APIKeyUpdate) ClearIPBlacklist() *APIKeyUpdate {
 	return _u
 REDACTED
 
+// SetQuota sets the "quota" field.
+func (_u *APIKeyUpdate) SetQuota(v float64) *APIKeyUpdate {
+	_u.mutation.ResetQuota()
+	_u.mutation.SetQuota(v)
+	return _u
+REDACTED
+
+// SetNillableQuota sets the "quota" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableQuota(v *float64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetQuota(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddQuota adds value to the "quota" field.
+func (_u *APIKeyUpdate) AddQuota(v float64) *APIKeyUpdate {
+	_u.mutation.AddQuota(v)
+	return _u
+REDACTED
+
+// SetQuotaUsed sets the "quota_used" field.
+func (_u *APIKeyUpdate) SetQuotaUsed(v float64) *APIKeyUpdate {
+	_u.mutation.ResetQuotaUsed()
+	_u.mutation.SetQuotaUsed(v)
+	return _u
+REDACTED
+
+// SetNillableQuotaUsed sets the "quota_used" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableQuotaUsed(v *float64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetQuotaUsed(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddQuotaUsed adds value to the "quota_used" field.
+func (_u *APIKeyUpdate) AddQuotaUsed(v float64) *APIKeyUpdate {
+	_u.mutation.AddQuotaUsed(v)
+	return _u
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (_u *APIKeyUpdate) SetExpiresAt(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+REDACTED
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableExpiresAt(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *APIKeyUpdate) ClearExpiresAt() *APIKeyUpdate {
+	_u.mutation.ClearExpiresAt()
+	return _u
+REDACTED
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdate) SetUser(v *User) *APIKeyUpdate {
 	return _u.SetUserID(v.ID)
@@ -349,6 +411,24 @@ REDACTED
 REDACTED
 	if _u.mutation.IPBlacklistCleared() {
 		_spec.ClearField(apikey.FieldIPBlacklist, field.TypeJSON)
+REDACTED
+	if value, ok := _u.mutation.Quota(); ok {
+		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedQuota(); ok {
+		_spec.AddField(apikey.FieldQuota, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.QuotaUsed(); ok {
+		_spec.SetField(apikey.FieldQuotaUsed, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedQuotaUsed(); ok {
+		_spec.AddField(apikey.FieldQuotaUsed, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(apikey.FieldExpiresAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(apikey.FieldExpiresAt, field.TypeTime)
 REDACTED
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -611,6 +691,68 @@ func (_u *APIKeyUpdateOne) ClearIPBlacklist() *APIKeyUpdateOne {
 	return _u
 REDACTED
 
+// SetQuota sets the "quota" field.
+func (_u *APIKeyUpdateOne) SetQuota(v float64) *APIKeyUpdateOne {
+	_u.mutation.ResetQuota()
+	_u.mutation.SetQuota(v)
+	return _u
+REDACTED
+
+// SetNillableQuota sets the "quota" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableQuota(v *float64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetQuota(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddQuota adds value to the "quota" field.
+func (_u *APIKeyUpdateOne) AddQuota(v float64) *APIKeyUpdateOne {
+	_u.mutation.AddQuota(v)
+	return _u
+REDACTED
+
+// SetQuotaUsed sets the "quota_used" field.
+func (_u *APIKeyUpdateOne) SetQuotaUsed(v float64) *APIKeyUpdateOne {
+	_u.mutation.ResetQuotaUsed()
+	_u.mutation.SetQuotaUsed(v)
+	return _u
+REDACTED
+
+// SetNillableQuotaUsed sets the "quota_used" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableQuotaUsed(v *float64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetQuotaUsed(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddQuotaUsed adds value to the "quota_used" field.
+func (_u *APIKeyUpdateOne) AddQuotaUsed(v float64) *APIKeyUpdateOne {
+	_u.mutation.AddQuotaUsed(v)
+	return _u
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (_u *APIKeyUpdateOne) SetExpiresAt(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+REDACTED
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableExpiresAt(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *APIKeyUpdateOne) ClearExpiresAt() *APIKeyUpdateOne {
+	_u.mutation.ClearExpiresAt()
+	return _u
+REDACTED
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *APIKeyUpdateOne) SetUser(v *User) *APIKeyUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -820,6 +962,24 @@ REDACTED
 REDACTED
 	if _u.mutation.IPBlacklistCleared() {
 		_spec.ClearField(apikey.FieldIPBlacklist, field.TypeJSON)
+REDACTED
+	if value, ok := _u.mutation.Quota(); ok {
+		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedQuota(); ok {
+		_spec.AddField(apikey.FieldQuota, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.QuotaUsed(); ok {
+		_spec.SetField(apikey.FieldQuotaUsed, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedQuotaUsed(); ok {
+		_spec.AddField(apikey.FieldQuotaUsed, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(apikey.FieldExpiresAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(apikey.FieldExpiresAt, field.TypeTime)
 REDACTED
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

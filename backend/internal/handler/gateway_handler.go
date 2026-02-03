@@ -31,6 +31,7 @@ type GatewayHandler struct {
 	userService               *service.UserService
 	billingCacheService       *service.BillingCacheService
 	usageService              *service.UsageService
+	apiKeyService             *service.APIKeyService
 	concurrencyHelper         *ConcurrencyHelper
 	maxAccountSwitches        int
 	maxAccountSwitchesGemini  int
@@ -45,6 +46,7 @@ func NewGatewayHandler(
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	usageService *service.UsageService,
+	apiKeyService *service.APIKeyService,
 	cfg *config.Config,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
@@ -66,6 +68,7 @@ REDACTED
 		userService:               userService,
 		billingCacheService:       billingCacheService,
 		usageService:              usageService,
+		apiKeyService:             apiKeyService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		maxAccountSwitches:        maxAccountSwitches,
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
@@ -316,13 +319,14 @@ REDACTED
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-					Result:       result,
-					APIKey:       apiKey,
-					User:         apiKey.User,
-					Account:      usedAccount,
-					Subscription: subscription,
-					UserAgent:    ua,
-					IPAddress:    clientIP,
+					Result:        result,
+					APIKey:        apiKey,
+					User:          apiKey.User,
+					Account:       usedAccount,
+					Subscription:  subscription,
+					UserAgent:     ua,
+					IPAddress:     clientIP,
+					APIKeyService: h.apiKeyService,
 			REDACTED); err != nil {
 					log.Printf("Record usage failed: %v", err)
 			REDACTED
@@ -452,13 +456,14 @@ REDACTED
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-				Result:       result,
-				APIKey:       apiKey,
-				User:         apiKey.User,
-				Account:      usedAccount,
-				Subscription: subscription,
-				UserAgent:    ua,
-				IPAddress:    clientIP,
+				Result:        result,
+				APIKey:        apiKey,
+				User:          apiKey.User,
+				Account:       usedAccount,
+				Subscription:  subscription,
+				UserAgent:     ua,
+				IPAddress:     clientIP,
+				APIKeyService: h.apiKeyService,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED

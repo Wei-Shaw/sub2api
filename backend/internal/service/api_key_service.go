@@ -17,13 +17,17 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound     = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed    = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists       = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrInvalidIPPattern   = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
+	ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
+	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
+	ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key 额度已用完")
 )
 
 const (
@@ -51,6 +55,9 @@ type APIKeyRepository interface {
 	CountByGroupID(ctx context.Context, groupID int64) (int64, error)
 	ListKeysByUserID(ctx context.Context, userID int64) ([]string, error)
 	ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error)
+
+	// Quota methods
+	IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error)
 REDACTED
 
 // APIKeyCache defines cache operations for API key service
@@ -85,6 +92,10 @@ type CreateAPIKeyRequest struct {
 	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
+
+	// Quota fields
+	Quota         float64 `json:"quota"`          // Quota limit in USD (0 = unlimited)
+	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = never expires)
 REDACTED
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -94,6 +105,12 @@ type UpdateAPIKeyRequest struct {
 	Status      *string  `json:"status"`
 	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单（空数组清空）
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单（空数组清空）
+
+	// Quota fields
+	Quota           *float64   `json:"quota"`          // Quota limit in USD (nil = no change, 0 = unlimited)
+	ExpiresAt       *time.Time `json:"expires_at"`     // Expiration time (nil = no change)
+	ClearExpiration bool       `json:"-"`              // Clear expiration (internal use)
+	ResetQuota      *bool      `json:"reset_quota"`    // Reset quota_used to 0
 REDACTED
 
 // APIKeyService API Key服务
@@ -289,6 +306,14 @@ REDACTED
 		Status:      StatusActive,
 		IPWhitelist: req.IPWhitelist,
 		IPBlacklist: req.IPBlacklist,
+		Quota:       req.Quota,
+		QuotaUsed:   0,
+REDACTED
+
+	// Set expiration time if specified
+	if req.ExpiresInDays != nil && *req.ExpiresInDays > 0 {
+		expiresAt := time.Now().AddDate(0, 0, *req.ExpiresInDays)
+		apiKey.ExpiresAt = &expiresAt
 REDACTED
 
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
@@ -436,6 +461,35 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// Update quota fields
+	if req.Quota != nil {
+		apiKey.Quota = *req.Quota
+		// If quota is increased and status was quota_exhausted, reactivate
+		if apiKey.Status == StatusAPIKeyQuotaExhausted && *req.Quota > apiKey.QuotaUsed {
+			apiKey.Status = StatusActive
+	REDACTED
+REDACTED
+	if req.ResetQuota != nil && *req.ResetQuota {
+		apiKey.QuotaUsed = 0
+		// If resetting quota and status was quota_exhausted, reactivate
+		if apiKey.Status == StatusAPIKeyQuotaExhausted {
+			apiKey.Status = StatusActive
+	REDACTED
+REDACTED
+	if req.ClearExpiration {
+		apiKey.ExpiresAt = nil
+		// If clearing expiry and status was expired, reactivate
+		if apiKey.Status == StatusAPIKeyExpired {
+			apiKey.Status = StatusActive
+	REDACTED
+REDACTED else if req.ExpiresAt != nil {
+		apiKey.ExpiresAt = req.ExpiresAt
+		// If extending expiry and status was expired, reactivate
+		if apiKey.Status == StatusAPIKeyExpired && time.Now().Before(*req.ExpiresAt) {
+			apiKey.Status = StatusActive
+	REDACTED
+REDACTED
+
 	// 更新 IP 限制（空数组会清空设置）
 	apiKey.IPWhitelist = req.IPWhitelist
 	apiKey.IPBlacklist = req.IPBlacklist
@@ -571,4 +625,52 @@ func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword
 		return nil, fmt.Errorf("search api keys: %w", err)
 REDACTED
 	return keys, nil
+REDACTED
+
+// CheckAPIKeyQuotaAndExpiry checks if the API key is valid for use (not expired, quota not exhausted)
+// Returns nil if valid, error if invalid
+func (s *APIKeyService) CheckAPIKeyQuotaAndExpiry(apiKey *APIKey) error {
+	// Check expiration
+	if apiKey.IsExpired() {
+		return ErrAPIKeyExpired
+REDACTED
+
+	// Check quota
+	if apiKey.IsQuotaExhausted() {
+		return ErrAPIKeyQuotaExhausted
+REDACTED
+
+	return nil
+REDACTED
+
+// UpdateQuotaUsed updates the quota_used field after a request
+// Also checks if quota is exhausted and updates status accordingly
+func (s *APIKeyService) UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cost float64) error {
+	if cost <= 0 {
+		return nil
+REDACTED
+
+	// Use repository to atomically increment quota_used
+	newQuotaUsed, err := s.apiKeyRepo.IncrementQuotaUsed(ctx, apiKeyID, cost)
+	if err != nil {
+		return fmt.Errorf("increment quota used: %w", err)
+REDACTED
+
+	// Check if quota is now exhausted and update status if needed
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, apiKeyID)
+	if err != nil {
+		return nil // Don't fail the request, just log
+REDACTED
+
+	// If quota is set and now exhausted, update status
+	if apiKey.Quota > 0 && newQuotaUsed >= apiKey.Quota {
+		apiKey.Status = StatusAPIKeyQuotaExhausted
+		if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+			return nil // Don't fail the request
+	REDACTED
+		// Invalidate cache so next request sees the new status
+		s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+REDACTED
+
+	return nil
 REDACTED

@@ -35,6 +35,12 @@ const (
 	FieldIPWhitelist = "ip_whitelist"
 	// FieldIPBlacklist holds the string denoting the ip_blacklist field in the database.
 	FieldIPBlacklist = "ip_blacklist"
+	// FieldQuota holds the string denoting the quota field in the database.
+	FieldQuota = "quota"
+	// FieldQuotaUsed holds the string denoting the quota_used field in the database.
+	FieldQuotaUsed = "quota_used"
+	// FieldExpiresAt holds the string denoting the expires_at field in the database.
+	FieldExpiresAt = "expires_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -79,6 +85,9 @@ var Columns = []string{
 	FieldStatus,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
+	FieldQuota,
+	FieldQuotaUsed,
+	FieldExpiresAt,
 REDACTED
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -113,6 +122,10 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultQuota holds the default value on creation for the "quota" field.
+	DefaultQuota float64
+	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
+	DefaultQuotaUsed float64
 )
 
 // OrderOption defines the ordering options for the APIKey queries.
@@ -161,6 +174,21 @@ REDACTED
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+REDACTED
+
+// ByQuota orders the results by the quota field.
+func ByQuota(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuota, opts...).ToFunc()
+REDACTED
+
+// ByQuotaUsed orders the results by the quota_used field.
+func ByQuotaUsed(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaUsed, opts...).ToFunc()
+REDACTED
+
+// ByExpiresAt orders the results by the expires_at field.
+func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiresAt, opts...).ToFunc()
 REDACTED
 
 // ByUserField orders the results by user field.
