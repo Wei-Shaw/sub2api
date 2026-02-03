@@ -4493,9 +4493,9 @@ type RecordUsageInput struct {
 	APIKey        *APIKey
 	User          *User
 	Account       *Account
-	Subscription  *UserSubscription // 可选：订阅信息
-	UserAgent     string            // 请求的 User-Agent
-	IPAddress     string            // 请求的客户端 IP 地址
+	Subscription  *UserSubscription  // 可选：订阅信息
+	UserAgent     string             // 请求的 User-Agent
+	IPAddress     string             // 请求的客户端 IP 地址
 	APIKeyService APIKeyQuotaUpdater // 可选：用于更新API Key配额
 REDACTED
 
