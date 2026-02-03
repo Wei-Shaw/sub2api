@@ -222,6 +222,9 @@ type UsageLog struct {
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
+	// ReasoningEffort is the request's reasoning effort level (OpenAI Responses API).
+	// nil means not provided / not applicable.
+	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
 
 	GroupID        *int64 `json:"group_id"`
 	SubscriptionID *int64 `json:"subscription_id"`
