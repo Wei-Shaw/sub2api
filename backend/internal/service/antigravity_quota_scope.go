@@ -89,3 +89,30 @@ REDACTED
 REDACTED
 	return &resetAt
 REDACTED
+
+var antigravityAllScopes = []AntigravityQuotaScope{
+	AntigravityQuotaScopeClaude,
+	AntigravityQuotaScopeGeminiText,
+	AntigravityQuotaScopeGeminiImage,
+REDACTED
+
+func (a *Account) GetAntigravityScopeRateLimits() map[string]int64 {
+	if a == nil || a.Platform != PlatformAntigravity {
+		return nil
+REDACTED
+	now := time.Now()
+	result := make(map[string]int64)
+	for _, scope := range antigravityAllScopes {
+		resetAt := a.antigravityQuotaScopeResetAt(scope)
+		if resetAt != nil && now.Before(*resetAt) {
+			remainingSec := int64(time.Until(*resetAt).Seconds())
+			if remainingSec > 0 {
+				result[string(scope)] = remainingSec
+		REDACTED
+	REDACTED
+REDACTED
+	if len(result) == 0 {
+		return nil
+REDACTED
+	return result
+REDACTED
