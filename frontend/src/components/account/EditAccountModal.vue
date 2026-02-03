@@ -875,6 +875,18 @@
       </div>
     </template>
   </BaseDialog>
+
+  <!-- Mixed Channel Warning Dialog -->
+  <ConfirmDialog
+    :show="showMixedChannelWarning"
+    :title="t('admin.accounts.mixedChannelWarningTitle')"
+    :message="mixedChannelWarningDetails ? t('admin.accounts.mixedChannelWarning', mixedChannelWarningDetails) : ''"
+    :confirm-text="t('common.confirm')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="handleMixedChannelConfirm"
+    @cancel="handleMixedChannelCancel"
+  />
 </template>
 
 <script setup lang="ts">
@@ -885,6 +897,7 @@ import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, Proxy, AdminGroup REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -950,6 +963,11 @@ const autoPauseOnExpired = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+
+// Mixed channel warning dialog state
+const showMixedChannelWarning = ref(false)
+const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: string; otherPlatform: string REDACTED | null>(null)
+const pendingUpdatePayload = ref<Record<string, unknown> | null>(null)
 
 // Quota control state (Anthropic OAuth/SetupToken only)
 const windowCostEnabled = ref(false)
@@ -1366,8 +1384,8 @@ const handleSubmit = async () => {
   if (!props.account) return
 
   submitting.value = true
+  const updatePayload: Record<string, unknown> = { ...form REDACTED
   try {
-    const updatePayload: Record<string, unknown> = { ...form REDACTED
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0
@@ -1497,9 +1515,47 @@ const handleSubmit = async () => {
     emit('updated')
     handleClose()
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))
+    // Handle 409 mixed_channel_warning - show confirmation dialog
+    if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning') {
+      const details = error.response.data.details || {REDACTED
+      mixedChannelWarningDetails.value = {
+        groupName: details.group_name || 'Unknown',
+        currentPlatform: details.current_platform || 'Unknown',
+        otherPlatform: details.other_platform || 'Unknown'
+      REDACTED
+      pendingUpdatePayload.value = updatePayload
+      showMixedChannelWarning.value = true
+    REDACTED else {
+      appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))
+    REDACTED
   REDACTED finally {
     submitting.value = false
   REDACTED
+REDACTED
+
+// Handle mixed channel warning confirmation
+const handleMixedChannelConfirm = async () => {
+  showMixedChannelWarning.value = false
+  if (pendingUpdatePayload.value && props.account) {
+    pendingUpdatePayload.value.confirm_mixed_channel_risk = true
+    submitting.value = true
+    try {
+      await adminAPI.accounts.update(props.account.id, pendingUpdatePayload.value)
+      appStore.showSuccess(t('admin.accounts.accountUpdated'))
+      emit('updated')
+      handleClose()
+    REDACTED catch (error: any) {
+      appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))
+    REDACTED finally {
+      submitting.value = false
+      pendingUpdatePayload.value = null
+    REDACTED
+  REDACTED
+REDACTED
+
+const handleMixedChannelCancel = () => {
+  showMixedChannelWarning.value = false
+  pendingUpdatePayload.value = null
+  mixedChannelWarningDetails.value = null
 REDACTED
 </script>

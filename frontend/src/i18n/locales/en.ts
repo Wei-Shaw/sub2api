@@ -1432,6 +1432,8 @@ export default {
       accountUpdated: 'Account updated successfully',
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
+      mixedChannelWarningTitle: 'Mixed Channel Warning',
+      mixedChannelWarning: 'Warning: Group "{groupNameREDACTED" contains both {currentPlatformREDACTED and {otherPlatformREDACTED accounts. Mixing different channels may cause thinking block signature validation issues, which will fallback to non-thinking mode. Are you sure you want to continue?',
       pleaseEnterAccountName: 'Please enter account name',
       pleaseEnterApiKey: 'Please enter API Key',
       apiKeyIsRequired: 'API Key is required',

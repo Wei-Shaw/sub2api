@@ -845,6 +845,12 @@ REDACTED
 				bodyModified = true
 		REDACTED
 	REDACTED
+
+		// Remove prompt_cache_retention (not supported by upstream OpenAI API)
+		if _, has := reqBody["prompt_cache_retention"]; has {
+			delete(reqBody, "prompt_cache_retention")
+			bodyModified = true
+	REDACTED
 REDACTED
 
 	// Re-serialize body only if modified
