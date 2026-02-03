@@ -121,7 +121,7 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import type { Account REDACTED from '@/types'
-import { formatCountdownWithSuffix REDACTED from '@/utils/format'
+import { formatCountdownWithSuffix, formatTime REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
 
