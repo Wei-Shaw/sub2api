@@ -142,10 +142,10 @@ REDACTED{
 			expected:       "gemini-2.5-flash",
 	REDACTED,
 		{
-			name:           "Gemini透传 - gemini-2.5-pro",
+			name:           "Gemini映射 - gemini-2.5-pro → gemini-3-pro-high",
 			requestedModel: "gemini-2.5-pro",
 			accountMapping: nil,
-			expected:       "gemini-2.5-pro",
+			expected:       "gemini-3-pro-high",
 	REDACTED,
 		{
 			name:           "Gemini透传 - gemini-future-model",
