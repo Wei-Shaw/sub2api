@@ -2046,6 +2046,9 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 				fallbackMinutes = s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes
 		REDACTED
 			defaultDur := time.Duration(fallbackMinutes) * time.Minute
+			if fallbackDur, ok := antigravityFallbackCooldownSeconds(); ok {
+				defaultDur = fallbackDur
+		REDACTED
 			ra := time.Now().Add(defaultDur)
 			if useScopeLimit {
 				log.Printf("%s status=429 rate_limited scope=%s reset_in=%v (fallback)", prefix, quotaScope, defaultDur)

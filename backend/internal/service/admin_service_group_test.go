@@ -458,6 +458,14 @@ func (s *groupRepoStubForInvalidRequestFallback) DeleteAccountGroupsByGroupID(_ 
 	panic("unexpected DeleteAccountGroupsByGroupID call")
 REDACTED
 
+func (s *groupRepoStubForInvalidRequestFallback) GetAccountIDsByGroupIDs(_ context.Context, _ []int64) ([]int64, error) {
+	panic("unexpected GetAccountIDsByGroupIDs call")
+REDACTED
+
+func (s *groupRepoStubForInvalidRequestFallback) BindAccountsToGroup(_ context.Context, _ int64, _ []int64) error {
+	panic("unexpected BindAccountsToGroup call")
+REDACTED
+
 func TestAdminService_CreateGroup_InvalidRequestFallbackRejectsUnsupportedPlatform(t *testing.T) {
 	fallbackID := int64(10)
 	repo := &groupRepoStubForInvalidRequestFallback{
