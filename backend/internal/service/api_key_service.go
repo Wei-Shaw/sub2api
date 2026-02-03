@@ -17,15 +17,15 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyNotFound     = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed    = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists       = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort     = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited  = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrInvalidIPPattern   = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
-	ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
+	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
 	ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key 额度已用完")
 )
@@ -94,7 +94,7 @@ type CreateAPIKeyRequest struct {
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
 
 	// Quota fields
-	Quota         float64 `json:"quota"`          // Quota limit in USD (0 = unlimited)
+	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
 	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = never expires)
 REDACTED
 
@@ -107,10 +107,10 @@ type UpdateAPIKeyRequest struct {
 	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单（空数组清空）
 
 	// Quota fields
-	Quota           *float64   `json:"quota"`          // Quota limit in USD (nil = no change, 0 = unlimited)
-	ExpiresAt       *time.Time `json:"expires_at"`     // Expiration time (nil = no change)
-	ClearExpiration bool       `json:"-"`              // Clear expiration (internal use)
-	ResetQuota      *bool      `json:"reset_quota"`    // Reset quota_used to 0
+	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
+	ExpiresAt       *time.Time `json:"expires_at"`  // Expiration time (nil = no change)
+	ClearExpiration bool       `json:"-"`           // Clear expiration (internal use)
+	ResetQuota      *bool      `json:"reset_quota"` // Reset quota_used to 0
 REDACTED
 
 // APIKeyService API Key服务

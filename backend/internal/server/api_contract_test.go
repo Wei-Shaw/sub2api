@@ -1434,6 +1434,10 @@ func (r *stubApiKeyRepo) ListKeysByGroupID(ctx context.Context, groupID int64) (
 	return nil, errors.New("not implemented")
 REDACTED
 
+func (r *stubApiKeyRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error) {
+	return 0, errors.New("not implemented")
+REDACTED
+
 type stubUsageLogRepo struct {
 	userLogs map[int64][]service.UsageLog
 REDACTED
