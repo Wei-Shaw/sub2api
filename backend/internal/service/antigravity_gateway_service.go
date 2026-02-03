@@ -293,6 +293,9 @@ var antigravityPrefixMapping = []struct {
 	target string
 REDACTED{
 	// 长前缀优先
+	{"gemini-2.5-pro-preview", "gemini-3-pro-high"REDACTED,  // gemini-2.5-pro-preview → gemini-3-pro-high
+	{"gemini-2.5-pro-exp", "gemini-3-pro-high"REDACTED,      // gemini-2.5-pro-exp → gemini-3-pro-high
+	{"gemini-2.5-pro", "gemini-3-pro-high"REDACTED,          // gemini-2.5-pro → gemini-3-pro-high
 	{"gemini-2.5-flash-image", "gemini-3-pro-image"REDACTED, // gemini-2.5-flash-image → 3-pro-image
 	{"gemini-3-pro-image", "gemini-3-pro-image"REDACTED,     // gemini-3-pro-image-preview 等
 	{"gemini-3-flash", "gemini-3-flash"REDACTED,             // gemini-3-flash-preview 等 → gemini-3-flash
