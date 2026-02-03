@@ -79,6 +79,24 @@ const routes: RouteRecordRaw[] = [
       title: 'LinuxDo OAuth Callback'
     REDACTED
   REDACTED,
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('@/views/auth/ForgotPasswordView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Forgot Password'
+    REDACTED
+  REDACTED,
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: () => import('@/views/auth/ResetPasswordView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Reset Password'
+    REDACTED
+  REDACTED,
 
   // ==================== User Routes ====================
   {
@@ -155,6 +173,18 @@ const routes: RouteRecordRaw[] = [
       title: 'My Subscriptions',
       titleKey: 'userSubscriptions.title',
       descriptionKey: 'userSubscriptions.description'
+    REDACTED
+  REDACTED,
+  {
+    path: '/purchase',
+    name: 'PurchaseSubscription',
+    component: () => import('@/views/user/PurchaseSubscriptionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Purchase Subscription',
+      titleKey: 'purchase.title',
+      descriptionKey: 'purchase.description'
     REDACTED
   REDACTED,
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -134,6 +135,8 @@ REDACTED
 REDACTED
 
 func TestInjectClaudeCodePrompt(t *testing.T) {
+	claudePrefix := strings.TrimSpace(claudeCodeSystemPrompt)
+
 	tests := []struct {
 		name           string
 		body           string
@@ -162,7 +165,7 @@ REDACTED{
 			system:         "Custom prompt",
 			wantSystemLen:  2,
 			wantFirstText:  claudeCodeSystemPrompt,
-			wantSecondText: "Custom prompt",
+			wantSecondText: claudePrefix + "\n\nCustom prompt",
 	REDACTED,
 		{
 			name:          "string system equals Claude Code prompt",
@@ -178,7 +181,7 @@ REDACTED{
 			// Claude Code + Custom = 2
 			wantSystemLen:  2,
 			wantFirstText:  claudeCodeSystemPrompt,
-			wantSecondText: "Custom",
+			wantSecondText: claudePrefix + "\n\nCustom",
 	REDACTED,
 		{
 			name: "array system with existing Claude Code prompt (should dedupe)",
@@ -190,7 +193,7 @@ REDACTED{
 			// Claude Code at start + Other = 2 (deduped)
 			wantSystemLen:  2,
 			wantFirstText:  claudeCodeSystemPrompt,
-			wantSecondText: "Other",
+			wantSecondText: claudePrefix + "\n\nOther",
 	REDACTED,
 		{
 			name:          "empty array",

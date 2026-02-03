@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,9 +13,10 @@ import (
 )
 
 const (
-	apiKeyRateLimitKeyPrefix = "apikey:ratelimit:"
-	apiKeyRateLimitDuration  = 24 * time.Hour
-	apiKeyAuthCachePrefix    = "apikey:auth:"
+	apiKeyRateLimitKeyPrefix   = "apikey:ratelimit:"
+	apiKeyRateLimitDuration    = 24 * time.Hour
+	apiKeyAuthCachePrefix      = "apikey:auth:"
+	authCacheInvalidateChannel = "auth:cache:invalidate"
 )
 
 // apiKeyRateLimitKey generates the Redis key for API key creation rate limiting.
@@ -90,4 +92,46 @@ REDACTED
 
 func (c *apiKeyCache) DeleteAuthCache(ctx context.Context, key string) error {
 	return c.rdb.Del(ctx, apiKeyAuthCacheKey(key)).Err()
+REDACTED
+
+// PublishAuthCacheInvalidation publishes a cache invalidation message to all instances
+func (c *apiKeyCache) PublishAuthCacheInvalidation(ctx context.Context, cacheKey string) error {
+	return c.rdb.Publish(ctx, authCacheInvalidateChannel, cacheKey).Err()
+REDACTED
+
+// SubscribeAuthCacheInvalidation subscribes to cache invalidation messages
+func (c *apiKeyCache) SubscribeAuthCacheInvalidation(ctx context.Context, handler func(cacheKey string)) error {
+	pubsub := c.rdb.Subscribe(ctx, authCacheInvalidateChannel)
+
+	// Verify subscription is working
+	_, err := pubsub.Receive(ctx)
+	if err != nil {
+		_ = pubsub.Close()
+		return fmt.Errorf("subscribe to auth cache invalidation: %w", err)
+REDACTED
+
+	go func() {
+		defer func() {
+			if err := pubsub.Close(); err != nil {
+				log.Printf("Warning: failed to close auth cache invalidation pubsub: %v", err)
+		REDACTED
+	REDACTED()
+
+		ch := pubsub.Channel()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-ch:
+				if !ok {
+					return
+			REDACTED
+				if msg != nil {
+					handler(msg.Payload)
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED()
+
+	return nil
 REDACTED

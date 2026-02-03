@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -54,6 +52,9 @@ func DefaultTransformOptions() TransformOptions {
 REDACTED
 REDACTED
 
+// webSearchFallbackModel web_search 请求使用的降级模型
+const webSearchFallbackModel = "gemini-2.5-flash"
+
 // TransformClaudeToGemini 将 Claude 请求转换为 v1internal Gemini 格式
 func TransformClaudeToGemini(claudeReq *ClaudeRequest, projectID, mappedModel string) ([]byte, error) {
 	return TransformClaudeToGeminiWithOptions(claudeReq, projectID, mappedModel, DefaultTransformOptions())
@@ -64,12 +65,23 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 	// 用于存储 tool_use id -> name 映射
 	toolIDToName := make(map[string]string)
 
+	// 检测是否有 web_search 工具
+	hasWebSearchTool := hasWebSearchTool(claudeReq.Tools)
+	requestType := "agent"
+	targetModel := mappedModel
+	if hasWebSearchTool {
+		requestType = "web_search"
+		if targetModel != webSearchFallbackModel {
+			targetModel = webSearchFallbackModel
+	REDACTED
+REDACTED
+
 	// 检测是否启用 thinking
 	isThinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
 
 	// 只有 Gemini 模型支持 dummy thought workaround
 	// Claude 模型通过 Vertex/Google API 需要有效的 thought signatures
-	allowDummyThought := strings.HasPrefix(mappedModel, "gemini-")
+	allowDummyThought := strings.HasPrefix(targetModel, "gemini-")
 
 	// 1. 构建 contents
 	contents, strippedThinking, err := buildContents(claudeReq.Messages, toolIDToName, isThinkingEnabled, allowDummyThought)
@@ -78,7 +90,7 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 REDACTED
 
 	// 2. 构建 systemInstruction
-	systemInstruction := buildSystemInstruction(claudeReq.System, claudeReq.Model, opts)
+	systemInstruction := buildSystemInstruction(claudeReq.System, claudeReq.Model, opts, claudeReq.Tools)
 
 	// 3. 构建 generationConfig
 	reqForConfig := claudeReq
@@ -87,6 +99,11 @@ REDACTED
 		// disable upstream thinking mode to avoid signature/structure validation errors.
 		reqCopy := *claudeReq
 		reqCopy.Thinking = nil
+		reqForConfig = &reqCopy
+REDACTED
+	if targetModel != "" && targetModel != reqForConfig.Model {
+		reqCopy := *reqForConfig
+		reqCopy.Model = targetModel
 		reqForConfig = &reqCopy
 REDACTED
 	generationConfig := buildGenerationConfig(reqForConfig)
@@ -127,8 +144,8 @@ REDACTED
 		Project:     projectID,
 		RequestID:   "agent-" + uuid.New().String(),
 		UserAgent:   "antigravity", // 固定值，与官方客户端一致
-		RequestType: "agent",
-		Model:       mappedModel,
+		RequestType: requestType,
+		Model:       targetModel,
 		Request:     innerRequest,
 REDACTED
 
@@ -154,8 +171,40 @@ func GetDefaultIdentityPatch() string {
 	return antigravityIdentity
 REDACTED
 
-// buildSystemInstruction 构建 systemInstruction
-func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions) *GeminiContent {
+// mcpXMLProtocol MCP XML 工具调用协议（与 Antigravity-Manager 保持一致）
+const mcpXMLProtocol = `
+==== MCP XML 工具调用协议 (Workaround) ====
+当你需要调用名称以 ` + "`mcp__`" + ` 开头的 MCP 工具时：
+1) 优先尝试 XML 格式调用：输出 ` + "`<mcp__tool_name>{\"arg\":\"value\"REDACTED</mcp__tool_name>`" + `。
+2) 必须直接输出 XML 块，无需 markdown 包装，内容为 JSON 格式的入参。
+3) 这种方式具有更高的连通性和容错性，适用于大型结果返回场景。
+===========================================`
+
+// hasMCPTools 检测是否有 mcp__ 前缀的工具
+func hasMCPTools(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if strings.HasPrefix(tool.Name, "mcp__") {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// filterOpenCodePrompt 过滤 OpenCode 默认提示词，只保留用户自定义指令
+func filterOpenCodePrompt(text string) string {
+	if !strings.Contains(text, "You are an interactive CLI tool") {
+		return text
+REDACTED
+	// 提取 "Instructions from:" 及之后的部分
+	if idx := strings.Index(text, "Instructions from:"); idx >= 0 {
+		return text[idx:]
+REDACTED
+	// 如果没有自定义指令，返回空
+	return ""
+REDACTED
+
+// buildSystemInstruction 构建 systemInstruction（与 Antigravity-Manager 保持一致）
+func buildSystemInstruction(system json.RawMessage, modelName string, opts TransformOptions, tools []ClaudeTool) *GeminiContent {
 	var parts []GeminiPart
 
 	// 先解析用户的 system prompt，检测是否已包含 Antigravity identity
@@ -167,9 +216,13 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 		var sysStr string
 		if err := json.Unmarshal(system, &sysStr); err == nil {
 			if strings.TrimSpace(sysStr) != "" {
-				userSystemParts = append(userSystemParts, GeminiPart{Text: sysStrREDACTED)
 				if strings.Contains(sysStr, "You are Antigravity") {
 					userHasAntigravityIdentity = true
+			REDACTED
+				// 过滤 OpenCode 默认提示词
+				filtered := filterOpenCodePrompt(sysStr)
+				if filtered != "" {
+					userSystemParts = append(userSystemParts, GeminiPart{Text: filteredREDACTED)
 			REDACTED
 		REDACTED
 	REDACTED else {
@@ -178,9 +231,13 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 			if err := json.Unmarshal(system, &sysBlocks); err == nil {
 				for _, block := range sysBlocks {
 					if block.Type == "text" && strings.TrimSpace(block.Text) != "" {
-						userSystemParts = append(userSystemParts, GeminiPart{Text: block.TextREDACTED)
 						if strings.Contains(block.Text, "You are Antigravity") {
 							userHasAntigravityIdentity = true
+					REDACTED
+						// 过滤 OpenCode 默认提示词
+						filtered := filterOpenCodePrompt(block.Text)
+						if filtered != "" {
+							userSystemParts = append(userSystemParts, GeminiPart{Text: filteredREDACTED)
 					REDACTED
 				REDACTED
 			REDACTED
@@ -199,6 +256,16 @@ REDACTED
 
 	// 添加用户的 system prompt
 	parts = append(parts, userSystemParts...)
+
+	// 检测是否有 MCP 工具，如有则注入 XML 调用协议
+	if hasMCPTools(tools) {
+		parts = append(parts, GeminiPart{Text: mcpXMLProtocolREDACTED)
+REDACTED
+
+	// 如果用户没有提供 Antigravity 身份，添加结束标记
+	if !userHasAntigravityIdentity {
+		parts = append(parts, GeminiPart{Text: "\n--- [SYSTEM_PROMPT_END] ---"REDACTED)
+REDACTED
 
 	if len(parts) == 0 {
 		return nil
@@ -300,8 +367,10 @@ REDACTED
 				Text:    block.Thinking,
 				Thought: true,
 		REDACTED
-			// 保留原有 signature（Claude 模型需要有效的 signature）
-			if block.Signature != "" {
+			// signature 处理：
+			// - Claude 模型（allowDummyThought=false）：必须是上游返回的真实 signature（dummy 视为缺失）
+			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
+			if block.Signature != "" && (allowDummyThought || block.Signature != dummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
 		REDACTED else if !allowDummyThought {
 				// Claude 模型需要有效 signature；在缺失时降级为普通文本，并在上层禁用 thinking mode。
@@ -340,12 +409,12 @@ REDACTED
 			REDACTED,
 		REDACTED
 			// tool_use 的 signature 处理：
-			// - Gemini 模型：使用 dummy signature（跳过 thought_signature 校验）
-			// - Claude 模型：透传上游返回的真实 signature（Vertex/Google 需要完整签名链路）
-			if allowDummyThought {
-				part.ThoughtSignature = dummyThoughtSignature
-		REDACTED else if block.Signature != "" && block.Signature != dummyThoughtSignature {
+			// - Claude 模型（allowDummyThought=false）：必须是上游返回的真实 signature（dummy 视为缺失）
+			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
+			if block.Signature != "" && (allowDummyThought || block.Signature != dummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
+		REDACTED else if allowDummyThought {
+				part.ThoughtSignature = dummyThoughtSignature
 		REDACTED
 			parts = append(parts, part)
 
@@ -429,6 +498,11 @@ func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 		StopSequences:   DefaultStopSequences,
 REDACTED
 
+	// 如果请求中指定了 MaxTokens，使用请求值
+	if req.MaxTokens > 0 {
+		config.MaxOutputTokens = req.MaxTokens
+REDACTED
+
 	// Thinking 配置
 	if req.Thinking != nil && req.Thinking.Type == "enabled" {
 		config.ThinkingConfig = &GeminiThinkingConfig{
@@ -458,37 +532,43 @@ REDACTED
 	return config
 REDACTED
 
+func hasWebSearchTool(tools []ClaudeTool) bool {
+	for _, tool := range tools {
+		if isWebSearchTool(tool) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func isWebSearchTool(tool ClaudeTool) bool {
+	if strings.HasPrefix(tool.Type, "web_search") || tool.Type == "google_search" {
+		return true
+REDACTED
+
+	name := strings.TrimSpace(tool.Name)
+	switch name {
+	case "web_search", "google_search", "web_search_20250305":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
 // buildTools 构建 tools
 func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 	if len(tools) == 0 {
 		return nil
 REDACTED
 
-	// 检查是否有 web_search 工具
-	hasWebSearch := false
-	for _, tool := range tools {
-		if tool.Name == "web_search" {
-			hasWebSearch = true
-			break
-	REDACTED
-REDACTED
-
-	if hasWebSearch {
-		// Web Search 工具映射
-		return []GeminiToolDeclaration{{
-			GoogleSearch: &GeminiGoogleSearch{
-				EnhancedContent: &GeminiEnhancedContent{
-					ImageSearch: &GeminiImageSearch{
-						MaxResultCount: 5,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-	REDACTEDREDACTED
-REDACTED
+	hasWebSearch := hasWebSearchTool(tools)
 
 	// 普通工具
 	var funcDecls []GeminiFunctionDecl
 	for _, tool := range tools {
+		if isWebSearchTool(tool) {
+			continue
+	REDACTED
 		// 跳过无效工具名称
 		if strings.TrimSpace(tool.Name) == "" {
 			log.Printf("Warning: skipping tool with empty name")
@@ -514,11 +594,14 @@ REDACTED
 	REDACTED
 
 		// 清理 JSON Schema
-		params := cleanJSONSchema(inputSchema)
+		// 1. 深度清理 [undefined] 值
+		DeepCleanUndefined(inputSchema)
+		// 2. 转换为符合 Gemini v1internal 的 schema
+		params := CleanJSONSchema(inputSchema)
 		// 为 nil schema 提供默认值
 		if params == nil {
 			params = map[string]any{
-				"type":       "OBJECT",
+				"type":       "object", // lowercase type
 				"properties": map[string]any{REDACTED,
 		REDACTED
 	REDACTED
@@ -531,243 +614,23 @@ REDACTED
 REDACTED
 
 	if len(funcDecls) == 0 {
-		return nil
+		if !hasWebSearch {
+			return nil
+	REDACTED
+
+		// Web Search 工具映射
+		return []GeminiToolDeclaration{{
+			GoogleSearch: &GeminiGoogleSearch{
+				EnhancedContent: &GeminiEnhancedContent{
+					ImageSearch: &GeminiImageSearch{
+						MaxResultCount: 5,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTEDREDACTED
 REDACTED
 
 	return []GeminiToolDeclaration{{
 		FunctionDeclarations: funcDecls,
 REDACTEDREDACTED
-REDACTED
-
-// cleanJSONSchema 清理 JSON Schema，移除 Antigravity/Gemini 不支持的字段
-// 参考 proxycast 的实现，确保 schema 符合 JSON Schema draft 2020-12
-func cleanJSONSchema(schema map[string]any) map[string]any {
-	if schema == nil {
-		return nil
-REDACTED
-	cleaned := cleanSchemaValue(schema, "$")
-	result, ok := cleaned.(map[string]any)
-	if !ok {
-		return nil
-REDACTED
-
-	// 确保有 type 字段（默认 OBJECT）
-	if _, hasType := result["type"]; !hasType {
-		result["type"] = "OBJECT"
-REDACTED
-
-	// 确保有 properties 字段（默认空对象）
-	if _, hasProps := result["properties"]; !hasProps {
-		result["properties"] = make(map[string]any)
-REDACTED
-
-	// 验证 required 中的字段都存在于 properties 中
-	if required, ok := result["required"].([]any); ok {
-		if props, ok := result["properties"].(map[string]any); ok {
-			validRequired := make([]any, 0, len(required))
-			for _, r := range required {
-				if reqName, ok := r.(string); ok {
-					if _, exists := props[reqName]; exists {
-						validRequired = append(validRequired, r)
-				REDACTED
-			REDACTED
-		REDACTED
-			if len(validRequired) > 0 {
-				result["required"] = validRequired
-		REDACTED else {
-				delete(result, "required")
-		REDACTED
-	REDACTED
-REDACTED
-
-	return result
-REDACTED
-
-var schemaValidationKeys = map[string]bool{
-	"minLength":         true,
-	"maxLength":         true,
-	"pattern":           true,
-	"minimum":           true,
-	"maximum":           true,
-	"exclusiveMinimum":  true,
-	"exclusiveMaximum":  true,
-	"multipleOf":        true,
-	"uniqueItems":       true,
-	"minItems":          true,
-	"maxItems":          true,
-	"minProperties":     true,
-	"maxProperties":     true,
-	"patternProperties": true,
-	"propertyNames":     true,
-	"dependencies":      true,
-	"dependentSchemas":  true,
-	"dependentRequired": true,
-REDACTED
-
-var warnedSchemaKeys sync.Map
-
-func schemaCleaningWarningsEnabled() bool {
-	// 可通过环境变量强制开关，方便排查：SUB2API_SCHEMA_CLEAN_WARN=true/false
-	if v := strings.TrimSpace(os.Getenv("SUB2API_SCHEMA_CLEAN_WARN")); v != "" {
-		switch strings.ToLower(v) {
-		case "1", "true", "yes", "on":
-			return true
-		case "0", "false", "no", "off":
-			return false
-	REDACTED
-REDACTED
-	// 默认：非 release 模式下输出（debug/test）
-	return gin.Mode() != gin.ReleaseMode
-REDACTED
-
-func warnSchemaKeyRemovedOnce(key, path string) {
-	if !schemaCleaningWarningsEnabled() {
-		return
-REDACTED
-	if !schemaValidationKeys[key] {
-		return
-REDACTED
-	if _, loaded := warnedSchemaKeys.LoadOrStore(key, struct{REDACTED{REDACTED); loaded {
-		return
-REDACTED
-	log.Printf("[SchemaClean] removed unsupported JSON Schema validation field key=%q path=%q", key, path)
-REDACTED
-
-// excludedSchemaKeys 不支持的 schema 字段
-// 基于 Claude API (Vertex AI) 的实际支持情况
-// 支持: type, description, enum, properties, required, additionalProperties, items
-// 不支持: minItems, maxItems, minLength, maxLength, pattern, minimum, maximum 等验证字段
-var excludedSchemaKeys = map[string]bool{
-	// 元 schema 字段
-	"$schema": true,
-	"$id":     true,
-	"$ref":    true,
-
-	// 字符串验证（Gemini 不支持）
-	"minLength": true,
-	"maxLength": true,
-	"pattern":   true,
-
-	// 数字验证（Claude API 通过 Vertex AI 不支持这些字段）
-	"minimum":          true,
-	"maximum":          true,
-	"exclusiveMinimum": true,
-	"exclusiveMaximum": true,
-	"multipleOf":       true,
-
-	// 数组验证（Claude API 通过 Vertex AI 不支持这些字段）
-	"uniqueItems": true,
-	"minItems":    true,
-	"maxItems":    true,
-
-	// 组合 schema（Gemini 不支持）
-	"oneOf":       true,
-	"anyOf":       true,
-	"allOf":       true,
-	"not":         true,
-	"if":          true,
-	"then":        true,
-	"else":        true,
-	"$defs":       true,
-	"definitions": true,
-
-	// 对象验证（仅保留 properties/required/additionalProperties）
-	"minProperties":     true,
-	"maxProperties":     true,
-	"patternProperties": true,
-	"propertyNames":     true,
-	"dependencies":      true,
-	"dependentSchemas":  true,
-	"dependentRequired": true,
-
-	// 其他不支持的字段
-	"default":          true,
-	"const":            true,
-	"examples":         true,
-	"deprecated":       true,
-	"readOnly":         true,
-	"writeOnly":        true,
-	"contentMediaType": true,
-	"contentEncoding":  true,
-
-	// Claude 特有字段
-	"strict": true,
-REDACTED
-
-// cleanSchemaValue 递归清理 schema 值
-func cleanSchemaValue(value any, path string) any {
-	switch v := value.(type) {
-	case map[string]any:
-		result := make(map[string]any)
-		for k, val := range v {
-			// 跳过不支持的字段
-			if excludedSchemaKeys[k] {
-				warnSchemaKeyRemovedOnce(k, path)
-				continue
-		REDACTED
-
-			// 特殊处理 type 字段
-			if k == "type" {
-				result[k] = cleanTypeValue(val)
-				continue
-		REDACTED
-
-			// 特殊处理 format 字段：只保留 Gemini 支持的 format 值
-			if k == "format" {
-				if formatStr, ok := val.(string); ok {
-					// Gemini 只支持 date-time, date, time
-					if formatStr == "date-time" || formatStr == "date" || formatStr == "time" {
-						result[k] = val
-				REDACTED
-					// 其他 format 值直接跳过
-			REDACTED
-				continue
-		REDACTED
-
-			// 特殊处理 additionalProperties：Claude API 只支持布尔值，不支持 schema 对象
-			if k == "additionalProperties" {
-				if boolVal, ok := val.(bool); ok {
-					result[k] = boolVal
-			REDACTED else {
-					// 如果是 schema 对象，转换为 false（更安全的默认值）
-					result[k] = false
-			REDACTED
-				continue
-		REDACTED
-
-			// 递归清理所有值
-			result[k] = cleanSchemaValue(val, path+"."+k)
-	REDACTED
-		return result
-
-	case []any:
-		// 递归处理数组中的每个元素
-		cleaned := make([]any, 0, len(v))
-		for i, item := range v {
-			cleaned = append(cleaned, cleanSchemaValue(item, fmt.Sprintf("%s[%d]", path, i)))
-	REDACTED
-		return cleaned
-
-	default:
-		return value
-REDACTED
-REDACTED
-
-// cleanTypeValue 处理 type 字段，转换为大写
-func cleanTypeValue(value any) any {
-	switch v := value.(type) {
-	case string:
-		return strings.ToUpper(v)
-	case []any:
-		// 联合类型 ["string", "null"] -> 取第一个非 null 类型
-		for _, t := range v {
-			if ts, ok := t.(string); ok && ts != "null" {
-				return strings.ToUpper(ts)
-		REDACTED
-	REDACTED
-		// 如果只有 null，返回 STRING
-		return "STRING"
-	default:
-		return value
-REDACTED
 REDACTED

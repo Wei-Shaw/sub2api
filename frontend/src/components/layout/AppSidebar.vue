@@ -421,6 +421,16 @@ const userNavItems = computed(() => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
+    ...(appStore.cachedPublicSettings?.purchase_subscription_enabled
+      ? [
+          {
+            path: '/purchase',
+            label: t('nav.buySubscription'),
+            icon: CreditCardIcon,
+            hideInSimpleMode: true
+          REDACTED
+        ]
+      : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
     { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
   ]
@@ -433,6 +443,16 @@ const personalNavItems = computed(() => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
+    ...(appStore.cachedPublicSettings?.purchase_subscription_enabled
+      ? [
+          {
+            path: '/purchase',
+            label: t('nav.buySubscription'),
+            icon: CreditCardIcon,
+            hideInSimpleMode: true
+          REDACTED
+        ]
+      : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
     { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
   ]

@@ -45,6 +45,7 @@ type AccountHandler struct {
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
 	sessionLimitCache       service.SessionLimitCache
+	tokenCacheInvalidator   service.TokenCacheInvalidator
 REDACTED
 
 // NewAccountHandler creates a new admin account handler
@@ -60,6 +61,7 @@ func NewAccountHandler(
 	concurrencyService *service.ConcurrencyService,
 	crsSyncService *service.CRSSyncService,
 	sessionLimitCache service.SessionLimitCache,
+	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -73,6 +75,7 @@ func NewAccountHandler(
 		concurrencyService:      concurrencyService,
 		crsSyncService:          crsSyncService,
 		sessionLimitCache:       sessionLimitCache,
+		tokenCacheInvalidator:   tokenCacheInvalidator,
 REDACTED
 REDACTED
 
@@ -173,6 +176,7 @@ REDACTED
 	// 识别需要查询窗口费用和会话数的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
 	windowCostAccountIDs := make([]int64, 0)
 	sessionLimitAccountIDs := make([]int64, 0)
+	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 	for i := range accounts {
 		acc := &accounts[i]
 		if acc.IsAnthropicOAuthOrSetupToken() {
@@ -181,6 +185,7 @@ REDACTED
 		REDACTED
 			if acc.GetMaxSessions() > 0 {
 				sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
+				sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 		REDACTED
 	REDACTED
 REDACTED
@@ -189,9 +194,9 @@ REDACTED
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 
-	// 获取活跃会话数（批量查询）
+	// 获取活跃会话数（批量查询，传入各账号的 idleTimeout 配置）
 	if len(sessionLimitAccountIDs) > 0 && h.sessionLimitCache != nil {
-		activeSessions, _ = h.sessionLimitCache.GetActiveSessionCountBatch(c.Request.Context(), sessionLimitAccountIDs)
+		activeSessions, _ = h.sessionLimitCache.GetActiveSessionCountBatch(c.Request.Context(), sessionLimitAccountIDs, sessionIdleTimeouts)
 		if activeSessions == nil {
 			activeSessions = make(map[int64]int)
 	REDACTED
@@ -211,12 +216,8 @@ REDACTED
 		REDACTED
 			accCopy := acc // 闭包捕获
 			g.Go(func() error {
-				var startTime time.Time
-				if accCopy.SessionWindowStart != nil {
-					startTime = *accCopy.SessionWindowStart
-			REDACTED else {
-					startTime = time.Now().Add(-5 * time.Hour)
-			REDACTED
+				// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
+				startTime := accCopy.GetCurrentWindowStartTime()
 				stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
 				if err == nil && stats != nil {
 					mu.Lock()
@@ -545,6 +546,41 @@ REDACTED else if account.Platform == service.PlatformAntigravity {
 				newCredentials[k] = v
 		REDACTED
 	REDACTED
+
+		// 特殊处理 project_id：如果新值为空但旧值非空，保留旧值
+		// 这确保了即使 LoadCodeAssist 失败，project_id 也不会丢失
+		if newProjectID, _ := newCredentials["project_id"].(string); newProjectID == "" {
+			if oldProjectID := strings.TrimSpace(account.GetCredential("project_id")); oldProjectID != "" {
+				newCredentials["project_id"] = oldProjectID
+		REDACTED
+	REDACTED
+
+		// 如果 project_id 获取失败，更新凭证但不标记为 error
+		// LoadCodeAssist 失败可能是临时网络问题，给它机会在下次自动刷新时重试
+		if tokenInfo.ProjectIDMissing {
+			// 先更新凭证（token 本身刷新成功了）
+			_, updateErr := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+				Credentials: newCredentials,
+		REDACTED)
+			if updateErr != nil {
+				response.InternalError(c, "Failed to update credentials: "+updateErr.Error())
+				return
+		REDACTED
+			// 不标记为 error，只返回警告信息
+			response.Success(c, gin.H{
+				"message": "Token refreshed successfully, but project_id could not be retrieved (will retry automatically)",
+				"warning": "missing_project_id_temporary",
+		REDACTED)
+			return
+	REDACTED
+
+		// 成功获取到 project_id，如果之前是 missing_project_id 错误则清除
+		if account.Status == service.StatusError && strings.Contains(account.ErrorMessage, "missing_project_id:") {
+			if _, clearErr := h.adminService.ClearAccountError(c.Request.Context(), accountID); clearErr != nil {
+				response.InternalError(c, "Failed to clear account error: "+clearErr.Error())
+				return
+		REDACTED
+	REDACTED
 REDACTED else {
 		// Use Anthropic/Claude OAuth service to refresh token
 		tokenInfo, err := h.oauthService.RefreshAccountToken(c.Request.Context(), account)
@@ -578,6 +614,14 @@ REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+REDACTED
+
+	// 刷新成功后，清除 token 缓存，确保下次请求使用新 token
+	if h.tokenCacheInvalidator != nil {
+		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), updatedAccount); invalidateErr != nil {
+			// 缓存失效失败只记录日志，不影响主流程
+			_ = c.Error(invalidateErr)
+	REDACTED
 REDACTED
 
 	response.Success(c, dto.AccountFromService(updatedAccount))
@@ -627,6 +671,15 @@ REDACTED
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+REDACTED
+
+	// 清除错误后，同时清除 token 缓存，确保下次请求会获取最新的 token（触发刷新或从 DB 读取）
+	// 这解决了管理员重置账号状态后，旧的失效 token 仍在缓存中导致立即再次 401 的问题
+	if h.tokenCacheInvalidator != nil && account.IsOAuth() {
+		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), account); invalidateErr != nil {
+			// 缓存失效失败只记录日志，不影响主流程
+			_ = c.Error(invalidateErr)
+	REDACTED
 REDACTED
 
 	response.Success(c, dto.AccountFromService(account))

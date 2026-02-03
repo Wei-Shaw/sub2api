@@ -1,4 +1,4 @@
-import { defineConfig, Plugin REDACTED from 'vite'
+import { defineConfig, loadEnv, Plugin REDACTED from 'vite'
 import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
 import { resolve REDACTED from 'path'
@@ -7,9 +7,7 @@ import { resolve REDACTED from 'path'
  * Vite 插件：开发模式下注入公开配置到 index.html
  * 与生产模式的后端注入行为保持一致，消除闪烁
  */
-function injectPublicSettings(): Plugin {
-  const backendUrl = process.env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
-
+function injectPublicSettings(backendUrl: string): Plugin {
   return {
     name: 'inject-public-settings',
     transformIndexHtml: {
@@ -35,15 +33,21 @@ function injectPublicSettings(): Plugin {
   REDACTED
 REDACTED
 
-export default defineConfig({
-  plugins: [
-    vue(),
-    checker({
-      typescript: true,
-      vueTsc: true
-    REDACTED),
-    injectPublicSettings()
-  ],
+export default defineConfig(({ mode REDACTED) => {
+  // 加载环境变量
+  const env = loadEnv(mode, process.cwd(), '')
+  const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
+  const devPort = Number(env.VITE_DEV_PORT || 3000)
+
+  return {
+    plugins: [
+      vue(),
+      checker({
+        typescript: true,
+        vueTsc: true
+      REDACTED),
+      injectPublicSettings(backendUrl)
+    ],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -102,17 +106,18 @@ export default defineConfig({
       REDACTED
     REDACTED
   REDACTED,
-  server: {
-    host: '0.0.0.0',
-    port: Number(process.env.VITE_DEV_PORT || 3000),
-    proxy: {
-      '/api': {
-        target: process.env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080',
-        changeOrigin: true
-      REDACTED,
-      '/setup': {
-        target: process.env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080',
-        changeOrigin: true
+    server: {
+      host: '0.0.0.0',
+      port: devPort,
+      proxy: {
+        '/api': {
+          target: backendUrl,
+          changeOrigin: true
+        REDACTED,
+        '/setup': {
+          target: backendUrl,
+          changeOrigin: true
+        REDACTED
       REDACTED
     REDACTED
   REDACTED

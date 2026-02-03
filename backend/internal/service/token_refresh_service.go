@@ -166,11 +166,29 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 	for attempt := 1; attempt <= s.cfg.MaxRetries; attempt++ {
 		newCredentials, err := refresher.Refresh(ctx, account)
-		if err == nil {
-			// 刷新成功，更新账号credentials
+
+		// 如果有新凭证，先更新（即使有错误也要保存 token）
+		if newCredentials != nil {
+			// 记录刷新版本时间戳，用于解决缓存一致性问题
+			// TokenProvider 写入缓存前会检查此版本，如果版本已更新则跳过写入
+			newCredentials["_token_version"] = time.Now().UnixMilli()
+
 			account.Credentials = newCredentials
-			if err := s.accountRepo.Update(ctx, account); err != nil {
-				return fmt.Errorf("failed to save credentials: %w", err)
+			if saveErr := s.accountRepo.Update(ctx, account); saveErr != nil {
+				return fmt.Errorf("failed to save credentials: %w", saveErr)
+		REDACTED
+	REDACTED
+
+		if err == nil {
+			// Antigravity 账户：如果之前是因为缺少 project_id 而标记为 error，现在成功获取到了，清除错误状态
+			if account.Platform == PlatformAntigravity &&
+				account.Status == StatusError &&
+				strings.Contains(account.ErrorMessage, "missing_project_id:") {
+				if clearErr := s.accountRepo.ClearError(ctx, account.ID); clearErr != nil {
+					log.Printf("[TokenRefresh] Failed to clear error status for account %d: %v", account.ID, clearErr)
+			REDACTED else {
+					log.Printf("[TokenRefresh] Account %d: cleared missing_project_id error", account.ID)
+			REDACTED
 		REDACTED
 			// 对所有 OAuth 账号调用缓存失效（InvalidateToken 内部根据平台判断是否需要处理）
 			if s.cacheInvalidator != nil && account.Type == AccountTypeOAuth {
@@ -219,7 +237,8 @@ REDACTED
 REDACTED
 
 // isNonRetryableRefreshError 判断是否为不可重试的刷新错误
-// 这些错误通常表示凭证已失效，需要用户重新授权
+// 这些错误通常表示凭证已失效或配置确实缺失，需要用户重新授权
+// 注意：missing_project_id 错误只在真正缺失（从未获取过）时返回，临时获取失败不会返回此错误
 func isNonRetryableRefreshError(err error) bool {
 	if err == nil {
 		return false
@@ -230,6 +249,7 @@ REDACTED
 		"invalid_client",      // 客户端配置错误
 		"unauthorized_client", // 客户端未授权
 		"access_denied",       // 访问被拒绝
+		"missing_project_id",  // 缺少 project_id
 REDACTED
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {

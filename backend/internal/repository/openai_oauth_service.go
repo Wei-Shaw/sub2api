@@ -2,10 +2,11 @@ package repository
 
 import (
 	"context"
-	"fmt"
+	"net/http"
 	"net/url"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/imroc/req/v3"
@@ -38,16 +39,17 @@ REDACTED
 
 	resp, err := client.R().
 		SetContext(ctx).
+		SetHeader("User-Agent", "codex-cli/0.91.0").
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
 
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_REQUEST_FAILED", "request failed: %v", err)
 REDACTED
 
 	if !resp.IsSuccessState() {
-		return nil, fmt.Errorf("token exchange failed: status %d, body: %s", resp.StatusCode, resp.String())
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_TOKEN_EXCHANGE_FAILED", "token exchange failed: status %d, body: %s", resp.StatusCode, resp.String())
 REDACTED
 
 	return &tokenResp, nil
@@ -66,16 +68,17 @@ func (s *openaiOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 
 	resp, err := client.R().
 		SetContext(ctx).
+		SetHeader("User-Agent", "codex-cli/0.91.0").
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
 
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_REQUEST_FAILED", "request failed: %v", err)
 REDACTED
 
 	if !resp.IsSuccessState() {
-		return nil, fmt.Errorf("token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_TOKEN_REFRESH_FAILED", "token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
 REDACTED
 
 	return &tokenResp, nil
@@ -84,6 +87,6 @@ REDACTED
 func createOpenAIReqClient(proxyURL string) *req.Client {
 	return getSharedReqClient(reqClientOptions{
 		ProxyURL: proxyURL,
-		Timeout:  60 * time.Second,
+		Timeout:  120 * time.Second,
 REDACTED)
 REDACTED

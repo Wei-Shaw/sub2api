@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
@@ -465,4 +466,47 @@ REDACTED
 	dst.ID = src.ID
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
+REDACTED
+
+// UpdateTotpSecret 更新用户的 TOTP 加密密钥
+func (r *userRepository) UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error {
+	client := clientFromContext(ctx, r.client)
+	update := client.User.UpdateOneID(userID)
+	if encryptedSecret == nil {
+		update = update.ClearTotpSecretEncrypted()
+REDACTED else {
+		update = update.SetTotpSecretEncrypted(*encryptedSecret)
+REDACTED
+	_, err := update.Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	return nil
+REDACTED
+
+// EnableTotp 启用用户的 TOTP 双因素认证
+func (r *userRepository) EnableTotp(ctx context.Context, userID int64) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.User.UpdateOneID(userID).
+		SetTotpEnabled(true).
+		SetTotpEnabledAt(time.Now()).
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	return nil
+REDACTED
+
+// DisableTotp 禁用用户的 TOTP 双因素认证
+func (r *userRepository) DisableTotp(ctx context.Context, userID int64) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.User.UpdateOneID(userID).
+		SetTotpEnabled(false).
+		ClearTotpEnabledAt().
+		ClearTotpSecretEncrypted().
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	return nil
 REDACTED

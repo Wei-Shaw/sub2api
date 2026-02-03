@@ -42,13 +42,13 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
-import type { Group, GroupPlatform REDACTED from '@/types'
+import type { AdminGroup, GroupPlatform REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
 
 interface Props {
   modelValue: number[]
-  groups: Group[]
+  groups: AdminGroup[]
   platform?: GroupPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
 REDACTED

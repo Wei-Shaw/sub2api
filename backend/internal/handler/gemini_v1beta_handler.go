@@ -1,11 +1,15 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,6 +22,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// geminiCLITmpDirRegex 用于从 Gemini CLI 请求体中提取 tmp 目录的哈希值
+// 匹配格式: /Users/xxx/.gemini/tmp/[64位十六进制哈希]
+var geminiCLITmpDirRegex = regexp.MustCompile(`/\.gemini/tmp/([A-Fa-f0-9]{64REDACTED)`)
+
+func isGeminiCLIRequest(c *gin.Context, body []byte) bool {
+	if strings.TrimSpace(c.GetHeader("x-gemini-api-privileged-user-id")) != "" {
+		return true
+REDACTED
+	return geminiCLITmpDirRegex.Match(body)
+REDACTED
 
 // GeminiV1BetaListModels proxies:
 // GET /v1beta/models
@@ -214,13 +229,27 @@ REDACTED
 REDACTED
 
 	// 3) select account (sticky session based on request body)
-	parsedReq, _ := service.ParseGatewayRequest(body)
-	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	// 优先使用 Gemini CLI 的会话标识（privileged-user-id + tmp 目录哈希）
+	sessionHash := extractGeminiCLISessionHash(c, body)
+	if sessionHash == "" {
+		// Fallback: 使用通用的会话哈希生成逻辑（适用于其他客户端）
+		parsedReq, _ := service.ParseGatewayRequest(body)
+		sessionHash = h.gatewayService.GenerateSessionHash(parsedReq)
+REDACTED
 	sessionKey := sessionHash
 	if sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
 REDACTED
-	const maxAccountSwitches = 3
+
+	// 查询粘性会话绑定的账号 ID（用于检测账号切换）
+	var sessionBoundAccountID int64
+	if sessionKey != "" {
+		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
+REDACTED
+	isCLI := isGeminiCLIRequest(c, body)
+	cleanedForUnknownBinding := false
+
+	maxAccountSwitches := h.maxAccountSwitchesGemini
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	lastFailoverStatus := 0
@@ -237,6 +266,24 @@ REDACTED
 	REDACTED
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID)
+
+		// 检测账号切换：如果粘性会话绑定的账号与当前选择的账号不同，清除 thoughtSignature
+		// 注意：Gemini 原生 API 的 thoughtSignature 与具体上游账号强相关；跨账号透传会导致 400。
+		if sessionBoundAccountID > 0 && sessionBoundAccountID != account.ID {
+			log.Printf("[Gemini] Sticky session account switched: %d -> %d, cleaning thoughtSignature", sessionBoundAccountID, account.ID)
+			body = service.CleanGeminiNativeThoughtSignatures(body)
+			sessionBoundAccountID = account.ID
+	REDACTED else if sessionKey != "" && sessionBoundAccountID == 0 && isCLI && !cleanedForUnknownBinding && bytes.Contains(body, []byte(`"thoughtSignature"`)) {
+			// 无缓存绑定但请求里已有 thoughtSignature：常见于缓存丢失/TTL 过期后，CLI 继续携带旧签名。
+			// 为避免第一次转发就 400，这里做一次确定性清理，让新账号重新生成签名链路。
+			log.Printf("[Gemini] Sticky session binding missing for CLI request, cleaning thoughtSignature proactively")
+			body = service.CleanGeminiNativeThoughtSignatures(body)
+			cleanedForUnknownBinding = true
+			sessionBoundAccountID = account.ID
+	REDACTED else if sessionBoundAccountID == 0 {
+			// 记录本次请求中首次选择到的账号，便于同一请求内 failover 时检测切换。
+			sessionBoundAccountID = account.ID
+	REDACTED
 
 		// 4) account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc
@@ -432,4 +479,39 @@ REDACTED
 		return true
 REDACTED
 	return false
+REDACTED
+
+// extractGeminiCLISessionHash 从 Gemini CLI 请求中提取会话标识。
+// 组合 x-gemini-api-privileged-user-id header 和请求体中的 tmp 目录哈希。
+//
+// 会话标识生成策略：
+//  1. 从请求体中提取 tmp 目录哈希（64位十六进制）
+//  2. 从 header 中提取 privileged-user-id（UUID）
+//  3. 组合两者生成 SHA256 哈希作为最终的会话标识
+//
+// 如果找不到 tmp 目录哈希，返回空字符串（不使用粘性会话）。
+//
+// extractGeminiCLISessionHash extracts session identifier from Gemini CLI requests.
+// Combines x-gemini-api-privileged-user-id header with tmp directory hash from request body.
+func extractGeminiCLISessionHash(c *gin.Context, body []byte) string {
+	// 1. 从请求体中提取 tmp 目录哈希
+	match := geminiCLITmpDirRegex.FindSubmatch(body)
+	if len(match) < 2 {
+		return "" // 没有找到 tmp 目录，不使用粘性会话
+REDACTED
+	tmpDirHash := string(match[1])
+
+	// 2. 提取 privileged-user-id
+	privilegedUserID := strings.TrimSpace(c.GetHeader("x-gemini-api-privileged-user-id"))
+
+	// 3. 组合生成最终的 session hash
+	if privilegedUserID != "" {
+		// 组合两个标识符：privileged-user-id + tmp 目录哈希
+		combined := privilegedUserID + ":" + tmpDirHash
+		hash := sha256.Sum256([]byte(combined))
+		return hex.EncodeToString(hash[:])
+REDACTED
+
+	// 如果没有 privileged-user-id，直接使用 tmp 目录哈希
+	return tmpDirHash
 REDACTED

@@ -115,7 +115,7 @@ jobs:
 
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.25.5'
+          go version | grep -q 'go1.25.6'
 
       # Docker setup for GoReleaser
       - name: Set up QEMU
@@ -222,8 +222,9 @@ jobs:
           REPO="${{ github.repository REDACTEDREDACTED"
           GHCR_IMAGE="ghcr.io/${REPO,,REDACTED"  # ${,,REDACTED converts to lowercase
 
-          # 获取 tag message 内容
+          # 获取 tag message 内容并转义 Markdown 特殊字符
           TAG_MESSAGE='${{ steps.tag_message.outputs.message REDACTEDREDACTED'
+          TAG_MESSAGE=$(echo "$TAG_MESSAGE" | sed 's/\([_*`\[]\)/\\\1/g')
 
           # 限制消息长度（Telegram 消息限制 4096 字符，预留空间给头尾固定内容）
           if [ ${#TAG_MESSAGEREDACTED -gt 3500 ]; then

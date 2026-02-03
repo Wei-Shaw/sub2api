@@ -30,7 +30,7 @@ REDACTED{
 		{"可映射 - claude-3-haiku-20240307", "claude-3-haiku-20240307", trueREDACTED,
 
 		// Gemini 前缀透传
-		{"Gemini前缀 - gemini-1.5-pro", "gemini-1.5-pro", trueREDACTED,
+		{"Gemini前缀 - gemini-2.5-pro", "gemini-2.5-pro", trueREDACTED,
 		{"Gemini前缀 - gemini-unknown-model", "gemini-unknown-model", trueREDACTED,
 		{"Gemini前缀 - gemini-future-version", "gemini-future-version", trueREDACTED,
 
@@ -142,10 +142,10 @@ REDACTED{
 			expected:       "gemini-2.5-flash",
 	REDACTED,
 		{
-			name:           "Gemini透传 - gemini-1.5-pro",
-			requestedModel: "gemini-1.5-pro",
+			name:           "Gemini透传 - gemini-2.5-pro",
+			requestedModel: "gemini-2.5-pro",
 			accountMapping: nil,
-			expected:       "gemini-1.5-pro",
+			expected:       "gemini-2.5-pro",
 	REDACTED,
 		{
 			name:           "Gemini透传 - gemini-future-model",

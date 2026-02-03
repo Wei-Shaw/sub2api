@@ -16,15 +16,6 @@ import (
 	"time"
 )
 
-// resolveHost 从 URL 解析 host
-func resolveHost(urlStr string) string {
-	parsed, err := url.Parse(urlStr)
-	if err != nil {
-		return ""
-REDACTED
-	return parsed.Host
-REDACTED
-
 // NewAPIRequestWithURL 使用指定的 base URL 创建 Antigravity API 请求（v1internal 端点）
 func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken string, body []byte) (*http.Request, error) {
 	// 构建 URL，流式请求添加 ?alt=sse 参数
@@ -39,22 +30,10 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 基础 Headers
+	// 基础 Headers（与 Antigravity-Manager 保持一致，只设置这 3 个）
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", UserAgent)
-
-	// Accept Header 根据请求类型设置
-	if isStream {
-		req.Header.Set("Accept", "text/event-stream")
-REDACTED else {
-		req.Header.Set("Accept", "application/json")
-REDACTED
-
-	// 显式设置 Host Header
-	if host := resolveHost(apiURL); host != "" {
-		req.Host = host
-REDACTED
 
 	return req, nil
 REDACTED
@@ -195,12 +174,15 @@ REDACTED
 REDACTED
 
 // shouldFallbackToNextURL 判断是否应切换到下一个 URL
-// 仅连接错误和 HTTP 429 触发 URL 降级
+// 与 Antigravity-Manager 保持一致：连接错误、429、408、404、5xx 触发 URL 降级
 func shouldFallbackToNextURL(err error, statusCode int) bool {
 	if isConnectionError(err) {
 		return true
 REDACTED
-	return statusCode == http.StatusTooManyRequests
+	return statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusRequestTimeout ||
+		statusCode == http.StatusNotFound ||
+		statusCode >= 500
 REDACTED
 
 // ExchangeCode 用 authorization code 交换 token
@@ -321,11 +303,8 @@ func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadC
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 REDACTED
 
-	// 获取可用的 URL 列表
-	availableURLs := DefaultURLAvailability.GetAvailableURLs()
-	if len(availableURLs) == 0 {
-		availableURLs = BaseURLs // 所有 URL 都不可用时，重试所有
-REDACTED
+	// 固定顺序：prod -> daily
+	availableURLs := BaseURLs
 
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
@@ -343,7 +322,6 @@ REDACTED
 		if err != nil {
 			lastErr = fmt.Errorf("loadCodeAssist 请求失败: %w", err)
 			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
-				DefaultURLAvailability.MarkUnavailable(baseURL)
 				log.Printf("[antigravity] loadCodeAssist URL fallback: %s -> %s", baseURL, availableURLs[urlIdx+1])
 				continue
 		REDACTED
@@ -358,7 +336,6 @@ REDACTED
 
 		// 检查是否需要 URL 降级
 		if shouldFallbackToNextURL(nil, resp.StatusCode) && urlIdx < len(availableURLs)-1 {
-			DefaultURLAvailability.MarkUnavailable(baseURL)
 			log.Printf("[antigravity] loadCodeAssist URL fallback (HTTP %d): %s -> %s", resp.StatusCode, baseURL, availableURLs[urlIdx+1])
 			continue
 	REDACTED
@@ -376,6 +353,8 @@ REDACTED
 		var rawResp map[string]any
 		_ = json.Unmarshal(respBodyBytes, &rawResp)
 
+		// 标记成功的 URL，下次优先使用
+		DefaultURLAvailability.MarkSuccess(baseURL)
 		return &loadResp, rawResp, nil
 REDACTED
 
@@ -412,11 +391,8 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 REDACTED
 
-	// 获取可用的 URL 列表
-	availableURLs := DefaultURLAvailability.GetAvailableURLs()
-	if len(availableURLs) == 0 {
-		availableURLs = BaseURLs // 所有 URL 都不可用时，重试所有
-REDACTED
+	// 固定顺序：prod -> daily
+	availableURLs := BaseURLs
 
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
@@ -434,7 +410,6 @@ REDACTED
 		if err != nil {
 			lastErr = fmt.Errorf("fetchAvailableModels 请求失败: %w", err)
 			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
-				DefaultURLAvailability.MarkUnavailable(baseURL)
 				log.Printf("[antigravity] fetchAvailableModels URL fallback: %s -> %s", baseURL, availableURLs[urlIdx+1])
 				continue
 		REDACTED
@@ -449,7 +424,6 @@ REDACTED
 
 		// 检查是否需要 URL 降级
 		if shouldFallbackToNextURL(nil, resp.StatusCode) && urlIdx < len(availableURLs)-1 {
-			DefaultURLAvailability.MarkUnavailable(baseURL)
 			log.Printf("[antigravity] fetchAvailableModels URL fallback (HTTP %d): %s -> %s", resp.StatusCode, baseURL, availableURLs[urlIdx+1])
 			continue
 	REDACTED
@@ -467,6 +441,8 @@ REDACTED
 		var rawResp map[string]any
 		_ = json.Unmarshal(respBodyBytes, &rawResp)
 
+		// 标记成功的 URL，下次优先使用
+		DefaultURLAvailability.MarkSuccess(baseURL)
 		return &modelsResp, rawResp, nil
 REDACTED
 

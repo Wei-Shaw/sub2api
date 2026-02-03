@@ -146,7 +146,10 @@ export default {
     balance: 'Balance',
     available: 'Available',
     copiedToClipboard: 'Copied to clipboard',
+    copied: 'Copied',
     copyFailed: 'Failed to copy',
+    verifying: 'Verifying...',
+    processing: 'Processing...',
     contactSupport: 'Contact Support',
     add: 'Add',
     invalidEmail: 'Please enter a valid email address',
@@ -169,7 +172,13 @@ export default {
       justNow: 'Just now',
       minutesAgo: '{nREDACTEDm ago',
       hoursAgo: '{nREDACTEDh ago',
-      daysAgo: '{nREDACTEDd ago'
+      daysAgo: '{nREDACTEDd ago',
+      countdown: {
+        daysHours: '{dREDACTEDd {hREDACTEDh',
+        hoursMinutes: '{hREDACTEDh {mREDACTEDm',
+        minutes: '{mREDACTEDm',
+        withSuffix: '{timeREDACTED to lift'
+      REDACTED
     REDACTED
   REDACTED,
 
@@ -196,7 +205,9 @@ export default {
     expand: 'Expand',
     logout: 'Logout',
     github: 'GitHub',
-    mySubscriptions: 'My Subscriptions'
+    mySubscriptions: 'My Subscriptions',
+    buySubscription: 'Purchase Subscription',
+    docs: 'Docs'
   REDACTED,
 
   // Auth
@@ -264,7 +275,36 @@ export default {
       code: 'Code',
       state: 'State',
       fullUrl: 'Full URL'
-    REDACTED
+    REDACTED,
+    // Forgot password
+    forgotPassword: 'Forgot password?',
+    forgotPasswordTitle: 'Reset Your Password',
+    forgotPasswordHint: 'Enter your email address and we will send you a link to reset your password.',
+    sendResetLink: 'Send Reset Link',
+    sendingResetLink: 'Sending...',
+    sendResetLinkFailed: 'Failed to send reset link. Please try again.',
+    resetEmailSent: 'Reset Link Sent',
+    resetEmailSentHint: 'If an account exists with this email, you will receive a password reset link shortly. Please check your inbox and spam folder.',
+    backToLogin: 'Back to Login',
+    rememberedPassword: 'Remembered your password?',
+    // Reset password
+    resetPasswordTitle: 'Set New Password',
+    resetPasswordHint: 'Enter your new password below.',
+    newPassword: 'New Password',
+    newPasswordPlaceholder: 'Enter your new password',
+    confirmPassword: 'Confirm Password',
+    confirmPasswordPlaceholder: 'Confirm your new password',
+    confirmPasswordRequired: 'Please confirm your password',
+    passwordsDoNotMatch: 'Passwords do not match',
+    resetPassword: 'Reset Password',
+    resettingPassword: 'Resetting...',
+    resetPasswordFailed: 'Failed to reset password. Please try again.',
+    passwordResetSuccess: 'Password Reset Successful',
+    passwordResetSuccessHint: 'Your password has been reset. You can now sign in with your new password.',
+    invalidResetLink: 'Invalid Reset Link',
+    invalidResetLinkHint: 'This password reset link is invalid or has expired. Please request a new one.',
+    requestNewResetLink: 'Request New Reset Link',
+    invalidOrExpiredToken: 'The password reset link is invalid or has expired. Please request a new one.'
   REDACTED,
 
   // Dashboard
@@ -547,7 +587,46 @@ export default {
     passwordsNotMatch: 'New passwords do not match',
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
-    passwordChangeFailed: 'Failed to change password'
+    passwordChangeFailed: 'Failed to change password',
+    // TOTP 2FA
+    totp: {
+      title: 'Two-Factor Authentication (2FA)',
+      description: 'Enhance account security with Google Authenticator or similar apps',
+      enabled: 'Enabled',
+      enabledAt: 'Enabled at',
+      notEnabled: 'Not Enabled',
+      notEnabledHint: 'Enable two-factor authentication to enhance account security',
+      enable: 'Enable',
+      disable: 'Disable',
+      featureDisabled: 'Feature Unavailable',
+      featureDisabledHint: 'Two-factor authentication has not been enabled by the administrator',
+      setupTitle: 'Set Up Two-Factor Authentication',
+      setupStep1: 'Scan the QR code below with your authenticator app',
+      setupStep2: 'Enter the 6-digit code from your app',
+      manualEntry: "Can't scan? Enter the key manually:",
+      enterCode: 'Enter 6-digit code',
+      verify: 'Verify',
+      setupFailed: 'Failed to get setup information',
+      verifyFailed: 'Invalid code, please try again',
+      enableSuccess: 'Two-factor authentication enabled',
+      disableTitle: 'Disable Two-Factor Authentication',
+      disableWarning: 'After disabling, you will no longer need a verification code to log in. This may reduce your account security.',
+      enterPassword: 'Enter your current password to confirm',
+      confirmDisable: 'Confirm Disable',
+      disableSuccess: 'Two-factor authentication disabled',
+      disableFailed: 'Failed to disable, please check your password',
+      loginTitle: 'Two-Factor Authentication',
+      loginHint: 'Enter the 6-digit code from your authenticator app',
+      loginFailed: 'Verification failed, please try again',
+      // New translations for email verification
+      verifyEmailFirst: 'Please verify your email first',
+      verifyPasswordFirst: 'Please verify your identity first',
+      emailCode: 'Email Verification Code',
+      enterEmailCode: 'Enter 6-digit code',
+      sendCode: 'Send Code',
+      codeSent: 'Verification code sent to your email',
+      sendCodeFailed: 'Failed to send verification code'
+    REDACTED
   REDACTED,
 
   // Empty States
@@ -572,7 +651,10 @@ export default {
     previous: 'Previous',
     next: 'Next',
     perPage: 'Per page',
-    goToPage: 'Go to page {pageREDACTED'
+    goToPage: 'Go to page {pageREDACTED',
+    jumpTo: 'Jump to',
+    jumpPlaceholder: 'Page',
+    jumpAction: 'Go'
   REDACTED,
 
   // Errors
@@ -673,6 +755,7 @@ export default {
       updating: 'Updating...',
       columns: {
         user: 'User',
+        email: 'Email',
         username: 'Username',
         notes: 'Notes',
         role: 'Role',
@@ -945,7 +1028,7 @@ export default {
       title: 'Subscription Management',
       description: 'Manage user subscriptions and quota limits',
       assignSubscription: 'Assign Subscription',
-      extendSubscription: 'Extend Subscription',
+      adjustSubscription: 'Adjust Subscription',
       revokeSubscription: 'Revoke Subscription',
       allStatus: 'All Status',
       allGroups: 'All Groups',
@@ -960,6 +1043,7 @@ export default {
       resetInHoursMinutes: 'Resets in {hoursREDACTEDh {minutesREDACTEDm',
       resetInDaysHours: 'Resets in {daysREDACTEDd {hoursREDACTEDh',
       daysRemaining: 'days remaining',
+      remainingDays: 'Remaining days',
       noExpiration: 'No expiration',
       status: {
         active: 'Active',
@@ -978,28 +1062,32 @@ export default {
         user: 'User',
         group: 'Subscription Group',
         validityDays: 'Validity (Days)',
-        extendDays: 'Extend by (Days)'
+        adjustDays: 'Adjust by (Days)'
       REDACTED,
       selectUser: 'Select a user',
       selectGroup: 'Select a subscription group',
       groupHint: 'Only groups with subscription billing type are shown',
       validityHint: 'Number of days the subscription will be valid',
-      extendingFor: 'Extending subscription for',
+      adjustingFor: 'Adjusting subscription for',
       currentExpiration: 'Current expiration',
+      adjustDaysPlaceholder: 'Positive to extend, negative to shorten',
+      adjustHint: 'Enter positive number to extend, negative to shorten (remaining days must be > 0)',
       assign: 'Assign',
       assigning: 'Assigning...',
-      extend: 'Extend',
-      extending: 'Extending...',
+      adjust: 'Adjust',
+      adjusting: 'Adjusting...',
       revoke: 'Revoke',
       noSubscriptionsYet: 'No subscriptions yet',
       assignFirstSubscription: 'Assign a subscription to get started.',
       subscriptionAssigned: 'Subscription assigned successfully',
-      subscriptionExtended: 'Subscription extended successfully',
+      subscriptionAdjusted: 'Subscription adjusted successfully',
       subscriptionRevoked: 'Subscription revoked successfully',
       failedToLoad: 'Failed to load subscriptions',
       failedToAssign: 'Failed to assign subscription',
-      failedToExtend: 'Failed to extend subscription',
+      failedToAdjust: 'Failed to adjust subscription',
       failedToRevoke: 'Failed to revoke subscription',
+      adjustWouldExpire: 'Remaining days after adjustment must be greater than 0',
+      adjustOutOfRange: 'Adjustment days must be between -36500 and 36500',
       pleaseSelectUser: 'Please select a user',
       pleaseSelectGroup: 'Please select a group',
       validityDaysRequired: 'Please enter a valid number of days (at least 1)',
@@ -1012,6 +1100,13 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
+      autoRefresh: 'Auto Refresh',
+      enableAutoRefresh: 'Enable auto refresh',
+      refreshInterval5s: '5 seconds',
+      refreshInterval10s: '10 seconds',
+      refreshInterval15s: '15 seconds',
+      refreshInterval30s: '30 seconds',
+      autoRefreshCountdown: 'Auto refresh: {secondsREDACTEDs',
       syncFromCrs: 'Sync from CRS',
       syncFromCrsTitle: 'Sync Accounts from CRS',
       syncFromCrsDesc:
@@ -1073,6 +1168,8 @@ export default {
         cooldown: 'Cooldown',
         paused: 'Paused',
         limited: 'Limited',
+        rateLimited: 'Rate Limited',
+        overloaded: 'Overloaded',
         tempUnschedulable: 'Temp Unschedulable',
         rateLimitedUntil: 'Rate limited until {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
@@ -1093,6 +1190,7 @@ export default {
         todayStats: 'Today Stats',
         groups: 'Groups',
         usageWindows: 'Usage Windows',
+        proxy: 'Proxy',
         lastUsed: 'Last Used',
         expiresAt: 'Expires At',
         actions: 'Actions'
@@ -1283,6 +1381,14 @@ export default {
           idleTimeout: 'Idle Timeout',
           idleTimeoutPlaceholder: '5',
           idleTimeoutHint: 'Sessions will be released after idle timeout'
+        REDACTED,
+        tlsFingerprint: {
+          label: 'TLS Fingerprint Simulation',
+          hint: 'Simulate Node.js/Claude Code client TLS fingerprint'
+        REDACTED,
+        sessionIdMasking: {
+          label: 'Session ID Masking',
+          hint: 'When enabled, fixes the session ID in metadata.user_id for 15 minutes, making upstream think requests come from the same session'
         REDACTED
       REDACTED,
       expired: 'Expired',
@@ -1931,7 +2037,43 @@ export default {
       cacheCreationTokens: 'Cache Creation Tokens',
       cacheReadTokens: 'Cache Read Tokens',
       failedToLoad: 'Failed to load usage records',
-      ipAddress: 'IP'
+      billingType: 'Billing Type',
+      allBillingTypes: 'All Billing Types',
+      billingTypeBalance: 'Balance',
+      billingTypeSubscription: 'Subscription',
+      ipAddress: 'IP',
+      cleanup: {
+        button: 'Cleanup',
+        title: 'Cleanup Usage Records',
+        warning: 'Cleanup is irreversible and will affect historical stats.',
+        submit: 'Submit Cleanup',
+        submitting: 'Submitting...',
+        confirmTitle: 'Confirm Cleanup',
+        confirmMessage: 'Are you sure you want to submit this cleanup task? This action cannot be undone.',
+        confirmSubmit: 'Confirm Cleanup',
+        cancel: 'Cancel',
+        cancelConfirmTitle: 'Confirm Cancel',
+        cancelConfirmMessage: 'Are you sure you want to cancel this cleanup task?',
+        cancelConfirm: 'Confirm Cancel',
+        cancelSuccess: 'Cleanup task canceled',
+        cancelFailed: 'Failed to cancel cleanup task',
+        recentTasks: 'Recent Cleanup Tasks',
+        loadingTasks: 'Loading tasks...',
+        noTasks: 'No cleanup tasks yet',
+        range: 'Range',
+        deletedRows: 'Deleted',
+        missingRange: 'Please select a date range',
+        submitSuccess: 'Cleanup task created',
+        submitFailed: 'Failed to create cleanup task',
+        loadFailed: 'Failed to load cleanup tasks',
+        status: {
+          pending: 'Pending',
+          running: 'Running',
+          succeeded: 'Succeeded',
+          failed: 'Failed',
+          canceled: 'Canceled'
+        REDACTED
+      REDACTED
     REDACTED,
 
     // Ops Monitoring
@@ -2671,7 +2813,15 @@ export default {
         enableRegistration: 'Enable Registration',
         enableRegistrationHint: 'Allow new users to register',
         emailVerification: 'Email Verification',
-        emailVerificationHint: 'Require email verification for new registrations'
+        emailVerificationHint: 'Require email verification for new registrations',
+        promoCode: 'Promo Code',
+        promoCodeHint: 'Allow users to use promo codes during registration',
+        passwordReset: 'Password Reset',
+        passwordResetHint: 'Allow users to reset their password via email',
+        totp: 'Two-Factor Authentication (2FA)',
+        totpHint: 'Allow users to use authenticator apps like Google Authenticator',
+        totpKeyNotConfigured:
+          'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
       REDACTED,
       turnstile: {
         title: 'Cloudflare Turnstile',
@@ -2741,7 +2891,20 @@ export default {
         homeContent: 'Home Page Content',
         homeContentPlaceholder: 'Enter custom content for the home page. Supports Markdown & HTML. If a URL is entered, it will be displayed as an iframe.',
         homeContentHint: 'Customize the home page content. Supports Markdown/HTML. If you enter a URL (starting with http:// or https://), it will be used as an iframe src to embed an external page. When set, the default status information will no longer be displayed.',
-        homeContentIframeWarning: '⚠️ iframe mode note: Some websites have X-Frame-Options or CSP security policies that prevent embedding in iframes. If the page appears blank or shows an error, please verify the target website allows embedding, or consider using HTML mode to build your own content.'
+        homeContentIframeWarning: '⚠️ iframe mode note: Some websites have X-Frame-Options or CSP security policies that prevent embedding in iframes. If the page appears blank or shows an error, please verify the target website allows embedding, or consider using HTML mode to build your own content.',
+        hideCcsImportButton: 'Hide CCS Import Button',
+        hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
+      REDACTED,
+      purchase: {
+        title: 'Purchase Page',
+        description: 'Show a "Purchase Subscription" entry in the sidebar and open the configured URL in an iframe',
+        enabled: 'Show Purchase Entry',
+        enabledHint: 'Only shown in standard mode (not simple mode)',
+        url: 'Purchase URL',
+        urlPlaceholder: 'https://example.com/purchase',
+        urlHint: 'Must be an absolute http(s) URL',
+        iframeWarning:
+          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.'
       REDACTED,
       smtp: {
         title: 'SMTP Settings',
@@ -2886,6 +3049,18 @@ export default {
     restartNow: 'Restart Now',
     restarting: 'Restarting...',
     retry: 'Retry'
+  REDACTED,
+
+  // Purchase Subscription Page
+  purchase: {
+    title: 'Purchase Subscription',
+    description: 'Purchase a subscription via the embedded page',
+    openInNewTab: 'Open in new tab',
+    notEnabledTitle: 'Feature not enabled',
+    notEnabledDesc: 'The administrator has not enabled the purchase page. Please contact admin.',
+    notConfiguredTitle: 'Purchase URL not configured',
+    notConfiguredDesc:
+      'The administrator enabled the entry but has not configured a purchase URL. Please contact admin.'
   REDACTED,
 
   // User Subscriptions Page

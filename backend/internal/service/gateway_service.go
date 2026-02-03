@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
+	mathrand "math/rand"
 	"net/http"
 	"os"
 	"regexp"
@@ -37,12 +39,24 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 40 * 1024 * 1024
-	claudeCodeSystemPrompt  = "You are Claude Code, Anthropic's official CLI for Claude."
-	maxCacheControlBlocks   = 4 // Anthropic API 允许的最大 cache_control 块数量
+	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
+	// to match real Claude CLI traffic as closely as possible. When we need a visual
+	// separator between system blocks, we add "\n\n" at concatenation time.
+	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
+	maxCacheControlBlocks  = 4 // Anthropic API 允许的最大 cache_control 块数量
+)
+
+const (
+	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
 func (s *GatewayService) debugModelRoutingEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+REDACTED
+
+func (s *GatewayService) debugClaudeMimicEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 REDACTED
 
@@ -54,6 +68,138 @@ REDACTED
 		return sessionHash
 REDACTED
 	return sessionHash[:8]
+REDACTED
+
+func redactAuthHeaderValue(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+REDACTED
+	// Keep scheme for debugging, redact secret.
+	if strings.HasPrefix(strings.ToLower(v), "bearer ") {
+		return "Bearer [redacted]"
+REDACTED
+	return "[redacted]"
+REDACTED
+
+func safeHeaderValueForLog(key string, v string) string {
+	key = strings.ToLower(strings.TrimSpace(key))
+	switch key {
+	case "authorization", "x-api-key":
+		return redactAuthHeaderValue(v)
+	default:
+		return strings.TrimSpace(v)
+REDACTED
+REDACTED
+
+func extractSystemPreviewFromBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+REDACTED
+	sys := gjson.GetBytes(body, "system")
+	if !sys.Exists() {
+		return ""
+REDACTED
+
+	switch {
+	case sys.IsArray():
+		for _, item := range sys.Array() {
+			if !item.IsObject() {
+				continue
+		REDACTED
+			if strings.EqualFold(item.Get("type").String(), "text") {
+				if t := item.Get("text").String(); strings.TrimSpace(t) != "" {
+					return t
+			REDACTED
+		REDACTED
+	REDACTED
+		return ""
+	case sys.Type == gjson.String:
+		return sys.String()
+	default:
+		return ""
+REDACTED
+REDACTED
+
+func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) string {
+	if req == nil {
+		return ""
+REDACTED
+
+	// Only log a minimal fingerprint to avoid leaking user content.
+	interesting := []string{
+		"user-agent",
+		"x-app",
+		"anthropic-dangerous-direct-browser-access",
+		"anthropic-version",
+		"anthropic-beta",
+		"x-stainless-lang",
+		"x-stainless-package-version",
+		"x-stainless-os",
+		"x-stainless-arch",
+		"x-stainless-runtime",
+		"x-stainless-runtime-version",
+		"x-stainless-retry-count",
+		"x-stainless-timeout",
+		"authorization",
+		"x-api-key",
+		"content-type",
+		"accept",
+		"x-stainless-helper-method",
+REDACTED
+
+	h := make([]string, 0, len(interesting))
+	for _, k := range interesting {
+		if v := req.Header.Get(k); v != "" {
+			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
+	REDACTED
+REDACTED
+
+	metaUserID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String())
+	sysPreview := strings.TrimSpace(extractSystemPreviewFromBody(body))
+
+	// Truncate preview to keep logs sane.
+	if len(sysPreview) > 300 {
+		sysPreview = sysPreview[:300] + "..."
+REDACTED
+	sysPreview = strings.ReplaceAll(sysPreview, "\n", "\\n")
+	sysPreview = strings.ReplaceAll(sysPreview, "\r", "\\r")
+
+	aid := int64(0)
+	aname := ""
+	if account != nil {
+		aid = account.ID
+		aname = account.Name
+REDACTED
+
+	return fmt.Sprintf(
+		"url=%s account=%d(%s) tokenType=%s mimic=%t meta.user_id=%q system.preview=%q headers={%sREDACTED",
+		req.URL.String(),
+		aid,
+		aname,
+		tokenType,
+		mimicClaudeCode,
+		metaUserID,
+		sysPreview,
+		strings.Join(h, " "),
+	)
+REDACTED
+
+func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
+	line := buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode)
+	if line == "" {
+		return
+REDACTED
+	log.Printf("[ClaudeMimicDebug] %s", line)
+REDACTED
+
+func isClaudeCodeCredentialScopeError(msg string) bool {
+	m := strings.ToLower(strings.TrimSpace(msg))
+	if m == "" {
+		return false
+REDACTED
+	return strings.Contains(m, "only authorized for use with claude code") &&
+		strings.Contains(m, "cannot be used for other api requests")
 REDACTED
 
 // sseDataRe matches SSE data lines with optional whitespace after colon.
@@ -69,7 +215,6 @@ var (
 	modelFieldRe         = regexp.MustCompile(`"model"\s*:\s*"([^"]+)"`)
 	toolDescAbsPathRe    = regexp.MustCompile(`/\/?(?:home|Users|tmp|var|opt|usr|etc)\/[^\s,\)"'\]]+`)
 	toolDescWinPathRe    = regexp.MustCompile(`(?i)[A-Z]:\\[^\s,\)"'\]]+`)
-	opencodeTextRe       = regexp.MustCompile(`(?i)opencode`)
 
 	claudeToolNameOverrides = map[string]string{
 		"bash":      "Bash",
@@ -134,11 +279,24 @@ var allowedHeaders = map[string]bool{
 	"content-type":                              true,
 REDACTED
 
-// GatewayCache defines cache operations for gateway service
+// GatewayCache 定义网关服务的缓存操作接口。
+// 提供粘性会话（Sticky Session）的存储、查询、刷新和删除功能。
+//
+// GatewayCache defines cache operations for gateway service.
+// Provides sticky session storage, retrieval, refresh and deletion capabilities.
 type GatewayCache interface {
+	// GetSessionAccountID 获取粘性会话绑定的账号 ID
+	// Get the account ID bound to a sticky session
 	GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error)
+	// SetSessionAccountID 设置粘性会话与账号的绑定关系
+	// Set the binding between sticky session and account
 	SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error
+	// RefreshSessionTTL 刷新粘性会话的过期时间
+	// Refresh the expiration time of a sticky session
 	RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error
+	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
+	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
+	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
 REDACTED
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -147,6 +305,28 @@ func derefGroupID(groupID *int64) int64 {
 		return 0
 REDACTED
 	return *groupID
+REDACTED
+
+// shouldClearStickySession 检查账号是否处于不可调度状态，需要清理粘性会话绑定。
+// 当账号状态为错误、禁用、不可调度，或处于临时不可调度期间时，返回 true。
+// 这确保后续请求不会继续使用不可用的账号。
+//
+// shouldClearStickySession checks if an account is in an unschedulable state
+// and the sticky session binding should be cleared.
+// Returns true when account status is error/disabled, schedulable is false,
+// or within temporary unschedulable period.
+// This ensures subsequent requests won't continue using unavailable accounts.
+func shouldClearStickySession(account *Account) bool {
+	if account == nil {
+		return false
+REDACTED
+	if account.Status == StatusError || account.Status == StatusDisabled || !account.Schedulable {
+		return true
+REDACTED
+	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
+		return true
+REDACTED
+	return false
 REDACTED
 
 type AccountWaitPlan struct {
@@ -303,6 +483,19 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 		return nil
 REDACTED
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
+REDACTED
+
+// GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
+// Returns 0 if no binding exists or on error.
+func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
+	if sessionHash == "" || s.cache == nil {
+		return 0, nil
+REDACTED
+	accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+	if err != nil {
+		return 0, err
+REDACTED
+	return accountID, nil
 REDACTED
 
 func (s *GatewayService) extractCacheableContent(parsed *ParsedRequest) string {
@@ -503,12 +696,21 @@ REDACTED
 	return name
 REDACTED
 
-func sanitizeOpenCodeText(text string) string {
+// sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
+// We intentionally avoid broad keyword replacement in system prompts to prevent
+// accidentally changing user-provided instructions.
+func sanitizeSystemText(text string) string {
 	if text == "" {
 		return text
 REDACTED
-	text = strings.ReplaceAll(text, "OpenCode", "Claude Code")
-	text = opencodeTextRe.ReplaceAllString(text, "Claude")
+	// Some clients include a fixed OpenCode identity sentence. Anthropic may treat
+	// this as a non-Claude-Code fingerprint, so rewrite it to the canonical
+	// Claude Code banner before generic "OpenCode"/"opencode" replacements.
+	text = strings.ReplaceAll(
+		text,
+		"You are OpenCode, the best coding agent on the planet.",
+		strings.TrimSpace(claudeCodeSystemPrompt),
+	)
 	return text
 REDACTED
 
@@ -518,7 +720,9 @@ func sanitizeToolDescription(description string) string {
 REDACTED
 	description = toolDescAbsPathRe.ReplaceAllString(description, "[path]")
 	description = toolDescWinPathRe.ReplaceAllString(description, "[path]")
-	return sanitizeOpenCodeText(description)
+	// Intentionally do NOT rewrite tool descriptions (OpenCode/Claude strings).
+	// Tool names/skill names may rely on exact wording, and rewriting can be misleading.
+	return description
 REDACTED
 
 func normalizeToolInputSchema(inputSchema any, cache map[string]string) {
@@ -593,7 +797,7 @@ REDACTED
 	if system, ok := req["system"]; ok {
 		switch v := system.(type) {
 		case string:
-			sanitized := sanitizeOpenCodeText(v)
+			sanitized := sanitizeSystemText(v)
 			if sanitized != v {
 				req["system"] = sanitized
 		REDACTED
@@ -610,7 +814,7 @@ REDACTED
 				if !ok || text == "" {
 					continue
 			REDACTED
-				sanitized := sanitizeOpenCodeText(text)
+				sanitized := sanitizeSystemText(text)
 				if sanitized != text {
 					block["text"] = sanitized
 			REDACTED
@@ -743,17 +947,15 @@ REDACTED
 	if parsed.MetadataUserID != "" {
 		return ""
 REDACTED
-	accountUUID := account.GetExtraString("account_uuid")
-	if accountUUID == "" {
-		return ""
-REDACTED
 
 	userID := strings.TrimSpace(account.GetClaudeUserID())
 	if userID == "" && fp != nil {
 		userID = fp.ClientID
 REDACTED
 	if userID == "" {
-		return ""
+		// Fall back to a random, well-formed client id so we can still satisfy
+		// Claude Code OAuth requirements when account metadata is incomplete.
+		userID = generateClientID()
 REDACTED
 
 	sessionHash := s.GenerateSessionHash(parsed)
@@ -762,7 +964,14 @@ REDACTED
 		seed := fmt.Sprintf("%d::%s", account.ID, sessionHash)
 		sessionID = generateSessionUUID(seed)
 REDACTED
-	return fmt.Sprintf("user_%s_account_%s_session_%s", userID, accountUUID, sessionID)
+
+	// Prefer the newer format that includes account_uuid (if present),
+	// otherwise fall back to the legacy Claude Code format.
+	accountUUID := strings.TrimSpace(account.GetExtraString("account_uuid"))
+	if accountUUID != "" {
+		return fmt.Sprintf("user_%s_account_%s_session_%s", userID, accountUUID, sessionID)
+REDACTED
+	return fmt.Sprintf("user_%s_account__session_%s", userID, sessionID)
 REDACTED
 
 func generateSessionUUID(seed string) string {
@@ -819,11 +1028,20 @@ REDACTED
 REDACTED
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
-// metadataUserID: 原始 metadata.user_id 字段（用于提取会话 UUID 进行会话数量限制）
+// metadataUserID: 已废弃参数，会话限制现在统一使用 sessionHash
 func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, metadataUserID string) (*AccountSelectionResult, error) {
+	// 调试日志：记录调度入口参数
+	excludedIDsList := make([]int64, 0, len(excludedIDs))
+	for id := range excludedIDs {
+		excludedIDsList = append(excludedIDsList, id)
+REDACTED
+	slog.Debug("account_scheduling_starting",
+		"group_id", derefGroupID(groupID),
+		"model", requestedModel,
+		"session", shortSessionHash(sessionHash),
+		"excluded_ids", excludedIDsList)
+
 	cfg := s.schedulingConfig()
-	// 提取会话 UUID（用于会话数量限制）
-	sessionUUID := extractSessionUUID(metadataUserID)
 
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
@@ -849,41 +1067,63 @@ REDACTED
 REDACTED
 
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
-		account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs)
-		if err != nil {
-			return nil, err
+		// 复制排除列表，用于会话限制拒绝时的重试
+		localExcluded := make(map[int64]struct{REDACTED)
+		for k, v := range excludedIDs {
+			localExcluded[k] = v
 	REDACTED
-		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
-		if err == nil && result.Acquired {
-			return &AccountSelectionResult{
-				Account:     account,
-				Acquired:    true,
-				ReleaseFunc: result.ReleaseFunc,
-		REDACTED, nil
-	REDACTED
-		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
-			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
-			if waitingCount < cfg.StickySessionMaxWaiting {
+
+		for {
+			account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, localExcluded)
+			if err != nil {
+				return nil, err
+		REDACTED
+
+			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+			if err == nil && result.Acquired {
+				// 获取槽位后检查会话限制（使用 sessionHash 作为会话标识符）
+				if !s.checkAndRegisterSession(ctx, account, sessionHash) {
+					result.ReleaseFunc()                   // 释放槽位
+					localExcluded[account.ID] = struct{REDACTED{REDACTED // 排除此账号
+					continue                               // 重新选择
+			REDACTED
 				return &AccountSelectionResult{
-					Account: account,
-					WaitPlan: &AccountWaitPlan{
-						AccountID:      account.ID,
-						MaxConcurrency: account.Concurrency,
-						Timeout:        cfg.StickySessionWaitTimeout,
-						MaxWaiting:     cfg.StickySessionMaxWaiting,
-				REDACTED,
+					Account:     account,
+					Acquired:    true,
+					ReleaseFunc: result.ReleaseFunc,
 			REDACTED, nil
 		REDACTED
+
+			// 对于等待计划的情况，也需要先检查会话限制
+			if !s.checkAndRegisterSession(ctx, account, sessionHash) {
+				localExcluded[account.ID] = struct{REDACTED{REDACTED
+				continue
+		REDACTED
+
+			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
+				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+				if waitingCount < cfg.StickySessionMaxWaiting {
+					return &AccountSelectionResult{
+						Account: account,
+						WaitPlan: &AccountWaitPlan{
+							AccountID:      account.ID,
+							MaxConcurrency: account.Concurrency,
+							Timeout:        cfg.StickySessionWaitTimeout,
+							MaxWaiting:     cfg.StickySessionMaxWaiting,
+					REDACTED,
+				REDACTED, nil
+			REDACTED
+		REDACTED
+			return &AccountSelectionResult{
+				Account: account,
+				WaitPlan: &AccountWaitPlan{
+					AccountID:      account.ID,
+					MaxConcurrency: account.Concurrency,
+					Timeout:        cfg.FallbackWaitTimeout,
+					MaxWaiting:     cfg.FallbackMaxWaiting,
+			REDACTED,
+		REDACTED, nil
 	REDACTED
-		return &AccountSelectionResult{
-			Account: account,
-			WaitPlan: &AccountWaitPlan{
-				AccountID:      account.ID,
-				MaxConcurrency: account.Concurrency,
-				Timeout:        cfg.FallbackWaitTimeout,
-				MaxWaiting:     cfg.FallbackMaxWaiting,
-		REDACTED,
-	REDACTED, nil
 REDACTED
 
 	platform, hasForcePlatform, err := s.resolvePlatform(ctx, groupID, group)
@@ -999,7 +1239,7 @@ REDACTED
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
-								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionUUID) {
+								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
 									result.ReleaseFunc() // 释放槽位
 									// 继续到负载感知选择
 							REDACTED else {
@@ -1017,18 +1257,25 @@ REDACTED
 
 							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
 							if waitingCount < cfg.StickySessionMaxWaiting {
-								return &AccountSelectionResult{
-									Account: stickyAccount,
-									WaitPlan: &AccountWaitPlan{
-										AccountID:      stickyAccountID,
-										MaxConcurrency: stickyAccount.Concurrency,
-										Timeout:        cfg.StickySessionWaitTimeout,
-										MaxWaiting:     cfg.StickySessionMaxWaiting,
-								REDACTED,
-							REDACTED, nil
+								// 会话数量限制检查（等待计划也需要占用会话配额）
+								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
+									// 会话限制已满，继续到负载感知选择
+							REDACTED else {
+									return &AccountSelectionResult{
+										Account: stickyAccount,
+										WaitPlan: &AccountWaitPlan{
+											AccountID:      stickyAccountID,
+											MaxConcurrency: stickyAccount.Concurrency,
+											Timeout:        cfg.StickySessionWaitTimeout,
+											MaxWaiting:     cfg.StickySessionMaxWaiting,
+									REDACTED,
+								REDACTED, nil
+							REDACTED
 						REDACTED
 							// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
 					REDACTED
+				REDACTED else {
+						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
 			REDACTED
 		REDACTED
@@ -1086,7 +1333,7 @@ REDACTED
 					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
-						if !s.checkAndRegisterSession(ctx, item.account, sessionUUID) {
+						if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 							continue
 					REDACTED
@@ -1104,20 +1351,26 @@ REDACTED
 				REDACTED
 			REDACTED
 
-				// 5. 所有路由账号槽位满，返回等待计划（选择负载最低的）
-				acc := routingAvailable[0].account
-				if s.debugModelRoutingEnabled() {
-					log.Printf("[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), acc.ID)
+				// 5. 所有路由账号槽位满，尝试返回等待计划（选择负载最低的）
+				// 遍历找到第一个满足会话限制的账号
+				for _, item := range routingAvailable {
+					if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
+						continue // 会话限制已满，尝试下一个
+				REDACTED
+					if s.debugModelRoutingEnabled() {
+						log.Printf("[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
+				REDACTED
+					return &AccountSelectionResult{
+						Account: item.account,
+						WaitPlan: &AccountWaitPlan{
+							AccountID:      item.account.ID,
+							MaxConcurrency: item.account.Concurrency,
+							Timeout:        cfg.StickySessionWaitTimeout,
+							MaxWaiting:     cfg.StickySessionMaxWaiting,
+					REDACTED,
+				REDACTED, nil
 			REDACTED
-				return &AccountSelectionResult{
-					Account: acc,
-					WaitPlan: &AccountWaitPlan{
-						AccountID:      acc.ID,
-						MaxConcurrency: acc.Concurrency,
-						Timeout:        cfg.StickySessionWaitTimeout,
-						MaxWaiting:     cfg.StickySessionMaxWaiting,
-				REDACTED,
-			REDACTED, nil
+				// 所有路由账号会话限制都已满，继续到 Layer 2 回退
 		REDACTED
 			// 路由列表中的账号都不可用（负载率 >= 100），继续到 Layer 2 回退
 			log.Printf("[ModelRouting] All routed accounts unavailable for model=%s, falling back to normal selection", requestedModel)
@@ -1129,37 +1382,53 @@ REDACTED
 		accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
 			account, ok := accountByID[accountID]
-			if ok && s.isAccountInGroup(account, groupID) &&
-				s.isAccountAllowedForPlatform(account, platform, useMixed) &&
-				account.IsSchedulableForModel(requestedModel) &&
-				(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) &&
-				s.isAccountSchedulableForWindowCost(ctx, account, true) { // 粘性会话窗口费用检查
-				result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
-				if err == nil && result.Acquired {
-					// 会话数量限制检查
-					if !s.checkAndRegisterSession(ctx, account, sessionUUID) {
-						result.ReleaseFunc() // 释放槽位，继续到 Layer 2
-				REDACTED else {
-						_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
-						return &AccountSelectionResult{
-							Account:     account,
-							Acquired:    true,
-							ReleaseFunc: result.ReleaseFunc,
-					REDACTED, nil
-				REDACTED
+			if ok {
+				// 检查账户是否需要清理粘性会话绑定
+				// Check if the account needs sticky session cleanup
+				clearSticky := shouldClearStickySession(account)
+				if clearSticky {
+					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 			REDACTED
+				if !clearSticky && s.isAccountInGroup(account, groupID) &&
+					s.isAccountAllowedForPlatform(account, platform, useMixed) &&
+					account.IsSchedulableForModel(requestedModel) &&
+					(requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) &&
+					s.isAccountSchedulableForWindowCost(ctx, account, true) { // 粘性会话窗口费用检查
+					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+					if err == nil && result.Acquired {
+						// 会话数量限制检查
+						// Session count limit check
+						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
+							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
+					REDACTED else {
+							_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+							return &AccountSelectionResult{
+								Account:     account,
+								Acquired:    true,
+								ReleaseFunc: result.ReleaseFunc,
+						REDACTED, nil
+					REDACTED
+				REDACTED
 
-				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
-				if waitingCount < cfg.StickySessionMaxWaiting {
-					return &AccountSelectionResult{
-						Account: account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      accountID,
-							MaxConcurrency: account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-					REDACTED,
-				REDACTED, nil
+					waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
+					if waitingCount < cfg.StickySessionMaxWaiting {
+						// 会话数量限制检查（等待计划也需要占用会话配额）
+						// Session count limit check (wait plan also requires session quota)
+						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
+							// 会话限制已满，继续到 Layer 2
+							// Session limit full, continue to Layer 2
+					REDACTED else {
+							return &AccountSelectionResult{
+								Account: account,
+								WaitPlan: &AccountWaitPlan{
+									AccountID:      accountID,
+									MaxConcurrency: account.Concurrency,
+									Timeout:        cfg.StickySessionWaitTimeout,
+									MaxWaiting:     cfg.StickySessionMaxWaiting,
+							REDACTED,
+						REDACTED, nil
+					REDACTED
+				REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
@@ -1208,7 +1477,7 @@ REDACTED
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth, sessionUUID); ok {
+		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
 			return result, nil
 	REDACTED
 REDACTED else {
@@ -1258,7 +1527,7 @@ REDACTED else {
 				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
 				if err == nil && result.Acquired {
 					// 会话数量限制检查
-					if !s.checkAndRegisterSession(ctx, item.account, sessionUUID) {
+					if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
 						result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 						continue
 				REDACTED
@@ -1276,8 +1545,12 @@ REDACTED else {
 REDACTED
 
 	// ============ Layer 3: 兜底排队 ============
-	sortAccountsByPriorityAndLastUsed(candidates, preferOAuth)
+	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
 	for _, acc := range candidates {
+		// 会话数量限制检查（等待计划也需要占用会话配额）
+		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
+			continue // 会话限制已满，尝试下一个账号
+	REDACTED
 		return &AccountSelectionResult{
 			Account: acc,
 			WaitPlan: &AccountWaitPlan{
@@ -1291,7 +1564,7 @@ REDACTED
 	return nil, errors.New("no available accounts")
 REDACTED
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool, sessionUUID string) (*AccountSelectionResult, bool) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
@@ -1299,7 +1572,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
 		if err == nil && result.Acquired {
 			// 会话数量限制检查
-			if !s.checkAndRegisterSession(ctx, acc, sessionUUID) {
+			if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 				result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 				continue
 		REDACTED
@@ -1456,7 +1729,24 @@ REDACTED
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
 	if s.schedulerSnapshot != nil {
-		return s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+		if err == nil {
+			slog.Debug("account_scheduling_list_snapshot",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"use_mixed", useMixed,
+				"count", len(accounts))
+			for _, acc := range accounts {
+				slog.Debug("account_scheduling_account_detail",
+					"account_id", acc.ID,
+					"name", acc.Name,
+					"platform", acc.Platform,
+					"type", acc.Type,
+					"status", acc.Status,
+					"tls_fingerprint", acc.IsTLSFingerprintEnabled())
+		REDACTED
+	REDACTED
+		return accounts, useMixed, err
 REDACTED
 	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
 	if useMixed {
@@ -1469,6 +1759,10 @@ REDACTED
 			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
 	REDACTED
 		if err != nil {
+			slog.Debug("account_scheduling_list_failed",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"error", err)
 			return nil, useMixed, err
 	REDACTED
 		filtered := make([]Account, 0, len(accounts))
@@ -1477,6 +1771,20 @@ REDACTED
 				continue
 		REDACTED
 			filtered = append(filtered, acc)
+	REDACTED
+		slog.Debug("account_scheduling_list_mixed",
+			"group_id", derefGroupID(groupID),
+			"platform", platform,
+			"raw_count", len(accounts),
+			"filtered_count", len(filtered))
+		for _, acc := range filtered {
+			slog.Debug("account_scheduling_account_detail",
+				"account_id", acc.ID,
+				"name", acc.Name,
+				"platform", acc.Platform,
+				"type", acc.Type,
+				"status", acc.Status,
+				"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 	REDACTED
 		return filtered, useMixed, nil
 REDACTED
@@ -1492,7 +1800,24 @@ REDACTED else {
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
 REDACTED
 	if err != nil {
+		slog.Debug("account_scheduling_list_failed",
+			"group_id", derefGroupID(groupID),
+			"platform", platform,
+			"error", err)
 		return nil, useMixed, err
+REDACTED
+	slog.Debug("account_scheduling_list_single",
+		"group_id", derefGroupID(groupID),
+		"platform", platform,
+		"count", len(accounts))
+	for _, acc := range accounts {
+		slog.Debug("account_scheduling_account_detail",
+			"account_id", acc.ID,
+			"name", acc.Name,
+			"platform", acc.Platform,
+			"type", acc.Type,
+			"status", acc.Status,
+			"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 REDACTED
 	return accounts, useMixed, nil
 REDACTED
@@ -1559,12 +1884,8 @@ REDACTED
 
 	// 缓存未命中，从数据库查询
 	{
-		var startTime time.Time
-		if account.SessionWindowStart != nil {
-			startTime = *account.SessionWindowStart
-	REDACTED else {
-			startTime = time.Now().Add(-5 * time.Hour)
-	REDACTED
+		// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
+		startTime := account.GetCurrentWindowStartTime()
 
 		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
 		if err != nil {
@@ -1597,15 +1918,16 @@ REDACTED
 
 // checkAndRegisterSession 检查并注册会话，用于会话数量限制
 // 仅适用于 Anthropic OAuth/SetupToken 账号
+// sessionID: 会话标识符（使用粘性会话的 hash）
 // 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
-func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionUUID string) bool {
+func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionID string) bool {
 	// 只检查 Anthropic OAuth/SetupToken 账号
 	if !account.IsAnthropicOAuthOrSetupToken() {
 		return true
 REDACTED
 
 	maxSessions := account.GetMaxSessions()
-	if maxSessions <= 0 || sessionUUID == "" {
+	if maxSessions <= 0 || sessionID == "" {
 		return true // 未启用会话限制或无会话ID
 REDACTED
 
@@ -1615,24 +1937,12 @@ REDACTED
 
 	idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
 
-	allowed, err := s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionUUID, maxSessions, idleTimeout)
+	allowed, err := s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionID, maxSessions, idleTimeout)
 	if err != nil {
 		// 失败开放：缓存错误时允许通过
 		return true
 REDACTED
 	return allowed
-REDACTED
-
-// extractSessionUUID 从 metadata.user_id 中提取会话 UUID
-// 格式: user_{64位hexREDACTED_account__session_{uuidREDACTED
-func extractSessionUUID(metadataUserID string) string {
-	if metadataUserID == "" {
-		return ""
-REDACTED
-	if match := sessionIDRegex.FindStringSubmatch(metadataUserID); len(match) > 1 {
-		return match[1]
-REDACTED
-	return ""
 REDACTED
 
 func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
@@ -1664,6 +1974,56 @@ func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 REDACTED)
 REDACTED
 
+// sortCandidatesForFallback 根据配置选择排序策略
+// mode: "last_used"(按最后使用时间) 或 "random"(随机)
+func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOAuth bool, mode string) {
+	if mode == "random" {
+		// 先按优先级排序，然后在同优先级内随机打乱
+		sortAccountsByPriorityOnly(accounts, preferOAuth)
+		shuffleWithinPriority(accounts)
+REDACTED else {
+		// 默认按最后使用时间排序
+		sortAccountsByPriorityAndLastUsed(accounts, preferOAuth)
+REDACTED
+REDACTED
+
+// sortAccountsByPriorityOnly 仅按优先级排序
+func sortAccountsByPriorityOnly(accounts []*Account, preferOAuth bool) {
+	sort.SliceStable(accounts, func(i, j int) bool {
+		a, b := accounts[i], accounts[j]
+		if a.Priority != b.Priority {
+			return a.Priority < b.Priority
+	REDACTED
+		if preferOAuth && a.Type != b.Type {
+			return a.Type == AccountTypeOAuth
+	REDACTED
+		return false
+REDACTED)
+REDACTED
+
+// shuffleWithinPriority 在同优先级内随机打乱顺序
+func shuffleWithinPriority(accounts []*Account) {
+	if len(accounts) <= 1 {
+		return
+REDACTED
+	r := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
+	start := 0
+	for start < len(accounts) {
+		priority := accounts[start].Priority
+		end := start + 1
+		for end < len(accounts) && accounts[end].Priority == priority {
+			end++
+	REDACTED
+		// 对 [start, end) 范围内的账户随机打乱
+		if end-start > 1 {
+			r.Shuffle(end-start, func(i, j int) {
+				accounts[start+i], accounts[start+j] = accounts[start+j], accounts[start+i]
+		REDACTED)
+	REDACTED
+		start = end
+REDACTED
+REDACTED
+
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
 func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platform string) (*Account, error) {
 	preferOAuth := platform == PlatformGemini
@@ -1687,14 +2047,20 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				if _, excluded := excludedIDs[accountID]; !excluded {
 					account, err := s.getSchedulableAccount(ctx, accountID)
 					// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
-					if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
-						if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
-							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+					if err == nil {
+						clearSticky := shouldClearStickySession(account)
+						if clearSticky {
+							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if s.debugModelRoutingEnabled() {
-							log.Printf("[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+							if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
+								log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+						REDACTED
+							if s.debugModelRoutingEnabled() {
+								log.Printf("[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
+						REDACTED
+							return account, nil
 					REDACTED
-						return account, nil
 				REDACTED
 			REDACTED
 		REDACTED
@@ -1784,11 +2150,17 @@ REDACTED
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.getSchedulableAccount(ctx, accountID)
 				// 检查账号分组归属和平台匹配（确保粘性会话不会跨分组或跨平台）
-				if err == nil && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
-					if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
-						log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+				if err == nil {
+					clearSticky := shouldClearStickySession(account)
+					if clearSticky {
+						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					return account, nil
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+						if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
+							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+					REDACTED
+						return account, nil
+				REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
@@ -1888,15 +2260,21 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				if _, excluded := excludedIDs[accountID]; !excluded {
 					account, err := s.getSchedulableAccount(ctx, accountID)
 					// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
-					if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
-						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
-							if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
-								log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+					if err == nil {
+						clearSticky := shouldClearStickySession(account)
+						if clearSticky {
+							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+					REDACTED
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
+								if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
+									log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+							REDACTED
+								if s.debugModelRoutingEnabled() {
+									log.Printf("[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
+							REDACTED
+								return account, nil
 						REDACTED
-							if s.debugModelRoutingEnabled() {
-								log.Printf("[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
-						REDACTED
-							return account, nil
 					REDACTED
 				REDACTED
 			REDACTED
@@ -1987,12 +2365,18 @@ REDACTED
 			if _, excluded := excludedIDs[accountID]; !excluded {
 				account, err := s.getSchedulableAccount(ctx, accountID)
 				// 检查账号分组归属和有效性：原生平台直接匹配，antigravity 需要启用混合调度
-				if err == nil && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
-					if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
-						if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
-							log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+				if err == nil {
+					clearSticky := shouldClearStickySession(account)
+					if clearSticky {
+						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+				REDACTED
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.IsSchedulableForModel(requestedModel) && (requestedModel == "" || s.isModelSupportedByAccount(account, requestedModel)) {
+						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
+							if err := s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL); err != nil {
+								log.Printf("refresh session ttl failed: session=%s err=%v", sessionHash, err)
+						REDACTED
+							return account, nil
 					REDACTED
-						return account, nil
 				REDACTED
 			REDACTED
 		REDACTED
@@ -2247,6 +2631,10 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 		"text":          claudeCodeSystemPrompt,
 		"cache_control": map[string]string{"type": "ephemeral"REDACTED,
 REDACTED
+	// Opencode plugin applies an extra safeguard: it not only prepends the Claude Code
+	// banner, it also prefixes the next system instruction with the same banner plus
+	// a blank line. This helps when upstream concatenates system instructions.
+	claudeCodePrefix := strings.TrimSpace(claudeCodeSystemPrompt)
 
 	var newSystem []any
 
@@ -2254,18 +2642,35 @@ REDACTED
 	case nil:
 		newSystem = []any{claudeCodeBlockREDACTED
 	case string:
-		if v == "" || v == claudeCodeSystemPrompt {
+		// Be tolerant of older/newer clients that may differ only by trailing whitespace/newlines.
+		if strings.TrimSpace(v) == "" || strings.TrimSpace(v) == strings.TrimSpace(claudeCodeSystemPrompt) {
 			newSystem = []any{claudeCodeBlockREDACTED
 	REDACTED else {
-			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": vREDACTEDREDACTED
+			// Mirror opencode behavior: keep the banner as a separate system entry,
+			// but also prefix the next system text with the banner.
+			merged := v
+			if !strings.HasPrefix(v, claudeCodePrefix) {
+				merged = claudeCodePrefix + "\n\n" + v
+		REDACTED
+			newSystem = []any{claudeCodeBlock, map[string]any{"type": "text", "text": mergedREDACTEDREDACTED
 	REDACTED
 	case []any:
 		newSystem = make([]any, 0, len(v)+1)
 		newSystem = append(newSystem, claudeCodeBlock)
+		prefixedNext := false
 		for _, item := range v {
 			if m, ok := item.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok && text == claudeCodeSystemPrompt {
+				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) == strings.TrimSpace(claudeCodeSystemPrompt) {
 					continue
+			REDACTED
+				// Prefix the first subsequent text system block once.
+				if !prefixedNext {
+					if blockType, _ := m["type"].(string); blockType == "text" {
+						if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" && !strings.HasPrefix(text, claudeCodePrefix) {
+							m["text"] = claudeCodePrefix + "\n\n" + text
+							prefixedNext = true
+					REDACTED
+				REDACTED
 			REDACTED
 		REDACTED
 			newSystem = append(newSystem, item)
@@ -2524,6 +2929,10 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
+	// 调试日志：记录即将转发的账号信息
+	log.Printf("[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
+		account.ID, account.Name, account.Platform, account.Type, account.IsTLSFingerprintEnabled(), proxyURL)
+
 	// 重试循环
 	var resp *http.Response
 	retryStart := time.Now()
@@ -2537,7 +2946,7 @@ REDACTED
 	REDACTED
 
 		// 发送请求
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -2611,7 +3020,7 @@ REDACTED
 					filteredBody := FilterThinkingBlocksForRetry(body)
 					retryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					if buildErr == nil {
-						retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
 								log.Printf("Account %d: signature error retry succeeded (thinking downgraded)", account.ID)
@@ -2643,7 +3052,7 @@ REDACTED
 									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
 									retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									if buildErr2 == nil {
-										retryResp2, retryErr2 := s.httpUpstream.Do(retryReq2, proxyURL, account.ID, account.Concurrency)
+										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 										if retryErr2 == nil {
 											resp = retryResp2
 											break
@@ -2758,6 +3167,10 @@ REDACTED
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
+			// 调试日志：打印重试耗尽后的错误响应
+			log.Printf("[Forward] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+				account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
+
 			s.handleRetryExhaustedSideEffects(ctx, resp, account)
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
@@ -2784,6 +3197,10 @@ REDACTED
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+		// 调试日志：打印上游错误响应
+		log.Printf("[Forward] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
 
 		s.handleFailoverSideEffects(ctx, resp, account)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -2902,11 +3319,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	REDACTED
 REDACTED
 
+	clientHeaders := http.Header{REDACTED
+	if c != nil && c.Request != nil {
+		clientHeaders = c.Request.Header
+REDACTED
+
 	// OAuth账号：应用统一指纹
 	var fingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err != nil {
 			log.Printf("Warning: failed to get fingerprint for account %d: %v", account.ID, err)
 			// 失败时降级为透传原始headers
@@ -2914,9 +3336,10 @@ REDACTED
 			fingerprint = fp
 
 			// 2. 重写metadata.user_id（需要指纹中的ClientID和账号的account_uuid）
+			// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
 			accountUUID := account.GetExtraString("account_uuid")
 			if accountUUID != "" && fp.ClientID != "" {
-				if newBody, err := s.identityService.RewriteUserID(body, account.ID, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
+				if newBody, err := s.identityService.RewriteUserIDWithMasking(ctx, body, account, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
 					body = newBody
 			REDACTED
 		REDACTED
@@ -2936,7 +3359,7 @@ REDACTED else {
 REDACTED
 
 	// 白名单透传headers
-	for key, values := range c.Request.Header {
+	for key, values := range clientHeaders {
 		lowerKey := strings.ToLower(key)
 		if allowedHeaders[lowerKey] {
 			for _, v := range values {
@@ -2964,12 +3387,18 @@ REDACTED
 	// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
 	if tokenType == "oauth" {
 		if mimicClaudeCode {
-			// 非 Claude Code 客户端：按 Claude Code 规则生成 beta header
-			if requestHasTools(body) {
-				req.Header.Set("anthropic-beta", claude.MessageBetaHeaderWithTools)
-		REDACTED else {
-				req.Header.Set("anthropic-beta", claude.MessageBetaHeaderNoTools)
-		REDACTED
+			// 非 Claude Code 客户端：按 opencode 的策略处理：
+			// - 强制 Claude Code 指纹相关请求头（尤其是 user-agent/x-stainless/x-app）
+			// - 保留 incoming beta 的同时，确保 OAuth 所需 beta 存在
+			applyClaudeCodeMimicHeaders(req, reqStream)
+
+			incomingBeta := req.Header.Get("anthropic-beta")
+			// Match real Claude CLI traffic (per mitmproxy reports):
+			// messages requests typically use only oauth + interleaved-thinking.
+			// Also drop claude-code beta if a downstream client added it.
+			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinkingREDACTED
+			drop := map[string]struct{REDACTED{claude.BetaClaudeCode: {REDACTEDREDACTED
+			req.Header.Set("anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, drop))
 	REDACTED else {
 			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
 			clientBetaHeader := req.Header.Get("anthropic-beta")
@@ -2982,6 +3411,15 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 				req.Header.Set("anthropic-beta", beta)
 		REDACTED
 	REDACTED
+REDACTED
+
+	// Always capture a compact fingerprint line for later error diagnostics.
+	// We only print it when needed (or when the explicit debug flag is enabled).
+	if c != nil && tokenType == "oauth" {
+		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+REDACTED
+	if s.debugClaudeMimicEnabled() {
+		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
 
 	return req, nil
@@ -3045,20 +3483,6 @@ REDACTED
 	return false
 REDACTED
 
-func requestHasTools(body []byte) bool {
-	tools := gjson.GetBytes(body, "tools")
-	if !tools.Exists() {
-		return false
-REDACTED
-	if tools.IsArray() {
-		return len(tools.Array()) > 0
-REDACTED
-	if tools.IsObject() {
-		return len(tools.Map()) > 0
-REDACTED
-	return false
-REDACTED
-
 func defaultAPIKeyBetaHeader(body []byte) string {
 	modelID := gjson.GetBytes(body, "model").String()
 	if strings.Contains(strings.ToLower(modelID), "haiku") {
@@ -3083,6 +3507,73 @@ REDACTED
 	REDACTED
 REDACTED
 	if isStream && req.Header.Get("x-stainless-helper-method") == "" {
+		req.Header.Set("x-stainless-helper-method", "stream")
+REDACTED
+REDACTED
+
+func mergeAnthropicBeta(required []string, incoming string) string {
+	seen := make(map[string]struct{REDACTED, len(required)+8)
+	out := make([]string, 0, len(required)+8)
+
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return
+	REDACTED
+		if _, ok := seen[v]; ok {
+			return
+	REDACTED
+		seen[v] = struct{REDACTED{REDACTED
+		out = append(out, v)
+REDACTED
+
+	for _, r := range required {
+		add(r)
+REDACTED
+	for _, p := range strings.Split(incoming, ",") {
+		add(p)
+REDACTED
+	return strings.Join(out, ",")
+REDACTED
+
+func mergeAnthropicBetaDropping(required []string, incoming string, drop map[string]struct{REDACTED) string {
+	merged := mergeAnthropicBeta(required, incoming)
+	if merged == "" || len(drop) == 0 {
+		return merged
+REDACTED
+	out := make([]string, 0, 8)
+	for _, p := range strings.Split(merged, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+	REDACTED
+		if _, ok := drop[p]; ok {
+			continue
+	REDACTED
+		out = append(out, p)
+REDACTED
+	return strings.Join(out, ",")
+REDACTED
+
+// applyClaudeCodeMimicHeaders forces "Claude Code-like" request headers.
+// This mirrors opencode-anthropic-auth behavior: do not trust downstream
+// headers when using Claude Code-scoped OAuth credentials.
+func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
+	if req == nil {
+		return
+REDACTED
+	// Start with the standard defaults (fill missing).
+	applyClaudeOAuthHeaderDefaults(req, isStream)
+	// Then force key headers to match Claude Code fingerprint regardless of what the client sent.
+	for key, value := range claude.DefaultHeaders {
+		if value == "" {
+			continue
+	REDACTED
+		req.Header.Set(key, value)
+REDACTED
+	// Real Claude CLI uses Accept: application/json (even for streaming).
+	req.Header.Set("accept", "application/json")
+	if isStream {
 		req.Header.Set("x-stainless-helper-method", "stream")
 REDACTED
 REDACTED
@@ -3183,8 +3674,26 @@ REDACTED
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
+	// 调试日志：打印上游错误响应
+	log.Printf("[Forward] Upstream error (non-retryable): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+		account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(body), 1000))
+
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	// Print a compact upstream request fingerprint when we hit the Claude Code OAuth
+	// credential scope error. This avoids requiring env-var tweaks in a fixed deploy.
+	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
+		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
+			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
+				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+					resp.StatusCode,
+					resp.Header.Get("x-request-id"),
+					line,
+				)
+		REDACTED
+	REDACTED
+REDACTED
 
 	// Enrich Ops error logs with upstream status + message, and optionally a truncated body snippet.
 	upstreamDetail := ""
@@ -3315,6 +3824,19 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
+		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
+			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
+				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+					resp.StatusCode,
+					resp.Header.Get("x-request-id"),
+					line,
+				)
+		REDACTED
+	REDACTED
+REDACTED
+
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
@@ -3860,17 +4382,19 @@ REDACTED
 	REDACTED `json:"usage"`
 REDACTED
 	if json.Unmarshal([]byte(data), &msgDelta) == nil && msgDelta.Type == "message_delta" {
-		// output_tokens 总是从 message_delta 获取
-		usage.OutputTokens = msgDelta.Usage.OutputTokens
-
-		// 如果 message_start 中没有值，则从 message_delta 获取（兼容GLM等API）
-		if usage.InputTokens == 0 {
+		// message_delta 仅覆盖存在且非0的字段
+		// 避免覆盖 message_start 中已有的值（如 input_tokens）
+		// Claude API 的 message_delta 通常只包含 output_tokens
+		if msgDelta.Usage.InputTokens > 0 {
 			usage.InputTokens = msgDelta.Usage.InputTokens
 	REDACTED
-		if usage.CacheCreationInputTokens == 0 {
+		if msgDelta.Usage.OutputTokens > 0 {
+			usage.OutputTokens = msgDelta.Usage.OutputTokens
+	REDACTED
+		if msgDelta.Usage.CacheCreationInputTokens > 0 {
 			usage.CacheCreationInputTokens = msgDelta.Usage.CacheCreationInputTokens
 	REDACTED
-		if usage.CacheReadInputTokens == 0 {
+		if msgDelta.Usage.CacheReadInputTokens > 0 {
 			usage.CacheReadInputTokens = msgDelta.Usage.CacheReadInputTokens
 	REDACTED
 REDACTED
@@ -4171,7 +4695,7 @@ REDACTED
 REDACTED
 
 	// 发送请求
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
@@ -4193,7 +4717,7 @@ REDACTED
 		filteredBody := FilterThinkingBlocksForRetry(body)
 		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 		if buildErr == nil {
-			retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 			if retryErr == nil {
 				resp = retryResp
 				respBody, err = io.ReadAll(resp.Body)
@@ -4270,13 +4794,19 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	REDACTED
 REDACTED
 
+	clientHeaders := http.Header{REDACTED
+	if c != nil && c.Request != nil {
+		clientHeaders = c.Request.Header
+REDACTED
+
 	// OAuth 账号：应用统一指纹和重写 userID
+	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
 	if account.IsOAuth() && s.identityService != nil {
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err == nil {
 			accountUUID := account.GetExtraString("account_uuid")
 			if accountUUID != "" && fp.ClientID != "" {
-				if newBody, err := s.identityService.RewriteUserID(body, account.ID, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
+				if newBody, err := s.identityService.RewriteUserIDWithMasking(ctx, body, account, accountUUID, fp.ClientID); err == nil && len(newBody) > 0 {
 					body = newBody
 			REDACTED
 		REDACTED
@@ -4296,7 +4826,7 @@ REDACTED else {
 REDACTED
 
 	// 白名单透传 headers
-	for key, values := range c.Request.Header {
+	for key, values := range clientHeaders {
 		lowerKey := strings.ToLower(key)
 		if allowedHeaders[lowerKey] {
 			for _, v := range values {
@@ -4307,7 +4837,7 @@ REDACTED
 
 	// OAuth 账号：应用指纹到请求头
 	if account.IsOAuth() && s.identityService != nil {
-		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+		fp, _ := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if fp != nil {
 			s.identityService.ApplyFingerprint(req, fp)
 	REDACTED
@@ -4327,7 +4857,11 @@ REDACTED
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {
 		if mimicClaudeCode {
-			req.Header.Set("anthropic-beta", claude.CountTokensBetaHeader)
+			applyClaudeCodeMimicHeaders(req, false)
+
+			incomingBeta := req.Header.Get("anthropic-beta")
+			requiredBetas := []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinking, claude.BetaTokenCountingREDACTED
+			req.Header.Set("anthropic-beta", mergeAnthropicBeta(requiredBetas, incomingBeta))
 	REDACTED else {
 			clientBetaHeader := req.Header.Get("anthropic-beta")
 			if clientBetaHeader == "" {
@@ -4347,6 +4881,13 @@ REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header
 				req.Header.Set("anthropic-beta", beta)
 		REDACTED
 	REDACTED
+REDACTED
+
+	if c != nil && tokenType == "oauth" {
+		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+REDACTED
+	if s.debugClaudeMimicEnabled() {
+		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
 
 	return req, nil

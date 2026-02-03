@@ -197,6 +197,35 @@ REDACTED
 	return nil
 REDACTED
 
+// GetCredentialAsInt64 解析凭证中的 int64 字段
+// 用于读取 _token_version 等内部字段
+func (a *Account) GetCredentialAsInt64(key string) int64 {
+	if a == nil || a.Credentials == nil {
+		return 0
+REDACTED
+	val, ok := a.Credentials[key]
+	if !ok || val == nil {
+		return 0
+REDACTED
+	switch v := val.(type) {
+	case int64:
+		return v
+	case float64:
+		return int64(v)
+	case int:
+		return int64(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i
+	REDACTED
+	case string:
+		if i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			return i
+	REDACTED
+REDACTED
+	return 0
+REDACTED
+
 func (a *Account) IsTempUnschedulableEnabled() bool {
 	if a.Credentials == nil {
 		return false
@@ -592,6 +621,44 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 REDACTED
 
+// IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
+func (a *Account) IsTLSFingerprintEnabled() bool {
+	// 仅支持 Anthropic OAuth/SetupToken 账号
+	if !a.IsAnthropicOAuthOrSetupToken() {
+		return false
+REDACTED
+	if a.Extra == nil {
+		return false
+REDACTED
+	if v, ok := a.Extra["enable_tls_fingerprint"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// IsSessionIDMaskingEnabled 检查是否启用会话ID伪装
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 启用后将在一段时间内（15分钟）固定 metadata.user_id 中的 session ID，
+// 使上游认为请求来自同一个会话
+func (a *Account) IsSessionIDMaskingEnabled() bool {
+	if !a.IsAnthropicOAuthOrSetupToken() {
+		return false
+REDACTED
+	if a.Extra == nil {
+		return false
+REDACTED
+	if v, ok := a.Extra["session_id_masking_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
 // GetWindowCostLimit 获取 5h 窗口费用阈值（美元）
 // 返回 0 表示未启用
 func (a *Account) GetWindowCostLimit() float64 {
@@ -666,6 +733,23 @@ REDACTED
 REDACTED
 
 	return WindowCostNotSchedulable
+REDACTED
+
+// GetCurrentWindowStartTime 获取当前有效的窗口开始时间
+// 逻辑：
+// 1. 如果窗口未过期（SessionWindowEnd 存在且在当前时间之后），使用记录的 SessionWindowStart
+// 2. 否则（窗口过期或未设置），使用新的预测窗口开始时间（从当前整点开始）
+func (a *Account) GetCurrentWindowStartTime() time.Time {
+	now := time.Now()
+
+	// 窗口未过期，使用记录的窗口开始时间
+	if a.SessionWindowStart != nil && a.SessionWindowEnd != nil && now.Before(*a.SessionWindowEnd) {
+		return *a.SessionWindowStart
+REDACTED
+
+	// 窗口已过期或未设置，预测新的窗口开始时间（从当前整点开始）
+	// 与 ratelimit_service.go 中 UpdateSessionWindow 的预测逻辑保持一致
+	return time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 REDACTED
 
 // parseExtraFloat64 从 extra 字段解析 float64 值

@@ -29,10 +29,10 @@ import { reactive, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { User REDACTED from '@/types'
+import type { AdminUser REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 
-const props = defineProps<{ show: boolean, user: User | null, operation: 'add' | 'subtract' REDACTED>()
+const props = defineProps<{ show: boolean, user: AdminUser | null, operation: 'add' | 'subtract' REDACTED>()
 const emit = defineEmits(['close', 'success']); const { t REDACTED = useI18n(); const appStore = useAppStore()
 
 const submitting = ref(false); const form = reactive({ amount: 0, notes: '' REDACTED)

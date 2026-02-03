@@ -39,6 +39,12 @@ type User struct {
 	Username string `json:"username,omitempty"`
 	// Notes holds the value of the "notes" field.
 	Notes string `json:"notes,omitempty"`
+	// TotpSecretEncrypted holds the value of the "totp_secret_encrypted" field.
+	TotpSecretEncrypted *string `json:"totp_secret_encrypted,omitempty"`
+	// TotpEnabled holds the value of the "totp_enabled" field.
+	TotpEnabled bool `json:"totp_enabled,omitempty"`
+	// TotpEnabledAt holds the value of the "totp_enabled_at" field.
+	TotpEnabledAt *time.Time `json:"totp_enabled_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -156,13 +162,15 @@ func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case user.FieldTotpEnabled:
+			values[i] = new(sql.NullBool)
 		case user.FieldBalance:
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted:
 			values[i] = new(sql.NullString)
-		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt:
+		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -251,6 +259,26 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field notes", values[i])
 		REDACTED else if value.Valid {
 				_m.Notes = value.String
+		REDACTED
+		case user.FieldTotpSecretEncrypted:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field totp_secret_encrypted", values[i])
+		REDACTED else if value.Valid {
+				_m.TotpSecretEncrypted = new(string)
+				*_m.TotpSecretEncrypted = value.String
+		REDACTED
+		case user.FieldTotpEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field totp_enabled", values[i])
+		REDACTED else if value.Valid {
+				_m.TotpEnabled = value.Bool
+		REDACTED
+		case user.FieldTotpEnabledAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field totp_enabled_at", values[i])
+		REDACTED else if value.Valid {
+				_m.TotpEnabledAt = new(time.Time)
+				*_m.TotpEnabledAt = value.Time
 		REDACTED
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -367,6 +395,19 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("notes=")
 	builder.WriteString(_m.Notes)
+	builder.WriteString(", ")
+	if v := _m.TotpSecretEncrypted; v != nil {
+		builder.WriteString("totp_secret_encrypted=")
+		builder.WriteString(*v)
+REDACTED
+	builder.WriteString(", ")
+	builder.WriteString("totp_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TotpEnabled))
+	builder.WriteString(", ")
+	if v := _m.TotpEnabledAt; v != nil {
+		builder.WriteString("totp_enabled_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
 	builder.WriteByte(')')
 	return builder.String()
 REDACTED

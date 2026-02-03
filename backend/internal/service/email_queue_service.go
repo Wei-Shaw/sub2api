@@ -8,11 +8,18 @@ import (
 	"time"
 )
 
+// Task type constants
+const (
+	TaskTypeVerifyCode    = "verify_code"
+	TaskTypePasswordReset = "password_reset"
+)
+
 // EmailTask 邮件发送任务
 type EmailTask struct {
 	Email    string
 	SiteName string
-	TaskType string // "verify_code"
+	TaskType string // "verify_code" or "password_reset"
+	ResetURL string // Only used for password_reset task type
 REDACTED
 
 // EmailQueueService 异步邮件队列服务
@@ -73,11 +80,17 @@ func (s *EmailQueueService) processTask(workerID int, task EmailTask) {
 	defer cancel()
 
 	switch task.TaskType {
-	case "verify_code":
+	case TaskTypeVerifyCode:
 		if err := s.emailService.SendVerifyCode(ctx, task.Email, task.SiteName); err != nil {
 			log.Printf("[EmailQueue] Worker %d failed to send verify code to %s: %v", workerID, task.Email, err)
 	REDACTED else {
 			log.Printf("[EmailQueue] Worker %d sent verify code to %s", workerID, task.Email)
+	REDACTED
+	case TaskTypePasswordReset:
+		if err := s.emailService.SendPasswordResetEmailWithCooldown(ctx, task.Email, task.SiteName, task.ResetURL); err != nil {
+			log.Printf("[EmailQueue] Worker %d failed to send password reset to %s: %v", workerID, task.Email, err)
+	REDACTED else {
+			log.Printf("[EmailQueue] Worker %d sent password reset to %s", workerID, task.Email)
 	REDACTED
 	default:
 		log.Printf("[EmailQueue] Worker %d unknown task type: %s", workerID, task.TaskType)
@@ -89,12 +102,30 @@ func (s *EmailQueueService) EnqueueVerifyCode(email, siteName string) error {
 	task := EmailTask{
 		Email:    email,
 		SiteName: siteName,
-		TaskType: "verify_code",
+		TaskType: TaskTypeVerifyCode,
 REDACTED
 
 	select {
 	case s.taskChan <- task:
 		log.Printf("[EmailQueue] Enqueued verify code task for %s", email)
+		return nil
+	default:
+		return fmt.Errorf("email queue is full")
+REDACTED
+REDACTED
+
+// EnqueuePasswordReset 将密码重置邮件任务加入队列
+func (s *EmailQueueService) EnqueuePasswordReset(email, siteName, resetURL string) error {
+	task := EmailTask{
+		Email:    email,
+		SiteName: siteName,
+		TaskType: TaskTypePasswordReset,
+		ResetURL: resetURL,
+REDACTED
+
+	select {
+	case s.taskChan <- task:
+		log.Printf("[EmailQueue] Enqueued password reset task for %s", email)
 		return nil
 	default:
 		return fmt.Errorf("email queue is full")

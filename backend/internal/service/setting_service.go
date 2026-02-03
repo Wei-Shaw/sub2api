@@ -60,6 +60,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	keys := []string{
 		SettingKeyRegistrationEnabled,
 		SettingKeyEmailVerifyEnabled,
+		SettingKeyPromoCodeEnabled,
+		SettingKeyPasswordResetEnabled,
+		SettingKeyTotpEnabled,
 		SettingKeyTurnstileEnabled,
 		SettingKeyTurnstileSiteKey,
 		SettingKeySiteName,
@@ -69,6 +72,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
+		SettingKeyHideCcsImportButton,
+		SettingKeyPurchaseSubscriptionEnabled,
+		SettingKeyPurchaseSubscriptionURL,
 		SettingKeyLinuxDoConnectEnabled,
 REDACTED
 
@@ -84,19 +90,29 @@ REDACTED else {
 		linuxDoEnabled = s.cfg != nil && s.cfg.LinuxDo.Enabled
 REDACTED
 
+	// Password reset requires email verification to be enabled
+	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
+	passwordResetEnabled := emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true"
+
 	return &PublicSettings{
-		RegistrationEnabled: settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:  settings[SettingKeyEmailVerifyEnabled] == "true",
-		TurnstileEnabled:    settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:    settings[SettingKeyTurnstileSiteKey],
-		SiteName:            s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
-		SiteLogo:            settings[SettingKeySiteLogo],
-		SiteSubtitle:        s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:          settings[SettingKeyAPIBaseURL],
-		ContactInfo:         settings[SettingKeyContactInfo],
-		DocURL:              settings[SettingKeyDocURL],
-		HomeContent:         settings[SettingKeyHomeContent],
-		LinuxDoOAuthEnabled: linuxDoEnabled,
+		RegistrationEnabled:         settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:          emailVerifyEnabled,
+		PromoCodeEnabled:            settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
+		PasswordResetEnabled:        passwordResetEnabled,
+		TotpEnabled:                 settings[SettingKeyTotpEnabled] == "true",
+		TurnstileEnabled:            settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:            settings[SettingKeyTurnstileSiteKey],
+		SiteName:                    s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:                    settings[SettingKeySiteLogo],
+		SiteSubtitle:                s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                  settings[SettingKeyAPIBaseURL],
+		ContactInfo:                 settings[SettingKeyContactInfo],
+		DocURL:                      settings[SettingKeyDocURL],
+		HomeContent:                 settings[SettingKeyHomeContent],
+		HideCcsImportButton:         settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled: settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:     strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		LinuxDoOAuthEnabled:         linuxDoEnabled,
 REDACTED, nil
 REDACTED
 
@@ -121,33 +137,45 @@ REDACTED
 
 	// Return a struct that matches the frontend's expected format
 	return &struct {
-		RegistrationEnabled bool   `json:"registration_enabled"`
-		EmailVerifyEnabled  bool   `json:"email_verify_enabled"`
-		TurnstileEnabled    bool   `json:"turnstile_enabled"`
-		TurnstileSiteKey    string `json:"turnstile_site_key,omitempty"`
-		SiteName            string `json:"site_name"`
-		SiteLogo            string `json:"site_logo,omitempty"`
-		SiteSubtitle        string `json:"site_subtitle,omitempty"`
-		APIBaseURL          string `json:"api_base_url,omitempty"`
-		ContactInfo         string `json:"contact_info,omitempty"`
-		DocURL              string `json:"doc_url,omitempty"`
-		HomeContent         string `json:"home_content,omitempty"`
-		LinuxDoOAuthEnabled bool   `json:"linuxdo_oauth_enabled"`
-		Version             string `json:"version,omitempty"`
+		RegistrationEnabled         bool   `json:"registration_enabled"`
+		EmailVerifyEnabled          bool   `json:"email_verify_enabled"`
+		PromoCodeEnabled            bool   `json:"promo_code_enabled"`
+		PasswordResetEnabled        bool   `json:"password_reset_enabled"`
+		TotpEnabled                 bool   `json:"totp_enabled"`
+		TurnstileEnabled            bool   `json:"turnstile_enabled"`
+		TurnstileSiteKey            string `json:"turnstile_site_key,omitempty"`
+		SiteName                    string `json:"site_name"`
+		SiteLogo                    string `json:"site_logo,omitempty"`
+		SiteSubtitle                string `json:"site_subtitle,omitempty"`
+		APIBaseURL                  string `json:"api_base_url,omitempty"`
+		ContactInfo                 string `json:"contact_info,omitempty"`
+		DocURL                      string `json:"doc_url,omitempty"`
+		HomeContent                 string `json:"home_content,omitempty"`
+		HideCcsImportButton         bool   `json:"hide_ccs_import_button"`
+		PurchaseSubscriptionEnabled bool   `json:"purchase_subscription_enabled"`
+		PurchaseSubscriptionURL     string `json:"purchase_subscription_url,omitempty"`
+		LinuxDoOAuthEnabled         bool   `json:"linuxdo_oauth_enabled"`
+		Version                     string `json:"version,omitempty"`
 REDACTED{
-		RegistrationEnabled: settings.RegistrationEnabled,
-		EmailVerifyEnabled:  settings.EmailVerifyEnabled,
-		TurnstileEnabled:    settings.TurnstileEnabled,
-		TurnstileSiteKey:    settings.TurnstileSiteKey,
-		SiteName:            settings.SiteName,
-		SiteLogo:            settings.SiteLogo,
-		SiteSubtitle:        settings.SiteSubtitle,
-		APIBaseURL:          settings.APIBaseURL,
-		ContactInfo:         settings.ContactInfo,
-		DocURL:              settings.DocURL,
-		HomeContent:         settings.HomeContent,
-		LinuxDoOAuthEnabled: settings.LinuxDoOAuthEnabled,
-		Version:             s.version,
+		RegistrationEnabled:         settings.RegistrationEnabled,
+		EmailVerifyEnabled:          settings.EmailVerifyEnabled,
+		PromoCodeEnabled:            settings.PromoCodeEnabled,
+		PasswordResetEnabled:        settings.PasswordResetEnabled,
+		TotpEnabled:                 settings.TotpEnabled,
+		TurnstileEnabled:            settings.TurnstileEnabled,
+		TurnstileSiteKey:            settings.TurnstileSiteKey,
+		SiteName:                    settings.SiteName,
+		SiteLogo:                    settings.SiteLogo,
+		SiteSubtitle:                settings.SiteSubtitle,
+		APIBaseURL:                  settings.APIBaseURL,
+		ContactInfo:                 settings.ContactInfo,
+		DocURL:                      settings.DocURL,
+		HomeContent:                 settings.HomeContent,
+		HideCcsImportButton:         settings.HideCcsImportButton,
+		PurchaseSubscriptionEnabled: settings.PurchaseSubscriptionEnabled,
+		PurchaseSubscriptionURL:     settings.PurchaseSubscriptionURL,
+		LinuxDoOAuthEnabled:         settings.LinuxDoOAuthEnabled,
+		Version:                     s.version,
 REDACTED, nil
 REDACTED
 
@@ -158,6 +186,9 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	// 注册设置
 	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
 	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
+	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
+	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
+	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
 
 	// 邮件服务设置（只有非空才更新密码）
 	updates[SettingKeySMTPHost] = settings.SMTPHost
@@ -193,6 +224,9 @@ REDACTED
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
+	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
+	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
+	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -243,6 +277,44 @@ REDACTED
 	return value == "true"
 REDACTED
 
+// IsPromoCodeEnabled 检查是否启用优惠码功能
+func (s *SettingService) IsPromoCodeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyPromoCodeEnabled)
+	if err != nil {
+		return true // 默认启用
+REDACTED
+	return value != "false"
+REDACTED
+
+// IsPasswordResetEnabled 检查是否启用密码重置功能
+// 要求：必须同时开启邮件验证
+func (s *SettingService) IsPasswordResetEnabled(ctx context.Context) bool {
+	// Password reset requires email verification to be enabled
+	if !s.IsEmailVerifyEnabled(ctx) {
+		return false
+REDACTED
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyPasswordResetEnabled)
+	if err != nil {
+		return false // 默认关闭
+REDACTED
+	return value == "true"
+REDACTED
+
+// IsTotpEnabled 检查是否启用 TOTP 双因素认证功能
+func (s *SettingService) IsTotpEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyTotpEnabled)
+	if err != nil {
+		return false // 默认关闭
+REDACTED
+	return value == "true"
+REDACTED
+
+// IsTotpEncryptionKeyConfigured 检查 TOTP 加密密钥是否已手动配置
+// 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
+func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
+	return s.cfg.Totp.EncryptionKeyConfigured
+REDACTED
+
 // GetSiteName 获取网站名称
 func (s *SettingService) GetSiteName(ctx context.Context) string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
@@ -290,14 +362,17 @@ REDACTED
 
 	// 初始化默认设置
 	defaults := map[string]string{
-		SettingKeyRegistrationEnabled: "true",
-		SettingKeyEmailVerifyEnabled:  "false",
-		SettingKeySiteName:            "Sub2API",
-		SettingKeySiteLogo:            "",
-		SettingKeyDefaultConcurrency:  strconv.Itoa(s.cfg.Default.UserConcurrency),
-		SettingKeyDefaultBalance:      strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
-		SettingKeySMTPPort:            "587",
-		SettingKeySMTPUseTLS:          "false",
+		SettingKeyRegistrationEnabled:         "true",
+		SettingKeyEmailVerifyEnabled:          "false",
+		SettingKeyPromoCodeEnabled:            "true", // 默认启用优惠码功能
+		SettingKeySiteName:                    "Sub2API",
+		SettingKeySiteLogo:                    "",
+		SettingKeyPurchaseSubscriptionEnabled: "false",
+		SettingKeyPurchaseSubscriptionURL:     "",
+		SettingKeyDefaultConcurrency:          strconv.Itoa(s.cfg.Default.UserConcurrency),
+		SettingKeyDefaultBalance:              strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeySMTPPort:                    "587",
+		SettingKeySMTPUseTLS:                  "false",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -320,9 +395,13 @@ REDACTED
 
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
+	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
 	result := &SystemSettings{
 		RegistrationEnabled:          settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:           settings[SettingKeyEmailVerifyEnabled] == "true",
+		EmailVerifyEnabled:           emailVerifyEnabled,
+		PromoCodeEnabled:             settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
+		PasswordResetEnabled:         emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
+		TotpEnabled:                  settings[SettingKeyTotpEnabled] == "true",
 		SMTPHost:                     settings[SettingKeySMTPHost],
 		SMTPUsername:                 settings[SettingKeySMTPUsername],
 		SMTPFrom:                     settings[SettingKeySMTPFrom],
@@ -339,6 +418,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		ContactInfo:                  settings[SettingKeyContactInfo],
 		DocURL:                       settings[SettingKeyDocURL],
 		HomeContent:                  settings[SettingKeyHomeContent],
+		HideCcsImportButton:          settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:  settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:      strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 REDACTED
 
 	// 解析整数类型
