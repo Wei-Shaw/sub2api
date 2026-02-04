@@ -85,53 +85,6 @@ REDACTED
 REDACTED
 
 	# =========================================================================
-	# 速率限制 (需要 caddy-ratelimit 插件)
-	# 如未安装插件，请注释掉此段
-	# =========================================================================
-	# rate_limit {
-	# 	zone api {
-	# 		key {remote_hostREDACTED
-	# 		events 100
-	# 		window 1m
-	# REDACTED
-	# REDACTED
-
-	# =========================================================================
-	# 安全响应头
-	# =========================================================================
-	header {
-		# 防止点击劫持
-		X-Frame-Options "SAMEORIGIN"
-		
-		# XSS 保护
-		X-XSS-Protection "1; mode=block"
-		
-		# 防止 MIME 类型嗅探
-		X-Content-Type-Options "nosniff"
-		
-		# 引用策略
-		Referrer-Policy "strict-origin-when-cross-origin"
-		
-		# HSTS - 强制 HTTPS (max-age=1年)
-		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-		
-		# 内容安全策略 (根据需要调整)
-		# Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:;"
-		
-		# 权限策略
-		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-		
-		# 跨域资源策略
-		Cross-Origin-Opener-Policy "same-origin"
-		Cross-Origin-Embedder-Policy "require-corp"
-		Cross-Origin-Resource-Policy "same-origin"
-		
-		# 移除敏感头
-		-Server
-		-X-Powered-By
-REDACTED
-
-	# =========================================================================
 	# 请求大小限制 (防止大文件攻击)
 	# =========================================================================
 	request_body {
