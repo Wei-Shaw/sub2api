@@ -26,7 +26,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 400, "Query parameter api_key is deprecated. Use Authorization header or key instead.")
 			return
 	REDACTED
-		apiKeyString := extractAPIKeyFromRequest(c)
+		apiKeyString := extractAPIKeyForGoogle(c)
 		if apiKeyString == "" {
 			abortWithGoogleError(c, 401, "API key is required")
 			return
@@ -108,25 +108,38 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 REDACTED
 REDACTED
 
-func extractAPIKeyFromRequest(c *gin.Context) string {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader != "" {
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) == 2 && parts[0] == "Bearer" && strings.TrimSpace(parts[1]) != "" {
-			return strings.TrimSpace(parts[1])
+// extractAPIKeyForGoogle extracts API key for Google/Gemini endpoints.
+// Priority: x-goog-api-key > Authorization: Bearer > x-api-key > query key
+// This allows OpenClaw and other clients using Bearer auth to work with Gemini endpoints.
+func extractAPIKeyForGoogle(c *gin.Context) string {
+	// 1) preferred: Gemini native header
+	if k := strings.TrimSpace(c.GetHeader("x-goog-api-key")); k != "" {
+		return k
+REDACTED
+
+	// 2) fallback: Authorization: Bearer <key>
+	auth := strings.TrimSpace(c.GetHeader("Authorization"))
+	if auth != "" {
+		parts := strings.SplitN(auth, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			if k := strings.TrimSpace(parts[1]); k != "" {
+				return k
+		REDACTED
 	REDACTED
 REDACTED
-	if v := strings.TrimSpace(c.GetHeader("x-api-key")); v != "" {
-		return v
+
+	// 3) x-api-key header (backward compatibility)
+	if k := strings.TrimSpace(c.GetHeader("x-api-key")); k != "" {
+		return k
 REDACTED
-	if v := strings.TrimSpace(c.GetHeader("x-goog-api-key")); v != "" {
-		return v
-REDACTED
+
+	// 4) query parameter key (for specific paths)
 	if allowGoogleQueryKey(c.Request.URL.Path) {
 		if v := strings.TrimSpace(c.Query("key")); v != "" {
 			return v
 	REDACTED
 REDACTED
+
 	return ""
 REDACTED
 
