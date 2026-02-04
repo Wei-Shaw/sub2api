@@ -2,20 +2,22 @@ package service
 
 import (
 	"encoding/json"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
-// CleanGeminiNativeThoughtSignatures 从 Gemini 原生 API 请求中移除 thoughtSignature 字段，
+// CleanGeminiNativeThoughtSignatures 从 Gemini 原生 API 请求中替换 thoughtSignature 字段为 dummy 签名，
 // 以避免跨账号签名验证错误。
 //
 // 当粘性会话切换账号时（例如原账号异常、不可调度等），旧账号返回的 thoughtSignature
-// 会导致新账号的签名验证失败。通过移除这些签名，让新账号重新生成有效的签名。
+// 会导致新账号的签名验证失败。通过替换为 dummy 签名，跳过签名验证。
 //
-// CleanGeminiNativeThoughtSignatures removes thoughtSignature fields from Gemini native API requests
-// to avoid cross-account signature validation errors.
+// CleanGeminiNativeThoughtSignatures replaces thoughtSignature fields with dummy signature
+// in Gemini native API requests to avoid cross-account signature validation errors.
 //
 // When sticky session switches accounts (e.g., original account becomes unavailable),
 // thoughtSignatures from the old account will cause validation failures on the new account.
-// By removing these signatures, we allow the new account to generate valid signatures.
+// By replacing with dummy signature, we skip signature validation.
 func CleanGeminiNativeThoughtSignatures(body []byte) []byte {
 	if len(body) == 0 {
 		return body
@@ -28,11 +30,11 @@ REDACTED
 		return body
 REDACTED
 
-	// 递归清理 thoughtSignature
-	cleaned := cleanThoughtSignaturesRecursive(data)
+	// 递归替换 thoughtSignature 为 dummy 签名
+	replaced := replaceThoughtSignaturesRecursive(data)
 
 	// 重新序列化
-	result, err := json.Marshal(cleaned)
+	result, err := json.Marshal(replaced)
 	if err != nil {
 		// 如果序列化失败，返回原始 body
 		return body
@@ -41,19 +43,20 @@ REDACTED
 	return result
 REDACTED
 
-// cleanThoughtSignaturesRecursive 递归遍历数据结构，移除所有 thoughtSignature 字段
-func cleanThoughtSignaturesRecursive(data any) any {
+// replaceThoughtSignaturesRecursive 递归遍历数据结构，将所有 thoughtSignature 字段替换为 dummy 签名
+func replaceThoughtSignaturesRecursive(data any) any {
 	switch v := data.(type) {
 	case map[string]any:
-		// 创建新的 map，移除 thoughtSignature
+		// 创建新的 map，替换 thoughtSignature 为 dummy 签名
 		result := make(map[string]any, len(v))
 		for key, value := range v {
-			// 跳过 thoughtSignature 字段
+			// 替换 thoughtSignature 字段为 dummy 签名
 			if key == "thoughtSignature" {
+				result[key] = antigravity.DummyThoughtSignature
 				continue
 		REDACTED
 			// 递归处理嵌套结构
-			result[key] = cleanThoughtSignaturesRecursive(value)
+			result[key] = replaceThoughtSignaturesRecursive(value)
 	REDACTED
 		return result
 
@@ -61,7 +64,7 @@ func cleanThoughtSignaturesRecursive(data any) any {
 		// 递归处理数组中的每个元素
 		result := make([]any, len(v))
 		for i, item := range v {
-			result[i] = cleanThoughtSignaturesRecursive(item)
+			result[i] = replaceThoughtSignaturesRecursive(item)
 	REDACTED
 		return result
 

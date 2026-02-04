@@ -291,7 +291,8 @@ export default {
     sendingResetLink: '发送中...',
     sendResetLinkFailed: '发送重置链接失败，请重试。',
     resetEmailSent: '重置链接已发送',
-    resetEmailSentHint: '如果该邮箱已注册，您将很快收到密码重置链接。请检查您的收件箱和垃圾邮件文件夹。',
+    resetEmailSentHint:
+      '如果该邮箱已注册，您将很快收到密码重置链接。请检查您的收件箱和垃圾邮件文件夹。',
     backToLogin: '返回登录',
     rememberedPassword: '想起密码了？',
     // 重置密码
@@ -404,6 +405,7 @@ export default {
     usage: '用量',
     today: '今日',
     total: '累计',
+    quota: '额度',
     useKey: '使用密钥',
     useKeyModal: {
       title: '使用 API 密钥',
@@ -412,36 +414,41 @@ export default {
       copied: '已复制',
       note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
       noGroupTitle: '请先分配分组',
-      noGroupDescription: '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
+      noGroupDescription:
+        '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
-        noteWindows: '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。',
+        noteWindows:
+          '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
       REDACTED,
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         codexCli: 'Codex CLI',
-        opencode: 'OpenCode',
+        opencode: 'OpenCode'
       REDACTED,
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
-        claudeNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
-        geminiNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+        claudeNote:
+          '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+        geminiNote:
+          '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       REDACTED,
       gemini: {
-        description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
+        description:
+          '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
         modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
-        note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+        note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       REDACTED,
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
-        hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。',
-      REDACTED,
+        hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。'
+      REDACTED
     REDACTED,
     customKeyLabel: '自定义密钥',
     customKeyPlaceholder: '输入自定义密钥（至少16个字符）',
@@ -457,15 +464,43 @@ export default {
     ipBlacklistPlaceholder: '1.2.3.4\n5.6.0.0/16',
     ipBlacklistHint: '每行一个 IP 或 CIDR，这些 IP 将被禁止使用此密钥',
     ipRestrictionEnabled: '已配置 IP 限制',
-    ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
+    ccSwitchNotInstalled:
+      'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
     ccsClientSelect: {
       title: '选择客户端',
       description: '请选择您要导入到 CC-Switch 的客户端类型：',
       claudeCode: 'Claude Code',
       claudeCodeDesc: '导入为 Claude Code 配置',
       geminiCli: 'Gemini CLI',
-      geminiCliDesc: '导入为 Gemini CLI 配置',
+      geminiCliDesc: '导入为 Gemini CLI 配置'
     REDACTED,
+    // 配额和有效期
+    quotaLimit: '额度限制',
+    quotaAmount: '额度金额 (USD)',
+    quotaAmountPlaceholder: '输入 USD 额度限制',
+    quotaAmountHint: '设置此密钥可消费的最大金额。0 = 无限制。',
+    quotaUsed: '已用额度',
+    reset: '重置',
+    resetQuotaUsed: '将已用额度重置为 0',
+    resetQuotaTitle: '确认重置额度',
+    resetQuotaConfirmMessage: '确定要将密钥 "{nameREDACTED" 的已用额度（${usedREDACTED）重置为 0 吗？此操作不可撤销。',
+    quotaResetSuccess: '额度重置成功',
+    failedToResetQuota: '重置额度失败',
+    expiration: '密钥有效期',
+    expiresInDays: '{daysREDACTED 天',
+    extendDays: '+{daysREDACTED 天',
+    customDate: '自定义',
+    expirationDate: '过期时间',
+    expirationDateHint: '选择此 API 密钥的过期时间。',
+    currentExpiration: '当前过期时间',
+    expiresAt: '过期时间',
+    noExpiration: '永久有效',
+    status: {
+      active: '活跃',
+      inactive: '已停用',
+      quota_exhausted: '额度耗尽',
+      expired: '已过期'
+    REDACTED
   REDACTED,
 
   // Usage
@@ -757,8 +792,8 @@ export default {
       editUser: '编辑用户',
       deleteUser: '删除用户',
       deleteConfirmMessage: "确定要删除用户 '{emailREDACTED' 吗？此操作无法撤销。",
-      searchPlaceholder: '搜索用户...',
-      searchUsers: '搜索用户...',
+      searchPlaceholder: '搜索用户邮箱或用户名、备注、支持模糊查询...',
+      searchUsers: '搜索用户邮箱或用户名、备注、支持模糊查询',
       roleFilter: '角色筛选',
       allRoles: '全部角色',
       allStatus: '全部状态',
@@ -1028,9 +1063,11 @@ export default {
       exclusiveHint: '专属分组，可以手动指定给特定用户',
       exclusiveTooltip: {
         title: '什么是专属分组？',
-        description: '开启后，用户在创建 API Key 时将无法看到此分组。只有管理员手动将用户分配到此分组后，用户才能使用。',
+        description:
+          '开启后，用户在创建 API Key 时将无法看到此分组。只有管理员手动将用户分配到此分组后，用户才能使用。',
         example: '使用场景：',
-        exampleContent: '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
+        exampleContent:
+          '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       REDACTED,
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
       platforms: {
@@ -1094,12 +1131,18 @@ export default {
       REDACTED,
       claudeCode: {
         title: 'Claude Code 客户端限制',
-        tooltip: '启用后，此分组仅允许 Claude Code 官方客户端访问。非 Claude Code 请求将被拒绝或降级到指定分组。',
+        tooltip:
+          '启用后，此分组仅允许 Claude Code 官方客户端访问。非 Claude Code 请求将被拒绝或降级到指定分组。',
         enabled: '仅限 Claude Code',
         disabled: '允许所有客户端',
         fallbackGroup: '降级分组',
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
+      REDACTED,
+      invalidRequestFallback: {
+        title: '无效请求兜底分组',
+        hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',
+        noFallback: '不兜底'
       REDACTED,
       copyAccounts: {
         title: '从分组复制账号',
@@ -1111,7 +1154,8 @@ export default {
       REDACTED,
       modelRouting: {
         title: '模型路由配置',
-        tooltip: '配置特定模型请求优先路由到指定账号。支持通配符匹配，如 claude-opus-* 匹配所有 opus 模型。',
+        tooltip:
+          '配置特定模型请求优先路由到指定账号。支持通配符匹配，如 claude-opus-* 匹配所有 opus 模型。',
         enabled: '已启用',
         disabled: '已禁用',
         disabledHint: '启用后，配置的路由规则才会生效',
@@ -1128,6 +1172,20 @@ export default {
         noRulesHint: '添加路由规则以将特定模型请求优先路由到指定账号',
         searchAccountPlaceholder: '搜索账号...',
         accountsHint: '选择此模型模式优先使用的账号'
+      REDACTED,
+      mcpXml: {
+        title: 'MCP XML 协议注入',
+        tooltip: '启用后，当请求包含 MCP 工具时，会在 system prompt 中注入 XML 格式调用协议提示词。关闭此选项可避免对某些客户端造成干扰。',
+        enabled: '已启用',
+        disabled: '已禁用'
+      REDACTED,
+      supportedScopes: {
+        title: '支持的模型系列',
+        tooltip: '选择此分组支持的模型系列。未勾选的系列将不会被路由到此分组。',
+        claude: 'Claude',
+        geminiText: 'Gemini Text',
+        geminiImage: 'Gemini Image',
+        hint: '至少选择一个模型系列'
       REDACTED
     REDACTED,
 
@@ -1313,6 +1371,8 @@ export default {
         googleOauth: 'Google OAuth',
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
+        upstream: '对接上游',
+        upstreamDesc: '通过 Base URL + API Key 连接上游',
         api_key: 'API Key',
         cookie: 'Cookie'
       REDACTED,
@@ -1584,6 +1644,15 @@ export default {
       pleaseEnterApiKey: '请输入 API Key',
       apiKeyIsRequired: 'API Key 是必需的',
       leaveEmptyToKeep: '留空以保持当前密钥',
+      // Upstream type
+      upstream: {
+        baseUrl: '上游 Base URL',
+        baseUrlHint: '上游 Antigravity 服务的地址，例如：https://s.konstants.xyz',
+        apiKey: '上游 API Key',
+        apiKeyHint: '上游服务的 API Key',
+        pleaseEnterBaseUrl: '请输入上游 Base URL',
+        pleaseEnterApiKey: '请输入上游 API Key'
+      REDACTED,
       // OAuth flow
       oauth: {
         title: 'Claude 账号授权',
@@ -1614,8 +1683,7 @@ export default {
         regenerate: '重新生成',
         step2OpenUrl: '在浏览器中打开 URL 并完成授权',
         openUrlDesc: '在新标签页中打开授权 URL，登录您的 Claude 账号并授权。',
-        proxyWarning:
-          '注意：如果您配置了代理，请确保浏览器使用相同的代理访问授权页面。',
+        proxyWarning: '注意：如果您配置了代理，请确保浏览器使用相同的代理访问授权页面。',
         step3EnterCode: '输入授权码',
         authCodeDesc: '授权完成后，页面会显示一个授权码。复制并粘贴到下方：',
         authCode: '授权码',
@@ -1647,45 +1715,50 @@ export default {
           authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别'
         REDACTED,
         // Gemini specific
-	        gemini: {
-	          title: 'Gemini 账户授权',
-	          followSteps: '请按照以下步骤完成 Gemini 账户的授权：',
-	          step1GenerateUrl: '生成授权链接',
-	          generateAuthUrl: '生成授权链接',
-	          projectIdLabel: 'Project ID（可选）',
-	          projectIdPlaceholder: '例如：my-gcp-project 或 cloud-ai-companion-xxxxx',
-	          projectIdHint: '留空则在兑换授权码后自动探测；若自动探测失败，可填写后重新生成授权链接再授权。',
-	          howToGetProjectId: '如何获取',
-	          step2OpenUrl: '在浏览器中打开链接并完成授权',
-	          openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
-	          step3EnterCode: '输入回调链接或 Code',
-	          authCodeDesc: '授权完成后，复制浏览器跳转后的回调链接（推荐）或仅复制 code，粘贴到下方即可。',
-	          authCode: '回调链接或 Code',
-	          authCodePlaceholder: '方式1（推荐）：粘贴回调链接\n方式2：仅粘贴 code 参数的值',
-	          authCodeHint: '系统会自动从链接中解析 code/state。',
+        gemini: {
+          title: 'Gemini 账户授权',
+          followSteps: '请按照以下步骤完成 Gemini 账户的授权：',
+          step1GenerateUrl: '生成授权链接',
+          generateAuthUrl: '生成授权链接',
+          projectIdLabel: 'Project ID（可选）',
+          projectIdPlaceholder: '例如：my-gcp-project 或 cloud-ai-companion-xxxxx',
+          projectIdHint:
+            '留空则在兑换授权码后自动探测；若自动探测失败，可填写后重新生成授权链接再授权。',
+          howToGetProjectId: '如何获取',
+          step2OpenUrl: '在浏览器中打开链接并完成授权',
+          openUrlDesc: '请在新标签页中打开授权链接，登录您的 Google 账户并授权。',
+          step3EnterCode: '输入回调链接或 Code',
+          authCodeDesc:
+            '授权完成后，复制浏览器跳转后的回调链接（推荐）或仅复制 code，粘贴到下方即可。',
+          authCode: '回调链接或 Code',
+          authCodePlaceholder: '方式1（推荐）：粘贴回调链接\n方式2：仅粘贴 code 参数的值',
+          authCodeHint: '系统会自动从链接中解析 code/state。',
           redirectUri: 'Redirect URI',
           redirectUriHint: '需要在 Google OAuth Client 中配置，且必须与此处完全一致。',
           confirmRedirectUri: '我已在 Google OAuth Client 中配置了该 Redirect URI（必须完全一致）',
           invalidRedirectUri: 'Redirect URI 必须是合法的 http(s) URL',
-	          redirectUriNotConfirmed: '请确认 Redirect URI 已在 Google OAuth Client 中正确配置',
-	          missingRedirectUri: '缺少 Redirect URI',
-	          failedToGenerateUrl: '生成 Gemini 授权链接失败',
-	          missingExchangeParams: '缺少 code / session_id / state',
-	          failedToExchangeCode: 'Gemini 授权码兑换失败',
-	          missingProjectId: 'GCP Project ID 获取失败：您的 Google 账号未关联有效的 GCP 项目。请前往 Google Cloud Console 激活 GCP 并绑定信用卡，或在授权时手动填写 Project ID。',
-	          modelPassthrough: 'Gemini 直接转发模型',
-	          modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
-	          stateWarningTitle: '提示',
-	          stateWarningDesc: '建议粘贴完整回调链接（包含 code 和 state）。',
-	          oauthTypeLabel: 'OAuth 类型',
+          redirectUriNotConfirmed: '请确认 Redirect URI 已在 Google OAuth Client 中正确配置',
+          missingRedirectUri: '缺少 Redirect URI',
+          failedToGenerateUrl: '生成 Gemini 授权链接失败',
+          missingExchangeParams: '缺少 code / session_id / state',
+          failedToExchangeCode: 'Gemini 授权码兑换失败',
+          missingProjectId:
+            'GCP Project ID 获取失败：您的 Google 账号未关联有效的 GCP 项目。请前往 Google Cloud Console 激活 GCP 并绑定信用卡，或在授权时手动填写 Project ID。',
+          modelPassthrough: 'Gemini 直接转发模型',
+          modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
+          stateWarningTitle: '提示',
+          stateWarningDesc: '建议粘贴完整回调链接（包含 code 和 state）。',
+          oauthTypeLabel: 'OAuth 类型',
           needsProjectId: '内置授权（Code Assist）',
           needsProjectIdDesc: '需要 GCP 项目与 Project ID',
           noProjectIdNeeded: '自定义授权（AI Studio）',
           noProjectIdNeededDesc: '需管理员配置 OAuth Client',
-	          aiStudioNotConfiguredShort: '未配置',
-	          aiStudioNotConfiguredTip: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback（Consent Screen scopes 需包含 https://www.googleapis.com/auth/generative-language.retriever）',
-	          aiStudioNotConfigured: 'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback'
-	        REDACTED,
+          aiStudioNotConfiguredShort: '未配置',
+          aiStudioNotConfiguredTip:
+            'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback（Consent Screen scopes 需包含 https://www.googleapis.com/auth/generative-language.retriever）',
+          aiStudioNotConfigured:
+            'AI Studio OAuth 未配置：请先设置 GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET，并在 Google OAuth Client 添加 Redirect URI：http://localhost:1455/auth/callback'
+        REDACTED,
         // Antigravity specific
         antigravity: {
           title: 'Antigravity 账户授权',
@@ -1707,7 +1780,7 @@ export default {
           missingExchangeParams: '缺少 code / session_id / state',
           failedToExchangeCode: 'Antigravity 授权码兑换失败'
         REDACTED
-	      REDACTED,
+      REDACTED,
       // Gemini specific (platform-wide)
       gemini: {
         helpButton: '使用帮助',
@@ -1722,7 +1795,8 @@ export default {
         tier: {
           label: '账号等级',
           hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
-          aiStudioHint: 'AI Studio 的配额是按模型分别限流（Pro/Flash 独立）。若已绑卡（按量付费），请选 Pay-as-you-go。',
+          aiStudioHint:
+            'AI Studio 的配额是按模型分别限流（Pro/Flash 独立）。若已绑卡（按量付费），请选 Pay-as-you-go。',
           googleOne: {
             free: 'Google One Free',
             pro: 'Google One Pro',
@@ -1866,9 +1940,9 @@ export default {
       outputCopied: '输出已复制',
       startingTestForAccount: '开始测试账号：{nameREDACTED',
       testAccountTypeLabel: '账号类型：{typeREDACTED',
-	      selectTestModel: '选择测试模型',
-	      testModel: '测试模型',
-	      testPrompt: '提示词："hi"',
+      selectTestModel: '选择测试模型',
+      testModel: '测试模型',
+      testPrompt: '提示词："hi"',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
@@ -2349,6 +2423,7 @@ export default {
       waiting: '等待',
       conns: '连接',
       queue: '队列',
+      accountSwitches: '账号切换',
       ok: '正常',
       lastRun: '最近运行',
       lastSuccess: '最近成功',
@@ -2398,6 +2473,7 @@ export default {
       failedToLoadData: '加载运维数据失败',
       failedToLoadOverview: '加载概览数据失败',
       failedToLoadThroughputTrend: '加载吞吐趋势失败',
+      failedToLoadSwitchTrend: '加载平均账号切换趋势失败',
       failedToLoadLatencyHistogram: '加载请求时长分布失败',
       failedToLoadErrorTrend: '加载错误趋势失败',
       failedToLoadErrorDistribution: '加载错误分布失败',
@@ -2406,9 +2482,11 @@ export default {
       tpsK: 'TPS（千）',
       top: '最高：',
       throughputTrend: '吞吐趋势',
+      switchRateTrend: '平均账号切换趋势',
       latencyHistogram: '请求时长分布',
       errorTrend: '错误趋势',
       errorDistribution: '错误分布',
+      switchRate: '平均账号切换',
       // Health Score & Diagnosis
       health: '健康',
       healthCondition: '健康状况',
@@ -2547,7 +2625,7 @@ export default {
           internal: '内部'
         REDACTED,
         total: '总计：',
-        searchPlaceholder: '搜索 request_id / client_request_id / message',
+        searchPlaceholder: '搜索 request_id / client_request_id / message'
       REDACTED,
       // Error Detail Modal
       errorDetail: {
@@ -2978,7 +3056,8 @@ export default {
         ignoreCountTokensErrors: '忽略 count_tokens 错误',
         ignoreCountTokensErrorsHint: '启用后，count_tokens 请求的错误将不会写入错误日志。',
         ignoreContextCanceled: '忽略客户端断连错误',
-        ignoreContextCanceledHint: '启用后，客户端主动断开连接（context canceled）的错误将不会写入错误日志。',
+        ignoreContextCanceledHint:
+          '启用后，客户端主动断开连接（context canceled）的错误将不会写入错误日志。',
         ignoreNoAvailableAccounts: '忽略无可用账号错误',
         ignoreNoAvailableAccountsHint: '启用后，"No available accounts" 错误将不会写入错误日志（不推荐，这通常是配置问题）。',
         ignoreInvalidApiKeyErrors: '忽略无效 API Key 错误',
@@ -3036,6 +3115,7 @@ export default {
       tooltips: {
         totalRequests: '当前时间窗口内的总请求数和Token消耗量。',
         throughputTrend: '当前窗口内的请求/QPS 与 token/TPS 趋势。',
+        switchRateTrend: '近5小时内账号切换次数 / 请求总数的趋势（平均切换次数）。',
         latencyHistogram: '成功请求的请求时长分布（毫秒）。',
         errorTrend: '错误趋势（SLA 口径排除业务限制；上游错误率排除 429/529）。',
         errorDistribution: '按状态码统计的错误分布。',
@@ -3097,7 +3177,8 @@ export default {
         siteKeyHint: '从 Cloudflare Dashboard 获取',
         cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: '服务端验证密钥（请保密）',
-        secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'      REDACTED,
+        secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'
+      REDACTED,
       linuxdo: {
         title: 'LinuxDo Connect 登录',
         description: '配置 LinuxDo Connect OAuth，用于 Sub2API 用户登录',
@@ -3151,9 +3232,12 @@ export default {
         logoTypeError: '请选择图片文件',
         logoReadError: '读取图片文件失败',
         homeContent: '首页内容',
-        homeContentPlaceholder: '在此输入首页内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性。',
-        homeContentHint: '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
-        homeContentIframeWarning: '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。',
+        homeContentPlaceholder:
+          '在此输入首页内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性。',
+        homeContentHint:
+          '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
+        homeContentIframeWarning:
+          '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。',
         hideCcsImportButton: '隐藏 CCS 导入按钮',
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       REDACTED,
@@ -3390,131 +3474,158 @@ export default {
     admin: {
       welcome: {
         title: '👋 欢迎使用 Sub2API',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
+        description:
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
         nextBtn: '开始配置 🚀',
         prevBtn: '跳过'
       REDACTED,
       groupManage: {
         title: '📦 第一步：分组管理',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>什么是分组？</b></p><p style="margin-bottom: 12px;">分组是 Sub2API 的核心概念，它就像一个"服务套餐"：</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 每个分组可以包含多个上游账号</li><li>💰 每个分组有独立的计费倍率</li><li>👥 可以设置为公开或专属分组</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>您可以创建"VIP专线"（高倍率）和"免费试用"（低倍率）两个分组</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"分组管理"开始</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>什么是分组？</b></p><p style="margin-bottom: 12px;">分组是 Sub2API 的核心概念，它就像一个"服务套餐"：</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 每个分组可以包含多个上游账号</li><li>💰 每个分组有独立的计费倍率</li><li>👥 可以设置为公开或专属分组</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>您可以创建"VIP专线"（高倍率）和"免费试用"（低倍率）两个分组</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"分组管理"开始</p></div>'
       REDACTED,
       createGroup: {
         title: '➕ 创建新分组',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">现在让我们创建第一个分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📝 提示：</b>建议先创建一个测试分组，熟悉流程后再创建正式分组</p><p style="color: #10b981; font-weight: 600;">👉 点击"创建分组"按钮</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">现在让我们创建第一个分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📝 提示：</b>建议先创建一个测试分组，熟悉流程后再创建正式分组</p><p style="color: #10b981; font-weight: 600;">👉 点击"创建分组"按钮</p></div>'
       REDACTED,
       groupName: {
         title: '✏️ 1. 分组名称',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为您的分组起一个易于识别的名称。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>💡 命名建议：</b><ul style="margin: 8px 0 0 16px;"><li>"测试分组" - 用于测试</li><li>"VIP专线" - 高质量服务</li><li>"免费试用" - 体验版</li></ul></div><p style="font-size: 13px; color: #6b7280;">填写完成后点击"下一步"继续</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为您的分组起一个易于识别的名称。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>💡 命名建议：</b><ul style="margin: 8px 0 0 16px;"><li>"测试分组" - 用于测试</li><li>"VIP专线" - 高质量服务</li><li>"免费试用" - 体验版</li></ul></div><p style="font-size: 13px; color: #6b7280;">填写完成后点击"下一步"继续</p></div>',
         nextBtn: '下一步'
       REDACTED,
       groupPlatform: {
         title: '🤖 2. 选择平台',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该分组支持的 AI 平台。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 平台说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude 系列模型</li><li><b>OpenAI</b> - GPT 系列模型</li><li><b>Google</b> - Gemini 系列模型</li></ul></div><p style="font-size: 13px; color: #6b7280;">一个分组只能选择一个平台</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该分组支持的 AI 平台。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 平台说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude 系列模型</li><li><b>OpenAI</b> - GPT 系列模型</li><li><b>Google</b> - Gemini 系列模型</li></ul></div><p style="font-size: 13px; color: #6b7280;">一个分组只能选择一个平台</p></div>',
         nextBtn: '下一步'
       REDACTED,
       groupMultiplier: {
         title: '💰 3. 费率倍数',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置该分组的计费倍率，控制用户的实际扣费。</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ 计费规则：</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - 原价计费（成本价）</li><li><b>1.5</b> - 用户消耗 $1，扣除 $1.5</li><li><b>2.0</b> - 用户消耗 $1，扣除 $2</li><li><b>0.8</b> - 补贴模式（亏本运营）</li></ul></div><p style="font-size: 13px; color: #6b7280;">建议测试分组设置为 1.0</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置该分组的计费倍率，控制用户的实际扣费。</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ 计费规则：</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - 原价计费（成本价）</li><li><b>1.5</b> - 用户消耗 $1，扣除 $1.5</li><li><b>2.0</b> - 用户消耗 $1，扣除 $2</li><li><b>0.8</b> - 补贴模式（亏本运营）</li></ul></div><p style="font-size: 13px; color: #6b7280;">建议测试分组设置为 1.0</p></div>',
         nextBtn: '下一步'
       REDACTED,
       groupExclusive: {
         title: '🔒 4. 专属分组（可选）',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">控制分组的可见性和访问权限。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔐 权限说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>关闭</b> - 公开分组，所有用户可见</li><li><b>开启</b> - 专属分组，仅指定用户可见</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>VIP 用户专属、内部测试、特殊客户等</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">控制分组的可见性和访问权限。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔐 权限说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>关闭</b> - 公开分组，所有用户可见</li><li><b>开启</b> - 专属分组，仅指定用户可见</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>VIP 用户专属、内部测试、特殊客户等</p></div>',
         nextBtn: '下一步'
       REDACTED,
       groupSubmit: {
         title: '✅ 保存分组',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击创建按钮保存分组。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 注意：</b>分组创建后，平台类型不可修改，其他信息可以随时编辑</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>创建成功后，我们将添加上游账号到这个分组</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击创建按钮保存分组。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 注意：</b>分组创建后，平台类型不可修改，其他信息可以随时编辑</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>创建成功后，我们将添加上游账号到这个分组</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       REDACTED,
       accountManage: {
         title: '🔗 第二步：添加账号',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>太棒了！分组已创建成功 🎉</b></p><p style="margin-bottom: 12px;">现在需要添加上游 AI 服务商的账号，让分组能够实际提供服务。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 账号的作用：</b><ul style="margin: 8px 0 0 16px;"><li>连接到上游 AI 服务（Claude、GPT 等）</li><li>一个分组可以包含多个账号（负载均衡）</li><li>支持 OAuth 和 Session Key 两种方式</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"账号管理"</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>太棒了！分组已创建成功 🎉</b></p><p style="margin-bottom: 12px;">现在需要添加上游 AI 服务商的账号，让分组能够实际提供服务。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 账号的作用：</b><ul style="margin: 8px 0 0 16px;"><li>连接到上游 AI 服务（Claude、GPT 等）</li><li>一个分组可以包含多个账号（负载均衡）</li><li>支持 OAuth 和 Session Key 两种方式</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"账号管理"</p></div>'
       REDACTED,
       createAccount: {
         title: '➕ 添加新账号',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮开始添加您的第一个上游账号。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>建议使用 OAuth 方式，更安全且无需手动提取密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"添加账号"按钮</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮开始添加您的第一个上游账号。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>建议使用 OAuth 方式，更安全且无需手动提取密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"添加账号"按钮</p></div>'
       REDACTED,
       accountName: {
         title: '✏️ 1. 账号名称',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为账号设置一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"Claude主账号"、"GPT备用1"、"测试账号" 等</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为账号设置一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"Claude主账号"、"GPT备用1"、"测试账号" 等</p></div>',
         nextBtn: '下一步'
       REDACTED,
       accountPlatform: {
         title: '🤖 2. 选择平台',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该账号对应的服务商平台。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px;"><b>⚠️ 重要：</b>平台必须与刚才创建的分组平台一致</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该账号对应的服务商平台。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px;"><b>⚠️ 重要：</b>平台必须与刚才创建的分组平台一致</p></div>',
         nextBtn: '下一步'
       REDACTED,
       accountType: {
         title: '🔐 3. 授权方式',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择账号的授权方式。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ 推荐：OAuth 方式</b><ul style="margin: 8px 0 0 16px;"><li>无需手动提取密钥</li><li>更安全，支持自动刷新</li><li>适用于 Claude Code、ChatGPT OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key 方式</b><ul style="margin: 8px 0 0 16px;"><li>需要手动从浏览器提取</li><li>可能需要定期更新</li><li>适用于不支持 OAuth 的平台</li></ul></div></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择账号的授权方式。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ 推荐：OAuth 方式</b><ul style="margin: 8px 0 0 16px;"><li>无需手动提取密钥</li><li>更安全，支持自动刷新</li><li>适用于 Claude Code、ChatGPT OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key 方式</b><ul style="margin: 8px 0 0 16px;"><li>需要手动从浏览器提取</li><li>可能需要定期更新</li><li>适用于不支持 OAuth 的平台</li></ul></div></div>',
         nextBtn: '下一步'
       REDACTED,
       accountPriority: {
         title: '⚖️ 4. 优先级（可选）',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置账号的调用优先级。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 优先级规则：</b><ul style="margin: 8px 0 0 16px;"><li>数字越小，优先级越高</li><li>系统优先使用低数值账号</li><li>相同优先级则随机选择</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>主账号设置低数值，备用账号设置高数值</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置账号的调用优先级。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 优先级规则：</b><ul style="margin: 8px 0 0 16px;"><li>数字越小，优先级越高</li><li>系统优先使用低数值账号</li><li>相同优先级则随机选择</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>主账号设置低数值，备用账号设置高数值</p></div>',
         nextBtn: '下一步'
       REDACTED,
       accountGroups: {
         title: '🎯 5. 分配分组',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>关键步骤！</b>将账号分配到刚才创建的分组。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>必须勾选至少一个分组</li><li>未分配分组的账号无法使用</li><li>一个账号可以分配给多个分组</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>请勾选刚才创建的测试分组</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>关键步骤！</b>将账号分配到刚才创建的分组。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>必须勾选至少一个分组</li><li>未分配分组的账号无法使用</li><li>一个账号可以分配给多个分组</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>请勾选刚才创建的测试分组</p></div>',
         nextBtn: '下一步'
       REDACTED,
       accountSubmit: {
         title: '✅ 保存账号',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击保存按钮。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 OAuth 授权流程：</b><ul style="margin: 8px 0 0 16px;"><li>点击保存后会跳转到服务商页面</li><li>在服务商页面完成登录授权</li><li>授权成功后自动返回</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>账号添加成功后，我们将创建 API 密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"保存"按钮</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击保存按钮。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 OAuth 授权流程：</b><ul style="margin: 8px 0 0 16px;"><li>点击保存后会跳转到服务商页面</li><li>在服务商页面完成登录授权</li><li>授权成功后自动返回</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>账号添加成功后，我们将创建 API 密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"保存"按钮</p></div>'
       REDACTED,
       keyManage: {
         title: '🔑 第三步：生成密钥',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>恭喜！账号配置完成 🎉</b></p><p style="margin-bottom: 12px;">最后一步，生成 API Key 来测试服务是否正常工作。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 API Key 的作用：</b><ul style="margin: 8px 0 0 16px;"><li>用于调用 AI 服务的凭证</li><li>每个 Key 绑定一个分组</li><li>可以设置配额和有效期</li><li>支持独立的使用统计</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"API 密钥"</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>恭喜！账号配置完成 🎉</b></p><p style="margin-bottom: 12px;">最后一步，生成 API Key 来测试服务是否正常工作。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 API Key 的作用：</b><ul style="margin: 8px 0 0 16px;"><li>用于调用 AI 服务的凭证</li><li>每个 Key 绑定一个分组</li><li>可以设置配额和有效期</li><li>支持独立的使用统计</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"API 密钥"</p></div>'
       REDACTED,
       createKey: {
         title: '➕ 创建密钥',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API Key。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后请立即复制保存，密钥只显示一次</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"按钮</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API Key。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后请立即复制保存，密钥只显示一次</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"按钮</p></div>'
       REDACTED,
       keyName: {
         title: '✏️ 1. 密钥名称',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥设置一个便于管理的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"测试密钥"、"生产环境"、"移动端" 等</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥设置一个便于管理的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"测试密钥"、"生产环境"、"移动端" 等</p></div>',
         nextBtn: '下一步'
       REDACTED,
       keyGroup: {
         title: '🎯 2. 选择分组',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择刚才配置好的分组。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 分组决定：</b><ul style="margin: 8px 0 0 16px;"><li>该密钥可以使用哪些账号</li><li>计费倍率是多少</li><li>是否为专属密钥</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>选择刚才创建的测试分组</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择刚才配置好的分组。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 分组决定：</b><ul style="margin: 8px 0 0 16px;"><li>该密钥可以使用哪些账号</li><li>计费倍率是多少</li><li>是否为专属密钥</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>选择刚才创建的测试分组</p></div>',
         nextBtn: '下一步'
       REDACTED,
       keySubmit: {
         title: '🎉 生成并复制',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击创建后，系统会生成完整的 API Key。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>密钥只显示一次，请立即复制</li><li>丢失后需要重新生成</li><li>妥善保管，不要泄露给他人</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 下一步：</b><ul style="margin: 8px 0 0 16px;"><li>复制生成的 sk-xxx 密钥</li><li>在支持 OpenAI 接口的客户端中使用</li><li>开始体验 AI 服务！</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击创建后，系统会生成完整的 API Key。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>密钥只显示一次，请立即复制</li><li>丢失后需要重新生成</li><li>妥善保管，不要泄露给他人</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 下一步：</b><ul style="margin: 8px 0 0 16px;"><li>复制生成的 sk-xxx 密钥</li><li>在支持 OpenAI 接口的客户端中使用</li><li>开始体验 AI 服务！</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       REDACTED
     REDACTED,
     // User tour steps
     user: {
       welcome: {
         title: '👋 欢迎使用 Sub2API',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
+        description:
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
         nextBtn: '开始 🚀',
         prevBtn: '跳过'
       REDACTED,
       keyManage: {
         title: '🔑 API 密钥管理',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">在这里管理您的所有 API 访问密钥。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 什么是 API 密钥？</b><br/>API 密钥是您访问 AI 服务的凭证，就像一把钥匙，让您的应用能够调用 AI 能力。</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击进入密钥页面</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">在这里管理您的所有 API 访问密钥。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 什么是 API 密钥？</b><br/>API 密钥是您访问 AI 服务的凭证，就像一把钥匙，让您的应用能够调用 AI 能力。</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击进入密钥页面</p></div>'
       REDACTED,
       createKey: {
         title: '➕ 创建新密钥',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API 密钥。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后密钥只显示一次，请务必复制保存</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API 密钥。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后密钥只显示一次，请务必复制保存</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"</p></div>'
       REDACTED,
       keyName: {
         title: '✏️ 密钥名称',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥起一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>"我的第一个密钥"、"测试用" 等</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥起一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>"我的第一个密钥"、"测试用" 等</p></div>',
         nextBtn: '下一步'
       REDACTED,
       keyGroup: {
         title: '🎯 选择分组',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择管理员为您分配的服务分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 分组说明：</b><br/>不同分组可能有不同的服务质量和计费标准，请根据需要选择。</p></div>',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择管理员为您分配的服务分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 分组说明：</b><br/>不同分组可能有不同的服务质量和计费标准，请根据需要选择。</p></div>',
         nextBtn: '下一步'
       REDACTED,
       keySubmit: {
         title: '🎉 完成创建',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击确认创建您的 API 密钥。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要：</b><ul style="margin: 8px 0 0 16px;"><li>创建后请立即复制密钥（sk-xxx）</li><li>密钥只显示一次，丢失需重新生成</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 如何使用：</b><br/>将密钥配置到支持 OpenAI 接口的任何客户端（如 ChatBox、OpenCat 等），即可开始使用！</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击确认创建您的 API 密钥。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要：</b><ul style="margin: 8px 0 0 16px;"><li>创建后请立即复制密钥（sk-xxx）</li><li>密钥只显示一次，丢失需重新生成</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 如何使用：</b><br/>将密钥配置到支持 OpenAI 接口的任何客户端（如 ChatBox、OpenCat 等），即可开始使用！</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       REDACTED
     REDACTED
   REDACTED

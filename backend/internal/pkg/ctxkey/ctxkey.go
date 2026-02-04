@@ -14,6 +14,9 @@ const (
 	// RetryCount 表示当前请求在网关层的重试次数（用于 Ops 记录与排障）。
 	RetryCount Key = "ctx_retry_count"
 
+	// AccountSwitchCount 表示请求过程中发生的账号切换次数
+	AccountSwitchCount Key = "ctx_account_switch_count"
+
 	// IsClaudeCodeClient 标识当前请求是否来自 Claude Code 客户端
 	IsClaudeCodeClient Key = "ctx_is_claude_code_client"
 	// Group 认证后的分组信息，由 API Key 认证中间件设置

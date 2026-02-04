@@ -50,12 +50,17 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
-		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled)
+		SetNillableFallbackGroupIDOnInvalidRequest(groupIn.FallbackGroupIDOnInvalidRequest).
+		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
+		SetMcpXMLInject(groupIn.MCPXMLInject)
 
 	// 设置模型路由配置
 	if groupIn.ModelRouting != nil {
 		builder = builder.SetModelRouting(groupIn.ModelRouting)
 REDACTED
+
+	// 设置支持的模型系列（始终设置，空数组表示不限制）
+	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -87,7 +92,6 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 REDACTED
-
 	return groupEntityToService(m), nil
 REDACTED
 
@@ -108,13 +112,20 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
-		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled)
+		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
+		SetMcpXMLInject(groupIn.MCPXMLInject)
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置
 	if groupIn.FallbackGroupID != nil {
 		builder = builder.SetFallbackGroupID(*groupIn.FallbackGroupID)
 REDACTED else {
 		builder = builder.ClearFallbackGroupID()
+REDACTED
+	// 处理 FallbackGroupIDOnInvalidRequest：nil 时清除，否则设置
+	if groupIn.FallbackGroupIDOnInvalidRequest != nil {
+		builder = builder.SetFallbackGroupIDOnInvalidRequest(*groupIn.FallbackGroupIDOnInvalidRequest)
+REDACTED else {
+		builder = builder.ClearFallbackGroupIDOnInvalidRequest()
 REDACTED
 
 	// 处理 ModelRouting：nil 时清除，否则设置
@@ -123,6 +134,9 @@ REDACTED
 REDACTED else {
 		builder = builder.ClearModelRouting()
 REDACTED
+
+	// 处理 SupportedModelScopes（始终设置，空数组表示不限制）
+	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
 	updated, err := builder.Save(ctx)
 	if err != nil {
