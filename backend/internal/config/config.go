@@ -150,6 +150,7 @@ type ServerConfig struct {
 	ReadHeaderTimeout int      `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
 	IdleTimeout       int      `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
 	TrustedProxies    []string `mapstructure:"trusted_proxies"`     // 可信代理列表（CIDR/IP）
+	EnableH2C         bool     `mapstructure:"enable_h2c"`          // 启用 HTTP/2 Cleartext (h2c)
 REDACTED
 
 type CORSConfig struct {
@@ -687,6 +688,7 @@ func setDefaults() {
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
 	viper.SetDefault("server.trusted_proxies", []string{REDACTED)
+	viper.SetDefault("server.enable_h2c", false) // 默认关闭 h2c
 
 	// CORS
 	viper.SetDefault("cors.allowed_origins", []string{REDACTED)

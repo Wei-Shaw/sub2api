@@ -14,6 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 // ProviderSet 提供服务器层的依赖
@@ -56,9 +58,23 @@ REDACTED
 
 // ProvideHTTPServer 提供 HTTP 服务器
 func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
+	httpHandler := http.Handler(router)
+
+	// 根据配置决定是否启用 H2C
+	if cfg.Server.EnableH2C {
+		httpHandler = h2c.NewHandler(router, &http2.Server{
+			MaxConcurrentStreams:         250, // 最大并发流数量
+			IdleTimeout:                  300 * time.Second,
+			MaxReadFrameSize:             4 << 20, // 4MB
+			MaxUploadBufferPerConnection: 8 << 20, // 8MB
+			MaxUploadBufferPerStream:     2 << 20, // 2MB
+	REDACTED)
+		log.Println("HTTP/2 Cleartext (h2c) enabled")
+REDACTED
+
 	return &http.Server{
 		Addr:    cfg.Server.Address(),
-		Handler: router,
+		Handler: httpHandler,
 		// ReadHeaderTimeout: 读取请求头的超时时间，防止慢速请求头攻击
 		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout) * time.Second,
 		// IdleTimeout: 空闲连接超时时间，释放不活跃的连接资源

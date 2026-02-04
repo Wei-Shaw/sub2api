@@ -23,6 +23,9 @@ server:
   # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
   # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
   trusted_proxies: []
+  # Enable HTTP/2 Cleartext (h2c) for client connections
+  # 启用 HTTP/2 Cleartext (h2c) 客户端连接
+  enable_h2c: true
 
 # =============================================================================
 # Run Mode Configuration
