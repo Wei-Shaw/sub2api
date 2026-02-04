@@ -75,6 +75,9 @@ REDACTED
 func (f fakeAPIKeyRepo) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
 	return nil, errors.New("not implemented")
 REDACTED
+func (f fakeAPIKeyRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error) {
+	return 0, errors.New("not implemented")
+REDACTED
 
 type googleErrorResponse struct {
 	Error struct {

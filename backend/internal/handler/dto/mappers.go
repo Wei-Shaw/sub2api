@@ -76,6 +76,9 @@ REDACTED
 		Status:      k.Status,
 		IPWhitelist: k.IPWhitelist,
 		IPBlacklist: k.IPBlacklist,
+		Quota:       k.Quota,
+		QuotaUsed:   k.QuotaUsed,
+		ExpiresAt:   k.ExpiresAt,
 		CreatedAt:   k.CreatedAt,
 		UpdatedAt:   k.UpdatedAt,
 		User:        UserFromServiceShallow(k.User),
@@ -105,10 +108,12 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		return nil
 REDACTED
 	out := &AdminGroup{
-		Group:               groupFromServiceBase(g),
-		ModelRouting:        g.ModelRouting,
-		ModelRoutingEnabled: g.ModelRoutingEnabled,
-		AccountCount:        g.AccountCount,
+		Group:                groupFromServiceBase(g),
+		ModelRouting:         g.ModelRouting,
+		ModelRoutingEnabled:  g.ModelRoutingEnabled,
+		MCPXMLInject:         g.MCPXMLInject,
+		SupportedModelScopes: g.SupportedModelScopes,
+		AccountCount:         g.AccountCount,
 REDACTED
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
@@ -122,28 +127,29 @@ REDACTED
 
 func groupFromServiceBase(g *service.Group) Group {
 	return Group{
-		ID:                         g.ID,
-		Name:                       g.Name,
-		Description:                g.Description,
-		Platform:                   g.Platform,
-		RateMultiplier:             g.RateMultiplier,
-		IsExclusive:                g.IsExclusive,
-		Status:                     g.Status,
-		SubscriptionType:           g.SubscriptionType,
-		DailyLimitUSD:              g.DailyLimitUSD,
-		WeeklyLimitUSD:             g.WeeklyLimitUSD,
-		MonthlyLimitUSD:            g.MonthlyLimitUSD,
-		ImagePrice1K:               g.ImagePrice1K,
-		ImagePrice2K:               g.ImagePrice2K,
-		ImagePrice4K:               g.ImagePrice4K,
-		SoraImagePrice360:          g.SoraImagePrice360,
-		SoraImagePrice540:          g.SoraImagePrice540,
-		SoraVideoPricePerRequest:   g.SoraVideoPricePerRequest,
-		SoraVideoPricePerRequestHD: g.SoraVideoPricePerRequestHD,
-		ClaudeCodeOnly:             g.ClaudeCodeOnly,
-		FallbackGroupID:            g.FallbackGroupID,
-		CreatedAt:                  g.CreatedAt,
-		UpdatedAt:                  g.UpdatedAt,
+		ID:                              g.ID,
+		Name:                            g.Name,
+		Description:                     g.Description,
+		Platform:                        g.Platform,
+		RateMultiplier:                  g.RateMultiplier,
+		IsExclusive:                     g.IsExclusive,
+		Status:                          g.Status,
+		SubscriptionType:                g.SubscriptionType,
+		DailyLimitUSD:                   g.DailyLimitUSD,
+		WeeklyLimitUSD:                  g.WeeklyLimitUSD,
+		MonthlyLimitUSD:                 g.MonthlyLimitUSD,
+		ImagePrice1K:                    g.ImagePrice1K,
+		ImagePrice2K:                    g.ImagePrice2K,
+		ImagePrice4K:                    g.ImagePrice4K,
+		SoraImagePrice360:               g.SoraImagePrice360,
+		SoraImagePrice540:               g.SoraImagePrice540,
+		SoraVideoPricePerRequest:        g.SoraVideoPricePerRequest,
+		SoraVideoPricePerRequestHD:      g.SoraVideoPricePerRequestHD,
+		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
+		FallbackGroupID:                 g.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
+		CreatedAt:                       g.CreatedAt,
+		UpdatedAt:                       g.UpdatedAt,
 REDACTED
 REDACTED
 

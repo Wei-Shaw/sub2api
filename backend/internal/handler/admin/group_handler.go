@@ -35,18 +35,22 @@ type CreateGroupRequest struct {
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	ImagePrice1K               *float64 `json:"image_price_1k"`
-	ImagePrice2K               *float64 `json:"image_price_2k"`
-	ImagePrice4K               *float64 `json:"image_price_4k"`
-	SoraImagePrice360          *float64 `json:"sora_image_price_360"`
-	SoraImagePrice540          *float64 `json:"sora_image_price_540"`
-	SoraVideoPricePerRequest   *float64 `json:"sora_video_price_per_request"`
-	SoraVideoPricePerRequestHD *float64 `json:"sora_video_price_per_request_hd"`
-	ClaudeCodeOnly             bool     `json:"claude_code_only"`
-	FallbackGroupID            *int64   `json:"fallback_group_id"`
+	ImagePrice1K                    *float64 `json:"image_price_1k"`
+	ImagePrice2K                    *float64 `json:"image_price_2k"`
+	ImagePrice4K                    *float64 `json:"image_price_4k"`
+	SoraImagePrice360               *float64 `json:"sora_image_price_360"`
+	SoraImagePrice540               *float64 `json:"sora_image_price_540"`
+	SoraVideoPricePerRequest        *float64 `json:"sora_video_price_per_request"`
+	SoraVideoPricePerRequestHD      *float64 `json:"sora_video_price_per_request_hd"`
+	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
+	FallbackGroupID                 *int64   `json:"fallback_group_id"`
+	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
+	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
+	// 支持的模型系列（仅 antigravity 平台使用）
+	SupportedModelScopes []string `json:"supported_model_scopes"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 REDACTED
@@ -64,18 +68,22 @@ type UpdateGroupRequest struct {
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	ImagePrice1K               *float64 `json:"image_price_1k"`
-	ImagePrice2K               *float64 `json:"image_price_2k"`
-	ImagePrice4K               *float64 `json:"image_price_4k"`
-	SoraImagePrice360          *float64 `json:"sora_image_price_360"`
-	SoraImagePrice540          *float64 `json:"sora_image_price_540"`
-	SoraVideoPricePerRequest   *float64 `json:"sora_video_price_per_request"`
-	SoraVideoPricePerRequestHD *float64 `json:"sora_video_price_per_request_hd"`
-	ClaudeCodeOnly             *bool    `json:"claude_code_only"`
-	FallbackGroupID            *int64   `json:"fallback_group_id"`
+	ImagePrice1K                    *float64 `json:"image_price_1k"`
+	ImagePrice2K                    *float64 `json:"image_price_2k"`
+	ImagePrice4K                    *float64 `json:"image_price_4k"`
+	SoraImagePrice360               *float64 `json:"sora_image_price_360"`
+	SoraImagePrice540               *float64 `json:"sora_image_price_540"`
+	SoraVideoPricePerRequest        *float64 `json:"sora_video_price_per_request"`
+	SoraVideoPricePerRequestHD      *float64 `json:"sora_video_price_per_request_hd"`
+	ClaudeCodeOnly                  *bool    `json:"claude_code_only"`
+	FallbackGroupID                 *int64   `json:"fallback_group_id"`
+	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
+	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
+	// 支持的模型系列（仅 antigravity 平台使用）
+	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 REDACTED
@@ -167,27 +175,30 @@ func (h *GroupHandler) Create(c *gin.Context) {
 REDACTED
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
-		Name:                       req.Name,
-		Description:                req.Description,
-		Platform:                   req.Platform,
-		RateMultiplier:             req.RateMultiplier,
-		IsExclusive:                req.IsExclusive,
-		SubscriptionType:           req.SubscriptionType,
-		DailyLimitUSD:              req.DailyLimitUSD,
-		WeeklyLimitUSD:             req.WeeklyLimitUSD,
-		MonthlyLimitUSD:            req.MonthlyLimitUSD,
-		ImagePrice1K:               req.ImagePrice1K,
-		ImagePrice2K:               req.ImagePrice2K,
-		ImagePrice4K:               req.ImagePrice4K,
-		SoraImagePrice360:          req.SoraImagePrice360,
-		SoraImagePrice540:          req.SoraImagePrice540,
-		SoraVideoPricePerRequest:   req.SoraVideoPricePerRequest,
-		SoraVideoPricePerRequestHD: req.SoraVideoPricePerRequestHD,
-		ClaudeCodeOnly:             req.ClaudeCodeOnly,
-		FallbackGroupID:            req.FallbackGroupID,
-		ModelRouting:               req.ModelRouting,
-		ModelRoutingEnabled:        req.ModelRoutingEnabled,
-		CopyAccountsFromGroupIDs:   req.CopyAccountsFromGroupIDs,
+		Name:                            req.Name,
+		Description:                     req.Description,
+		Platform:                        req.Platform,
+		RateMultiplier:                  req.RateMultiplier,
+		IsExclusive:                     req.IsExclusive,
+		SubscriptionType:                req.SubscriptionType,
+		DailyLimitUSD:                   req.DailyLimitUSD,
+		WeeklyLimitUSD:                  req.WeeklyLimitUSD,
+		MonthlyLimitUSD:                 req.MonthlyLimitUSD,
+		ImagePrice1K:                    req.ImagePrice1K,
+		ImagePrice2K:                    req.ImagePrice2K,
+		ImagePrice4K:                    req.ImagePrice4K,
+		SoraImagePrice360:               req.SoraImagePrice360,
+		SoraImagePrice540:               req.SoraImagePrice540,
+		SoraVideoPricePerRequest:        req.SoraVideoPricePerRequest,
+		SoraVideoPricePerRequestHD:      req.SoraVideoPricePerRequestHD,
+		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
+		FallbackGroupID:                 req.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
+		ModelRouting:                    req.ModelRouting,
+		ModelRoutingEnabled:             req.ModelRoutingEnabled,
+		MCPXMLInject:                    req.MCPXMLInject,
+		SupportedModelScopes:            req.SupportedModelScopes,
+		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -213,28 +224,31 @@ REDACTED
 REDACTED
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
-		Name:                       req.Name,
-		Description:                req.Description,
-		Platform:                   req.Platform,
-		RateMultiplier:             req.RateMultiplier,
-		IsExclusive:                req.IsExclusive,
-		Status:                     req.Status,
-		SubscriptionType:           req.SubscriptionType,
-		DailyLimitUSD:              req.DailyLimitUSD,
-		WeeklyLimitUSD:             req.WeeklyLimitUSD,
-		MonthlyLimitUSD:            req.MonthlyLimitUSD,
-		ImagePrice1K:               req.ImagePrice1K,
-		ImagePrice2K:               req.ImagePrice2K,
-		ImagePrice4K:               req.ImagePrice4K,
-		SoraImagePrice360:          req.SoraImagePrice360,
-		SoraImagePrice540:          req.SoraImagePrice540,
-		SoraVideoPricePerRequest:   req.SoraVideoPricePerRequest,
-		SoraVideoPricePerRequestHD: req.SoraVideoPricePerRequestHD,
-		ClaudeCodeOnly:             req.ClaudeCodeOnly,
-		FallbackGroupID:            req.FallbackGroupID,
-		ModelRouting:               req.ModelRouting,
-		ModelRoutingEnabled:        req.ModelRoutingEnabled,
-		CopyAccountsFromGroupIDs:   req.CopyAccountsFromGroupIDs,
+		Name:                            req.Name,
+		Description:                     req.Description,
+		Platform:                        req.Platform,
+		RateMultiplier:                  req.RateMultiplier,
+		IsExclusive:                     req.IsExclusive,
+		Status:                          req.Status,
+		SubscriptionType:                req.SubscriptionType,
+		DailyLimitUSD:                   req.DailyLimitUSD,
+		WeeklyLimitUSD:                  req.WeeklyLimitUSD,
+		MonthlyLimitUSD:                 req.MonthlyLimitUSD,
+		ImagePrice1K:                    req.ImagePrice1K,
+		ImagePrice2K:                    req.ImagePrice2K,
+		ImagePrice4K:                    req.ImagePrice4K,
+		SoraImagePrice360:               req.SoraImagePrice360,
+		SoraImagePrice540:               req.SoraImagePrice540,
+		SoraVideoPricePerRequest:        req.SoraVideoPricePerRequest,
+		SoraVideoPricePerRequestHD:      req.SoraVideoPricePerRequestHD,
+		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
+		FallbackGroupID:                 req.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
+		ModelRouting:                    req.ModelRouting,
+		ModelRoutingEnabled:             req.ModelRoutingEnabled,
+		MCPXMLInject:                    req.MCPXMLInject,
+		SupportedModelScopes:            req.SupportedModelScopes,
+		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

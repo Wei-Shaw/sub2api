@@ -353,7 +353,6 @@
               </div>
               <Toggle v-model="form.invitation_code_enabled" />
             </div>
-
             <!-- Password Reset - Only show when email verification is enabled -->
             <div
               v-if="form.email_verify_enabled"

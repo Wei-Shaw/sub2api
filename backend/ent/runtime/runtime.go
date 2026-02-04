@@ -91,6 +91,14 @@ REDACTED()
 	apikey.DefaultStatus = apikeyDescStatus.Default.(string)
 	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
+	// apikeyDescQuota is the schema descriptor for quota field.
+	apikeyDescQuota := apikeyFields[7].Descriptor()
+	// apikey.DefaultQuota holds the default value on creation for the quota field.
+	apikey.DefaultQuota = apikeyDescQuota.Default.(float64)
+	// apikeyDescQuotaUsed is the schema descriptor for quota_used field.
+	apikeyDescQuotaUsed := apikeyFields[8].Descriptor()
+	// apikey.DefaultQuotaUsed holds the default value on creation for the quota_used field.
+	apikey.DefaultQuotaUsed = apikeyDescQuotaUsed.Default.(float64)
 	accountMixin := schema.Account{REDACTED.Mixin()
 	accountMixinHooks1 := accountMixin[1].Hooks()
 	account.Hooks[0] = accountMixinHooks1[0]
@@ -334,9 +342,17 @@ REDACTED()
 	// group.DefaultClaudeCodeOnly holds the default value on creation for the claude_code_only field.
 	group.DefaultClaudeCodeOnly = groupDescClaudeCodeOnly.Default.(bool)
 	// groupDescModelRoutingEnabled is the schema descriptor for model_routing_enabled field.
-	groupDescModelRoutingEnabled := groupFields[21].Descriptor()
+	groupDescModelRoutingEnabled := groupFields[22].Descriptor()
 	// group.DefaultModelRoutingEnabled holds the default value on creation for the model_routing_enabled field.
 	group.DefaultModelRoutingEnabled = groupDescModelRoutingEnabled.Default.(bool)
+	// groupDescMcpXMLInject is the schema descriptor for mcp_xml_inject field.
+	groupDescMcpXMLInject := groupFields[23].Descriptor()
+	// group.DefaultMcpXMLInject holds the default value on creation for the mcp_xml_inject field.
+	group.DefaultMcpXMLInject = groupDescMcpXMLInject.Default.(bool)
+	// groupDescSupportedModelScopes is the schema descriptor for supported_model_scopes field.
+	groupDescSupportedModelScopes := groupFields[24].Descriptor()
+	// group.DefaultSupportedModelScopes holds the default value on creation for the supported_model_scopes field.
+	group.DefaultSupportedModelScopes = groupDescSupportedModelScopes.Default.([]string)
 	promocodeFields := schema.PromoCode{REDACTED.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -335,10 +336,14 @@ REDACTED
 
 		// 5) forward (根据平台分流)
 		var result *service.ForwardResult
+		requestCtx := c.Request.Context()
+		if switchCount > 0 {
+			requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
+	REDACTED
 		if account.Platform == service.PlatformAntigravity {
-			result, err = h.antigravityGatewayService.ForwardGemini(c.Request.Context(), c, account, modelName, action, stream, body)
+			result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, modelName, action, stream, body)
 	REDACTED else {
-			result, err = h.geminiCompatService.ForwardNative(c.Request.Context(), c, account, modelName, action, stream, body)
+			result, err = h.geminiCompatService.ForwardNative(requestCtx, c, account, modelName, action, stream, body)
 	REDACTED
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -381,6 +386,7 @@ REDACTED
 				IPAddress:             ip,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
+				APIKeyService:         h.apiKeyService,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED

@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -503,6 +504,33 @@ func (_u *GroupUpdate) ClearFallbackGroupID() *GroupUpdate {
 	return _u
 REDACTED
 
+// SetFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field.
+func (_u *GroupUpdate) SetFallbackGroupIDOnInvalidRequest(v int64) *GroupUpdate {
+	_u.mutation.ResetFallbackGroupIDOnInvalidRequest()
+	_u.mutation.SetFallbackGroupIDOnInvalidRequest(v)
+	return _u
+REDACTED
+
+// SetNillableFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetFallbackGroupIDOnInvalidRequest(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddFallbackGroupIDOnInvalidRequest adds value to the "fallback_group_id_on_invalid_request" field.
+func (_u *GroupUpdate) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpdate {
+	_u.mutation.AddFallbackGroupIDOnInvalidRequest(v)
+	return _u
+REDACTED
+
+// ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
+func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
+	_u.mutation.ClearFallbackGroupIDOnInvalidRequest()
+	return _u
+REDACTED
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdate) SetModelRouting(v map[string][]int64) *GroupUpdate {
 	_u.mutation.SetModelRouting(v)
@@ -526,6 +554,32 @@ func (_u *GroupUpdate) SetNillableModelRoutingEnabled(v *bool) *GroupUpdate {
 	if v != nil {
 		_u.SetModelRoutingEnabled(*v)
 REDACTED
+	return _u
+REDACTED
+
+// SetMcpXMLInject sets the "mcp_xml_inject" field.
+func (_u *GroupUpdate) SetMcpXMLInject(v bool) *GroupUpdate {
+	_u.mutation.SetMcpXMLInject(v)
+	return _u
+REDACTED
+
+// SetNillableMcpXMLInject sets the "mcp_xml_inject" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMcpXMLInject(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetMcpXMLInject(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetSupportedModelScopes sets the "supported_model_scopes" field.
+func (_u *GroupUpdate) SetSupportedModelScopes(v []string) *GroupUpdate {
+	_u.mutation.SetSupportedModelScopes(v)
+	return _u
+REDACTED
+
+// AppendSupportedModelScopes appends value to the "supported_model_scopes" field.
+func (_u *GroupUpdate) AppendSupportedModelScopes(v []string) *GroupUpdate {
+	_u.mutation.AppendSupportedModelScopes(v)
 	return _u
 REDACTED
 
@@ -973,6 +1027,15 @@ REDACTED
 	if _u.mutation.FallbackGroupIDCleared() {
 		_spec.ClearField(group.FieldFallbackGroupID, field.TypeInt64)
 REDACTED
+	if value, ok := _u.mutation.FallbackGroupIDOnInvalidRequest(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedFallbackGroupIDOnInvalidRequest(); ok {
+		_spec.AddField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
+REDACTED
+	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
+		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+REDACTED
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
 REDACTED
@@ -981,6 +1044,17 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.McpXMLInject(); ok {
+		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.SupportedModelScopes(); ok {
+		_spec.SetField(group.FieldSupportedModelScopes, field.TypeJSON, value)
+REDACTED
+	if value, ok := _u.mutation.AppendedSupportedModelScopes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldSupportedModelScopes, value)
+	REDACTED)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1765,6 +1839,33 @@ func (_u *GroupUpdateOne) ClearFallbackGroupID() *GroupUpdateOne {
 	return _u
 REDACTED
 
+// SetFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field.
+func (_u *GroupUpdateOne) SetFallbackGroupIDOnInvalidRequest(v int64) *GroupUpdateOne {
+	_u.mutation.ResetFallbackGroupIDOnInvalidRequest()
+	_u.mutation.SetFallbackGroupIDOnInvalidRequest(v)
+	return _u
+REDACTED
+
+// SetNillableFallbackGroupIDOnInvalidRequest sets the "fallback_group_id_on_invalid_request" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFallbackGroupIDOnInvalidRequest(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddFallbackGroupIDOnInvalidRequest adds value to the "fallback_group_id_on_invalid_request" field.
+func (_u *GroupUpdateOne) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpdateOne {
+	_u.mutation.AddFallbackGroupIDOnInvalidRequest(v)
+	return _u
+REDACTED
+
+// ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
+func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne {
+	_u.mutation.ClearFallbackGroupIDOnInvalidRequest()
+	return _u
+REDACTED
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdateOne) SetModelRouting(v map[string][]int64) *GroupUpdateOne {
 	_u.mutation.SetModelRouting(v)
@@ -1788,6 +1889,32 @@ func (_u *GroupUpdateOne) SetNillableModelRoutingEnabled(v *bool) *GroupUpdateOn
 	if v != nil {
 		_u.SetModelRoutingEnabled(*v)
 REDACTED
+	return _u
+REDACTED
+
+// SetMcpXMLInject sets the "mcp_xml_inject" field.
+func (_u *GroupUpdateOne) SetMcpXMLInject(v bool) *GroupUpdateOne {
+	_u.mutation.SetMcpXMLInject(v)
+	return _u
+REDACTED
+
+// SetNillableMcpXMLInject sets the "mcp_xml_inject" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMcpXMLInject(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMcpXMLInject(*v)
+REDACTED
+	return _u
+REDACTED
+
+// SetSupportedModelScopes sets the "supported_model_scopes" field.
+func (_u *GroupUpdateOne) SetSupportedModelScopes(v []string) *GroupUpdateOne {
+	_u.mutation.SetSupportedModelScopes(v)
+	return _u
+REDACTED
+
+// AppendSupportedModelScopes appends value to the "supported_model_scopes" field.
+func (_u *GroupUpdateOne) AppendSupportedModelScopes(v []string) *GroupUpdateOne {
+	_u.mutation.AppendSupportedModelScopes(v)
 	return _u
 REDACTED
 
@@ -2265,6 +2392,15 @@ REDACTED
 	if _u.mutation.FallbackGroupIDCleared() {
 		_spec.ClearField(group.FieldFallbackGroupID, field.TypeInt64)
 REDACTED
+	if value, ok := _u.mutation.FallbackGroupIDOnInvalidRequest(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedFallbackGroupIDOnInvalidRequest(); ok {
+		_spec.AddField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
+REDACTED
+	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
+		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+REDACTED
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
 REDACTED
@@ -2273,6 +2409,17 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.ModelRoutingEnabled(); ok {
 		_spec.SetField(group.FieldModelRoutingEnabled, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.McpXMLInject(); ok {
+		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)
+REDACTED
+	if value, ok := _u.mutation.SupportedModelScopes(); ok {
+		_spec.SetField(group.FieldSupportedModelScopes, field.TypeJSON, value)
+REDACTED
+	if value, ok := _u.mutation.AppendedSupportedModelScopes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldSupportedModelScopes, value)
+	REDACTED)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

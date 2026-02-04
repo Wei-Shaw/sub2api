@@ -5,6 +5,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
@@ -52,6 +53,23 @@ func (APIKey) Fields() []ent.Field {
 		field.JSON("ip_blacklist", []string{REDACTED).
 			Optional().
 			Comment("Blocked IPs/CIDRs"),
+
+		// ========== Quota fields ==========
+		// Quota limit in USD (0 = unlimited)
+		field.Float("quota").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Quota limit in USD for this API key (0 = unlimited)"),
+		// Used quota amount
+		field.Float("quota_used").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Used quota amount in USD"),
+		// Expiration time (nil = never expires)
+		field.Time("expires_at").
+			Optional().
+			Nillable().
+			Comment("Expiration time for this API key (null = never expires)"),
 REDACTED
 REDACTED
 
@@ -77,5 +95,8 @@ func (APIKey) Indexes() []ent.Index {
 		index.Fields("group_id"),
 		index.Fields("status"),
 		index.Fields("deleted_at"),
+		// Index for quota queries
+		index.Fields("quota", "quota_used"),
+		index.Fields("expires_at"),
 REDACTED
 REDACTED

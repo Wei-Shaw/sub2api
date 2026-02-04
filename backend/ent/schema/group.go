@@ -113,6 +113,10 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("非 Claude Code 请求降级使用的分组 ID"),
+		field.Int64("fallback_group_id_on_invalid_request").
+			Optional().
+			Nillable().
+			Comment("无效请求兜底使用的分组 ID"),
 
 		// 模型路由配置 (added by migration 040)
 		field.JSON("model_routing", map[string][]int64{REDACTED).
@@ -124,6 +128,17 @@ func (Group) Fields() []ent.Field {
 		field.Bool("model_routing_enabled").
 			Default(false).
 			Comment("是否启用模型路由配置"),
+
+		// MCP XML 协议注入开关 (added by migration 042)
+		field.Bool("mcp_xml_inject").
+			Default(true).
+			Comment("是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）"),
+
+		// 支持的模型系列 (added by migration 046)
+		field.JSON("supported_model_scopes", []string{REDACTED).
+			Default([]string{"claude", "gemini_text", "gemini_image"REDACTED).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"REDACTED).
+			Comment("支持的模型系列：claude, gemini_text, gemini_image"),
 REDACTED
 REDACTED
 

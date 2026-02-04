@@ -360,6 +360,7 @@ export interface Group {
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
+  fallback_group_id_on_invalid_request: number | null
   created_at: string
   updated_at: string
 REDACTED
@@ -368,6 +369,12 @@ export interface AdminGroup extends Group {
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
+
+  // MCP XML 协议注入（仅 antigravity 平台使用）
+  mcp_xml_inject: boolean
+
+  // 支持的模型系列（仅 antigravity 平台使用）
+  supported_model_scopes?: string[]
 
   // 分组下账号数量（仅管理员可见）
   account_count?: number
@@ -379,9 +386,12 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
-  status: 'active' | 'inactive'
+  status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
+  quota: number // Quota limit in USD (0 = unlimited)
+  quota_used: number // Used quota amount in USD
+  expires_at: string | null // Expiration time (null = never expires)
   created_at: string
   updated_at: string
   group?: Group
@@ -393,6 +403,8 @@ export interface CreateApiKeyRequest {
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
+  quota?: number // Quota limit in USD (0 = unlimited)
+  expires_in_days?: number // Days until expiry (null = never expires)
 REDACTED
 
 export interface UpdateApiKeyRequest {
@@ -401,6 +413,9 @@ export interface UpdateApiKeyRequest {
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]
+  quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
+  expires_at?: string | null // Expiration time (null = no change)
+  reset_quota?: boolean // Reset quota_used to 0
 REDACTED
 
 export interface CreateGroupRequest {
@@ -422,6 +437,9 @@ export interface CreateGroupRequest {
   sora_video_price_per_request_hd?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  fallback_group_id_on_invalid_request?: number | null
+  mcp_xml_inject?: boolean
+  supported_model_scopes?: string[]
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 REDACTED
@@ -446,13 +464,16 @@ export interface UpdateGroupRequest {
   sora_video_price_per_request_hd?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
+  fallback_group_id_on_invalid_request?: number | null
+  mcp_xml_inject?: boolean
+  supported_model_scopes?: string[]
   copy_accounts_from_group_ids?: number[]
 REDACTED
 
 // ==================== Account & Proxy Types ====================
 
 export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'sora'
-export type AccountType = 'oauth' | 'setup-token' | 'apikey'
+export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
