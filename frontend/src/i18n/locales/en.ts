@@ -1903,6 +1903,7 @@ export default {
       editProxy: 'Edit Proxy',
       deleteProxy: 'Delete Proxy',
       dataImport: 'Import',
+      dataExportSelected: 'Export Selected',
       dataImportTitle: 'Import Proxies',
       dataImportHint: 'Upload the exported proxy JSON file to import proxies in bulk.',
       dataImportWarning: 'Import will create or reuse proxies, keep their status, and trigger latency checks after completion.',

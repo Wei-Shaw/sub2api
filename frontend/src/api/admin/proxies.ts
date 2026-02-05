@@ -210,14 +210,24 @@ REDACTED> {
   return data
 REDACTED
 
-export async function exportData(filters?: {
-  protocol?: string
-  status?: 'active' | 'inactive'
-  search?: string
+export async function exportData(options?: {
+  ids?: number[]
+  filters?: {
+    protocol?: string
+    status?: 'active' | 'inactive'
+    search?: string
+  REDACTED
 REDACTED): Promise<AdminDataPayload> {
-  const { data REDACTED = await apiClient.get<AdminDataPayload>('/admin/proxies/data', {
-    params: filters
-  REDACTED)
+  const params: Record<string, string> = {REDACTED
+  if (options?.ids && options.ids.length > 0) {
+    params.ids = options.ids.join(',')
+  REDACTED else if (options?.filters) {
+    const { protocol, status, search REDACTED = options.filters
+    if (protocol) params.protocol = protocol
+    if (status) params.status = status
+    if (search) params.search = search
+  REDACTED
+  const { data REDACTED = await apiClient.get<AdminDataPayload>('/admin/proxies/data', { params REDACTED)
   return data
 REDACTED
 

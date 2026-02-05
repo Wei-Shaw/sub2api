@@ -2012,6 +2012,7 @@ export default {
       deleteConfirmMessage: "确定要删除代理 '{nameREDACTED' 吗？",
       testProxy: '测试代理',
       dataImport: '导入',
+      dataExportSelected: '导出选中',
       dataImportTitle: '导入代理',
       dataImportHint: '上传代理导出的 JSON 文件以批量导入代理。',
       dataImportWarning: '导入将创建或复用代理，保留状态并在完成后自动触发延迟检测。',

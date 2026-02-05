@@ -2,6 +2,8 @@ package admin
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,17 +16,32 @@ import (
 func (h *ProxyHandler) ExportData(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	protocol := c.Query("protocol")
-	status := c.Query("status")
-	search := strings.TrimSpace(c.Query("search"))
-	if len(search) > 100 {
-		search = search[:100]
+	selectedIDs, err := parseProxyIDs(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
 REDACTED
 
-	proxies, err := h.listProxiesFiltered(ctx, protocol, status, search)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	var proxies []service.Proxy
+	if len(selectedIDs) > 0 {
+		proxies, err = h.getProxiesByIDs(ctx, selectedIDs)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+REDACTED else {
+		protocol := c.Query("protocol")
+		status := c.Query("status")
+		search := strings.TrimSpace(c.Query("search"))
+		if len(search) > 100 {
+			search = search[:100]
+	REDACTED
+
+		proxies, err = h.listProxiesFiltered(ctx, protocol, status, search)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
 REDACTED
 
 	dataProxies := make([]DataProxy, 0, len(proxies))
@@ -166,6 +183,50 @@ REDACTED
 REDACTED
 
 	response.Success(c, result)
+REDACTED
+
+func (h *ProxyHandler) getProxiesByIDs(ctx context.Context, ids []int64) ([]service.Proxy, error) {
+	out := make([]service.Proxy, 0, len(ids))
+	for _, id := range ids {
+		proxy, err := h.adminService.GetProxy(ctx, id)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if proxy == nil {
+			continue
+	REDACTED
+		out = append(out, *proxy)
+REDACTED
+	return out, nil
+REDACTED
+
+func parseProxyIDs(c *gin.Context) ([]int64, error) {
+	values := c.QueryArray("ids")
+	if len(values) == 0 {
+		raw := strings.TrimSpace(c.Query("ids"))
+		if raw != "" {
+			values = []string{rawREDACTED
+	REDACTED
+REDACTED
+	if len(values) == 0 {
+		return nil, nil
+REDACTED
+
+	ids := make([]int64, 0, len(values))
+	for _, item := range values {
+		for _, part := range strings.Split(item, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+		REDACTED
+			id, err := strconv.ParseInt(part, 10, 64)
+			if err != nil || id <= 0 {
+				return nil, fmt.Errorf("invalid proxy id: %s", part)
+		REDACTED
+			ids = append(ids, id)
+	REDACTED
+REDACTED
+	return ids, nil
 REDACTED
 
 func (h *ProxyHandler) listProxiesFiltered(ctx context.Context, protocol, status, search string) ([]service.Proxy, error) {

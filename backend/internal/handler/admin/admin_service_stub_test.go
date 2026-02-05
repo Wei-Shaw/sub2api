@@ -259,6 +259,12 @@ func (s *stubAdminService) GetAllProxiesWithAccountCount(ctx context.Context) ([
 REDACTED
 
 func (s *stubAdminService) GetProxy(ctx context.Context, id int64) (*service.Proxy, error) {
+	for i := range s.proxies {
+		proxy := s.proxies[i]
+		if proxy.ID == id {
+			return &proxy, nil
+	REDACTED
+REDACTED
 	proxy := service.Proxy{ID: id, Name: "proxy", Status: service.StatusActiveREDACTED
 	return &proxy, nil
 REDACTED

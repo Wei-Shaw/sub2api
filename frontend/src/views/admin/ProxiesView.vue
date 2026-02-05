@@ -2,47 +2,9 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <!-- Top Toolbar: Left (search + filters) / Right (actions) -->
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <!-- Left: Fuzzy search + filters (wrap to multiple lines) -->
-          <div class="flex flex-1 flex-wrap items-center gap-3">
-            <!-- Search -->
-            <div class="relative w-full sm:w-64">
-              <Icon
-                name="search"
-                size="md"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-              />
-              <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="t('admin.proxies.searchProxies')"
-                class="input pl-10"
-                @input="handleSearch"
-              />
-            </div>
-
-            <!-- Filters -->
-            <div class="w-full sm:w-40">
-              <Select
-                v-model="filters.protocol"
-                :options="protocolOptions"
-                :placeholder="t('admin.proxies.allProtocols')"
-                @change="loadProxies"
-              />
-            </div>
-            <div class="w-full sm:w-36">
-              <Select
-                v-model="filters.status"
-                :options="statusOptions"
-                :placeholder="t('admin.proxies.allStatus')"
-                @change="loadProxies"
-              />
-            </div>
-          </div>
-
-          <!-- Right: Actions -->
-          <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
+        <div class="space-y-3">
+          <!-- Row 1: Actions -->
+          <div class="flex flex-wrap items-center gap-3">
             <button
               @click="loadProxies"
               :disabled="loading"
@@ -73,12 +35,47 @@
               {{ t('admin.proxies.dataImport') REDACTEDREDACTED
             </button>
             <button @click="showExportDataDialog = true" class="btn btn-secondary">
-              {{ t('admin.proxies.dataExport') REDACTEDREDACTED
+              {{ selectedCount > 0 ? t('admin.proxies.dataExportSelected') : t('admin.proxies.dataExport') REDACTEDREDACTED
             </button>
             <button @click="showCreateModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.proxies.createProxy') REDACTEDREDACTED
             </button>
+          </div>
+
+          <!-- Row 2: Search + Filters -->
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="relative w-full sm:w-64">
+              <Icon
+                name="search"
+                size="md"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              />
+              <input
+                v-model="searchQuery"
+                type="text"
+                :placeholder="t('admin.proxies.searchProxies')"
+                class="input pl-10"
+                @input="handleSearch"
+              />
+            </div>
+
+            <div class="w-full sm:w-40">
+              <Select
+                v-model="filters.protocol"
+                :options="protocolOptions"
+                :placeholder="t('admin.proxies.allProtocols')"
+                @change="loadProxies"
+              />
+            </div>
+            <div class="w-full sm:w-36">
+              <Select
+                v-model="filters.status"
+                :options="statusOptions"
+                :placeholder="t('admin.proxies.allStatus')"
+                @change="loadProxies"
+              />
+            </div>
           </div>
         </div>
       </template>
@@ -1268,11 +1265,17 @@ const handleExportData = async () => {
   if (exportingData.value) return
   exportingData.value = true
   try {
-    const dataPayload = await adminAPI.proxies.exportData({
-      protocol: filters.protocol || undefined,
-      status: (filters.status || undefined) as 'active' | 'inactive' | undefined,
-      search: searchQuery.value || undefined
-    REDACTED)
+    const dataPayload = await adminAPI.proxies.exportData(
+      selectedCount.value > 0
+        ? { ids: Array.from(selectedProxyIds.value) REDACTED
+        : {
+            filters: {
+              protocol: filters.protocol || undefined,
+              status: (filters.status || undefined) as 'active' | 'inactive' | undefined,
+              search: searchQuery.value || undefined
+            REDACTED
+          REDACTED
+    )
     const timestamp = formatExportTimestamp()
     const filename = `sub2api-proxy-${timestampREDACTED.json`
     const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' REDACTED)

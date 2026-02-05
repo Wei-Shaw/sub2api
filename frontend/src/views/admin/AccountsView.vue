@@ -96,7 +96,7 @@
                 </div>
               </div>
             </template>
-            <template #afterCreate>
+            <template #beforeCreate>
               <button @click="showImportData = true" class="btn btn-secondary">
                 {{ t('admin.accounts.dataImport') REDACTEDREDACTED
               </button>
