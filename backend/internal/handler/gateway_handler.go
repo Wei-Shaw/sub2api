@@ -616,10 +616,10 @@ REDACTED
 		return
 REDACTED
 
-	// Best-effort: 获取用量统计，失败不影响基础响应
+	// Best-effort: 获取用量统计（按当前 API Key 过滤），失败不影响基础响应
 	var usageData gin.H
 	if h.usageService != nil {
-		dashStats, err := h.usageService.GetUserDashboardStats(c.Request.Context(), subject.UserID)
+		dashStats, err := h.usageService.GetAPIKeyDashboardStats(c.Request.Context(), apiKey.ID)
 		if err == nil && dashStats != nil {
 			usageData = gin.H{
 				"today": gin.H{
