@@ -41,6 +41,8 @@ REDACTED
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
+  // 用户专属分组倍率配置 (group_id -> rate_multiplier)
+  group_rates?: Record<number, number>
 REDACTED
 
 export interface LoginRequest {
@@ -966,6 +968,9 @@ export interface UpdateUserRequest {
   concurrency?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
+  // null 表示删除该分组的专属倍率
+  group_rates?: Record<number, number | null>
 REDACTED
 
 export interface ChangePasswordRequest {

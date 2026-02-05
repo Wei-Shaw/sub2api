@@ -384,6 +384,7 @@ type GatewayService struct {
 	usageLogRepo        UsageLogRepository
 	userRepo            UserRepository
 	userSubRepo         UserSubscriptionRepository
+	userGroupRateRepo   UserGroupRateRepository
 	cache               GatewayCache
 	cfg                 *config.Config
 	schedulerSnapshot   *SchedulerSnapshotService
@@ -405,6 +406,7 @@ func NewGatewayService(
 	usageLogRepo UsageLogRepository,
 	userRepo UserRepository,
 	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
 	cache GatewayCache,
 	cfg *config.Config,
 	schedulerSnapshot *SchedulerSnapshotService,
@@ -424,6 +426,7 @@ func NewGatewayService(
 		usageLogRepo:        usageLogRepo,
 		userRepo:            userRepo,
 		userSubRepo:         userSubRepo,
+		userGroupRateRepo:   userGroupRateRepo,
 		cache:               cache,
 		cfg:                 cfg,
 		schedulerSnapshot:   schedulerSnapshot,
@@ -4609,10 +4612,17 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	account := input.Account
 	subscription := input.Subscription
 
-	// 获取费率倍数
+	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := s.cfg.Default.RateMultiplier
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		multiplier = apiKey.Group.RateMultiplier
+
+		// 检查用户专属倍率
+		if s.userGroupRateRepo != nil {
+			if userRate, err := s.userGroupRateRepo.GetByUserAndGroup(ctx, user.ID, *apiKey.GroupID); err == nil && userRate != nil {
+				multiplier = *userRate
+		REDACTED
+	REDACTED
 REDACTED
 
 	var cost *CostBreakdown
@@ -4773,10 +4783,17 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	account := input.Account
 	subscription := input.Subscription
 
-	// 获取费率倍数
+	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := s.cfg.Default.RateMultiplier
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		multiplier = apiKey.Group.RateMultiplier
+
+		// 检查用户专属倍率
+		if s.userGroupRateRepo != nil {
+			if userRate, err := s.userGroupRateRepo.GetByUserAndGroup(ctx, user.ID, *apiKey.GroupID); err == nil && userRate != nil {
+				multiplier = *userRate
+		REDACTED
+	REDACTED
 REDACTED
 
 	var cost *CostBreakdown
