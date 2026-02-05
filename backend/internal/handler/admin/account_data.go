@@ -318,24 +318,6 @@ REDACTED
 	response.Success(c, result)
 REDACTED
 
-func (h *AccountHandler) listAllAccounts(ctx context.Context) ([]service.Account, error) {
-	page := 1
-	pageSize := dataPageCap
-	var out []service.Account
-	for {
-		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, "", "", "", "")
-		if err != nil {
-			return nil, err
-	REDACTED
-		out = append(out, items...)
-		if len(out) >= int(total) || len(items) == 0 {
-			break
-	REDACTED
-		page++
-REDACTED
-	return out, nil
-REDACTED
-
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {
 	page := 1
 	pageSize := dataPageCap
