@@ -393,8 +393,31 @@ REDACTED
 REDACTED
 
 func (h *AccountHandler) resolveExportProxies(ctx context.Context, accounts []service.Account) ([]service.Proxy, error) {
-	_ = accounts
-	return h.listAllProxies(ctx)
+	if len(accounts) == 0 {
+		return []service.Proxy{REDACTED, nil
+REDACTED
+
+	seen := make(map[int64]struct{REDACTED)
+	ids := make([]int64, 0)
+	for i := range accounts {
+		if accounts[i].ProxyID == nil {
+			continue
+	REDACTED
+		id := *accounts[i].ProxyID
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		ids = append(ids, id)
+REDACTED
+	if len(ids) == 0 {
+		return []service.Proxy{REDACTED, nil
+REDACTED
+
+	return h.adminService.GetProxiesByIDs(ctx, ids)
 REDACTED
 
 func parseAccountIDs(c *gin.Context) ([]int64, error) {

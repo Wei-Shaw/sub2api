@@ -16,6 +16,7 @@ var (
 type ProxyRepository interface {
 	Create(ctx context.Context, proxy *Proxy) error
 	GetByID(ctx context.Context, id int64) (*Proxy, error)
+	ListByIDs(ctx context.Context, ids []int64) ([]Proxy, error)
 	Update(ctx context.Context, proxy *Proxy) error
 	Delete(ctx context.Context, id int64) error
 

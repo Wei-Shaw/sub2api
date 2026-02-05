@@ -269,6 +269,24 @@ REDACTED
 	return &proxy, nil
 REDACTED
 
+func (s *stubAdminService) GetProxiesByIDs(ctx context.Context, ids []int64) ([]service.Proxy, error) {
+	if len(ids) == 0 {
+		return []service.Proxy{REDACTED, nil
+REDACTED
+	out := make([]service.Proxy, 0, len(ids))
+	seen := make(map[int64]struct{REDACTED, len(ids))
+	for _, id := range ids {
+		seen[id] = struct{REDACTED{REDACTED
+REDACTED
+	for i := range s.proxies {
+		proxy := s.proxies[i]
+		if _, ok := seen[proxy.ID]; ok {
+			out = append(out, proxy)
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
 func (s *stubAdminService) CreateProxy(ctx context.Context, input *service.CreateProxyInput) (*service.Proxy, error) {
 	s.mu.Lock()
 	s.createdProxies = append(s.createdProxies, input)
