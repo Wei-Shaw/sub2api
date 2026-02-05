@@ -144,12 +144,24 @@ type PricingConfig struct {
 REDACTED
 
 type ServerConfig struct {
-	Host              string   `mapstructure:"host"`
-	Port              int      `mapstructure:"port"`
-	Mode              string   `mapstructure:"mode"`                // debug/release
-	ReadHeaderTimeout int      `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
-	IdleTimeout       int      `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
-	TrustedProxies    []string `mapstructure:"trusted_proxies"`     // 可信代理列表（CIDR/IP）
+	Host               string    `mapstructure:"host"`
+	Port               int       `mapstructure:"port"`
+	Mode               string    `mapstructure:"mode"`                  // debug/release
+	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
+	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
+	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
+	MaxRequestBodySize int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
+	H2C                H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
+REDACTED
+
+// H2CConfig HTTP/2 Cleartext 配置
+type H2CConfig struct {
+	Enabled                      bool   `mapstructure:"enabled"`                          // 是否启用 H2C
+	MaxConcurrentStreams         uint32 `mapstructure:"max_concurrent_streams"`           // 最大并发流数量
+	IdleTimeout                  int    `mapstructure:"idle_timeout"`                     // 空闲超时（秒）
+	MaxReadFrameSize             int    `mapstructure:"max_read_frame_size"`              // 最大帧大小（字节）
+	MaxUploadBufferPerConnection int    `mapstructure:"max_upload_buffer_per_connection"` // 每个连接的上传缓冲区（字节）
+	MaxUploadBufferPerStream     int    `mapstructure:"max_upload_buffer_per_stream"`     // 每个流的上传缓冲区（字节）
 REDACTED
 
 type CORSConfig struct {
@@ -694,6 +706,14 @@ func setDefaults() {
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
 	viper.SetDefault("server.trusted_proxies", []string{REDACTED)
+	viper.SetDefault("server.max_request_body_size", int64(100*1024*1024))
+	// H2C 默认配置
+	viper.SetDefault("server.h2c.enabled", false)
+	viper.SetDefault("server.h2c.max_concurrent_streams", uint32(50))      // 50 个并发流
+	viper.SetDefault("server.h2c.idle_timeout", 75)                        // 75 秒
+	viper.SetDefault("server.h2c.max_read_frame_size", 1<<20)              // 1MB（够用）
+	viper.SetDefault("server.h2c.max_upload_buffer_per_connection", 2<<20) // 2MB
+	viper.SetDefault("server.h2c.max_upload_buffer_per_stream", 512<<10)   // 512KB
 
 	// CORS
 	viper.SetDefault("cors.allowed_origins", []string{REDACTED)

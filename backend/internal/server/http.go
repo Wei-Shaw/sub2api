@@ -14,6 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 // ProviderSet 提供服务器层的依赖
@@ -56,9 +58,39 @@ REDACTED
 
 // ProvideHTTPServer 提供 HTTP 服务器
 func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
+	httpHandler := http.Handler(router)
+
+	globalMaxSize := cfg.Server.MaxRequestBodySize
+	if globalMaxSize <= 0 {
+		globalMaxSize = cfg.Gateway.MaxBodySize
+REDACTED
+	if globalMaxSize > 0 {
+		httpHandler = http.MaxBytesHandler(httpHandler, globalMaxSize)
+		log.Printf("Global max request body size: %d bytes (%.2f MB)", globalMaxSize, float64(globalMaxSize)/(1<<20))
+REDACTED
+
+	// 根据配置决定是否启用 H2C
+	if cfg.Server.H2C.Enabled {
+		h2cConfig := cfg.Server.H2C
+		httpHandler = h2c.NewHandler(router, &http2.Server{
+			MaxConcurrentStreams:         h2cConfig.MaxConcurrentStreams,
+			IdleTimeout:                  time.Duration(h2cConfig.IdleTimeout) * time.Second,
+			MaxReadFrameSize:             uint32(h2cConfig.MaxReadFrameSize),
+			MaxUploadBufferPerConnection: int32(h2cConfig.MaxUploadBufferPerConnection),
+			MaxUploadBufferPerStream:     int32(h2cConfig.MaxUploadBufferPerStream),
+	REDACTED)
+		log.Printf("HTTP/2 Cleartext (h2c) enabled: max_concurrent_streams=%d, idle_timeout=%ds, max_read_frame_size=%d, max_upload_buffer_per_connection=%d, max_upload_buffer_per_stream=%d",
+			h2cConfig.MaxConcurrentStreams,
+			h2cConfig.IdleTimeout,
+			h2cConfig.MaxReadFrameSize,
+			h2cConfig.MaxUploadBufferPerConnection,
+			h2cConfig.MaxUploadBufferPerStream,
+		)
+REDACTED
+
 	return &http.Server{
 		Addr:    cfg.Server.Address(),
-		Handler: router,
+		Handler: httpHandler,
 		// ReadHeaderTimeout: 读取请求头的超时时间，防止慢速请求头攻击
 		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout) * time.Second,
 		// IdleTimeout: 空闲连接超时时间，释放不活跃的连接资源
