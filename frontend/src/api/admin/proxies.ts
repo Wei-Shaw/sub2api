@@ -10,7 +10,8 @@ import type {
   CreateProxyRequest,
   UpdateProxyRequest,
   PaginatedResponse,
-  AdminDataPayload
+  AdminDataPayload,
+  AdminDataImportResult
 REDACTED from '@/types'
 
 /**
@@ -220,6 +221,13 @@ REDACTED): Promise<AdminDataPayload> {
   return data
 REDACTED
 
+export async function importData(payload: {
+  data: AdminDataPayload
+REDACTED): Promise<AdminDataImportResult> {
+  const { data REDACTED = await apiClient.post<AdminDataImportResult>('/admin/proxies/data', payload)
+  return data
+REDACTED
+
 export const proxiesAPI = {
   list,
   getAll,
@@ -234,7 +242,8 @@ export const proxiesAPI = {
   getProxyAccounts,
   batchCreate,
   batchDelete,
-  exportData
+  exportData,
+  importData
 REDACTED
 
 export default proxiesAPI

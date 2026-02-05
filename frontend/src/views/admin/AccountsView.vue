@@ -118,6 +118,15 @@
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
         >
+          <template #header-select>
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="allVisibleSelected"
+              @click.stop
+              @change="toggleSelectAllVisible($event)"
+            />
+          </template>
           <template #cell-select="{ row REDACTED">
             <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
@@ -551,6 +560,21 @@ const openMenu = (a: Account, e: MouseEvent) => {
   menu.show = true
 REDACTED
 const toggleSel = (id: number) => { const i = selIds.value.indexOf(id); if(i === -1) selIds.value.push(id); else selIds.value.splice(i, 1) REDACTED
+const allVisibleSelected = computed(() => {
+  if (accounts.value.length === 0) return false
+  return accounts.value.every(account => selIds.value.includes(account.id))
+REDACTED)
+const toggleSelectAllVisible = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.checked) {
+    const next = new Set(selIds.value)
+    accounts.value.forEach(account => next.add(account.id))
+    selIds.value = Array.from(next)
+    return
+  REDACTED
+  const visibleIds = new Set(accounts.value.map(account => account.id))
+  selIds.value = selIds.value.filter(id => !visibleIds.has(id))
+REDACTED
 const selectPage = () => { selIds.value = [...new Set([...selIds.value, ...accounts.value.map(a => a.id)])] REDACTED
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); selIds.value = []; reload() REDACTED catch (error) { console.error('Failed to bulk delete accounts:', error) REDACTED REDACTED
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {

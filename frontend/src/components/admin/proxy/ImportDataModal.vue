@@ -1,29 +1,29 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="t('admin.accounts.dataImportTitle')"
+    :title="t('admin.proxies.dataImportTitle')"
     width="normal"
     close-on-click-outside
     @close="handleClose"
   >
-    <form id="import-data-form" class="space-y-4" @submit.prevent="handleImport">
+    <form id="import-proxy-data-form" class="space-y-4" @submit.prevent="handleImport">
       <div class="text-sm text-gray-600 dark:text-dark-300">
-        {{ t('admin.accounts.dataImportHint') REDACTEDREDACTED
+        {{ t('admin.proxies.dataImportHint') REDACTEDREDACTED
       </div>
       <div
         class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-600 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400"
       >
-        {{ t('admin.accounts.dataImportWarning') REDACTEDREDACTED
+        {{ t('admin.proxies.dataImportWarning') REDACTEDREDACTED
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.accounts.dataImportFile') REDACTEDREDACTED</label>
+        <label class="input-label">{{ t('admin.proxies.dataImportFile') REDACTEDREDACTED</label>
         <div
           class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800"
         >
           <div class="min-w-0">
             <div class="truncate text-sm text-gray-700 dark:text-dark-200">
-              {{ fileName || t('admin.accounts.dataImportSelectFile') REDACTEDREDACTED
+              {{ fileName || t('admin.proxies.dataImportSelectFile') REDACTEDREDACTED
             </div>
             <div class="text-xs text-gray-500 dark:text-dark-400">JSON (.json)</div>
           </div>
@@ -45,15 +45,15 @@
         class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
       >
         <div class="text-sm font-medium text-gray-900 dark:text-white">
-          {{ t('admin.accounts.dataImportResult') REDACTEDREDACTED
+          {{ t('admin.proxies.dataImportResult') REDACTEDREDACTED
         </div>
         <div class="text-sm text-gray-700 dark:text-dark-300">
-          {{ t('admin.accounts.dataImportResultSummary', result) REDACTEDREDACTED
+          {{ t('admin.proxies.dataImportResultSummary', result) REDACTEDREDACTED
         </div>
 
         <div v-if="errorItems.length" class="mt-2">
           <div class="text-sm font-medium text-red-600 dark:text-red-400">
-            {{ t('admin.accounts.dataImportErrors') REDACTEDREDACTED
+            {{ t('admin.proxies.dataImportErrors') REDACTEDREDACTED
           </div>
           <div
             class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 font-mono text-xs dark:bg-dark-800"
@@ -74,10 +74,10 @@
         <button
           class="btn btn-primary"
           type="submit"
-          form="import-data-form"
+          form="import-proxy-data-form"
           :disabled="importing"
         >
-          {{ importing ? t('admin.accounts.dataImporting') : t('admin.accounts.dataImportButton') REDACTEDREDACTED
+          {{ importing ? t('admin.proxies.dataImporting') : t('admin.proxies.dataImportButton') REDACTEDREDACTED
         </button>
       </div>
     </template>
@@ -145,7 +145,7 @@ REDACTED
 
 const handleImport = async () => {
   if (!file.value) {
-    appStore.showError(t('admin.accounts.dataImportSelectFile'))
+    appStore.showError(t('admin.proxies.dataImportSelectFile'))
     return
   REDACTED
 
@@ -154,31 +154,27 @@ const handleImport = async () => {
     const text = await file.value.text()
     const dataPayload = JSON.parse(text)
 
-    const res = await adminAPI.accounts.importData({
-      data: dataPayload,
-      skip_default_group_bind: true
-    REDACTED)
+    const res = await adminAPI.proxies.importData({ data: dataPayload REDACTED)
 
     result.value = res
 
     const msgParams: Record<string, unknown> = {
-      account_created: res.account_created,
-      account_failed: res.account_failed,
       proxy_created: res.proxy_created,
       proxy_reused: res.proxy_reused,
-      proxy_failed: res.proxy_failed,
+      proxy_failed: res.proxy_failed
     REDACTED
-    if (res.account_failed > 0 || res.proxy_failed > 0) {
-      appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
+
+    if (res.proxy_failed > 0) {
+      appStore.showError(t('admin.proxies.dataImportCompletedWithErrors', msgParams))
     REDACTED else {
-      appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
+      appStore.showSuccess(t('admin.proxies.dataImportSuccess', msgParams))
       emit('imported')
     REDACTED
   REDACTED catch (error: any) {
     if (error instanceof SyntaxError) {
-      appStore.showError(t('admin.accounts.dataImportParseFailed'))
+      appStore.showError(t('admin.proxies.dataImportParseFailed'))
     REDACTED else {
-      appStore.showError(error?.message || t('admin.accounts.dataImportFailed'))
+      appStore.showError(error?.message || t('admin.proxies.dataImportFailed'))
     REDACTED
   REDACTED finally {
     importing.value = false

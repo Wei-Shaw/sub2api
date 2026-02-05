@@ -469,6 +469,13 @@ REDACTED
 	default:
 		return fmt.Errorf("proxy protocol is invalid: %s", item.Protocol)
 REDACTED
+	if item.Status != "" {
+		switch item.Status {
+		case service.StatusActive, service.StatusDisabled, "inactive":
+		default:
+			return fmt.Errorf("proxy status is invalid: %s", item.Status)
+	REDACTED
+REDACTED
 	return nil
 REDACTED
 

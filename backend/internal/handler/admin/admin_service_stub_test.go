@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -18,6 +19,10 @@ type stubAdminService struct {
 	redeems         []service.RedeemCode
 	createdAccounts []*service.CreateAccountInput
 	createdProxies  []*service.CreateProxyInput
+	updatedProxyIDs []int64
+	updatedProxies  []*service.UpdateProxyInput
+	testedProxyIDs  []int64
+	mu              sync.Mutex
 REDACTED
 
 func newStubAdminService() *stubAdminService {
@@ -180,7 +185,9 @@ REDACTED
 REDACTED
 
 func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.CreateAccountInput) (*service.Account, error) {
+	s.mu.Lock()
 	s.createdAccounts = append(s.createdAccounts, input)
+	s.mu.Unlock()
 	account := service.Account{ID: 300, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &account, nil
 REDACTED
@@ -257,12 +264,18 @@ func (s *stubAdminService) GetProxy(ctx context.Context, id int64) (*service.Pro
 REDACTED
 
 func (s *stubAdminService) CreateProxy(ctx context.Context, input *service.CreateProxyInput) (*service.Proxy, error) {
+	s.mu.Lock()
 	s.createdProxies = append(s.createdProxies, input)
+	s.mu.Unlock()
 	proxy := service.Proxy{ID: 400, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &proxy, nil
 REDACTED
 
 func (s *stubAdminService) UpdateProxy(ctx context.Context, id int64, input *service.UpdateProxyInput) (*service.Proxy, error) {
+	s.mu.Lock()
+	s.updatedProxyIDs = append(s.updatedProxyIDs, id)
+	s.updatedProxies = append(s.updatedProxies, input)
+	s.mu.Unlock()
 	proxy := service.Proxy{ID: id, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &proxy, nil
 REDACTED
@@ -284,6 +297,9 @@ func (s *stubAdminService) CheckProxyExists(ctx context.Context, host string, po
 REDACTED
 
 func (s *stubAdminService) TestProxy(ctx context.Context, id int64) (*service.ProxyTestResult, error) {
+	s.mu.Lock()
+	s.testedProxyIDs = append(s.testedProxyIDs, id)
+	s.mu.Unlock()
 	return &service.ProxyTestResult{Success: true, Message: "ok"REDACTED, nil
 REDACTED
 

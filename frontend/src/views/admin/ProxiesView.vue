@@ -69,6 +69,9 @@
               <Icon name="trash" size="md" class="mr-2" />
               {{ t('admin.proxies.batchDeleteAction') REDACTEDREDACTED
             </button>
+            <button @click="showImportData = true" class="btn btn-secondary">
+              {{ t('admin.proxies.dataImport') REDACTEDREDACTED
+            </button>
             <button @click="showExportDataDialog = true" class="btn btn-secondary">
               {{ t('admin.proxies.dataExport') REDACTEDREDACTED
             </button>
@@ -619,6 +622,12 @@
       @cancel="showExportDataDialog = false"
     />
 
+    <ImportDataModal
+      :show="showImportData"
+      @close="showImportData = false"
+      @imported="handleDataImported"
+    />
+
     <!-- Proxy Accounts Dialog -->
     <BaseDialog
       :show="showAccountsModal"
@@ -680,6 +689,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ImportDataModal from '@/components/admin/proxy/ImportDataModal.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
@@ -743,6 +753,7 @@ REDACTED)
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
+const showImportData = ref(false)
 const showDeleteDialog = ref(false)
 const showBatchDeleteDialog = ref(false)
 const showExportDataDialog = ref(false)
@@ -900,6 +911,11 @@ const closeCreateModal = () => {
   batchParseResult.invalid = 0
   batchParseResult.duplicate = 0
   batchParseResult.proxies = []
+REDACTED
+
+const handleDataImported = () => {
+  showImportData.value = false
+  loadProxies()
 REDACTED
 
 // Parse proxy URL: protocol://user:pass@host:port or protocol://host:port
