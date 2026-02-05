@@ -944,6 +944,32 @@ REDACTED
 		return strings.TrimSpace(loadResp.CloudAICompanionProject), tierID, nil
 REDACTED
 
+	// 关键逻辑：对齐 Gemini CLI 对“已注册用户”的处理方式。
+	// 当 LoadCodeAssist 返回了 currentTier / paidTier（表示账号已注册）但没有返回 cloudaicompanionProject 时：
+	// - 不要再调用 onboardUser（通常不会再分配 project_id，且可能触发 INVALID_ARGUMENT）
+	// - 先尝试从 Cloud Resource Manager 获取可用项目；仍失败则提示用户手动填写 project_id
+	if loadResp != nil {
+		registeredTierID := strings.TrimSpace(loadResp.GetTier())
+		if registeredTierID != "" {
+			// 已注册但未返回 cloudaicompanionProject，这在 Google One 用户中较常见：需要用户自行提供 project_id。
+			log.Printf("[GeminiOAuth] User has tier (%s) but no cloudaicompanionProject, trying Cloud Resource Manager...", registeredTierID)
+
+			// Try to get project from Cloud Resource Manager
+			fallback, fbErr := fetchProjectIDFromResourceManager(ctx, accessToken, proxyURL)
+			if fbErr == nil && strings.TrimSpace(fallback) != "" {
+				log.Printf("[GeminiOAuth] Found project from Cloud Resource Manager: %s", fallback)
+				return strings.TrimSpace(fallback), tierID, nil
+		REDACTED
+
+			// No project found - user must provide project_id manually
+			log.Printf("[GeminiOAuth] No project found from Cloud Resource Manager, user must provide project_id manually")
+			return "", tierID, fmt.Errorf("user is registered (tier: %s) but no project_id available. Please provide Project ID manually in the authorization form, or create a project at https://console.cloud.google.com", registeredTierID)
+	REDACTED
+REDACTED
+
+	// 未检测到 currentTier/paidTier，视为新用户，继续调用 onboardUser
+	log.Printf("[GeminiOAuth] No currentTier/paidTier found, proceeding with onboardUser (tierID: %s)", tierID)
+
 	req := &geminicli.OnboardUserRequest{
 		TierID: tierID,
 		Metadata: geminicli.LoadCodeAssistMetadata{
