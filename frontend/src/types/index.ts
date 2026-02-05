@@ -728,8 +728,8 @@ export interface UpdateProxyRequest {
 REDACTED
 
 export interface AdminDataPayload {
-  type: string
-  version: number
+  type?: string
+  version?: number
   exported_at: string
   proxies: AdminDataProxy[]
   accounts: AdminDataAccount[]

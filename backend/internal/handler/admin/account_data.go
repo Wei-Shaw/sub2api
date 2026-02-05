@@ -21,8 +21,8 @@ const (
 )
 
 type DataPayload struct {
-	Type       string        `json:"type"`
-	Version    int           `json:"version"`
+	Type       string        `json:"type,omitempty"`
+	Version    int           `json:"version,omitempty"`
 	ExportedAt string        `json:"exported_at"`
 	Proxies    []DataProxy   `json:"proxies"`
 	Accounts   []DataAccount `json:"accounts"`
@@ -160,8 +160,6 @@ REDACTED
 REDACTED
 
 	payload := DataPayload{
-		Type:       dataType,
-		Version:    dataVersion,
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
 		Proxies:    dataProxies,
 		Accounts:   dataAccounts,
@@ -218,9 +216,17 @@ REDACTED
 		REDACTED)
 			continue
 	REDACTED
+		normalizedStatus := normalizeProxyStatus(item.Status)
 		if existingID, ok := proxyKeyToID[key]; ok {
 			proxyKeyToID[key] = existingID
 			result.ProxyReused++
+			if normalizedStatus != "" {
+				if proxy, err := h.adminService.GetProxy(c.Request.Context(), existingID); err == nil && proxy != nil && proxy.Status != normalizedStatus {
+					_, _ = h.adminService.UpdateProxy(c.Request.Context(), existingID, &service.UpdateProxyInput{
+						Status: normalizedStatus,
+				REDACTED)
+			REDACTED
+		REDACTED
 			continue
 	REDACTED
 
@@ -245,9 +251,9 @@ REDACTED
 		proxyKeyToID[key] = created.ID
 		result.ProxyCreated++
 
-		if item.Status != "" && item.Status != created.Status {
+		if normalizedStatus != "" && normalizedStatus != created.Status {
 			_, _ = h.adminService.UpdateProxy(c.Request.Context(), created.ID, &service.UpdateProxyInput{
-				Status: item.Status,
+				Status: normalizedStatus,
 		REDACTED)
 	REDACTED
 REDACTED
@@ -465,14 +471,17 @@ REDACTED
 REDACTED
 
 func validateDataHeader(payload DataPayload) error {
-	if payload.Type == "" {
-		return errors.New("data type is required")
-REDACTED
-	if payload.Type != dataType && payload.Type != legacyDataType {
+	if payload.Type != "" && payload.Type != dataType && payload.Type != legacyDataType {
 		return fmt.Errorf("unsupported data type: %s", payload.Type)
 REDACTED
-	if payload.Version != dataVersion {
+	if payload.Version != 0 && payload.Version != dataVersion {
 		return fmt.Errorf("unsupported data version: %d", payload.Version)
+REDACTED
+	if payload.Proxies == nil {
+		return errors.New("proxies is required")
+REDACTED
+	if payload.Accounts == nil {
+		return errors.New("accounts is required")
 REDACTED
 	return nil
 REDACTED
@@ -493,9 +502,8 @@ REDACTED
 		return fmt.Errorf("proxy protocol is invalid: %s", item.Protocol)
 REDACTED
 	if item.Status != "" {
-		switch item.Status {
-		case service.StatusActive, service.StatusDisabled, "inactive":
-		default:
+		normalizedStatus := normalizeProxyStatus(item.Status)
+		if normalizedStatus != service.StatusActive && normalizedStatus != "inactive" {
 			return fmt.Errorf("proxy status is invalid: %s", item.Status)
 	REDACTED
 REDACTED
@@ -537,4 +545,18 @@ func defaultProxyName(name string) string {
 		return "imported-proxy"
 REDACTED
 	return name
+REDACTED
+
+func normalizeProxyStatus(status string) string {
+	normalized := strings.TrimSpace(strings.ToLower(status))
+	switch normalized {
+	case "":
+		return ""
+	case service.StatusActive:
+		return service.StatusActive
+	case "inactive", service.StatusDisabled:
+		return "inactive"
+	default:
+		return normalized
+REDACTED
 REDACTED
