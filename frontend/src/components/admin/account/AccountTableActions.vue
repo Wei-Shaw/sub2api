@@ -7,6 +7,7 @@
     <slot name="after"></slot>
     <button @click="$emit('sync')" class="btn btn-secondary">{{ t('admin.accounts.syncFromCrs') REDACTEDREDACTED</button>
     <button @click="$emit('create')" class="btn btn-primary">{{ t('admin.accounts.createAccount') REDACTEDREDACTED</button>
+    <slot name="afterCreate"></slot>
   </div>
 </template>
 

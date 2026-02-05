@@ -69,6 +69,9 @@
               <Icon name="trash" size="md" class="mr-2" />
               {{ t('admin.proxies.batchDeleteAction') REDACTEDREDACTED
             </button>
+            <button @click="showExportDataDialog = true" class="btn btn-secondary">
+              {{ t('admin.proxies.dataExport') REDACTEDREDACTED
+            </button>
             <button @click="showCreateModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.proxies.createProxy') REDACTEDREDACTED
@@ -606,6 +609,15 @@
       @confirm="confirmBatchDelete"
       @cancel="showBatchDeleteDialog = false"
     />
+    <ConfirmDialog
+      :show="showExportDataDialog"
+      :title="t('admin.proxies.dataExport')"
+      :message="t('admin.proxies.dataExportConfirmMessage')"
+      :confirm-text="t('admin.proxies.dataExportConfirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleExportData"
+      @cancel="showExportDataDialog = false"
+    />
 
     <!-- Proxy Accounts Dialog -->
     <BaseDialog
@@ -733,8 +745,10 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const showBatchDeleteDialog = ref(false)
+const showExportDataDialog = ref(false)
 const showAccountsModal = ref(false)
 const submitting = ref(false)
+const exportingData = ref(false)
 const testingProxyIds = ref<Set<number>>(new Set())
 const batchTesting = ref(false)
 const selectedProxyIds = ref<Set<number>>(new Set())
@@ -1225,6 +1239,39 @@ const handleBatchTest = async () => {
     console.error('Error batch testing proxies:', error)
   REDACTED finally {
     batchTesting.value = false
+  REDACTED
+REDACTED
+
+const formatExportTimestamp = () => {
+  const now = new Date()
+  const pad2 = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()REDACTED${pad2(now.getMonth() + 1)REDACTED${pad2(now.getDate())REDACTED${pad2(now.getHours())REDACTED${pad2(now.getMinutes())REDACTED${pad2(now.getSeconds())REDACTED`
+REDACTED
+
+const handleExportData = async () => {
+  if (exportingData.value) return
+  exportingData.value = true
+  try {
+    const dataPayload = await adminAPI.proxies.exportData({
+      protocol: filters.protocol || undefined,
+      status: (filters.status || undefined) as 'active' | 'inactive' | undefined,
+      search: searchQuery.value || undefined
+    REDACTED)
+    const timestamp = formatExportTimestamp()
+    const filename = `sub2api-proxy-${timestampREDACTED.json`
+    const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' REDACTED)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    appStore.showSuccess(t('admin.proxies.dataExported'))
+  REDACTED catch (error: any) {
+    appStore.showError(error?.message || t('admin.proxies.dataExportFailed'))
+  REDACTED finally {
+    exportingData.value = false
+    showExportDataDialog.value = false
   REDACTED
 REDACTED
 

@@ -96,6 +96,14 @@
                 </div>
               </div>
             </template>
+            <template #afterCreate>
+              <button @click="showImportData = true" class="btn btn-secondary">
+                {{ t('admin.accounts.dataImport') REDACTEDREDACTED
+              </button>
+              <button @click="openExportDataDialog" class="btn btn-secondary">
+                {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') REDACTEDREDACTED
+              </button>
+            </template>
           </AccountTableActions>
         </div>
       </template>
@@ -218,9 +226,16 @@
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @reauth="handleReAuth" @refresh-token="handleRefresh" @reset-status="handleResetStatus" @clear-rate-limit="handleClearRateLimit" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
+    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name REDACTED)" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
+      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
+        <span>{{ t('admin.accounts.dataExportIncludeProxies') REDACTEDREDACTED</span>
+      </label>
+    </ConfirmDialog>
   </AppLayout>
 </template>
 
@@ -242,6 +257,7 @@ import AccountTableActions from '@/components/admin/account/AccountTableActions.
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
@@ -265,6 +281,9 @@ const selIds = ref<number[]>([])
 const showCreate = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
+const showImportData = ref(false)
+const showExportDataDialog = ref(false)
+const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -279,6 +298,7 @@ const testingAcc = ref<Account | null>(null)
 const statsAcc = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:numberREDACTED|nullREDACTED>({ show: false, acc: null, pos: null REDACTED)
+const exportingData = ref(false)
 
 // Column settings
 const showColumnDropdown = ref(false)
@@ -405,6 +425,8 @@ const isAnyModalOpen = computed(() => {
     showCreate.value ||
     showEdit.value ||
     showSync.value ||
+    showImportData.value ||
+    showExportDataDialog.value ||
     showBulkEdit.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
@@ -633,6 +655,50 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
   REDACTED
 REDACTED
 const handleBulkUpdated = () => { showBulkEdit.value = false; selIds.value = []; reload() REDACTED
+const handleDataImported = () => { showImportData.value = false; reload() REDACTED
+const formatExportTimestamp = () => {
+  const now = new Date()
+  const pad2 = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()REDACTED${pad2(now.getMonth() + 1)REDACTED${pad2(now.getDate())REDACTED${pad2(now.getHours())REDACTED${pad2(now.getMinutes())REDACTED${pad2(now.getSeconds())REDACTED`
+REDACTED
+const openExportDataDialog = () => {
+  includeProxyOnExport.value = true
+  showExportDataDialog.value = true
+REDACTED
+const handleExportData = async () => {
+  if (exportingData.value) return
+  exportingData.value = true
+  try {
+    const dataPayload = await adminAPI.accounts.exportData(
+      selIds.value.length > 0
+        ? { ids: selIds.value, includeProxies: includeProxyOnExport.value REDACTED
+        : {
+            includeProxies: includeProxyOnExport.value,
+            filters: {
+              platform: params.platform,
+              type: params.type,
+              status: params.status,
+              search: params.search
+            REDACTED
+          REDACTED
+    )
+    const timestamp = formatExportTimestamp()
+    const filename = `sub2api-account-${timestampREDACTED.json`
+    const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' REDACTED)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    appStore.showSuccess(t('admin.accounts.dataExported'))
+  REDACTED catch (error: any) {
+    appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+  REDACTED finally {
+    exportingData.value = false
+    showExportDataDialog.value = false
+  REDACTED
+REDACTED
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null REDACTED
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null REDACTED
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null REDACTED

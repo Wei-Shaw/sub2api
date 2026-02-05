@@ -2,19 +2,22 @@ package admin
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 type stubAdminService struct {
-	users       []service.User
-	apiKeys     []service.APIKey
-	groups      []service.Group
-	accounts    []service.Account
-	proxies     []service.Proxy
-	proxyCounts []service.ProxyWithAccountCount
-	redeems     []service.RedeemCode
+	users           []service.User
+	apiKeys         []service.APIKey
+	groups          []service.Group
+	accounts        []service.Account
+	proxies         []service.Proxy
+	proxyCounts     []service.ProxyWithAccountCount
+	redeems         []service.RedeemCode
+	createdAccounts []*service.CreateAccountInput
+	createdProxies  []*service.CreateProxyInput
 REDACTED
 
 func newStubAdminService() *stubAdminService {
@@ -177,6 +180,7 @@ REDACTED
 REDACTED
 
 func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.CreateAccountInput) (*service.Account, error) {
+	s.createdAccounts = append(s.createdAccounts, input)
 	account := service.Account{ID: 300, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &account, nil
 REDACTED
@@ -214,7 +218,25 @@ func (s *stubAdminService) BulkUpdateAccounts(ctx context.Context, input *servic
 REDACTED
 
 func (s *stubAdminService) ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string) ([]service.Proxy, int64, error) {
-	return s.proxies, int64(len(s.proxies)), nil
+	search = strings.TrimSpace(strings.ToLower(search))
+	filtered := make([]service.Proxy, 0, len(s.proxies))
+	for _, proxy := range s.proxies {
+		if protocol != "" && proxy.Protocol != protocol {
+			continue
+	REDACTED
+		if status != "" && proxy.Status != status {
+			continue
+	REDACTED
+		if search != "" {
+			name := strings.ToLower(proxy.Name)
+			host := strings.ToLower(proxy.Host)
+			if !strings.Contains(name, search) && !strings.Contains(host, search) {
+				continue
+		REDACTED
+	REDACTED
+		filtered = append(filtered, proxy)
+REDACTED
+	return filtered, int64(len(filtered)), nil
 REDACTED
 
 func (s *stubAdminService) ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string) ([]service.ProxyWithAccountCount, int64, error) {
@@ -235,6 +257,7 @@ func (s *stubAdminService) GetProxy(ctx context.Context, id int64) (*service.Pro
 REDACTED
 
 func (s *stubAdminService) CreateProxy(ctx context.Context, input *service.CreateProxyInput) (*service.Proxy, error) {
+	s.createdProxies = append(s.createdProxies, input)
 	proxy := service.Proxy{ID: 400, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &proxy, nil
 REDACTED
