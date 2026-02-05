@@ -47,9 +47,9 @@ REDACTED
 		if googleapi.IsServiceDisabledError(body) {
 			activationURL := googleapi.ExtractActivationURL(body)
 			if activationURL != "" {
-				return nil, fmt.Errorf("Gemini for Google Cloud API is not enabled for this project. Please enable it by visiting: %s\n\nAfter enabling the API, wait a few minutes for the changes to propagate, then try again", activationURL)
+				return nil, fmt.Errorf("gemini API not enabled for this project, please enable it by visiting: %s\n\nAfter enabling the API, wait a few minutes for the changes to propagate, then try again", activationURL)
 		REDACTED
-			return nil, fmt.Errorf("Gemini for Google Cloud API is not enabled for this project. Please enable it in the Google Cloud Console at: https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com")
+			return nil, fmt.Errorf("gemini API not enabled for this project, please enable it in the Google Cloud Console at: https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com")
 	REDACTED
 
 		return nil, fmt.Errorf("loadCodeAssist failed: status %d, body: %s", resp.StatusCode, sanitizedBody)
@@ -87,9 +87,9 @@ REDACTED
 		if googleapi.IsServiceDisabledError(body) {
 			activationURL := googleapi.ExtractActivationURL(body)
 			if activationURL != "" {
-				return nil, fmt.Errorf("Gemini for Google Cloud API is not enabled for this project. Please enable it by visiting: %s\n\nAfter enabling the API, wait a few minutes for the changes to propagate, then try again", activationURL)
+				return nil, fmt.Errorf("gemini API not enabled for this project, please enable it by visiting: %s\n\nAfter enabling the API, wait a few minutes for the changes to propagate, then try again", activationURL)
 		REDACTED
-			return nil, fmt.Errorf("Gemini for Google Cloud API is not enabled for this project. Please enable it in the Google Cloud Console at: https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com")
+			return nil, fmt.Errorf("gemini API not enabled for this project, please enable it in the Google Cloud Console at: https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com")
 	REDACTED
 
 		return nil, fmt.Errorf("onboardUser failed: status %d, body: %s", resp.StatusCode, sanitizedBody)
