@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -25,8 +26,12 @@ var (
 	ErrEmailReserved          = infraerrors.BadRequest("EMAIL_RESERVED", "email is reserved")
 	ErrInvalidToken           = infraerrors.Unauthorized("INVALID_TOKEN", "invalid token")
 	ErrTokenExpired           = infraerrors.Unauthorized("TOKEN_EXPIRED", "token has expired")
+	ErrAccessTokenExpired     = infraerrors.Unauthorized("ACCESS_TOKEN_EXPIRED", "access token has expired")
 	ErrTokenTooLarge          = infraerrors.BadRequest("TOKEN_TOO_LARGE", "token too large")
 	ErrTokenRevoked           = infraerrors.Unauthorized("TOKEN_REVOKED", "token has been revoked")
+	ErrRefreshTokenInvalid    = infraerrors.Unauthorized("REFRESH_TOKEN_INVALID", "invalid refresh token")
+	ErrRefreshTokenExpired    = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
+	ErrRefreshTokenReused     = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
 	ErrEmailVerifyRequired    = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
 	ErrRegDisabled            = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable     = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
@@ -36,6 +41,9 @@ var (
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
 const maxTokenLength = 8192
+
+// refreshTokenPrefix is the prefix for refresh tokens to distinguish them from access tokens.
+const refreshTokenPrefix = "rt_"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
@@ -50,6 +58,7 @@ REDACTED
 type AuthService struct {
 	userRepo          UserRepository
 	redeemRepo        RedeemCodeRepository
+	refreshTokenCache RefreshTokenCache
 	cfg               *config.Config
 	settingService    *SettingService
 	emailService      *EmailService
@@ -62,6 +71,7 @@ REDACTED
 func NewAuthService(
 	userRepo UserRepository,
 	redeemRepo RedeemCodeRepository,
+	refreshTokenCache RefreshTokenCache,
 	cfg *config.Config,
 	settingService *SettingService,
 	emailService *EmailService,
@@ -72,6 +82,7 @@ func NewAuthService(
 	return &AuthService{
 		userRepo:          userRepo,
 		redeemRepo:        redeemRepo,
+		refreshTokenCache: refreshTokenCache,
 		cfg:               cfg,
 		settingService:    settingService,
 		emailService:      emailService,
@@ -481,6 +492,100 @@ REDACTED
 	return token, user, nil
 REDACTED
 
+// LoginOrRegisterOAuthWithTokenPair 用于第三方 OAuth/SSO 登录，返回完整的 TokenPair
+// 与 LoginOrRegisterOAuth 功能相同，但返回 TokenPair 而非单个 token
+func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, email, username string) (*TokenPair, *User, error) {
+	// 检查 refreshTokenCache 是否可用
+	if s.refreshTokenCache == nil {
+		return nil, nil, errors.New("refresh token cache not configured")
+REDACTED
+
+	email = strings.TrimSpace(email)
+	if email == "" || len(email) > 255 {
+		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+REDACTED
+	if _, err := mail.ParseAddress(email); err != nil {
+		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
+REDACTED
+
+	username = strings.TrimSpace(username)
+	if len([]rune(username)) > 100 {
+		username = string([]rune(username)[:100])
+REDACTED
+
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			// OAuth 首次登录视为注册
+			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+				return nil, nil, ErrRegDisabled
+		REDACTED
+
+			randomPassword, err := randomHexString(32)
+			if err != nil {
+				log.Printf("[Auth] Failed to generate random password for oauth signup: %v", err)
+				return nil, nil, ErrServiceUnavailable
+		REDACTED
+			hashedPassword, err := s.HashPassword(randomPassword)
+			if err != nil {
+				return nil, nil, fmt.Errorf("hash password: %w", err)
+		REDACTED
+
+			defaultBalance := s.cfg.Default.UserBalance
+			defaultConcurrency := s.cfg.Default.UserConcurrency
+			if s.settingService != nil {
+				defaultBalance = s.settingService.GetDefaultBalance(ctx)
+				defaultConcurrency = s.settingService.GetDefaultConcurrency(ctx)
+		REDACTED
+
+			newUser := &User{
+				Email:        email,
+				Username:     username,
+				PasswordHash: hashedPassword,
+				Role:         RoleUser,
+				Balance:      defaultBalance,
+				Concurrency:  defaultConcurrency,
+				Status:       StatusActive,
+		REDACTED
+
+			if err := s.userRepo.Create(ctx, newUser); err != nil {
+				if errors.Is(err, ErrEmailExists) {
+					user, err = s.userRepo.GetByEmail(ctx, email)
+					if err != nil {
+						log.Printf("[Auth] Database error getting user after conflict: %v", err)
+						return nil, nil, ErrServiceUnavailable
+				REDACTED
+			REDACTED else {
+					log.Printf("[Auth] Database error creating oauth user: %v", err)
+					return nil, nil, ErrServiceUnavailable
+			REDACTED
+		REDACTED else {
+				user = newUser
+		REDACTED
+	REDACTED else {
+			log.Printf("[Auth] Database error during oauth login: %v", err)
+			return nil, nil, ErrServiceUnavailable
+	REDACTED
+REDACTED
+
+	if !user.IsActive() {
+		return nil, nil, ErrUserNotActive
+REDACTED
+
+	if user.Username == "" && username != "" {
+		user.Username = username
+		if err := s.userRepo.Update(ctx, user); err != nil {
+			log.Printf("[Auth] Failed to update username after oauth login: %v", err)
+	REDACTED
+REDACTED
+
+	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate token pair: %w", err)
+REDACTED
+	return tokenPair, user, nil
+REDACTED
+
 // ValidateToken 验证JWT token并返回用户声明
 func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
 	// 先做长度校验，尽早拒绝异常超长 token，降低 DoS 风险。
@@ -539,10 +644,17 @@ func isReservedEmail(email string) bool {
 	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain)
 REDACTED
 
-// GenerateToken 生成JWT token
+// GenerateToken 生成JWT access token
+// 使用新的access_token_expire_minutes配置项（如果配置了），否则回退到expire_hour
 func (s *AuthService) GenerateToken(user *User) (string, error) {
 	now := time.Now()
-	expiresAt := now.Add(time.Duration(s.cfg.JWT.ExpireHour) * time.Hour)
+	var expiresAt time.Time
+	if s.cfg.JWT.AccessTokenExpireMinutes > 0 {
+		expiresAt = now.Add(time.Duration(s.cfg.JWT.AccessTokenExpireMinutes) * time.Minute)
+REDACTED else {
+		// 向后兼容：使用旧的expire_hour配置
+		expiresAt = now.Add(time.Duration(s.cfg.JWT.ExpireHour) * time.Hour)
+REDACTED
 
 	claims := &JWTClaims{
 		UserID:       user.ID,
@@ -563,6 +675,15 @@ REDACTED
 REDACTED
 
 	return tokenString, nil
+REDACTED
+
+// GetAccessTokenExpiresIn 返回Access Token的有效期（秒）
+// 用于前端设置刷新定时器
+func (s *AuthService) GetAccessTokenExpiresIn() int {
+	if s.cfg.JWT.AccessTokenExpireMinutes > 0 {
+		return s.cfg.JWT.AccessTokenExpireMinutes * 60
+REDACTED
+	return s.cfg.JWT.ExpireHour * 3600
 REDACTED
 
 // HashPassword 使用bcrypt加密密码
@@ -755,6 +876,198 @@ REDACTED
 		return ErrServiceUnavailable
 REDACTED
 
+	// Also revoke all refresh tokens for this user
+	if err := s.RevokeAllUserSessions(ctx, user.ID); err != nil {
+		log.Printf("[Auth] Failed to revoke refresh tokens for user %d: %v", user.ID, err)
+		// Don't return error - password was already changed successfully
+REDACTED
+
 	log.Printf("[Auth] Password reset successful for user: %s", email)
 	return nil
+REDACTED
+
+// ==================== Refresh Token Methods ====================
+
+// TokenPair 包含Access Token和Refresh Token
+type TokenPair struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"` // Access Token有效期（秒）
+REDACTED
+
+// GenerateTokenPair 生成Access Token和Refresh Token对
+// familyID: 可选的Token家族ID，用于Token轮转时保持家族关系
+func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyID string) (*TokenPair, error) {
+	// 检查 refreshTokenCache 是否可用
+	if s.refreshTokenCache == nil {
+		return nil, errors.New("refresh token cache not configured")
+REDACTED
+
+	// 生成Access Token
+	accessToken, err := s.GenerateToken(user)
+	if err != nil {
+		return nil, fmt.Errorf("generate access token: %w", err)
+REDACTED
+
+	// 生成Refresh Token
+	refreshToken, err := s.generateRefreshToken(ctx, user, familyID)
+	if err != nil {
+		return nil, fmt.Errorf("generate refresh token: %w", err)
+REDACTED
+
+	return &TokenPair{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    s.GetAccessTokenExpiresIn(),
+REDACTED, nil
+REDACTED
+
+// generateRefreshToken 生成并存储Refresh Token
+func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, familyID string) (string, error) {
+	// 生成随机Token
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf("generate random bytes: %w", err)
+REDACTED
+	rawToken := refreshTokenPrefix + hex.EncodeToString(tokenBytes)
+
+	// 计算Token哈希（存储哈希而非原始Token）
+	tokenHash := hashToken(rawToken)
+
+	// 如果没有提供familyID，生成新的
+	if familyID == "" {
+		familyBytes := make([]byte, 16)
+		if _, err := rand.Read(familyBytes); err != nil {
+			return "", fmt.Errorf("generate family id: %w", err)
+	REDACTED
+		familyID = hex.EncodeToString(familyBytes)
+REDACTED
+
+	now := time.Now()
+	ttl := time.Duration(s.cfg.JWT.RefreshTokenExpireDays) * 24 * time.Hour
+
+	data := &RefreshTokenData{
+		UserID:       user.ID,
+		TokenVersion: user.TokenVersion,
+		FamilyID:     familyID,
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(ttl),
+REDACTED
+
+	// 存储Token数据
+	if err := s.refreshTokenCache.StoreRefreshToken(ctx, tokenHash, data, ttl); err != nil {
+		return "", fmt.Errorf("store refresh token: %w", err)
+REDACTED
+
+	// 添加到用户Token集合
+	if err := s.refreshTokenCache.AddToUserTokenSet(ctx, user.ID, tokenHash, ttl); err != nil {
+		log.Printf("[Auth] Failed to add token to user set: %v", err)
+		// 不影响主流程
+REDACTED
+
+	// 添加到家族Token集合
+	if err := s.refreshTokenCache.AddToFamilyTokenSet(ctx, familyID, tokenHash, ttl); err != nil {
+		log.Printf("[Auth] Failed to add token to family set: %v", err)
+		// 不影响主流程
+REDACTED
+
+	return rawToken, nil
+REDACTED
+
+// RefreshTokenPair 使用Refresh Token刷新Token对
+// 实现Token轮转：每次刷新都会生成新的Refresh Token，旧Token立即失效
+func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string) (*TokenPair, error) {
+	// 检查 refreshTokenCache 是否可用
+	if s.refreshTokenCache == nil {
+		return nil, ErrRefreshTokenInvalid
+REDACTED
+
+	// 验证Token格式
+	if !strings.HasPrefix(refreshToken, refreshTokenPrefix) {
+		return nil, ErrRefreshTokenInvalid
+REDACTED
+
+	tokenHash := hashToken(refreshToken)
+
+	// 获取Token数据
+	data, err := s.refreshTokenCache.GetRefreshToken(ctx, tokenHash)
+	if err != nil {
+		if errors.Is(err, ErrRefreshTokenNotFound) {
+			// Token不存在，可能是已被使用（Token轮转）或已过期
+			log.Printf("[Auth] Refresh token not found, possible reuse attack")
+			return nil, ErrRefreshTokenInvalid
+	REDACTED
+		log.Printf("[Auth] Error getting refresh token: %v", err)
+		return nil, ErrServiceUnavailable
+REDACTED
+
+	// 检查Token是否过期
+	if time.Now().After(data.ExpiresAt) {
+		// 删除过期Token
+		_ = s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash)
+		return nil, ErrRefreshTokenExpired
+REDACTED
+
+	// 获取用户信息
+	user, err := s.userRepo.GetByID(ctx, data.UserID)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			// 用户已删除，撤销整个Token家族
+			_ = s.refreshTokenCache.DeleteTokenFamily(ctx, data.FamilyID)
+			return nil, ErrRefreshTokenInvalid
+	REDACTED
+		log.Printf("[Auth] Database error getting user for token refresh: %v", err)
+		return nil, ErrServiceUnavailable
+REDACTED
+
+	// 检查用户状态
+	if !user.IsActive() {
+		// 用户被禁用，撤销整个Token家族
+		_ = s.refreshTokenCache.DeleteTokenFamily(ctx, data.FamilyID)
+		return nil, ErrUserNotActive
+REDACTED
+
+	// 检查TokenVersion（密码更改后所有Token失效）
+	if data.TokenVersion != user.TokenVersion {
+		// TokenVersion不匹配，撤销整个Token家族
+		_ = s.refreshTokenCache.DeleteTokenFamily(ctx, data.FamilyID)
+		return nil, ErrTokenRevoked
+REDACTED
+
+	// Token轮转：立即使旧Token失效
+	if err := s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash); err != nil {
+		log.Printf("[Auth] Failed to delete old refresh token: %v", err)
+		// 继续处理，不影响主流程
+REDACTED
+
+	// 生成新的Token对，保持同一个家族ID
+	return s.GenerateTokenPair(ctx, user, data.FamilyID)
+REDACTED
+
+// RevokeRefreshToken 撤销单个Refresh Token
+func (s *AuthService) RevokeRefreshToken(ctx context.Context, refreshToken string) error {
+	if s.refreshTokenCache == nil {
+		return nil // No-op if cache not configured
+REDACTED
+	if !strings.HasPrefix(refreshToken, refreshTokenPrefix) {
+		return ErrRefreshTokenInvalid
+REDACTED
+
+	tokenHash := hashToken(refreshToken)
+	return s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash)
+REDACTED
+
+// RevokeAllUserSessions 撤销用户的所有会话（所有Refresh Token）
+// 用于密码更改或用户主动登出所有设备
+func (s *AuthService) RevokeAllUserSessions(ctx context.Context, userID int64) error {
+	if s.refreshTokenCache == nil {
+		return nil // No-op if cache not configured
+REDACTED
+	return s.refreshTokenCache.DeleteUserRefreshTokens(ctx, userID)
+REDACTED
+
+// hashToken 计算Token的SHA256哈希
+func hashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 REDACTED
