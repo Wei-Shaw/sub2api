@@ -58,8 +58,9 @@ REDACTED
 		return nil
 REDACTED
 	return &AdminUser{
-		User:  *base,
-		Notes: u.Notes,
+		User:       *base,
+		Notes:      u.Notes,
+		GroupRates: u.GroupRates,
 REDACTED
 REDACTED
 

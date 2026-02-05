@@ -846,10 +846,12 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		// Remove prompt_cache_retention (not supported by upstream OpenAI API)
-		if _, has := reqBody["prompt_cache_retention"]; has {
-			delete(reqBody, "prompt_cache_retention")
-			bodyModified = true
+		// Remove unsupported fields (not supported by upstream OpenAI API)
+		for _, unsupportedField := range []string{"prompt_cache_retention", "safety_identifier", "previous_response_id"REDACTED {
+			if _, has := reqBody[unsupportedField]; has {
+				delete(reqBody, unsupportedField)
+				bodyModified = true
+		REDACTED
 	REDACTED
 REDACTED
 
@@ -938,7 +940,7 @@ REDACTED
 		REDACTED)
 
 			s.handleFailoverSideEffects(ctx, resp, account)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account)
 REDACTED
@@ -1129,7 +1131,7 @@ REDACTED
 		Detail:             upstreamDetail,
 REDACTED)
 	if shouldDisable {
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: bodyREDACTED
 REDACTED
 
 	// Return appropriate error response

@@ -1106,7 +1106,7 @@ REDACTED
 					Message:            upstreamMsg,
 					Detail:             upstreamDetail,
 			REDACTED)
-				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 		REDACTED
 
 			return nil, s.writeMappedClaudeError(c, account, resp.StatusCode, resp.Header.Get("x-request-id"), respBody)
@@ -1779,6 +1779,7 @@ REDACTED()
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		contentType := resp.Header.Get("Content-Type")
 		// 尽早关闭原始响应体，释放连接；后续逻辑仍可能需要读取 body，因此用内存副本重新包装。
 		_ = resp.Body.Close()
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -1849,10 +1850,8 @@ REDACTED()
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOpsREDACTED
 	REDACTED
-
-		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
 			contentType = "application/json"
 	REDACTED

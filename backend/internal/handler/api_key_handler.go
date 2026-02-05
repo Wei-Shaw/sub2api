@@ -243,3 +243,21 @@ REDACTED
 REDACTED
 	response.Success(c, out)
 REDACTED
+
+// GetUserGroupRates 获取当前用户的专属分组倍率配置
+// GET /api/v1/groups/rates
+func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+
+	rates, err := h.apiKeyService.GetUserGroupRates(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, rates)
+REDACTED

@@ -69,6 +69,18 @@ REDACTED
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementReadMutation", m)
 REDACTED
 
+// The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
+// function as ErrorPassthroughRule mutator.
+type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ErrorPassthroughRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ErrorPassthroughRuleMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ErrorPassthroughRuleMutation", m)
+REDACTED
+
 // The GroupFunc type is an adapter to allow the use of ordinary
 // function as Group mutator.
 type GroupFunc func(context.Context, *ent.GroupMutation) (ent.Value, error)

@@ -18,8 +18,18 @@ export async function getAvailable(): Promise<Group[]> {
   return data
 REDACTED
 
+/**
+ * Get current user's custom group rate multipliers
+ * @returns Map of group_id to custom rate_multiplier
+ */
+export async function getUserGroupRates(): Promise<Record<number, number>> {
+  const { data REDACTED = await apiClient.get<Record<number, number> | null>('/groups/rates')
+  return data || {REDACTED
+REDACTED
+
 export const userGroupsAPI = {
-  getAvailable
+  getAvailable,
+  getUserGroupRates
 REDACTED
 
 export default userGroupsAPI

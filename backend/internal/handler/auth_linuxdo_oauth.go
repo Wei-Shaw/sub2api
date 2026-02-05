@@ -211,7 +211,7 @@ REDACTED
 		email = linuxDoSyntheticEmail(subject)
 REDACTED
 
-	jwtToken, _, err := h.authService.LoginOrRegisterOAuth(c.Request.Context(), email, username)
+	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username)
 	if err != nil {
 		// 避免把内部细节泄露给客户端；给前端保留结构化原因与提示信息即可。
 		redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
@@ -219,7 +219,9 @@ REDACTED
 REDACTED
 
 	fragment := url.Values{REDACTED
-	fragment.Set("access_token", jwtToken)
+	fragment.Set("access_token", tokenPair.AccessToken)
+	fragment.Set("refresh_token", tokenPair.RefreshToken)
+	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
 	fragment.Set("token_type", "Bearer")
 	fragment.Set("redirect", redirectTo)
 	redirectWithFragment(c, frontendCallback, fragment)

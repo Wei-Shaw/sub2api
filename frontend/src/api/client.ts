@@ -1,9 +1,9 @@
 /**
  * Axios HTTP Client Configuration
- * Base client with interceptors for authentication and error handling
+ * Base client with interceptors for authentication, token refresh, and error handling
  */
 
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig REDACTED from 'axios'
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse REDACTED from 'axios'
 import type { ApiResponse REDACTED from '@/types'
 import { getLocale REDACTED from '@/i18n'
 
@@ -18,6 +18,28 @@ export const apiClient: AxiosInstance = axios.create({
     'Content-Type': 'application/json'
   REDACTED
 REDACTED)
+
+// ==================== Token Refresh State ====================
+
+// Track if a token refresh is in progress to prevent multiple simultaneous refresh requests
+let isRefreshing = false
+// Queue of requests waiting for token refresh
+let refreshSubscribers: Array<(token: string) => void> = []
+
+/**
+ * Subscribe to token refresh completion
+ */
+function subscribeTokenRefresh(callback: (token: string) => void): void {
+  refreshSubscribers.push(callback)
+REDACTED
+
+/**
+ * Notify all subscribers that token has been refreshed
+ */
+function onTokenRefreshed(token: string): void {
+  refreshSubscribers.forEach((callback) => callback(token))
+  refreshSubscribers = []
+REDACTED
 
 // ==================== Request Interceptor ====================
 
@@ -61,7 +83,7 @@ apiClient.interceptors.request.use(
 // ==================== Response Interceptor ====================
 
 apiClient.interceptors.response.use(
-  (response) => {
+  (response: AxiosResponse) => {
     // Unwrap standard API response format { code, message, data REDACTED
     const apiResponse = response.data as ApiResponse<unknown>
     if (apiResponse && typeof apiResponse === 'object' && 'code' in apiResponse) {
@@ -79,12 +101,14 @@ apiClient.interceptors.response.use(
     REDACTED
     return response
   REDACTED,
-  (error: AxiosError<ApiResponse<unknown>>) => {
+  async (error: AxiosError<ApiResponse<unknown>>) => {
     // Request cancellation: keep the original axios cancellation error so callers can ignore it.
     // Otherwise we'd misclassify it as a generic "network error".
     if (error.code === 'ERR_CANCELED' || axios.isCancel(error)) {
       return Promise.reject(error)
     REDACTED
+
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean REDACTED
 
     // Handle common errors
     if (error.response) {
@@ -120,23 +144,116 @@ apiClient.interceptors.response.use(
         REDACTED)
       REDACTED
 
-      // 401: Unauthorized - clear token and redirect to login
-      if (status === 401) {
-        const hasToken = !!localStorage.getItem('auth_token')
-        const url = error.config?.url || ''
+      // 401: Try to refresh the token if we have a refresh token
+      // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
+      if (status === 401 && !originalRequest._retry) {
+        const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
+
+        // If we have a refresh token and this is not an auth endpoint, try to refresh
+        if (refreshToken && !isAuthEndpoint) {
+          if (isRefreshing) {
+            // Wait for the ongoing refresh to complete
+            return new Promise((resolve, reject) => {
+              subscribeTokenRefresh((newToken: string) => {
+                if (newToken) {
+                  // Mark as retried to prevent infinite loop if retry also returns 401
+                  originalRequest._retry = true
+                  if (originalRequest.headers) {
+                    originalRequest.headers.Authorization = `Bearer ${newTokenREDACTED`
+                  REDACTED
+                  resolve(apiClient(originalRequest))
+                REDACTED else {
+                  // Refresh failed, reject with original error
+                  reject({
+                    status,
+                    code: apiData.code,
+                    message: apiData.message || apiData.detail || error.message
+                  REDACTED)
+                REDACTED
+              REDACTED)
+            REDACTED)
+          REDACTED
+
+          originalRequest._retry = true
+          isRefreshing = true
+
+          try {
+            // Call refresh endpoint directly to avoid circular dependency
+            const refreshResponse = await axios.post(
+              `${API_BASE_URLREDACTED/auth/refresh`,
+              { refresh_token: refreshToken REDACTED,
+              { headers: { 'Content-Type': 'application/json' REDACTED REDACTED
+            )
+
+            const refreshData = refreshResponse.data as ApiResponse<{
+              access_token: string
+              refresh_token: string
+              expires_in: number
+            REDACTED>
+
+            if (refreshData.code === 0 && refreshData.data) {
+              const { access_token, refresh_token: newRefreshToken, expires_in REDACTED = refreshData.data
+
+              // Update tokens in localStorage (convert expires_in to timestamp)
+              localStorage.setItem('auth_token', access_token)
+              localStorage.setItem('refresh_token', newRefreshToken)
+              localStorage.setItem('token_expires_at', String(Date.now() + expires_in * 1000))
+
+              // Notify subscribers with new token
+              onTokenRefreshed(access_token)
+
+              // Retry the original request with new token
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${access_tokenREDACTED`
+              REDACTED
+
+              isRefreshing = false
+              return apiClient(originalRequest)
+            REDACTED
+
+            // Refresh response was not successful, fall through to clear auth
+            throw new Error('Token refresh failed')
+          REDACTED catch (refreshError) {
+            // Refresh failed - notify subscribers with empty token
+            onTokenRefreshed('')
+            isRefreshing = false
+
+            // Clear tokens and redirect to login
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('refresh_token')
+            localStorage.removeItem('auth_user')
+            localStorage.removeItem('token_expires_at')
+            sessionStorage.setItem('auth_expired', '1')
+
+            if (!window.location.pathname.includes('/login')) {
+              window.location.href = '/login'
+            REDACTED
+
+            return Promise.reject({
+              status: 401,
+              code: 'TOKEN_REFRESH_FAILED',
+              message: 'Session expired. Please log in again.'
+            REDACTED)
+          REDACTED
+        REDACTED
+
+        // No refresh token or is auth endpoint - clear auth and redirect
+        const hasToken = !!localStorage.getItem('auth_token')
         const headers = error.config?.headers as Record<string, unknown> | undefined
         const authHeader = headers?.Authorization ?? headers?.authorization
         const sentAuth =
           typeof authHeader === 'string'
             ? authHeader.trim() !== ''
             : Array.isArray(authHeader)
-            ? authHeader.length > 0
-            : !!authHeader
+              ? authHeader.length > 0
+              : !!authHeader
 
         localStorage.removeItem('auth_token')
+        localStorage.removeItem('refresh_token')
         localStorage.removeItem('auth_user')
+        localStorage.removeItem('token_expires_at')
         if ((hasToken || sentAuth) && !isAuthEndpoint) {
           sessionStorage.setItem('auth_expired', '1')
         REDACTED

@@ -11,7 +11,14 @@
     <span class="truncate">{{ name REDACTEDREDACTED</span>
     <!-- Right side label -->
     <span v-if="showLabel" :class="labelClass">
-      {{ labelText REDACTEDREDACTED
+      <template v-if="hasCustomRate">
+        <!-- 原倍率删除线 + 专属倍率高亮 -->
+        <span class="line-through opacity-50 mr-0.5">{{ rateMultiplier REDACTEDREDACTEDx</span>
+        <span class="font-bold">{{ userRateMultiplier REDACTEDREDACTEDx</span>
+      </template>
+      <template v-else>
+        {{ labelText REDACTEDREDACTED
+      </template>
     </span>
   </span>
 </template>
@@ -27,6 +34,7 @@ interface Props {
   platform?: GroupPlatform
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
+  userRateMultiplier?: number | null // 用户专属倍率
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
 REDACTED
@@ -34,20 +42,31 @@ REDACTED
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   showRate: true,
-  daysRemaining: null
+  daysRemaining: null,
+  userRateMultiplier: null
 REDACTED)
 
 const { t REDACTED = useI18n()
 
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
 
+// 是否有专属倍率（且与默认倍率不同）
+const hasCustomRate = computed(() => {
+  return (
+    props.userRateMultiplier !== null &&
+    props.userRateMultiplier !== undefined &&
+    props.rateMultiplier !== undefined &&
+    props.userRateMultiplier !== props.rateMultiplier
+  )
+REDACTED)
+
 // 是否显示右侧标签
 const showLabel = computed(() => {
   if (!props.showRate) return false
   // 订阅类型：显示天数或"订阅"
   if (isSubscription.value) return true
-  // 标准类型：显示倍率
-  return props.rateMultiplier !== undefined
+  // 标准类型：显示倍率（包括专属倍率）
+  return props.rateMultiplier !== undefined || hasCustomRate.value
 REDACTED)
 
 // Label text
@@ -71,7 +90,7 @@ const labelClass = computed(() => {
   const base = 'px-1.5 py-0.5 rounded text-[10px] font-semibold'
 
   if (!isSubscription.value) {
-    // Standard: subtle background
+    // Standard: subtle background (不再为专属倍率使用不同的背景色)
     return `${baseREDACTED bg-black/10 dark:bg-white/10`
   REDACTED
 

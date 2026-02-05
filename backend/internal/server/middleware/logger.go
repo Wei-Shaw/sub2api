@@ -34,12 +34,16 @@ func Logger() gin.HandlerFunc {
 		// 客户端IP
 		clientIP := c.ClientIP()
 
-		// 日志格式: [时间] 状态码 | 延迟 | IP | 方法 路径
-		log.Printf("[GIN] %v | %3d | %13v | %15s | %-7s %s",
+		// 协议版本
+		protocol := c.Request.Proto
+
+		// 日志格式: [时间] 状态码 | 延迟 | IP | 协议 | 方法 路径
+		log.Printf("[GIN] %v | %3d | %13v | %15s | %-6s | %-7s %s",
 			endTime.Format("2006/01/02 - 15:04:05"),
 			statusCode,
 			latency,
 			clientIP,
+			protocol,
 			method,
 			path,
 		)

@@ -23,6 +23,32 @@ server:
   # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
   # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
   trusted_proxies: []
+  # Global max request body size in bytes (default: 100MB)
+  # 全局最大请求体大小（字节，默认 100MB）
+  # Applies to all requests, especially important for h2c first request memory protection
+  # 适用于所有请求，对 h2c 第一请求的内存保护尤为重要
+  max_request_body_size: 104857600
+  # HTTP/2 Cleartext (h2c) configuration
+  # HTTP/2 Cleartext (h2c) 配置
+  h2c:
+    # Enable HTTP/2 Cleartext for client connections
+    # 启用 HTTP/2 Cleartext 客户端连接
+    enabled: true
+    # Max concurrent streams per connection
+    # 每个连接的最大并发流数量
+    max_concurrent_streams: 50
+    # Idle timeout for connections (seconds)
+    # 连接空闲超时时间（秒）
+    idle_timeout: 75
+    # Max frame size in bytes (default: 1MB)
+    # 最大帧大小（字节，默认 1MB）
+    max_read_frame_size: 1048576
+    # Max upload buffer per connection in bytes (default: 2MB)
+    # 每个连接的最大上传缓冲区（字节，默认 2MB）
+    max_upload_buffer_per_connection: 2097152
+    # Max upload buffer per stream in bytes (default: 512KB)
+    # 每个流的最大上传缓冲区（字节，默认 512KB）
+    max_upload_buffer_per_stream: 524288
 
 # =============================================================================
 # Run Mode Configuration

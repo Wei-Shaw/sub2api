@@ -115,15 +115,16 @@ REDACTED
 
 // APIKeyService API Key服务
 type APIKeyService struct {
-	apiKeyRepo  APIKeyRepository
-	userRepo    UserRepository
-	groupRepo   GroupRepository
-	userSubRepo UserSubscriptionRepository
-	cache       APIKeyCache
-	cfg         *config.Config
-	authCacheL1 *ristretto.Cache
-	authCfg     apiKeyAuthCacheConfig
-	authGroup   singleflight.Group
+	apiKeyRepo        APIKeyRepository
+	userRepo          UserRepository
+	groupRepo         GroupRepository
+	userSubRepo       UserSubscriptionRepository
+	userGroupRateRepo UserGroupRateRepository
+	cache             APIKeyCache
+	cfg               *config.Config
+	authCacheL1       *ristretto.Cache
+	authCfg           apiKeyAuthCacheConfig
+	authGroup         singleflight.Group
 REDACTED
 
 // NewAPIKeyService 创建API Key服务实例
@@ -132,16 +133,18 @@ func NewAPIKeyService(
 	userRepo UserRepository,
 	groupRepo GroupRepository,
 	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
 	cache APIKeyCache,
 	cfg *config.Config,
 ) *APIKeyService {
 	svc := &APIKeyService{
-		apiKeyRepo:  apiKeyRepo,
-		userRepo:    userRepo,
-		groupRepo:   groupRepo,
-		userSubRepo: userSubRepo,
-		cache:       cache,
-		cfg:         cfg,
+		apiKeyRepo:        apiKeyRepo,
+		userRepo:          userRepo,
+		groupRepo:         groupRepo,
+		userSubRepo:       userSubRepo,
+		userGroupRateRepo: userGroupRateRepo,
+		cache:             cache,
+		cfg:               cfg,
 REDACTED
 	svc.initAuthCache(cfg)
 	return svc
@@ -625,6 +628,19 @@ func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword
 		return nil, fmt.Errorf("search api keys: %w", err)
 REDACTED
 	return keys, nil
+REDACTED
+
+// GetUserGroupRates 获取用户的专属分组倍率配置
+// 返回 map[groupID]rateMultiplier
+func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (map[int64]float64, error) {
+	if s.userGroupRateRepo == nil {
+		return nil, nil
+REDACTED
+	rates, err := s.userGroupRateRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user group rates: %w", err)
+REDACTED
+	return rates, nil
 REDACTED
 
 // CheckAPIKeyQuotaAndExpiry checks if the API key is valid for use (not expired, quota not exhausted)

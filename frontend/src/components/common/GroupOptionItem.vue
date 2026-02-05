@@ -9,6 +9,7 @@
         :platform="platform"
         :subscription-type="subscriptionType"
         :rate-multiplier="rateMultiplier"
+        :user-rate-multiplier="userRateMultiplier"
       />
       <span
         v-if="description"
@@ -39,6 +40,7 @@ interface Props {
   platform: GroupPlatform
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
+  userRateMultiplier?: number | null
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
@@ -47,6 +49,7 @@ REDACTED
 withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   selected: false,
-  showCheckmark: true
+  showCheckmark: true,
+  userRateMultiplier: null
 REDACTED)
 </script>

@@ -145,12 +145,24 @@ type PricingConfig struct {
 REDACTED
 
 type ServerConfig struct {
-	Host              string   `mapstructure:"host"`
-	Port              int      `mapstructure:"port"`
-	Mode              string   `mapstructure:"mode"`                // debug/release
-	ReadHeaderTimeout int      `mapstructure:"read_header_timeout"` // 读取请求头超时（秒）
-	IdleTimeout       int      `mapstructure:"idle_timeout"`        // 空闲连接超时（秒）
-	TrustedProxies    []string `mapstructure:"trusted_proxies"`     // 可信代理列表（CIDR/IP）
+	Host               string    `mapstructure:"host"`
+	Port               int       `mapstructure:"port"`
+	Mode               string    `mapstructure:"mode"`                  // debug/release
+	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
+	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
+	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
+	MaxRequestBodySize int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
+	H2C                H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
+REDACTED
+
+// H2CConfig HTTP/2 Cleartext 配置
+type H2CConfig struct {
+	Enabled                      bool   `mapstructure:"enabled"`                          // 是否启用 H2C
+	MaxConcurrentStreams         uint32 `mapstructure:"max_concurrent_streams"`           // 最大并发流数量
+	IdleTimeout                  int    `mapstructure:"idle_timeout"`                     // 空闲超时（秒）
+	MaxReadFrameSize             int    `mapstructure:"max_read_frame_size"`              // 最大帧大小（字节）
+	MaxUploadBufferPerConnection int    `mapstructure:"max_upload_buffer_per_connection"` // 每个连接的上传缓冲区（字节）
+	MaxUploadBufferPerStream     int    `mapstructure:"max_upload_buffer_per_stream"`     // 每个流的上传缓冲区（字节）
 REDACTED
 
 type CORSConfig struct {
@@ -532,6 +544,13 @@ REDACTED
 type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`
 	ExpireHour int    `mapstructure:"expire_hour"`
+	// AccessTokenExpireMinutes: Access Token有效期（分钟），默认15分钟
+	// 短有效期减少被盗用风险，配合Refresh Token实现无感续期
+	AccessTokenExpireMinutes int `mapstructure:"access_token_expire_minutes"`
+	// RefreshTokenExpireDays: Refresh Token有效期（天），默认30天
+	RefreshTokenExpireDays int `mapstructure:"refresh_token_expire_days"`
+	// RefreshWindowMinutes: 刷新窗口（分钟），在Access Token过期前多久开始允许刷新
+	RefreshWindowMinutes int `mapstructure:"refresh_window_minutes"`
 REDACTED
 
 // TotpConfig TOTP 双因素认证配置
@@ -752,6 +771,14 @@ func setDefaults() {
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
 	viper.SetDefault("server.trusted_proxies", []string{REDACTED)
+	viper.SetDefault("server.max_request_body_size", int64(100*1024*1024))
+	// H2C 默认配置
+	viper.SetDefault("server.h2c.enabled", false)
+	viper.SetDefault("server.h2c.max_concurrent_streams", uint32(50))      // 50 个并发流
+	viper.SetDefault("server.h2c.idle_timeout", 75)                        // 75 秒
+	viper.SetDefault("server.h2c.max_read_frame_size", 1<<20)              // 1MB（够用）
+	viper.SetDefault("server.h2c.max_upload_buffer_per_connection", 2<<20) // 2MB
+	viper.SetDefault("server.h2c.max_upload_buffer_per_stream", 512<<10)   // 512KB
 
 	// CORS
 	viper.SetDefault("cors.allowed_origins", []string{REDACTED)
@@ -848,6 +875,9 @@ REDACTED)
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
+	viper.SetDefault("jwt.access_token_expire_minutes", 360) // 6小时Access Token有效期
+	viper.SetDefault("jwt.refresh_token_expire_days", 30)    // 30天Refresh Token有效期
+	viper.SetDefault("jwt.refresh_window_minutes", 2)        // 过期前2分钟开始允许刷新
 
 	// TOTP
 	viper.SetDefault("totp.encryption_key", "")
@@ -1008,6 +1038,22 @@ REDACTED
 REDACTED
 	if c.JWT.ExpireHour > 24 {
 		log.Printf("Warning: jwt.expire_hour is %d hours (> 24). Consider shorter expiration for security.", c.JWT.ExpireHour)
+REDACTED
+	// JWT Refresh Token配置验证
+	if c.JWT.AccessTokenExpireMinutes <= 0 {
+		return fmt.Errorf("jwt.access_token_expire_minutes must be positive")
+REDACTED
+	if c.JWT.AccessTokenExpireMinutes > 720 {
+		log.Printf("Warning: jwt.access_token_expire_minutes is %d (> 720). Consider shorter expiration for security.", c.JWT.AccessTokenExpireMinutes)
+REDACTED
+	if c.JWT.RefreshTokenExpireDays <= 0 {
+		return fmt.Errorf("jwt.refresh_token_expire_days must be positive")
+REDACTED
+	if c.JWT.RefreshTokenExpireDays > 90 {
+		log.Printf("Warning: jwt.refresh_token_expire_days is %d (> 90). Consider shorter expiration for security.", c.JWT.RefreshTokenExpireDays)
+REDACTED
+	if c.JWT.RefreshWindowMinutes < 0 {
+		return fmt.Errorf("jwt.refresh_window_minutes must be non-negative")
 REDACTED
 	if c.Security.CSP.Enabled && strings.TrimSpace(c.Security.CSP.Policy) == "" {
 		return fmt.Errorf("security.csp.policy is required when CSP is enabled")
