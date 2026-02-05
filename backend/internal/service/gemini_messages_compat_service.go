@@ -864,7 +864,7 @@ REDACTED
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			upstreamReqID := resp.Header.Get(requestIDHeader)
@@ -891,7 +891,7 @@ REDACTED
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		upstreamReqID := resp.Header.Get(requestIDHeader)
 		if upstreamReqID == "" {
@@ -1301,7 +1301,7 @@ REDACTED
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			evBody := unwrapIfNeeded(isOAuth, respBody)
@@ -1325,7 +1325,7 @@ REDACTED
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: evBodyREDACTED
 	REDACTED
 
 		respBody = unwrapIfNeeded(isOAuth, respBody)

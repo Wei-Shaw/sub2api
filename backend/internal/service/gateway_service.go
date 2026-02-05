@@ -370,7 +370,8 @@ REDACTED
 
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
 type UpstreamFailoverError struct {
-	StatusCode int
+	StatusCode   int
+	ResponseBody []byte // 上游响应体，用于错误透传规则匹配
 REDACTED
 
 func (e *UpstreamFailoverError) Error() string {
@@ -3284,7 +3285,7 @@ REDACTED
 					return ""
 			REDACTED(),
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
 REDACTED
@@ -3314,10 +3315,8 @@ REDACTED
 				return ""
 		REDACTED(),
 	REDACTED)
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 REDACTED
-
-	// 处理错误响应（不可重试的错误）
 	if resp.StatusCode >= 400 {
 		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
 		if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
@@ -3361,7 +3360,7 @@ REDACTED
 					log.Printf("Account %d: 400 error, attempting failover", account.ID)
 			REDACTED
 				s.handleFailoverSideEffects(ctx, resp, account)
-				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 		REDACTED
 	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account)
@@ -3758,6 +3757,12 @@ REDACTED
 	return false
 REDACTED
 
+// ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
+// 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."REDACTEDREDACTED
+func ExtractUpstreamErrorMessage(body []byte) string {
+	return extractUpstreamErrorMessage(body)
+REDACTED
+
 func extractUpstreamErrorMessage(body []byte) string {
 	// Claude 风格：{"type":"error","error":{"type":"...","message":"..."REDACTEDREDACTED
 	if m := gjson.GetBytes(body, "error.message").String(); strings.TrimSpace(m) != "" {
@@ -3825,7 +3830,7 @@ REDACTED)
 		shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 REDACTED
 	if shouldDisable {
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: bodyREDACTED
 REDACTED
 
 	// 记录上游错误响应体摘要便于排障（可选：由配置控制；不回显到客户端）
