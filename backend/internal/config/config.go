@@ -467,6 +467,13 @@ REDACTED
 type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`
 	ExpireHour int    `mapstructure:"expire_hour"`
+	// AccessTokenExpireMinutes: Access Token有效期（分钟），默认15分钟
+	// 短有效期减少被盗用风险，配合Refresh Token实现无感续期
+	AccessTokenExpireMinutes int `mapstructure:"access_token_expire_minutes"`
+	// RefreshTokenExpireDays: Refresh Token有效期（天），默认30天
+	RefreshTokenExpireDays int `mapstructure:"refresh_token_expire_days"`
+	// RefreshWindowMinutes: 刷新窗口（分钟），在Access Token过期前多久开始允许刷新
+	RefreshWindowMinutes int `mapstructure:"refresh_window_minutes"`
 REDACTED
 
 // TotpConfig TOTP 双因素认证配置
@@ -783,6 +790,9 @@ REDACTED)
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
+	viper.SetDefault("jwt.access_token_expire_minutes", 360) // 6小时Access Token有效期
+	viper.SetDefault("jwt.refresh_token_expire_days", 30)    // 30天Refresh Token有效期
+	viper.SetDefault("jwt.refresh_window_minutes", 2)        // 过期前2分钟开始允许刷新
 
 	// TOTP
 	viper.SetDefault("totp.encryption_key", "")
@@ -911,6 +921,22 @@ REDACTED
 REDACTED
 	if c.JWT.ExpireHour > 24 {
 		log.Printf("Warning: jwt.expire_hour is %d hours (> 24). Consider shorter expiration for security.", c.JWT.ExpireHour)
+REDACTED
+	// JWT Refresh Token配置验证
+	if c.JWT.AccessTokenExpireMinutes <= 0 {
+		return fmt.Errorf("jwt.access_token_expire_minutes must be positive")
+REDACTED
+	if c.JWT.AccessTokenExpireMinutes > 720 {
+		log.Printf("Warning: jwt.access_token_expire_minutes is %d (> 720). Consider shorter expiration for security.", c.JWT.AccessTokenExpireMinutes)
+REDACTED
+	if c.JWT.RefreshTokenExpireDays <= 0 {
+		return fmt.Errorf("jwt.refresh_token_expire_days must be positive")
+REDACTED
+	if c.JWT.RefreshTokenExpireDays > 90 {
+		log.Printf("Warning: jwt.refresh_token_expire_days is %d (> 90). Consider shorter expiration for security.", c.JWT.RefreshTokenExpireDays)
+REDACTED
+	if c.JWT.RefreshWindowMinutes < 0 {
+		return fmt.Errorf("jwt.refresh_window_minutes must be non-negative")
 REDACTED
 	if c.Security.CSP.Enabled && strings.TrimSpace(c.Security.CSP.Policy) == "" {
 		return fmt.Errorf("security.csp.policy is required when CSP is enabled")
