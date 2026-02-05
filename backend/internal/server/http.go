@@ -60,16 +60,32 @@ REDACTED
 func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
 	httpHandler := http.Handler(router)
 
+	globalMaxSize := cfg.Server.MaxRequestBodySize
+	if globalMaxSize <= 0 {
+		globalMaxSize = cfg.Gateway.MaxBodySize
+REDACTED
+	if globalMaxSize > 0 {
+		httpHandler = http.MaxBytesHandler(httpHandler, globalMaxSize)
+		log.Printf("Global max request body size: %d bytes (%.2f MB)", globalMaxSize, float64(globalMaxSize)/(1<<20))
+REDACTED
+
 	// 根据配置决定是否启用 H2C
-	if cfg.Server.EnableH2C {
+	if cfg.Server.H2C.Enabled {
+		h2cConfig := cfg.Server.H2C
 		httpHandler = h2c.NewHandler(router, &http2.Server{
-			MaxConcurrentStreams:         250, // 最大并发流数量
-			IdleTimeout:                  300 * time.Second,
-			MaxReadFrameSize:             4 << 20, // 4MB
-			MaxUploadBufferPerConnection: 8 << 20, // 8MB
-			MaxUploadBufferPerStream:     2 << 20, // 2MB
+			MaxConcurrentStreams:         h2cConfig.MaxConcurrentStreams,
+			IdleTimeout:                  time.Duration(h2cConfig.IdleTimeout) * time.Second,
+			MaxReadFrameSize:             uint32(h2cConfig.MaxReadFrameSize),
+			MaxUploadBufferPerConnection: int32(h2cConfig.MaxUploadBufferPerConnection),
+			MaxUploadBufferPerStream:     int32(h2cConfig.MaxUploadBufferPerStream),
 	REDACTED)
-		log.Println("HTTP/2 Cleartext (h2c) enabled")
+		log.Printf("HTTP/2 Cleartext (h2c) enabled: max_concurrent_streams=%d, idle_timeout=%ds, max_read_frame_size=%d, max_upload_buffer_per_connection=%d, max_upload_buffer_per_stream=%d",
+			h2cConfig.MaxConcurrentStreams,
+			h2cConfig.IdleTimeout,
+			h2cConfig.MaxReadFrameSize,
+			h2cConfig.MaxUploadBufferPerConnection,
+			h2cConfig.MaxUploadBufferPerStream,
+		)
 REDACTED
 
 	return &http.Server{
