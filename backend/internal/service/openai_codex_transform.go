@@ -9,12 +9,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
 	opencodeCodexHeaderURL = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex_header.txt"
 	codexCacheTTL          = 15 * time.Minute
+
+	// 避免冷启动首请求被外网/ DNS / GitHub 卡死。
+	// http.DefaultClient 默认无超时，网络异常时可能阻塞很久。
+	opencodeFetchTimeout = 3 * time.Second
+	// 本地缓存为空时，最小回源间隔（防止并发下反复打 GitHub）。
+	opencodeEmptyCacheRefreshInterval = 1 * time.Minute
+	// 防抖：防止短时间内重复触发异步回源。
+	opencodeFetchDebounce = 3 * time.Second
+)
+
+var opencodeFetchHTTPClient = &http.Client{Timeout: opencodeFetchTimeoutREDACTED
+
+var (
+	opencodeFetchMu        sync.Mutex
+	opencodeFetchInFlight  bool
+	opencodeFetchLastStart time.Time
 )
 
 //go:embed prompts/codex_cli_instructions.md
@@ -230,28 +247,72 @@ REDACTED
 REDACTED
 
 	var meta opencodeCacheMetadata
-	if loadJSON(metaFile, &meta) && meta.LastChecked > 0 && cachedContent != "" {
-		if time.Since(time.UnixMilli(meta.LastChecked)) < codexCacheTTL {
-			return cachedContent
+	_ = loadJSON(metaFile, &meta)
+	if meta.LastChecked > 0 {
+		lastCheckedAt := time.UnixMilli(meta.LastChecked)
+		if cachedContent != "" {
+			if time.Since(lastCheckedAt) < codexCacheTTL {
+				return cachedContent
+		REDACTED
+	REDACTED else {
+			// 没有任何缓存内容时，回源失败也不应影响请求链路；这里做节流，避免并发下反复回源。
+			if time.Since(lastCheckedAt) < opencodeEmptyCacheRefreshInterval {
+				return ""
+		REDACTED
 	REDACTED
 REDACTED
 
-	content, etag, status, err := fetchWithETag(url, meta.ETag)
-	if err == nil && status == http.StatusNotModified && cachedContent != "" {
-		return cachedContent
-REDACTED
-	if err == nil && status >= 200 && status < 300 && content != "" {
-		_ = writeFile(cacheFile, content)
-		meta = opencodeCacheMetadata{
-			ETag:        etag,
-			LastFetch:   time.Now().UTC().Format(time.RFC3339),
-			LastChecked: time.Now().UnixMilli(),
-	REDACTED
-		_ = writeJSON(metaFile, meta)
-		return content
-REDACTED
-
+	// 不在请求链路内同步拉取（GitHub/DNS/网络异常会导致冷启动首请求卡 1 分钟+）。
+	// 直接返回当前缓存（可为空），并异步刷新缓存。
+	scheduleOpencodeCacheRefresh(url, cacheFile, metaFile, meta.ETag)
 	return cachedContent
+REDACTED
+
+func scheduleOpencodeCacheRefresh(url, cacheFile, metaFile, etag string) {
+	opencodeFetchMu.Lock()
+	if opencodeFetchInFlight {
+		opencodeFetchMu.Unlock()
+		return
+REDACTED
+	if !opencodeFetchLastStart.IsZero() && time.Since(opencodeFetchLastStart) < opencodeFetchDebounce {
+		opencodeFetchMu.Unlock()
+		return
+REDACTED
+	opencodeFetchInFlight = true
+	opencodeFetchLastStart = time.Now()
+	opencodeFetchMu.Unlock()
+
+	go func() {
+		defer func() {
+			opencodeFetchMu.Lock()
+			opencodeFetchInFlight = false
+			opencodeFetchMu.Unlock()
+	REDACTED()
+
+		now := time.Now()
+		content, newETag, status, err := fetchWithETag(url, etag)
+
+		var meta opencodeCacheMetadata
+		_ = loadJSON(metaFile, &meta)
+		meta.LastChecked = now.UnixMilli()
+
+		switch {
+		case err == nil && status == http.StatusNotModified:
+			// 304 表示无需更新缓存文件，只更新检查时间。
+			if newETag != "" {
+				meta.ETag = newETag
+		REDACTED
+			_ = writeJSON(metaFile, meta)
+		case err == nil && status >= 200 && status < 300 && strings.TrimSpace(content) != "":
+			_ = writeFile(cacheFile, content)
+			meta.ETag = newETag
+			meta.LastFetch = now.UTC().Format(time.RFC3339)
+			_ = writeJSON(metaFile, meta)
+		default:
+			// 拉取失败也记录检查时间，避免高并发下持续回源。
+			_ = writeJSON(metaFile, meta)
+	REDACTED
+REDACTED()
 REDACTED
 
 func getOpenCodeCodexHeader() string {
@@ -598,7 +659,7 @@ REDACTED
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 REDACTED
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := opencodeFetchHTTPClient.Do(req)
 	if err != nil {
 		return "", "", 0, err
 REDACTED

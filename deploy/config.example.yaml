@@ -161,7 +161,7 @@ gateway:
   max_idle_conns_per_host: 120
   # Max connections per host
   # 每个主机的最大连接数
-  max_conns_per_host: 240
+  max_conns_per_host: 4096
   # Idle connection timeout (seconds)
   # 空闲连接超时时间（秒）
   idle_conn_timeout_seconds: 90
@@ -384,6 +384,18 @@ database:
   # SSL mode: disable, require, verify-ca, verify-full
   # SSL 模式：disable（禁用）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
   sslmode: "disable"
+  # Max open connections
+  # 最大打开连接数
+  max_open_conns: 50
+  # Max idle connections
+  # 最大空闲连接数
+  max_idle_conns: 10
+  # Connection max lifetime (minutes)
+  # 连接最大存活时间（分钟）
+  conn_max_lifetime_minutes: 30
+  # Connection max idle time (minutes)
+  # 空闲连接最大存活时间（分钟）
+  conn_max_idle_time_minutes: 5
 
 # =============================================================================
 # Redis Configuration
@@ -402,6 +414,12 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
+  # Connection pool size (max concurrent connections)
+  # 连接池大小（最大并发连接数）
+  pool_size: 1024
+  # Minimum number of idle connections
+  # 最小空闲连接数
+  min_idle_conns: 10
   # Enable TLS/SSL connection
   # 是否启用 TLS/SSL 连接
   enable_tls: false

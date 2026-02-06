@@ -789,8 +789,8 @@ REDACTED)
 	viper.SetDefault("redis.dial_timeout_seconds", 5)
 	viper.SetDefault("redis.read_timeout_seconds", 3)
 	viper.SetDefault("redis.write_timeout_seconds", 3)
-	viper.SetDefault("redis.pool_size", 128)
-	viper.SetDefault("redis.min_idle_conns", 10)
+	viper.SetDefault("redis.pool_size", 1024)
+	viper.SetDefault("redis.min_idle_conns", 128)
 	viper.SetDefault("redis.enable_tls", false)
 
 	// Ops (vNext)
@@ -888,7 +888,7 @@ REDACTED)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
 	viper.SetDefault("gateway.max_idle_conns", 240)           // 最大空闲连接总数（HTTP/2 场景默认）
 	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_conns_per_host", 240)       // 每主机最大连接数（含活跃，HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_conns_per_host", 4096)      // 每主机最大连接数（含活跃；流式/HTTP1.1 可调大）
 	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90) // 空闲连接超时（秒）
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
