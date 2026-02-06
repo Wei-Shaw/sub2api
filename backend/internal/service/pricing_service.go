@@ -579,6 +579,7 @@ REDACTED
 func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
 	// Claude模型系列匹配规则
 	familyPatterns := map[string][]string{
+		"opus-4.6":   {"claude-opus-4.6", "claude-opus-4-6"REDACTED,
 		"opus-4.5":   {"claude-opus-4.5", "claude-opus-4-5"REDACTED,
 		"opus-4":     {"claude-opus-4", "claude-3-opus"REDACTED,
 		"sonnet-4.5": {"claude-sonnet-4.5", "claude-sonnet-4-5"REDACTED,
