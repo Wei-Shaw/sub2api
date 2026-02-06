@@ -2,47 +2,9 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <!-- Top Toolbar: Left (search + filters) / Right (actions) -->
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <!-- Left: Fuzzy search + filters (wrap to multiple lines) -->
-          <div class="flex flex-1 flex-wrap items-center gap-3">
-            <!-- Search -->
-            <div class="relative w-full sm:w-64">
-              <Icon
-                name="search"
-                size="md"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-              />
-              <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="t('admin.proxies.searchProxies')"
-                class="input pl-10"
-                @input="handleSearch"
-              />
-            </div>
-
-            <!-- Filters -->
-            <div class="w-full sm:w-40">
-              <Select
-                v-model="filters.protocol"
-                :options="protocolOptions"
-                :placeholder="t('admin.proxies.allProtocols')"
-                @change="loadProxies"
-              />
-            </div>
-            <div class="w-full sm:w-36">
-              <Select
-                v-model="filters.status"
-                :options="statusOptions"
-                :placeholder="t('admin.proxies.allStatus')"
-                @change="loadProxies"
-              />
-            </div>
-          </div>
-
-          <!-- Right: Actions -->
-          <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
+        <div class="space-y-3">
+          <!-- Row 1: Actions -->
+          <div class="flex flex-wrap items-center gap-3">
             <button
               @click="loadProxies"
               :disabled="loading"
@@ -69,10 +31,51 @@
               <Icon name="trash" size="md" class="mr-2" />
               {{ t('admin.proxies.batchDeleteAction') REDACTEDREDACTED
             </button>
+            <button @click="showImportData = true" class="btn btn-secondary">
+              {{ t('admin.proxies.dataImport') REDACTEDREDACTED
+            </button>
+            <button @click="showExportDataDialog = true" class="btn btn-secondary">
+              {{ selectedCount > 0 ? t('admin.proxies.dataExportSelected') : t('admin.proxies.dataExport') REDACTEDREDACTED
+            </button>
             <button @click="showCreateModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.proxies.createProxy') REDACTEDREDACTED
             </button>
+          </div>
+
+          <!-- Row 2: Search + Filters -->
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="relative w-full sm:w-64">
+              <Icon
+                name="search"
+                size="md"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              />
+              <input
+                v-model="searchQuery"
+                type="text"
+                :placeholder="t('admin.proxies.searchProxies')"
+                class="input pl-10"
+                @input="handleSearch"
+              />
+            </div>
+
+            <div class="w-full sm:w-40">
+              <Select
+                v-model="filters.protocol"
+                :options="protocolOptions"
+                :placeholder="t('admin.proxies.allProtocols')"
+                @change="loadProxies"
+              />
+            </div>
+            <div class="w-full sm:w-36">
+              <Select
+                v-model="filters.status"
+                :options="statusOptions"
+                :placeholder="t('admin.proxies.allStatus')"
+                @change="loadProxies"
+              />
+            </div>
           </div>
         </div>
       </template>
@@ -606,6 +609,21 @@
       @confirm="confirmBatchDelete"
       @cancel="showBatchDeleteDialog = false"
     />
+    <ConfirmDialog
+      :show="showExportDataDialog"
+      :title="t('admin.proxies.dataExport')"
+      :message="t('admin.proxies.dataExportConfirmMessage')"
+      :confirm-text="t('admin.proxies.dataExportConfirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleExportData"
+      @cancel="showExportDataDialog = false"
+    />
+
+    <ImportDataModal
+      :show="showImportData"
+      @close="showImportData = false"
+      @imported="handleDataImported"
+    />
 
     <!-- Proxy Accounts Dialog -->
     <BaseDialog
@@ -668,6 +686,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ImportDataModal from '@/components/admin/proxy/ImportDataModal.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
@@ -731,10 +750,13 @@ REDACTED)
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
+const showImportData = ref(false)
 const showDeleteDialog = ref(false)
 const showBatchDeleteDialog = ref(false)
+const showExportDataDialog = ref(false)
 const showAccountsModal = ref(false)
 const submitting = ref(false)
+const exportingData = ref(false)
 const testingProxyIds = ref<Set<number>>(new Set())
 const batchTesting = ref(false)
 const selectedProxyIds = ref<Set<number>>(new Set())
@@ -886,6 +908,11 @@ const closeCreateModal = () => {
   batchParseResult.invalid = 0
   batchParseResult.duplicate = 0
   batchParseResult.proxies = []
+REDACTED
+
+const handleDataImported = () => {
+  showImportData.value = false
+  loadProxies()
 REDACTED
 
 // Parse proxy URL: protocol://user:pass@host:port or protocol://host:port
@@ -1225,6 +1252,45 @@ const handleBatchTest = async () => {
     console.error('Error batch testing proxies:', error)
   REDACTED finally {
     batchTesting.value = false
+  REDACTED
+REDACTED
+
+const formatExportTimestamp = () => {
+  const now = new Date()
+  const pad2 = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()REDACTED${pad2(now.getMonth() + 1)REDACTED${pad2(now.getDate())REDACTED${pad2(now.getHours())REDACTED${pad2(now.getMinutes())REDACTED${pad2(now.getSeconds())REDACTED`
+REDACTED
+
+const handleExportData = async () => {
+  if (exportingData.value) return
+  exportingData.value = true
+  try {
+    const dataPayload = await adminAPI.proxies.exportData(
+      selectedCount.value > 0
+        ? { ids: Array.from(selectedProxyIds.value) REDACTED
+        : {
+            filters: {
+              protocol: filters.protocol || undefined,
+              status: (filters.status || undefined) as 'active' | 'inactive' | undefined,
+              search: searchQuery.value || undefined
+            REDACTED
+          REDACTED
+    )
+    const timestamp = formatExportTimestamp()
+    const filename = `sub2api-proxy-${timestampREDACTED.json`
+    const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' REDACTED)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    appStore.showSuccess(t('admin.proxies.dataExported'))
+  REDACTED catch (error: any) {
+    appStore.showError(error?.message || t('admin.proxies.dataExportFailed'))
+  REDACTED finally {
+    exportingData.value = false
+    showExportDataDialog.value = false
   REDACTED
 REDACTED
 

@@ -13,7 +13,9 @@ import type {
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
-  TempUnschedulableStatus
+  TempUnschedulableStatus,
+  AdminDataPayload,
+  AdminDataImportResult
 REDACTED from '@/types'
 
 /**
@@ -347,6 +349,44 @@ REDACTED> {
   return data
 REDACTED
 
+export async function exportData(options?: {
+  ids?: number[]
+  filters?: {
+    platform?: string
+    type?: string
+    status?: string
+    search?: string
+  REDACTED
+  includeProxies?: boolean
+REDACTED): Promise<AdminDataPayload> {
+  const params: Record<string, string> = {REDACTED
+  if (options?.ids && options.ids.length > 0) {
+    params.ids = options.ids.join(',')
+  REDACTED else if (options?.filters) {
+    const { platform, type, status, search REDACTED = options.filters
+    if (platform) params.platform = platform
+    if (type) params.type = type
+    if (status) params.status = status
+    if (search) params.search = search
+  REDACTED
+  if (options?.includeProxies === false) {
+    params.include_proxies = 'false'
+  REDACTED
+  const { data REDACTED = await apiClient.get<AdminDataPayload>('/admin/accounts/data', { params REDACTED)
+  return data
+REDACTED
+
+export async function importData(payload: {
+  data: AdminDataPayload
+  skip_default_group_bind?: boolean
+REDACTED): Promise<AdminDataImportResult> {
+  const { data REDACTED = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
+    data: payload.data,
+    skip_default_group_bind: payload.skip_default_group_bind
+  REDACTED)
+  return data
+REDACTED
+
 export const accountsAPI = {
   list,
   getById,
@@ -370,7 +410,9 @@ export const accountsAPI = {
   batchCreate,
   batchUpdateCredentials,
   bulkUpdate,
-  syncFromCrs
+  syncFromCrs,
+  exportData,
+  importData
 REDACTED
 
 export default accountsAPI

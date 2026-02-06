@@ -696,11 +696,61 @@ REDACTED
 		return
 REDACTED
 
-	// Return mock data for now
+	ctx := c.Request.Context()
+	success := 0
+	failed := 0
+	results := make([]gin.H, 0, len(req.Accounts))
+
+	for _, item := range req.Accounts {
+		if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
+			failed++
+			results = append(results, gin.H{
+				"name":    item.Name,
+				"success": false,
+				"error":   "rate_multiplier must be >= 0",
+		REDACTED)
+			continue
+	REDACTED
+
+		skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
+
+		account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
+			Name:                  item.Name,
+			Notes:                 item.Notes,
+			Platform:              item.Platform,
+			Type:                  item.Type,
+			Credentials:           item.Credentials,
+			Extra:                 item.Extra,
+			ProxyID:               item.ProxyID,
+			Concurrency:           item.Concurrency,
+			Priority:              item.Priority,
+			RateMultiplier:        item.RateMultiplier,
+			GroupIDs:              item.GroupIDs,
+			ExpiresAt:             item.ExpiresAt,
+			AutoPauseOnExpired:    item.AutoPauseOnExpired,
+			SkipMixedChannelCheck: skipCheck,
+	REDACTED)
+		if err != nil {
+			failed++
+			results = append(results, gin.H{
+				"name":    item.Name,
+				"success": false,
+				"error":   err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		success++
+		results = append(results, gin.H{
+			"name":    item.Name,
+			"id":      account.ID,
+			"success": true,
+	REDACTED)
+REDACTED
+
 	response.Success(c, gin.H{
-		"success": len(req.Accounts),
-		"failed":  0,
-		"results": []gin.H{REDACTED,
+		"success": success,
+		"failed":  failed,
+		"results": results,
 REDACTED)
 REDACTED
 
