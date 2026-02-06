@@ -22,11 +22,6 @@ type apiKeyAuthCacheConfig struct {
 	singleflight  bool
 REDACTED
 
-var (
-// 认证缓存抖动直接使用 rand/v2 的顶层函数。
-// rand/v2 顶层函数并发安全，避免全局互斥锁成为热点。
-)
-
 func newAPIKeyAuthCacheConfig(cfg *config.Config) apiKeyAuthCacheConfig {
 	if cfg == nil {
 		return apiKeyAuthCacheConfig{REDACTED
@@ -54,6 +49,8 @@ func (c apiKeyAuthCacheConfig) negativeEnabled() bool {
 	return c.negativeTTL > 0
 REDACTED
 
+// jitterTTL 为缓存 TTL 添加抖动，避免多个请求在同一时刻同时过期触发集中回源。
+// 这里直接使用 rand/v2 的顶层函数：并发安全，无需全局互斥锁。
 func (c apiKeyAuthCacheConfig) jitterTTL(ttl time.Duration) time.Duration {
 	if ttl <= 0 {
 		return ttl
