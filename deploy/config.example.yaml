@@ -155,7 +155,7 @@ gateway:
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
   # 所有主机的最大空闲连接数
-  max_idle_conns: 240
+  max_idle_conns: 2560
   # Max idle connections per host
   # 每个主机的最大空闲连接数
   max_idle_conns_per_host: 120

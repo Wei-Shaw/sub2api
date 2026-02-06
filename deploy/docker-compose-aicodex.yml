@@ -66,6 +66,8 @@ services:
       # =======================================================================
       # Gateway Configuration
       # =======================================================================
+      - GATEWAY_MAX_IDLE_CONNS=${GATEWAY_MAX_IDLE_CONNS:-2560REDACTED
+      - GATEWAY_MAX_IDLE_CONNS_PER_HOST=${GATEWAY_MAX_IDLE_CONNS_PER_HOST:-120REDACTED
       - GATEWAY_MAX_CONNS_PER_HOST=${GATEWAY_MAX_CONNS_PER_HOST:-1024REDACTED
 
       # =======================================================================
