@@ -424,6 +424,16 @@ func isSensitiveKey(key string) bool {
 		return false
 REDACTED
 
+	// Whitelist: known non-sensitive fields that contain sensitive substrings
+	// (e.g., "max_tokens" contains "token" but is just an API parameter).
+	switch k {
+	case "max_tokens", "max_completion_tokens", "max_output_tokens",
+		"completion_tokens", "prompt_tokens", "total_tokens",
+		"input_tokens", "output_tokens",
+		"cache_creation_input_tokens", "cache_read_input_tokens":
+		return false
+REDACTED
+
 	// Exact matches (common credential fields).
 	switch k {
 	case "authorization",
