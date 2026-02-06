@@ -1587,8 +1587,9 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 	var firstTokenRecorded bool
 
 	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanBuf := getSSEScannerBuf64K()
+	defer putSSEScannerBuf64K(scanBuf)
+	scanner.Buffer(scanBuf[:0], 1024*1024)
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -2120,7 +2121,8 @@ REDACTED
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 	usage := &ClaudeUsage{REDACTED
 	var firstTokenMs *int
 
@@ -2141,7 +2143,8 @@ REDACTED
 REDACTED
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -2152,7 +2155,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	// 上游数据间隔超时保护（防止上游挂起长期占用连接）
@@ -2277,7 +2280,8 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	usage := &ClaudeUsage{REDACTED
 	var firstTokenMs *int
@@ -2305,7 +2309,8 @@ REDACTED
 
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -2316,7 +2321,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	// 上游数据间隔超时保护（防止上游挂起长期占用连接）
@@ -2728,7 +2733,8 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	var firstTokenMs *int
 	var last map[string]any
@@ -2754,7 +2760,8 @@ REDACTED
 
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -2765,7 +2772,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	// 上游数据间隔超时保护（防止上游挂起长期占用连接）
@@ -2908,7 +2915,8 @@ REDACTED
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	// 辅助函数：转换 antigravity.ClaudeUsage 到 service.ClaudeUsage
 	convertUsage := func(agUsage *antigravity.ClaudeUsage) *ClaudeUsage {
@@ -2940,7 +2948,8 @@ REDACTED
 REDACTED
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -2951,7 +2960,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	streamInterval := time.Duration(0)
