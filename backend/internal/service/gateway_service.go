@@ -4176,6 +4176,20 @@ REDACTED
 			eventName = eventType
 	REDACTED
 
+		// 兼容 Kimi cached_tokens → cache_read_input_tokens
+		if eventType == "message_start" {
+			if msg, ok := event["message"].(map[string]any); ok {
+				if u, ok := msg["usage"].(map[string]any); ok {
+					reconcileCachedTokens(u)
+			REDACTED
+		REDACTED
+	REDACTED
+		if eventType == "message_delta" {
+			if u, ok := event["usage"].(map[string]any); ok {
+				reconcileCachedTokens(u)
+		REDACTED
+	REDACTED
+
 		if needModelReplace {
 			if msg, ok := event["message"].(map[string]any); ok {
 				if model, ok := msg["model"].(string); ok && model == mappedModel {
@@ -4524,6 +4538,17 @@ REDACTED
 REDACTED
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
+REDACTED
+
+	// 兼容 Kimi cached_tokens → cache_read_input_tokens
+	if response.Usage.CacheReadInputTokens == 0 {
+		cachedTokens := gjson.GetBytes(body, "usage.cached_tokens").Int()
+		if cachedTokens > 0 {
+			response.Usage.CacheReadInputTokens = int(cachedTokens)
+			if newBody, err := sjson.SetBytes(body, "usage.cache_read_input_tokens", cachedTokens); err == nil {
+				body = newBody
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 如果有模型映射，替换响应中的model字段
@@ -5310,4 +5335,22 @@ REDACTED
 REDACTED
 
 	return models
+REDACTED
+
+// reconcileCachedTokens 兼容 Kimi 等上游：
+// 将 OpenAI 风格的 cached_tokens 映射到 Claude 标准的 cache_read_input_tokens
+func reconcileCachedTokens(usage map[string]any) bool {
+	if usage == nil {
+		return false
+REDACTED
+	cacheRead, _ := usage["cache_read_input_tokens"].(float64)
+	if cacheRead > 0 {
+		return false // 已有标准字段，无需处理
+REDACTED
+	cached, _ := usage["cached_tokens"].(float64)
+	if cached <= 0 {
+		return false
+REDACTED
+	usage["cache_read_input_tokens"] = cached
+	return true
 REDACTED
