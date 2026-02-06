@@ -170,7 +170,7 @@ services:
       - "-c"
       - "shared_buffers=${POSTGRES_SHARED_BUFFERS:-1GBREDACTED"
       - "-c"
-      - "effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-4GBREDACTED"
+      - "effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-6GBREDACTED"
       - "-c"
       - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MBREDACTED"
     healthcheck:

@@ -161,7 +161,7 @@ gateway:
   max_idle_conns_per_host: 120
   # Max connections per host
   # 每个主机的最大连接数
-  max_conns_per_host: 4096
+  max_conns_per_host: 1024
   # Idle connection timeout (seconds)
   # 空闲连接超时时间（秒）
   idle_conn_timeout_seconds: 90
