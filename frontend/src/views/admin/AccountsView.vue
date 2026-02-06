@@ -16,16 +16,6 @@
             @sync="showSync = true"
             @create="showCreate = true"
           >
-            <template #before>
-              <button
-                @click="showErrorPassthrough = true"
-                class="btn btn-secondary"
-                :title="t('admin.errorPassthrough.title')"
-              >
-                <Icon name="shield" size="md" class="mr-1.5" />
-                <span class="hidden md:inline">{{ t('admin.errorPassthrough.title') REDACTEDREDACTED</span>
-              </button>
-            </template>
             <template #after>
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
@@ -71,6 +61,16 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Error Passthrough Rules -->
+              <button
+                @click="showErrorPassthrough = true"
+                class="btn btn-secondary"
+                :title="t('admin.errorPassthrough.title')"
+              >
+                <Icon name="shield" size="md" class="mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.errorPassthrough.title') REDACTEDREDACTED</span>
+              </button>
 
               <!-- Column Settings Dropdown -->
               <div class="relative" ref="columnDropdownRef">
