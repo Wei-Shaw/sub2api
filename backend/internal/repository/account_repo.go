@@ -1089,8 +1089,9 @@ REDACTED
 	result, err := client.ExecContext(
 		ctx,
 		"UPDATE accounts SET extra = COALESCE(extra, '{REDACTED'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
-		payload, id,
+		string(payload), id,
 	)
+
 	if err != nil {
 		return err
 REDACTED
