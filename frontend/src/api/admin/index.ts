@@ -19,6 +19,7 @@ import geminiAPI from './gemini'
 import antigravityAPI from './antigravity'
 import userAttributesAPI from './userAttributes'
 import opsAPI from './ops'
+import errorPassthroughAPI from './errorPassthrough'
 
 /**
  * Unified admin API object for convenient access
@@ -39,7 +40,8 @@ export const adminAPI = {
   gemini: geminiAPI,
   antigravity: antigravityAPI,
   userAttributes: userAttributesAPI,
-  ops: opsAPI
+  ops: opsAPI,
+  errorPassthrough: errorPassthroughAPI
 REDACTED
 
 export {
@@ -58,10 +60,12 @@ export {
   geminiAPI,
   antigravityAPI,
   userAttributesAPI,
-  opsAPI
+  opsAPI,
+  errorPassthroughAPI
 REDACTED
 
 export default adminAPI
 
 // Re-export types used by components
 export type { BalanceHistoryItem REDACTED from './users'
+export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest REDACTED from './errorPassthrough'

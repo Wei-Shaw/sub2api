@@ -253,7 +253,7 @@ REDACTED
 	maxAccountSwitches := h.maxAccountSwitchesGemini
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)
-	lastFailoverStatus := 0
+	var lastFailoverErr *service.UpstreamFailoverError
 
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, failedAccountIDs, "") // Gemini 不使用会话限制
@@ -262,7 +262,7 @@ REDACTED
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 				return
 		REDACTED
-			handleGeminiFailoverExhausted(c, lastFailoverStatus)
+			h.handleGeminiFailoverExhausted(c, lastFailoverErr)
 			return
 	REDACTED
 		account := selection.Account
@@ -353,11 +353,11 @@ REDACTED
 			if errors.As(err, &failoverErr) {
 				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 				if switchCount >= maxAccountSwitches {
-					lastFailoverStatus = failoverErr.StatusCode
-					handleGeminiFailoverExhausted(c, lastFailoverStatus)
+					lastFailoverErr = failoverErr
+					h.handleGeminiFailoverExhausted(c, lastFailoverErr)
 					return
 			REDACTED
-				lastFailoverStatus = failoverErr.StatusCode
+				lastFailoverErr = failoverErr
 				switchCount++
 				log.Printf("Gemini account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
 				continue
@@ -414,7 +414,36 @@ REDACTED
 	return "", "", &pathParseError{"invalid model action path"REDACTED
 REDACTED
 
-func handleGeminiFailoverExhausted(c *gin.Context, statusCode int) {
+func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError) {
+	if failoverErr == nil {
+		googleError(c, http.StatusBadGateway, "Upstream request failed")
+		return
+REDACTED
+
+	statusCode := failoverErr.StatusCode
+	responseBody := failoverErr.ResponseBody
+
+	// 先检查透传规则
+	if h.errorPassthroughService != nil && len(responseBody) > 0 {
+		if rule := h.errorPassthroughService.MatchRule(service.PlatformGemini, statusCode, responseBody); rule != nil {
+			// 确定响应状态码
+			respCode := statusCode
+			if !rule.PassthroughCode && rule.ResponseCode != nil {
+				respCode = *rule.ResponseCode
+		REDACTED
+
+			// 确定响应消息
+			msg := service.ExtractUpstreamErrorMessage(responseBody)
+			if !rule.PassthroughBody && rule.CustomMessage != nil {
+				msg = *rule.CustomMessage
+		REDACTED
+
+			googleError(c, respCode, msg)
+			return
+	REDACTED
+REDACTED
+
+	// 使用默认的错误映射
 	status, message := mapGeminiUpstreamError(statusCode)
 	googleError(c, status, message)
 REDACTED

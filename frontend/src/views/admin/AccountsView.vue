@@ -16,6 +16,16 @@
             @sync="showSync = true"
             @create="showCreate = true"
           >
+            <template #before>
+              <button
+                @click="showErrorPassthrough = true"
+                class="btn btn-secondary"
+                :title="t('admin.errorPassthrough.title')"
+              >
+                <Icon name="shield" size="md" class="mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.errorPassthrough.title') REDACTEDREDACTED</span>
+              </button>
+            </template>
             <template #after>
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
@@ -245,6 +255,7 @@
         <span>{{ t('admin.accounts.dataExportIncludeProxies') REDACTEDREDACTED</span>
       </label>
     </ConfirmDialog>
+    <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
   </AppLayout>
 </template>
 
@@ -277,6 +288,7 @@ import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import type { Account, Proxy, AdminGroup REDACTED from '@/types'
 
@@ -299,6 +311,7 @@ const showDeleteDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
 const showStats = ref(false)
+const showErrorPassthrough = ref(false)
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
@@ -441,7 +454,8 @@ const isAnyModalOpen = computed(() => {
     showDeleteDialog.value ||
     showReAuth.value ||
     showTest.value ||
-    showStats.value
+    showStats.value ||
+    showErrorPassthrough.value
   )
 REDACTED)
 

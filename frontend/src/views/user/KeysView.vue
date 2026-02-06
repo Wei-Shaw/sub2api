@@ -73,6 +73,7 @@
                   :platform="row.group.platform"
                   :subscription-type="row.group.subscription_type"
                   :rate-multiplier="row.group.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[row.group.id]"
                 />
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
@@ -272,6 +273,7 @@
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
+                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
               />
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') REDACTEDREDACTED</span>
             </template>
@@ -281,6 +283,7 @@
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
+                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
                 :description="(option as unknown as GroupOption).description"
                 :selected="selected"
               />
@@ -667,6 +670,7 @@
               :platform="option.platform"
               :subscription-type="option.subscriptionType"
               :rate-multiplier="option.rate"
+              :user-rate-multiplier="option.userRate"
               :description="option.description"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
@@ -718,6 +722,7 @@ interface GroupOption {
   label: string
   description: string | null
   rate: number
+  userRate: number | null
   subscriptionType: SubscriptionType
   platform: GroupPlatform
 REDACTED
@@ -742,6 +747,7 @@ const groups = ref<Group[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 const usageStats = ref<Record<string, BatchApiKeyUsageStats>>({REDACTED)
+const userGroupRates = ref<Record<number, number>>({REDACTED)
 
 const pagination = ref({
   page: 1,
@@ -825,6 +831,7 @@ const groupOptions = computed(() =>
     label: group.name,
     description: group.description,
     rate: group.rate_multiplier,
+    userRate: userGroupRates.value[group.id] ?? null,
     subscriptionType: group.subscription_type,
     platform: group.platform
   REDACTED))
@@ -896,6 +903,14 @@ const loadGroups = async () => {
     groups.value = await userGroupsAPI.getAvailable()
   REDACTED catch (error) {
     console.error('Failed to load groups:', error)
+  REDACTED
+REDACTED
+
+const loadUserGroupRates = async () => {
+  try {
+    userGroupRates.value = await userGroupsAPI.getUserGroupRates()
+  REDACTED catch (error) {
+    console.error('Failed to load user group rates:', error)
   REDACTED
 REDACTED
 
@@ -1268,6 +1283,7 @@ REDACTED
 onMounted(() => {
   loadApiKeys()
   loadGroups()
+  loadUserGroupRates()
   loadPublicSettings()
   document.addEventListener('click', closeGroupSelector)
 REDACTED)

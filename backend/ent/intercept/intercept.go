@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
@@ -218,6 +219,33 @@ func (f TraverseAnnouncementRead) Traverse(ctx context.Context, q ent.Query) err
 		return f(ctx, q)
 REDACTED
 	return fmt.Errorf("unexpected query type %T. expect *ent.AnnouncementReadQuery", q)
+REDACTED
+
+// The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
+type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f ErrorPassthroughRuleFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.ErrorPassthroughRuleQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.ErrorPassthroughRuleQuery", q)
+REDACTED
+
+// The TraverseErrorPassthroughRule type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseErrorPassthroughRule func(context.Context, *ent.ErrorPassthroughRuleQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseErrorPassthroughRule) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseErrorPassthroughRule) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.ErrorPassthroughRuleQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.ErrorPassthroughRuleQuery", q)
 REDACTED
 
 // The GroupFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -584,6 +612,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AnnouncementQuery, predicate.Announcement, announcement.OrderOption]{typ: ent.TypeAnnouncement, tq: qREDACTED, nil
 	case *ent.AnnouncementReadQuery:
 		return &query[*ent.AnnouncementReadQuery, predicate.AnnouncementRead, announcementread.OrderOption]{typ: ent.TypeAnnouncementRead, tq: qREDACTED, nil
+	case *ent.ErrorPassthroughRuleQuery:
+		return &query[*ent.ErrorPassthroughRuleQuery, predicate.ErrorPassthroughRule, errorpassthroughrule.OrderOption]{typ: ent.TypeErrorPassthroughRule, tq: qREDACTED, nil
 	case *ent.GroupQuery:
 		return &query[*ent.GroupQuery, predicate.Group, group.OrderOption]{typ: ent.TypeGroup, tq: qREDACTED, nil
 	case *ent.PromoCodeQuery:

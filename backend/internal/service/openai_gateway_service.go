@@ -940,7 +940,7 @@ REDACTED
 		REDACTED)
 
 			s.handleFailoverSideEffects(ctx, resp, account)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		return s.handleErrorResponse(ctx, resp, c, account)
 REDACTED
@@ -1131,7 +1131,7 @@ REDACTED
 		Detail:             upstreamDetail,
 REDACTED)
 	if shouldDisable {
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCodeREDACTED
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: bodyREDACTED
 REDACTED
 
 	// Return appropriate error response

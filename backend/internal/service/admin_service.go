@@ -94,6 +94,9 @@ type UpdateUserInput struct {
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	// GroupRates 用户专属分组倍率配置
+	// map[groupID]*rate，nil 表示删除该分组的专属倍率
+	GroupRates map[int64]*float64
 REDACTED
 
 type CreateGroupInput struct {
@@ -296,6 +299,7 @@ type adminServiceImpl struct {
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
+	userGroupRateRepo    UserGroupRateRepository
 	billingCacheService  *BillingCacheService
 	proxyProber          ProxyExitInfoProber
 	proxyLatencyCache    ProxyLatencyCache
@@ -310,6 +314,7 @@ func NewAdminService(
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
+	userGroupRateRepo UserGroupRateRepository,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
 	proxyLatencyCache ProxyLatencyCache,
@@ -322,6 +327,7 @@ func NewAdminService(
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,
+		userGroupRateRepo:    userGroupRateRepo,
 		billingCacheService:  billingCacheService,
 		proxyProber:          proxyProber,
 		proxyLatencyCache:    proxyLatencyCache,
@@ -336,11 +342,35 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 	if err != nil {
 		return nil, 0, err
 REDACTED
+	// 批量加载用户专属分组倍率
+	if s.userGroupRateRepo != nil && len(users) > 0 {
+		for i := range users {
+			rates, err := s.userGroupRateRepo.GetByUserID(ctx, users[i].ID)
+			if err != nil {
+				log.Printf("failed to load user group rates: user_id=%d err=%v", users[i].ID, err)
+				continue
+		REDACTED
+			users[i].GroupRates = rates
+	REDACTED
+REDACTED
 	return users, result.Total, nil
 REDACTED
 
 func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error) {
-	return s.userRepo.GetByID(ctx, id)
+	user, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+REDACTED
+	// 加载用户专属分组倍率
+	if s.userGroupRateRepo != nil {
+		rates, err := s.userGroupRateRepo.GetByUserID(ctx, id)
+		if err != nil {
+			log.Printf("failed to load user group rates: user_id=%d err=%v", id, err)
+	REDACTED else {
+			user.GroupRates = rates
+	REDACTED
+REDACTED
+	return user, nil
 REDACTED
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
@@ -409,6 +439,14 @@ REDACTED
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
 REDACTED
+
+	// 同步用户专属分组倍率
+	if input.GroupRates != nil && s.userGroupRateRepo != nil {
+		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input.GroupRates); err != nil {
+			log.Printf("failed to sync user group rates: user_id=%d err=%v", user.ID, err)
+	REDACTED
+REDACTED
+
 	if s.authCacheInvalidator != nil {
 		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
@@ -944,6 +982,7 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
+	// 注意：user_group_rate_multipliers 表通过外键 ON DELETE CASCADE 自动清理
 
 	// 事务成功后，异步失效受影响用户的订阅缓存
 	if len(affectedUserIDs) > 0 && s.billingCacheService != nil {
