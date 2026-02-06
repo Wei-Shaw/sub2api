@@ -19,7 +19,7 @@ jobs:
           cache: true
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.25.6'
+          go version | grep -q 'go1.25.7'
       - name: Unit tests
         working-directory: backend
         run: make test-unit
@@ -38,7 +38,7 @@ jobs:
           cache: true
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.25.6'
+          go version | grep -q 'go1.25.7'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
