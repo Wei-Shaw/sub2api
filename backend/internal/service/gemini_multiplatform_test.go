@@ -906,6 +906,39 @@ REDACTED{
 			expected: false,
 	REDACTED,
 		{
+			name:     "Antigravity平台-空模型允许",
+			account:  &Account{Platform: PlatformAntigravityREDACTED,
+			model:    "",
+			expected: true,
+	REDACTED,
+		{
+			name: "Antigravity平台-自定义映射-支持自定义模型",
+			account: &Account{
+				Platform: PlatformAntigravity,
+		REDACTED
+					"model_mapping": map[string]any{
+						"my-custom-model": "upstream-model",
+						"gpt-4o":          "some-model",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			model:    "my-custom-model",
+			expected: true,
+	REDACTED,
+		{
+			name: "Antigravity平台-自定义映射-不在映射中的模型不支持",
+			account: &Account{
+				Platform: PlatformAntigravity,
+		REDACTED
+					"model_mapping": map[string]any{
+						"my-custom-model": "upstream-model",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			model:    "claude-sonnet-4-5",
+			expected: false,
+	REDACTED,
+		{
 			name:     "Gemini平台-无映射配置-支持所有模型",
 			account:  &Account{Platform: PlatformGeminiREDACTED,
 			model:    "gemini-2.5-flash",

@@ -265,3 +265,58 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+// TestMapAntigravityModel_WildcardTargetEqualsRequest 测试通配符映射目标恰好等于请求模型名的 edge case
+// 例如 {"claude-*": "claude-sonnet-4-5"REDACTED，请求 "claude-sonnet-4-5" 时应该通过
+func TestMapAntigravityModel_WildcardTargetEqualsRequest(t *testing.T) {
+	tests := []struct {
+		name           string
+		modelMapping   map[string]any
+		requestedModel string
+		expected       string
+REDACTED{
+		{
+			name:           "wildcard target equals request model",
+			modelMapping:   map[string]any{"claude-*": "claude-sonnet-4-5"REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-5",
+	REDACTED,
+		{
+			name:           "wildcard target differs from request model",
+			modelMapping:   map[string]any{"claude-*": "claude-sonnet-4-5"REDACTED,
+			requestedModel: "claude-opus-4-6",
+			expected:       "claude-sonnet-4-5",
+	REDACTED,
+		{
+			name:           "wildcard no match",
+			modelMapping:   map[string]any{"claude-*": "claude-sonnet-4-5"REDACTED,
+			requestedModel: "gpt-4o",
+			expected:       "",
+	REDACTED,
+		{
+			name:           "explicit passthrough same name",
+			modelMapping:   map[string]any{"claude-sonnet-4-5": "claude-sonnet-4-5"REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-5",
+	REDACTED,
+		{
+			name:           "multiple wildcards target equals one request",
+			modelMapping:   map[string]any{"claude-*": "claude-sonnet-4-5", "gemini-*": "gemini-2.5-flash"REDACTED,
+			requestedModel: "gemini-2.5-flash",
+			expected:       "gemini-2.5-flash",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Platform: PlatformAntigravity,
+		REDACTED
+					"model_mapping": tt.modelMapping,
+			REDACTED,
+		REDACTED
+			got := mapAntigravityModel(account, tt.requestedModel)
+			require.Equal(t, tt.expected, got, "mapAntigravityModel(%q) = %q, want %q", tt.requestedModel, got, tt.expected)
+	REDACTED)
+REDACTED
+REDACTED
