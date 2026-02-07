@@ -1087,6 +1087,30 @@ REDACTED
 		)
 REDACTED
 
+	if status, errType, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		resp.StatusCode,
+		body,
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	); matched {
+		c.JSON(status, gin.H{
+			"error": gin.H{
+				"type":    errType,
+				"message": errMsg,
+		REDACTED,
+	REDACTED)
+		if upstreamMsg == "" {
+			upstreamMsg = errMsg
+	REDACTED
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
+REDACTED
+
 	// Check custom error codes
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{

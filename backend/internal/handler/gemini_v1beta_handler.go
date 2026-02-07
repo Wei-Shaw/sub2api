@@ -209,6 +209,9 @@ REDACTED()
 
 	// 1) user concurrency slot
 	streamStarted := false
+	if h.errorPassthroughService != nil {
+		service.BindErrorPassthroughService(c, h.errorPassthroughService)
+REDACTED
 	userReleaseFunc, err := geminiConcurrency.AcquireUserSlotWithWait(c, authSubject.UserID, authSubject.Concurrency, stream, &streamStarted)
 	if err != nil {
 		googleError(c, http.StatusTooManyRequests, err.Error())
