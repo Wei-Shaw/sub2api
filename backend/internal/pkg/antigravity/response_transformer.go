@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -343,6 +344,9 @@ REDACTED
 	return builder.String()
 REDACTED
 
+// fallbackCounter 降级伪随机 ID 的全局计数器，混入 seed 避免高并发下 UnixNano 相同导致碰撞。
+var fallbackCounter uint64
+
 // generateRandomID 生成密码学安全的随机 ID
 func generateRandomID() string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -351,10 +355,9 @@ func generateRandomID() string {
 	if _, err := rand.Read(randBytes); err != nil {
 		// 避免在请求路径里 panic：极端情况下熵源不可用时降级为伪随机。
 		// 这里主要用于生成响应/工具调用的临时 ID，安全要求不高但需尽量避免碰撞。
-		seed := uint64(time.Now().UnixNano())
-		if err != nil {
-			seed ^= uint64(len(err.Error())) << 32
-	REDACTED
+		cnt := atomic.AddUint64(&fallbackCounter, 1)
+		seed := uint64(time.Now().UnixNano()) ^ cnt
+		seed ^= uint64(len(err.Error())) << 32
 		for i := range id {
 			seed ^= seed << 13
 			seed ^= seed >> 7

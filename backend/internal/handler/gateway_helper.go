@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -242,7 +242,6 @@ REDACTED
 	backoff := initialBackoff
 	timer := time.NewTimer(backoff)
 	defer timer.Stop()
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for {
 		select {
@@ -284,7 +283,7 @@ REDACTED
 			if result.Acquired {
 				return result.ReleaseFunc, nil
 		REDACTED
-			backoff = nextBackoff(backoff, rng)
+			backoff = nextBackoff(backoff)
 			timer.Reset(backoff)
 	REDACTED
 REDACTED
@@ -298,20 +297,16 @@ REDACTED
 // nextBackoff 计算下一次退避时间
 // 性能优化：使用指数退避 + 随机抖动，避免惊群效应
 // current: 当前退避时间
-// rng: 随机数生成器（可为 nil，此时不添加抖动）
 // 返回值：下一次退避时间（100ms ~ 2s 之间）
-func nextBackoff(current time.Duration, rng *rand.Rand) time.Duration {
+func nextBackoff(current time.Duration) time.Duration {
 	// 指数退避：当前时间 * 1.5
 	next := time.Duration(float64(current) * backoffMultiplier)
 	if next > maxBackoff {
 		next = maxBackoff
 REDACTED
-	if rng == nil {
-		return next
-REDACTED
 	// 添加 ±20% 的随机抖动（jitter 范围 0.8 ~ 1.2）
 	// 抖动可以分散多个请求的重试时间点，避免同时冲击 Redis
-	jitter := 0.8 + rng.Float64()*0.4
+	jitter := 0.8 + rand.Float64()*0.4
 	jittered := time.Duration(float64(next) * jitter)
 	if jittered < initialBackoff {
 		return initialBackoff

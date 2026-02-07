@@ -147,6 +147,10 @@ var (
 			return 1
 		`)
 
+	// WARNING: Redis Cluster 不兼容 — 脚本内部拼接 key，Cluster 模式下可能路由到错误节点。
+	// 调用时传递空 KEYS 数组，所有 key 在 Lua 内通过 ARGV 动态拼接，
+	// 无法被 Redis Cluster 正确路由到对应 slot，仅适用于单节点或 Sentinel 模式。
+	//
 	// getAccountsLoadBatchScript - batch load query with expired slot cleanup
 	// ARGV[1] = slot TTL (seconds)
 	// ARGV[2..n] = accountID1, maxConcurrency1, accountID2, maxConcurrency2, ...
@@ -194,6 +198,10 @@ var (
 			return result
 		`)
 
+	// WARNING: Redis Cluster 不兼容 — 脚本内部拼接 key，Cluster 模式下可能路由到错误节点。
+	// 调用时传递空 KEYS 数组，所有 key 在 Lua 内通过 ARGV 动态拼接，
+	// 无法被 Redis Cluster 正确路由到对应 slot，仅适用于单节点或 Sentinel 模式。
+	//
 	// getUsersLoadBatchScript - batch load query for users with expired slot cleanup
 	// ARGV[1] = slot TTL (seconds)
 	// ARGV[2..n] = userID1, maxConcurrency1, userID2, maxConcurrency2, ...

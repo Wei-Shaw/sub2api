@@ -113,12 +113,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 REDACTED
 
-	// Turnstile 验证（当提供了邮箱验证码时跳过，因为发送验证码时已验证过）
-	if req.VerifyCode == "" {
-		if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
-			response.ErrorFrom(c, err)
-			return
-	REDACTED
+	// Turnstile 验证 — 始终执行，防止绕过
+	// TODO: 确认前端在提交邮箱验证码注册时也传递了 turnstile_token
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
 REDACTED
 
 	_, user, err := h.authService.RegisterWithVerification(c.Request.Context(), req.Email, req.Password, req.VerifyCode, req.PromoCode, req.InvitationCode)

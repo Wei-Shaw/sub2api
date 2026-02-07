@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -40,6 +41,7 @@ type SubscriptionService struct {
 	groupRepo           GroupRepository
 	userSubRepo         UserSubscriptionRepository
 	billingCacheService *BillingCacheService
+	entClient           *dbent.Client
 
 	// L1 缓存：加速中间件热路径的订阅查询
 	subCacheL1     *ristretto.Cache
@@ -49,11 +51,12 @@ type SubscriptionService struct {
 REDACTED
 
 // NewSubscriptionService 创建订阅服务
-func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService, cfg *config.Config) *SubscriptionService {
+func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService, entClient *dbent.Client, cfg *config.Config) *SubscriptionService {
 	svc := &SubscriptionService{
 		groupRepo:           groupRepo,
 		userSubRepo:         userSubRepo,
 		billingCacheService: billingCacheService,
+		entClient:           entClient,
 REDACTED
 	svc.initSubCache(cfg)
 	return svc
@@ -191,7 +194,7 @@ REDACTED
 		validityDays = MaxValidityDays
 REDACTED
 
-	// 已有订阅，执行续期
+	// 已有订阅，执行续期（在事务中完成所有更新）
 	if existingSub != nil {
 		now := time.Now()
 		var newExpiresAt time.Time
@@ -209,14 +212,23 @@ REDACTED
 			newExpiresAt = MaxExpiresAt
 	REDACTED
 
+		// 开启事务：ExtendExpiry + UpdateStatus + UpdateNotes 在同一事务中完成
+		tx, err := s.entClient.Tx(ctx)
+		if err != nil {
+			return nil, false, fmt.Errorf("begin transaction: %w", err)
+	REDACTED
+		txCtx := dbent.NewTxContext(ctx, tx)
+
 		// 更新过期时间
-		if err := s.userSubRepo.ExtendExpiry(ctx, existingSub.ID, newExpiresAt); err != nil {
+		if err := s.userSubRepo.ExtendExpiry(txCtx, existingSub.ID, newExpiresAt); err != nil {
+			_ = tx.Rollback()
 			return nil, false, fmt.Errorf("extend subscription: %w", err)
 	REDACTED
 
 		// 如果订阅已过期或被暂停，恢复为active状态
 		if existingSub.Status != SubscriptionStatusActive {
-			if err := s.userSubRepo.UpdateStatus(ctx, existingSub.ID, SubscriptionStatusActive); err != nil {
+			if err := s.userSubRepo.UpdateStatus(txCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
+				_ = tx.Rollback()
 				return nil, false, fmt.Errorf("update subscription status: %w", err)
 		REDACTED
 	REDACTED
@@ -228,9 +240,15 @@ REDACTED
 				newNotes += "\n"
 		REDACTED
 			newNotes += input.Notes
-			if err := s.userSubRepo.UpdateNotes(ctx, existingSub.ID, newNotes); err != nil {
-				log.Printf("update subscription notes failed: sub_id=%d err=%v", existingSub.ID, err)
+			if err := s.userSubRepo.UpdateNotes(txCtx, existingSub.ID, newNotes); err != nil {
+				_ = tx.Rollback()
+				return nil, false, fmt.Errorf("update subscription notes: %w", err)
 		REDACTED
+	REDACTED
+
+		// 提交事务
+		if err := tx.Commit(); err != nil {
+			return nil, false, fmt.Errorf("commit transaction: %w", err)
 	REDACTED
 
 		// 失效订阅缓存
@@ -471,7 +489,7 @@ REDACTED
 	value, err, _ := s.subCacheGroup.Do(key, func() (any, error) {
 		sub, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 		if err != nil {
-			return nil, ErrSubscriptionNotFound
+			return nil, err // 直接透传 repo 已翻译的错误（NotFound → ErrSubscriptionNotFound，其他错误原样返回）
 	REDACTED
 		// 写入 L1 缓存
 		if s.subCacheL1 != nil {
@@ -763,6 +781,11 @@ REDACTED
 	REDACTED
 REDACTED
 
+	return s.calculateProgress(sub, group), nil
+REDACTED
+
+// calculateProgress 根据已加载的订阅和分组数据计算使用进度（纯内存计算，无 DB 查询）
+func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Group) *SubscriptionProgress {
 	progress := &SubscriptionProgress{
 		ID:            sub.ID,
 		GroupName:     group.Name,
@@ -842,23 +865,25 @@ REDACTED
 	REDACTED
 REDACTED
 
-	return progress, nil
+	return progress
 REDACTED
 
 // GetUserSubscriptionsWithProgress 获取用户所有订阅及进度
 func (s *SubscriptionService) GetUserSubscriptionsWithProgress(ctx context.Context, userID int64) ([]SubscriptionProgress, error) {
+	// ListActiveByUserID 已使用 .WithGroup() eager-load Group 关联，1 次查询获取所有数据
 	subs, err := s.userSubRepo.ListActiveByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 REDACTED
 
 	progresses := make([]SubscriptionProgress, 0, len(subs))
-	for _, sub := range subs {
-		progress, err := s.GetSubscriptionProgress(ctx, sub.ID)
-		if err != nil {
+	for i := range subs {
+		sub := &subs[i]
+		group := sub.Group
+		if group == nil {
 			continue
 	REDACTED
-		progresses = append(progresses, *progress)
+		progresses = append(progresses, *s.calculateProgress(sub, group))
 REDACTED
 
 	return progresses, nil

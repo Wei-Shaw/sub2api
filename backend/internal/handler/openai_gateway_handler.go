@@ -396,8 +396,19 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			// Send error event in OpenAI SSE format
-			errorEvent := fmt.Sprintf(`event: error`+"\n"+`data: {"error": {"type": "%s", "message": "%s"REDACTEDREDACTED`+"\n\n", errType, message)
+			// Send error event in OpenAI SSE format with proper JSON marshaling
+			errorData := map[string]any{
+				"error": map[string]string{
+					"type":    errType,
+					"message": message,
+			REDACTED,
+		REDACTED
+			jsonBytes, err := json.Marshal(errorData)
+			if err != nil {
+				_ = c.Error(err)
+				return
+		REDACTED
+			errorEvent := fmt.Sprintf("event: error\ndata: %s\n\n", string(jsonBytes))
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 		REDACTED

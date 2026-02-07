@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"time"
 
@@ -26,7 +26,7 @@ func jitteredTTL() time.Duration {
 	if billingCacheJitter <= 0 {
 		return billingCacheTTL
 REDACTED
-	jitter := time.Duration(rand.Int63n(int64(billingCacheJitter)))
+	jitter := time.Duration(rand.IntN(int(billingCacheJitter)))
 	return billingCacheTTL - jitter
 REDACTED
 
