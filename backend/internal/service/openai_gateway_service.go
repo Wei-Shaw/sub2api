@@ -969,6 +969,10 @@ REDACTED
 	REDACTED
 REDACTED
 
+	if usage == nil {
+		usage = &OpenAIUsage{REDACTED
+REDACTED
+
 	reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
 
 	return &OpenAIForwardResult{
