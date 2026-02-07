@@ -278,6 +278,90 @@ REDACTED
 REDACTED
 REDACTED
 
+// TestDeductUserBalance_ErrorPropagation 验证 P2-12 修复：
+// Redis 真实错误应传播，key 不存在（redis.Nil）应返回 nil。
+func (s *BillingCacheSuite) TestDeductUserBalance_ErrorPropagation() {
+	tests := []struct {
+		name      string
+		fn        func(ctx context.Context, cache service.BillingCache)
+		expectErr bool
+REDACTED{
+		{
+			name: "key_not_exists_returns_nil",
+			fn: func(ctx context.Context, cache service.BillingCache) {
+				// key 不存在时，Lua 脚本返回 0（redis.Nil），应返回 nil 而非错误
+				err := cache.DeductUserBalance(ctx, 99999, 1.0)
+				require.NoError(s.T(), err, "DeductUserBalance on non-existent key should return nil")
+		REDACTED,
+	REDACTED,
+		{
+			name: "existing_key_deducts_successfully",
+			fn: func(ctx context.Context, cache service.BillingCache) {
+				require.NoError(s.T(), cache.SetUserBalance(ctx, 200, 50.0))
+				err := cache.DeductUserBalance(ctx, 200, 10.0)
+				require.NoError(s.T(), err, "DeductUserBalance should succeed")
+
+				bal, err := cache.GetUserBalance(ctx, 200)
+				require.NoError(s.T(), err)
+				require.Equal(s.T(), 40.0, bal, "余额应为 40.0")
+		REDACTED,
+	REDACTED,
+		{
+			name: "cancelled_context_propagates_error",
+			fn: func(ctx context.Context, cache service.BillingCache) {
+				require.NoError(s.T(), cache.SetUserBalance(ctx, 201, 50.0))
+
+				cancelCtx, cancel := context.WithCancel(ctx)
+				cancel() // 立即取消
+
+				err := cache.DeductUserBalance(cancelCtx, 201, 10.0)
+				require.Error(s.T(), err, "cancelled context should propagate error")
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			rdb := testRedis(s.T())
+			cache := NewBillingCache(rdb)
+			ctx := context.Background()
+			tt.fn(ctx, cache)
+	REDACTED)
+REDACTED
+REDACTED
+
+// TestUpdateSubscriptionUsage_ErrorPropagation 验证 P2-12 修复：
+// Redis 真实错误应传播，key 不存在（redis.Nil）应返回 nil。
+func (s *BillingCacheSuite) TestUpdateSubscriptionUsage_ErrorPropagation() {
+	s.Run("key_not_exists_returns_nil", func() {
+		rdb := testRedis(s.T())
+		cache := NewBillingCache(rdb)
+		ctx := context.Background()
+
+		err := cache.UpdateSubscriptionUsage(ctx, 88888, 77777, 1.0)
+		require.NoError(s.T(), err, "UpdateSubscriptionUsage on non-existent key should return nil")
+REDACTED)
+
+	s.Run("cancelled_context_propagates_error", func() {
+		rdb := testRedis(s.T())
+		cache := NewBillingCache(rdb)
+		ctx := context.Background()
+
+		data := &service.SubscriptionCacheData{
+			Status:    "active",
+			ExpiresAt: time.Now().Add(1 * time.Hour),
+			Version:   1,
+	REDACTED
+		require.NoError(s.T(), cache.SetSubscriptionCache(ctx, 301, 401, data))
+
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		err := cache.UpdateSubscriptionUsage(cancelCtx, 301, 401, 1.0)
+		require.Error(s.T(), err, "cancelled context should propagate error")
+REDACTED)
+REDACTED
+
 func TestBillingCacheSuite(t *testing.T) {
 	suite.Run(t, new(BillingCacheSuite))
 REDACTED

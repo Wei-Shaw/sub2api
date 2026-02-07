@@ -648,7 +648,7 @@ func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats() {
 	s.createUsageLog(user1, apiKey1, account, 10, 20, 0.5, time.Now())
 	s.createUsageLog(user2, apiKey2, account, 15, 25, 0.6, time.Now())
 
-	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{user1.ID, user2.IDREDACTED)
+	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{user1.ID, user2.IDREDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err, "GetBatchUserUsageStats")
 	s.Require().Len(stats, 2)
 	s.Require().NotNil(stats[user1.ID])
@@ -656,7 +656,7 @@ func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats() {
 REDACTED
 
 func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats_Empty() {
-	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{REDACTED)
+	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{REDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err)
 	s.Require().Empty(stats)
 REDACTED
@@ -672,13 +672,13 @@ func (s *UsageLogRepoSuite) TestGetBatchApiKeyUsageStats() {
 	s.createUsageLog(user, apiKey1, account, 10, 20, 0.5, time.Now())
 	s.createUsageLog(user, apiKey2, account, 15, 25, 0.6, time.Now())
 
-	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{apiKey1.ID, apiKey2.IDREDACTED)
+	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{apiKey1.ID, apiKey2.IDREDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err, "GetBatchAPIKeyUsageStats")
 	s.Require().Len(stats, 2)
 REDACTED
 
 func (s *UsageLogRepoSuite) TestGetBatchApiKeyUsageStats_Empty() {
-	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{REDACTED)
+	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{REDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err)
 	s.Require().Empty(stats)
 REDACTED

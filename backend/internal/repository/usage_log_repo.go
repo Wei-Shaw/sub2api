@@ -24,6 +24,22 @@ import (
 
 const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, reasoning_effort, created_at"
 
+// dateFormatWhitelist 将 granularity 参数映射为 PostgreSQL TO_CHAR 格式字符串，防止外部输入直接拼入 SQL
+var dateFormatWhitelist = map[string]string{
+	"hour":  "YYYY-MM-DD HH24:00",
+	"day":   "YYYY-MM-DD",
+	"week":  "IYYY-IW",
+	"month": "YYYY-MM",
+REDACTED
+
+// safeDateFormat 根据白名单获取 dateFormat，未匹配时返回默认值
+func safeDateFormat(granularity string) string {
+	if f, ok := dateFormatWhitelist[granularity]; ok {
+		return f
+REDACTED
+	return "YYYY-MM-DD"
+REDACTED
+
 type usageLogRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
@@ -564,7 +580,7 @@ func (r *usageLogRepository) ListByAccount(ctx context.Context, accountID int64,
 REDACTED
 
 func (r *usageLogRepository) ListByUserAndTimeRange(ctx context.Context, userID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE user_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC"
+	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE user_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
 	logs, err := r.queryUsageLogs(ctx, query, userID, startTime, endTime)
 	return logs, nil, err
 REDACTED
@@ -810,19 +826,19 @@ REDACTED
 REDACTED
 
 func (r *usageLogRepository) ListByAPIKeyAndTimeRange(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC"
+	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE api_key_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
 	logs, err := r.queryUsageLogs(ctx, query, apiKeyID, startTime, endTime)
 	return logs, nil, err
 REDACTED
 
 func (r *usageLogRepository) ListByAccountAndTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE account_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC"
+	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE account_id = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
 	logs, err := r.queryUsageLogs(ctx, query, accountID, startTime, endTime)
 	return logs, nil, err
 REDACTED
 
 func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelName string, startTime, endTime time.Time) ([]service.UsageLog, *pagination.PaginationResult, error) {
-	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE model = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC"
+	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE model = $1 AND created_at >= $2 AND created_at < $3 ORDER BY id DESC LIMIT 10000"
 	logs, err := r.queryUsageLogs(ctx, query, modelName, startTime, endTime)
 	return logs, nil, err
 REDACTED
@@ -908,10 +924,7 @@ type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
 
 // GetAPIKeyUsageTrend returns usage trend data grouped by API key and date
 func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []APIKeyUsageTrendPoint, err error) {
-	dateFormat := "YYYY-MM-DD"
-	if granularity == "hour" {
-		dateFormat = "YYYY-MM-DD HH24:00"
-REDACTED
+	dateFormat := safeDateFormat(granularity)
 
 	query := fmt.Sprintf(`
 		WITH top_keys AS (
@@ -966,10 +979,7 @@ REDACTED
 
 // GetUserUsageTrend returns usage trend data grouped by user and date
 func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []UserUsageTrendPoint, err error) {
-	dateFormat := "YYYY-MM-DD"
-	if granularity == "hour" {
-		dateFormat = "YYYY-MM-DD HH24:00"
-REDACTED
+	dateFormat := safeDateFormat(granularity)
 
 	query := fmt.Sprintf(`
 		WITH top_users AS (
@@ -1228,10 +1238,7 @@ REDACTED
 
 // GetUserUsageTrendByUserID 获取指定用户的使用趋势
 func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) (results []TrendDataPoint, err error) {
-	dateFormat := "YYYY-MM-DD"
-	if granularity == "hour" {
-		dateFormat = "YYYY-MM-DD HH24:00"
-REDACTED
+	dateFormat := safeDateFormat(granularity)
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -1369,11 +1376,20 @@ type UsageStats = usagestats.UsageStats
 // BatchUserUsageStats represents usage stats for a single user
 type BatchUserUsageStats = usagestats.BatchUserUsageStats
 
-// GetBatchUserUsageStats gets today and total actual_cost for multiple users
-func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs []int64) (map[int64]*BatchUserUsageStats, error) {
+// GetBatchUserUsageStats gets today and total actual_cost for multiple users within a time range.
+// If startTime is zero, defaults to 30 days ago.
+func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*BatchUserUsageStats, error) {
 	result := make(map[int64]*BatchUserUsageStats)
 	if len(userIDs) == 0 {
 		return result, nil
+REDACTED
+
+	// 默认最近 30 天
+	if startTime.IsZero() {
+		startTime = time.Now().AddDate(0, 0, -30)
+REDACTED
+	if endTime.IsZero() {
+		endTime = time.Now()
 REDACTED
 
 	for _, id := range userIDs {
@@ -1383,10 +1399,10 @@ REDACTED
 	query := `
 		SELECT user_id, COALESCE(SUM(actual_cost), 0) as total_cost
 		FROM usage_logs
-		WHERE user_id = ANY($1)
+		WHERE user_id = ANY($1) AND created_at >= $2 AND created_at < $3
 		GROUP BY user_id
 	`
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs), startTime, endTime)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -1443,11 +1459,20 @@ REDACTED
 // BatchAPIKeyUsageStats represents usage stats for a single API key
 type BatchAPIKeyUsageStats = usagestats.BatchAPIKeyUsageStats
 
-// GetBatchAPIKeyUsageStats gets today and total actual_cost for multiple API keys
-func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*BatchAPIKeyUsageStats, error) {
+// GetBatchAPIKeyUsageStats gets today and total actual_cost for multiple API keys within a time range.
+// If startTime is zero, defaults to 30 days ago.
+func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*BatchAPIKeyUsageStats, error) {
 	result := make(map[int64]*BatchAPIKeyUsageStats)
 	if len(apiKeyIDs) == 0 {
 		return result, nil
+REDACTED
+
+	// 默认最近 30 天
+	if startTime.IsZero() {
+		startTime = time.Now().AddDate(0, 0, -30)
+REDACTED
+	if endTime.IsZero() {
+		endTime = time.Now()
 REDACTED
 
 	for _, id := range apiKeyIDs {
@@ -1457,10 +1482,10 @@ REDACTED
 	query := `
 		SELECT api_key_id, COALESCE(SUM(actual_cost), 0) as total_cost
 		FROM usage_logs
-		WHERE api_key_id = ANY($1)
+		WHERE api_key_id = ANY($1) AND created_at >= $2 AND created_at < $3
 		GROUP BY api_key_id
 	`
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(apiKeyIDs))
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(apiKeyIDs), startTime, endTime)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -1516,10 +1541,7 @@ REDACTED
 
 // GetUsageTrendWithFilters returns usage trend data with optional filters
 func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool, billingType *int8) (results []TrendDataPoint, err error) {
-	dateFormat := "YYYY-MM-DD"
-	if granularity == "hour" {
-		dateFormat = "YYYY-MM-DD HH24:00"
-REDACTED
+	dateFormat := safeDateFormat(granularity)
 
 	query := fmt.Sprintf(`
 		SELECT

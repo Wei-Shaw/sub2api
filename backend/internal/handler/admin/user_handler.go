@@ -70,8 +70,8 @@ func (h *UserHandler) List(c *gin.Context) {
 	search := c.Query("search")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
-	if len(search) > 100 {
-		search = search[:100]
+	if runes := []rune(search); len(runes) > 100 {
+		search = string(runes[:100])
 REDACTED
 
 	filters := service.UserListFilters{

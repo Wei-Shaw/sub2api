@@ -87,8 +87,34 @@ REDACTED
 	if !cfg.Security.URLAllowlist.AllowPrivateHosts {
 		t.Fatalf("URLAllowlist.AllowPrivateHosts = false, want true")
 REDACTED
-	if cfg.Security.ResponseHeaders.Enabled {
-		t.Fatalf("ResponseHeaders.Enabled = true, want false")
+	if !cfg.Security.ResponseHeaders.Enabled {
+		t.Fatalf("ResponseHeaders.Enabled = false, want true")
+REDACTED
+REDACTED
+
+func TestLoadDefaultServerMode(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if cfg.Server.Mode != "release" {
+		t.Fatalf("Server.Mode = %q, want %q", cfg.Server.Mode, "release")
+REDACTED
+REDACTED
+
+func TestLoadDefaultDatabaseSSLMode(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if cfg.Database.SSLMode != "prefer" {
+		t.Fatalf("Database.SSLMode = %q, want %q", cfg.Database.SSLMode, "prefer")
 REDACTED
 REDACTED
 

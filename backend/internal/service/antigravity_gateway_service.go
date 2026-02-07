@@ -1687,7 +1687,7 @@ REDACTED
 			Usage:        ClaudeUsage{REDACTED,
 			Model:        originalModel,
 			Stream:       false,
-			Duration:     time.Since(time.Now()),
+			Duration:     time.Since(startTime),
 			FirstTokenMs: nil,
 	REDACTED, nil
 	default:

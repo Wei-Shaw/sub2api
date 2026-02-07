@@ -3,6 +3,7 @@ package admin
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -738,57 +739,40 @@ REDACTED else {
 REDACTED
 
 	ctx := c.Request.Context()
-	success := 0
-	failed := 0
-	results := []gin.H{REDACTED
 
+	// 阶段一：预验证所有账号存在，收集 credentials
+	type accountUpdate struct {
+		ID          int64
+		Credentials map[string]any
+REDACTED
+	updates := make([]accountUpdate, 0, len(req.AccountIDs))
 	for _, accountID := range req.AccountIDs {
-		// Get account
 		account, err := h.adminService.GetAccount(ctx, accountID)
 		if err != nil {
-			failed++
-			results = append(results, gin.H{
-				"account_id": accountID,
-				"success":    false,
-				"error":      "Account not found",
-		REDACTED)
-			continue
+			response.Error(c, 404, fmt.Sprintf("Account %d not found", accountID))
+			return
 	REDACTED
-
-		// Update credentials field
 		if account.Credentials == nil {
 			account.Credentials = make(map[string]any)
 	REDACTED
-
 		account.Credentials[req.Field] = req.Value
+		updates = append(updates, accountUpdate{ID: accountID, Credentials: account.CredentialsREDACTED)
+REDACTED
 
-		// Update account
+	// 阶段二：依次更新，任何失败立即返回（避免部分成功部分失败）
+	for _, u := range updates {
 		updateInput := &service.UpdateAccountInput{
-			Credentials: account.Credentials,
+			Credentials: u.Credentials,
 	REDACTED
-
-		_, err = h.adminService.UpdateAccount(ctx, accountID, updateInput)
-		if err != nil {
-			failed++
-			results = append(results, gin.H{
-				"account_id": accountID,
-				"success":    false,
-				"error":      err.Error(),
-		REDACTED)
-			continue
+		if _, err := h.adminService.UpdateAccount(ctx, u.ID, updateInput); err != nil {
+			response.Error(c, 500, fmt.Sprintf("Failed to update account %d: %v", u.ID, err))
+			return
 	REDACTED
-
-		success++
-		results = append(results, gin.H{
-			"account_id": accountID,
-			"success":    true,
-	REDACTED)
 REDACTED
 
 	response.Success(c, gin.H{
-		"success": success,
-		"failed":  failed,
-		"results": results,
+		"success": len(updates),
+		"failed":  0,
 REDACTED)
 REDACTED
 

@@ -112,9 +112,9 @@ security:
     # 白名单禁用时是否允许 http:// URL（默认: false，要求 https）
     allow_insecure_http: true
   response_headers:
-    # Enable configurable response header filtering (disable to use default allowlist)
-    # 启用可配置的响应头过滤（禁用则使用默认白名单）
-    enabled: false
+    # Enable configurable response header filtering (default: true)
+    # 启用可配置的响应头过滤（默认启用，过滤上游敏感响应头）
+    enabled: true
     # Extra allowed response headers from upstream
     # 额外允许的上游响应头
     additional_allowed: []
@@ -390,15 +390,16 @@ database:
   # Database name
   # 数据库名称
   dbname: "sub2api"
-  # SSL mode: disable, require, verify-ca, verify-full
-  # SSL 模式：disable（禁用）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
-  sslmode: "disable"
-  # Max open connections
+  # SSL mode: disable, prefer, require, verify-ca, verify-full
+  # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
+  # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
+  sslmode: "prefer"
+  # Max open connections (高并发场景建议 256+，需配合 PostgreSQL max_connections 调整)
   # 最大打开连接数
-  max_open_conns: 50
-  # Max idle connections
+  max_open_conns: 256
+  # Max idle connections (建议为 max_open_conns 的 50%，减少频繁建连开销)
   # 最大空闲连接数
-  max_idle_conns: 10
+  max_idle_conns: 128
   # Connection max lifetime (minutes)
   # 连接最大存活时间（分钟）
   conn_max_lifetime_minutes: 30
@@ -426,9 +427,9 @@ redis:
   # Connection pool size (max concurrent connections)
   # 连接池大小（最大并发连接数）
   pool_size: 1024
-  # Minimum number of idle connections
+  # Minimum number of idle connections (高并发场景建议 128+，保持足够热连接)
   # 最小空闲连接数
-  min_idle_conns: 10
+  min_idle_conns: 128
   # Enable TLS/SSL connection
   # 是否启用 TLS/SSL 连接
   enable_tls: false
