@@ -56,7 +56,8 @@ REDACTED
 //
 //	Step 1: User-Agent 检查 (必需) - 必须是 claude-cli/x.x.x
 //	Step 2: 对于非 messages 路径，只要 UA 匹配就通过
-//	Step 3: 对于 messages 路径，进行严格验证：
+//	Step 3: 检查 max_tokens=1 + haiku 探测请求绕过（UA 已验证）
+//	Step 4: 对于 messages 路径，进行严格验证：
 //	        - System prompt 相似度检查
 //	        - X-App header 检查
 //	        - anthropic-beta header 检查
@@ -75,14 +76,20 @@ REDACTED
 		return true
 REDACTED
 
-	// Step 3: messages 路径，进行严格验证
+	// Step 3: 检查 max_tokens=1 + haiku 探测请求绕过
+	// 这类请求用于 Claude Code 验证 API 连通性，不携带 system prompt
+	if isMaxTokensOneHaiku, ok := r.Context().Value(ctxkey.IsMaxTokensOneHaikuRequest).(bool); ok && isMaxTokensOneHaiku {
+		return true // 绕过 system prompt 检查，UA 已在 Step 1 验证
+REDACTED
 
-	// 3.1 检查 system prompt 相似度
+	// Step 4: messages 路径，进行严格验证
+
+	// 4.1 检查 system prompt 相似度
 	if !v.hasClaudeCodeSystemPrompt(body) {
 		return false
 REDACTED
 
-	// 3.2 检查必需的 headers（值不为空即可）
+	// 4.2 检查必需的 headers（值不为空即可）
 	xApp := r.Header.Get("X-App")
 	if xApp == "" {
 		return false
@@ -98,7 +105,7 @@ REDACTED
 		return false
 REDACTED
 
-	// 3.3 验证 metadata.user_id
+	// 4.3 验证 metadata.user_id
 	if body == nil {
 		return false
 REDACTED

@@ -28,6 +28,20 @@ REDACTED
 	require.True(t, parsed.ThinkingEnabled)
 REDACTED
 
+func TestParseGatewayRequest_MaxTokens(t *testing.T) {
+	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1REDACTED`)
+	parsed, err := ParseGatewayRequest(body)
+REDACTED
+	require.Equal(t, 1, parsed.MaxTokens)
+REDACTED
+
+func TestParseGatewayRequest_MaxTokensNonIntegralIgnored(t *testing.T) {
+	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1.5REDACTED`)
+	parsed, err := ParseGatewayRequest(body)
+REDACTED
+	require.Equal(t, 0, parsed.MaxTokens)
+REDACTED
+
 func TestParseGatewayRequest_SystemNull(t *testing.T) {
 	body := []byte(`{"model":"claude-3","system":nullREDACTED`)
 	parsed, err := ParseGatewayRequest(body)
