@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { opsAPI, type OpsAccountAvailabilityStatsResponse, type OpsConcurrencyStatsResponse REDACTED from '@/api/admin/ops'
+import { opsAPI, type OpsAccountAvailabilityStatsResponse, type OpsConcurrencyStatsResponse, type OpsUserConcurrencyStatsResponse REDACTED from '@/api/admin/ops'
 
 interface Props {
   platformFilter?: string
@@ -20,6 +20,10 @@ const loading = ref(false)
 const errorMessage = ref('')
 const concurrency = ref<OpsConcurrencyStatsResponse | null>(null)
 const availability = ref<OpsAccountAvailabilityStatsResponse | null>(null)
+const userConcurrency = ref<OpsUserConcurrencyStatsResponse | null>(null)
+
+// 用户视图开关
+const showByUser = ref(false)
 
 const realtimeEnabled = computed(() => {
   return (concurrency.value?.enabled ?? true) && (availability.value?.enabled ?? true)
@@ -30,7 +34,10 @@ function safeNumber(n: unknown): number {
 REDACTED
 
 // 计算显示维度
-const displayDimension = computed<'platform' | 'group' | 'account'>(() => {
+const displayDimension = computed<'platform' | 'group' | 'account' | 'user'>(() => {
+  if (showByUser.value) {
+    return 'user'
+  REDACTED
   if (typeof props.groupIdFilter === 'number' && props.groupIdFilter > 0) {
     return 'account'
   REDACTED
@@ -79,6 +86,18 @@ interface AccountRow {
   overload_remaining_sec?: number
   has_error: boolean
   error_message?: string
+REDACTED
+
+// 用户行数据
+interface UserRow {
+  key: string
+  user_id: number
+  user_email: string
+  username: string
+  current_in_use: number
+  max_capacity: number
+  waiting_in_queue: number
+  load_percentage: number
 REDACTED
 
 // 平台维度汇总
@@ -205,14 +224,37 @@ const accountRows = computed((): AccountRow[] => {
   REDACTED)
 REDACTED)
 
+// 用户维度详细
+const userRows = computed((): UserRow[] => {
+  const userStats = userConcurrency.value?.user || {REDACTED
+
+  return Object.keys(userStats)
+    .map(uid => {
+      const u = userStats[uid] || {REDACTED
+      return {
+        key: uid,
+        user_id: safeNumber(u.user_id),
+        user_email: u.user_email || `User ${uidREDACTED`,
+        username: u.username || '',
+        current_in_use: safeNumber(u.current_in_use),
+        max_capacity: safeNumber(u.max_capacity),
+        waiting_in_queue: safeNumber(u.waiting_in_queue),
+        load_percentage: safeNumber(u.load_percentage)
+      REDACTED
+    REDACTED)
+    .sort((a, b) => b.current_in_use - a.current_in_use || b.load_percentage - a.load_percentage)
+REDACTED)
+
 // 根据维度选择数据
 const displayRows = computed(() => {
+  if (displayDimension.value === 'user') return userRows.value
   if (displayDimension.value === 'account') return accountRows.value
   if (displayDimension.value === 'group') return groupRows.value
   return platformRows.value
 REDACTED)
 
 const displayTitle = computed(() => {
+  if (displayDimension.value === 'user') return t('admin.ops.concurrency.byUser')
   if (displayDimension.value === 'account') return t('admin.ops.concurrency.byAccount')
   if (displayDimension.value === 'group') return t('admin.ops.concurrency.byGroup')
   return t('admin.ops.concurrency.byPlatform')
@@ -222,12 +264,19 @@ async function loadData() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [concData, availData] = await Promise.all([
-      opsAPI.getConcurrencyStats(props.platformFilter, props.groupIdFilter),
-      opsAPI.getAccountAvailabilityStats(props.platformFilter, props.groupIdFilter)
-    ])
-    concurrency.value = concData
-    availability.value = availData
+    if (showByUser.value) {
+      // 用户视图模式只加载用户并发数据
+      const userData = await opsAPI.getUserConcurrencyStats()
+      userConcurrency.value = userData
+    REDACTED else {
+      // 常规模式加载账号/平台/分组数据
+      const [concData, availData] = await Promise.all([
+        opsAPI.getConcurrencyStats(props.platformFilter, props.groupIdFilter),
+        opsAPI.getAccountAvailabilityStats(props.platformFilter, props.groupIdFilter)
+      ])
+      concurrency.value = concData
+      availability.value = availData
+    REDACTED
   REDACTED catch (err: any) {
     console.error('[OpsConcurrencyCard] Failed to load data', err)
     errorMessage.value = err?.response?.data?.detail || t('admin.ops.concurrency.loadFailed')
@@ -241,6 +290,14 @@ watch(
   () => props.refreshToken,
   () => {
     if (!realtimeEnabled.value) return
+    loadData()
+  REDACTED
+)
+
+// 切换用户视图时重新加载数据
+watch(
+  () => showByUser.value,
+  () => {
     loadData()
   REDACTED
 )
@@ -302,16 +359,32 @@ watch(
         </svg>
         {{ t('admin.ops.concurrency.title') REDACTEDREDACTED
       </h3>
-      <button
-        class="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
-        :disabled="loading"
-        :title="t('common.refresh')"
-        @click="loadData"
-      >
-        <svg class="h-3 w-3" :class="{ 'animate-spin': loading REDACTED" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- 用户视图切换按钮 -->
+        <button
+          class="flex items-center justify-center rounded-lg px-2 py-1 transition-colors"
+          :class="showByUser
+            ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-gray-300'"
+          :title="showByUser ? t('admin.ops.concurrency.switchToPlatform') : t('admin.ops.concurrency.switchToUser')"
+          @click="showByUser = !showByUser"
+        >
+          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </button>
+        <!-- 刷新按钮 -->
+        <button
+          class="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-700 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+          :disabled="loading"
+          :title="t('common.refresh')"
+          @click="loadData"
+        >
+          <svg class="h-3 w-3" :class="{ 'animate-spin': loading REDACTED" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- 错误提示 -->
@@ -344,8 +417,41 @@ watch(
         {{ t('admin.ops.concurrency.empty') REDACTEDREDACTED
       </div>
 
+      <!-- 用户视图 -->
+      <div v-else-if="displayDimension === 'user'" class="custom-scrollbar max-h-[360px] flex-1 space-y-2 overflow-y-auto p-3">
+        <div v-for="row in (displayRows as UserRow[])" :key="row.key" class="rounded-lg bg-gray-50 p-2.5 dark:bg-dark-900">
+          <!-- 用户信息和并发 -->
+          <div class="mb-1.5 flex items-center justify-between gap-2">
+            <div class="flex min-w-0 flex-1 items-center gap-1.5">
+              <span class="truncate text-[11px] font-bold text-gray-900 dark:text-white" :title="row.username || row.user_email">
+                {{ row.username || row.user_email REDACTEDREDACTED
+              </span>
+              <span v-if="row.username" class="shrink-0 truncate text-[10px] text-gray-400 dark:text-gray-500" :title="row.user_email">
+                {{ row.user_email REDACTEDREDACTED
+              </span>
+            </div>
+            <div class="flex shrink-0 items-center gap-2 text-[10px]">
+              <span class="font-mono font-bold text-gray-900 dark:text-white"> {{ row.current_in_use REDACTEDREDACTED/{{ row.max_capacity REDACTEDREDACTED </span>
+              <span :class="['font-bold', getLoadTextClass(row.load_percentage)]"> {{ Math.round(row.load_percentage) REDACTEDREDACTED% </span>
+            </div>
+          </div>
+
+          <!-- 进度条 -->
+          <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+            <div class="h-full rounded-full transition-all duration-300" :class="getLoadBarClass(row.load_percentage)" :style="getLoadBarStyle(row.load_percentage)"></div>
+          </div>
+
+          <!-- 等待队列 -->
+          <div v-if="row.waiting_in_queue > 0" class="mt-1.5 flex justify-end">
+            <span class="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+              {{ t('admin.ops.concurrency.queued', { count: row.waiting_in_queue REDACTED) REDACTEDREDACTED
+            </span>
+          </div>
+        </div>
+      </div>
+
       <!-- 汇总视图（平台/分组） -->
-      <div v-else-if="displayDimension !== 'account'" class="custom-scrollbar max-h-[360px] flex-1 space-y-2 overflow-y-auto p-3">
+      <div v-else-if="displayDimension === 'platform' || displayDimension === 'group'" class="custom-scrollbar max-h-[360px] flex-1 space-y-2 overflow-y-auto p-3">
         <div v-for="row in (displayRows as SummaryRow[])" :key="row.key" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-900">
           <!-- 标题行 -->
           <div class="mb-2 flex items-center justify-between gap-2">

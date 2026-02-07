@@ -19,49 +19,65 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 const (
-	antigravityStickySessionTTL  = time.Hour
-	antigravityDefaultMaxRetries = 3
-	antigravityRetryBaseDelay    = 1 * time.Second
-	antigravityRetryMaxDelay     = 16 * time.Second
+	antigravityStickySessionTTL = time.Hour
+	antigravityMaxRetries       = 3
+	antigravityRetryBaseDelay   = 1 * time.Second
+	antigravityRetryMaxDelay    = 16 * time.Second
+
+	// 限流相关常量
+	// antigravityRateLimitThreshold 限流等待/切换阈值
+	// - 智能重试：retryDelay < 此阈值时等待后重试，>= 此阈值时直接限流模型
+	// - 预检查：剩余限流时间 < 此阈值时等待，>= 此阈值时切换账号
+	antigravityRateLimitThreshold       = 7 * time.Second
+	antigravitySmartRetryMinWait        = 1 * time.Second  // 智能重试最小等待时间
+	antigravitySmartRetryMaxAttempts    = 3                // 智能重试最大次数
+	antigravityDefaultRateLimitDuration = 30 * time.Second // 默认限流时间（无 retryDelay 时使用）
+
+	// Google RPC 状态和类型常量
+	googleRPCStatusResourceExhausted      = "RESOURCE_EXHAUSTED"
+	googleRPCStatusUnavailable            = "UNAVAILABLE"
+	googleRPCTypeRetryInfo                = "type.googleapis.com/google.rpc.RetryInfo"
+	googleRPCTypeErrorInfo                = "type.googleapis.com/google.rpc.ErrorInfo"
+	googleRPCReasonModelCapacityExhausted = "MODEL_CAPACITY_EXHAUSTED"
+	googleRPCReasonRateLimitExceeded      = "RATE_LIMIT_EXCEEDED"
 )
 
-const (
-	antigravityMaxRetriesEnv            = "GATEWAY_ANTIGRAVITY_MAX_RETRIES"
-	antigravityMaxRetriesAfterSwitchEnv = "GATEWAY_ANTIGRAVITY_AFTER_SWITCHMAX_RETRIES"
-	antigravityMaxRetriesClaudeEnv      = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_CLAUDE"
-	antigravityMaxRetriesGeminiTextEnv  = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_TEXT"
-	antigravityMaxRetriesGeminiImageEnv = "GATEWAY_ANTIGRAVITY_MAX_RETRIES_GEMINI_IMAGE"
-	antigravityScopeRateLimitEnv        = "GATEWAY_ANTIGRAVITY_429_SCOPE_LIMIT"
-	antigravityBillingModelEnv          = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
-	antigravityFallbackSecondsEnv       = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
-)
-
-// antigravityRetryLoopParams 重试循环的参数
-type antigravityRetryLoopParams struct {
-	ctx            context.Context
-	prefix         string
-	account        *Account
-	proxyURL       string
-	accessToken    string
-	action         string
-	body           []byte
-	quotaScope     AntigravityQuotaScope
-	maxRetries     int
-	c              *gin.Context
-	httpUpstream   HTTPUpstream
-	settingService *SettingService
-	handleError    func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope)
+// antigravityPassthroughErrorMessages 透传给客户端的错误消息白名单（小写）
+// 匹配时使用 strings.Contains，无需完全匹配
+var antigravityPassthroughErrorMessages = []string{
+	"prompt is too long",
 REDACTED
 
-// antigravityRetryLoopResult 重试循环的结果
-type antigravityRetryLoopResult struct {
-	resp *http.Response
+const (
+	antigravityBillingModelEnv    = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
+	antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
+)
+
+// AntigravityAccountSwitchError 账号切换信号
+// 当账号限流时间超过阈值时，通知上层切换账号
+type AntigravityAccountSwitchError struct {
+	OriginalAccountID int64
+	RateLimitedModel  string
+	IsStickySession   bool // 是否为粘性会话切换（决定是否缓存计费）
+REDACTED
+
+func (e *AntigravityAccountSwitchError) Error() string {
+	return fmt.Sprintf("account %d model %s rate limited, need switch",
+		e.OriginalAccountID, e.RateLimitedModel)
+REDACTED
+
+// IsAntigravityAccountSwitchError 检查错误是否为账号切换信号
+func IsAntigravityAccountSwitchError(err error) (*AntigravityAccountSwitchError, bool) {
+	var switchErr *AntigravityAccountSwitchError
+	if errors.As(err, &switchErr) {
+		return switchErr, true
+REDACTED
+	return nil, false
 REDACTED
 
 // PromptTooLongError 表示上游明确返回 prompt too long
@@ -75,17 +91,204 @@ func (e *PromptTooLongError) Error() string {
 	return fmt.Sprintf("prompt too long: status=%d", e.StatusCode)
 REDACTED
 
-// antigravityRetryLoop 执行带 URL fallback 的重试循环
-func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
-	baseURLs := antigravity.ForwardBaseURLs()
-	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLsWithBase(baseURLs)
-	if len(availableURLs) == 0 {
-		availableURLs = baseURLs
+// antigravityRetryLoopParams 重试循环的参数
+type antigravityRetryLoopParams struct {
+	ctx             context.Context
+	prefix          string
+	account         *Account
+	proxyURL        string
+	accessToken     string
+	action          string
+	body            []byte
+	quotaScope      AntigravityQuotaScope
+	c               *gin.Context
+	httpUpstream    HTTPUpstream
+	settingService  *SettingService
+	accountRepo     AccountRepository // 用于智能重试的模型级别限流
+	handleError     func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult
+	requestedModel  string // 用于限流检查的原始请求模型
+	isStickySession bool   // 是否为粘性会话（用于账号切换时的缓存计费判断）
+	groupID         int64  // 用于模型级限流时清除粘性会话
+	sessionHash     string // 用于模型级限流时清除粘性会话
 REDACTED
 
-	maxRetries := p.maxRetries
-	if maxRetries <= 0 {
-		maxRetries = antigravityDefaultMaxRetries
+// antigravityRetryLoopResult 重试循环的结果
+type antigravityRetryLoopResult struct {
+	resp *http.Response
+REDACTED
+
+// smartRetryAction 智能重试的处理结果
+type smartRetryAction int
+
+const (
+	smartRetryActionContinue      smartRetryAction = iota // 继续默认重试逻辑
+	smartRetryActionBreakWithResp                         // 结束循环并返回 resp
+	smartRetryActionContinueURL                           // 继续 URL fallback 循环
+)
+
+// smartRetryResult 智能重试的结果
+type smartRetryResult struct {
+	action      smartRetryAction
+	resp        *http.Response
+	err         error
+	switchError *AntigravityAccountSwitchError // 模型限流时返回账号切换信号
+REDACTED
+
+// handleSmartRetry 处理 OAuth 账号的智能重试逻辑
+// 将 429/503 限流处理逻辑抽取为独立函数，减少 antigravityRetryLoop 的复杂度
+func handleSmartRetry(p antigravityRetryLoopParams, resp *http.Response, respBody []byte, baseURL string, urlIdx int, availableURLs []string) *smartRetryResult {
+	// "Resource has been exhausted" 是 URL 级别限流，切换 URL（仅 429）
+	if resp.StatusCode == http.StatusTooManyRequests && isURLLevelRateLimit(respBody) && urlIdx < len(availableURLs)-1 {
+		log.Printf("%s URL fallback (429): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
+		return &smartRetryResult{action: smartRetryActionContinueURLREDACTED
+REDACTED
+
+	// 判断是否触发智能重试
+	shouldSmartRetry, shouldRateLimitModel, waitDuration, modelName := shouldTriggerAntigravitySmartRetry(p.account, respBody)
+
+	// 情况1: retryDelay >= 阈值，限流模型并切换账号
+	if shouldRateLimitModel {
+		log.Printf("%s status=%d oauth_long_delay model=%s account=%d (model rate limit, switch account)",
+			p.prefix, resp.StatusCode, modelName, p.account.ID)
+
+		resetAt := time.Now().Add(antigravityDefaultRateLimitDuration)
+		if !setModelRateLimitByModelName(p.ctx, p.accountRepo, p.account.ID, modelName, p.prefix, resp.StatusCode, resetAt, false) {
+			p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
+			log.Printf("%s status=%d rate_limited account=%d (no scope mapping)", p.prefix, resp.StatusCode, p.account.ID)
+	REDACTED
+
+		// 返回账号切换信号，让上层切换账号重试
+		return &smartRetryResult{
+			action: smartRetryActionBreakWithResp,
+			switchError: &AntigravityAccountSwitchError{
+				OriginalAccountID: p.account.ID,
+				RateLimitedModel:  modelName,
+				IsStickySession:   p.isStickySession,
+		REDACTED,
+	REDACTED
+REDACTED
+
+	// 情况2: retryDelay < 阈值，智能重试（最多 antigravitySmartRetryMaxAttempts 次）
+	if shouldSmartRetry {
+		var lastRetryResp *http.Response
+		var lastRetryBody []byte
+
+		for attempt := 1; attempt <= antigravitySmartRetryMaxAttempts; attempt++ {
+			log.Printf("%s status=%d oauth_smart_retry attempt=%d/%d delay=%v model=%s account=%d",
+				p.prefix, resp.StatusCode, attempt, antigravitySmartRetryMaxAttempts, waitDuration, modelName, p.account.ID)
+
+			select {
+			case <-p.ctx.Done():
+				log.Printf("%s status=context_canceled_during_smart_retry", p.prefix)
+				return &smartRetryResult{action: smartRetryActionBreakWithResp, err: p.ctx.Err()REDACTED
+			case <-time.After(waitDuration):
+		REDACTED
+
+			// 智能重试：创建新请求
+			retryReq, err := antigravity.NewAPIRequestWithURL(p.ctx, baseURL, p.action, p.accessToken, p.body)
+			if err != nil {
+				log.Printf("%s status=smart_retry_request_build_failed error=%v", p.prefix, err)
+				p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
+				return &smartRetryResult{
+					action: smartRetryActionBreakWithResp,
+					resp: &http.Response{
+						StatusCode: resp.StatusCode,
+						Header:     resp.Header.Clone(),
+						Body:       io.NopCloser(bytes.NewReader(respBody)),
+				REDACTED,
+			REDACTED
+		REDACTED
+
+			retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+			if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
+				log.Printf("%s status=%d smart_retry_success attempt=%d/%d", p.prefix, retryResp.StatusCode, attempt, antigravitySmartRetryMaxAttempts)
+				return &smartRetryResult{action: smartRetryActionBreakWithResp, resp: retryRespREDACTED
+		REDACTED
+
+			// 网络错误时，继续重试
+			if retryErr != nil || retryResp == nil {
+				log.Printf("%s status=smart_retry_network_error attempt=%d/%d error=%v", p.prefix, attempt, antigravitySmartRetryMaxAttempts, retryErr)
+				continue
+		REDACTED
+
+			// 重试失败，关闭之前的响应
+			if lastRetryResp != nil {
+				_ = lastRetryResp.Body.Close()
+		REDACTED
+			lastRetryResp = retryResp
+			if retryResp != nil {
+				lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+				_ = retryResp.Body.Close()
+		REDACTED
+
+			// 解析新的重试信息，用于下次重试的等待时间
+			if attempt < antigravitySmartRetryMaxAttempts && lastRetryBody != nil {
+				newShouldRetry, _, newWaitDuration, _ := shouldTriggerAntigravitySmartRetry(p.account, lastRetryBody)
+				if newShouldRetry && newWaitDuration > 0 {
+					waitDuration = newWaitDuration
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// 所有重试都失败，限流当前模型并切换账号
+		log.Printf("%s status=%d smart_retry_exhausted attempts=%d model=%s account=%d (switch account)",
+			p.prefix, resp.StatusCode, antigravitySmartRetryMaxAttempts, modelName, p.account.ID)
+
+		resetAt := time.Now().Add(antigravityDefaultRateLimitDuration)
+		if p.accountRepo != nil && modelName != "" {
+			if err := p.accountRepo.SetModelRateLimit(p.ctx, p.account.ID, modelName, resetAt); err != nil {
+				log.Printf("%s status=%d model_rate_limit_failed model=%s error=%v", p.prefix, resp.StatusCode, modelName, err)
+		REDACTED else {
+				log.Printf("%s status=%d model_rate_limited_after_smart_retry model=%s account=%d reset_in=%v",
+					p.prefix, resp.StatusCode, modelName, p.account.ID, antigravityDefaultRateLimitDuration)
+		REDACTED
+	REDACTED
+
+		// 返回账号切换信号，让上层切换账号重试
+		return &smartRetryResult{
+			action: smartRetryActionBreakWithResp,
+			switchError: &AntigravityAccountSwitchError{
+				OriginalAccountID: p.account.ID,
+				RateLimitedModel:  modelName,
+				IsStickySession:   p.isStickySession,
+		REDACTED,
+	REDACTED
+REDACTED
+
+	// 未触发智能重试，继续默认重试逻辑
+	return &smartRetryResult{action: smartRetryActionContinueREDACTED
+REDACTED
+
+// antigravityRetryLoop 执行带 URL fallback 的重试循环
+func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
+	// 预检查：如果账号已限流，根据剩余时间决定等待或切换
+	if p.requestedModel != "" {
+		if remaining := p.account.GetRateLimitRemainingTimeWithContext(p.ctx, p.requestedModel); remaining > 0 {
+			if remaining < antigravityRateLimitThreshold {
+				// 限流剩余时间较短，等待后继续
+				log.Printf("%s pre_check: rate_limit_wait remaining=%v model=%s account=%d",
+					p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
+				select {
+				case <-p.ctx.Done():
+					return nil, p.ctx.Err()
+				case <-time.After(remaining):
+			REDACTED
+		REDACTED else {
+				// 限流剩余时间较长，返回账号切换信号
+				log.Printf("%s pre_check: rate_limit_switch remaining=%v model=%s account=%d",
+					p.prefix, remaining.Truncate(time.Second), p.requestedModel, p.account.ID)
+				return nil, &AntigravityAccountSwitchError{
+					OriginalAccountID: p.account.ID,
+					RateLimitedModel:  p.requestedModel,
+					IsStickySession:   p.isStickySession,
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLs()
+	if len(availableURLs) == 0 {
+		availableURLs = antigravity.BaseURLs
 REDACTED
 
 	var resp *http.Response
@@ -105,7 +308,7 @@ REDACTED
 urlFallbackLoop:
 	for urlIdx, baseURL := range availableURLs {
 		usedBaseURL = baseURL
-		for attempt := 1; attempt <= maxRetries; attempt++ {
+		for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
 			select {
 			case <-p.ctx.Done():
 				log.Printf("%s status=context_canceled error=%v", p.prefix, p.ctx.Err())
@@ -124,6 +327,9 @@ urlFallbackLoop:
 		REDACTED
 
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+			if err == nil && resp == nil {
+				err = errors.New("upstream returned nil response")
+		REDACTED
 			if err != nil {
 				safeErr := sanitizeUpstreamErrorMessage(err.Error())
 				appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
@@ -138,8 +344,8 @@ urlFallbackLoop:
 					log.Printf("%s URL fallback (connection error): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
 					continue urlFallbackLoop
 			REDACTED
-				if attempt < maxRetries {
-					log.Printf("%s status=request_failed retry=%d/%d error=%v", p.prefix, attempt, maxRetries, err)
+				if attempt < antigravityMaxRetries {
+					log.Printf("%s status=request_failed retry=%d/%d error=%v", p.prefix, attempt, antigravityMaxRetries, err)
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -151,19 +357,31 @@ urlFallbackLoop:
 				return nil, fmt.Errorf("upstream request failed after retries: %w", err)
 		REDACTED
 
-			// 429 限流处理：区分 URL 级别限流和账户配额限流
-			if resp.StatusCode == http.StatusTooManyRequests {
+			// 429/503 限流处理：区分 URL 级别限流、智能重试和账户配额限流
+			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				// "Resource has been exhausted" 是 URL 级别限流，切换 URL
-				if isURLLevelRateLimit(respBody) && urlIdx < len(availableURLs)-1 {
-					log.Printf("%s URL fallback (429): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
+				// 尝试智能重试处理（OAuth 账号专用）
+				smartResult := handleSmartRetry(p, resp, respBody, baseURL, urlIdx, availableURLs)
+				switch smartResult.action {
+				case smartRetryActionContinueURL:
 					continue urlFallbackLoop
+				case smartRetryActionBreakWithResp:
+					if smartResult.err != nil {
+						return nil, smartResult.err
+				REDACTED
+					// 模型限流时返回切换账号信号
+					if smartResult.switchError != nil {
+						return nil, smartResult.switchError
+				REDACTED
+					resp = smartResult.resp
+					break urlFallbackLoop
 			REDACTED
+				// smartRetryActionContinue: 继续默认重试逻辑
 
-				// 账户/模型配额限流，重试 3 次（指数退避）
-				if attempt < maxRetries {
+				// 账户/模型配额限流，重试 3 次（指数退避）- 默认逻辑（非 OAuth 账号或解析失败）
+				if attempt < antigravityMaxRetries {
 					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
@@ -176,7 +394,7 @@ urlFallbackLoop:
 						Message:            upstreamMsg,
 						Detail:             getUpstreamDetail(respBody),
 				REDACTED)
-					log.Printf("%s status=429 retry=%d/%d body=%s", p.prefix, attempt, maxRetries, truncateForLog(respBody, 200))
+					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 200))
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -185,8 +403,8 @@ urlFallbackLoop:
 			REDACTED
 
 				// 重试用尽，标记账户限流
-				p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope)
-				log.Printf("%s status=429 rate_limited base_url=%s body=%s", p.prefix, baseURL, truncateForLog(respBody, 200))
+				p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
+				log.Printf("%s status=%d rate_limited base_url=%s body=%s", p.prefix, resp.StatusCode, baseURL, truncateForLog(respBody, 200))
 				resp = &http.Response{
 					StatusCode: resp.StatusCode,
 					Header:     resp.Header.Clone(),
@@ -195,12 +413,12 @@ urlFallbackLoop:
 				break urlFallbackLoop
 		REDACTED
 
-			// 其他可重试错误
+			// 其他可重试错误（不包括 429 和 503，因为上面已处理）
 			if resp.StatusCode >= 400 && shouldRetryAntigravityError(resp.StatusCode) {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				if attempt < maxRetries {
+				if attempt < antigravityMaxRetries {
 					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
@@ -213,7 +431,7 @@ urlFallbackLoop:
 						Message:            upstreamMsg,
 						Detail:             getUpstreamDetail(respBody),
 				REDACTED)
-					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, maxRetries, truncateForLog(respBody, 500))
+					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 500))
 					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
 						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
 						return nil, p.ctx.Err()
@@ -301,73 +519,34 @@ REDACTED
 	return fmt.Sprintf("[antigravity-Forward] account=%s", accountName)
 REDACTED
 
-// Antigravity 直接支持的模型（精确匹配透传）
-// 注意：gemini-2.5 系列已移除，统一映射到 gemini-3 系列
-var antigravitySupportedModels = map[string]bool{
-	"claude-opus-4-6-thinking":   true,
-	"claude-opus-4-5-thinking":   true,
-	"claude-sonnet-4-5":          true,
-	"claude-sonnet-4-5-thinking": true,
-	"gemini-3-flash":             true,
-	"gemini-3-pro-low":           true,
-	"gemini-3-pro-high":          true,
-	"gemini-3-pro-image":         true,
-REDACTED
-
-// Antigravity 前缀映射表（按前缀长度降序排列，确保最长匹配优先）
-// 用于处理模型版本号变化（如 -20251111, -thinking, -preview 等后缀）
-// gemini-2.5 系列统一映射到 gemini-3 系列（Antigravity 上游不再支持 2.5）
-var antigravityPrefixMapping = []struct {
-	prefix string
-	target string
-REDACTED{
-	// gemini-2.5 → gemini-3 映射（长前缀优先）
-	{"gemini-2.5-flash-thinking", "gemini-3-flash"REDACTED,  // gemini-2.5-flash-thinking → gemini-3-flash
-	{"gemini-2.5-flash-image", "gemini-3-pro-image"REDACTED, // gemini-2.5-flash-image → gemini-3-pro-image
-	{"gemini-2.5-flash-lite", "gemini-3-flash"REDACTED,      // gemini-2.5-flash-lite → gemini-3-flash
-	{"gemini-2.5-flash", "gemini-3-flash"REDACTED,           // gemini-2.5-flash → gemini-3-flash
-	{"gemini-2.5-pro-preview", "gemini-3-pro-high"REDACTED,  // gemini-2.5-pro-preview → gemini-3-pro-high
-	{"gemini-2.5-pro-exp", "gemini-3-pro-high"REDACTED,      // gemini-2.5-pro-exp → gemini-3-pro-high
-	{"gemini-2.5-pro", "gemini-3-pro-high"REDACTED,          // gemini-2.5-pro → gemini-3-pro-high
-	// gemini-3 前缀映射
-	{"gemini-3-pro-image", "gemini-3-pro-image"REDACTED, // gemini-3-pro-image-preview 等
-	{"gemini-3-flash", "gemini-3-flash"REDACTED,         // gemini-3-flash-preview 等 → gemini-3-flash
-	{"gemini-3-pro", "gemini-3-pro-high"REDACTED,        // gemini-3-pro, gemini-3-pro-preview 等
-	// Claude 映射
-	{"claude-3-5-sonnet", "claude-sonnet-4-5"REDACTED, // 旧版 claude-3-5-sonnet-xxx
-	{"claude-sonnet-4-5", "claude-sonnet-4-5"REDACTED, // claude-sonnet-4-5-xxx
-	{"claude-haiku-4-5", "claude-sonnet-4-5"REDACTED,  // claude-haiku-4-5-xxx → sonnet
-	{"claude-opus-4-5", "claude-opus-4-5-thinking"REDACTED,
-	{"claude-opus-4-6", "claude-opus-4-6-thinking"REDACTED,
-	{"claude-3-haiku", "claude-sonnet-4-5"REDACTED, // 旧版 claude-3-haiku-xxx → sonnet
-	{"claude-sonnet-4", "claude-sonnet-4-5"REDACTED,
-	{"claude-haiku-4", "claude-sonnet-4-5"REDACTED, // → sonnet
-	{"claude-opus-4", "claude-opus-4-5-thinking"REDACTED,
-REDACTED
-
 // AntigravityGatewayService 处理 Antigravity 平台的 API 转发
 type AntigravityGatewayService struct {
-	accountRepo      AccountRepository
-	tokenProvider    *AntigravityTokenProvider
-	rateLimitService *RateLimitService
-	httpUpstream     HTTPUpstream
-	settingService   *SettingService
+	accountRepo       AccountRepository
+	tokenProvider     *AntigravityTokenProvider
+	rateLimitService  *RateLimitService
+	httpUpstream      HTTPUpstream
+	settingService    *SettingService
+	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
+	schedulerSnapshot *SchedulerSnapshotService
 REDACTED
 
 func NewAntigravityGatewayService(
 	accountRepo AccountRepository,
-	_ GatewayCache,
+	cache GatewayCache,
+	schedulerSnapshot *SchedulerSnapshotService,
 	tokenProvider *AntigravityTokenProvider,
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
 	settingService *SettingService,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
-		accountRepo:      accountRepo,
-		tokenProvider:    tokenProvider,
-		rateLimitService: rateLimitService,
-		httpUpstream:     httpUpstream,
-		settingService:   settingService,
+		accountRepo:       accountRepo,
+		tokenProvider:     tokenProvider,
+		rateLimitService:  rateLimitService,
+		httpUpstream:      httpUpstream,
+		settingService:    settingService,
+		cache:             cache,
+		schedulerSnapshot: schedulerSnapshot,
 REDACTED
 REDACTED
 
@@ -376,33 +555,79 @@ func (s *AntigravityGatewayService) GetTokenProvider() *AntigravityTokenProvider
 	return s.tokenProvider
 REDACTED
 
-// getMappedModel 获取映射后的模型名
-// 逻辑：账户映射 → 直接支持透传 → 前缀映射 → gemini透传 → 默认值
-func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedModel string) string {
-	// 1. 账户级映射（用户自定义优先）
-	if mapped := account.GetMappedModel(requestedModel); mapped != requestedModel {
+// getLogConfig 获取上游错误日志配置
+// 返回是否记录日志体和最大字节数
+func (s *AntigravityGatewayService) getLogConfig() (logBody bool, maxBytes int) {
+	maxBytes = 2048 // 默认值
+	if s.settingService == nil || s.settingService.cfg == nil {
+		return false, maxBytes
+REDACTED
+	cfg := s.settingService.cfg.Gateway
+	if cfg.LogUpstreamErrorBodyMaxBytes > 0 {
+		maxBytes = cfg.LogUpstreamErrorBodyMaxBytes
+REDACTED
+	return cfg.LogUpstreamErrorBody, maxBytes
+REDACTED
+
+// getUpstreamErrorDetail 获取上游错误详情（用于日志记录）
+func (s *AntigravityGatewayService) getUpstreamErrorDetail(body []byte) string {
+	logBody, maxBytes := s.getLogConfig()
+	if !logBody {
+		return ""
+REDACTED
+	return truncateString(string(body), maxBytes)
+REDACTED
+
+// mapAntigravityModel 获取映射后的模型名
+// 完全依赖映射配置：账户映射（通配符）→ 默认映射兜底（DefaultAntigravityModelMapping）
+// 注意：返回空字符串表示模型不被支持，调度时会过滤掉该账号
+func mapAntigravityModel(account *Account, requestedModel string) string {
+	if account == nil {
+		return ""
+REDACTED
+
+	// 获取映射表（未配置时自动使用 DefaultAntigravityModelMapping）
+	mapping := account.GetModelMapping()
+	if len(mapping) == 0 {
+		return "" // 无映射配置（非 Antigravity 平台）
+REDACTED
+
+	// 通过映射表查询（支持精确匹配 + 通配符）
+	mapped := account.GetMappedModel(requestedModel)
+
+	// 判断是否映射成功（mapped != requestedModel 说明找到了映射规则）
+	if mapped != requestedModel {
 		return mapped
 REDACTED
 
-	// 2. 直接支持的模型透传
-	if antigravitySupportedModels[requestedModel] {
+	// 如果 mapped == requestedModel，检查是否在映射表 key 中显式配置
+	// 这区分两种情况：
+	// 1. 映射表中有 "model-a": "model-a"（显式透传）→ 返回 model-a
+	// 2. 映射表中没有 model-a 的配置 → 返回空（不支持）
+	if _, exists := mapping[requestedModel]; exists {
 		return requestedModel
 REDACTED
 
-	// 3. 前缀映射（处理版本号变化，如 -20251111, -thinking, -preview）
-	for _, pm := range antigravityPrefixMapping {
-		if strings.HasPrefix(requestedModel, pm.prefix) {
-			return pm.target
-	REDACTED
+	// 未在映射表中配置的模型，返回空字符串（不支持）
+	return ""
 REDACTED
 
-	// 4. Gemini 模型透传（未匹配到前缀的 gemini 模型）
-	if strings.HasPrefix(requestedModel, "gemini-") {
-		return requestedModel
+// getMappedModel 获取映射后的模型名
+// 完全依赖映射配置：账户映射（通配符）→ 默认映射兜底
+func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedModel string) string {
+	return mapAntigravityModel(account, requestedModel)
 REDACTED
 
-	// 5. 默认值
-	return "claude-sonnet-4-5"
+// applyThinkingModelSuffix 根据 thinking 配置调整模型名
+// 当映射结果是 claude-sonnet-4-5 且请求开启了 thinking 时，改为 claude-sonnet-4-5-thinking
+func applyThinkingModelSuffix(mappedModel string, thinkingEnabled bool) string {
+	if !thinkingEnabled {
+		return mappedModel
+REDACTED
+	if mappedModel == "claude-sonnet-4-5" {
+		return "claude-sonnet-4-5-thinking"
+REDACTED
+	return mappedModel
 REDACTED
 
 // IsModelSupported 检查模型是否被支持
@@ -421,11 +646,6 @@ REDACTED
 // TestConnection 测试 Antigravity 账号连接（非流式，无重试、无计费）
 // 支持 Claude 和 Gemini 两种协议，根据 modelID 前缀自动选择
 func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
-	// 上游透传账号使用专用测试方法
-	if account.Type == AccountTypeUpstream {
-		return s.testUpstreamConnection(ctx, account, modelID)
-REDACTED
-
 	// 获取 token
 	if s.tokenProvider == nil {
 		return nil, errors.New("antigravity token provider not configured")
@@ -440,6 +660,9 @@ REDACTED
 
 	// 模型映射
 	mappedModel := s.getMappedModel(account, modelID)
+	if mappedModel == "" {
+		return nil, fmt.Errorf("model %s not in whitelist", modelID)
+REDACTED
 
 	// 构建请求体
 	var requestBody []byte
@@ -520,87 +743,6 @@ REDACTED
 	return nil, lastErr
 REDACTED
 
-// testUpstreamConnection 测试上游透传账号连接
-func (s *AntigravityGatewayService) testUpstreamConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
-	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	if baseURL == "" || apiKey == "" {
-		return nil, errors.New("upstream account missing base_url or api_key")
-REDACTED
-	baseURL = strings.TrimSuffix(baseURL, "/")
-
-	// 使用 Claude 模型进行测试
-	if modelID == "" {
-		modelID = "claude-sonnet-4-20250514"
-REDACTED
-
-	// 构建最小测试请求
-	testReq := map[string]any{
-		"model":      modelID,
-		"max_tokens": 1,
-		"messages": []map[string]any{
-			{"role": "user", "content": "."REDACTED,
-	REDACTED,
-REDACTED
-	requestBody, err := json.Marshal(testReq)
-	if err != nil {
-		return nil, fmt.Errorf("构建请求失败: %w", err)
-REDACTED
-
-	// 构建 HTTP 请求
-	upstreamURL := baseURL + "/v1/messages"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(requestBody))
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
-REDACTED
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	// 代理 URL
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-REDACTED
-
-	log.Printf("[antigravity-Test-Upstream] account=%s url=%s", account.Name, upstreamURL)
-
-	// 发送请求
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
-	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
-REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
-
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
-REDACTED
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("API 返回 %d: %s", resp.StatusCode, string(respBody))
-REDACTED
-
-	// 提取响应文本
-	var respData map[string]any
-	text := ""
-	if json.Unmarshal(respBody, &respData) == nil {
-		if content, ok := respData["content"].([]any); ok && len(content) > 0 {
-			if block, ok := content[0].(map[string]any); ok {
-				if t, ok := block["text"].(string); ok {
-					text = t
-			REDACTED
-		REDACTED
-	REDACTED
-REDACTED
-
-	return &TestConnectionResult{
-		Text:        text,
-		MappedModel: modelID,
-REDACTED, nil
-REDACTED
-
 // buildGeminiTestRequest 构建 Gemini 格式测试请求
 // 使用最小 token 消耗：输入 "." + maxOutputTokens: 1
 func (s *AntigravityGatewayService) buildGeminiTestRequest(projectID, model string) ([]byte, error) {
@@ -651,10 +793,6 @@ func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Contex
 REDACTED
 	opts.EnableIdentityPatch = s.settingService.IsIdentityPatchEnabled(ctx)
 	opts.IdentityPatch = s.settingService.GetIdentityPatchPrompt(ctx)
-
-	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && group != nil {
-		opts.EnableMCPXML = group.MCPXMLInject
-REDACTED
 	return opts
 REDACTED
 
@@ -822,12 +960,7 @@ REDACTED
 REDACTED
 
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
-func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
-	// 上游透传账号直接转发，不走 OAuth token 刷新
-	if account.Type == AccountTypeUpstream {
-		return s.ForwardUpstream(ctx, c, account, body)
-REDACTED
-
+func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte, isStickySession bool) (*ForwardResult, error) {
 	startTime := time.Now()
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
@@ -835,29 +968,30 @@ REDACTED
 	// 解析 Claude 请求
 	var claudeReq antigravity.ClaudeRequest
 	if err := json.Unmarshal(body, &claudeReq); err != nil {
-		return nil, fmt.Errorf("parse claude request: %w", err)
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 REDACTED
 	if strings.TrimSpace(claudeReq.Model) == "" {
-		return nil, fmt.Errorf("missing model")
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", "Missing model")
 REDACTED
 
 	originalModel := claudeReq.Model
 	mappedModel := s.getMappedModel(account, claudeReq.Model)
-	quotaScope, _ := resolveAntigravityQuotaScope(originalModel)
-	billingModel := originalModel
-	if antigravityUseMappedModelForBilling() && strings.TrimSpace(mappedModel) != "" {
-		billingModel = mappedModel
+	if mappedModel == "" {
+		return nil, s.writeClaudeError(c, http.StatusForbidden, "permission_error", fmt.Sprintf("model %s not in whitelist", claudeReq.Model))
 REDACTED
-	afterSwitch := antigravityHasAccountSwitch(ctx)
-	maxRetries := antigravityMaxRetriesForModel(originalModel, afterSwitch)
+	loadModel := mappedModel
+	// 应用 thinking 模式自动后缀：如果 thinking 开启且目标是 claude-sonnet-4-5，自动改为 thinking 版本
+	thinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
+	mappedModel = applyThinkingModelSuffix(mappedModel, thinkingEnabled)
+	quotaScope, _ := resolveAntigravityQuotaScope(originalModel)
 
 	// 获取 access_token
 	if s.tokenProvider == nil {
-		return nil, errors.New("antigravity token provider not configured")
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "api_error", "Antigravity token provider not configured")
 REDACTED
 	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, fmt.Errorf("获取 access_token 失败: %w", err)
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "authentication_error", "Failed to get upstream access token")
 REDACTED
 
 	// 获取 project_id（部分账户类型可能没有）
@@ -877,30 +1011,46 @@ REDACTED
 	// 转换 Claude 请求为 Gemini 格式
 	geminiBody, err := antigravity.TransformClaudeToGeminiWithOptions(&claudeReq, projectID, mappedModel, transformOpts)
 	if err != nil {
-		return nil, fmt.Errorf("transform request: %w", err)
+		return nil, s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 REDACTED
 
 	// Antigravity 上游只支持流式请求，统一使用 streamGenerateContent
 	// 如果客户端请求非流式，在响应处理阶段会收集完整流式响应后转换返回
 	action := "streamGenerateContent"
 
+	// 统计模型调用次数（包括粘性会话，用于负载均衡调度）
+	if s.cache != nil {
+		_, _ = s.cache.IncrModelCallCount(ctx, account.ID, loadModel)
+REDACTED
+
 	// 执行带重试的请求
 	result, err := antigravityRetryLoop(antigravityRetryLoopParams{
-		ctx:            ctx,
-		prefix:         prefix,
-		account:        account,
-		proxyURL:       proxyURL,
-		accessToken:    accessToken,
-		action:         action,
-		body:           geminiBody,
-		quotaScope:     quotaScope,
-		c:              c,
-		httpUpstream:   s.httpUpstream,
-		settingService: s.settingService,
-		handleError:    s.handleUpstreamError,
-		maxRetries:     maxRetries,
+		ctx:             ctx,
+		prefix:          prefix,
+		account:         account,
+		proxyURL:        proxyURL,
+		accessToken:     accessToken,
+		action:          action,
+		body:            geminiBody,
+		quotaScope:      quotaScope,
+		c:               c,
+		httpUpstream:    s.httpUpstream,
+		settingService:  s.settingService,
+		accountRepo:     s.accountRepo,
+		handleError:     s.handleUpstreamError,
+		requestedModel:  originalModel,
+		isStickySession: isStickySession, // Forward 由上层判断粘性会话
+		groupID:         0,               // Forward 方法没有 groupID，由上层处理粘性会话清除
+		sessionHash:     "",              // Forward 方法没有 sessionHash，由上层处理粘性会话清除
 REDACTED)
 	if err != nil {
+		// 检查是否是账号切换信号，转换为 UpstreamFailoverError 让 Handler 切换账号
+		if switchErr, ok := IsAntigravityAccountSwitchError(err); ok {
+			return nil, &UpstreamFailoverError{
+				StatusCode:        http.StatusServiceUnavailable,
+				ForceCacheBilling: switchErr.IsStickySession,
+		REDACTED
+	REDACTED
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 REDACTED
 	resp := result.resp
@@ -915,15 +1065,8 @@ REDACTED
 		if resp.StatusCode == http.StatusBadRequest && isSignatureRelatedError(respBody) {
 			upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-			logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
-			maxBytes := 2048
-			if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
-				maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-		REDACTED
-			upstreamDetail := ""
-			if logBody {
-				upstreamDetail = truncateString(string(respBody), maxBytes)
-		REDACTED
+			logBody, maxBytes := s.getLogConfig()
+			upstreamDetail := s.getUpstreamErrorDetail(respBody)
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
@@ -963,19 +1106,23 @@ REDACTED
 					continue
 			REDACTED
 				retryResult, retryErr := antigravityRetryLoop(antigravityRetryLoopParams{
-					ctx:            ctx,
-					prefix:         prefix,
-					account:        account,
-					proxyURL:       proxyURL,
-					accessToken:    accessToken,
-					action:         action,
-					body:           retryGeminiBody,
-					quotaScope:     quotaScope,
-					c:              c,
-					httpUpstream:   s.httpUpstream,
-					settingService: s.settingService,
-					handleError:    s.handleUpstreamError,
-					maxRetries:     maxRetries,
+					ctx:             ctx,
+					prefix:          prefix,
+					account:         account,
+					proxyURL:        proxyURL,
+					accessToken:     accessToken,
+					action:          action,
+					body:            retryGeminiBody,
+					quotaScope:      quotaScope,
+					c:               c,
+					httpUpstream:    s.httpUpstream,
+					settingService:  s.settingService,
+					accountRepo:     s.accountRepo,
+					handleError:     s.handleUpstreamError,
+					requestedModel:  originalModel,
+					isStickySession: isStickySession,
+					groupID:         0,  // Forward 方法没有 groupID，由上层处理粘性会话清除
+					sessionHash:     "", // Forward 方法没有 sessionHash，由上层处理粘性会话清除
 			REDACTED)
 				if retryErr != nil {
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -1051,22 +1198,14 @@ REDACTED
 
 		// 处理错误响应（重试后仍失败或不触发重试）
 		if resp.StatusCode >= 400 {
-			if resp.StatusCode == http.StatusBadRequest {
-				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
-				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-				log.Printf("%s status=400 prompt_too_long=%v upstream_message=%q request_id=%s body=%s", prefix, isPromptTooLongError(respBody), upstreamMsg, resp.Header.Get("x-request-id"), truncateForLog(respBody, 500))
-		REDACTED
+			// 检测 prompt too long 错误，返回特殊错误类型供上层 fallback
 			if resp.StatusCode == http.StatusBadRequest && isPromptTooLongError(respBody) {
 				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-				logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
-				maxBytes := 2048
-				if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
-					maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-			REDACTED
-				upstreamDetail := ""
+				upstreamDetail := s.getUpstreamErrorDetail(respBody)
+				logBody, maxBytes := s.getLogConfig()
 				if logBody {
-					upstreamDetail = truncateString(string(respBody), maxBytes)
+					log.Printf("%s status=400 prompt_too_long=true upstream_message=%q request_id=%s body=%s", prefix, upstreamMsg, resp.Header.Get("x-request-id"), truncateForLog(respBody, maxBytes))
 			REDACTED
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
@@ -1084,20 +1223,13 @@ REDACTED
 					Body:       respBody,
 			REDACTED
 		REDACTED
-			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
+
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope, 0, "", isStickySession)
 
 			if s.shouldFailoverUpstreamError(resp.StatusCode) {
 				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-				logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
-				maxBytes := 2048
-				if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
-					maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-			REDACTED
-				upstreamDetail := ""
-				if logBody {
-					upstreamDetail = truncateString(string(respBody), maxBytes)
-			REDACTED
+				upstreamDetail := s.getUpstreamErrorDetail(respBody)
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
 					AccountID:          account.ID,
@@ -1145,7 +1277,7 @@ REDACTED
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
-		Model:        billingModel, // 计费模型（可按映射模型覆盖）
+		Model:        originalModel, // 使用原始模型用于计费和日志
 		Stream:       claudeReq.Stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
@@ -1170,21 +1302,38 @@ REDACTED
 		return true
 REDACTED
 
-	// Detect thinking block modification errors:
-	// "thinking or redacted_thinking blocks in the latest assistant message cannot be modified"
-	if strings.Contains(msg, "cannot be modified") && (strings.Contains(msg, "thinking") || strings.Contains(msg, "redacted_thinking")) {
-		return true
-REDACTED
-
 	return false
 REDACTED
 
+// isPromptTooLongError 检测是否为 prompt too long 错误
 func isPromptTooLongError(respBody []byte) bool {
 	msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
 	if msg == "" {
 		msg = strings.ToLower(string(respBody))
 REDACTED
-	return strings.Contains(msg, "prompt is too long")
+	return strings.Contains(msg, "prompt is too long") ||
+		strings.Contains(msg, "request is too long") ||
+		strings.Contains(msg, "context length exceeded") ||
+		strings.Contains(msg, "max_tokens")
+REDACTED
+
+// isPassthroughErrorMessage 检查错误消息是否在透传白名单中
+func isPassthroughErrorMessage(msg string) bool {
+	lower := strings.ToLower(msg)
+	for _, pattern := range antigravityPassthroughErrorMessages {
+		if strings.Contains(lower, pattern) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// getPassthroughOrDefault 若消息在白名单内则返回原始消息，否则返回默认消息
+func getPassthroughOrDefault(upstreamMsg, defaultMsg string) string {
+	if isPassthroughErrorMessage(upstreamMsg) {
+		return upstreamMsg
+REDACTED
+	return defaultMsg
 REDACTED
 
 func extractAntigravityErrorMessage(body []byte) string {
@@ -1193,41 +1342,15 @@ func extractAntigravityErrorMessage(body []byte) string {
 		return ""
 REDACTED
 
-	parseNestedMessage := func(msg string) string {
-		trimmed := strings.TrimSpace(msg)
-		if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
-			return ""
-	REDACTED
-		var nested map[string]any
-		if err := json.Unmarshal([]byte(trimmed), &nested); err != nil {
-			return ""
-	REDACTED
-		if errObj, ok := nested["error"].(map[string]any); ok {
-			if innerMsg, ok := errObj["message"].(string); ok && strings.TrimSpace(innerMsg) != "" {
-				return innerMsg
-		REDACTED
-	REDACTED
-		if innerMsg, ok := nested["message"].(string); ok && strings.TrimSpace(innerMsg) != "" {
-			return innerMsg
-	REDACTED
-		return ""
-REDACTED
-
 	// Google-style: {"error": {"message": "..."REDACTEDREDACTED
 	if errObj, ok := payload["error"].(map[string]any); ok {
 		if msg, ok := errObj["message"].(string); ok && strings.TrimSpace(msg) != "" {
-			if innerMsg := parseNestedMessage(msg); innerMsg != "" {
-				return innerMsg
-		REDACTED
 			return msg
 	REDACTED
 REDACTED
 
 	// Fallback: top-level message
 	if msg, ok := payload["message"].(string); ok && strings.TrimSpace(msg) != "" {
-		if innerMsg := parseNestedMessage(msg); innerMsg != "" {
-			return innerMsg
-	REDACTED
 		return msg
 REDACTED
 
@@ -1455,210 +1578,8 @@ REDACTED
 	return changed, nil
 REDACTED
 
-// ForwardUpstream 透传请求到上游 Antigravity 服务
-// 用于 upstream 类型账号，直接使用 base_url + api_key 转发，不走 OAuth token
-func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
-	startTime := time.Now()
-	sessionID := getSessionID(c)
-	prefix := logPrefix(sessionID, account.Name)
-
-	// 获取上游配置
-	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	if baseURL == "" || apiKey == "" {
-		return nil, fmt.Errorf("upstream account missing base_url or api_key")
-REDACTED
-	baseURL = strings.TrimSuffix(baseURL, "/")
-
-	// 解析请求获取模型信息
-	var claudeReq antigravity.ClaudeRequest
-	if err := json.Unmarshal(body, &claudeReq); err != nil {
-		return nil, fmt.Errorf("parse claude request: %w", err)
-REDACTED
-	if strings.TrimSpace(claudeReq.Model) == "" {
-		return nil, fmt.Errorf("missing model")
-REDACTED
-	originalModel := claudeReq.Model
-	billingModel := originalModel
-
-	// 构建上游请求 URL
-	upstreamURL := baseURL + "/v1/messages"
-
-	// 创建请求
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create upstream request: %w", err)
-REDACTED
-
-	// 设置请求头
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("x-api-key", apiKey) // Claude API 兼容
-
-	// 透传 Claude 相关 headers
-	if v := c.GetHeader("anthropic-version"); v != "" {
-		req.Header.Set("anthropic-version", v)
-REDACTED
-	if v := c.GetHeader("anthropic-beta"); v != "" {
-		req.Header.Set("anthropic-beta", v)
-REDACTED
-
-	// 代理 URL
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-REDACTED
-
-	// 发送请求
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
-	if err != nil {
-		log.Printf("%s upstream request failed: %v", prefix, err)
-		return nil, fmt.Errorf("upstream request failed: %w", err)
-REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
-
-	// 处理错误响应
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-
-		// 429 错误时标记账号限流
-		if resp.StatusCode == http.StatusTooManyRequests {
-			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, AntigravityQuotaScopeClaude)
-	REDACTED
-
-		// 透传上游错误
-		c.Header("Content-Type", resp.Header.Get("Content-Type"))
-		c.Status(resp.StatusCode)
-		_, _ = c.Writer.Write(respBody)
-
-		return &ForwardResult{
-			Model: billingModel,
-	REDACTED, nil
-REDACTED
-
-	// 处理成功响应（流式/非流式）
-	var usage *ClaudeUsage
-	var firstTokenMs *int
-
-	if claudeReq.Stream {
-		// 流式响应：透传
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.Header("Connection", "keep-alive")
-		c.Header("X-Accel-Buffering", "no")
-		c.Status(http.StatusOK)
-
-		usage, firstTokenMs = s.streamUpstreamResponse(c, resp, startTime)
-REDACTED else {
-		// 非流式响应：直接透传
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("read upstream response: %w", err)
-	REDACTED
-
-		// 提取 usage
-		usage = s.extractClaudeUsage(respBody)
-
-		c.Header("Content-Type", resp.Header.Get("Content-Type"))
-		c.Status(http.StatusOK)
-		_, _ = c.Writer.Write(respBody)
-REDACTED
-
-	// 构建计费结果
-	duration := time.Since(startTime)
-	log.Printf("%s status=success duration_ms=%d", prefix, duration.Milliseconds())
-
-	return &ForwardResult{
-		Model:        billingModel,
-		Stream:       claudeReq.Stream,
-		Duration:     duration,
-		FirstTokenMs: firstTokenMs,
-		Usage: ClaudeUsage{
-			InputTokens:              usage.InputTokens,
-			OutputTokens:             usage.OutputTokens,
-			CacheReadInputTokens:     usage.CacheReadInputTokens,
-			CacheCreationInputTokens: usage.CacheCreationInputTokens,
-	REDACTED,
-REDACTED, nil
-REDACTED
-
-// streamUpstreamResponse 透传上游流式响应并提取 usage
-func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*ClaudeUsage, *int) {
-	usage := &ClaudeUsage{REDACTED
-	var firstTokenMs *int
-	var firstTokenRecorded bool
-
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		// 记录首 token 时间
-		if !firstTokenRecorded && len(line) > 0 {
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-			firstTokenRecorded = true
-	REDACTED
-
-		// 尝试从 message_delta 或 message_stop 事件提取 usage
-		if bytes.HasPrefix(line, []byte("data: ")) {
-			dataStr := bytes.TrimPrefix(line, []byte("data: "))
-			var event map[string]any
-			if json.Unmarshal(dataStr, &event) == nil {
-				if u, ok := event["usage"].(map[string]any); ok {
-					if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {
-						usage.InputTokens = int(v)
-				REDACTED
-					if v, ok := u["output_tokens"].(float64); ok && int(v) > 0 {
-						usage.OutputTokens = int(v)
-				REDACTED
-					if v, ok := u["cache_read_input_tokens"].(float64); ok && int(v) > 0 {
-						usage.CacheReadInputTokens = int(v)
-				REDACTED
-					if v, ok := u["cache_creation_input_tokens"].(float64); ok && int(v) > 0 {
-						usage.CacheCreationInputTokens = int(v)
-				REDACTED
-			REDACTED
-		REDACTED
-	REDACTED
-
-		// 透传行
-		_, _ = c.Writer.Write(line)
-		_, _ = c.Writer.Write([]byte("\n"))
-		c.Writer.Flush()
-REDACTED
-
-	return usage, firstTokenMs
-REDACTED
-
-// extractClaudeUsage 从非流式 Claude 响应提取 usage
-func (s *AntigravityGatewayService) extractClaudeUsage(body []byte) *ClaudeUsage {
-	usage := &ClaudeUsage{REDACTED
-	var resp map[string]any
-	if json.Unmarshal(body, &resp) != nil {
-		return usage
-REDACTED
-	if u, ok := resp["usage"].(map[string]any); ok {
-		if v, ok := u["input_tokens"].(float64); ok {
-			usage.InputTokens = int(v)
-	REDACTED
-		if v, ok := u["output_tokens"].(float64); ok {
-			usage.OutputTokens = int(v)
-	REDACTED
-		if v, ok := u["cache_read_input_tokens"].(float64); ok {
-			usage.CacheReadInputTokens = int(v)
-	REDACTED
-		if v, ok := u["cache_creation_input_tokens"].(float64); ok {
-			usage.CacheCreationInputTokens = int(v)
-	REDACTED
-REDACTED
-	return usage
-REDACTED
-
 // ForwardGemini 转发 Gemini 协议请求
-func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {
+func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte, isStickySession bool) (*ForwardResult, error) {
 	startTime := time.Now()
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
@@ -1696,20 +1617,17 @@ REDACTED
 REDACTED
 
 	mappedModel := s.getMappedModel(account, originalModel)
-	billingModel := originalModel
-	if antigravityUseMappedModelForBilling() && strings.TrimSpace(mappedModel) != "" {
-		billingModel = mappedModel
+	if mappedModel == "" {
+		return nil, s.writeGoogleError(c, http.StatusForbidden, fmt.Sprintf("model %s not in whitelist", originalModel))
 REDACTED
-	afterSwitch := antigravityHasAccountSwitch(ctx)
-	maxRetries := antigravityMaxRetriesForModel(originalModel, afterSwitch)
 
 	// 获取 access_token
 	if s.tokenProvider == nil {
-		return nil, errors.New("antigravity token provider not configured")
+		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Antigravity token provider not configured")
 REDACTED
 	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, fmt.Errorf("获取 access_token 失败: %w", err)
+		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to get upstream access token")
 REDACTED
 
 	// 获取 project_id（部分账户类型可能没有）
@@ -1721,17 +1639,10 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	// 过滤掉 parts 为空的消息（Gemini API 不接受空 parts）
-	filteredBody, err := filterEmptyPartsFromGeminiRequest(body)
-	if err != nil {
-		log.Printf("[Antigravity] Failed to filter empty parts: %v", err)
-		filteredBody = body
-REDACTED
-
 	// Antigravity 上游要求必须包含身份提示词，注入到请求中
-	injectedBody, err := injectIdentityPatchToGeminiRequest(filteredBody)
+	injectedBody, err := injectIdentityPatchToGeminiRequest(body)
 	if err != nil {
-		return nil, err
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid request body")
 REDACTED
 
 	// 清理 Schema
@@ -1745,30 +1656,46 @@ REDACTED
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)
 	if err != nil {
-		return nil, err
+		return nil, s.writeGoogleError(c, http.StatusInternalServerError, "Failed to build upstream request")
 REDACTED
 
 	// Antigravity 上游只支持流式请求，统一使用 streamGenerateContent
 	// 如果客户端请求非流式，在响应处理阶段会收集完整流式响应后返回
 	upstreamAction := "streamGenerateContent"
 
+	// 统计模型调用次数（包括粘性会话，用于负载均衡调度）
+	if s.cache != nil {
+		_, _ = s.cache.IncrModelCallCount(ctx, account.ID, mappedModel)
+REDACTED
+
 	// 执行带重试的请求
 	result, err := antigravityRetryLoop(antigravityRetryLoopParams{
-		ctx:            ctx,
-		prefix:         prefix,
-		account:        account,
-		proxyURL:       proxyURL,
-		accessToken:    accessToken,
-		action:         upstreamAction,
-		body:           wrappedBody,
-		quotaScope:     quotaScope,
-		c:              c,
-		httpUpstream:   s.httpUpstream,
-		settingService: s.settingService,
-		handleError:    s.handleUpstreamError,
-		maxRetries:     maxRetries,
+		ctx:             ctx,
+		prefix:          prefix,
+		account:         account,
+		proxyURL:        proxyURL,
+		accessToken:     accessToken,
+		action:          upstreamAction,
+		body:            wrappedBody,
+		quotaScope:      quotaScope,
+		c:               c,
+		httpUpstream:    s.httpUpstream,
+		settingService:  s.settingService,
+		accountRepo:     s.accountRepo,
+		handleError:     s.handleUpstreamError,
+		requestedModel:  originalModel,
+		isStickySession: isStickySession, // ForwardGemini 由上层判断粘性会话
+		groupID:         0,               // ForwardGemini 方法没有 groupID，由上层处理粘性会话清除
+		sessionHash:     "",              // ForwardGemini 方法没有 sessionHash，由上层处理粘性会话清除
 REDACTED)
 	if err != nil {
+		// 检查是否是账号切换信号，转换为 UpstreamFailoverError 让 Handler 切换账号
+		if switchErr, ok := IsAntigravityAccountSwitchError(err); ok {
+			return nil, &UpstreamFailoverError{
+				StatusCode:        http.StatusServiceUnavailable,
+				ForceCacheBilling: switchErr.IsStickySession,
+		REDACTED
+	REDACTED
 		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries")
 REDACTED
 	resp := result.resp
@@ -1824,19 +1751,10 @@ REDACTED()
 		if unwrapErr != nil || len(unwrappedForOps) == 0 {
 			unwrappedForOps = respBody
 	REDACTED
-		s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope)
+		s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, quotaScope, 0, "", isStickySession)
 		upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(unwrappedForOps))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-
-		logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
-		maxBytes := 2048
-		if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
-			maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-	REDACTED
-		upstreamDetail := ""
-		if logBody {
-			upstreamDetail = truncateString(string(unwrappedForOps), maxBytes)
-	REDACTED
+		upstreamDetail := s.getUpstreamErrorDetail(unwrappedForOps)
 
 		// Always record upstream context for Ops error logs, even when we will failover.
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
@@ -1915,7 +1833,7 @@ REDACTED
 	return &ForwardResult{
 		RequestID:    requestID,
 		Usage:        *usage,
-		Model:        billingModel,
+		Model:        originalModel,
 		Stream:       stream,
 		Duration:     time.Since(startTime),
 		FirstTokenMs: firstTokenMs,
@@ -1957,77 +1875,24 @@ REDACTED
 REDACTED
 REDACTED
 
-func antigravityUseScopeRateLimit() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityScopeRateLimitEnv)))
-	// 默认开启按配额域限流，只有明确设置为禁用值时才关闭
-	if v == "0" || v == "false" || v == "no" || v == "off" {
+// setModelRateLimitByModelName 使用官方模型 ID 设置模型级限流
+// 直接使用上游返回的模型 ID（如 claude-sonnet-4-5）作为限流 key
+// 返回是否已成功设置（若模型名为空或 repo 为 nil 将返回 false）
+func setModelRateLimitByModelName(ctx context.Context, repo AccountRepository, accountID int64, modelName, prefix string, statusCode int, resetAt time.Time, afterSmartRetry bool) bool {
+	if repo == nil || modelName == "" {
 		return false
+REDACTED
+	// 直接使用官方模型 ID 作为 key，不再转换为 scope
+	if err := repo.SetModelRateLimit(ctx, accountID, modelName, resetAt); err != nil {
+		log.Printf("%s status=%d model_rate_limit_failed model=%s error=%v", prefix, statusCode, modelName, err)
+		return false
+REDACTED
+	if afterSmartRetry {
+		log.Printf("%s status=%d model_rate_limited_after_smart_retry model=%s account=%d reset_in=%v", prefix, statusCode, modelName, accountID, time.Until(resetAt).Truncate(time.Second))
+REDACTED else {
+		log.Printf("%s status=%d model_rate_limited model=%s account=%d reset_in=%v", prefix, statusCode, modelName, accountID, time.Until(resetAt).Truncate(time.Second))
 REDACTED
 	return true
-REDACTED
-
-func antigravityHasAccountSwitch(ctx context.Context) bool {
-	if ctx == nil {
-		return false
-REDACTED
-	if v, ok := ctx.Value(ctxkey.AccountSwitchCount).(int); ok {
-		return v > 0
-REDACTED
-	return false
-REDACTED
-
-func antigravityMaxRetries() int {
-	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesEnv))
-	if raw == "" {
-		return antigravityDefaultMaxRetries
-REDACTED
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return antigravityDefaultMaxRetries
-REDACTED
-	return value
-REDACTED
-
-func antigravityMaxRetriesAfterSwitch() int {
-	raw := strings.TrimSpace(os.Getenv(antigravityMaxRetriesAfterSwitchEnv))
-	if raw == "" {
-		return antigravityMaxRetries()
-REDACTED
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return antigravityMaxRetries()
-REDACTED
-	return value
-REDACTED
-
-// antigravityMaxRetriesForModel 根据模型类型获取重试次数
-// 优先使用模型细分配置，未设置则回退到平台级配置
-func antigravityMaxRetriesForModel(model string, afterSwitch bool) int {
-	var envKey string
-	if strings.HasPrefix(model, "claude-") {
-		envKey = antigravityMaxRetriesClaudeEnv
-REDACTED else if isImageGenerationModel(model) {
-		envKey = antigravityMaxRetriesGeminiImageEnv
-REDACTED else if strings.HasPrefix(model, "gemini-") {
-		envKey = antigravityMaxRetriesGeminiTextEnv
-REDACTED
-
-	if envKey != "" {
-		if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
-			if value, err := strconv.Atoi(raw); err == nil && value > 0 {
-				return value
-		REDACTED
-	REDACTED
-REDACTED
-	if afterSwitch {
-		return antigravityMaxRetriesAfterSwitch()
-REDACTED
-	return antigravityMaxRetries()
-REDACTED
-
-func antigravityUseMappedModelForBilling() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityBillingModelEnv)))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
 REDACTED
 
 func antigravityFallbackCooldownSeconds() (time.Duration, bool) {
@@ -2041,21 +1906,319 @@ REDACTED
 REDACTED
 	return time.Duration(seconds) * time.Second, true
 REDACTED
-func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope) {
+
+// antigravitySmartRetryInfo 智能重试所需的信息
+type antigravitySmartRetryInfo struct {
+	RetryDelay time.Duration // 重试延迟时间
+	ModelName  string        // 限流的模型名称（如 "claude-sonnet-4-5"）
+REDACTED
+
+// parseAntigravitySmartRetryInfo 解析 Google RPC RetryInfo 和 ErrorInfo 信息
+// 返回解析结果，如果解析失败或不满足条件返回 nil
+//
+// 支持两种情况：
+// 1. 429 RESOURCE_EXHAUSTED + RATE_LIMIT_EXCEEDED：
+//   - error.status == "RESOURCE_EXHAUSTED"
+//   - error.details[].reason == "RATE_LIMIT_EXCEEDED"
+//
+// 2. 503 UNAVAILABLE + MODEL_CAPACITY_EXHAUSTED：
+//   - error.status == "UNAVAILABLE"
+//   - error.details[].reason == "MODEL_CAPACITY_EXHAUSTED"
+//
+// 必须满足以下条件才会返回有效值：
+// - error.details[] 中存在 @type == "type.googleapis.com/google.rpc.RetryInfo" 的元素
+// - 该元素包含 retryDelay 字段，格式为 "数字s"（如 "0.201506475s"）
+func parseAntigravitySmartRetryInfo(body []byte) *antigravitySmartRetryInfo {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil
+REDACTED
+
+	errObj, ok := parsed["error"].(map[string]any)
+	if !ok {
+		return nil
+REDACTED
+
+	// 检查 status 是否符合条件
+	// 情况1: 429 RESOURCE_EXHAUSTED (需要进一步检查 reason == RATE_LIMIT_EXCEEDED)
+	// 情况2: 503 UNAVAILABLE (需要进一步检查 reason == MODEL_CAPACITY_EXHAUSTED)
+	status, _ := errObj["status"].(string)
+	isResourceExhausted := status == googleRPCStatusResourceExhausted
+	isUnavailable := status == googleRPCStatusUnavailable
+
+	// 调试日志：打印 RESOURCE_EXHAUSTED 的完整响应
+	if isResourceExhausted {
+		log.Printf("[Antigravity-Debug] 429 RESOURCE_EXHAUSTED full body: %s", string(body))
+REDACTED
+
+	if !isResourceExhausted && !isUnavailable {
+		return nil
+REDACTED
+
+	details, ok := errObj["details"].([]any)
+	if !ok {
+		return nil
+REDACTED
+
+	var retryDelay time.Duration
+	var modelName string
+	var hasRateLimitExceeded bool      // 429 需要此 reason
+	var hasModelCapacityExhausted bool // 503 需要此 reason
+
+	for _, d := range details {
+		dm, ok := d.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+
+		atType, _ := dm["@type"].(string)
+
+		// 从 ErrorInfo 提取模型名称和 reason
+		if atType == googleRPCTypeErrorInfo {
+			if meta, ok := dm["metadata"].(map[string]any); ok {
+				if model, ok := meta["model"].(string); ok {
+					modelName = model
+			REDACTED
+		REDACTED
+			// 检查 reason
+			if reason, ok := dm["reason"].(string); ok {
+				if reason == googleRPCReasonModelCapacityExhausted {
+					hasModelCapacityExhausted = true
+			REDACTED
+				if reason == googleRPCReasonRateLimitExceeded {
+					hasRateLimitExceeded = true
+			REDACTED
+		REDACTED
+			continue
+	REDACTED
+
+		// 从 RetryInfo 提取重试延迟
+		if atType == googleRPCTypeRetryInfo {
+			delay, ok := dm["retryDelay"].(string)
+			if !ok || delay == "" {
+				continue
+		REDACTED
+			// 使用 time.ParseDuration 解析，支持所有 Go duration 格式
+			// 例如: "0.5s", "10s", "4m50s", "1h30m", "200ms" 等
+			dur, err := time.ParseDuration(delay)
+			if err != nil {
+				log.Printf("[Antigravity] failed to parse retryDelay: %s error=%v", delay, err)
+				continue
+		REDACTED
+			retryDelay = dur
+	REDACTED
+REDACTED
+
+	// 验证条件
+	// 情况1: RESOURCE_EXHAUSTED 需要有 RATE_LIMIT_EXCEEDED reason
+	// 情况2: UNAVAILABLE 需要有 MODEL_CAPACITY_EXHAUSTED reason
+	if isResourceExhausted && !hasRateLimitExceeded {
+		return nil
+REDACTED
+	if isUnavailable && !hasModelCapacityExhausted {
+		return nil
+REDACTED
+
+	// 必须有模型名才返回有效结果
+	if modelName == "" {
+		return nil
+REDACTED
+
+	// 如果上游未提供 retryDelay，使用默认限流时间
+	if retryDelay <= 0 {
+		retryDelay = antigravityDefaultRateLimitDuration
+REDACTED
+
+	return &antigravitySmartRetryInfo{
+		RetryDelay: retryDelay,
+		ModelName:  modelName,
+REDACTED
+REDACTED
+
+// shouldTriggerAntigravitySmartRetry 判断是否应该触发智能重试
+// 返回：
+//   - shouldRetry: 是否应该智能重试（retryDelay < antigravityRateLimitThreshold）
+//   - shouldRateLimitModel: 是否应该限流模型（retryDelay >= antigravityRateLimitThreshold）
+//   - waitDuration: 等待时间（智能重试时使用，shouldRateLimitModel=true 时为 0）
+//   - modelName: 限流的模型名称
+func shouldTriggerAntigravitySmartRetry(account *Account, respBody []byte) (shouldRetry bool, shouldRateLimitModel bool, waitDuration time.Duration, modelName string) {
+	if !account.IsOAuth() {
+		return false, false, 0, ""
+REDACTED
+
+	info := parseAntigravitySmartRetryInfo(respBody)
+	if info == nil {
+		return false, false, 0, ""
+REDACTED
+
+	// retryDelay >= 阈值：直接限流模型，不重试
+	// 注意：如果上游未提供 retryDelay，parseAntigravitySmartRetryInfo 已设置为默认 5 分钟
+	if info.RetryDelay >= antigravityRateLimitThreshold {
+		return false, true, 0, info.ModelName
+REDACTED
+
+	// retryDelay < 阈值：智能重试
+	waitDuration = info.RetryDelay
+	if waitDuration < antigravitySmartRetryMinWait {
+		waitDuration = antigravitySmartRetryMinWait
+REDACTED
+
+	return true, false, waitDuration, info.ModelName
+REDACTED
+
+// handleModelRateLimitParams 模型级限流处理参数
+type handleModelRateLimitParams struct {
+	ctx             context.Context
+	prefix          string
+	account         *Account
+	statusCode      int
+	body            []byte
+	cache           GatewayCache
+	groupID         int64
+	sessionHash     string
+	isStickySession bool
+REDACTED
+
+// handleModelRateLimitResult 模型级限流处理结果
+type handleModelRateLimitResult struct {
+	Handled      bool                           // 是否已处理
+	ShouldRetry  bool                           // 是否等待后重试
+	WaitDuration time.Duration                  // 等待时间
+	SwitchError  *AntigravityAccountSwitchError // 账号切换错误
+REDACTED
+
+// handleModelRateLimit 处理模型级限流（在原有逻辑之前调用）
+// 仅处理 429/503，解析模型名和 retryDelay
+// - retryDelay < antigravityRateLimitThreshold: 返回 ShouldRetry=true，由调用方等待后重试
+// - retryDelay >= antigravityRateLimitThreshold: 设置模型限流 + 清除粘性会话 + 返回 SwitchError
+func (s *AntigravityGatewayService) handleModelRateLimit(p *handleModelRateLimitParams) *handleModelRateLimitResult {
+	if p.statusCode != 429 && p.statusCode != 503 {
+		return &handleModelRateLimitResult{Handled: falseREDACTED
+REDACTED
+
+	info := parseAntigravitySmartRetryInfo(p.body)
+	if info == nil || info.ModelName == "" {
+		return &handleModelRateLimitResult{Handled: falseREDACTED
+REDACTED
+
+	// < antigravityRateLimitThreshold: 等待后重试
+	if info.RetryDelay < antigravityRateLimitThreshold {
+		log.Printf("%s status=%d model_rate_limit_wait model=%s wait=%v",
+			p.prefix, p.statusCode, info.ModelName, info.RetryDelay)
+		return &handleModelRateLimitResult{
+			Handled:      true,
+			ShouldRetry:  true,
+			WaitDuration: info.RetryDelay,
+	REDACTED
+REDACTED
+
+	// >= antigravityRateLimitThreshold: 设置限流 + 清除粘性会话 + 切换账号
+	s.setModelRateLimitAndClearSession(p, info)
+
+	return &handleModelRateLimitResult{
+		Handled: true,
+		SwitchError: &AntigravityAccountSwitchError{
+			OriginalAccountID: p.account.ID,
+			RateLimitedModel:  info.ModelName,
+			IsStickySession:   p.isStickySession,
+	REDACTED,
+REDACTED
+REDACTED
+
+// setModelRateLimitAndClearSession 设置模型限流并清除粘性会话
+func (s *AntigravityGatewayService) setModelRateLimitAndClearSession(p *handleModelRateLimitParams, info *antigravitySmartRetryInfo) {
+	resetAt := time.Now().Add(info.RetryDelay)
+	log.Printf("%s status=%d model_rate_limited model=%s account=%d reset_in=%v",
+		p.prefix, p.statusCode, info.ModelName, p.account.ID, info.RetryDelay)
+
+	// 设置模型限流状态（数据库）
+	if err := s.accountRepo.SetModelRateLimit(p.ctx, p.account.ID, info.ModelName, resetAt); err != nil {
+		log.Printf("%s model_rate_limit_failed model=%s error=%v", p.prefix, info.ModelName, err)
+REDACTED
+
+	// 立即更新 Redis 快照中账号的限流状态，避免并发请求重复选中
+	s.updateAccountModelRateLimitInCache(p.ctx, p.account, info.ModelName, resetAt)
+
+	// 清除粘性会话绑定
+	if p.cache != nil && p.sessionHash != "" {
+		_ = p.cache.DeleteSessionAccountID(p.ctx, p.groupID, p.sessionHash)
+REDACTED
+REDACTED
+
+// updateAccountModelRateLimitInCache 立即更新 Redis 中账号的模型限流状态
+func (s *AntigravityGatewayService) updateAccountModelRateLimitInCache(ctx context.Context, account *Account, modelKey string, resetAt time.Time) {
+	if s.schedulerSnapshot == nil || account == nil || modelKey == "" {
+		return
+REDACTED
+
+	// 更新账号对象的 Extra 字段
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+REDACTED
+
+	limits, _ := account.Extra["model_rate_limits"].(map[string]any)
+	if limits == nil {
+		limits = make(map[string]any)
+		account.Extra["model_rate_limits"] = limits
+REDACTED
+
+	limits[modelKey] = map[string]any{
+		"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
+		"rate_limit_reset_at": resetAt.UTC().Format(time.RFC3339),
+REDACTED
+
+	// 更新 Redis 快照
+	if err := s.schedulerSnapshot.UpdateAccountInCache(ctx, account); err != nil {
+		log.Printf("[antigravity-Forward] cache_update_failed account=%d model=%s err=%v", account.ID, modelKey, err)
+REDACTED
+REDACTED
+
+func (s *AntigravityGatewayService) handleUpstreamError(
+	ctx context.Context, prefix string, account *Account,
+	statusCode int, headers http.Header, body []byte,
+	quotaScope AntigravityQuotaScope,
+	groupID int64, sessionHash string, isStickySession bool,
+) *handleModelRateLimitResult {
+	// ✨ 模型级限流处理（在原有逻辑之前）
+	result := s.handleModelRateLimit(&handleModelRateLimitParams{
+		ctx:             ctx,
+		prefix:          prefix,
+		account:         account,
+		statusCode:      statusCode,
+		body:            body,
+		cache:           s.cache,
+		groupID:         groupID,
+		sessionHash:     sessionHash,
+		isStickySession: isStickySession,
+REDACTED)
+	if result.Handled {
+		return result
+REDACTED
+
+	// 503 仅处理模型限流（MODEL_CAPACITY_EXHAUSTED），非模型限流不做额外处理
+	// 避免将普通的 503 错误误判为账号问题
+	if statusCode == 503 {
+		return nil
+REDACTED
+
+	// ========== 原有逻辑，保持不变 ==========
 	// 429 使用 Gemini 格式解析（从 body 解析重置时间）
 	if statusCode == 429 {
-		useScopeLimit := antigravityUseScopeRateLimit() && quotaScope != ""
+		// 调试日志：打印 429 响应的完整 body
+		log.Printf("[Antigravity-Debug] 429 response full body: %s", string(body))
+
+		useScopeLimit := quotaScope != ""
 		resetAt := ParseGeminiRateLimitResetTime(body)
 		if resetAt == nil {
-			// 解析失败：使用配置的 fallback 时间，直接限流整个账户
-			// 默认 30 秒，可通过配置覆盖（配置单位为分钟）
-			fallbackSeconds := 30
+			// 解析失败：使用默认限流时间（与临时限流保持一致）
+			// 可通过配置或环境变量覆盖
+			defaultDur := antigravityDefaultRateLimitDuration
 			if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes > 0 {
-				fallbackSeconds = s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes * 60
+				defaultDur = time.Duration(s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes) * time.Minute
 		REDACTED
-			defaultDur := time.Duration(fallbackSeconds) * time.Second
-			if fallbackDur, ok := antigravityFallbackCooldownSeconds(); ok {
-				defaultDur = fallbackDur
+			// 秒级环境变量优先级最高
+			if override, ok := antigravityFallbackCooldownSeconds(); ok {
+				defaultDur = override
 		REDACTED
 			ra := time.Now().Add(defaultDur)
 			if useScopeLimit {
@@ -2069,7 +2232,7 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 					log.Printf("%s status=429 rate_limit_set_failed account=%d error=%v", prefix, account.ID, err)
 			REDACTED
 		REDACTED
-			return
+			return nil
 	REDACTED
 		resetTime := time.Unix(*resetAt, 0)
 		if useScopeLimit {
@@ -2083,16 +2246,17 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 				log.Printf("%s status=429 rate_limit_set_failed account=%d error=%v", prefix, account.ID, err)
 		REDACTED
 	REDACTED
-		return
+		return nil
 REDACTED
 	// 其他错误码继续使用 rateLimitService
 	if s.rateLimitService == nil {
-		return
+		return nil
 REDACTED
 	shouldDisable := s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, headers, body)
 	if shouldDisable {
 		log.Printf("%s status=%d marked_error", prefix, statusCode)
 REDACTED
+	return nil
 REDACTED
 
 type antigravityStreamResult struct {
@@ -2623,20 +2787,16 @@ REDACTED)
 	return fmt.Errorf("%s", message)
 REDACTED
 
+// WriteMappedClaudeError 导出版本，供 handler 层使用（如 fallback 错误处理）
+func (s *AntigravityGatewayService) WriteMappedClaudeError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
+	return s.writeMappedClaudeError(c, account, upstreamStatus, upstreamRequestID, body)
+REDACTED
+
 func (s *AntigravityGatewayService) writeMappedClaudeError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-
-	logBody := s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody
-	maxBytes := 2048
-	if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > 0 {
-		maxBytes = s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-REDACTED
-
-	upstreamDetail := ""
-	if logBody {
-		upstreamDetail = truncateString(string(body), maxBytes)
-REDACTED
+	logBody, maxBytes := s.getLogConfig()
+	upstreamDetail := s.getUpstreamErrorDetail(body)
 	setOpsUpstreamError(c, upstreamStatus, upstreamMsg, upstreamDetail)
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:           account.Platform,
@@ -2661,7 +2821,7 @@ REDACTED
 	case 400:
 		statusCode = http.StatusBadRequest
 		errType = "invalid_request_error"
-		errMsg = "Invalid request"
+		errMsg = getPassthroughOrDefault(upstreamMsg, "Invalid request")
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "authentication_error"
@@ -2692,10 +2852,6 @@ REDACTED)
 		return fmt.Errorf("upstream error: %d", upstreamStatus)
 REDACTED
 	return fmt.Errorf("upstream error: %d message=%s", upstreamStatus, upstreamMsg)
-REDACTED
-
-func (s *AntigravityGatewayService) WriteMappedClaudeError(c *gin.Context, account *Account, upstreamStatus int, upstreamRequestID string, body []byte) error {
-	return s.writeMappedClaudeError(c, account, upstreamStatus, upstreamRequestID, body)
 REDACTED
 
 func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int, message string) error {
@@ -3124,8 +3280,8 @@ REDACTED
 	return json.Marshal(payload)
 REDACTED
 
-// filterEmptyPartsFromGeminiRequest 过滤 Gemini 请求中 parts 为空的消息
-// Gemini API 不接受 parts 为空数组的消息，会返回 400 错误
+// filterEmptyPartsFromGeminiRequest 过滤掉 parts 为空的消息
+// Gemini API 不接受空 parts，需要在请求前过滤
 func filterEmptyPartsFromGeminiRequest(body []byte) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {

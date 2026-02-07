@@ -187,14 +187,70 @@ REDACTED
 	for input, expected := range cases {
 		require.Equal(t, expected, normalizeCodexModel(input))
 REDACTED
+
+REDACTED
+
+func TestApplyCodexOAuthTransform_CodexCLI_PreservesExistingInstructions(t *testing.T) {
+	// Codex CLI 场景：已有 instructions 时保持不变
+	setupCodexCache(t)
+
+	reqBody := map[string]any{
+		"model":        "gpt-5.1",
+		"instructions": "user custom instructions",
+		"input":        []any{REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransform(reqBody, true)
+
+	instructions, ok := reqBody["instructions"].(string)
+	require.True(t, ok)
+	require.Equal(t, "user custom instructions", instructions)
+	// instructions 未变，但其他字段（如 store、stream）可能被修改
+	require.True(t, result.Modified)
+REDACTED
+
+func TestApplyCodexOAuthTransform_CodexCLI_AddsInstructionsWhenEmpty(t *testing.T) {
+	// Codex CLI 场景：无 instructions 时补充内置指令
+	setupCodexCache(t)
+
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"input": []any{REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransform(reqBody, true)
+
+	instructions, ok := reqBody["instructions"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, instructions)
+	require.True(t, result.Modified)
+REDACTED
+
+func TestApplyCodexOAuthTransform_NonCodexCLI_UsesOpenCodeInstructions(t *testing.T) {
+	// 非 Codex CLI 场景：使用 opencode 指令（缓存中有 header）
+	setupCodexCache(t)
+
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"input": []any{REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransform(reqBody, false)
+
+	instructions, ok := reqBody["instructions"].(string)
+	require.True(t, ok)
+	require.Equal(t, "header", instructions) // setupCodexCache 设置的缓存内容
+	require.True(t, result.Modified)
 REDACTED
 
 func setupCodexCache(t *testing.T) {
 REDACTED
 
 	// 使用临时 HOME 避免触发网络拉取 header。
+	// Windows 使用 USERPROFILE，Unix 使用 HOME。
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
 
 	cacheDir := filepath.Join(tempDir, ".opencode", "cache")
 	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
@@ -208,24 +264,6 @@ REDACTED
 	data, err := json.Marshal(meta)
 REDACTED
 	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "opencode-codex-header-meta.json"), data, 0o644))
-REDACTED
-
-func TestApplyCodexOAuthTransform_CodexCLI_PreservesExistingInstructions(t *testing.T) {
-	// Codex CLI 场景：已有 instructions 时不修改
-	setupCodexCache(t)
-
-	reqBody := map[string]any{
-		"model":        "gpt-5.1",
-		"instructions": "existing instructions",
-REDACTED
-
-	result := applyCodexOAuthTransform(reqBody, true) // isCodexCLI=true
-
-	instructions, ok := reqBody["instructions"].(string)
-	require.True(t, ok)
-	require.Equal(t, "existing instructions", instructions)
-	// Modified 仍可能为 true（因为其他字段被修改），但 instructions 应保持不变
-	_ = result
 REDACTED
 
 func TestApplyCodexOAuthTransform_CodexCLI_SuppliesDefaultWhenEmpty(t *testing.T) {

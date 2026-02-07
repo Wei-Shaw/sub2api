@@ -245,19 +245,17 @@ REDACTED
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("anthropic-beta", claude.DefaultBetaHeader)
 
-	// Set authentication header and beta header based on account type
+	// Apply Claude Code client headers
+	for key, value := range claude.DefaultHeaders {
+		req.Header.Set(key, value)
+REDACTED
+
+	// Set authentication header
 	if useBearer {
-		// OAuth 账号使用完整的 Claude Code beta header
-		req.Header.Set("anthropic-beta", claude.DefaultBetaHeader)
 		req.Header.Set("Authorization", "Bearer "+authToken)
-		// Apply Claude Code client headers for OAuth
-		for key, value := range claude.DefaultHeaders {
-			req.Header.Set(key, value)
-	REDACTED
 REDACTED else {
-		// API Key 账号使用简化的 beta header（不含 oauth）
-		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 		req.Header.Set("x-api-key", authToken)
 REDACTED
 

@@ -24,8 +24,6 @@ const openaiModels = [
   // GPT-5.2 系列
   'gpt-5.2', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest',
   'gpt-5.2-codex', 'gpt-5.2-pro', 'gpt-5.2-pro-2025-12-11',
-  // GPT-5.3 系列
-  'gpt-5.3-codex', 'gpt-5.3',
   'chatgpt-4o-latest',
   'gpt-4o-audio-preview', 'gpt-4o-realtime-preview'
 ]
@@ -53,6 +51,29 @@ const geminiModels = [
   'gemini-2.5-pro',
   'gemini-3-flash-preview',
   'gemini-3-pro-preview'
+]
+
+// Antigravity 官方支持的模型（精确匹配）
+// 基于官方 API 返回的模型列表，只支持 Claude 4.5+ 和 Gemini 2.5+
+const antigravityModels = [
+  // Claude 4.5+ 系列
+  'claude-opus-4-6',
+  'claude-opus-4-5-thinking',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-5-thinking',
+  // Gemini 2.5 系列
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash-thinking',
+  'gemini-2.5-pro',
+  // Gemini 3 系列
+  'gemini-3-flash',
+  'gemini-3-pro-high',
+  'gemini-3-pro-low',
+  'gemini-3-pro-image',
+  // 其他
+  'gpt-oss-120b-medium',
+  'tab_flash_lite_preview'
 ]
 
 // 智谱 GLM
@@ -237,6 +258,55 @@ const geminiPresetMappings = [
   { label: '2.5 Pro', from: 'gemini-2.5-pro', to: 'gemini-2.5-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED
 ]
 
+// Antigravity 预设映射（支持通配符）
+const antigravityPresetMappings = [
+  // Claude 通配符映射
+  { label: 'Claude→Sonnet', from: 'claude-*', to: 'claude-sonnet-4-5', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' REDACTED,
+  { label: 'Sonnet→Sonnet', from: 'claude-sonnet-*', to: 'claude-sonnet-4-5', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
+  { label: 'Opus→Opus', from: 'claude-opus-*', to: 'claude-opus-4-5-thinking', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
+  { label: 'Haiku→Sonnet', from: 'claude-haiku-*', to: 'claude-sonnet-4-5', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
+  // Gemini 通配符映射
+  { label: 'Gemini 3→Flash', from: 'gemini-3*', to: 'gemini-3-flash', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED,
+  { label: 'Gemini 2.5→Flash', from: 'gemini-2.5*', to: 'gemini-2.5-flash', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' REDACTED,
+  // 精确映射
+  { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5', to: 'claude-sonnet-4-5', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' REDACTED,
+  { label: 'Opus 4.5', from: 'claude-opus-4-5-thinking', to: 'claude-opus-4-5-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' REDACTED
+]
+
+// Antigravity 默认映射（与迁移脚本 049 保持一致）
+// 基于官方 API 返回的模型列表，只支持 Claude 4.5+ 和 Gemini 2.5+
+// 精确匹配，无通配符
+export const antigravityDefaultMappings: { from: string; to: string REDACTED[] = [
+  // Claude 白名单
+  { from: 'claude-opus-4-6', to: 'claude-opus-4-6' REDACTED,
+  { from: 'claude-opus-4-5-thinking', to: 'claude-opus-4-5-thinking' REDACTED,
+  { from: 'claude-sonnet-4-5', to: 'claude-sonnet-4-5' REDACTED,
+  { from: 'claude-sonnet-4-5-thinking', to: 'claude-sonnet-4-5-thinking' REDACTED,
+  // Claude 详细版本 ID 映射
+  { from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-5-thinking' REDACTED,
+  { from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-5' REDACTED,
+  // Claude Haiku → Sonnet（无 Haiku 支持）
+  { from: 'claude-haiku-4-5', to: 'claude-sonnet-4-5' REDACTED,
+  { from: 'REDACTED', to: 'claude-sonnet-4-5' REDACTED,
+  // Gemini 2.5 白名单
+  { from: 'gemini-2.5-flash', to: 'gemini-2.5-flash' REDACTED,
+  { from: 'gemini-2.5-flash-lite', to: 'gemini-2.5-flash-lite' REDACTED,
+  { from: 'gemini-2.5-flash-thinking', to: 'gemini-2.5-flash-thinking' REDACTED,
+  { from: 'gemini-2.5-pro', to: 'gemini-2.5-pro' REDACTED,
+  // Gemini 3 白名单
+  { from: 'gemini-3-flash', to: 'gemini-3-flash' REDACTED,
+  { from: 'gemini-3-pro-high', to: 'gemini-3-pro-high' REDACTED,
+  { from: 'gemini-3-pro-low', to: 'gemini-3-pro-low' REDACTED,
+  { from: 'gemini-3-pro-image', to: 'gemini-3-pro-image' REDACTED,
+  // Gemini 3 preview 映射
+  { from: 'gemini-3-flash-preview', to: 'gemini-3-flash' REDACTED,
+  { from: 'gemini-3-pro-preview', to: 'gemini-3-pro-high' REDACTED,
+  { from: 'gemini-3-pro-image-preview', to: 'gemini-3-pro-image' REDACTED,
+  // 其他官方模型
+  { from: 'gpt-oss-120b-medium', to: 'gpt-oss-120b-medium' REDACTED,
+  { from: 'tab_flash_lite_preview', to: 'tab_flash_lite_preview' REDACTED
+]
+
 // =====================
 // 常用错误码
 // =====================
@@ -262,6 +332,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'anthropic':
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
+    case 'antigravity': return antigravityModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -285,12 +356,22 @@ REDACTED
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
+  if (platform === 'antigravity') return antigravityPresetMappings
   return anthropicPresetMappings
 REDACTED
 
 // =====================
 // 构建模型映射对象（用于 API）
 // =====================
+
+// isValidWildcardPattern 校验通配符格式：* 只能放在末尾
+// 导出供表单组件使用实时校验
+export function isValidWildcardPattern(pattern: string): boolean {
+  const starIndex = pattern.indexOf('*')
+  if (starIndex === -1) return true // 无通配符，有效
+  // * 必须在末尾，且只能有一个
+  return starIndex === pattern.length - 1 && pattern.lastIndexOf('*') === starIndex
+REDACTED
 
 export function buildModelMappingObject(
   mode: 'whitelist' | 'mapping',
@@ -301,13 +382,29 @@ export function buildModelMappingObject(
 
   if (mode === 'whitelist') {
     for (const model of allowedModels) {
-      mapping[model] = model
+      // whitelist 模式的本意是"精确模型列表"，如果用户输入了通配符（如 claude-*），
+      // 写入 model_mapping 会导致 GetMappedModel() 把真实模型映射成 "claude-*"，从而转发失败。
+      // 因此这里跳过包含通配符的条目。
+      if (!model.includes('*')) {
+        mapping[model] = model
+      REDACTED
     REDACTED
   REDACTED else {
     for (const m of modelMappings) {
       const from = m.from.trim()
       const to = m.to.trim()
-      if (from && to) mapping[from] = to
+      if (!from || !to) continue
+      // 校验通配符格式：* 只能放在末尾
+      if (!isValidWildcardPattern(from)) {
+        console.warn(`[buildModelMappingObject] 无效的通配符格式，跳过: ${fromREDACTED`)
+        continue
+      REDACTED
+      // to 不允许包含通配符
+      if (to.includes('*')) {
+        console.warn(`[buildModelMappingObject] 目标模型不能包含通配符，跳过: ${fromREDACTED -> ${toREDACTED`)
+        continue
+      REDACTED
+      mapping[from] = to
     REDACTED
   REDACTED
 

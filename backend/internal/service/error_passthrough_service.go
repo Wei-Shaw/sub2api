@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
 )
@@ -61,11 +60,8 @@ REDACTED
 
 	// 启动时加载规则到本地缓存
 	ctx := context.Background()
-	if err := svc.reloadRulesFromDB(ctx); err != nil {
-		log.Printf("[ErrorPassthroughService] Failed to load rules from DB on startup: %v", err)
-		if fallbackErr := svc.refreshLocalCache(ctx); fallbackErr != nil {
-			log.Printf("[ErrorPassthroughService] Failed to load rules from cache fallback on startup: %v", fallbackErr)
-	REDACTED
+	if err := svc.refreshLocalCache(ctx); err != nil {
+		log.Printf("[ErrorPassthroughService] Failed to load rules on startup: %v", err)
 REDACTED
 
 	// 订阅缓存更新通知
@@ -102,9 +98,7 @@ REDACTED
 REDACTED
 
 	// 刷新缓存
-	refreshCtx, cancel := s.newCacheRefreshContext()
-	defer cancel()
-	s.invalidateAndNotify(refreshCtx)
+	s.invalidateAndNotify(ctx)
 
 	return created, nil
 REDACTED
@@ -121,9 +115,7 @@ REDACTED
 REDACTED
 
 	// 刷新缓存
-	refreshCtx, cancel := s.newCacheRefreshContext()
-	defer cancel()
-	s.invalidateAndNotify(refreshCtx)
+	s.invalidateAndNotify(ctx)
 
 	return updated, nil
 REDACTED
@@ -135,9 +127,7 @@ func (s *ErrorPassthroughService) Delete(ctx context.Context, id int64) error {
 REDACTED
 
 	// 刷新缓存
-	refreshCtx, cancel := s.newCacheRefreshContext()
-	defer cancel()
-	s.invalidateAndNotify(refreshCtx)
+	s.invalidateAndNotify(ctx)
 
 	return nil
 REDACTED
@@ -199,12 +189,7 @@ func (s *ErrorPassthroughService) refreshLocalCache(ctx context.Context) error {
 	REDACTED
 REDACTED
 
-	return s.reloadRulesFromDB(ctx)
-REDACTED
-
-// 从数据库加载（repo.List 已按 priority 排序）
-// 注意：该方法会绕过 cache.Get，确保拿到数据库最新值。
-func (s *ErrorPassthroughService) reloadRulesFromDB(ctx context.Context) error {
+	// 从数据库加载（repo.List 已按 priority 排序）
 	rules, err := s.repo.List(ctx)
 	if err != nil {
 		return err
@@ -237,32 +222,11 @@ REDACTED)
 	s.localCacheMu.Unlock()
 REDACTED
 
-// clearLocalCache 清空本地缓存，避免刷新失败时继续命中陈旧规则。
-func (s *ErrorPassthroughService) clearLocalCache() {
-	s.localCacheMu.Lock()
-	s.localCache = nil
-	s.localCacheMu.Unlock()
-REDACTED
-
-// newCacheRefreshContext 为写路径缓存同步创建独立上下文，避免受请求取消影响。
-func (s *ErrorPassthroughService) newCacheRefreshContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), 3*time.Second)
-REDACTED
-
 // invalidateAndNotify 使缓存失效并通知其他实例
 func (s *ErrorPassthroughService) invalidateAndNotify(ctx context.Context) {
-	// 先失效缓存，避免后续刷新读到陈旧规则。
-	if s.cache != nil {
-		if err := s.cache.Invalidate(ctx); err != nil {
-			log.Printf("[ErrorPassthroughService] Failed to invalidate cache: %v", err)
-	REDACTED
-REDACTED
-
 	// 刷新本地缓存
-	if err := s.reloadRulesFromDB(ctx); err != nil {
+	if err := s.refreshLocalCache(ctx); err != nil {
 		log.Printf("[ErrorPassthroughService] Failed to refresh local cache: %v", err)
-		// 刷新失败时清空本地缓存，避免继续使用陈旧规则。
-		s.clearLocalCache()
 REDACTED
 
 	// 通知其他实例

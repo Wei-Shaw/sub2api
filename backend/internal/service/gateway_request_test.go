@@ -17,6 +17,15 @@ REDACTED
 	require.True(t, parsed.HasSystem)
 	require.NotNil(t, parsed.System)
 	require.Len(t, parsed.Messages, 1)
+	require.False(t, parsed.ThinkingEnabled)
+REDACTED
+
+func TestParseGatewayRequest_ThinkingEnabled(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5","thinking":{"type":"enabled"REDACTED,"messages":[{"content":"hi"REDACTED]REDACTED`)
+	parsed, err := ParseGatewayRequest(body)
+REDACTED
+	require.Equal(t, "claude-sonnet-4-5", parsed.Model)
+	require.True(t, parsed.ThinkingEnabled)
 REDACTED
 
 func TestParseGatewayRequest_SystemNull(t *testing.T) {

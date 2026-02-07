@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -20,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 )
@@ -207,9 +209,6 @@ REDACTED()
 
 	// 1) user concurrency slot
 	streamStarted := false
-	if h.errorPassthroughService != nil {
-		service.BindErrorPassthroughService(c, h.errorPassthroughService)
-REDACTED
 	userReleaseFunc, err := geminiConcurrency.AcquireUserSlotWithWait(c, authSubject.UserID, authSubject.Concurrency, stream, &streamStarted)
 	if err != nil {
 		googleError(c, http.StatusTooManyRequests, err.Error())
@@ -250,6 +249,70 @@ REDACTED
 	if sessionKey != "" {
 		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
 REDACTED
+
+	// === Gemini 内容摘要会话 Fallback 逻辑 ===
+	// 当原有会话标识无效时（sessionBoundAccountID == 0），尝试基于内容摘要链匹配
+	var geminiDigestChain string
+	var geminiPrefixHash string
+	var geminiSessionUUID string
+	useDigestFallback := sessionBoundAccountID == 0
+
+	if useDigestFallback {
+		// 解析 Gemini 请求体
+		var geminiReq antigravity.GeminiRequest
+		if err := json.Unmarshal(body, &geminiReq); err == nil && len(geminiReq.Contents) > 0 {
+			// 生成摘要链
+			geminiDigestChain = service.BuildGeminiDigestChain(&geminiReq)
+			if geminiDigestChain != "" {
+				// 生成前缀 hash
+				userAgent := c.GetHeader("User-Agent")
+				clientIP := ip.GetClientIP(c)
+				platform := ""
+				if apiKey.Group != nil {
+					platform = apiKey.Group.Platform
+			REDACTED
+				geminiPrefixHash = service.GenerateGeminiPrefixHash(
+					authSubject.UserID,
+					apiKey.ID,
+					clientIP,
+					userAgent,
+					platform,
+					modelName,
+				)
+
+				// 查找会话
+				foundUUID, foundAccountID, found := h.gatewayService.FindGeminiSession(
+					c.Request.Context(),
+					derefGroupID(apiKey.GroupID),
+					geminiPrefixHash,
+					geminiDigestChain,
+				)
+				if found {
+					sessionBoundAccountID = foundAccountID
+					geminiSessionUUID = foundUUID
+					log.Printf("[Gemini] Digest fallback matched: uuid=%s, accountID=%d, chain=%s",
+						foundUUID[:8], foundAccountID, truncateDigestChain(geminiDigestChain))
+
+					// 关键：如果原 sessionKey 为空，使用 prefixHash + uuid 作为 sessionKey
+					// 这样 SelectAccountWithLoadAwareness 的粘性会话逻辑会优先使用匹配到的账号
+					if sessionKey == "" {
+						sessionKey = service.GenerateGeminiDigestSessionKey(geminiPrefixHash, foundUUID)
+				REDACTED
+					_ = h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, foundAccountID)
+			REDACTED else {
+					// 生成新的会话 UUID
+					geminiSessionUUID = uuid.New().String()
+					// 为新会话也生成 sessionKey（用于后续请求的粘性会话）
+					if sessionKey == "" {
+						sessionKey = service.GenerateGeminiDigestSessionKey(geminiPrefixHash, geminiSessionUUID)
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
+	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 	isCLI := isGeminiCLIRequest(c, body)
 	cleanedForUnknownBinding := false
 
@@ -257,6 +320,7 @@ REDACTED
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	var lastFailoverErr *service.UpstreamFailoverError
+	var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
 
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, failedAccountIDs, "") // Gemini 不使用会话限制
@@ -344,7 +408,7 @@ REDACTED
 			requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
 	REDACTED
 		if account.Platform == service.PlatformAntigravity {
-			result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, modelName, action, stream, body)
+			result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, modelName, action, stream, body, hasBoundSession)
 	REDACTED else {
 			result, err = h.geminiCompatService.ForwardNative(requestCtx, c, account, modelName, action, stream, body)
 	REDACTED
@@ -355,6 +419,9 @@ REDACTED
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+				if failoverErr.ForceCacheBilling {
+					forceCacheBilling = true
+			REDACTED
 				if switchCount >= maxAccountSwitches {
 					lastFailoverErr = failoverErr
 					h.handleGeminiFailoverExhausted(c, lastFailoverErr)
@@ -374,8 +441,22 @@ REDACTED
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 
+		// 保存 Gemini 内容摘要会话（用于 Fallback 匹配）
+		if useDigestFallback && geminiDigestChain != "" && geminiPrefixHash != "" {
+			if err := h.gatewayService.SaveGeminiSession(
+				c.Request.Context(),
+				derefGroupID(apiKey.GroupID),
+				geminiPrefixHash,
+				geminiDigestChain,
+				geminiSessionUUID,
+				account.ID,
+			); err != nil {
+				log.Printf("[Gemini] Failed to save digest session: %v", err)
+		REDACTED
+	REDACTED
+
 		// 6) record usage async (Gemini 使用长上下文双倍计费)
-		go func(result *service.ForwardResult, usedAccount *service.Account, ua, ip string) {
+		go func(result *service.ForwardResult, usedAccount *service.Account, ua, ip string, fcb bool) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
@@ -389,11 +470,12 @@ REDACTED
 				IPAddress:             ip,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
+				ForceCacheBilling:     fcb,
 				APIKeyService:         h.apiKeyService,
 		REDACTED); err != nil {
 				log.Printf("Record usage failed: %v", err)
 		REDACTED
-	REDACTED(result, account, userAgent, clientIP)
+	REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
 		return
 REDACTED
 REDACTED
@@ -555,4 +637,20 @@ REDACTED
 
 	// 如果没有 privileged-user-id，直接使用 tmp 目录哈希
 	return tmpDirHash
+REDACTED
+
+// truncateDigestChain 截断摘要链用于日志显示
+func truncateDigestChain(chain string) string {
+	if len(chain) <= 50 {
+		return chain
+REDACTED
+	return chain[:50] + "..."
+REDACTED
+
+// derefGroupID 安全解引用 *int64，nil 返回 0
+func derefGroupID(groupID *int64) int64 {
+	if groupID == nil {
+		return 0
+REDACTED
+	return *groupID
 REDACTED
