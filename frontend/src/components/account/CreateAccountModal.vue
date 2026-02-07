@@ -2714,7 +2714,8 @@ const handleSubmit = async () => {
 
     submitting.value = true
     try {
-      await createAccountAndFinish(form.platform, 'upstream', credentials)
+      const extra = mixedScheduling.value ? { mixed_scheduling: true REDACTED : undefined
+      await createAccountAndFinish(form.platform, 'upstream', credentials, extra)
     REDACTED catch (error: any) {
       appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToCreate'))
     REDACTED finally {
