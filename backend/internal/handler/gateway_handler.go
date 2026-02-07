@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // GatewayHandler handles API gateway requests
@@ -212,6 +213,53 @@ REDACTED
 	if sessionKey != "" {
 		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
 REDACTED
+
+	// === Anthropic 内容摘要会话 Fallback 逻辑 ===
+	// 当原有会话标识无效时（sessionBoundAccountID == 0），尝试基于内容摘要链匹配
+	var anthropicDigestChain string
+	var anthropicPrefixHash string
+	var anthropicSessionUUID string
+	useAnthropicDigestFallback := sessionBoundAccountID == 0 && platform != service.PlatformGemini
+
+	if useAnthropicDigestFallback {
+		anthropicDigestChain = service.BuildAnthropicDigestChain(parsedReq)
+		if anthropicDigestChain != "" {
+			userAgent := c.GetHeader("User-Agent")
+			clientIP := ip.GetClientIP(c)
+			anthropicPrefixHash = service.GenerateGeminiPrefixHash(
+				subject.UserID,
+				apiKey.ID,
+				clientIP,
+				userAgent,
+				platform,
+				reqModel,
+			)
+
+			foundUUID, foundAccountID, found := h.gatewayService.FindAnthropicSession(
+				c.Request.Context(),
+				derefGroupID(apiKey.GroupID),
+				anthropicPrefixHash,
+				anthropicDigestChain,
+			)
+			if found {
+				sessionBoundAccountID = foundAccountID
+				anthropicSessionUUID = foundUUID
+				log.Printf("[Anthropic] Digest fallback matched: uuid=%s, accountID=%d, chain=%s",
+					foundUUID[:8], foundAccountID, truncateDigestChain(anthropicDigestChain))
+
+				if sessionKey == "" {
+					sessionKey = service.GenerateAnthropicDigestSessionKey(anthropicPrefixHash, foundUUID)
+			REDACTED
+				_ = h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, foundAccountID)
+		REDACTED else {
+				anthropicSessionUUID = uuid.New().String()
+				if sessionKey == "" {
+					sessionKey = service.GenerateAnthropicDigestSessionKey(anthropicPrefixHash, anthropicSessionUUID)
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
 	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 
@@ -539,6 +587,20 @@ REDACTED
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
+
+			// 保存 Anthropic 内容摘要会话（用于 Fallback 匹配）
+			if useAnthropicDigestFallback && anthropicDigestChain != "" && anthropicPrefixHash != "" {
+				if err := h.gatewayService.SaveAnthropicSession(
+					c.Request.Context(),
+					derefGroupID(apiKey.GroupID),
+					anthropicPrefixHash,
+					anthropicDigestChain,
+					anthropicSessionUUID,
+					account.ID,
+				); err != nil {
+					log.Printf("[Anthropic] Failed to save digest session: %v", err)
+			REDACTED
+		REDACTED
 
 			// 异步记录使用量（subscription已在函数开头获取）
 			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string, fcb bool) {
