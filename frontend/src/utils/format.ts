@@ -204,7 +204,7 @@ export function formatReasoningEffort(effort: string | null | undefined): string
 REDACTED
 
 /**
- * 格式化时间（只显示时分）
+ * 格式化时间（显示时分秒）
  * @param date 日期字符串或 Date 对象
  * @returns 格式化后的时间字符串
  */
@@ -212,6 +212,7 @@ export function formatTime(date: string | Date | null | undefined): string {
   return formatDate(date, {
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: false
   REDACTED)
 REDACTED

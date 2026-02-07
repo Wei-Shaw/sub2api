@@ -24,6 +24,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -332,7 +334,7 @@ REDACTED
 
 	// 检查账号是否需要清理粘性会话
 	// Check if sticky session should be cleared
-	if shouldClearStickySession(account) {
+	if shouldClearStickySession(account, requestedModel) {
 		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
 		return nil
 REDACTED
@@ -498,7 +500,7 @@ REDACTED
 		if err == nil && accountID > 0 && !isExcluded(accountID) {
 			account, err := s.getSchedulableAccount(ctx, accountID)
 			if err == nil {
-				clearSticky := shouldClearStickySession(account)
+				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
 					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), "openai:"+sessionHash)
 			REDACTED
@@ -765,7 +767,7 @@ REDACTED
 	bodyModified := false
 	originalModel := reqModel
 
-	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent"))
+	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
 
 	// 对所有请求执行模型映射（包含 Codex CLI）。
 	mappedModel := account.GetMappedModel(reqModel)
@@ -969,6 +971,10 @@ REDACTED
 	REDACTED
 REDACTED
 
+	if usage == nil {
+		usage = &OpenAIUsage{REDACTED
+REDACTED
+
 	reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
 
 	return &OpenAIForwardResult{
@@ -1053,6 +1059,12 @@ REDACTED
 		req.Header.Set("user-agent", customUA)
 REDACTED
 
+	// 若开启 ForceCodexCLI，则强制将上游 User-Agent 伪装为 Codex CLI。
+	// 用于网关未透传/改写 User-Agent 时，仍能命中 Codex 侧识别逻辑。
+	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+		req.Header.Set("user-agent", "codex_cli_rs/0.98.0")
+REDACTED
+
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -1085,6 +1097,30 @@ REDACTED
 			account.Type,
 			truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 		)
+REDACTED
+
+	if status, errType, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		resp.StatusCode,
+		body,
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	); matched {
+		c.JSON(status, gin.H{
+			"error": gin.H{
+				"type":    errType,
+				"message": errMsg,
+		REDACTED,
+	REDACTED)
+		if upstreamMsg == "" {
+			upstreamMsg = errMsg
+	REDACTED
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
 	// Check custom error codes
@@ -1209,7 +1245,8 @@ REDACTED
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	type scanEvent struct {
 		line string
@@ -1228,7 +1265,8 @@ REDACTED
 REDACTED
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -1239,7 +1277,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	streamInterval := time.Duration(0)
@@ -1418,31 +1456,22 @@ REDACTED
 		return line
 REDACTED
 
-	var event map[string]any
-	if err := json.Unmarshal([]byte(data), &event); err != nil {
-		return line
-REDACTED
-
-	// Replace model in response
-	if m, ok := event["model"].(string); ok && m == fromModel {
-		event["model"] = toModel
-		newData, err := json.Marshal(event)
+	// 使用 gjson 精确检查 model 字段，避免全量 JSON 反序列化
+	if m := gjson.Get(data, "model"); m.Exists() && m.Str == fromModel {
+		newData, err := sjson.Set(data, "model", toModel)
 		if err != nil {
 			return line
 	REDACTED
-		return "data: " + string(newData)
+		return "data: " + newData
 REDACTED
 
-	// Check nested response
-	if response, ok := event["response"].(map[string]any); ok {
-		if m, ok := response["model"].(string); ok && m == fromModel {
-			response["model"] = toModel
-			newData, err := json.Marshal(event)
-			if err != nil {
-				return line
-		REDACTED
-			return "data: " + string(newData)
+	// 检查嵌套的 response.model 字段
+	if m := gjson.Get(data, "response.model"); m.Exists() && m.Str == fromModel {
+		newData, err := sjson.Set(data, "response.model", toModel)
+		if err != nil {
+			return line
 	REDACTED
+		return "data: " + newData
 REDACTED
 
 	return line
@@ -1662,23 +1691,15 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
-	var resp map[string]any
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return body
+	// 使用 gjson/sjson 精确替换 model 字段，避免全量 JSON 反序列化
+	if m := gjson.GetBytes(body, "model"); m.Exists() && m.Str == fromModel {
+		newBody, err := sjson.SetBytes(body, "model", toModel)
+		if err != nil {
+			return body
+	REDACTED
+		return newBody
 REDACTED
-
-	model, ok := resp["model"].(string)
-	if !ok || model != fromModel {
-		return body
-REDACTED
-
-	resp["model"] = toModel
-	newBody, err := json.Marshal(resp)
-	if err != nil {
-		return body
-REDACTED
-
-	return newBody
+	return body
 REDACTED
 
 // OpenAIRecordUsageInput input for recording usage

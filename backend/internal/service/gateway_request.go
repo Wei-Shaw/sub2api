@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
 // ParsedRequest 保存网关请求的预解析结果
@@ -19,13 +22,15 @@ import (
 // 2. 将解析结果 ParsedRequest 传递给 Service 层
 // 3. 避免重复 json.Unmarshal，减少 CPU 和内存开销
 type ParsedRequest struct {
-	Body           []byte // 原始请求体（保留用于转发）
-	Model          string // 请求的模型名称
-	Stream         bool   // 是否为流式请求
-	MetadataUserID string // metadata.user_id（用于会话亲和）
-	System         any    // system 字段内容
-	Messages       []any  // messages 数组
-	HasSystem      bool   // 是否包含 system 字段（包含 null 也视为显式传入）
+	Body            []byte // 原始请求体（保留用于转发）
+	Model           string // 请求的模型名称
+	Stream          bool   // 是否为流式请求
+	MetadataUserID  string // metadata.user_id（用于会话亲和）
+	System          any    // system 字段内容
+	Messages        []any  // messages 数组
+	HasSystem       bool   // 是否包含 system 字段（包含 null 也视为显式传入）
+	ThinkingEnabled bool   // 是否开启 thinking（部分平台会影响最终模型名）
+	MaxTokens       int    // max_tokens 值（用于探测请求拦截）
 REDACTED
 
 // ParseGatewayRequest 解析网关请求体并返回结构化结果
@@ -69,7 +74,60 @@ REDACTED
 		parsed.Messages = messages
 REDACTED
 
+	// thinking: {type: "enabled"REDACTED
+	if rawThinking, ok := req["thinking"].(map[string]any); ok {
+		if t, ok := rawThinking["type"].(string); ok && t == "enabled" {
+			parsed.ThinkingEnabled = true
+	REDACTED
+REDACTED
+
+	// max_tokens
+	if rawMaxTokens, exists := req["max_tokens"]; exists {
+		if maxTokens, ok := parseIntegralNumber(rawMaxTokens); ok {
+			parsed.MaxTokens = maxTokens
+	REDACTED
+REDACTED
+
 	return parsed, nil
+REDACTED
+
+// parseIntegralNumber 将 JSON 解码后的数字安全转换为 int。
+// 仅接受“整数值”的输入，小数/NaN/Inf/越界值都会返回 false。
+func parseIntegralNumber(raw any) (int, bool) {
+	switch v := raw.(type) {
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) || v != math.Trunc(v) {
+			return 0, false
+	REDACTED
+		if v > float64(math.MaxInt) || v < float64(math.MinInt) {
+			return 0, false
+	REDACTED
+		return int(v), true
+	case int:
+		return v, true
+	case int8:
+		return int(v), true
+	case int16:
+		return int(v), true
+	case int32:
+		return int(v), true
+	case int64:
+		if v > int64(math.MaxInt) || v < int64(math.MinInt) {
+			return 0, false
+	REDACTED
+		return int(v), true
+	case json.Number:
+		i64, err := v.Int64()
+		if err != nil {
+			return 0, false
+	REDACTED
+		if i64 > int64(math.MaxInt) || i64 < int64(math.MinInt) {
+			return 0, false
+	REDACTED
+		return int(i64), true
+	default:
+		return 0, false
+REDACTED
 REDACTED
 
 // FilterThinkingBlocks removes thinking blocks from request body
@@ -466,7 +524,7 @@ REDACTED
 				// only keep thinking blocks with valid signatures
 				if thinkingEnabled && role == "assistant" {
 					signature, _ := blockMap["signature"].(string)
-					if signature != "" && signature != "skip_thought_signature_validator" {
+					if signature != "" && signature != antigravity.DummyThoughtSignature {
 						newContent = append(newContent, block)
 						continue
 				REDACTED

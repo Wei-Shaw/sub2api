@@ -1,0 +1,544 @@
+package admin
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+)
+
+const (
+	dataType       = "sub2api-data"
+	legacyDataType = "sub2api-bundle"
+	dataVersion    = 1
+	dataPageCap    = 1000
+)
+
+type DataPayload struct {
+	Type       string        `json:"type,omitempty"`
+	Version    int           `json:"version,omitempty"`
+	ExportedAt string        `json:"exported_at"`
+	Proxies    []DataProxy   `json:"proxies"`
+	Accounts   []DataAccount `json:"accounts"`
+REDACTED
+
+type DataProxy struct {
+	ProxyKey string `json:"proxy_key"`
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	Status   string `json:"status"`
+REDACTED
+
+type DataAccount struct {
+	Name               string         `json:"name"`
+	Notes              *string        `json:"notes,omitempty"`
+	Platform           string         `json:"platform"`
+	Type               string         `json:"type"`
+	Credentials        map[string]any `json:"credentials"`
+	Extra              map[string]any `json:"extra,omitempty"`
+	ProxyKey           *string        `json:"proxy_key,omitempty"`
+	Concurrency        int            `json:"concurrency"`
+	Priority           int            `json:"priority"`
+	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
+	ExpiresAt          *int64         `json:"expires_at,omitempty"`
+	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+REDACTED
+
+type DataImportRequest struct {
+	Data                 DataPayload `json:"data"`
+	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+REDACTED
+
+type DataImportResult struct {
+	ProxyCreated   int               `json:"proxy_created"`
+	ProxyReused    int               `json:"proxy_reused"`
+	ProxyFailed    int               `json:"proxy_failed"`
+	AccountCreated int               `json:"account_created"`
+	AccountFailed  int               `json:"account_failed"`
+	Errors         []DataImportError `json:"errors,omitempty"`
+REDACTED
+
+type DataImportError struct {
+	Kind     string `json:"kind"`
+	Name     string `json:"name,omitempty"`
+	ProxyKey string `json:"proxy_key,omitempty"`
+	Message  string `json:"message"`
+REDACTED
+
+func buildProxyKey(protocol, host string, port int, username, password string) string {
+	return fmt.Sprintf("%s|%s|%d|%s|%s", strings.TrimSpace(protocol), strings.TrimSpace(host), port, strings.TrimSpace(username), strings.TrimSpace(password))
+REDACTED
+
+func (h *AccountHandler) ExportData(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	selectedIDs, err := parseAccountIDs(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+
+	accounts, err := h.resolveExportAccounts(ctx, selectedIDs, c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	includeProxies, err := parseIncludeProxies(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+
+	var proxies []service.Proxy
+	if includeProxies {
+		proxies, err = h.resolveExportProxies(ctx, accounts)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+REDACTED else {
+		proxies = []service.Proxy{REDACTED
+REDACTED
+
+	proxyKeyByID := make(map[int64]string, len(proxies))
+	dataProxies := make([]DataProxy, 0, len(proxies))
+	for i := range proxies {
+		p := proxies[i]
+		key := buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)
+		proxyKeyByID[p.ID] = key
+		dataProxies = append(dataProxies, DataProxy{
+			ProxyKey: key,
+			Name:     p.Name,
+			Protocol: p.Protocol,
+			Host:     p.Host,
+			Port:     p.Port,
+			Username: p.Username,
+			Password: p.Password,
+			Status:   p.Status,
+	REDACTED)
+REDACTED
+
+	dataAccounts := make([]DataAccount, 0, len(accounts))
+	for i := range accounts {
+		acc := accounts[i]
+		var proxyKey *string
+		if acc.ProxyID != nil {
+			if key, ok := proxyKeyByID[*acc.ProxyID]; ok {
+				proxyKey = &key
+		REDACTED
+	REDACTED
+		var expiresAt *int64
+		if acc.ExpiresAt != nil {
+			v := acc.ExpiresAt.Unix()
+			expiresAt = &v
+	REDACTED
+		dataAccounts = append(dataAccounts, DataAccount{
+			Name:               acc.Name,
+			Notes:              acc.Notes,
+			Platform:           acc.Platform,
+			Type:               acc.Type,
+			Credentials:        acc.Credentials,
+			Extra:              acc.Extra,
+			ProxyKey:           proxyKey,
+			Concurrency:        acc.Concurrency,
+			Priority:           acc.Priority,
+			RateMultiplier:     acc.RateMultiplier,
+			ExpiresAt:          expiresAt,
+			AutoPauseOnExpired: &acc.AutoPauseOnExpired,
+	REDACTED)
+REDACTED
+
+	payload := DataPayload{
+		ExportedAt: time.Now().UTC().Format(time.RFC3339),
+		Proxies:    dataProxies,
+		Accounts:   dataAccounts,
+REDACTED
+
+	response.Success(c, payload)
+REDACTED
+
+func (h *AccountHandler) ImportData(c *gin.Context) {
+	var req DataImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	dataPayload := req.Data
+	if err := validateDataHeader(dataPayload); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+
+	skipDefaultGroupBind := true
+	if req.SkipDefaultGroupBind != nil {
+		skipDefaultGroupBind = *req.SkipDefaultGroupBind
+REDACTED
+
+	result := DataImportResult{REDACTED
+	existingProxies, err := h.listAllProxies(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	proxyKeyToID := make(map[string]int64, len(existingProxies))
+	for i := range existingProxies {
+		p := existingProxies[i]
+		key := buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)
+		proxyKeyToID[key] = p.ID
+REDACTED
+
+	for i := range dataPayload.Proxies {
+		item := dataPayload.Proxies[i]
+		key := item.ProxyKey
+		if key == "" {
+			key = buildProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
+	REDACTED
+		if err := validateDataProxy(item); err != nil {
+			result.ProxyFailed++
+			result.Errors = append(result.Errors, DataImportError{
+				Kind:     "proxy",
+				Name:     item.Name,
+				ProxyKey: key,
+				Message:  err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		normalizedStatus := normalizeProxyStatus(item.Status)
+		if existingID, ok := proxyKeyToID[key]; ok {
+			proxyKeyToID[key] = existingID
+			result.ProxyReused++
+			if normalizedStatus != "" {
+				if proxy, err := h.adminService.GetProxy(c.Request.Context(), existingID); err == nil && proxy != nil && proxy.Status != normalizedStatus {
+					_, _ = h.adminService.UpdateProxy(c.Request.Context(), existingID, &service.UpdateProxyInput{
+						Status: normalizedStatus,
+				REDACTED)
+			REDACTED
+		REDACTED
+			continue
+	REDACTED
+
+		created, err := h.adminService.CreateProxy(c.Request.Context(), &service.CreateProxyInput{
+			Name:     defaultProxyName(item.Name),
+			Protocol: item.Protocol,
+			Host:     item.Host,
+			Port:     item.Port,
+			Username: item.Username,
+			Password: item.Password,
+	REDACTED)
+		if err != nil {
+			result.ProxyFailed++
+			result.Errors = append(result.Errors, DataImportError{
+				Kind:     "proxy",
+				Name:     item.Name,
+				ProxyKey: key,
+				Message:  err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		proxyKeyToID[key] = created.ID
+		result.ProxyCreated++
+
+		if normalizedStatus != "" && normalizedStatus != created.Status {
+			_, _ = h.adminService.UpdateProxy(c.Request.Context(), created.ID, &service.UpdateProxyInput{
+				Status: normalizedStatus,
+		REDACTED)
+	REDACTED
+REDACTED
+
+	for i := range dataPayload.Accounts {
+		item := dataPayload.Accounts[i]
+		if err := validateDataAccount(item); err != nil {
+			result.AccountFailed++
+			result.Errors = append(result.Errors, DataImportError{
+				Kind:    "account",
+				Name:    item.Name,
+				Message: err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+
+		var proxyID *int64
+		if item.ProxyKey != nil && *item.ProxyKey != "" {
+			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
+				proxyID = &id
+		REDACTED else {
+				result.AccountFailed++
+				result.Errors = append(result.Errors, DataImportError{
+					Kind:     "account",
+					Name:     item.Name,
+					ProxyKey: *item.ProxyKey,
+					Message:  "proxy_key not found",
+			REDACTED)
+				continue
+		REDACTED
+	REDACTED
+
+		accountInput := &service.CreateAccountInput{
+			Name:                 item.Name,
+			Notes:                item.Notes,
+			Platform:             item.Platform,
+			Type:                 item.Type,
+			Credentials:          item.Credentials,
+			Extra:                item.Extra,
+			ProxyID:              proxyID,
+			Concurrency:          item.Concurrency,
+			Priority:             item.Priority,
+			RateMultiplier:       item.RateMultiplier,
+			GroupIDs:             nil,
+			ExpiresAt:            item.ExpiresAt,
+			AutoPauseOnExpired:   item.AutoPauseOnExpired,
+			SkipDefaultGroupBind: skipDefaultGroupBind,
+	REDACTED
+
+		if _, err := h.adminService.CreateAccount(c.Request.Context(), accountInput); err != nil {
+			result.AccountFailed++
+			result.Errors = append(result.Errors, DataImportError{
+				Kind:    "account",
+				Name:    item.Name,
+				Message: err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		result.AccountCreated++
+REDACTED
+
+	response.Success(c, result)
+REDACTED
+
+func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {
+	page := 1
+	pageSize := dataPageCap
+	var out []service.Proxy
+	for {
+		items, total, err := h.adminService.ListProxies(ctx, page, pageSize, "", "", "")
+		if err != nil {
+			return nil, err
+	REDACTED
+		out = append(out, items...)
+		if len(out) >= int(total) || len(items) == 0 {
+			break
+	REDACTED
+		page++
+REDACTED
+	return out, nil
+REDACTED
+
+func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, accountType, status, search string) ([]service.Account, error) {
+	page := 1
+	pageSize := dataPageCap
+	var out []service.Account
+	for {
+		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search)
+		if err != nil {
+			return nil, err
+	REDACTED
+		out = append(out, items...)
+		if len(out) >= int(total) || len(items) == 0 {
+			break
+	REDACTED
+		page++
+REDACTED
+	return out, nil
+REDACTED
+
+func (h *AccountHandler) resolveExportAccounts(ctx context.Context, ids []int64, c *gin.Context) ([]service.Account, error) {
+	if len(ids) > 0 {
+		accounts, err := h.adminService.GetAccountsByIDs(ctx, ids)
+		if err != nil {
+			return nil, err
+	REDACTED
+		out := make([]service.Account, 0, len(accounts))
+		for _, acc := range accounts {
+			if acc == nil {
+				continue
+		REDACTED
+			out = append(out, *acc)
+	REDACTED
+		return out, nil
+REDACTED
+
+	platform := c.Query("platform")
+	accountType := c.Query("type")
+	status := c.Query("status")
+	search := strings.TrimSpace(c.Query("search"))
+	if len(search) > 100 {
+		search = search[:100]
+REDACTED
+	return h.listAccountsFiltered(ctx, platform, accountType, status, search)
+REDACTED
+
+func (h *AccountHandler) resolveExportProxies(ctx context.Context, accounts []service.Account) ([]service.Proxy, error) {
+	if len(accounts) == 0 {
+		return []service.Proxy{REDACTED, nil
+REDACTED
+
+	seen := make(map[int64]struct{REDACTED)
+	ids := make([]int64, 0)
+	for i := range accounts {
+		if accounts[i].ProxyID == nil {
+			continue
+	REDACTED
+		id := *accounts[i].ProxyID
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		ids = append(ids, id)
+REDACTED
+	if len(ids) == 0 {
+		return []service.Proxy{REDACTED, nil
+REDACTED
+
+	return h.adminService.GetProxiesByIDs(ctx, ids)
+REDACTED
+
+func parseAccountIDs(c *gin.Context) ([]int64, error) {
+	values := c.QueryArray("ids")
+	if len(values) == 0 {
+		raw := strings.TrimSpace(c.Query("ids"))
+		if raw != "" {
+			values = []string{rawREDACTED
+	REDACTED
+REDACTED
+	if len(values) == 0 {
+		return nil, nil
+REDACTED
+
+	ids := make([]int64, 0, len(values))
+	for _, item := range values {
+		for _, part := range strings.Split(item, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+		REDACTED
+			id, err := strconv.ParseInt(part, 10, 64)
+			if err != nil || id <= 0 {
+				return nil, fmt.Errorf("invalid account id: %s", part)
+		REDACTED
+			ids = append(ids, id)
+	REDACTED
+REDACTED
+	return ids, nil
+REDACTED
+
+func parseIncludeProxies(c *gin.Context) (bool, error) {
+	raw := strings.TrimSpace(strings.ToLower(c.Query("include_proxies")))
+	if raw == "" {
+		return true, nil
+REDACTED
+	switch raw {
+	case "1", "true", "yes", "on":
+		return true, nil
+	case "0", "false", "no", "off":
+		return false, nil
+	default:
+		return true, fmt.Errorf("invalid include_proxies value: %s", raw)
+REDACTED
+REDACTED
+
+func validateDataHeader(payload DataPayload) error {
+	if payload.Type != "" && payload.Type != dataType && payload.Type != legacyDataType {
+		return fmt.Errorf("unsupported data type: %s", payload.Type)
+REDACTED
+	if payload.Version != 0 && payload.Version != dataVersion {
+		return fmt.Errorf("unsupported data version: %d", payload.Version)
+REDACTED
+	if payload.Proxies == nil {
+		return errors.New("proxies is required")
+REDACTED
+	if payload.Accounts == nil {
+		return errors.New("accounts is required")
+REDACTED
+	return nil
+REDACTED
+
+func validateDataProxy(item DataProxy) error {
+	if strings.TrimSpace(item.Protocol) == "" {
+		return errors.New("proxy protocol is required")
+REDACTED
+	if strings.TrimSpace(item.Host) == "" {
+		return errors.New("proxy host is required")
+REDACTED
+	if item.Port <= 0 || item.Port > 65535 {
+		return errors.New("proxy port is invalid")
+REDACTED
+	switch item.Protocol {
+	case "http", "https", "socks5", "socks5h":
+	default:
+		return fmt.Errorf("proxy protocol is invalid: %s", item.Protocol)
+REDACTED
+	if item.Status != "" {
+		normalizedStatus := normalizeProxyStatus(item.Status)
+		if normalizedStatus != service.StatusActive && normalizedStatus != "inactive" {
+			return fmt.Errorf("proxy status is invalid: %s", item.Status)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func validateDataAccount(item DataAccount) error {
+	if strings.TrimSpace(item.Name) == "" {
+		return errors.New("account name is required")
+REDACTED
+	if strings.TrimSpace(item.Platform) == "" {
+		return errors.New("account platform is required")
+REDACTED
+	if strings.TrimSpace(item.Type) == "" {
+		return errors.New("account type is required")
+REDACTED
+	if len(item.Credentials) == 0 {
+		return errors.New("account credentials is required")
+REDACTED
+	switch item.Type {
+	case service.AccountTypeOAuth, service.AccountTypeSetupToken, service.AccountTypeAPIKey, service.AccountTypeUpstream:
+	default:
+		return fmt.Errorf("account type is invalid: %s", item.Type)
+REDACTED
+	if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
+		return errors.New("rate_multiplier must be >= 0")
+REDACTED
+	if item.Concurrency < 0 {
+		return errors.New("concurrency must be >= 0")
+REDACTED
+	if item.Priority < 0 {
+		return errors.New("priority must be >= 0")
+REDACTED
+	return nil
+REDACTED
+
+func defaultProxyName(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "imported-proxy"
+REDACTED
+	return name
+REDACTED
+
+func normalizeProxyStatus(status string) string {
+	normalized := strings.TrimSpace(strings.ToLower(status))
+	switch normalized {
+	case "":
+		return ""
+	case service.StatusActive:
+		return service.StatusActive
+	case "inactive", service.StatusDisabled:
+		return "inactive"
+	default:
+		return normalized
+REDACTED
+REDACTED

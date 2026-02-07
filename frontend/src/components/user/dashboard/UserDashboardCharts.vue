@@ -55,16 +55,7 @@
       </div>
 
       <!-- Token Usage Trend Chart -->
-      <div class="card relative overflow-hidden p-4">
-        <div v-if="loading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm dark:bg-dark-800/50">
-          <LoadingSpinner size="md" />
-        </div>
-        <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('dashboard.tokenUsageTrend') REDACTEDREDACTED</h3>
-        <div class="h-48">
-          <Line v-if="trendData" :data="trendData" :options="lineOptions" />
-          <div v-else class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ t('dashboard.noDataAvailable') REDACTEDREDACTED</div>
-        </div>
-      </div>
+      <TokenUsageTrend :trend-data="trend" :loading="loading" />
     </div>
   </div>
 </template>
@@ -75,7 +66,8 @@ import { useI18n REDACTED from 'vue-i18n'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
-import { Line, Doughnut REDACTED from 'vue-chartjs'
+import { Doughnut REDACTED from 'vue-chartjs'
+import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import type { TrendDataPoint, ModelStat REDACTED from '@/types'
 import { formatCostFixed as formatCost, formatNumberLocaleString as formatNumber, formatTokensK as formatTokens REDACTED from '@/utils/format'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler REDACTED from 'chart.js'
@@ -93,28 +85,6 @@ const modelData = computed(() => !props.models?.length ? null : {
   REDACTED]
 REDACTED)
 
-const trendData = computed(() => !props.trend?.length ? null : {
-  labels: props.trend.map((d: TrendDataPoint) => d.date),
-  datasets: [
-    {
-      label: t('dashboard.input'),
-      data: props.trend.map((d: TrendDataPoint) => d.input_tokens),
-      borderColor: '#3b82f6',
-      backgroundColor: 'rgba(59, 130, 246, 0.1)',
-      tension: 0.3,
-      fill: true
-    REDACTED,
-    {
-      label: t('dashboard.output'),
-      data: props.trend.map((d: TrendDataPoint) => d.output_tokens),
-      borderColor: '#10b981',
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      tension: 0.3,
-      fill: true
-    REDACTED
-  ]
-REDACTED)
-
 const doughnutOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -123,27 +93,6 @@ const doughnutOptions = {
     tooltip: {
       callbacks: {
         label: (context: any) => `${context.labelREDACTED: ${formatTokens(context.parsed)REDACTED tokens`
-      REDACTED
-    REDACTED
-  REDACTED
-REDACTED
-
-const lineOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: true, position: 'top' as const REDACTED,
-    tooltip: {
-      callbacks: {
-        label: (context: any) => `${context.dataset.labelREDACTED: ${formatTokens(context.parsed.y)REDACTED tokens`
-      REDACTED
-    REDACTED
-  REDACTED,
-  scales: {
-    y: {
-      beginAtZero: true,
-      ticks: {
-        callback: (value: any) => formatTokens(value)
       REDACTED
     REDACTED
   REDACTED

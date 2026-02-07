@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 type stubOpenAIAccountRepo struct {
@@ -201,6 +202,22 @@ REDACTED
 REDACTED
 	c.deletedSessions[sessionHash]++
 	delete(c.sessionBindings, sessionHash)
+	return nil
+REDACTED
+
+func (c *stubGatewayCache) IncrModelCallCount(ctx context.Context, accountID int64, model string) (int64, error) {
+	return 0, nil
+REDACTED
+
+func (c *stubGatewayCache) GetModelLoadBatch(ctx context.Context, accountIDs []int64, model string) (map[int64]*ModelLoadInfo, error) {
+	return nil, nil
+REDACTED
+
+func (c *stubGatewayCache) FindGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
+	return "", 0, false
+REDACTED
+
+func (c *stubGatewayCache) SaveGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
 	return nil
 REDACTED
 
@@ -1066,6 +1083,43 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIStreamingReuseScannerBufferAndStillWorks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{REDACTED,
+REDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":3REDACTEDREDACTEDREDACTEDREDACTED\n\n"))
+REDACTED()
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model")
+	_ = pr.Close()
+REDACTED
+	require.NotNil(t, result)
+	require.NotNil(t, result.usage)
+	require.Equal(t, 1, result.usage.InputTokens)
+	require.Equal(t, 2, result.usage.OutputTokens)
+	require.Equal(t, 3, result.usage.CacheReadInputTokens)
+REDACTED
+
 func TestOpenAIInvalidBaseURLWhenAllowlistDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -1147,5 +1201,228 @@ REDACTED
 REDACTED
 	if _, err := svc.validateUpstreamBaseURL("https://evil.com"); err == nil {
 		t.Fatalf("expected non-allowlisted host to fail")
+REDACTED
+REDACTED
+
+// ==================== P1-08 修复：model 替换性能优化测试 ====================
+
+func TestReplaceModelInSSELine(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+
+	tests := []struct {
+		name     string
+		line     string
+		from     string
+		to       string
+		expected string
+REDACTED{
+		{
+			name:     "顶层 model 字段替换",
+			line:     `data: {"id":"chatcmpl-123","model":"gpt-4o","choices":[]REDACTED`,
+			from:     "gpt-4o",
+			to:       "my-custom-model",
+			expected: `data: {"id":"chatcmpl-123","model":"my-custom-model","choices":[]REDACTED`,
+	REDACTED,
+		{
+			name:     "嵌套 response.model 替换",
+			line:     `data: {"type":"response","response":{"id":"resp-1","model":"gpt-4o","output":[]REDACTEDREDACTED`,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `data: {"type":"response","response":{"id":"resp-1","model":"my-model","output":[]REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "model 不匹配时不替换",
+			line:     `data: {"id":"chatcmpl-123","model":"gpt-3.5-turbo","choices":[]REDACTED`,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `data: {"id":"chatcmpl-123","model":"gpt-3.5-turbo","choices":[]REDACTED`,
+	REDACTED,
+		{
+			name:     "无 model 字段时不替换",
+			line:     `data: {"id":"chatcmpl-123","choices":[]REDACTED`,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `data: {"id":"chatcmpl-123","choices":[]REDACTED`,
+	REDACTED,
+		{
+			name:     "空 data 行",
+			line:     `data: `,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `data: `,
+	REDACTED,
+		{
+			name:     "[DONE] 行",
+			line:     `data: [DONE]`,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `data: [DONE]`,
+	REDACTED,
+		{
+			name:     "非 data: 前缀行",
+			line:     `event: message`,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `event: message`,
+	REDACTED,
+		{
+			name:     "非法 JSON 不替换",
+			line:     `data: {invalid jsonREDACTED`,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `data: {invalid jsonREDACTED`,
+	REDACTED,
+		{
+			name:     "无空格 data: 格式",
+			line:     `data:{"id":"x","model":"gpt-4o"REDACTED`,
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: `data: {"id":"x","model":"my-model"REDACTED`,
+	REDACTED,
+		{
+			name:     "model 名含特殊字符",
+			line:     `data: {"model":"org/model-v2.1-beta"REDACTED`,
+			from:     "org/model-v2.1-beta",
+			to:       "custom/alias",
+			expected: `data: {"model":"custom/alias"REDACTED`,
+	REDACTED,
+		{
+			name:     "空行",
+			line:     "",
+			from:     "gpt-4o",
+			to:       "my-model",
+			expected: "",
+	REDACTED,
+		{
+			name:     "保持其他字段不变",
+			line:     `data: {"id":"abc","object":"chat.completion.chunk","model":"gpt-4o","created":1234567890,"choices":[{"index":0,"delta":{"content":"hi"REDACTEDREDACTED]REDACTED`,
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: `data: {"id":"abc","object":"chat.completion.chunk","model":"alias","created":1234567890,"choices":[{"index":0,"delta":{"content":"hi"REDACTEDREDACTED]REDACTED`,
+	REDACTED,
+		{
+			name:     "顶层优先于嵌套：同时存在两个 model",
+			line:     `data: {"model":"gpt-4o","response":{"model":"gpt-4o"REDACTEDREDACTED`,
+			from:     "gpt-4o",
+			to:       "replaced",
+			expected: `data: {"model":"replaced","response":{"model":"gpt-4o"REDACTEDREDACTED`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := svc.replaceModelInSSELine(tt.line, tt.from, tt.to)
+			require.Equal(t, tt.expected, got)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestReplaceModelInSSEBody(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+
+	tests := []struct {
+		name     string
+		body     string
+		from     string
+		to       string
+		expected string
+REDACTED{
+		{
+			name:     "多行 SSE body 替换",
+			body:     "data: {\"model\":\"gpt-4o\",\"choices\":[]REDACTED\n\ndata: {\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"hi\"REDACTEDREDACTED]REDACTED\n\ndata: [DONE]\n",
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: "data: {\"model\":\"alias\",\"choices\":[]REDACTED\n\ndata: {\"model\":\"alias\",\"choices\":[{\"delta\":{\"content\":\"hi\"REDACTEDREDACTED]REDACTED\n\ndata: [DONE]\n",
+	REDACTED,
+		{
+			name:     "无需替换的 body",
+			body:     "data: {\"model\":\"gpt-3.5-turbo\"REDACTED\n\ndata: [DONE]\n",
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: "data: {\"model\":\"gpt-3.5-turbo\"REDACTED\n\ndata: [DONE]\n",
+	REDACTED,
+		{
+			name:     "混合 event 和 data 行",
+			body:     "event: message\ndata: {\"model\":\"gpt-4o\"REDACTED\n\n",
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: "event: message\ndata: {\"model\":\"alias\"REDACTED\n\n",
+	REDACTED,
+		{
+			name:     "空 body",
+			body:     "",
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: "",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := svc.replaceModelInSSEBody(tt.body, tt.from, tt.to)
+			require.Equal(t, tt.expected, got)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestReplaceModelInResponseBody(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+
+	tests := []struct {
+		name     string
+		body     string
+		from     string
+		to       string
+		expected string
+REDACTED{
+		{
+			name:     "替换顶层 model",
+			body:     `{"id":"chatcmpl-123","model":"gpt-4o","choices":[]REDACTED`,
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: `{"id":"chatcmpl-123","model":"alias","choices":[]REDACTED`,
+	REDACTED,
+		{
+			name:     "model 不匹配不替换",
+			body:     `{"id":"chatcmpl-123","model":"gpt-3.5-turbo","choices":[]REDACTED`,
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: `{"id":"chatcmpl-123","model":"gpt-3.5-turbo","choices":[]REDACTED`,
+	REDACTED,
+		{
+			name:     "无 model 字段不替换",
+			body:     `{"id":"chatcmpl-123","choices":[]REDACTED`,
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: `{"id":"chatcmpl-123","choices":[]REDACTED`,
+	REDACTED,
+		{
+			name:     "非法 JSON 返回原值",
+			body:     `not json`,
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: `not json`,
+	REDACTED,
+		{
+			name:     "空 body 返回原值",
+			body:     ``,
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: ``,
+	REDACTED,
+		{
+			name:     "保持嵌套结构不变",
+			body:     `{"model":"gpt-4o","usage":{"prompt_tokens":10,"completion_tokens":20REDACTED,"choices":[{"message":{"role":"assistant","content":"hello"REDACTEDREDACTED]REDACTED`,
+			from:     "gpt-4o",
+			to:       "alias",
+			expected: `{"model":"alias","usage":{"prompt_tokens":10,"completion_tokens":20REDACTED,"choices":[{"message":{"role":"assistant","content":"hello"REDACTEDREDACTED]REDACTED`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := svc.replaceModelInResponseBody([]byte(tt.body), tt.from, tt.to)
+			require.Equal(t, tt.expected, string(got))
+	REDACTED)
 REDACTED
 REDACTED

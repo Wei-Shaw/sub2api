@@ -1,18 +1,13 @@
 package service
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestApplyCodexOAuthTransform_ToolContinuationPreservesInput(t *testing.T) {
 	// 续链场景：保留 item_reference 与 id，但不再强制 store=true。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
@@ -48,7 +43,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_ExplicitStoreFalsePreserved(t *testing.T) {
 	// 续链场景：显式 store=false 不再强制为 true，保持 false。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -68,7 +62,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_ExplicitStoreTrueForcedFalse(t *testing.T) {
 	// 显式 store=true 也会强制为 false。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -88,7 +81,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_NonContinuationDefaultsStoreFalseAndStripsIDs(t *testing.T) {
 	// 非续链场景：未设置 store 时默认 false，并移除 input 中的 id。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -130,8 +122,6 @@ REDACTED
 REDACTED
 
 func TestApplyCodexOAuthTransform_NormalizeCodexTools_PreservesResponsesFunctionTools(t *testing.T) {
-	setupCodexCache(t)
-
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
 		"tools": []any{
@@ -162,7 +152,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_EmptyInput(t *testing.T) {
 	// 空 input 应保持为空且不触发异常。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -189,30 +178,8 @@ REDACTED
 REDACTED
 REDACTED
 
-func setupCodexCache(t *testing.T) {
-REDACTED
-
-	// 使用临时 HOME 避免触发网络拉取 header。
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	cacheDir := filepath.Join(tempDir, ".opencode", "cache")
-	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "opencode-codex-header.txt"), []byte("header"), 0o644))
-
-	meta := map[string]any{
-		"etag":        "",
-		"lastFetch":   time.Now().UTC().Format(time.RFC3339),
-		"lastChecked": time.Now().UnixMilli(),
-REDACTED
-	data, err := json.Marshal(meta)
-REDACTED
-	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "opencode-codex-header-meta.json"), data, 0o644))
-REDACTED
-
 func TestApplyCodexOAuthTransform_CodexCLI_PreservesExistingInstructions(t *testing.T) {
 	// Codex CLI 场景：已有 instructions 时不修改
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model":        "gpt-5.1",
@@ -230,7 +197,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_CodexCLI_SuppliesDefaultWhenEmpty(t *testing.T) {
 	// Codex CLI 场景：无 instructions 时补充默认值
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -246,8 +212,7 @@ REDACTED
 REDACTED
 
 func TestApplyCodexOAuthTransform_NonCodexCLI_OverridesInstructions(t *testing.T) {
-	// 非 Codex CLI 场景：使用 opencode 指令覆盖
-	setupCodexCache(t)
+	// 非 Codex CLI 场景：使用内置 Codex CLI 指令覆盖
 
 	reqBody := map[string]any{
 		"model":        "gpt-5.1",

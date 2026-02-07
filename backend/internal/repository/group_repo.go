@@ -191,7 +191,7 @@ REDACTED
 		q = q.Where(group.IsExclusiveEQ(*isExclusive))
 REDACTED
 
-	total, err := q.Count(ctx)
+	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, nil, err
 REDACTED

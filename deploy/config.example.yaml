@@ -20,6 +20,10 @@ server:
   # Mode: "debug" for development, "release" for production
   # 运行模式："debug" 用于开发，"release" 用于生产环境
   mode: "release"
+  # Frontend base URL used to generate external links in emails (e.g. password reset)
+  # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
+  # Example: "https://example.com"
+  frontend_url: ""
   # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
   # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
   trusted_proxies: []
@@ -108,9 +112,9 @@ security:
     # 白名单禁用时是否允许 http:// URL（默认: false，要求 https）
     allow_insecure_http: true
   response_headers:
-    # Enable configurable response header filtering (disable to use default allowlist)
-    # 启用可配置的响应头过滤（禁用则使用默认白名单）
-    enabled: false
+    # Enable configurable response header filtering (default: true)
+    # 启用可配置的响应头过滤（默认启用，过滤上游敏感响应头）
+    enabled: true
     # Extra allowed response headers from upstream
     # 额外允许的上游响应头
     additional_allowed: []
@@ -178,17 +182,22 @@ gateway:
   # - account_proxy: Isolate by account+proxy combination (default, finest granularity)
   # - account_proxy: 按账户+代理组合隔离（默认，最细粒度）
   connection_pool_isolation: "account_proxy"
+  # Force Codex CLI mode: treat all /openai/v1/responses requests as Codex CLI.
+  # 强制按 Codex CLI 处理 /openai/v1/responses 请求（用于网关未透传/改写 User-Agent 的兜底）。
+  #
+  # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
+  force_codex_cli: false
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
   # 所有主机的最大空闲连接数
-  max_idle_conns: 240
+  max_idle_conns: 2560
   # Max idle connections per host
   # 每个主机的最大空闲连接数
   max_idle_conns_per_host: 120
   # Max connections per host
   # 每个主机的最大连接数
-  max_conns_per_host: 240
+  max_conns_per_host: 1024
   # Idle connection timeout (seconds)
   # 空闲连接超时时间（秒）
   idle_conn_timeout_seconds: 90
@@ -477,9 +486,22 @@ database:
   # Database name
   # 数据库名称
   dbname: "sub2api"
-  # SSL mode: disable, require, verify-ca, verify-full
-  # SSL 模式：disable（禁用）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
-  sslmode: "disable"
+  # SSL mode: disable, prefer, require, verify-ca, verify-full
+  # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
+  # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
+  sslmode: "prefer"
+  # Max open connections (高并发场景建议 256+，需配合 PostgreSQL max_connections 调整)
+  # 最大打开连接数
+  max_open_conns: 256
+  # Max idle connections (建议为 max_open_conns 的 50%，减少频繁建连开销)
+  # 最大空闲连接数
+  max_idle_conns: 128
+  # Connection max lifetime (minutes)
+  # 连接最大存活时间（分钟）
+  conn_max_lifetime_minutes: 30
+  # Connection max idle time (minutes)
+  # 空闲连接最大存活时间（分钟）
+  conn_max_idle_time_minutes: 5
 
 # =============================================================================
 # Redis Configuration
@@ -498,6 +520,12 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
+  # Connection pool size (max concurrent connections)
+  # 连接池大小（最大并发连接数）
+  pool_size: 1024
+  # Minimum number of idle connections (高并发场景建议 128+，保持足够热连接)
+  # 最小空闲连接数
+  min_idle_conns: 128
   # Enable TLS/SSL connection
   # 是否启用 TLS/SSL 连接
   enable_tls: false

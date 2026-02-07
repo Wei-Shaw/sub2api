@@ -1,6 +1,7 @@
 package antigravity
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -341,12 +342,16 @@ REDACTED
 	return builder.String()
 REDACTED
 
-// generateRandomID 生成随机 ID
+// generateRandomID 生成密码学安全的随机 ID
 func generateRandomID() string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, 12)
-	for i := range result {
-		result[i] = chars[i%len(chars)]
+	randBytes := make([]byte, 12)
+	if _, err := rand.Read(randBytes); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+REDACTED
+	for i, b := range randBytes {
+		result[i] = chars[int(b)%len(chars)]
 REDACTED
 	return string(result)
 REDACTED

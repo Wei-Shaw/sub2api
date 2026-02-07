@@ -16,16 +16,6 @@
             @sync="showSync = true"
             @create="showCreate = true"
           >
-            <template #before>
-              <button
-                @click="showErrorPassthrough = true"
-                class="btn btn-secondary"
-                :title="t('admin.errorPassthrough.title')"
-              >
-                <Icon name="shield" size="md" class="mr-1.5" />
-                <span class="hidden md:inline">{{ t('admin.errorPassthrough.title') REDACTEDREDACTED</span>
-              </button>
-            </template>
             <template #after>
               <!-- Auto Refresh Dropdown -->
               <div class="relative" ref="autoRefreshDropdownRef">
@@ -72,6 +62,16 @@
                 </div>
               </div>
 
+              <!-- Error Passthrough Rules -->
+              <button
+                @click="showErrorPassthrough = true"
+                class="btn btn-secondary"
+                :title="t('admin.errorPassthrough.title')"
+              >
+                <Icon name="shield" size="md" class="mr-1.5" />
+                <span class="hidden md:inline">{{ t('admin.errorPassthrough.title') REDACTEDREDACTED</span>
+              </button>
+
               <!-- Column Settings Dropdown -->
               <div class="relative" ref="columnDropdownRef">
                 <button
@@ -106,6 +106,14 @@
                 </div>
               </div>
             </template>
+            <template #beforeCreate>
+              <button @click="showImportData = true" class="btn btn-secondary">
+                {{ t('admin.accounts.dataImport') REDACTEDREDACTED
+              </button>
+              <button @click="openExportDataDialog" class="btn btn-secondary">
+                {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') REDACTEDREDACTED
+              </button>
+            </template>
           </AccountTableActions>
         </div>
       </template>
@@ -120,6 +128,15 @@
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
         >
+          <template #header-select>
+            <input
+              type="checkbox"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="allVisibleSelected"
+              @click.stop
+              @change="toggleSelectAllVisible($event)"
+            />
+          </template>
           <template #cell-select="{ row REDACTED">
             <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
@@ -228,9 +245,16 @@
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @reauth="handleReAuth" @refresh-token="handleRefresh" @reset-status="handleResetStatus" @clear-rate-limit="handleClearRateLimit" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
+    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name REDACTED)" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
+      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+        <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
+        <span>{{ t('admin.accounts.dataExportIncludeProxies') REDACTEDREDACTED</span>
+      </label>
+    </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
   </AppLayout>
 </template>
@@ -253,6 +277,7 @@ import AccountTableActions from '@/components/admin/account/AccountTableActions.
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
@@ -277,6 +302,9 @@ const selIds = ref<number[]>([])
 const showCreate = ref(false)
 const showEdit = ref(false)
 const showSync = ref(false)
+const showImportData = ref(false)
+const showExportDataDialog = ref(false)
+const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -292,6 +320,7 @@ const testingAcc = ref<Account | null>(null)
 const statsAcc = ref<Account | null>(null)
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:numberREDACTED|nullREDACTED>({ show: false, acc: null, pos: null REDACTED)
+const exportingData = ref(false)
 
 // Column settings
 const showColumnDropdown = ref(false)
@@ -418,12 +447,15 @@ const isAnyModalOpen = computed(() => {
     showCreate.value ||
     showEdit.value ||
     showSync.value ||
+    showImportData.value ||
+    showExportDataDialog.value ||
     showBulkEdit.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
     showReAuth.value ||
     showTest.value ||
-    showStats.value
+    showStats.value ||
+    showErrorPassthrough.value
   )
 REDACTED)
 
@@ -542,6 +574,21 @@ const openMenu = (a: Account, e: MouseEvent) => {
   menu.show = true
 REDACTED
 const toggleSel = (id: number) => { const i = selIds.value.indexOf(id); if(i === -1) selIds.value.push(id); else selIds.value.splice(i, 1) REDACTED
+const allVisibleSelected = computed(() => {
+  if (accounts.value.length === 0) return false
+  return accounts.value.every(account => selIds.value.includes(account.id))
+REDACTED)
+const toggleSelectAllVisible = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.checked) {
+    const next = new Set(selIds.value)
+    accounts.value.forEach(account => next.add(account.id))
+    selIds.value = Array.from(next)
+    return
+  REDACTED
+  const visibleIds = new Set(accounts.value.map(account => account.id))
+  selIds.value = selIds.value.filter(id => !visibleIds.has(id))
+REDACTED
 const selectPage = () => { selIds.value = [...new Set([...selIds.value, ...accounts.value.map(a => a.id)])] REDACTED
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); selIds.value = []; reload() REDACTED catch (error) { console.error('Failed to bulk delete accounts:', error) REDACTED REDACTED
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
@@ -646,6 +693,50 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
   REDACTED
 REDACTED
 const handleBulkUpdated = () => { showBulkEdit.value = false; selIds.value = []; reload() REDACTED
+const handleDataImported = () => { showImportData.value = false; reload() REDACTED
+const formatExportTimestamp = () => {
+  const now = new Date()
+  const pad2 = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()REDACTED${pad2(now.getMonth() + 1)REDACTED${pad2(now.getDate())REDACTED${pad2(now.getHours())REDACTED${pad2(now.getMinutes())REDACTED${pad2(now.getSeconds())REDACTED`
+REDACTED
+const openExportDataDialog = () => {
+  includeProxyOnExport.value = true
+  showExportDataDialog.value = true
+REDACTED
+const handleExportData = async () => {
+  if (exportingData.value) return
+  exportingData.value = true
+  try {
+    const dataPayload = await adminAPI.accounts.exportData(
+      selIds.value.length > 0
+        ? { ids: selIds.value, includeProxies: includeProxyOnExport.value REDACTED
+        : {
+            includeProxies: includeProxyOnExport.value,
+            filters: {
+              platform: params.platform,
+              type: params.type,
+              status: params.status,
+              search: params.search
+            REDACTED
+          REDACTED
+    )
+    const timestamp = formatExportTimestamp()
+    const filename = `sub2api-account-${timestampREDACTED.json`
+    const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' REDACTED)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    appStore.showSuccess(t('admin.accounts.dataExported'))
+  REDACTED catch (error: any) {
+    appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+  REDACTED finally {
+    exportingData.value = false
+    showExportDataDialog.value = false
+  REDACTED
+REDACTED
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null REDACTED
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null REDACTED
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null REDACTED

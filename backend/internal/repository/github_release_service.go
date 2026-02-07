@@ -98,12 +98,16 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	defer func() { _ = out.Close() REDACTED()
 
 	// SECURITY: Use LimitReader to enforce max download size even if Content-Length is missing/wrong
 	limited := io.LimitReader(resp.Body, maxSize+1)
 	written, err := io.Copy(out, limited)
+
+	// Close file before attempting to remove (required on Windows)
+	_ = out.Close()
+
 	if err != nil {
+		_ = os.Remove(dest) // Clean up partial file (best-effort)
 		return err
 REDACTED
 

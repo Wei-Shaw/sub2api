@@ -925,9 +925,23 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableModelRestriction.value) {
     const modelMapping = buildModelMappingObject()
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-      credentialsChanged = true
+
+    // 统一使用 model_mapping 字段
+    if (modelRestrictionMode.value === 'whitelist') {
+      if (allowedModels.value.length > 0) {
+        // 白名单模式：将模型转换为 model_mapping 格式（key=value）
+        const mapping: Record<string, string> = {REDACTED
+        for (const m of allowedModels.value) {
+          mapping[m] = m
+        REDACTED
+        credentials.model_mapping = mapping
+        credentialsChanged = true
+      REDACTED
+    REDACTED else {
+      if (modelMapping) {
+        credentials.model_mapping = modelMapping
+        credentialsChanged = true
+      REDACTED
     REDACTED
   REDACTED
 

@@ -3,11 +3,13 @@ package admin
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
@@ -696,11 +698,61 @@ REDACTED
 		return
 REDACTED
 
-	// Return mock data for now
+	ctx := c.Request.Context()
+	success := 0
+	failed := 0
+	results := make([]gin.H, 0, len(req.Accounts))
+
+	for _, item := range req.Accounts {
+		if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
+			failed++
+			results = append(results, gin.H{
+				"name":    item.Name,
+				"success": false,
+				"error":   "rate_multiplier must be >= 0",
+		REDACTED)
+			continue
+	REDACTED
+
+		skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
+
+		account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
+			Name:                  item.Name,
+			Notes:                 item.Notes,
+			Platform:              item.Platform,
+			Type:                  item.Type,
+			Credentials:           item.Credentials,
+			Extra:                 item.Extra,
+			ProxyID:               item.ProxyID,
+			Concurrency:           item.Concurrency,
+			Priority:              item.Priority,
+			RateMultiplier:        item.RateMultiplier,
+			GroupIDs:              item.GroupIDs,
+			ExpiresAt:             item.ExpiresAt,
+			AutoPauseOnExpired:    item.AutoPauseOnExpired,
+			SkipMixedChannelCheck: skipCheck,
+	REDACTED)
+		if err != nil {
+			failed++
+			results = append(results, gin.H{
+				"name":    item.Name,
+				"success": false,
+				"error":   err.Error(),
+		REDACTED)
+			continue
+	REDACTED
+		success++
+		results = append(results, gin.H{
+			"name":    item.Name,
+			"id":      account.ID,
+			"success": true,
+	REDACTED)
+REDACTED
+
 	response.Success(c, gin.H{
-		"success": len(req.Accounts),
-		"failed":  0,
-		"results": []gin.H{REDACTED,
+		"success": success,
+		"failed":  failed,
+		"results": results,
 REDACTED)
 REDACTED
 
@@ -738,57 +790,40 @@ REDACTED else {
 REDACTED
 
 	ctx := c.Request.Context()
-	success := 0
-	failed := 0
-	results := []gin.H{REDACTED
 
+	// 阶段一：预验证所有账号存在，收集 credentials
+	type accountUpdate struct {
+		ID          int64
+		Credentials map[string]any
+REDACTED
+	updates := make([]accountUpdate, 0, len(req.AccountIDs))
 	for _, accountID := range req.AccountIDs {
-		// Get account
 		account, err := h.adminService.GetAccount(ctx, accountID)
 		if err != nil {
-			failed++
-			results = append(results, gin.H{
-				"account_id": accountID,
-				"success":    false,
-				"error":      "Account not found",
-		REDACTED)
-			continue
+			response.Error(c, 404, fmt.Sprintf("Account %d not found", accountID))
+			return
 	REDACTED
-
-		// Update credentials field
 		if account.Credentials == nil {
 			account.Credentials = make(map[string]any)
 	REDACTED
-
 		account.Credentials[req.Field] = req.Value
+		updates = append(updates, accountUpdate{ID: accountID, Credentials: account.CredentialsREDACTED)
+REDACTED
 
-		// Update account
+	// 阶段二：依次更新，任何失败立即返回（避免部分成功部分失败）
+	for _, u := range updates {
 		updateInput := &service.UpdateAccountInput{
-			Credentials: account.Credentials,
+			Credentials: u.Credentials,
 	REDACTED
-
-		_, err = h.adminService.UpdateAccount(ctx, accountID, updateInput)
-		if err != nil {
-			failed++
-			results = append(results, gin.H{
-				"account_id": accountID,
-				"success":    false,
-				"error":      err.Error(),
-		REDACTED)
-			continue
+		if _, err := h.adminService.UpdateAccount(ctx, u.ID, updateInput); err != nil {
+			response.Error(c, 500, fmt.Sprintf("Failed to update account %d: %v", u.ID, err))
+			return
 	REDACTED
-
-		success++
-		results = append(results, gin.H{
-			"account_id": accountID,
-			"success":    true,
-	REDACTED)
 REDACTED
 
 	response.Success(c, gin.H{
-		"success": success,
-		"failed":  failed,
-		"results": results,
+		"success": len(updates),
+		"failed":  0,
 REDACTED)
 REDACTED
 
@@ -1439,4 +1474,10 @@ REDACTED
 REDACTED
 
 	response.Success(c, results)
+REDACTED
+
+// GetAntigravityDefaultModelMapping 获取 Antigravity 平台的默认模型映射
+// GET /api/v1/admin/accounts/antigravity/default-model-mapping
+func (h *AccountHandler) GetAntigravityDefaultModelMapping(c *gin.Context) {
+	response.Success(c, domain.DefaultAntigravityModelMapping)
 REDACTED

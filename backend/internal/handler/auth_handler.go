@@ -2,6 +2,7 @@ package handler
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -448,17 +449,12 @@ REDACTED
 		return
 REDACTED
 
-	// Build frontend base URL from request
-	scheme := "https"
-	if c.Request.TLS == nil {
-		// Check X-Forwarded-Proto header (common in reverse proxy setups)
-		if proto := c.GetHeader("X-Forwarded-Proto"); proto != "" {
-			scheme = proto
-	REDACTED else {
-			scheme = "http"
-	REDACTED
+	frontendBaseURL := strings.TrimSpace(h.cfg.Server.FrontendURL)
+	if frontendBaseURL == "" {
+		slog.Error("server.frontend_url not configured; cannot build password reset link")
+		response.InternalError(c, "Password reset is not configured")
+		return
 REDACTED
-	frontendBaseURL := scheme + "://" + c.Request.Host
 
 	// Request password reset (async)
 	// Note: This returns success even if email doesn't exist (to prevent enumeration)

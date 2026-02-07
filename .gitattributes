@@ -1,0 +1,15 @@
+# 确保所有 SQL 迁移文件使用 LF 换行符
+backend/migrations/*.sql text eol=lf
+
+# Go 源代码文件
+*.go text eol=lf
+
+# Shell 脚本
+*.sh text eol=lf
+
+# YAML/YML 配置文件
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Dockerfile
+Dockerfile text eol=lf

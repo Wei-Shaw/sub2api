@@ -574,7 +574,10 @@ export interface Account {
   platform: AccountPlatform
   type: AccountType
   credentials?: Record<string, unknown>
-  extra?: CodexUsageSnapshot & Record<string, unknown> // Extra fields including Codex usage
+  // Extra fields including Codex usage and model-level rate limits (Antigravity smart retry)
+  extra?: (CodexUsageSnapshot & {
+    model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string REDACTED>
+  REDACTED & Record<string, unknown>)
   proxy_id: number | null
   concurrency: number
   current_concurrency?: number // Real-time concurrency count from Redis
@@ -740,6 +743,56 @@ export interface UpdateProxyRequest {
   username?: string | null
   password?: string | null
   status?: 'active' | 'inactive'
+REDACTED
+
+export interface AdminDataPayload {
+  type?: string
+  version?: number
+  exported_at: string
+  proxies: AdminDataProxy[]
+  accounts: AdminDataAccount[]
+REDACTED
+
+export interface AdminDataProxy {
+  proxy_key: string
+  name: string
+  protocol: ProxyProtocol
+  host: string
+  port: number
+  username?: string | null
+  password?: string | null
+  status: 'active' | 'inactive'
+REDACTED
+
+export interface AdminDataAccount {
+  name: string
+  notes?: string | null
+  platform: AccountPlatform
+  type: AccountType
+  credentials: Record<string, unknown>
+  extra?: Record<string, unknown>
+  proxy_key?: string | null
+  concurrency: number
+  priority: number
+  rate_multiplier?: number | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+REDACTED
+
+export interface AdminDataImportError {
+  kind: 'proxy' | 'account'
+  name?: string
+  proxy_key?: string
+  message: string
+REDACTED
+
+export interface AdminDataImportResult {
+  proxy_created: number
+  proxy_reused: number
+  proxy_failed: number
+  account_created: number
+  account_failed: number
+  errors?: AdminDataImportError[]
 REDACTED
 
 // ==================== Usage & Redeem Types ====================

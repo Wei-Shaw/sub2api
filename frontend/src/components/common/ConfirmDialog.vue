@@ -2,6 +2,7 @@
   <BaseDialog :show="show" :title="title" width="narrow" @close="handleCancel">
     <div class="space-y-4">
       <p class="text-sm text-gray-600 dark:text-gray-400">{{ message REDACTEDREDACTED</p>
+      <slot></slot>
     </div>
 
     <template #footer>

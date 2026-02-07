@@ -60,6 +60,25 @@ REDACTED
 	return proxyEntityToService(m), nil
 REDACTED
 
+func (r *proxyRepository) ListByIDs(ctx context.Context, ids []int64) ([]service.Proxy, error) {
+	if len(ids) == 0 {
+		return []service.Proxy{REDACTED, nil
+REDACTED
+
+	proxies, err := r.client.Proxy.Query().
+		Where(proxy.IDIn(ids...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	out := make([]service.Proxy, 0, len(proxies))
+	for i := range proxies {
+		out = append(out, *proxyEntityToService(proxies[i]))
+REDACTED
+	return out, nil
+REDACTED
+
 func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) error {
 	builder := r.client.Proxy.UpdateOneID(proxyIn.ID).
 		SetName(proxyIn.Name).

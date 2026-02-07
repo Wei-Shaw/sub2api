@@ -35,6 +35,7 @@ type ConcurrencyCache interface {
 
 	// 批量负载查询（只读）
 	GetAccountsLoadBatch(ctx context.Context, accounts []AccountWithConcurrency) (map[int64]*AccountLoadInfo, error)
+	GetUsersLoadBatch(ctx context.Context, users []UserWithConcurrency) (map[int64]*UserLoadInfo, error)
 
 	// 清理过期槽位（后台任务）
 	CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error
@@ -77,8 +78,20 @@ type AccountWithConcurrency struct {
 	MaxConcurrency int
 REDACTED
 
+type UserWithConcurrency struct {
+	ID             int64
+	MaxConcurrency int
+REDACTED
+
 type AccountLoadInfo struct {
 	AccountID          int64
+	CurrentConcurrency int
+	WaitingCount       int
+	LoadRate           int // 0-100+ (percent)
+REDACTED
+
+type UserLoadInfo struct {
+	UserID             int64
 	CurrentConcurrency int
 	WaitingCount       int
 	LoadRate           int // 0-100+ (percent)
@@ -251,6 +264,14 @@ func (s *ConcurrencyService) GetAccountsLoadBatch(ctx context.Context, accounts 
 		return map[int64]*AccountLoadInfo{REDACTED, nil
 REDACTED
 	return s.cache.GetAccountsLoadBatch(ctx, accounts)
+REDACTED
+
+// GetUsersLoadBatch returns load info for multiple users.
+func (s *ConcurrencyService) GetUsersLoadBatch(ctx context.Context, users []UserWithConcurrency) (map[int64]*UserLoadInfo, error) {
+	if s.cache == nil {
+		return map[int64]*UserLoadInfo{REDACTED, nil
+REDACTED
+	return s.cache.GetUsersLoadBatch(ctx, users)
 REDACTED
 
 // CleanupExpiredAccountSlots removes expired slots for one account (background task).

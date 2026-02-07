@@ -17,6 +17,29 @@ REDACTED
 	require.True(t, parsed.HasSystem)
 	require.NotNil(t, parsed.System)
 	require.Len(t, parsed.Messages, 1)
+	require.False(t, parsed.ThinkingEnabled)
+REDACTED
+
+func TestParseGatewayRequest_ThinkingEnabled(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5","thinking":{"type":"enabled"REDACTED,"messages":[{"content":"hi"REDACTED]REDACTED`)
+	parsed, err := ParseGatewayRequest(body)
+REDACTED
+	require.Equal(t, "claude-sonnet-4-5", parsed.Model)
+	require.True(t, parsed.ThinkingEnabled)
+REDACTED
+
+func TestParseGatewayRequest_MaxTokens(t *testing.T) {
+	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1REDACTED`)
+	parsed, err := ParseGatewayRequest(body)
+REDACTED
+	require.Equal(t, 1, parsed.MaxTokens)
+REDACTED
+
+func TestParseGatewayRequest_MaxTokensNonIntegralIgnored(t *testing.T) {
+	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1.5REDACTED`)
+	parsed, err := ParseGatewayRequest(body)
+REDACTED
+	require.Equal(t, 0, parsed.MaxTokens)
 REDACTED
 
 func TestParseGatewayRequest_SystemNull(t *testing.T) {

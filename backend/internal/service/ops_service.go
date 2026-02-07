@@ -27,6 +27,7 @@ type OpsService struct {
 	cfg         *config.Config
 
 	accountRepo AccountRepository
+	userRepo    UserRepository
 
 	// getAccountAvailability is a unit-test hook for overriding account availability lookup.
 	getAccountAvailability func(ctx context.Context, platformFilter string, groupIDFilter *int64) (*OpsAccountAvailability, error)
@@ -43,6 +44,7 @@ func NewOpsService(
 	settingRepo SettingRepository,
 	cfg *config.Config,
 	accountRepo AccountRepository,
+	userRepo UserRepository,
 	concurrencyService *ConcurrencyService,
 	gatewayService *GatewayService,
 	openAIGatewayService *OpenAIGatewayService,
@@ -55,6 +57,7 @@ func NewOpsService(
 		cfg:         cfg,
 
 		accountRepo: accountRepo,
+		userRepo:    userRepo,
 
 		concurrencyService:        concurrencyService,
 		gatewayService:            gatewayService,
@@ -424,6 +427,26 @@ func isSensitiveKey(key string) bool {
 		return false
 REDACTED
 
+	// Token 计数 / 预算字段不是凭据，应保留用于排错。
+	// 白名单保持尽量窄，避免误把真实敏感信息"反脱敏"。
+	switch k {
+	case "max_tokens",
+		"max_output_tokens",
+		"max_input_tokens",
+		"max_completion_tokens",
+		"max_tokens_to_sample",
+		"budget_tokens",
+		"prompt_tokens",
+		"completion_tokens",
+		"input_tokens",
+		"output_tokens",
+		"total_tokens",
+		"token_count",
+		"cache_creation_input_tokens",
+		"cache_read_input_tokens":
+		return false
+REDACTED
+
 	// Exact matches (common credential fields).
 	switch k {
 	case "authorization",
@@ -566,7 +589,18 @@ REDACTED
 
 func shrinkToEssentials(root map[string]any) map[string]any {
 	out := make(map[string]any)
-	for _, key := range []string{"model", "stream", "max_tokens", "temperature", "top_p", "top_k"REDACTED {
+	for _, key := range []string{
+		"model",
+		"stream",
+		"max_tokens",
+		"max_output_tokens",
+		"max_input_tokens",
+		"max_completion_tokens",
+		"thinking",
+		"temperature",
+		"top_p",
+		"top_k",
+REDACTED {
 		if v, ok := root[key]; ok {
 			out[key] = v
 	REDACTED

@@ -66,7 +66,6 @@ REDACTED
 	REDACTED
 
 		isAvailable := acc.Status == StatusActive && acc.Schedulable && !isRateLimited && !isOverloaded && !isTempUnsched
-
 		scopeRateLimits := acc.GetAntigravityScopeRateLimits()
 
 		if acc.Platform != "" {

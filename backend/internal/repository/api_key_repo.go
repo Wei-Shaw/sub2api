@@ -379,36 +379,19 @@ REDACTED
 	return keys, nil
 REDACTED
 
-// IncrementQuotaUsed atomically increments the quota_used field and returns the new value
+// IncrementQuotaUsed 使用 Ent 原子递增 quota_used 字段并返回新值
 func (r *apiKeyRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error) {
-	// Use raw SQL for atomic increment to avoid race conditions
-	// First get current value
-	m, err := r.activeQuery().
-		Where(apikey.IDEQ(id)).
-		Select(apikey.FieldQuotaUsed).
-		Only(ctx)
+	updated, err := r.client.APIKey.UpdateOneID(id).
+		Where(apikey.DeletedAtIsNil()).
+		AddQuotaUsed(amount).
+		Save(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
 			return 0, service.ErrAPIKeyNotFound
 	REDACTED
 		return 0, err
 REDACTED
-
-	newValue := m.QuotaUsed + amount
-
-	// Update with new value
-	affected, err := r.client.APIKey.Update().
-		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
-		SetQuotaUsed(newValue).
-		Save(ctx)
-	if err != nil {
-		return 0, err
-REDACTED
-	if affected == 0 {
-		return 0, service.ErrAPIKeyNotFound
-REDACTED
-
-	return newValue, nil
+	return updated.QuotaUsed, nil
 REDACTED
 
 func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
