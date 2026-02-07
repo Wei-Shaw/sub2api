@@ -273,39 +273,25 @@ const antigravityPresetMappings = [
   { label: 'Opus 4.5', from: 'claude-opus-4-5-thinking', to: 'claude-opus-4-5-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' REDACTED
 ]
 
-// Antigravity 默认映射（与迁移脚本 049 保持一致）
-// 基于官方 API 返回的模型列表，只支持 Claude 4.5+ 和 Gemini 2.5+
-// 精确匹配，无通配符
-export const antigravityDefaultMappings: { from: string; to: string REDACTED[] = [
-  // Claude 白名单
-  { from: 'claude-opus-4-6', to: 'claude-opus-4-6' REDACTED,
-  { from: 'claude-opus-4-5-thinking', to: 'claude-opus-4-5-thinking' REDACTED,
-  { from: 'claude-sonnet-4-5', to: 'claude-sonnet-4-5' REDACTED,
-  { from: 'claude-sonnet-4-5-thinking', to: 'claude-sonnet-4-5-thinking' REDACTED,
-  // Claude 详细版本 ID 映射
-  { from: 'claude-opus-4-5-20251101', to: 'claude-opus-4-5-thinking' REDACTED,
-  { from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-5' REDACTED,
-  // Claude Haiku → Sonnet（无 Haiku 支持）
-  { from: 'claude-haiku-4-5', to: 'claude-sonnet-4-5' REDACTED,
-  { from: 'REDACTED', to: 'claude-sonnet-4-5' REDACTED,
-  // Gemini 2.5 白名单
-  { from: 'gemini-2.5-flash', to: 'gemini-2.5-flash' REDACTED,
-  { from: 'gemini-2.5-flash-lite', to: 'gemini-2.5-flash-lite' REDACTED,
-  { from: 'gemini-2.5-flash-thinking', to: 'gemini-2.5-flash-thinking' REDACTED,
-  { from: 'gemini-2.5-pro', to: 'gemini-2.5-pro' REDACTED,
-  // Gemini 3 白名单
-  { from: 'gemini-3-flash', to: 'gemini-3-flash' REDACTED,
-  { from: 'gemini-3-pro-high', to: 'gemini-3-pro-high' REDACTED,
-  { from: 'gemini-3-pro-low', to: 'gemini-3-pro-low' REDACTED,
-  { from: 'gemini-3-pro-image', to: 'gemini-3-pro-image' REDACTED,
-  // Gemini 3 preview 映射
-  { from: 'gemini-3-flash-preview', to: 'gemini-3-flash' REDACTED,
-  { from: 'gemini-3-pro-preview', to: 'gemini-3-pro-high' REDACTED,
-  { from: 'gemini-3-pro-image-preview', to: 'gemini-3-pro-image' REDACTED,
-  // 其他官方模型
-  { from: 'gpt-oss-120b-medium', to: 'gpt-oss-120b-medium' REDACTED,
-  { from: 'tab_flash_lite_preview', to: 'tab_flash_lite_preview' REDACTED
-]
+// Antigravity 默认映射（从后端 API 获取，与 constants.go 保持一致）
+// 使用 fetchAntigravityDefaultMappings() 异步获取
+import { getAntigravityDefaultModelMapping REDACTED from '@/api/admin/accounts'
+
+let _antigravityDefaultMappingsCache: { from: string; to: string REDACTED[] | null = null
+
+export async function fetchAntigravityDefaultMappings(): Promise<{ from: string; to: string REDACTED[]> {
+  if (_antigravityDefaultMappingsCache !== null) {
+    return _antigravityDefaultMappingsCache
+  REDACTED
+  try {
+    const mapping = await getAntigravityDefaultModelMapping()
+    _antigravityDefaultMappingsCache = Object.entries(mapping).map(([from, to]) => ({ from, to REDACTED))
+  REDACTED catch (e) {
+    console.warn('[fetchAntigravityDefaultMappings] API failed, using empty fallback', e)
+    _antigravityDefaultMappingsCache = []
+  REDACTED
+  return _antigravityDefaultMappingsCache
+REDACTED
 
 // =====================
 // 常用错误码

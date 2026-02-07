@@ -136,7 +136,7 @@ REDACTED
 
 // handleSmartRetry 处理 OAuth 账号的智能重试逻辑
 // 将 429/503 限流处理逻辑抽取为独立函数，减少 antigravityRetryLoop 的复杂度
-func handleSmartRetry(p antigravityRetryLoopParams, resp *http.Response, respBody []byte, baseURL string, urlIdx int, availableURLs []string) *smartRetryResult {
+func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParams, resp *http.Response, respBody []byte, baseURL string, urlIdx int, availableURLs []string) *smartRetryResult {
 	// "Resource has been exhausted" 是 URL 级别限流，切换 URL（仅 429）
 	if resp.StatusCode == http.StatusTooManyRequests && isURLLevelRateLimit(respBody) && urlIdx < len(availableURLs)-1 {
 		log.Printf("%s URL fallback (429): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
@@ -155,6 +155,8 @@ REDACTED
 		if !setModelRateLimitByModelName(p.ctx, p.accountRepo, p.account.ID, modelName, p.prefix, resp.StatusCode, resetAt, false) {
 			p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
 			log.Printf("%s status=%d rate_limited account=%d (no scope mapping)", p.prefix, resp.StatusCode, p.account.ID)
+	REDACTED else {
+			s.updateAccountModelRateLimitInCache(p.ctx, p.account, modelName, resetAt)
 	REDACTED
 
 		// 返回账号切换信号，让上层切换账号重试
@@ -241,6 +243,7 @@ REDACTED
 		REDACTED else {
 				log.Printf("%s status=%d model_rate_limited_after_smart_retry model=%s account=%d reset_in=%v",
 					p.prefix, resp.StatusCode, modelName, p.account.ID, antigravityDefaultRateLimitDuration)
+				s.updateAccountModelRateLimitInCache(p.ctx, p.account, modelName, resetAt)
 		REDACTED
 	REDACTED
 
@@ -260,7 +263,7 @@ REDACTED
 REDACTED
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
-func antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
+func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
 	// 预检查：如果账号已限流，根据剩余时间决定等待或切换
 	if p.requestedModel != "" {
 		if remaining := p.account.GetRateLimitRemainingTimeWithContext(p.ctx, p.requestedModel); remaining > 0 {
@@ -363,7 +366,7 @@ urlFallbackLoop:
 				_ = resp.Body.Close()
 
 				// 尝试智能重试处理（OAuth 账号专用）
-				smartResult := handleSmartRetry(p, resp, respBody, baseURL, urlIdx, availableURLs)
+				smartResult := s.handleSmartRetry(p, resp, respBody, baseURL, urlIdx, availableURLs)
 				switch smartResult.action {
 				case smartRetryActionContinueURL:
 					continue urlFallbackLoop
@@ -1025,7 +1028,7 @@ REDACTED
 REDACTED
 
 	// 执行带重试的请求
-	result, err := antigravityRetryLoop(antigravityRetryLoopParams{
+	result, err := s.antigravityRetryLoop(antigravityRetryLoopParams{
 		ctx:             ctx,
 		prefix:          prefix,
 		account:         account,
@@ -1106,7 +1109,7 @@ REDACTED
 				if txErr != nil {
 					continue
 			REDACTED
-				retryResult, retryErr := antigravityRetryLoop(antigravityRetryLoopParams{
+				retryResult, retryErr := s.antigravityRetryLoop(antigravityRetryLoopParams{
 					ctx:             ctx,
 					prefix:          prefix,
 					account:         account,
@@ -1670,7 +1673,7 @@ REDACTED
 REDACTED
 
 	// 执行带重试的请求
-	result, err := antigravityRetryLoop(antigravityRetryLoopParams{
+	result, err := s.antigravityRetryLoop(antigravityRetryLoopParams{
 		ctx:             ctx,
 		prefix:          prefix,
 		account:         account,
