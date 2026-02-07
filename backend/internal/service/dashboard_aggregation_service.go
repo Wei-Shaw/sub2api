@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -224,11 +225,11 @@ REDACTED
 	if updateErr != nil {
 		log.Printf("[DashboardAggregation] 更新水位失败: %v", updateErr)
 REDACTED
-	log.Printf("[DashboardAggregation] 聚合完成 (start=%s end=%s duration=%s watermark_updated=%t)",
-		start.Format(time.RFC3339),
-		now.Format(time.RFC3339),
-		time.Since(jobStart).String(),
-		updateErr == nil,
+	slog.Debug("[DashboardAggregation] 聚合完成",
+		"start", start.Format(time.RFC3339),
+		"end", now.Format(time.RFC3339),
+		"duration", time.Since(jobStart).String(),
+		"watermark_updated", updateErr == nil,
 	)
 
 	s.maybeCleanupRetention(ctx, now)

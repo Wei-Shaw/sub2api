@@ -13,8 +13,16 @@ func Logger() gin.HandlerFunc {
 		// 开始时间
 		startTime := time.Now()
 
+		// 请求路径
+		path := c.Request.URL.Path
+
 		// 处理请求
 		c.Next()
+
+		// 跳过健康检查等高频探针路径的日志
+		if path == "/health" || path == "/setup/status" {
+			return
+	REDACTED
 
 		// 结束时间
 		endTime := time.Now()
@@ -24,9 +32,6 @@ func Logger() gin.HandlerFunc {
 
 		// 请求方法
 		method := c.Request.Method
-
-		// 请求路径
-		path := c.Request.URL.Path
 
 		// 状态码
 		statusCode := c.Writer.Status()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -164,9 +165,15 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 始终打印周期日志，便于跟踪服务运行状态
-	log.Printf("[TokenRefresh] Cycle complete: total=%d, oauth=%d, needs_refresh=%d, refreshed=%d, failed=%d",
-		totalAccounts, oauthAccounts, needsRefresh, refreshed, failed)
+	// 无刷新活动时降级为 Debug，有实际刷新活动时保持 Info
+	if needsRefresh == 0 && failed == 0 {
+		slog.Debug("[TokenRefresh] Cycle complete",
+			"total", totalAccounts, "oauth", oauthAccounts,
+			"needs_refresh", needsRefresh, "refreshed", refreshed, "failed", failed)
+REDACTED else {
+		log.Printf("[TokenRefresh] Cycle complete: total=%d, oauth=%d, needs_refresh=%d, refreshed=%d, failed=%d",
+			totalAccounts, oauthAccounts, needsRefresh, refreshed, failed)
+REDACTED
 REDACTED
 
 // listActiveAccounts 获取所有active状态的账号
