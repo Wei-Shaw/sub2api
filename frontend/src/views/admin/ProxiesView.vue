@@ -2,50 +2,10 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="space-y-3">
-          <!-- Row 1: Actions -->
-          <div class="flex flex-wrap items-center gap-3">
-            <button
-              @click="loadProxies"
-              :disabled="loading"
-              class="btn btn-secondary"
-              :title="t('common.refresh')"
-            >
-              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            </button>
-            <button
-              @click="handleBatchTest"
-              :disabled="batchTesting || loading"
-              class="btn btn-secondary"
-              :title="t('admin.proxies.testConnection')"
-            >
-              <Icon name="play" size="md" class="mr-2" />
-              {{ t('admin.proxies.testConnection') REDACTEDREDACTED
-            </button>
-            <button
-              @click="openBatchDelete"
-              :disabled="selectedCount === 0"
-              class="btn btn-danger"
-              :title="t('admin.proxies.batchDeleteAction')"
-            >
-              <Icon name="trash" size="md" class="mr-2" />
-              {{ t('admin.proxies.batchDeleteAction') REDACTEDREDACTED
-            </button>
-            <button @click="showImportData = true" class="btn btn-secondary">
-              {{ t('admin.proxies.dataImport') REDACTEDREDACTED
-            </button>
-            <button @click="showExportDataDialog = true" class="btn btn-secondary">
-              {{ selectedCount > 0 ? t('admin.proxies.dataExportSelected') : t('admin.proxies.dataExport') REDACTEDREDACTED
-            </button>
-            <button @click="showCreateModal = true" class="btn btn-primary">
-              <Icon name="plus" size="md" class="mr-2" />
-              {{ t('admin.proxies.createProxy') REDACTEDREDACTED
-            </button>
-          </div>
-
-          <!-- Row 2: Search + Filters -->
-          <div class="flex flex-wrap items-center gap-3">
-            <div class="relative w-full sm:w-64">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <!-- Search + Filters -->
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="relative min-w-0 flex-1 lg:w-48 lg:flex-none">
               <Icon
                 name="search"
                 size="md"
@@ -60,7 +20,7 @@
               />
             </div>
 
-            <div class="w-full sm:w-40">
+            <div class="w-28 lg:w-36">
               <Select
                 v-model="filters.protocol"
                 :options="protocolOptions"
@@ -68,7 +28,7 @@
                 @change="loadProxies"
               />
             </div>
-            <div class="w-full sm:w-36">
+            <div class="w-24 lg:w-32">
               <Select
                 v-model="filters.status"
                 :options="statusOptions"
@@ -76,6 +36,48 @@
                 @change="loadProxies"
               />
             </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              @click="loadProxies"
+              :disabled="loading"
+              class="btn btn-secondary btn-sm lg:btn-md"
+              :title="t('common.refresh')"
+            >
+              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+            </button>
+            <button
+              @click="handleBatchTest"
+              :disabled="batchTesting || loading"
+              class="btn btn-secondary btn-sm lg:btn-md"
+              :title="t('admin.proxies.testConnection')"
+            >
+              <Icon name="play" size="md" class="lg:mr-2" />
+              <span class="hidden lg:inline">{{ t('admin.proxies.testConnection') REDACTEDREDACTED</span>
+            </button>
+            <button
+              @click="openBatchDelete"
+              :disabled="selectedCount === 0"
+              class="btn btn-danger btn-sm lg:btn-md"
+              :title="t('admin.proxies.batchDeleteAction')"
+            >
+              <Icon name="trash" size="md" class="lg:mr-2" />
+              <span class="hidden lg:inline">{{ t('admin.proxies.batchDeleteAction') REDACTEDREDACTED</span>
+            </button>
+            <button @click="showImportData = true" class="btn btn-secondary btn-sm lg:btn-md">
+              <span class="lg:hidden">{{ t('admin.proxies.dataImportShort') REDACTEDREDACTED</span>
+              <span class="hidden lg:inline">{{ t('admin.proxies.dataImport') REDACTEDREDACTED</span>
+            </button>
+            <button @click="showExportDataDialog = true" class="btn btn-secondary btn-sm lg:btn-md">
+              <span class="lg:hidden">{{ t('admin.proxies.dataExportShort') REDACTEDREDACTED</span>
+              <span class="hidden lg:inline">{{ selectedCount > 0 ? t('admin.proxies.dataExportSelected') : t('admin.proxies.dataExport') REDACTEDREDACTED</span>
+            </button>
+            <button @click="showCreateModal = true" class="btn btn-primary btn-sm lg:btn-md">
+              <Icon name="plus" size="md" class="lg:mr-2" />
+              <span class="hidden lg:inline">{{ t('admin.proxies.createProxy') REDACTEDREDACTED</span>
+            </button>
           </div>
         </div>
       </template>

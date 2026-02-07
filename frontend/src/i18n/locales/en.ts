@@ -1913,6 +1913,8 @@ export default {
       editProxy: 'Edit Proxy',
       deleteProxy: 'Delete Proxy',
       dataImport: 'Import',
+      dataImportShort: 'Import',
+      dataExportShort: 'Export',
       dataExportSelected: 'Export Selected',
       dataImportTitle: 'Import Proxies',
       dataImportHint: 'Upload the exported proxy JSON file to import proxies in bulk.',
