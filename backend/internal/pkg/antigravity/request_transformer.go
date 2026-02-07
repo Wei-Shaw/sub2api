@@ -57,6 +57,23 @@ REDACTED
 // webSearchFallbackModel web_search 请求使用的降级模型
 const webSearchFallbackModel = "gemini-2.5-flash"
 
+// MaxTokensBudgetPadding max_tokens 自动调整时在 budget_tokens 基础上增加的额度
+// Claude API 要求 max_tokens > thinking.budget_tokens，否则返回 400 错误
+const MaxTokensBudgetPadding = 1000
+
+// Gemini 2.5 Flash thinking budget 上限
+const Gemini25FlashThinkingBudgetLimit = 24576
+
+// ensureMaxTokensGreaterThanBudget 确保 max_tokens > budget_tokens
+// Claude API 要求启用 thinking 时，max_tokens 必须大于 thinking.budget_tokens
+// 返回调整后的 maxTokens 和是否进行了调整
+func ensureMaxTokensGreaterThanBudget(maxTokens, budgetTokens int) (int, bool) {
+	if budgetTokens > 0 && maxTokens <= budgetTokens {
+		return budgetTokens + MaxTokensBudgetPadding, true
+REDACTED
+	return maxTokens, false
+REDACTED
+
 // TransformClaudeToGemini 将 Claude 请求转换为 v1internal Gemini 格式
 func TransformClaudeToGemini(claudeReq *ClaudeRequest, projectID, mappedModel string) ([]byte, error) {
 	return TransformClaudeToGeminiWithOptions(claudeReq, projectID, mappedModel, DefaultTransformOptions())
@@ -527,11 +544,18 @@ REDACTED
 	REDACTED
 		if req.Thinking.BudgetTokens > 0 {
 			budget := req.Thinking.BudgetTokens
-			// gemini-2.5-flash 上限 24576
-			if strings.Contains(req.Model, "gemini-2.5-flash") && budget > 24576 {
-				budget = 24576
+			// gemini-2.5-flash 上限
+			if strings.Contains(req.Model, "gemini-2.5-flash") && budget > Gemini25FlashThinkingBudgetLimit {
+				budget = Gemini25FlashThinkingBudgetLimit
 		REDACTED
 			config.ThinkingConfig.ThinkingBudget = budget
+
+			// 自动修正：max_tokens 必须大于 budget_tokens
+			if adjusted, ok := ensureMaxTokensGreaterThanBudget(config.MaxOutputTokens, budget); ok {
+				log.Printf("[Antigravity] Auto-adjusted max_tokens from %d to %d (must be > budget_tokens=%d)",
+					config.MaxOutputTokens, adjusted, budget)
+				config.MaxOutputTokens = adjusted
+		REDACTED
 	REDACTED
 REDACTED
 
