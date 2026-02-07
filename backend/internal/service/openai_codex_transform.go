@@ -2,36 +2,7 @@ package service
 
 import (
 	_ "embed"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync"
-	"time"
-)
-
-const (
-	opencodeCodexHeaderURL = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex_header.txt"
-	codexCacheTTL          = 15 * time.Minute
-
-	// 避免冷启动首请求被外网/ DNS / GitHub 卡死。
-	// http.DefaultClient 默认无超时，网络异常时可能阻塞很久。
-	opencodeFetchTimeout = 3 * time.Second
-	// 本地缓存为空时，最小回源间隔（防止并发下反复打 GitHub）。
-	opencodeEmptyCacheRefreshInterval = 1 * time.Minute
-	// 防抖：防止短时间内重复触发异步回源。
-	opencodeFetchDebounce = 3 * time.Second
-)
-
-var opencodeFetchHTTPClient = &http.Client{Timeout: opencodeFetchTimeoutREDACTED
-
-var (
-	opencodeFetchMu        sync.Mutex
-	opencodeFetchInFlight  bool
-	opencodeFetchLastStart time.Time
 )
 
 //go:embed prompts/codex_cli_instructions.md
@@ -92,12 +63,6 @@ type codexTransformResult struct {
 	Modified        bool
 	NormalizedModel string
 	PromptCacheKey  string
-REDACTED
-
-type opencodeCacheMetadata struct {
-	ETag        string `json:"etag"`
-	LastFetch   string `json:"lastFetch,omitempty"`
-	LastChecked int64  `json:"lastChecked"`
 REDACTED
 
 func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool) codexTransformResult {
@@ -233,98 +198,9 @@ REDACTED
 	return ""
 REDACTED
 
-func getOpenCodeCachedPrompt(url, cacheFileName, metaFileName string) string {
-	cacheDir := codexCachePath("")
-	if cacheDir == "" {
-		return ""
-REDACTED
-	cacheFile := filepath.Join(cacheDir, cacheFileName)
-	metaFile := filepath.Join(cacheDir, metaFileName)
-
-	var cachedContent string
-	if content, ok := readFile(cacheFile); ok {
-		cachedContent = content
-REDACTED
-
-	var meta opencodeCacheMetadata
-	_ = loadJSON(metaFile, &meta)
-	if meta.LastChecked > 0 {
-		lastCheckedAt := time.UnixMilli(meta.LastChecked)
-		if cachedContent != "" {
-			if time.Since(lastCheckedAt) < codexCacheTTL {
-				return cachedContent
-		REDACTED
-	REDACTED else {
-			// 没有任何缓存内容时，回源失败也不应影响请求链路；这里做节流，避免并发下反复回源。
-			if time.Since(lastCheckedAt) < opencodeEmptyCacheRefreshInterval {
-				return ""
-		REDACTED
-	REDACTED
-REDACTED
-
-	// 不在请求链路内同步拉取（GitHub/DNS/网络异常会导致冷启动首请求卡 1 分钟+）。
-	// 直接返回当前缓存（可为空），并异步刷新缓存。
-	scheduleOpencodeCacheRefresh(url, cacheFile, metaFile, meta.ETag)
-	return cachedContent
-REDACTED
-
-func scheduleOpencodeCacheRefresh(url, cacheFile, metaFile, etag string) {
-	opencodeFetchMu.Lock()
-	if opencodeFetchInFlight {
-		opencodeFetchMu.Unlock()
-		return
-REDACTED
-	if !opencodeFetchLastStart.IsZero() && time.Since(opencodeFetchLastStart) < opencodeFetchDebounce {
-		opencodeFetchMu.Unlock()
-		return
-REDACTED
-	opencodeFetchInFlight = true
-	opencodeFetchLastStart = time.Now()
-	opencodeFetchMu.Unlock()
-
-	go func() {
-		defer func() {
-			opencodeFetchMu.Lock()
-			opencodeFetchInFlight = false
-			opencodeFetchMu.Unlock()
-	REDACTED()
-
-		now := time.Now()
-		content, newETag, status, err := fetchWithETag(url, etag)
-
-		var meta opencodeCacheMetadata
-		_ = loadJSON(metaFile, &meta)
-		meta.LastChecked = now.UnixMilli()
-
-		switch {
-		case err == nil && status == http.StatusNotModified:
-			// 304 表示无需更新缓存文件，只更新检查时间。
-			if newETag != "" {
-				meta.ETag = newETag
-		REDACTED
-			_ = writeJSON(metaFile, meta)
-		case err == nil && status >= 200 && status < 300 && strings.TrimSpace(content) != "":
-			_ = writeFile(cacheFile, content)
-			meta.ETag = newETag
-			meta.LastFetch = now.UTC().Format(time.RFC3339)
-			_ = writeJSON(metaFile, meta)
-		default:
-			// 拉取失败也记录检查时间，避免高并发下持续回源。
-			_ = writeJSON(metaFile, meta)
-	REDACTED
-REDACTED()
-REDACTED
-
 func getOpenCodeCodexHeader() string {
-	// 优先从 opencode 仓库缓存获取指令。
-	opencodeInstructions := getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
-
-	// 若 opencode 指令可用，直接返回。
-	if opencodeInstructions != "" {
-		return opencodeInstructions
-REDACTED
-
-	// 否则回退使用本地 Codex CLI 指令。
+	// 兼容保留：历史上这里会从 opencode 仓库拉取 codex_header.txt。
+	// 现在我们与 Codex CLI 一致，直接使用仓库内置的 instructions，避免读写缓存与外网依赖。
 	return getCodexCLIInstructions()
 REDACTED
 
@@ -343,7 +219,7 @@ REDACTED
 
 // applyInstructions 处理 instructions 字段
 // isCodexCLI=true: 仅补充缺失的 instructions（使用内置 Codex CLI 指令）
-// isCodexCLI=false: 优先使用 opencode 指令覆盖（不可用时回退到内置 Codex CLI 指令）
+// isCodexCLI=false: 优先使用内置 Codex CLI 指令覆盖
 func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 	if isCodexCLI {
 		return applyCodexCLIInstructions(reqBody)
@@ -367,8 +243,8 @@ REDACTED
 	return false
 REDACTED
 
-// applyOpenCodeInstructions 为非 Codex CLI 请求应用 opencode 指令
-// 优先使用 opencode 指令覆盖
+// applyOpenCodeInstructions 为非 Codex CLI 请求应用内置 Codex CLI 指令（兼容历史函数名）
+// 优先使用内置 Codex CLI 指令覆盖
 func applyOpenCodeInstructions(reqBody map[string]any) bool {
 	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
 	existingInstructions, _ := reqBody["instructions"].(string)
@@ -590,86 +466,4 @@ REDACTED
 REDACTED
 
 	return modified
-REDACTED
-
-func codexCachePath(filename string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-REDACTED
-	cacheDir := filepath.Join(home, ".opencode", "cache")
-	if filename == "" {
-		return cacheDir
-REDACTED
-	return filepath.Join(cacheDir, filename)
-REDACTED
-
-func readFile(path string) (string, bool) {
-	if path == "" {
-		return "", false
-REDACTED
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", false
-REDACTED
-	return string(data), true
-REDACTED
-
-func writeFile(path, content string) error {
-	if path == "" {
-		return fmt.Errorf("empty cache path")
-REDACTED
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-REDACTED
-	return os.WriteFile(path, []byte(content), 0o644)
-REDACTED
-
-func loadJSON(path string, target any) bool {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-REDACTED
-	if err := json.Unmarshal(data, target); err != nil {
-		return false
-REDACTED
-	return true
-REDACTED
-
-func writeJSON(path string, value any) error {
-	if path == "" {
-		return fmt.Errorf("empty json path")
-REDACTED
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-REDACTED
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-REDACTED
-	return os.WriteFile(path, data, 0o644)
-REDACTED
-
-func fetchWithETag(url, etag string) (string, string, int, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return "", "", 0, err
-REDACTED
-	req.Header.Set("User-Agent", "sub2api-codex")
-	if etag != "" {
-		req.Header.Set("If-None-Match", etag)
-REDACTED
-	resp, err := opencodeFetchHTTPClient.Do(req)
-	if err != nil {
-		return "", "", 0, err
-REDACTED
-	defer func() {
-		_ = resp.Body.Close()
-REDACTED()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", resp.StatusCode, err
-REDACTED
-	return string(body), resp.Header.Get("etag"), resp.StatusCode, nil
 REDACTED

@@ -1,11 +1,7 @@
 package service
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -191,23 +187,6 @@ REDACTED
 
 func setupCodexCache(t *testing.T) {
 REDACTED
-
-	// 使用临时 HOME 避免触发网络拉取 header。
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	cacheDir := filepath.Join(tempDir, ".opencode", "cache")
-	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "opencode-codex-header.txt"), []byte("header"), 0o644))
-
-	meta := map[string]any{
-		"etag":        "",
-		"lastFetch":   time.Now().UTC().Format(time.RFC3339),
-		"lastChecked": time.Now().UnixMilli(),
-REDACTED
-	data, err := json.Marshal(meta)
-REDACTED
-	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "opencode-codex-header-meta.json"), data, 0o644))
 REDACTED
 
 func TestApplyCodexOAuthTransform_CodexCLI_PreservesExistingInstructions(t *testing.T) {
