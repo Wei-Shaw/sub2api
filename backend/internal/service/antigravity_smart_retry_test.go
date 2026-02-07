@@ -13,6 +13,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// stubSmartRetryCache 用于 handleSmartRetry 测试的 GatewayCache mock
+// 仅关注 DeleteSessionAccountID 的调用记录
+type stubSmartRetryCache struct {
+	GatewayCache // 嵌入接口，未实现的方法 panic（确保只调用预期方法）
+	deleteCalls  []deleteSessionCall
+REDACTED
+
+type deleteSessionCall struct {
+	groupID     int64
+	sessionHash string
+REDACTED
+
+func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID int64, sessionHash string) error {
+	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHashREDACTED)
+	return nil
+REDACTED
+
 // mockSmartRetryUpstream 用于 handleSmartRetry 测试的 mock upstream
 type mockSmartRetryUpstream struct {
 	responses []*http.Response
@@ -198,7 +215,7 @@ REDACTED
 
 // TestHandleSmartRetry_ShortDelay_SmartRetryFailed_ReturnsSwitchError 测试智能重试失败后返回 switchError
 func TestHandleSmartRetry_ShortDelay_SmartRetryFailed_ReturnsSwitchError(t *testing.T) {
-	// 智能重试后仍然返回 429（需要提供 3 个响应，因为智能重试最多 3 次）
+	// 智能重试后仍然返回 429（需要提供 1 个响应，因为智能重试最多 1 次）
 	failRespBody := `{
 		"error": {
 			"status": "RESOURCE_EXHAUSTED",
@@ -213,19 +230,9 @@ REDACTED`
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(strings.NewReader(failRespBody)),
 REDACTED
-	failResp2 := &http.Response{
-		StatusCode: http.StatusTooManyRequests,
-		Header:     http.Header{REDACTED,
-		Body:       io.NopCloser(strings.NewReader(failRespBody)),
-REDACTED
-	failResp3 := &http.Response{
-		StatusCode: http.StatusTooManyRequests,
-		Header:     http.Header{REDACTED,
-		Body:       io.NopCloser(strings.NewReader(failRespBody)),
-REDACTED
 	upstream := &mockSmartRetryUpstream{
-		responses: []*http.Response{failResp1, failResp2, failResp3REDACTED,
-		errors:    []error{nil, nil, nilREDACTED,
+		responses: []*http.Response{failResp1REDACTED,
+		errors:    []error{nilREDACTED,
 REDACTED
 
 	repo := &stubAntigravityAccountRepo{REDACTED
@@ -236,7 +243,7 @@ REDACTED
 		Platform: PlatformAntigravity,
 REDACTED
 
-	// 3s < 7s 阈值，应该触发智能重试（最多 3 次）
+	// 3s < 7s 阈值，应该触发智能重试（最多 1 次）
 	respBody := []byte(`{
 		"error": {
 			"status": "RESOURCE_EXHAUSTED",
@@ -284,7 +291,7 @@ REDACTED
 	// 验证模型限流已设置
 	require.Len(t, repo.modelRateLimitCalls, 1)
 	require.Equal(t, "gemini-3-flash", repo.modelRateLimitCalls[0].modelKey)
-	require.Len(t, upstream.calls, 3, "should have made three retry calls (max attempts)")
+	require.Len(t, upstream.calls, 1, "should have made one retry call (max attempts)")
 REDACTED
 
 // TestHandleSmartRetry_503_ModelCapacityExhausted_ReturnsSwitchError 测试 503 MODEL_CAPACITY_EXHAUSTED 返回 switchError
@@ -556,19 +563,15 @@ REDACTED)
 	require.True(t, switchErr.IsStickySession)
 REDACTED
 
-// TestHandleSmartRetry_NetworkError_ContinuesRetry 测试网络错误时继续重试
-func TestHandleSmartRetry_NetworkError_ContinuesRetry(t *testing.T) {
-	// 第一次网络错误，第二次成功
-	successResp := &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{REDACTED,
-		Body:       io.NopCloser(strings.NewReader(`{"result":"ok"REDACTED`)),
-REDACTED
+// TestHandleSmartRetry_NetworkError_ExhaustsRetry 测试网络错误时（maxAttempts=1）直接耗尽重试并切换账号
+func TestHandleSmartRetry_NetworkError_ExhaustsRetry(t *testing.T) {
+	// 唯一一次重试遇到网络错误（nil response）
 	upstream := &mockSmartRetryUpstream{
-		responses: []*http.Response{nil, successRespREDACTED, // 第一次返回 nil（模拟网络错误）
-		errors:    []error{nil, nilREDACTED,                  // mock 不返回 error，靠 nil response 触发
+		responses: []*http.Response{nilREDACTED, // 返回 nil（模拟网络错误）
+		errors:    []error{nilREDACTED,          // mock 不返回 error，靠 nil response 触发
 REDACTED
 
+	repo := &stubAntigravityAccountRepo{REDACTED
 	account := &Account{
 		ID:       8,
 		Name:     "acc-8",
@@ -600,6 +603,7 @@ REDACTED
 		action:       "generateContent",
 		body:         []byte(`{"input":"test"REDACTED`),
 		httpUpstream: upstream,
+		accountRepo:  repo,
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
@@ -612,10 +616,15 @@ REDACTED
 
 	require.NotNil(t, result)
 	require.Equal(t, smartRetryActionBreakWithResp, result.action)
-	require.NotNil(t, result.resp, "should return successful response after network error recovery")
-	require.Equal(t, http.StatusOK, result.resp.StatusCode)
-	require.Nil(t, result.switchError, "should not return switchError on success")
-	require.Len(t, upstream.calls, 2, "should have made two retry calls")
+	require.Nil(t, result.resp, "should not return resp when switchError is set")
+	require.NotNil(t, result.switchError, "should return switchError after network error exhausted retry")
+	require.Equal(t, account.ID, result.switchError.OriginalAccountID)
+	require.Equal(t, "claude-sonnet-4-5", result.switchError.RateLimitedModel)
+	require.Len(t, upstream.calls, 1, "should have made one retry call")
+
+	// 验证模型限流已设置
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 REDACTED
 
 // TestHandleSmartRetry_NoRetryDelay_UsesDefaultRateLimit 测试无 retryDelay 时使用默认 1 分钟限流
@@ -673,4 +682,618 @@ REDACTED
 	// 验证模型限流已设置
 	require.Len(t, repo.modelRateLimitCalls, 1)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+REDACTED
+
+// ---------------------------------------------------------------------------
+// 以下测试覆盖本次改动：
+// 1. antigravitySmartRetryMaxAttempts = 1（仅重试 1 次）
+// 2. 智能重试失败后清除粘性会话绑定（DeleteSessionAccountID）
+// ---------------------------------------------------------------------------
+
+// TestSmartRetryMaxAttempts_VerifyConstant 验证常量值为 1
+func TestSmartRetryMaxAttempts_VerifyConstant(t *testing.T) {
+	require.Equal(t, 1, antigravitySmartRetryMaxAttempts,
+		"antigravitySmartRetryMaxAttempts should be 1 to prevent repeated rate limiting")
+REDACTED
+
+// TestHandleSmartRetry_ShortDelay_StickySession_FailedRetry_ClearsSession
+// 核心场景：粘性会话 + 短延迟重试失败 → 必须清除粘性绑定
+func TestHandleSmartRetry_ShortDelay_StickySession_FailedRetry_ClearsSession(t *testing.T) {
+	failRespBody := `{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`
+	failResp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(failRespBody)),
+REDACTED
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{failRespREDACTED,
+		errors:    []error{nilREDACTED,
+REDACTED
+
+	repo := &stubAntigravityAccountRepo{REDACTED
+	cache := &stubSmartRetryCache{REDACTED
+	account := &Account{
+		ID:       10,
+		Name:     "acc-10",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	params := antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		httpUpstream:    upstream,
+		accountRepo:     repo,
+		isStickySession: true,
+		groupID:         42,
+		sessionHash:     "sticky-hash-abc",
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	availableURLs := []string{"https://ag-1.test"REDACTED
+
+	svc := &AntigravityGatewayService{cache: cacheREDACTED
+	result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
+
+	// 验证返回 switchError
+	require.NotNil(t, result)
+	require.Equal(t, smartRetryActionBreakWithResp, result.action)
+	require.NotNil(t, result.switchError)
+	require.True(t, result.switchError.IsStickySession, "switchError should carry IsStickySession=true")
+	require.Equal(t, account.ID, result.switchError.OriginalAccountID)
+
+	// 核心断言：DeleteSessionAccountID 被调用，且参数正确
+	require.Len(t, cache.deleteCalls, 1, "should call DeleteSessionAccountID exactly once")
+	require.Equal(t, int64(42), cache.deleteCalls[0].groupID)
+	require.Equal(t, "sticky-hash-abc", cache.deleteCalls[0].sessionHash)
+
+	// 验证仅重试 1 次
+	require.Len(t, upstream.calls, 1, "should make exactly 1 retry call (maxAttempts=1)")
+
+	// 验证模型限流已设置
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+REDACTED
+
+// TestHandleSmartRetry_ShortDelay_NonStickySession_FailedRetry_NoDeleteSession
+// 非粘性会话 + 短延迟重试失败 → 不应调用 DeleteSessionAccountID（sessionHash 为空）
+func TestHandleSmartRetry_ShortDelay_NonStickySession_FailedRetry_NoDeleteSession(t *testing.T) {
+	failRespBody := `{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`
+	failResp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(failRespBody)),
+REDACTED
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{failRespREDACTED,
+		errors:    []error{nilREDACTED,
+REDACTED
+
+	repo := &stubAntigravityAccountRepo{REDACTED
+	cache := &stubSmartRetryCache{REDACTED
+	account := &Account{
+		ID:       11,
+		Name:     "acc-11",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	params := antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		httpUpstream:    upstream,
+		accountRepo:     repo,
+		isStickySession: false,
+		groupID:         42,
+		sessionHash:     "", // 非粘性会话，sessionHash 为空
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	availableURLs := []string{"https://ag-1.test"REDACTED
+
+	svc := &AntigravityGatewayService{cache: cacheREDACTED
+	result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
+
+	require.NotNil(t, result)
+	require.Equal(t, smartRetryActionBreakWithResp, result.action)
+	require.NotNil(t, result.switchError)
+	require.False(t, result.switchError.IsStickySession)
+
+	// 核心断言：sessionHash 为空时不应调用 DeleteSessionAccountID
+	require.Len(t, cache.deleteCalls, 0, "should NOT call DeleteSessionAccountID when sessionHash is empty")
+REDACTED
+
+// TestHandleSmartRetry_ShortDelay_StickySession_FailedRetry_NilCache_NoPanic
+// 边界：cache 为 nil 时不应 panic
+func TestHandleSmartRetry_ShortDelay_StickySession_FailedRetry_NilCache_NoPanic(t *testing.T) {
+	failRespBody := `{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`
+	failResp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(failRespBody)),
+REDACTED
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{failRespREDACTED,
+		errors:    []error{nilREDACTED,
+REDACTED
+
+	repo := &stubAntigravityAccountRepo{REDACTED
+	account := &Account{
+		ID:       12,
+		Name:     "acc-12",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	params := antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		httpUpstream:    upstream,
+		accountRepo:     repo,
+		isStickySession: true,
+		groupID:         42,
+		sessionHash:     "sticky-hash-nil-cache",
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	availableURLs := []string{"https://ag-1.test"REDACTED
+
+	// cache 为 nil，不应 panic
+	svc := &AntigravityGatewayService{cache: nilREDACTED
+	require.NotPanics(t, func() {
+		result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
+		require.NotNil(t, result)
+		require.Equal(t, smartRetryActionBreakWithResp, result.action)
+		require.NotNil(t, result.switchError)
+		require.True(t, result.switchError.IsStickySession)
+REDACTED)
+REDACTED
+
+// TestHandleSmartRetry_ShortDelay_StickySession_SuccessRetry_NoDeleteSession
+// 重试成功时不应清除粘性会话（只有失败才清除）
+func TestHandleSmartRetry_ShortDelay_StickySession_SuccessRetry_NoDeleteSession(t *testing.T) {
+	successResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"result":"ok"REDACTED`)),
+REDACTED
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{successRespREDACTED,
+		errors:    []error{nilREDACTED,
+REDACTED
+
+	cache := &stubSmartRetryCache{REDACTED
+	account := &Account{
+		ID:       13,
+		Name:     "acc-13",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-opus-4"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.5s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	params := antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		httpUpstream:    upstream,
+		isStickySession: true,
+		groupID:         42,
+		sessionHash:     "sticky-hash-success",
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	availableURLs := []string{"https://ag-1.test"REDACTED
+
+	svc := &AntigravityGatewayService{cache: cacheREDACTED
+	result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
+
+	require.NotNil(t, result)
+	require.Equal(t, smartRetryActionBreakWithResp, result.action)
+	require.NotNil(t, result.resp, "should return successful response")
+	require.Equal(t, http.StatusOK, result.resp.StatusCode)
+	require.Nil(t, result.switchError, "should not return switchError on success")
+
+	// 核心断言：重试成功时不应清除粘性会话
+	require.Len(t, cache.deleteCalls, 0, "should NOT call DeleteSessionAccountID on successful retry")
+REDACTED
+
+// TestHandleSmartRetry_LongDelay_StickySession_NoDeleteInHandleSmartRetry
+// 长延迟路径（情况1）在 handleSmartRetry 中不直接调用 DeleteSessionAccountID
+// （清除由 handler 层的 shouldClearStickySession 在下次请求时处理）
+func TestHandleSmartRetry_LongDelay_StickySession_NoDeleteInHandleSmartRetry(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{REDACTED
+	cache := &stubSmartRetryCache{REDACTED
+	account := &Account{
+		ID:       14,
+		Name:     "acc-14",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	// 15s >= 7s 阈值 → 走长延迟路径
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "15s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	params := antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		accountRepo:     repo,
+		isStickySession: true,
+		groupID:         42,
+		sessionHash:     "sticky-hash-long-delay",
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	availableURLs := []string{"https://ag-1.test"REDACTED
+
+	svc := &AntigravityGatewayService{cache: cacheREDACTED
+	result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
+
+	require.NotNil(t, result)
+	require.Equal(t, smartRetryActionBreakWithResp, result.action)
+	require.NotNil(t, result.switchError)
+	require.True(t, result.switchError.IsStickySession)
+
+	// 长延迟路径不在 handleSmartRetry 中调用 DeleteSessionAccountID
+	// （由上游 handler 的 shouldClearStickySession 处理）
+	require.Len(t, cache.deleteCalls, 0,
+		"long delay path should NOT call DeleteSessionAccountID in handleSmartRetry (handled by handler layer)")
+REDACTED
+
+// TestHandleSmartRetry_ShortDelay_NetworkError_StickySession_ClearsSession
+// 网络错误耗尽重试 + 粘性会话 → 也应清除粘性绑定
+func TestHandleSmartRetry_ShortDelay_NetworkError_StickySession_ClearsSession(t *testing.T) {
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{nilREDACTED, // 网络错误
+		errors:    []error{nilREDACTED,
+REDACTED
+
+	repo := &stubAntigravityAccountRepo{REDACTED
+	cache := &stubSmartRetryCache{REDACTED
+	account := &Account{
+		ID:       15,
+		Name:     "acc-15",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	params := antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		httpUpstream:    upstream,
+		accountRepo:     repo,
+		isStickySession: true,
+		groupID:         99,
+		sessionHash:     "sticky-net-error",
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	availableURLs := []string{"https://ag-1.test"REDACTED
+
+	svc := &AntigravityGatewayService{cache: cacheREDACTED
+	result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
+
+	require.NotNil(t, result)
+	require.NotNil(t, result.switchError)
+	require.True(t, result.switchError.IsStickySession)
+
+	// 核心断言：网络错误耗尽重试后也应清除粘性绑定
+	require.Len(t, cache.deleteCalls, 1, "should call DeleteSessionAccountID after network error exhausts retry")
+	require.Equal(t, int64(99), cache.deleteCalls[0].groupID)
+	require.Equal(t, "sticky-net-error", cache.deleteCalls[0].sessionHash)
+REDACTED
+
+// TestHandleSmartRetry_ShortDelay_503_StickySession_FailedRetry_ClearsSession
+// 503 + 短延迟 + 粘性会话 + 重试失败 → 清除粘性绑定
+func TestHandleSmartRetry_ShortDelay_503_StickySession_FailedRetry_ClearsSession(t *testing.T) {
+	failRespBody := `{
+		"error": {
+			"code": 503,
+			"status": "UNAVAILABLE",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.5s"REDACTED
+			]
+	REDACTED
+REDACTED`
+	failResp := &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(failRespBody)),
+REDACTED
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{failRespREDACTED,
+		errors:    []error{nilREDACTED,
+REDACTED
+
+	repo := &stubAntigravityAccountRepo{REDACTED
+	cache := &stubSmartRetryCache{REDACTED
+	account := &Account{
+		ID:       16,
+		Name:     "acc-16",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	respBody := []byte(`{
+		"error": {
+			"code": 503,
+			"status": "UNAVAILABLE",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.5s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	params := antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		httpUpstream:    upstream,
+		accountRepo:     repo,
+		isStickySession: true,
+		groupID:         77,
+		sessionHash:     "sticky-503-short",
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	availableURLs := []string{"https://ag-1.test"REDACTED
+
+	svc := &AntigravityGatewayService{cache: cacheREDACTED
+	result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
+
+	require.NotNil(t, result)
+	require.NotNil(t, result.switchError)
+	require.True(t, result.switchError.IsStickySession)
+
+	// 验证粘性绑定被清除
+	require.Len(t, cache.deleteCalls, 1)
+	require.Equal(t, int64(77), cache.deleteCalls[0].groupID)
+	require.Equal(t, "sticky-503-short", cache.deleteCalls[0].sessionHash)
+
+	// 验证模型限流已设置
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "gemini-3-pro", repo.modelRateLimitCalls[0].modelKey)
+REDACTED
+
+// TestAntigravityRetryLoop_SmartRetryFailed_StickySession_SwitchErrorPropagates
+// 集成测试：antigravityRetryLoop → handleSmartRetry → switchError 传播
+// 验证 IsStickySession 正确传递到上层，且粘性绑定被清除
+func TestAntigravityRetryLoop_SmartRetryFailed_StickySession_SwitchErrorPropagates(t *testing.T) {
+	// 初始 429 响应
+	initialRespBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-opus-4-6"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	initialResp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(initialRespBody)),
+REDACTED
+
+	// 智能重试也返回 429
+	retryRespBody := `{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-opus-4-6"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
+			]
+	REDACTED
+REDACTED`
+	retryResp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(strings.NewReader(retryRespBody)),
+REDACTED
+
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{initialResp, retryRespREDACTED,
+		errors:    []error{nil, nilREDACTED,
+REDACTED
+
+	repo := &stubAntigravityAccountRepo{REDACTED
+	cache := &stubSmartRetryCache{REDACTED
+	account := &Account{
+		ID:          17,
+		Name:        "acc-17",
+		Type:        AccountTypeOAuth,
+		Platform:    PlatformAntigravity,
+		Schedulable: true,
+		Status:      StatusActive,
+		Concurrency: 1,
+REDACTED
+
+	svc := &AntigravityGatewayService{cache: cacheREDACTED
+	result, err := svc.antigravityRetryLoop(antigravityRetryLoopParams{
+		ctx:             context.Background(),
+		prefix:          "[test]",
+		account:         account,
+		accessToken:     "token",
+		action:          "generateContent",
+		body:            []byte(`{"input":"test"REDACTED`),
+		httpUpstream:    upstream,
+		accountRepo:     repo,
+		isStickySession: true,
+		groupID:         55,
+		sessionHash:     "sticky-loop-test",
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED)
+
+	require.Nil(t, result, "should not return result when switchError")
+	require.NotNil(t, err, "should return error")
+
+	var switchErr *AntigravityAccountSwitchError
+	require.ErrorAs(t, err, &switchErr, "error should be AntigravityAccountSwitchError")
+	require.Equal(t, account.ID, switchErr.OriginalAccountID)
+	require.Equal(t, "claude-opus-4-6", switchErr.RateLimitedModel)
+	require.True(t, switchErr.IsStickySession, "IsStickySession must propagate through retryLoop")
+
+	// 验证粘性绑定被清除
+	require.Len(t, cache.deleteCalls, 1, "should clear sticky session in handleSmartRetry")
+	require.Equal(t, int64(55), cache.deleteCalls[0].groupID)
+	require.Equal(t, "sticky-loop-test", cache.deleteCalls[0].sessionHash)
 REDACTED
