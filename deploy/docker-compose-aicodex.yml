@@ -165,6 +165,9 @@ services:
       - "postgres"
       - "-c"
       - "listen_addresses=127.0.0.1"
+      # 监听端口：与应用侧 DATABASE_PORT 保持一致。
+      - "-c"
+      - "port=${DATABASE_PORT:-5432REDACTED"
       # 连接数上限：需要结合应用侧 DATABASE_MAX_OPEN_CONNS 调整。
       # 注意：max_connections 过大可能导致内存占用与上下文切换开销显著上升。
       - "-c"
@@ -177,7 +180,7 @@ services:
       - "-c"
       - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MBREDACTED"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2apiREDACTED -d ${POSTGRES_DB:-sub2apiREDACTED"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2apiREDACTED -d ${POSTGRES_DB:-sub2apiREDACTED -p ${DATABASE_PORT:-5432REDACTED"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -201,6 +204,7 @@ services:
     command: >
       redis-server
       --bind 127.0.0.1
+      --port ${REDIS_PORT:-6379REDACTED
       --maxclients ${REDIS_MAXCLIENTS:-50000REDACTED
       --save 60 1
       --appendonly yes
@@ -211,7 +215,7 @@ services:
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
       - REDISCLI_AUTH=${REDIS_PASSWORD:-REDACTED
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -p ${REDIS_PORT:-6379REDACTED -a \"$REDISCLI_AUTH\" ping | grep -q PONG || redis-cli -p ${REDIS_PORT:-6379REDACTED ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
