@@ -334,11 +334,11 @@ bugfix/BUG-042/fixer
 
 第 1 步  真实性确认 → 并行启动
   ├─ 主控: git worktree add ... verifier（创建验证 worktree）
-  ├─ Task(general-purpose:验证, run_in_background=true)
+  ├─ Task(general-purpose:验证, run_in_background=true, max_turns=30)
   │   ├─ prompt 包含 worktree 实际路径（从 git worktree list --porcelain 获取）
   │   ├─ 在 worktree 中编写失败测试、运行复现
   │   └─ 完成后输出 AGENT_COMPLETION_BEACON（主动通知）
-  ├─ Task(Explore:分析, run_in_background=true)
+  ├─ Task(Explore:分析, run_in_background=true, max_turns=20)
   │   ├─ 只读分析，无需 worktree
   │   └─ 完成后输出 AGENT_COMPLETION_BEACON（主动通知）
   ├─ [仅 P0] 主控: 同时创建 fixer worktree + 启动修复子智能体（乐观并行）
@@ -358,23 +358,23 @@ bugfix/BUG-042/fixer
 
 第 3 步  实施修复 → 分步启动
   ├─ 主控: git worktree add ... fixer（基于包含失败测试的最新 HEAD）
-  ├─ Task(general-purpose:修复, run_in_background=true)
+  ├─ Task(general-purpose:修复, run_in_background=true, max_turns=40)
   │   ├─ prompt 包含 worktree 路径 + 修复方案
   │   ├─ 在 fixer worktree 中实施修复、补齐测试、运行门禁
   │   └─ 完成后输出 AGENT_COMPLETION_BEACON（主动通知）
-  ├─ Task(general-purpose:安全预扫描, run_in_background=true)
+  ├─ Task(general-purpose:安全预扫描, run_in_background=true, max_turns=15)
   │   ├─ 扫描修复方案将触及的代码区域的修复前基线版本（读取主工作区）
   │   ├─ 注意：扫描对象是基线代码，不是 fixer worktree 中的中间状态
   │   └─ 完成后输出 AGENT_COMPLETION_BEACON（主动通知）
-  ├─ 主控: 修复 Beacon 收到后，独立验证（在 worktree 中重跑测试）
+  ├─ 主控: 修复 Beacon 收到后，委托 Task(Bash, max_turns=3) 在 worktree 中重跑测试（仅返回 pass/fail）
   └─ 主控: 安全预扫描 + 修复验证都通过后，合并修复到主分支（需用户确认）
 
 第 4 步  二次审查 → 并行启动
   ├─ 主控: git worktree add ... reviewer（基于合并修复后的最新 HEAD）
-  ├─ Task(general-purpose:审查, run_in_background=true)
+  ├─ Task(general-purpose:审查, run_in_background=true, max_turns=25)
   │   ├─ 在 reviewer worktree 中审查 diff、运行测试
   │   └─ 完成后输出 AGENT_COMPLETION_BEACON（主动通知）
-  ├─ Task(general-purpose:安全复核, run_in_background=true)
+  ├─ Task(general-purpose:安全复核, run_in_background=true, max_turns=15)
   │   ├─ prompt 中包含第 3 步安全预扫描的 Beacon 结论作为对比基线
   │   ├─ 对比修复 diff，执行安全检查
   │   └─ 完成后输出 AGENT_COMPLETION_BEACON（主动通知）
@@ -437,8 +437,10 @@ Worktree: [worktree 实际路径，无则填 N/A]
 
 子智能体的 Beacon 是自我报告，主控**不得仅凭 Beacon 声明做决策**，必须对 `COMPLETED` 和 `PARTIAL` 状态的关键字段执行独立验证：
 
-- **"测试通过"声明** → 主控在对应 worktree 中重新运行 `go test` / `npm test` 等命令确认
-- **"变更文件"声明** → 主控执行 `git -C {worktreeREDACTED diff --name-only` 独立确认
+- **"测试通过"声明** → 主控委托 `Task(subagent_type="Bash", max_turns=3)` 在对应 worktree 中重跑测试，
+  仅接收 pass/fail 结果和失败用例名（若有），避免完整测试输出进入主控上下文
+- **"变更文件"声明** → 主控用单条 `Bash: git -C {worktreeREDACTED diff --name-only` 确认
+  （此命令输出通常很短，可由主控直接执行）
 - **文件引用** → 主控验证所有文件路径在 worktree 范围内，拒绝绝对路径和路径穿越
 
 #### 后台异步模式
@@ -446,10 +448,11 @@ Worktree: [worktree 实际路径，无则填 N/A]
 当子智能体以 `run_in_background: true` 启动时：
 
 1. **子智能体**：在返回内容末尾输出 Completion Beacon（Task 工具自动捕获到 output_file）。
-2. **主控轮询策略**：
-   - 使用 `TaskOutput(task_id, block=false)` 非阻塞检查每个子智能体。
-   - 当某个子智能体完成后，立即解析其 Beacon 并处理结果，无需等待全部完成。
-   - 若子智能体超时未响应（参考"超时与升级机制"中的子智能体超时定义），主控通过 `Read` 工具检查其 output_file 的最新输出，评估是否终止。
+2. **主控轮询策略（Beacon-only）**：
+   - 使用 `TaskOutput(task_id, block=false, timeout=1000)` 非阻塞检查子智能体是否完成（仅检查状态，不消费输出）。
+   - 子智能体完成后，用 `Bash: tail -50 {output_fileREDACTED` 仅读取末尾 Beacon 部分，**禁止读取全量输出**。
+   - 仅当 Beacon 包含 `FAILED` / `NEEDS_MORE_ROUNDS` / 非空「矛盾发现」时，才用 `Read(offset=..., limit=100)` 定向读取失败上下文。
+   - 若子智能体超时未响应（参考"超时与升级机制"中的子智能体超时定义），主控通过 `Bash: tail -20 {output_fileREDACTED` 检查最新输出，评估是否终止。
 3. **早期终止**：若验证 agent 返回 `FAILED`（无法复现），主控可通过 `TaskStop` 终止其他正在运行的子智能体，并跳转到"无法证实"结论。
 
 #### 通信规则
@@ -493,6 +496,9 @@ Worktree: [worktree 实际路径，无则填 N/A]
 - 测试中禁止使用真实密钥/token/凭据，必须使用 mock 数据
 - 测试中禁止使用固定端口号，使用 0 端口让 OS 分配随机端口
 - 如果尝试 5 轮后仍无法完成任务，立即输出 FAILED 状态的 Beacon 并停止
+- 返回结果必须精简：Beacon 的「证据摘要」每条不超过 80 字符
+- 禁止在 Beacon 中复制大段源码，只引用 file:line
+- Beacon 之前的工作过程输出（调试日志、中间推理）不需要结构化，主控不会读取这些内容
 
 ## 完成后必须做
 任务完成后，你必须在返回内容的最后输出完成信标（Completion Beacon），格式如下：
@@ -589,7 +595,74 @@ Beacon 之后不得输出任何内容。
 
 长时间 bug 调查可能消耗大量上下文窗口，遵循以下原则：
 
+- **Beacon-only 消费（最重要）**：主控通过 `tail -50` 仅读取子 agent 输出末尾的 Beacon，
+  禁止通过 `TaskOutput(block=true)` 或 `Read` 全量读取子 agent 输出。详见「上下文预算控制」。
+- **独立验证委托**：测试重跑等验证操作委托给 Bash 子 agent，主控只接收 pass/fail 结论。
 - **大文件用子智能体**：超过 500 行的代码分析任务，优先用 Task(Explore) 处理，避免主会话上下文膨胀。
-- **阶段性总结**：每完成一个工作流步骤，主控在进入下一步前输出一段简洁的阶段结论（或阶段检查点）。
+- **阶段性摘要卡**：每完成一个步骤，输出不超过 15 行的摘要卡，后续步骤仅引用摘要卡。
 - **只保留关键证据**：子智能体返回结果时只包含关键的 file:line 引用，不复制大段源码。
 - **复杂度评估**：主控在第 0 步评估 bug 复杂度——对于 P2/P3 级别的简单 bug（影响单文件、根因明确），默认使用降级模式以节省上下文开销；仅当 bug 复杂（P0/P1 或跨多模块）时启用并行模式。
+- **max_turns 强制**：所有子 agent 必须设置 max_turns（详见「上下文预算控制」表格）。
+
+### 上下文预算控制（强制执行）
+
+#### A. Beacon-only 消费模式
+
+主控读取子 agent 结果时，**禁止读取全量输出**，必须采用 Beacon-only 模式：
+
+1. 子 agent 以 `run_in_background=true` 启动，输出写入 output_file
+2. 子 agent 完成后，主控用 Bash `tail -50 {output_fileREDACTED` 只读取末尾的 Beacon 部分
+3. 仅当 Beacon 状态为 `FAILED` / `NEEDS_MORE_ROUNDS` 或包含"矛盾发现"时，
+   才用 `Read(offset=...)` 定向读取相关段落（不超过 100 行）
+4. **禁止使用 `TaskOutput(block=true)` 获取完整输出** — 这会将全量内容灌入上下文
+
+#### B. 独立验证委托
+
+主控的"独立验证"（重跑测试、检查 diff）不再由主控亲自执行，而是委托给轻量级验证子 agent：
+
+| 验证项 | 委托方式 | 返回格式 |
+|--------|---------|---------|
+| 重跑测试 | `Task(subagent_type="Bash", max_turns=3)` | `PASS x/y` 或 `FAIL x/y + 失败用例名` |
+| 检查变更范围 | `Task(subagent_type="Bash", max_turns=2)` | `git diff --name-only` 的文件列表 |
+| 路径合规检查 | 主控直接用单条 Bash 命令 | 仅 pass/fail |
+
+这样避免测试输出（可能数百行）和 diff 内容进入主控上下文。
+
+#### C. 子 agent max_turns 约束
+
+所有子 agent 启动时必须设置 `max_turns` 参数，防止单个 agent 输出爆炸：
+
+| 角色 | max_turns 上限 | 说明 |
+|------|---------------|------|
+| 验证 | 30 | 需要写测试+运行，允许较多轮次 |
+| 分析（Explore） | 20 | 只读探索，通常足够 |
+| 修复 | 40 | 改代码+测试+门禁，需要较多轮次 |
+| 安全扫描 | 15 | 只读扫描 |
+| 审查 | 25 | 审查+可能的验证运行 |
+| 独立验证（Bash） | 3 | 仅跑命令取结果 |
+
+#### D. 阶段性上下文压缩
+
+每完成一个工作流步骤，主控必须将该阶段结论压缩为「阶段摘要卡」（不超过 15 行），
+后续步骤仅引用摘要卡，不回溯原始 Beacon：
+
+```text
+阶段摘要卡格式：
+
+----- 阶段摘要 #{步骤号REDACTED {步骤名REDACTED -----
+结论: {一句话REDACTED
+关键证据: {最多 3 条，每条一行，含 file:lineREDACTED
+影响文件: {文件列表REDACTED
+前置条件满足: [是/否]
+遗留问题: {有则列出，无则"无"REDACTED
+-----
+```
+
+#### E. 子 agent Prompt 精简指令
+
+在子 agent Prompt 模板的「强制约束」部分追加以下要求：
+
+- 返回结果必须精简：Beacon 的「证据摘要」每条不超过 80 字符
+- 禁止在 Beacon 中复制大段源码，只引用 file:line
+- Beacon 之前的工作过程输出（调试日志、中间推理）不需要结构化，
+  因为主控不会读取这些内容
