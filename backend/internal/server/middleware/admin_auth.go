@@ -176,6 +176,12 @@ REDACTED
 		return false
 REDACTED
 
+	// 校验 TokenVersion，确保管理员改密后旧 token 失效
+	if claims.TokenVersion != user.TokenVersion {
+		AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked (password changed)")
+		return false
+REDACTED
+
 	// 检查管理员权限
 	if !user.IsAdmin() {
 		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
