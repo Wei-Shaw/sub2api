@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.createAccount')"
-    width="normal"
+    width="wide"
     @close="handleClose"
   >
     <!-- Step Indicator for OAuth accounts -->
