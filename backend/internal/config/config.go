@@ -38,31 +38,32 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig               `mapstructure:"server"`
-	CORS         CORSConfig                 `mapstructure:"cors"`
-	Security     SecurityConfig             `mapstructure:"security"`
-	Billing      BillingConfig              `mapstructure:"billing"`
-	Turnstile    TurnstileConfig            `mapstructure:"turnstile"`
-	Database     DatabaseConfig             `mapstructure:"database"`
-	Redis        RedisConfig                `mapstructure:"redis"`
-	Ops          OpsConfig                  `mapstructure:"ops"`
-	JWT          JWTConfig                  `mapstructure:"jwt"`
-	Totp         TotpConfig                 `mapstructure:"totp"`
-	LinuxDo      LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
-	Default      DefaultConfig              `mapstructure:"default"`
-	RateLimit    RateLimitConfig            `mapstructure:"rate_limit"`
-	Pricing      PricingConfig              `mapstructure:"pricing"`
-	Gateway      GatewayConfig              `mapstructure:"gateway"`
-	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
-	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
-	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
-	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
-	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
-	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig               `mapstructure:"gemini"`
-	Update       UpdateConfig               `mapstructure:"update"`
+	Server            ServerConfig               `mapstructure:"server"`
+	CORS              CORSConfig                 `mapstructure:"cors"`
+	Security          SecurityConfig             `mapstructure:"security"`
+	Billing           BillingConfig              `mapstructure:"billing"`
+	Turnstile         TurnstileConfig            `mapstructure:"turnstile"`
+	Database          DatabaseConfig             `mapstructure:"database"`
+	Redis             RedisConfig                `mapstructure:"redis"`
+	Ops               OpsConfig                  `mapstructure:"ops"`
+	JWT               JWTConfig                  `mapstructure:"jwt"`
+	Totp              TotpConfig                 `mapstructure:"totp"`
+	LinuxDo           LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
+	Default           DefaultConfig              `mapstructure:"default"`
+	RateLimit         RateLimitConfig            `mapstructure:"rate_limit"`
+	Pricing           PricingConfig              `mapstructure:"pricing"`
+	Gateway           GatewayConfig              `mapstructure:"gateway"`
+	APIKeyAuth        APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
+	SubscriptionCache SubscriptionCacheConfig    `mapstructure:"subscription_cache"`
+	Dashboard         DashboardCacheConfig       `mapstructure:"dashboard_cache"`
+	DashboardAgg      DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
+	UsageCleanup      UsageCleanupConfig         `mapstructure:"usage_cleanup"`
+	Concurrency       ConcurrencyConfig          `mapstructure:"concurrency"`
+	TokenRefresh      TokenRefreshConfig         `mapstructure:"token_refresh"`
+	RunMode           string                     `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone          string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini            GeminiConfig               `mapstructure:"gemini"`
+	Update            UpdateConfig               `mapstructure:"update"`
 REDACTED
 
 type GeminiConfig struct {
@@ -528,6 +529,13 @@ type APIKeyAuthCacheConfig struct {
 	Singleflight       bool `mapstructure:"singleflight"`
 REDACTED
 
+// SubscriptionCacheConfig 订阅认证 L1 缓存配置
+type SubscriptionCacheConfig struct {
+	L1Size        int `mapstructure:"l1_size"`
+	L1TTLSeconds  int `mapstructure:"l1_ttl_seconds"`
+	JitterPercent int `mapstructure:"jitter_percent"`
+REDACTED
+
 // DashboardCacheConfig 仪表盘统计缓存配置
 type DashboardCacheConfig struct {
 	// Enabled: 是否启用仪表盘缓存
@@ -851,6 +859,11 @@ REDACTED)
 	viper.SetDefault("api_key_auth_cache.negative_ttl_seconds", 30)
 	viper.SetDefault("api_key_auth_cache.jitter_percent", 10)
 	viper.SetDefault("api_key_auth_cache.singleflight", true)
+
+	// Subscription auth L1 cache
+	viper.SetDefault("subscription_cache.l1_size", 16384)
+	viper.SetDefault("subscription_cache.l1_ttl_seconds", 10)
+	viper.SetDefault("subscription_cache.jitter_percent", 10)
 
 	// Dashboard cache
 	viper.SetDefault("dashboard_cache.enabled", true)
