@@ -264,27 +264,15 @@ REDACTED
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
-	// 预检查：如果账号已限流，根据剩余时间决定等待或切换
+	// 预检查：如果账号已限流，直接返回切换信号
 	if p.requestedModel != "" {
 		if remaining := p.account.GetRateLimitRemainingTimeWithContext(p.ctx, p.requestedModel); remaining > 0 {
-			if remaining < antigravityRateLimitThreshold {
-				// 限流剩余时间较短，等待后继续
-				log.Printf("%s pre_check: rate_limit_wait remaining=%v model=%s account=%d",
-					p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
-				select {
-				case <-p.ctx.Done():
-					return nil, p.ctx.Err()
-				case <-time.After(remaining):
-			REDACTED
-		REDACTED else {
-				// 限流剩余时间较长，返回账号切换信号
-				log.Printf("%s pre_check: rate_limit_switch remaining=%v model=%s account=%d",
-					p.prefix, remaining.Truncate(time.Second), p.requestedModel, p.account.ID)
-				return nil, &AntigravityAccountSwitchError{
-					OriginalAccountID: p.account.ID,
-					RateLimitedModel:  p.requestedModel,
-					IsStickySession:   p.isStickySession,
-			REDACTED
+			log.Printf("%s pre_check: rate_limit_switch remaining=%v model=%s account=%d",
+				p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
+			return nil, &AntigravityAccountSwitchError{
+				OriginalAccountID: p.account.ID,
+				RateLimitedModel:  p.requestedModel,
+				IsStickySession:   p.isStickySession,
 		REDACTED
 	REDACTED
 REDACTED

@@ -323,21 +323,15 @@ REDACTED
 	return *groupID
 REDACTED
 
-// stickySessionRateLimitThreshold 定义清除粘性会话的限流时间阈值。
-// 当账号限流剩余时间超过此阈值时，清除粘性会话以便切换到其他账号。
-// 低于此阈值时保持粘性会话，等待短暂限流结束。
-const stickySessionRateLimitThreshold = 10 * time.Second
-
 // shouldClearStickySession 检查账号是否处于不可调度状态，需要清理粘性会话绑定。
 // 当账号状态为错误、禁用、不可调度、处于临时不可调度期间，
-// 或模型限流剩余时间超过 stickySessionRateLimitThreshold 时，返回 true。
+// 或请求的模型处于限流状态时，返回 true。
 // 这确保后续请求不会继续使用不可用的账号。
 //
 // shouldClearStickySession checks if an account is in an unschedulable state
 // and the sticky session binding should be cleared.
 // Returns true when account status is error/disabled, schedulable is false,
-// within temporary unschedulable period, or model rate limit remaining time
-// exceeds stickySessionRateLimitThreshold.
+// within temporary unschedulable period, or the requested model is rate-limited.
 // This ensures subsequent requests won't continue using unavailable accounts.
 func shouldClearStickySession(account *Account, requestedModel string) bool {
 	if account == nil {
@@ -349,8 +343,8 @@ REDACTED
 	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
 		return true
 REDACTED
-	// 检查模型限流和 scope 限流，只在超过阈值时清除粘性会话
-	if remaining := account.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel); remaining > stickySessionRateLimitThreshold {
+	// 检查模型限流和 scope 限流，有限流即清除粘性会话
+	if remaining := account.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel); remaining > 0 {
 		return true
 REDACTED
 	return false

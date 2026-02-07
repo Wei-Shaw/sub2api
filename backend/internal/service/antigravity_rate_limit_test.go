@@ -803,7 +803,7 @@ func TestSetModelRateLimitByModelName_NotConvertToScope(t *testing.T) {
 	require.NotEqual(t, "claude_sonnet", call.modelKey, "should NOT be scope")
 REDACTED
 
-func TestAntigravityRetryLoop_PreCheck_WaitsWhenRemainingBelowThreshold(t *testing.T) {
+func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 	upstream := &recordingOKUpstream{REDACTED
 	account := &Account{
 		ID:          1,
@@ -815,19 +815,15 @@ func TestAntigravityRetryLoop_PreCheck_WaitsWhenRemainingBelowThreshold(t *testi
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
 				"claude-sonnet-4-5": map[string]any{
-					// RFC3339 here is second-precision; keep it safely in the future.
 					"rate_limit_reset_at": time.Now().Add(2 * time.Second).Format(time.RFC3339),
 			REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-
 	svc := &AntigravityGatewayService{REDACTED
 	result, err := svc.antigravityRetryLoop(antigravityRetryLoopParams{
-		ctx:             ctx,
+		ctx:             context.Background(),
 		prefix:          "[test]",
 		account:         account,
 		accessToken:     "token",
@@ -841,12 +837,16 @@ REDACTED
 	REDACTED,
 REDACTED)
 
-	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, result)
-	require.Equal(t, 0, upstream.calls, "should not call upstream while waiting on pre-check")
+	var switchErr *AntigravityAccountSwitchError
+	require.ErrorAs(t, err, &switchErr)
+	require.Equal(t, account.ID, switchErr.OriginalAccountID)
+	require.Equal(t, "claude-sonnet-4-5", switchErr.RateLimitedModel)
+	require.True(t, switchErr.IsStickySession)
+	require.Equal(t, 0, upstream.calls, "should not call upstream when switching on pre-check")
 REDACTED
 
-func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingAtOrAboveThreshold(t *testing.T) {
+func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingLong(t *testing.T) {
 	upstream := &recordingOKUpstream{REDACTED
 	account := &Account{
 		ID:          2,
