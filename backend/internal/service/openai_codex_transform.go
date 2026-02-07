@@ -342,8 +342,8 @@ func GetCodexCLIInstructions() string {
 REDACTED
 
 // applyInstructions 处理 instructions 字段
-// isCodexCLI=true: 仅补充缺失的 instructions（使用 opencode 指令）
-// isCodexCLI=false: 优先使用 opencode 指令覆盖
+// isCodexCLI=true: 仅补充缺失的 instructions（使用内置 Codex CLI 指令）
+// isCodexCLI=false: 优先使用 opencode 指令覆盖（不可用时回退到内置 Codex CLI 指令）
 func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 	if isCodexCLI {
 		return applyCodexCLIInstructions(reqBody)
@@ -352,13 +352,13 @@ REDACTED
 REDACTED
 
 // applyCodexCLIInstructions 为 Codex CLI 请求补充缺失的 instructions
-// 仅在 instructions 为空时添加 opencode 指令
+// 仅在 instructions 为空时添加内置 Codex CLI 指令（不依赖 opencode 缓存/回源）
 func applyCodexCLIInstructions(reqBody map[string]any) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false // 已有有效 instructions，不修改
 REDACTED
 
-	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
+	instructions := strings.TrimSpace(getCodexCLIInstructions())
 	if instructions != "" {
 		reqBody["instructions"] = instructions
 		return true
