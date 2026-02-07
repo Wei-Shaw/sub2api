@@ -2048,11 +2048,12 @@ func (s *AntigravityGatewayService) handleUpstreamError(ctx context.Context, pre
 		resetAt := ParseGeminiRateLimitResetTime(body)
 		if resetAt == nil {
 			// 解析失败：使用配置的 fallback 时间，直接限流整个账户
-			fallbackMinutes := 5
+			// 默认 30 秒，可通过配置覆盖（配置单位为分钟）
+			fallbackSeconds := 30
 			if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes > 0 {
-				fallbackMinutes = s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes
+				fallbackSeconds = s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes * 60
 		REDACTED
-			defaultDur := time.Duration(fallbackMinutes) * time.Minute
+			defaultDur := time.Duration(fallbackSeconds) * time.Second
 			if fallbackDur, ok := antigravityFallbackCooldownSeconds(); ok {
 				defaultDur = fallbackDur
 		REDACTED
