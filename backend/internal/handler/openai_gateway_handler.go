@@ -219,9 +219,8 @@ REDACTED
 		log.Printf("[OpenAI Handler] Selecting account: groupID=%v model=%s", apiKey.GroupID, reqModel)
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs)
 		if err != nil {
-			log.Printf("[OpenAI Handler] SelectAccount failed: %v", err)
+			log.Printf("[OpenAI Handler] SelectAccount failed: groupID=%v model=%s tried=%d err=%v", apiKey.GroupID, reqModel, len(failedAccountIDs), err)
 			if len(failedAccountIDs) == 0 {
-				log.Printf("[OpenAI Gateway] SelectAccount failed: %v", err)
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 				return
 		REDACTED

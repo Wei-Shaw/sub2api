@@ -13,7 +13,12 @@ REDACTED,
 REDACTED
 
 func getSSEScannerBuf64K() *sseScannerBuf64K {
-	return sseScannerBuf64KPool.Get().(*sseScannerBuf64K)
+	v := sseScannerBuf64KPool.Get()
+	buf, ok := v.(*sseScannerBuf64K)
+	if !ok || buf == nil {
+		return new(sseScannerBuf64K)
+REDACTED
+	return buf
 REDACTED
 
 func putSSEScannerBuf64K(buf *sseScannerBuf64K) {

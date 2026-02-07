@@ -810,20 +810,38 @@ REDACTED
 		updates = append(updates, accountUpdate{ID: accountID, Credentials: account.CredentialsREDACTED)
 REDACTED
 
-	// 阶段二：依次更新，任何失败立即返回（避免部分成功部分失败）
+	// 阶段二：依次更新，返回每个账号的成功/失败明细，便于调用方重试
+	success := 0
+	failed := 0
+	successIDs := make([]int64, 0, len(updates))
+	failedIDs := make([]int64, 0, len(updates))
+	results := make([]gin.H, 0, len(updates))
 	for _, u := range updates {
-		updateInput := &service.UpdateAccountInput{
-			Credentials: u.Credentials,
-	REDACTED
+		updateInput := &service.UpdateAccountInput{Credentials: u.CredentialsREDACTED
 		if _, err := h.adminService.UpdateAccount(ctx, u.ID, updateInput); err != nil {
-			response.Error(c, 500, fmt.Sprintf("Failed to update account %d: %v", u.ID, err))
-			return
+			failed++
+			failedIDs = append(failedIDs, u.ID)
+			results = append(results, gin.H{
+				"account_id": u.ID,
+				"success":    false,
+				"error":      err.Error(),
+		REDACTED)
+			continue
 	REDACTED
+		success++
+		successIDs = append(successIDs, u.ID)
+		results = append(results, gin.H{
+			"account_id": u.ID,
+			"success":    true,
+	REDACTED)
 REDACTED
 
 	response.Success(c, gin.H{
-		"success": len(updates),
-		"failed":  0,
+		"success":     success,
+		"failed":      failed,
+		"success_ids": successIDs,
+		"failed_ids":  failedIDs,
+		"results":     results,
 REDACTED)
 REDACTED
 

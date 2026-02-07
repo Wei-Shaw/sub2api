@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 // TransformGeminiToClaude 将 Gemini 响应转换为 Claude 格式（非流式）
@@ -345,13 +346,25 @@ REDACTED
 // generateRandomID 生成密码学安全的随机 ID
 func generateRandomID() string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, 12)
+	id := make([]byte, 12)
 	randBytes := make([]byte, 12)
 	if _, err := rand.Read(randBytes); err != nil {
-		panic("crypto/rand unavailable: " + err.Error())
+		// 避免在请求路径里 panic：极端情况下熵源不可用时降级为伪随机。
+		// 这里主要用于生成响应/工具调用的临时 ID，安全要求不高但需尽量避免碰撞。
+		seed := uint64(time.Now().UnixNano())
+		if err != nil {
+			seed ^= uint64(len(err.Error())) << 32
+	REDACTED
+		for i := range id {
+			seed ^= seed << 13
+			seed ^= seed >> 7
+			seed ^= seed << 17
+			id[i] = chars[int(seed)%len(chars)]
+	REDACTED
+		return string(id)
 REDACTED
 	for i, b := range randBytes {
-		result[i] = chars[int(b)%len(chars)]
+		id[i] = chars[int(b)%len(chars)]
 REDACTED
-	return string(result)
+	return string(id)
 REDACTED

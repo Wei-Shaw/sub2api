@@ -483,7 +483,11 @@ REDACTED)
 		return nil, err
 REDACTED
 	// singleflight 返回的也是缓存指针，需要浅拷贝
-	cp := *value.(*UserSubscription)
+	sub, ok := value.(*UserSubscription)
+	if !ok || sub == nil {
+		return nil, ErrSubscriptionNotFound
+REDACTED
+	cp := *sub
 	return &cp, nil
 REDACTED
 
