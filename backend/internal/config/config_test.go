@@ -424,6 +424,25 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestValidateServerFrontendURL(t *testing.T) {
+	viper.Reset()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.Server.FrontendURL = "https://example.com"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() frontend_url valid error: %v", err)
+REDACTED
+
+	cfg.Server.FrontendURL = "/relative"
+	if err := cfg.Validate(); err == nil {
+		t.Fatalf("Validate() should reject relative server.frontend_url")
+REDACTED
+REDACTED
+
 func TestValidateFrontendRedirectURL(t *testing.T) {
 	if err := ValidateFrontendRedirectURL("/auth/callback"); err != nil {
 		t.Fatalf("ValidateFrontendRedirectURL relative error: %v", err)
