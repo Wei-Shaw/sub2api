@@ -294,7 +294,7 @@ REDACTED
 					sessionBoundAccountID = foundAccountID
 					geminiSessionUUID = foundUUID
 					log.Printf("[Gemini] Digest fallback matched: uuid=%s, accountID=%d, chain=%s",
-						foundUUID[:8], foundAccountID, truncateDigestChain(geminiDigestChain))
+						safeShortPrefix(foundUUID, 8), foundAccountID, truncateDigestChain(geminiDigestChain))
 
 					// 关键：如果原 sessionKey 为空，使用 prefixHash + uuid 作为 sessionKey
 					// 这样 SelectAccountWithLoadAwareness 的粘性会话逻辑会优先使用匹配到的账号
@@ -648,6 +648,15 @@ func truncateDigestChain(chain string) string {
 		return chain
 REDACTED
 	return chain[:50] + "..."
+REDACTED
+
+// safeShortPrefix 返回字符串前 n 个字符；长度不足时返回原字符串。
+// 用于日志展示，避免切片越界。
+func safeShortPrefix(value string, n int) string {
+	if n <= 0 || len(value) <= n {
+		return value
+REDACTED
+	return value[:n]
 REDACTED
 
 // derefGroupID 安全解引用 *int64，nil 返回 0

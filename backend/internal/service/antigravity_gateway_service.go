@@ -1950,11 +1950,6 @@ REDACTED
 	isResourceExhausted := status == googleRPCStatusResourceExhausted
 	isUnavailable := status == googleRPCStatusUnavailable
 
-	// 调试日志：打印 RESOURCE_EXHAUSTED 的完整响应
-	if isResourceExhausted {
-		log.Printf("[Antigravity-Debug] 429 RESOURCE_EXHAUSTED full body: %s", string(body))
-REDACTED
-
 	if !isResourceExhausted && !isUnavailable {
 		return nil
 REDACTED
@@ -2208,8 +2203,10 @@ REDACTED
 	// ========== 原有逻辑，保持不变 ==========
 	// 429 使用 Gemini 格式解析（从 body 解析重置时间）
 	if statusCode == 429 {
-		// 调试日志：打印 429 响应的完整 body
-		log.Printf("[Antigravity-Debug] 429 response full body: %s", string(body))
+		// 调试日志遵循统一日志开关与长度限制，避免无条件记录完整上游响应体。
+		if logBody, maxBytes := s.getLogConfig(); logBody {
+			log.Printf("[Antigravity-Debug] 429 response body: %s", truncateString(string(body), maxBytes))
+	REDACTED
 
 		useScopeLimit := quotaScope != ""
 		resetAt := ParseGeminiRateLimitResetTime(body)
