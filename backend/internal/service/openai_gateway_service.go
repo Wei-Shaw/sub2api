@@ -24,6 +24,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -1430,31 +1432,22 @@ REDACTED
 		return line
 REDACTED
 
-	var event map[string]any
-	if err := json.Unmarshal([]byte(data), &event); err != nil {
-		return line
-REDACTED
-
-	// Replace model in response
-	if m, ok := event["model"].(string); ok && m == fromModel {
-		event["model"] = toModel
-		newData, err := json.Marshal(event)
+	// 使用 gjson 精确检查 model 字段，避免全量 JSON 反序列化
+	if m := gjson.Get(data, "model"); m.Exists() && m.Str == fromModel {
+		newData, err := sjson.Set(data, "model", toModel)
 		if err != nil {
 			return line
 	REDACTED
-		return "data: " + string(newData)
+		return "data: " + newData
 REDACTED
 
-	// Check nested response
-	if response, ok := event["response"].(map[string]any); ok {
-		if m, ok := response["model"].(string); ok && m == fromModel {
-			response["model"] = toModel
-			newData, err := json.Marshal(event)
-			if err != nil {
-				return line
-		REDACTED
-			return "data: " + string(newData)
+	// 检查嵌套的 response.model 字段
+	if m := gjson.Get(data, "response.model"); m.Exists() && m.Str == fromModel {
+		newData, err := sjson.Set(data, "response.model", toModel)
+		if err != nil {
+			return line
 	REDACTED
+		return "data: " + newData
 REDACTED
 
 	return line
@@ -1674,23 +1667,15 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
-	var resp map[string]any
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return body
+	// 使用 gjson/sjson 精确替换 model 字段，避免全量 JSON 反序列化
+	if m := gjson.GetBytes(body, "model"); m.Exists() && m.Str == fromModel {
+		newBody, err := sjson.SetBytes(body, "model", toModel)
+		if err != nil {
+			return body
+	REDACTED
+		return newBody
 REDACTED
-
-	model, ok := resp["model"].(string)
-	if !ok || model != fromModel {
-		return body
-REDACTED
-
-	resp["model"] = toModel
-	newBody, err := json.Marshal(resp)
-	if err != nil {
-		return body
-REDACTED
-
-	return newBody
+	return body
 REDACTED
 
 // OpenAIRecordUsageInput input for recording usage

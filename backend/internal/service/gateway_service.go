@@ -4577,24 +4577,16 @@ REDACTED
 REDACTED
 
 // replaceModelInResponseBody 替换响应体中的model字段
+// 使用 gjson/sjson 精确替换，避免全量 JSON 反序列化
 func (s *GatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
-	var resp map[string]any
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return body
+	if m := gjson.GetBytes(body, "model"); m.Exists() && m.Str == fromModel {
+		newBody, err := sjson.SetBytes(body, "model", toModel)
+		if err != nil {
+			return body
+	REDACTED
+		return newBody
 REDACTED
-
-	model, ok := resp["model"].(string)
-	if !ok || model != fromModel {
-		return body
-REDACTED
-
-	resp["model"] = toModel
-	newBody, err := json.Marshal(resp)
-	if err != nil {
-		return body
-REDACTED
-
-	return newBody
+	return body
 REDACTED
 
 func (s *GatewayService) replaceToolNamesInResponseBody(body []byte, toolNameMap map[string]string) []byte {
