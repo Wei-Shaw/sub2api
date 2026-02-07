@@ -600,11 +600,12 @@ REDACTED
 		return mapped
 REDACTED
 
-	// 如果 mapped == requestedModel，检查是否在映射表 key 中显式配置
+	// 如果 mapped == requestedModel，检查是否在映射表中配置（精确或通配符）
 	// 这区分两种情况：
 	// 1. 映射表中有 "model-a": "model-a"（显式透传）→ 返回 model-a
-	// 2. 映射表中没有 model-a 的配置 → 返回空（不支持）
-	if _, exists := mapping[requestedModel]; exists {
+	// 2. 通配符匹配 "claude-*": "claude-sonnet-4-5" 恰好目标等于请求名 → 返回 model-a
+	// 3. 映射表中没有 model-a 的配置 → 返回空（不支持）
+	if account.IsModelSupported(requestedModel) {
 		return requestedModel
 REDACTED
 
@@ -2042,7 +2043,7 @@ REDACTED
 //   - waitDuration: 等待时间（智能重试时使用，shouldRateLimitModel=true 时为 0）
 //   - modelName: 限流的模型名称
 func shouldTriggerAntigravitySmartRetry(account *Account, respBody []byte) (shouldRetry bool, shouldRateLimitModel bool, waitDuration time.Duration, modelName string) {
-	if !account.IsOAuth() {
+	if account.Platform != PlatformAntigravity {
 		return false, false, 0, ""
 REDACTED
 

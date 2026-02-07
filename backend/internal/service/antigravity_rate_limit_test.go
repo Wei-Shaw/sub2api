@@ -524,8 +524,8 @@ REDACTED
 REDACTED
 
 func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
-	oauthAccount := &Account{Type: AccountTypeOAuthREDACTED
-	setupTokenAccount := &Account{Type: AccountTypeSetupTokenREDACTED
+	oauthAccount := &Account{Type: AccountTypeOAuth, Platform: PlatformAntigravityREDACTED
+	setupTokenAccount := &Account{Type: AccountTypeSetupToken, Platform: PlatformAntigravityREDACTED
 	apiKeyAccount := &Account{Type: AccountTypeAPIKeyREDACTED
 
 	tests := []struct {

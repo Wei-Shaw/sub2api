@@ -343,13 +343,13 @@ REDACTED
 	require.Equal(t, "gemini-3-pro-high", repo.modelRateLimitCalls[0].modelKey)
 REDACTED
 
-// TestHandleSmartRetry_NonOAuthAccount_ContinuesDefaultLogic 测试非 OAuth 账号走默认逻辑
-func TestHandleSmartRetry_NonOAuthAccount_ContinuesDefaultLogic(t *testing.T) {
+// TestHandleSmartRetry_NonAntigravityAccount_ContinuesDefaultLogic 测试非 Antigravity 平台账号走默认逻辑
+func TestHandleSmartRetry_NonAntigravityAccount_ContinuesDefaultLogic(t *testing.T) {
 	account := &Account{
 		ID:       4,
 		Name:     "acc-4",
-		Type:     AccountTypeAPIKey, // 非 OAuth 账号
-		Platform: PlatformAntigravity,
+		Type:     AccountTypeAPIKey, // 非 Antigravity 平台账号
+		Platform: PlatformAnthropic,
 REDACTED
 
 	// 即使是模型限流响应，非 OAuth 账号也应该走默认逻辑
@@ -385,7 +385,7 @@ REDACTED
 	result := handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, availableURLs)
 
 	require.NotNil(t, result)
-	require.Equal(t, smartRetryActionContinue, result.action, "non-OAuth account should continue default logic")
+	require.Equal(t, smartRetryActionContinue, result.action, "non-Antigravity platform account should continue default logic")
 	require.Nil(t, result.resp)
 	require.Nil(t, result.err)
 	require.Nil(t, result.switchError)
