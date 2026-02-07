@@ -42,7 +42,7 @@ REDACTED
 		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
 REDACTED()
 
-	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model", nil, false)
+	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model", false)
 	_ = pr.Close()
 REDACTED
 	require.NotNil(t, result)
