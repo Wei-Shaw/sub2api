@@ -151,6 +151,14 @@ REDACTED
 	return s.accountRepo.GetByID(fallbackCtx, accountID)
 REDACTED
 
+// UpdateAccountInCache 立即更新 Redis 中单个账号的数据（用于模型限流后立即生效）
+func (s *SchedulerSnapshotService) UpdateAccountInCache(ctx context.Context, account *Account) error {
+	if s.cache == nil || account == nil {
+		return nil
+REDACTED
+	return s.cache.SetAccount(ctx, account)
+REDACTED
+
 func (s *SchedulerSnapshotService) runInitialRebuild() {
 	if s.cache == nil {
 		return

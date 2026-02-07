@@ -8,30 +8,102 @@ export default {
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
     login: '登录',
-    getStarted: '开始使用',
+    getStarted: '立即开始',
     goToDashboard: '进入控制台',
+    // 新增：面向用户的价值主张
+    heroSubtitle: '一个密钥，畅用多个 AI 模型',
+    heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
     tags: {
       subscriptionToApi: '订阅转 API',
-      stickySession: '粘性会话',
-      realtimeBilling: '实时计费'
+      stickySession: '会话保持',
+      realtimeBilling: '按量计费'
+    REDACTED,
+    // 用户痛点区块
+    painPoints: {
+      title: '你是否也遇到这些问题？',
+      items: {
+        expensive: {
+          title: '订阅费用高',
+          desc: '每个 AI 服务都要单独订阅，每月支出越来越多'
+        REDACTED,
+        complex: {
+          title: '多账号难管理',
+          desc: '不同平台的账号、密钥分散各处，管理起来很麻烦'
+        REDACTED,
+        unstable: {
+          title: '服务不稳定',
+          desc: '单一账号容易触发限制，影响正常使用'
+        REDACTED,
+        noControl: {
+          title: '用量无法控制',
+          desc: '不知道钱花在哪了，也无法限制团队成员的使用'
+        REDACTED
+      REDACTED
+    REDACTED,
+    // 解决方案区块
+    solutions: {
+      title: '我们帮你解决',
+      subtitle: '简单三步，开始省心使用 AI'
     REDACTED,
     features: {
-      unifiedGateway: '统一 API 网关',
-      unifiedGatewayDesc: '将 Claude 订阅转换为 API 接口，通过标准 /v1/messages 接口访问 AI 能力。',
-      multiAccount: '多账号池',
-      multiAccountDesc: '智能负载均衡管理多个上游账号，支持 OAuth 和 API Key 认证。',
-      balanceQuota: '余额与配额',
-      balanceQuotaDesc: '基于 Token 的精确计费和用量追踪，支持配额管理和兑换码充值。'
+      unifiedGateway: '一键接入',
+      unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
+      multiAccount: '稳定可靠',
+      multiAccountDesc: '智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。',
+      balanceQuota: '用多少付多少',
+      balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
+    REDACTED,
+    // 优势对比
+    comparison: {
+      title: '为什么选择我们？',
+      headers: {
+        feature: '对比项',
+        official: '官方订阅',
+        us: '本平台'
+      REDACTED,
+      items: {
+        pricing: {
+          feature: '付费方式',
+          official: '固定月费，用不完也付',
+          us: '按量付费，用多少付多少'
+        REDACTED,
+        models: {
+          feature: '模型选择',
+          official: '单一服务商',
+          us: '多模型随意切换'
+        REDACTED,
+        management: {
+          feature: '账号管理',
+          official: '每个服务单独管理',
+          us: '统一密钥，一站管理'
+        REDACTED,
+        stability: {
+          feature: '服务稳定性',
+          official: '单账号易触发限制',
+          us: '多账号池，自动切换'
+        REDACTED,
+        control: {
+          feature: '用量控制',
+          official: '无法限制',
+          us: '可设配额、查明细'
+        REDACTED
+      REDACTED
     REDACTED,
     providers: {
-      title: '支持的服务商',
-      description: 'AI 服务的统一 API 接口',
+      title: '已支持的 AI 模型',
+      description: '一个 API，多种选择',
       supported: '已支持',
       soon: '即将推出',
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
       more: '更多'
+    REDACTED,
+    // CTA 区块
+    cta: {
+      title: '准备好开始了吗？',
+      description: '注册即可获得免费试用额度，体验一站式 AI 服务',
+      button: '免费注册'
     REDACTED,
     footer: {
       allRightsReserved: '保留所有权利。'
@@ -1421,6 +1493,7 @@ export default {
         tempUnschedulable: '临时不可调度',
         rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
         scopeRateLimitedUntil: '{scopeREDACTED 限流中，重置时间：{timeREDACTED',
+        modelRateLimitedUntil: '{modelREDACTED 限流至 {timeREDACTED',
         overloadedUntil: '负载过重，重置时间：{timeREDACTED',
         viewTempUnschedDetails: '查看临时不可调度详情'
       REDACTED,
@@ -1592,6 +1665,8 @@ export default {
       actualModel: '实际模型',
       addMapping: '添加映射',
       mappingExists: '模型 {modelREDACTED 的映射已存在',
+      wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
+      targetNoWildcard: '目标模型不能包含通配符 *',
       searchModels: '搜索模型...',
       noMatchingModels: '没有匹配的模型',
       fillRelatedModels: '填入相关模型',
@@ -2022,8 +2097,6 @@ export default {
       deleteConfirmMessage: "确定要删除代理 '{nameREDACTED' 吗？",
       testProxy: '测试代理',
       dataImport: '导入',
-      dataImportShort: '导入',
-      dataExportShort: '导出',
       dataExportSelected: '导出选中',
       dataImportTitle: '导入代理',
       dataImportHint: '上传代理导出的 JSON 文件以批量导入代理。',
@@ -3140,6 +3213,10 @@ export default {
         byPlatform: '按平台',
         byGroup: '按分组',
         byAccount: '按账号',
+        byUser: '按用户',
+        showByUserTooltip: '切换用户视图，显示每个用户的并发使用情况',
+        switchToUser: '切换到用户视图',
+        switchToPlatform: '切换回平台视图',
         totalRows: '共 {countREDACTED 项',
         disabledHint: '已在设置中关闭实时监控。',
         empty: '暂无数据',

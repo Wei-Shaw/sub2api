@@ -698,6 +698,97 @@
         </div>
       </div>
 
+      <!-- Antigravity model restriction (applies to OAuth + Upstream) -->
+      <!-- Antigravity 只支持模型映射模式，不支持白名单模式 -->
+      <div v-if="form.platform === 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
+
+        <!-- Mapping Mode Only (no toggle for Antigravity) -->
+        <div>
+          <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+            <p class="text-xs text-purple-700 dark:text-purple-400">
+              {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+            </p>
+          </div>
+
+          <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
+            <div
+              v-for="(mapping, index) in antigravityModelMappings"
+              :key="index"
+              class="space-y-1"
+            >
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  :class="[
+                    'input flex-1',
+                    !isValidWildcardPattern(mapping.from) ? 'border-red-500 dark:border-red-500' : ''
+                  ]"
+                  :placeholder="t('admin.accounts.requestModel')"
+                />
+                <svg class="h-4 w-4 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  :class="[
+                    'input flex-1',
+                    mapping.to.includes('*') ? 'border-red-500 dark:border-red-500' : ''
+                  ]"
+                  :placeholder="t('admin.accounts.actualModel')"
+                />
+                <button
+                  type="button"
+                  @click="removeAntigravityModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <!-- 校验错误提示 -->
+              <p v-if="!isValidWildcardPattern(mapping.from)" class="text-xs text-red-500">
+                {{ t('admin.accounts.wildcardOnlyAtEnd') REDACTEDREDACTED
+              </p>
+              <p v-if="mapping.to.includes('*')" class="text-xs text-red-500">
+                {{ t('admin.accounts.targetNoWildcard') REDACTEDREDACTED
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            @click="addAntigravityModelMapping"
+            class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+          >
+            <svg class="mr-1 inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            {{ t('admin.accounts.addMapping') REDACTEDREDACTED
+          </button>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="preset in antigravityPresetMappings"
+              :key="preset.label"
+              type="button"
+              @click="addAntigravityPresetMapping(preset.from, preset.to)"
+              :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+            >
+              + {{ preset.label REDACTEDREDACTED
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Add Method (only for Anthropic OAuth-based type) -->
       <div v-if="form.platform === 'anthropic' && isOAuthFlow">
         <label class="input-label">{{ t('admin.accounts.addMethod') REDACTEDREDACTED</label>
@@ -1883,7 +1974,15 @@
 import { ref, reactive, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
-import { claudeModels, getPresetMappingsByPlatform, getModelsByPlatform, commonErrorCodes, buildModelMappingObject REDACTED from '@/composables/useModelWhitelist'
+import {
+  claudeModels,
+  getPresetMappingsByPlatform,
+  getModelsByPlatform,
+  commonErrorCodes,
+  buildModelMappingObject,
+  fetchAntigravityDefaultMappings,
+  isValidWildcardPattern
+REDACTED from '@/composables/useModelWhitelist'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import {
@@ -2022,6 +2121,10 @@ const mixedScheduling = ref(false) // For antigravity accounts: enable mixed sch
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
 const upstreamBaseUrl = ref('') // For upstream type: base URL
 const upstreamApiKey = ref('') // For upstream type: API key
+const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
+const antigravityWhitelistModels = ref<string[]>([])
+const antigravityModelMappings = ref<ModelMapping[]>([])
+const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
@@ -2164,6 +2267,18 @@ watch(
     if (newVal) {
       // Modal opened - fill related models
       allowedModels.value = [...getModelsByPlatform(form.platform)]
+      // Antigravity: 默认使用映射模式并填充默认映射
+      if (form.platform === 'antigravity') {
+        antigravityModelRestrictionMode.value = 'mapping'
+        fetchAntigravityDefaultMappings().then(mappings => {
+          antigravityModelMappings.value = [...mappings]
+        REDACTED)
+        antigravityWhitelistModels.value = []
+      REDACTED else {
+        antigravityWhitelistModels.value = []
+        antigravityModelMappings.value = []
+        antigravityModelRestrictionMode.value = 'mapping'
+      REDACTED
     REDACTED else {
       resetForm()
     REDACTED
@@ -2202,14 +2317,23 @@ watch(
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
+    // Antigravity: 默认使用映射模式并填充默认映射
+    if (newPlatform === 'antigravity') {
+      antigravityModelRestrictionMode.value = 'mapping'
+      fetchAntigravityDefaultMappings().then(mappings => {
+        antigravityModelMappings.value = [...mappings]
+      REDACTED)
+      antigravityWhitelistModels.value = []
+      accountCategory.value = 'oauth-based'
+      antigravityAccountType.value = 'oauth'
+    REDACTED else {
+      antigravityWhitelistModels.value = []
+      antigravityModelMappings.value = []
+      antigravityModelRestrictionMode.value = 'mapping'
+    REDACTED
     // Reset Anthropic-specific settings when switching to other platforms
     if (newPlatform !== 'anthropic') {
       interceptWarmupRequests.value = false
-    REDACTED
-    // Antigravity: reset to OAuth by default, but allow upstream selection
-    if (newPlatform === 'antigravity') {
-      accountCategory.value = 'oauth-based'
-      antigravityAccountType.value = 'oauth'
     REDACTED
     // Reset OAuth states
     oauth.resetState()
@@ -2254,6 +2378,15 @@ watch(
   REDACTED
 )
 
+watch(
+  [antigravityModelRestrictionMode, () => form.platform],
+  ([, platform]) => {
+    if (platform !== 'antigravity') return
+    // Antigravity 默认不做限制：白名单留空表示允许所有（包含未来新增模型）。
+    // 如果需要快速填充常用模型，可在组件内点“填充相关模型”。
+  REDACTED
+)
+
 // Model mapping helpers
 const addModelMapping = () => {
   modelMappings.value.push({ from: '', to: '' REDACTED)
@@ -2269,6 +2402,22 @@ const addPresetMapping = (from: string, to: string) => {
     return
   REDACTED
   modelMappings.value.push({ from, to REDACTED)
+REDACTED
+
+const addAntigravityModelMapping = () => {
+  antigravityModelMappings.value.push({ from: '', to: '' REDACTED)
+REDACTED
+
+const removeAntigravityModelMapping = (index: number) => {
+  antigravityModelMappings.value.splice(index, 1)
+REDACTED
+
+const addAntigravityPresetMapping = (from: string, to: string) => {
+  if (antigravityModelMappings.value.some((m) => m.from === from)) {
+    appStore.showInfo(t('admin.accounts.mappingExists', { model: from REDACTED))
+    return
+  REDACTED
+  antigravityModelMappings.value.push({ from, to REDACTED)
 REDACTED
 
 // Error code toggle helper
@@ -2428,6 +2577,12 @@ const resetForm = () => {
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
+
+  antigravityModelRestrictionMode.value = 'mapping'
+  antigravityWhitelistModels.value = []
+  fetchAntigravityDefaultMappings().then(mappings => {
+    antigravityModelMappings.value = [...mappings]
+  REDACTED)
   customErrorCodesEnabled.value = false
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
@@ -2541,12 +2696,24 @@ const handleSubmit = async () => {
       return
     REDACTED
 
+    // Build upstream credentials (and optional model restriction)
+    const credentials: Record<string, unknown> = {
+      base_url: upstreamBaseUrl.value.trim(),
+      api_key: upstreamApiKey.value.trim()
+    REDACTED
+
+    // Antigravity 只使用映射模式
+    const antigravityModelMapping = buildModelMappingObject(
+      'mapping',
+      [],
+      antigravityModelMappings.value
+    )
+    if (antigravityModelMapping) {
+      credentials.model_mapping = antigravityModelMapping
+    REDACTED
+
     submitting.value = true
     try {
-      const credentials: Record<string, unknown> = {
-        base_url: upstreamBaseUrl.value.trim(),
-        api_key: upstreamApiKey.value.trim()
-      REDACTED
       await createAccountAndFinish(form.platform, 'upstream', credentials)
     REDACTED catch (error: any) {
       appStore.showError(error.response?.data?.detail || t('admin.accounts.failedToCreate'))
@@ -2752,11 +2919,20 @@ const handleAntigravityExchange = async (authCode: string) => {
       state: stateToUse,
       proxyId: form.proxy_id
     REDACTED)
-    if (!tokenInfo) return
+		if (!tokenInfo) return
 
-    const credentials = antigravityOAuth.buildCredentials(tokenInfo)
-    const extra = mixedScheduling.value ? { mixed_scheduling: true REDACTED : undefined
-    await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
+		const credentials = antigravityOAuth.buildCredentials(tokenInfo)
+		// Antigravity 只使用映射模式
+		const antigravityModelMapping = buildModelMappingObject(
+			'mapping',
+			[],
+			antigravityModelMappings.value
+		)
+		if (antigravityModelMapping) {
+			credentials.model_mapping = antigravityModelMapping
+	REDACTED
+		const extra = mixedScheduling.value ? { mixed_scheduling: true REDACTED : undefined
+		await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
   REDACTED catch (error: any) {
     antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(antigravityOAuth.error.value)

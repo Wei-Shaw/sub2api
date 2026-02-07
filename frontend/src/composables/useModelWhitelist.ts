@@ -24,8 +24,6 @@ const openaiModels = [
   // GPT-5.2 系列
   'gpt-5.2', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest',
   'gpt-5.2-codex', 'gpt-5.2-pro', 'gpt-5.2-pro-2025-12-11',
-  // GPT-5.3 系列
-  'gpt-5.3-codex', 'gpt-5.3',
   'chatgpt-4o-latest',
   'gpt-4o-audio-preview', 'gpt-4o-realtime-preview'
 ]
@@ -53,6 +51,29 @@ const geminiModels = [
   'gemini-2.5-pro',
   'gemini-3-flash-preview',
   'gemini-3-pro-preview'
+]
+
+// Antigravity 官方支持的模型（精确匹配）
+// 基于官方 API 返回的模型列表，只支持 Claude 4.5+ 和 Gemini 2.5+
+const antigravityModels = [
+  // Claude 4.5+ 系列
+  'claude-opus-4-6',
+  'claude-opus-4-5-thinking',
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-5-thinking',
+  // Gemini 2.5 系列
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash-thinking',
+  'gemini-2.5-pro',
+  // Gemini 3 系列
+  'gemini-3-flash',
+  'gemini-3-pro-high',
+  'gemini-3-pro-low',
+  'gemini-3-pro-image',
+  // 其他
+  'gpt-oss-120b-medium',
+  'tab_flash_lite_preview'
 ]
 
 // 智谱 GLM
@@ -237,6 +258,41 @@ const geminiPresetMappings = [
   { label: '2.5 Pro', from: 'gemini-2.5-pro', to: 'gemini-2.5-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED
 ]
 
+// Antigravity 预设映射（支持通配符）
+const antigravityPresetMappings = [
+  // Claude 通配符映射
+  { label: 'Claude→Sonnet', from: 'claude-*', to: 'claude-sonnet-4-5', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' REDACTED,
+  { label: 'Sonnet→Sonnet', from: 'claude-sonnet-*', to: 'claude-sonnet-4-5', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' REDACTED,
+  { label: 'Opus→Opus', from: 'claude-opus-*', to: 'claude-opus-4-5-thinking', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' REDACTED,
+  { label: 'Haiku→Sonnet', from: 'claude-haiku-*', to: 'claude-sonnet-4-5', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' REDACTED,
+  // Gemini 通配符映射
+  { label: 'Gemini 3→Flash', from: 'gemini-3*', to: 'gemini-3-flash', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' REDACTED,
+  { label: 'Gemini 2.5→Flash', from: 'gemini-2.5*', to: 'gemini-2.5-flash', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' REDACTED,
+  // 精确映射
+  { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5', to: 'claude-sonnet-4-5', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' REDACTED,
+  { label: 'Opus 4.5', from: 'claude-opus-4-5-thinking', to: 'claude-opus-4-5-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' REDACTED
+]
+
+// Antigravity 默认映射（从后端 API 获取，与 constants.go 保持一致）
+// 使用 fetchAntigravityDefaultMappings() 异步获取
+import { getAntigravityDefaultModelMapping REDACTED from '@/api/admin/accounts'
+
+let _antigravityDefaultMappingsCache: { from: string; to: string REDACTED[] | null = null
+
+export async function fetchAntigravityDefaultMappings(): Promise<{ from: string; to: string REDACTED[]> {
+  if (_antigravityDefaultMappingsCache !== null) {
+    return _antigravityDefaultMappingsCache
+  REDACTED
+  try {
+    const mapping = await getAntigravityDefaultModelMapping()
+    _antigravityDefaultMappingsCache = Object.entries(mapping).map(([from, to]) => ({ from, to REDACTED))
+  REDACTED catch (e) {
+    console.warn('[fetchAntigravityDefaultMappings] API failed, using empty fallback', e)
+    _antigravityDefaultMappingsCache = []
+  REDACTED
+  return _antigravityDefaultMappingsCache
+REDACTED
+
 // =====================
 // 常用错误码
 // =====================
@@ -262,6 +318,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'anthropic':
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
+    case 'antigravity': return antigravityModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -285,12 +342,22 @@ REDACTED
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
+  if (platform === 'antigravity') return antigravityPresetMappings
   return anthropicPresetMappings
 REDACTED
 
 // =====================
 // 构建模型映射对象（用于 API）
 // =====================
+
+// isValidWildcardPattern 校验通配符格式：* 只能放在末尾
+// 导出供表单组件使用实时校验
+export function isValidWildcardPattern(pattern: string): boolean {
+  const starIndex = pattern.indexOf('*')
+  if (starIndex === -1) return true // 无通配符，有效
+  // * 必须在末尾，且只能有一个
+  return starIndex === pattern.length - 1 && pattern.lastIndexOf('*') === starIndex
+REDACTED
 
 export function buildModelMappingObject(
   mode: 'whitelist' | 'mapping',
@@ -301,13 +368,29 @@ export function buildModelMappingObject(
 
   if (mode === 'whitelist') {
     for (const model of allowedModels) {
-      mapping[model] = model
+      // whitelist 模式的本意是"精确模型列表"，如果用户输入了通配符（如 claude-*），
+      // 写入 model_mapping 会导致 GetMappedModel() 把真实模型映射成 "claude-*"，从而转发失败。
+      // 因此这里跳过包含通配符的条目。
+      if (!model.includes('*')) {
+        mapping[model] = model
+      REDACTED
     REDACTED
   REDACTED else {
     for (const m of modelMappings) {
       const from = m.from.trim()
       const to = m.to.trim()
-      if (from && to) mapping[from] = to
+      if (!from || !to) continue
+      // 校验通配符格式：* 只能放在末尾
+      if (!isValidWildcardPattern(from)) {
+        console.warn(`[buildModelMappingObject] 无效的通配符格式，跳过: ${fromREDACTED`)
+        continue
+      REDACTED
+      // to 不允许包含通配符
+      if (to.includes('*')) {
+        console.warn(`[buildModelMappingObject] 目标模型不能包含通配符，跳过: ${fromREDACTED -> ${toREDACTED`)
+        continue
+      REDACTED
+      mapping[from] = to
     REDACTED
   REDACTED
 

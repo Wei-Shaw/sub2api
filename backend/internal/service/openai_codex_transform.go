@@ -346,47 +346,6 @@ REDACTED
 	return strings.TrimSpace(str) == ""
 REDACTED
 
-// ReplaceWithCodexInstructions 将请求 instructions 替换为内置 Codex 指令（必要时）。
-func ReplaceWithCodexInstructions(reqBody map[string]any) bool {
-	codexInstructions := strings.TrimSpace(getCodexCLIInstructions())
-	if codexInstructions == "" {
-		return false
-REDACTED
-
-	existingInstructions, _ := reqBody["instructions"].(string)
-	if strings.TrimSpace(existingInstructions) != codexInstructions {
-		reqBody["instructions"] = codexInstructions
-		return true
-REDACTED
-
-	return false
-REDACTED
-
-// IsInstructionError 判断错误信息是否与指令格式/系统提示相关。
-func IsInstructionError(errorMessage string) bool {
-	if errorMessage == "" {
-		return false
-REDACTED
-
-	lowerMsg := strings.ToLower(errorMessage)
-	instructionKeywords := []string{
-		"instruction",
-		"instructions",
-		"system prompt",
-		"system message",
-		"invalid prompt",
-		"prompt format",
-REDACTED
-
-	for _, keyword := range instructionKeywords {
-		if strings.Contains(lowerMsg, keyword) {
-			return true
-	REDACTED
-REDACTED
-
-	return false
-REDACTED
-
 // filterCodexInput 按需过滤 item_reference 与 id。
 // preserveReferences 为 true 时保持引用与 id，以满足续链请求对上下文的依赖。
 func filterCodexInput(input []any, preserveReferences bool) []any {

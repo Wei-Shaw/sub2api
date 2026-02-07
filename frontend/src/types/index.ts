@@ -561,7 +561,10 @@ export interface Account {
   platform: AccountPlatform
   type: AccountType
   credentials?: Record<string, unknown>
-  extra?: CodexUsageSnapshot & Record<string, unknown> // Extra fields including Codex usage
+  // Extra fields including Codex usage and model-level rate limits (Antigravity smart retry)
+  extra?: (CodexUsageSnapshot & {
+    model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string REDACTED>
+  REDACTED & Record<string, unknown>)
   proxy_id: number | null
   concurrency: number
   current_concurrency?: number // Real-time concurrency count from Redis

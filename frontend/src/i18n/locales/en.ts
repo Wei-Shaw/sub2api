@@ -10,31 +10,100 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    // User-focused value proposition
+    heroSubtitle: 'One Key, All AI Models',
+    heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
     tags: {
       subscriptionToApi: 'Subscription to API',
-      stickySession: 'Sticky Session',
-      realtimeBilling: 'Real-time Billing'
+      stickySession: 'Session Persistence',
+      realtimeBilling: 'Pay As You Go'
+    REDACTED,
+    // Pain points section
+    painPoints: {
+      title: 'Sound Familiar?',
+      items: {
+        expensive: {
+          title: 'High Subscription Costs',
+          desc: 'Paying for multiple AI subscriptions that add up every month'
+        REDACTED,
+        complex: {
+          title: 'Account Chaos',
+          desc: 'Managing scattered accounts and API keys across different platforms'
+        REDACTED,
+        unstable: {
+          title: 'Service Interruptions',
+          desc: 'Single accounts hitting rate limits and disrupting your workflow'
+        REDACTED,
+        noControl: {
+          title: 'No Usage Control',
+          desc: "Can't track where your money goes or limit team member usage"
+        REDACTED
+      REDACTED
+    REDACTED,
+    // Solutions section
+    solutions: {
+      title: 'We Solve These Problems',
+      subtitle: 'Three simple steps to stress-free AI access'
     REDACTED,
     features: {
-      unifiedGateway: 'Unified API Gateway',
-      unifiedGatewayDesc:
-        'Convert Claude subscriptions to API endpoints. Access AI capabilities through standard /v1/messages interface.',
-      multiAccount: 'Multi-Account Pool',
-      multiAccountDesc:
-        'Manage multiple upstream accounts with smart load balancing. Support OAuth and API Key authentication.',
-      balanceQuota: 'Balance & Quota',
-      balanceQuotaDesc:
-        'Token-based billing with precise usage tracking. Manage quotas and recharge with redeem codes.'
+      unifiedGateway: 'One-Click Access',
+      unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
+      multiAccount: 'Always Reliable',
+      multiAccountDesc: 'Smart routing across multiple upstream accounts with automatic failover. Say goodbye to errors.',
+      balanceQuota: 'Pay What You Use',
+      balanceQuotaDesc: 'Usage-based billing with quota limits. Full visibility into team consumption.'
+    REDACTED,
+    // Comparison section
+    comparison: {
+      title: 'Why Choose Us?',
+      headers: {
+        feature: 'Comparison',
+        official: 'Official Subscriptions',
+        us: 'Our Platform'
+      REDACTED,
+      items: {
+        pricing: {
+          feature: 'Pricing',
+          official: 'Fixed monthly fee, pay even if unused',
+          us: 'Pay only for what you use'
+        REDACTED,
+        models: {
+          feature: 'Model Selection',
+          official: 'Single provider only',
+          us: 'Switch between models freely'
+        REDACTED,
+        management: {
+          feature: 'Account Management',
+          official: 'Manage each service separately',
+          us: 'Unified key, one dashboard'
+        REDACTED,
+        stability: {
+          feature: 'Stability',
+          official: 'Single account rate limits',
+          us: 'Multi-account pool, auto-failover'
+        REDACTED,
+        control: {
+          feature: 'Usage Control',
+          official: 'Not available',
+          us: 'Quotas & detailed analytics'
+        REDACTED
+      REDACTED
     REDACTED,
     providers: {
-      title: 'Supported Providers',
-      description: 'Unified API interface for AI services',
+      title: 'Supported AI Models',
+      description: 'One API, Multiple Choices',
       supported: 'Supported',
       soon: 'Soon',
       claude: 'Claude',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
       more: 'More'
+    REDACTED,
+    // CTA section
+    cta: {
+      title: 'Ready to Get Started?',
+      description: 'Sign up now and get free trial credits to experience seamless AI access',
+      button: 'Sign Up Free'
     REDACTED,
     footer: {
       allRightsReserved: 'All rights reserved.'
@@ -1288,6 +1357,7 @@ export default {
         tempUnschedulable: 'Temp Unschedulable',
         rateLimitedUntil: 'Rate limited until {timeREDACTED',
         scopeRateLimitedUntil: '{scopeREDACTED rate limited until {timeREDACTED',
+        modelRateLimitedUntil: '{modelREDACTED rate limited until {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
         viewTempUnschedDetails: 'View temp unschedulable details'
       REDACTED,
@@ -1447,6 +1517,8 @@ export default {
       actualModel: 'Actual model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {modelREDACTED already exists',
+      wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
+      targetNoWildcard: 'Target model cannot contain wildcard *',
       searchModels: 'Search models...',
       noMatchingModels: 'No matching models',
       fillRelatedModels: 'Fill related models',
@@ -1913,8 +1985,6 @@ export default {
       editProxy: 'Edit Proxy',
       deleteProxy: 'Delete Proxy',
       dataImport: 'Import',
-      dataImportShort: 'Import',
-      dataExportShort: 'Export',
       dataExportSelected: 'Export Selected',
       dataImportTitle: 'Import Proxies',
       dataImportHint: 'Upload the exported proxy JSON file to import proxies in bulk.',
@@ -2970,6 +3040,10 @@ export default {
         byPlatform: 'By Platform',
         byGroup: 'By Group',
         byAccount: 'By Account',
+        byUser: 'By User',
+        showByUserTooltip: 'Switch to user view to see concurrency usage per user',
+        switchToUser: 'Switch to user view',
+        switchToPlatform: 'Switch to platform view',
         totalRows: '{countREDACTED rows',
         disabledHint: 'Realtime monitoring is disabled in settings.',
         empty: 'No data',

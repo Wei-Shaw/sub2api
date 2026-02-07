@@ -1,0 +1,269 @@
+//go:build unit
+
+package service
+
+import (
+	"testing"
+)
+
+func TestMatchWildcard(t *testing.T) {
+	tests := []struct {
+		name     string
+		pattern  string
+		str      string
+		expected bool
+REDACTED{
+		// 精确匹配
+		{"exact match", "claude-sonnet-4-5", "claude-sonnet-4-5", trueREDACTED,
+		{"exact mismatch", "claude-sonnet-4-5", "claude-opus-4-5", falseREDACTED,
+
+		// 通配符匹配
+		{"wildcard prefix match", "claude-*", "claude-sonnet-4-5", trueREDACTED,
+		{"wildcard prefix match 2", "claude-*", "claude-opus-4-5-thinking", trueREDACTED,
+		{"wildcard prefix mismatch", "claude-*", "gemini-3-flash", falseREDACTED,
+		{"wildcard partial match", "gemini-3*", "gemini-3-flash", trueREDACTED,
+		{"wildcard partial match 2", "gemini-3*", "gemini-3-pro-image", trueREDACTED,
+		{"wildcard partial mismatch", "gemini-3*", "gemini-2.5-flash", falseREDACTED,
+
+		// 边界情况
+		{"empty pattern exact", "", "", trueREDACTED,
+		{"empty pattern mismatch", "", "claude", falseREDACTED,
+		{"single star", "*", "anything", trueREDACTED,
+		{"star at end only", "abc*", "abcdef", trueREDACTED,
+		{"star at end empty suffix", "abc*", "abc", trueREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := matchWildcard(tt.pattern, tt.str)
+			if result != tt.expected {
+				t.Errorf("matchWildcard(%q, %q) = %v, want %v", tt.pattern, tt.str, result, tt.expected)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestMatchWildcardMapping(t *testing.T) {
+	tests := []struct {
+		name           string
+		mapping        map[string]string
+		requestedModel string
+		expected       string
+REDACTED{
+		// 精确匹配优先于通配符
+		{
+			name: "exact match takes precedence",
+			mapping: map[string]string{
+				"claude-sonnet-4-5": "claude-sonnet-4-5-exact",
+				"claude-*":          "claude-default",
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-5-exact",
+	REDACTED,
+
+		// 最长通配符优先
+		{
+			name: "longer wildcard takes precedence",
+			mapping: map[string]string{
+				"claude-*":         "claude-default",
+				"claude-sonnet-*":  "claude-sonnet-default",
+				"claude-sonnet-4*": "claude-sonnet-4-series",
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-series",
+	REDACTED,
+
+		// 单个通配符
+		{
+			name: "single wildcard",
+			mapping: map[string]string{
+				"claude-*": "claude-mapped",
+		REDACTED,
+			requestedModel: "claude-opus-4-5",
+			expected:       "claude-mapped",
+	REDACTED,
+
+		// 无匹配返回原始模型
+		{
+			name: "no match returns original",
+			mapping: map[string]string{
+				"claude-*": "claude-mapped",
+		REDACTED,
+			requestedModel: "gemini-3-flash",
+			expected:       "gemini-3-flash",
+	REDACTED,
+
+		// 空映射返回原始模型
+		{
+			name:           "empty mapping returns original",
+			mapping:        map[string]string{REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-5",
+	REDACTED,
+
+		// Gemini 模型映射
+		{
+			name: "gemini wildcard mapping",
+			mapping: map[string]string{
+				"gemini-3*":   "gemini-3-pro-high",
+				"gemini-2.5*": "gemini-2.5-flash",
+		REDACTED,
+			requestedModel: "gemini-3-flash-preview",
+			expected:       "gemini-3-pro-high",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := matchWildcardMapping(tt.mapping, tt.requestedModel)
+			if result != tt.expected {
+				t.Errorf("matchWildcardMapping(%v, %q) = %q, want %q", tt.mapping, tt.requestedModel, result, tt.expected)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestAccountIsModelSupported(t *testing.T) {
+	tests := []struct {
+		name           string
+		credentials    map[string]any
+		requestedModel string
+		expected       bool
+REDACTED{
+		// 无映射 = 允许所有
+		{
+			name:           "no mapping allows all",
+			credentials:    nil,
+			requestedModel: "any-model",
+			expected:       true,
+	REDACTED,
+		{
+			name:           "empty mapping allows all",
+			credentials:    map[string]any{REDACTED,
+			requestedModel: "any-model",
+			expected:       true,
+	REDACTED,
+
+		// 精确匹配
+		{
+			name: "exact match supported",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"claude-sonnet-4-5": "target-model",
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       true,
+	REDACTED,
+		{
+			name: "exact match not supported",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"claude-sonnet-4-5": "target-model",
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-opus-4-5",
+			expected:       false,
+	REDACTED,
+
+		// 通配符匹配
+		{
+			name: "wildcard match supported",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"claude-*": "claude-sonnet-4-5",
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-opus-4-5-thinking",
+			expected:       true,
+	REDACTED,
+		{
+			name: "wildcard match not supported",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"claude-*": "claude-sonnet-4-5",
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3-flash",
+			expected:       false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Credentials: tt.credentials,
+		REDACTED
+			result := account.IsModelSupported(tt.requestedModel)
+			if result != tt.expected {
+				t.Errorf("IsModelSupported(%q) = %v, want %v", tt.requestedModel, result, tt.expected)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestAccountGetMappedModel(t *testing.T) {
+	tests := []struct {
+		name           string
+		credentials    map[string]any
+		requestedModel string
+		expected       string
+REDACTED{
+		// 无映射 = 返回原始模型
+		{
+			name:           "no mapping returns original",
+			credentials:    nil,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-5",
+	REDACTED,
+
+		// 精确匹配
+		{
+			name: "exact match",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"claude-sonnet-4-5": "target-model",
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "target-model",
+	REDACTED,
+
+		// 通配符匹配（最长优先）
+		{
+			name: "wildcard longest match",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"claude-*":        "claude-default",
+					"claude-sonnet-*": "claude-sonnet-mapped",
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-mapped",
+	REDACTED,
+
+		// 无匹配返回原始模型
+		{
+			name: "no match returns original",
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gemini-*": "gemini-mapped",
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-5",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Credentials: tt.credentials,
+		REDACTED
+			result := account.GetMappedModel(tt.requestedModel)
+			if result != tt.expected {
+				t.Errorf("GetMappedModel(%q) = %q, want %q", tt.requestedModel, result, tt.expected)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED

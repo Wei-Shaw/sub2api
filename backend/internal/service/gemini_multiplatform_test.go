@@ -265,6 +265,22 @@ REDACTED
 	return nil
 REDACTED
 
+func (m *mockGatewayCacheForGemini) IncrModelCallCount(ctx context.Context, accountID int64, model string) (int64, error) {
+	return 0, nil
+REDACTED
+
+func (m *mockGatewayCacheForGemini) GetModelLoadBatch(ctx context.Context, accountIDs []int64, model string) (map[int64]*ModelLoadInfo, error) {
+	return nil, nil
+REDACTED
+
+func (m *mockGatewayCacheForGemini) FindGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
+	return "", 0, false
+REDACTED
+
+func (m *mockGatewayCacheForGemini) SaveGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
+	return nil
+REDACTED
+
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform 测试 Gemini 单平台选择
 func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform(t *testing.T) {
 	ctx := context.Background()
@@ -880,13 +896,46 @@ REDACTED{
 		{
 			name:     "Antigravity平台-支持claude模型",
 			account:  &Account{Platform: PlatformAntigravityREDACTED,
-			model:    "claude-3-5-sonnet-20241022",
+			model:    "claude-sonnet-4-5",
 			expected: true,
 	REDACTED,
 		{
 			name:     "Antigravity平台-不支持gpt模型",
 			account:  &Account{Platform: PlatformAntigravityREDACTED,
 			model:    "gpt-4",
+			expected: false,
+	REDACTED,
+		{
+			name:     "Antigravity平台-空模型允许",
+			account:  &Account{Platform: PlatformAntigravityREDACTED,
+			model:    "",
+			expected: true,
+	REDACTED,
+		{
+			name: "Antigravity平台-自定义映射-支持自定义模型",
+			account: &Account{
+				Platform: PlatformAntigravity,
+		REDACTED
+					"model_mapping": map[string]any{
+						"my-custom-model": "upstream-model",
+						"gpt-4o":          "some-model",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			model:    "my-custom-model",
+			expected: true,
+	REDACTED,
+		{
+			name: "Antigravity平台-自定义映射-不在映射中的模型不支持",
+			account: &Account{
+				Platform: PlatformAntigravity,
+		REDACTED
+					"model_mapping": map[string]any{
+						"my-custom-model": "upstream-model",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			model:    "claude-sonnet-4-5",
 			expected: false,
 	REDACTED,
 		{

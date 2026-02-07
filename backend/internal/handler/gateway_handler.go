@@ -121,6 +121,8 @@ REDACTED
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 REDACTED
+	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.ThinkingEnabled, parsedReq.ThinkingEnabled))
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
 
@@ -205,11 +207,20 @@ REDACTED
 		sessionKey = "gemini:" + sessionHash
 REDACTED
 
+	// 查询粘性会话绑定的账号 ID
+	var sessionBoundAccountID int64
+	if sessionKey != "" {
+		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
+REDACTED
+	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
+	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
+
 	if platform == service.PlatformGemini {
 		maxAccountSwitches := h.maxAccountSwitchesGemini
 		switchCount := 0
 		failedAccountIDs := make(map[int64]struct{REDACTED)
 		var lastFailoverErr *service.UpstreamFailoverError
+		var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
 
 		for {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, failedAccountIDs, "") // Gemini 不使用会话限制
@@ -302,7 +313,7 @@ REDACTED
 				requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
 		REDACTED
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body)
+				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body, hasBoundSession)
 		REDACTED else {
 				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
 		REDACTED
@@ -314,6 +325,9 @@ REDACTED
 				if errors.As(err, &failoverErr) {
 					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
+					if failoverErr.ForceCacheBilling {
+						forceCacheBilling = true
+				REDACTED
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, streamStarted)
 						return
@@ -332,22 +346,23 @@ REDACTED
 			clientIP := ip.GetClientIP(c)
 
 			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string) {
+			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string, fcb bool) {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-					Result:        result,
-					APIKey:        apiKey,
-					User:          apiKey.User,
-					Account:       usedAccount,
-					Subscription:  subscription,
-					UserAgent:     ua,
-					IPAddress:     clientIP,
-					APIKeyService: h.apiKeyService,
+					Result:            result,
+					APIKey:            apiKey,
+					User:              apiKey.User,
+					Account:           usedAccount,
+					Subscription:      subscription,
+					UserAgent:         ua,
+					IPAddress:         clientIP,
+					ForceCacheBilling: fcb,
+					APIKeyService:     h.apiKeyService,
 			REDACTED); err != nil {
 					log.Printf("Record usage failed: %v", err)
 			REDACTED
-		REDACTED(result, account, userAgent, clientIP)
+		REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
 			return
 	REDACTED
 REDACTED
@@ -366,6 +381,7 @@ REDACTED
 		failedAccountIDs := make(map[int64]struct{REDACTED)
 		var lastFailoverErr *service.UpstreamFailoverError
 		retryWithFallback := false
+		var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
 
 		for {
 			// 选择支持该模型的账号
@@ -457,7 +473,7 @@ REDACTED
 				requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
 		REDACTED
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body)
+				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
 		REDACTED else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 		REDACTED
@@ -504,6 +520,9 @@ REDACTED
 				if errors.As(err, &failoverErr) {
 					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
+					if failoverErr.ForceCacheBilling {
+						forceCacheBilling = true
+				REDACTED
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, streamStarted)
 						return
@@ -522,22 +541,23 @@ REDACTED
 			clientIP := ip.GetClientIP(c)
 
 			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string) {
+			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string, fcb bool) {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-					Result:        result,
-					APIKey:        currentAPIKey,
-					User:          currentAPIKey.User,
-					Account:       usedAccount,
-					Subscription:  currentSubscription,
-					UserAgent:     ua,
-					IPAddress:     clientIP,
-					APIKeyService: h.apiKeyService,
+					Result:            result,
+					APIKey:            currentAPIKey,
+					User:              currentAPIKey.User,
+					Account:           usedAccount,
+					Subscription:      currentSubscription,
+					UserAgent:         ua,
+					IPAddress:         clientIP,
+					ForceCacheBilling: fcb,
+					APIKeyService:     h.apiKeyService,
 			REDACTED); err != nil {
 					log.Printf("Record usage failed: %v", err)
 			REDACTED
-		REDACTED(result, account, userAgent, clientIP)
+		REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
 			return
 	REDACTED
 		if !retryWithFallback {
@@ -909,6 +929,8 @@ REDACTED
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 REDACTED
+	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.ThinkingEnabled, parsedReq.ThinkingEnabled))
 
 	// 验证 model 必填
 	if parsedReq.Model == "" {

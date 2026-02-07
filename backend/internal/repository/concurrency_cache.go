@@ -194,6 +194,53 @@ var (
 			return result
 		`)
 
+	// getUsersLoadBatchScript - batch load query for users with expired slot cleanup
+	// ARGV[1] = slot TTL (seconds)
+	// ARGV[2..n] = userID1, maxConcurrency1, userID2, maxConcurrency2, ...
+	getUsersLoadBatchScript = redis.NewScript(`
+			local result = {REDACTED
+			local slotTTL = tonumber(ARGV[1])
+
+			-- Get current server time
+			local timeResult = redis.call('TIME')
+			local nowSeconds = tonumber(timeResult[1])
+			local cutoffTime = nowSeconds - slotTTL
+
+			local i = 2
+			while i <= #ARGV do
+				local userID = ARGV[i]
+				local maxConcurrency = tonumber(ARGV[i + 1])
+
+				local slotKey = 'concurrency:user:' .. userID
+
+				-- Clean up expired slots before counting
+				redis.call('ZREMRANGEBYSCORE', slotKey, '-inf', cutoffTime)
+				local currentConcurrency = redis.call('ZCARD', slotKey)
+
+				local waitKey = 'concurrency:wait:' .. userID
+				local waitingCount = redis.call('GET', waitKey)
+				if waitingCount == false then
+					waitingCount = 0
+				else
+					waitingCount = tonumber(waitingCount)
+				end
+
+				local loadRate = 0
+				if maxConcurrency > 0 then
+					loadRate = math.floor((currentConcurrency + waitingCount) * 100 / maxConcurrency)
+				end
+
+				table.insert(result, userID)
+				table.insert(result, currentConcurrency)
+				table.insert(result, waitingCount)
+				table.insert(result, loadRate)
+
+				i = i + 2
+			end
+
+			return result
+		`)
+
 	// cleanupExpiredSlotsScript - remove expired slots
 	// KEYS[1] = concurrency:account:{accountIDREDACTED
 	// ARGV[1] = TTL (seconds)
@@ -375,6 +422,43 @@ REDACTED
 
 		loadMap[accountID] = &service.AccountLoadInfo{
 			AccountID:          accountID,
+			CurrentConcurrency: currentConcurrency,
+			WaitingCount:       waitingCount,
+			LoadRate:           loadRate,
+	REDACTED
+REDACTED
+
+	return loadMap, nil
+REDACTED
+
+func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []service.UserWithConcurrency) (map[int64]*service.UserLoadInfo, error) {
+	if len(users) == 0 {
+		return map[int64]*service.UserLoadInfo{REDACTED, nil
+REDACTED
+
+	args := []any{c.slotTTLSecondsREDACTED
+	for _, u := range users {
+		args = append(args, u.ID, u.MaxConcurrency)
+REDACTED
+
+	result, err := getUsersLoadBatchScript.Run(ctx, c.rdb, []string{REDACTED, args...).Slice()
+	if err != nil {
+		return nil, err
+REDACTED
+
+	loadMap := make(map[int64]*service.UserLoadInfo)
+	for i := 0; i < len(result); i += 4 {
+		if i+3 >= len(result) {
+			break
+	REDACTED
+
+		userID, _ := strconv.ParseInt(fmt.Sprintf("%v", result[i]), 10, 64)
+		currentConcurrency, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+1]))
+		waitingCount, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+2]))
+		loadRate, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+3]))
+
+		loadMap[userID] = &service.UserLoadInfo{
+			UserID:             userID,
 			CurrentConcurrency: currentConcurrency,
 			WaitingCount:       waitingCount,
 			LoadRate:           loadRate,

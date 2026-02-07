@@ -37,6 +37,17 @@ type AccountConcurrencyInfo struct {
 	WaitingInQueue int64   `json:"waiting_in_queue"`
 REDACTED
 
+// UserConcurrencyInfo represents real-time concurrency usage for a single user.
+type UserConcurrencyInfo struct {
+	UserID         int64   `json:"user_id"`
+	UserEmail      string  `json:"user_email"`
+	Username       string  `json:"username"`
+	CurrentInUse   int64   `json:"current_in_use"`
+	MaxCapacity    int64   `json:"max_capacity"`
+	LoadPercentage float64 `json:"load_percentage"`
+	WaitingInQueue int64   `json:"waiting_in_queue"`
+REDACTED
+
 // PlatformAvailability aggregates account availability by platform.
 type PlatformAvailability struct {
 	Platform            string           `json:"platform"`

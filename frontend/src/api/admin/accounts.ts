@@ -387,6 +387,17 @@ REDACTED): Promise<AdminDataImportResult> {
   return data
 REDACTED
 
+/**
+ * Get Antigravity default model mapping from backend
+ * @returns Default model mapping (from -> to)
+ */
+export async function getAntigravityDefaultModelMapping(): Promise<Record<string, string>> {
+  const { data REDACTED = await apiClient.get<Record<string, string>>(
+    '/admin/accounts/antigravity/default-model-mapping'
+  )
+  return data
+REDACTED
+
 export const accountsAPI = {
   list,
   getById,
@@ -412,7 +423,8 @@ export const accountsAPI = {
   bulkUpdate,
   syncFromCrs,
   exportData,
-  importData
+  importData,
+  getAntigravityDefaultModelMapping
 REDACTED
 
 export default accountsAPI
