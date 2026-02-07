@@ -6,8 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand"
-	"sync"
+	"math/rand/v2"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -22,12 +21,6 @@ type apiKeyAuthCacheConfig struct {
 	jitterPercent int
 	singleflight  bool
 REDACTED
-
-var (
-	jitterRandMu sync.Mutex
-	// 认证缓存抖动使用独立随机源，避免全局 Seed
-	jitterRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-)
 
 func newAPIKeyAuthCacheConfig(cfg *config.Config) apiKeyAuthCacheConfig {
 	if cfg == nil {
@@ -56,6 +49,8 @@ func (c apiKeyAuthCacheConfig) negativeEnabled() bool {
 	return c.negativeTTL > 0
 REDACTED
 
+// jitterTTL 为缓存 TTL 添加抖动，避免多个请求在同一时刻同时过期触发集中回源。
+// 这里直接使用 rand/v2 的顶层函数：并发安全，无需全局互斥锁。
 func (c apiKeyAuthCacheConfig) jitterTTL(ttl time.Duration) time.Duration {
 	if ttl <= 0 {
 		return ttl
@@ -68,9 +63,7 @@ REDACTED
 		percent = 100
 REDACTED
 	delta := float64(percent) / 100
-	jitterRandMu.Lock()
-	randVal := jitterRand.Float64()
-	jitterRandMu.Unlock()
+	randVal := rand.Float64()
 	factor := 1 - delta + randVal*(2*delta)
 	if factor <= 0 {
 		return ttl

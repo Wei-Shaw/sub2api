@@ -1582,6 +1582,208 @@ REDACTED
 	return changed, nil
 REDACTED
 
+// ForwardUpstream 透传请求到上游 Antigravity 服务
+// 用于 upstream 类型账号，直接使用 base_url + api_key 转发，不走 OAuth token
+func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	startTime := time.Now()
+	sessionID := getSessionID(c)
+	prefix := logPrefix(sessionID, account.Name)
+
+	// 获取上游配置
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+REDACTED
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 解析请求获取模型信息
+	var claudeReq antigravity.ClaudeRequest
+	if err := json.Unmarshal(body, &claudeReq); err != nil {
+		return nil, fmt.Errorf("parse claude request: %w", err)
+REDACTED
+	if strings.TrimSpace(claudeReq.Model) == "" {
+		return nil, fmt.Errorf("missing model")
+REDACTED
+	originalModel := claudeReq.Model
+	billingModel := originalModel
+
+	// 构建上游请求 URL
+	upstreamURL := baseURL + "/v1/messages"
+
+	// 创建请求
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create upstream request: %w", err)
+REDACTED
+
+	// 设置请求头
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey) // Claude API 兼容
+
+	// 透传 Claude 相关 headers
+	if v := c.GetHeader("anthropic-version"); v != "" {
+		req.Header.Set("anthropic-version", v)
+REDACTED
+	if v := c.GetHeader("anthropic-beta"); v != "" {
+		req.Header.Set("anthropic-beta", v)
+REDACTED
+
+	// 代理 URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	// 发送请求
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		log.Printf("%s upstream request failed: %v", prefix, err)
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	// 处理错误响应
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+		// 429 错误时标记账号限流
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, AntigravityQuotaScopeClaude)
+	REDACTED
+
+		// 透传上游错误
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(resp.StatusCode)
+		_, _ = c.Writer.Write(respBody)
+
+		return &ForwardResult{
+			Model: billingModel,
+	REDACTED, nil
+REDACTED
+
+	// 处理成功响应（流式/非流式）
+	var usage *ClaudeUsage
+	var firstTokenMs *int
+
+	if claudeReq.Stream {
+		// 流式响应：透传
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+
+		usage, firstTokenMs = s.streamUpstreamResponse(c, resp, startTime)
+REDACTED else {
+		// 非流式响应：直接透传
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read upstream response: %w", err)
+	REDACTED
+
+		// 提取 usage
+		usage = s.extractClaudeUsage(respBody)
+
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.Write(respBody)
+REDACTED
+
+	// 构建计费结果
+	duration := time.Since(startTime)
+	log.Printf("%s status=success duration_ms=%d", prefix, duration.Milliseconds())
+
+	return &ForwardResult{
+		Model:        billingModel,
+		Stream:       claudeReq.Stream,
+		Duration:     duration,
+		FirstTokenMs: firstTokenMs,
+		Usage: ClaudeUsage{
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
+	REDACTED,
+REDACTED, nil
+REDACTED
+
+// streamUpstreamResponse 透传上游流式响应并提取 usage
+func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*ClaudeUsage, *int) {
+	usage := &ClaudeUsage{REDACTED
+	var firstTokenMs *int
+	var firstTokenRecorded bool
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+
+		// 记录首 token 时间
+		if !firstTokenRecorded && len(line) > 0 {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+			firstTokenRecorded = true
+	REDACTED
+
+		// 尝试从 message_delta 或 message_stop 事件提取 usage
+		if bytes.HasPrefix(line, []byte("data: ")) {
+			dataStr := bytes.TrimPrefix(line, []byte("data: "))
+			var event map[string]any
+			if json.Unmarshal(dataStr, &event) == nil {
+				if u, ok := event["usage"].(map[string]any); ok {
+					if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {
+						usage.InputTokens = int(v)
+				REDACTED
+					if v, ok := u["output_tokens"].(float64); ok && int(v) > 0 {
+						usage.OutputTokens = int(v)
+				REDACTED
+					if v, ok := u["cache_read_input_tokens"].(float64); ok && int(v) > 0 {
+						usage.CacheReadInputTokens = int(v)
+				REDACTED
+					if v, ok := u["cache_creation_input_tokens"].(float64); ok && int(v) > 0 {
+						usage.CacheCreationInputTokens = int(v)
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// 透传行
+		_, _ = c.Writer.Write(line)
+		_, _ = c.Writer.Write([]byte("\n"))
+		c.Writer.Flush()
+REDACTED
+
+	return usage, firstTokenMs
+REDACTED
+
+// extractClaudeUsage 从非流式 Claude 响应提取 usage
+func (s *AntigravityGatewayService) extractClaudeUsage(body []byte) *ClaudeUsage {
+	usage := &ClaudeUsage{REDACTED
+	var resp map[string]any
+	if json.Unmarshal(body, &resp) != nil {
+		return usage
+REDACTED
+	if u, ok := resp["usage"].(map[string]any); ok {
+		if v, ok := u["input_tokens"].(float64); ok {
+			usage.InputTokens = int(v)
+	REDACTED
+		if v, ok := u["output_tokens"].(float64); ok {
+			usage.OutputTokens = int(v)
+	REDACTED
+		if v, ok := u["cache_read_input_tokens"].(float64); ok {
+			usage.CacheReadInputTokens = int(v)
+	REDACTED
+		if v, ok := u["cache_creation_input_tokens"].(float64); ok {
+			usage.CacheCreationInputTokens = int(v)
+	REDACTED
+REDACTED
+	return usage
+REDACTED
+
 // ForwardGemini 转发 Gemini 协议请求
 func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte, isStickySession bool) (*ForwardResult, error) {
 	startTime := time.Now()
@@ -1613,7 +1815,7 @@ REDACTED
 			Usage:        ClaudeUsage{REDACTED,
 			Model:        originalModel,
 			Stream:       false,
-			Duration:     time.Since(time.Now()),
+			Duration:     time.Since(startTime),
 			FirstTokenMs: nil,
 	REDACTED, nil
 	default:
@@ -2288,7 +2490,8 @@ REDACTED
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 	usage := &ClaudeUsage{REDACTED
 	var firstTokenMs *int
 
@@ -2309,7 +2512,8 @@ REDACTED
 REDACTED
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -2320,7 +2524,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	// 上游数据间隔超时保护（防止上游挂起长期占用连接）
@@ -2445,7 +2649,8 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	usage := &ClaudeUsage{REDACTED
 	var firstTokenMs *int
@@ -2473,7 +2678,8 @@ REDACTED
 
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -2484,7 +2690,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	// 上游数据间隔超时保护（防止上游挂起长期占用连接）
@@ -2888,7 +3094,8 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	var firstTokenMs *int
 	var last map[string]any
@@ -2914,7 +3121,8 @@ REDACTED
 
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -2925,7 +3133,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	// 上游数据间隔超时保护（防止上游挂起长期占用连接）
@@ -3068,7 +3276,8 @@ REDACTED
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 REDACTED
-	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanBuf := getSSEScannerBuf64K()
+	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	// 辅助函数：转换 antigravity.ClaudeUsage 到 service.ClaudeUsage
 	convertUsage := func(agUsage *antigravity.ClaudeUsage) *ClaudeUsage {
@@ -3100,7 +3309,8 @@ REDACTED
 REDACTED
 	var lastReadAt int64
 	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-	go func() {
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
 			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
@@ -3111,7 +3321,7 @@ REDACTED
 		if err := scanner.Err(); err != nil {
 			_ = sendEvent(scanEvent{err: errREDACTED)
 	REDACTED
-REDACTED()
+REDACTED(scanBuf)
 	defer close(done)
 
 	streamInterval := time.Duration(0)

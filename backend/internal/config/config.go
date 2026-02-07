@@ -38,31 +38,32 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig               `mapstructure:"server"`
-	CORS         CORSConfig                 `mapstructure:"cors"`
-	Security     SecurityConfig             `mapstructure:"security"`
-	Billing      BillingConfig              `mapstructure:"billing"`
-	Turnstile    TurnstileConfig            `mapstructure:"turnstile"`
-	Database     DatabaseConfig             `mapstructure:"database"`
-	Redis        RedisConfig                `mapstructure:"redis"`
-	Ops          OpsConfig                  `mapstructure:"ops"`
-	JWT          JWTConfig                  `mapstructure:"jwt"`
-	Totp         TotpConfig                 `mapstructure:"totp"`
-	LinuxDo      LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
-	Default      DefaultConfig              `mapstructure:"default"`
-	RateLimit    RateLimitConfig            `mapstructure:"rate_limit"`
-	Pricing      PricingConfig              `mapstructure:"pricing"`
-	Gateway      GatewayConfig              `mapstructure:"gateway"`
-	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
-	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
-	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
-	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
-	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
-	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig               `mapstructure:"gemini"`
-	Update       UpdateConfig               `mapstructure:"update"`
+	Server            ServerConfig               `mapstructure:"server"`
+	CORS              CORSConfig                 `mapstructure:"cors"`
+	Security          SecurityConfig             `mapstructure:"security"`
+	Billing           BillingConfig              `mapstructure:"billing"`
+	Turnstile         TurnstileConfig            `mapstructure:"turnstile"`
+	Database          DatabaseConfig             `mapstructure:"database"`
+	Redis             RedisConfig                `mapstructure:"redis"`
+	Ops               OpsConfig                  `mapstructure:"ops"`
+	JWT               JWTConfig                  `mapstructure:"jwt"`
+	Totp              TotpConfig                 `mapstructure:"totp"`
+	LinuxDo           LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
+	Default           DefaultConfig              `mapstructure:"default"`
+	RateLimit         RateLimitConfig            `mapstructure:"rate_limit"`
+	Pricing           PricingConfig              `mapstructure:"pricing"`
+	Gateway           GatewayConfig              `mapstructure:"gateway"`
+	APIKeyAuth        APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
+	SubscriptionCache SubscriptionCacheConfig    `mapstructure:"subscription_cache"`
+	Dashboard         DashboardCacheConfig       `mapstructure:"dashboard_cache"`
+	DashboardAgg      DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
+	UsageCleanup      UsageCleanupConfig         `mapstructure:"usage_cleanup"`
+	Concurrency       ConcurrencyConfig          `mapstructure:"concurrency"`
+	TokenRefresh      TokenRefreshConfig         `mapstructure:"token_refresh"`
+	RunMode           string                     `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone          string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini            GeminiConfig               `mapstructure:"gemini"`
+	Update            UpdateConfig               `mapstructure:"update"`
 REDACTED
 
 type GeminiConfig struct {
@@ -147,6 +148,7 @@ type ServerConfig struct {
 	Host               string    `mapstructure:"host"`
 	Port               int       `mapstructure:"port"`
 	Mode               string    `mapstructure:"mode"`                  // debug/release
+	FrontendURL        string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
 	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
 	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
 	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
@@ -226,6 +228,9 @@ type GatewayConfig struct {
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
+	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
+	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
+	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -525,6 +530,13 @@ type APIKeyAuthCacheConfig struct {
 	Singleflight       bool `mapstructure:"singleflight"`
 REDACTED
 
+// SubscriptionCacheConfig 订阅认证 L1 缓存配置
+type SubscriptionCacheConfig struct {
+	L1Size        int `mapstructure:"l1_size"`
+	L1TTLSeconds  int `mapstructure:"l1_ttl_seconds"`
+	JitterPercent int `mapstructure:"jitter_percent"`
+REDACTED
+
 // DashboardCacheConfig 仪表盘统计缓存配置
 type DashboardCacheConfig struct {
 	// Enabled: 是否启用仪表盘缓存
@@ -630,6 +642,7 @@ REDACTED
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
 REDACTED
+	cfg.Server.FrontendURL = strings.TrimSpace(cfg.Server.FrontendURL)
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
 	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
 	cfg.LinuxDo.ClientSecret = strings.TrimSpace(cfg.LinuxDo.ClientSecret)
@@ -702,7 +715,8 @@ func setDefaults() {
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", 8080)
-	viper.SetDefault("server.mode", "debug")
+	viper.SetDefault("server.mode", "release")
+	viper.SetDefault("server.frontend_url", "")
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
 	viper.SetDefault("server.trusted_proxies", []string{REDACTED)
@@ -737,7 +751,7 @@ REDACTED)
 	viper.SetDefault("security.url_allowlist.crs_hosts", []string{REDACTED)
 	viper.SetDefault("security.url_allowlist.allow_private_hosts", true)
 	viper.SetDefault("security.url_allowlist.allow_insecure_http", true)
-	viper.SetDefault("security.response_headers.enabled", false)
+	viper.SetDefault("security.response_headers.enabled", true)
 	viper.SetDefault("security.response_headers.additional_allowed", []string{REDACTED)
 	viper.SetDefault("security.response_headers.force_remove", []string{REDACTED)
 	viper.SetDefault("security.csp.enabled", true)
@@ -775,9 +789,9 @@ REDACTED)
 	viper.SetDefault("database.user", "postgres")
 	viper.SetDefault("database.password", "postgres")
 	viper.SetDefault("database.dbname", "sub2api")
-	viper.SetDefault("database.sslmode", "disable")
-	viper.SetDefault("database.max_open_conns", 50)
-	viper.SetDefault("database.max_idle_conns", 10)
+	viper.SetDefault("database.sslmode", "prefer")
+	viper.SetDefault("database.max_open_conns", 256)
+	viper.SetDefault("database.max_idle_conns", 128)
 	viper.SetDefault("database.conn_max_lifetime_minutes", 30)
 	viper.SetDefault("database.conn_max_idle_time_minutes", 5)
 
@@ -789,8 +803,8 @@ REDACTED)
 	viper.SetDefault("redis.dial_timeout_seconds", 5)
 	viper.SetDefault("redis.read_timeout_seconds", 3)
 	viper.SetDefault("redis.write_timeout_seconds", 3)
-	viper.SetDefault("redis.pool_size", 128)
-	viper.SetDefault("redis.min_idle_conns", 10)
+	viper.SetDefault("redis.pool_size", 1024)
+	viper.SetDefault("redis.min_idle_conns", 128)
 	viper.SetDefault("redis.enable_tls", false)
 
 	// Ops (vNext)
@@ -849,6 +863,11 @@ REDACTED)
 	viper.SetDefault("api_key_auth_cache.jitter_percent", 10)
 	viper.SetDefault("api_key_auth_cache.singleflight", true)
 
+	// Subscription auth L1 cache
+	viper.SetDefault("subscription_cache.l1_size", 16384)
+	viper.SetDefault("subscription_cache.l1_ttl_seconds", 10)
+	viper.SetDefault("subscription_cache.jitter_percent", 10)
+
 	// Dashboard cache
 	viper.SetDefault("dashboard_cache.enabled", true)
 	viper.SetDefault("dashboard_cache.key_prefix", "sub2api:")
@@ -882,13 +901,14 @@ REDACTED)
 	viper.SetDefault("gateway.failover_on_400", false)
 	viper.SetDefault("gateway.max_account_switches", 10)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
+	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
-	viper.SetDefault("gateway.max_idle_conns", 240)           // 最大空闲连接总数（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
 	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_conns_per_host", 240)       // 每主机最大连接数（含活跃，HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_conns_per_host", 1024)      // 每主机最大连接数（含活跃；流式/HTTP1.1 场景可调大，如 2400+）
 	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90) // 空闲连接超时（秒）
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
@@ -933,6 +953,22 @@ REDACTED)
 REDACTED
 
 func (c *Config) Validate() error {
+	if strings.TrimSpace(c.Server.FrontendURL) != "" {
+		if err := ValidateAbsoluteHTTPURL(c.Server.FrontendURL); err != nil {
+			return fmt.Errorf("server.frontend_url invalid: %w", err)
+	REDACTED
+		u, err := url.Parse(strings.TrimSpace(c.Server.FrontendURL))
+		if err != nil {
+			return fmt.Errorf("server.frontend_url invalid: %w", err)
+	REDACTED
+		if u.RawQuery != "" || u.ForceQuery {
+			return fmt.Errorf("server.frontend_url invalid: must not include query")
+	REDACTED
+		if u.User != nil {
+			return fmt.Errorf("server.frontend_url invalid: must not include userinfo")
+	REDACTED
+		warnIfInsecureURL("server.frontend_url", c.Server.FrontendURL)
+REDACTED
 	if c.JWT.ExpireHour <= 0 {
 		return fmt.Errorf("jwt.expire_hour must be positive")
 REDACTED

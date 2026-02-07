@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -390,4 +391,38 @@ REDACTED
 	require.ErrorAs(t, err, &failoverErr, "error should be UpstreamFailoverError to trigger account switch")
 	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
 	require.True(t, failoverErr.ForceCacheBilling, "ForceCacheBilling should be true for sticky session switch")
+REDACTED
+
+func TestAntigravityStreamUpstreamResponse_UsageAndFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{REDACTED, Body: prREDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		_, _ = pw.Write([]byte("data: {\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_read_input_tokens\":3,\"cache_creation_input_tokens\":4REDACTEDREDACTED\n"))
+		_, _ = pw.Write([]byte("data: {\"usage\":{\"output_tokens\":5REDACTEDREDACTED\n"))
+REDACTED()
+
+	svc := &AntigravityGatewayService{REDACTED
+	start := time.Now().Add(-10 * time.Millisecond)
+	usage, firstTokenMs := svc.streamUpstreamResponse(c, resp, start)
+	_ = pr.Close()
+
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	// 第二次事件覆盖 output_tokens
+	require.Equal(t, 5, usage.OutputTokens)
+	require.Equal(t, 3, usage.CacheReadInputTokens)
+	require.Equal(t, 4, usage.CacheCreationInputTokens)
+
+	if firstTokenMs == nil {
+		t.Fatalf("expected firstTokenMs to be set")
+REDACTED
+	// 确保有透传输出
+	require.True(t, strings.Contains(writer.Body.String(), "data:"))
 REDACTED
