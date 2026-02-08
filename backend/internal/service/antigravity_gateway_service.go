@@ -47,21 +47,6 @@ const (
 	googleRPCReasonRateLimitExceeded      = "RATE_LIMIT_EXCEEDED"
 )
 
-// upstreamHopByHopHeaders 透传请求头时需要排除的 hop-by-hop 头
-var upstreamHopByHopHeaders = map[string]bool{
-	"connection":          true,
-	"keep-alive":          true,
-	"proxy-authenticate":  true,
-	"proxy-authorization": true,
-	"proxy-connection":    true,
-	"te":                  true,
-	"trailer":             true,
-	"transfer-encoding":   true,
-	"upgrade":             true,
-	"host":                true,
-	"content-length":      true,
-REDACTED
-
 // antigravityPassthroughErrorMessages 透传给客户端的错误消息白名单（小写）
 // 匹配时使用 strings.Contains，无需完全匹配
 var antigravityPassthroughErrorMessages = []string{
