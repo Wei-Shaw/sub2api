@@ -17,6 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 编译期接口断言
+var _ AccountRepository = (*stubOpenAIAccountRepo)(nil)
+var _ GatewayCache = (*stubGatewayCache)(nil)
+
 type stubOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account

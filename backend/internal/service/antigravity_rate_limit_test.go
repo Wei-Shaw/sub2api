@@ -15,6 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 编译期接口断言
+var _ HTTPUpstream = (*stubAntigravityUpstream)(nil)
+var _ HTTPUpstream = (*recordingOKUpstream)(nil)
+var _ AccountRepository = (*stubAntigravityAccountRepo)(nil)
+var _ SchedulerCache = (*stubSchedulerCache)(nil)
+
 type stubAntigravityUpstream struct {
 	firstBase  string
 	secondBase string

@@ -60,7 +60,7 @@ REDACTED)
 	require.Equal(t, int64(3), svc.updateCallCount.Load(), "应调用 3 次 UpdateAccount")
 REDACTED
 
-func TestBatchUpdateCredentials_FailFast(t *testing.T) {
+func TestBatchUpdateCredentials_PartialFailure(t *testing.T) {
 	// 让第 2 个账号（ID=2）更新时失败
 	svc := &failingAdminService{
 		stubAdminService: newStubAdminService(),
@@ -79,10 +79,18 @@ REDACTED)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusInternalServerError, w.Code, "ID=2 失败时应返回 500")
-	// 验证 fail-fast：ID=1 更新成功，ID=2 失败，ID=3 不应被调用
-	require.Equal(t, int64(2), svc.updateCallCount.Load(),
-		"fail-fast: 应只调用 2 次 UpdateAccount（ID=1 成功、ID=2 失败后停止）")
+	// 实现采用"部分成功"模式：总是返回 200 + 成功/失败明细
+	require.Equal(t, http.StatusOK, w.Code, "批量更新返回 200 + 成功/失败明细")
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	require.Equal(t, float64(2), data["success"], "应有 2 个成功")
+	require.Equal(t, float64(1), data["failed"], "应有 1 个失败")
+
+	// 所有 3 个账号都会被尝试更新（非 fail-fast）
+	require.Equal(t, int64(3), svc.updateCallCount.Load(),
+		"应调用 3 次 UpdateAccount（逐个尝试，失败后继续）")
 REDACTED
 
 func TestBatchUpdateCredentials_FirstAccountNotFound(t *testing.T) {

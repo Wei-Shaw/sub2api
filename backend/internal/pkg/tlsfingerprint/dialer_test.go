@@ -1,3 +1,5 @@
+//go:build unit
+
 // Package tlsfingerprint provides TLS fingerprint simulation for HTTP clients.
 //
 // Unit tests for TLS fingerprint dialer.
@@ -19,24 +21,6 @@ import (
 	"testing"
 	"time"
 )
-
-// FingerprintResponse represents the response from tls.peet.ws/api/all.
-type FingerprintResponse struct {
-	IP    string  `json:"ip"`
-	TLS   TLSInfo `json:"tls"`
-	HTTP2 any     `json:"http2"`
-REDACTED
-
-// TLSInfo contains TLS fingerprint details.
-type TLSInfo struct {
-	JA3           string `json:"ja3"`
-	JA3Hash       string `json:"ja3_hash"`
-	JA4           string `json:"ja4"`
-	PeetPrint     string `json:"peetprint"`
-	PeetPrintHash string `json:"peetprint_hash"`
-	ClientRandom  string `json:"client_random"`
-	SessionID     string `json:"session_id"`
-REDACTED
 
 // TestDialerBasicConnection tests that the dialer can establish TLS connections.
 func TestDialerBasicConnection(t *testing.T) {

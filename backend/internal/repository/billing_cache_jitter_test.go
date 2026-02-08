@@ -14,7 +14,7 @@ func TestJitteredTTL_WithinExpectedRange(t *testing.T) {
 	// jitteredTTL 使用减法抖动: billingCacheTTL - [0, billingCacheJitter)
 	// 所以结果应在 [billingCacheTTL - billingCacheJitter, billingCacheTTL] 范围内
 	lowerBound := billingCacheTTL - billingCacheJitter // 5min - 30s = 4min30s
-	upperBound := billingCacheTTL                       // 5min
+	upperBound := billingCacheTTL                      // 5min
 
 	for i := 0; i < 200; i++ {
 		ttl := jitteredTTL()

@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ OpsRepository = (*stubOpsRepo)(nil)
+
 type stubOpsRepo struct {
 	OpsRepository
 	overview *OpsDashboardOverview

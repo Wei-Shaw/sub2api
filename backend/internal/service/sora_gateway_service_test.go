@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ SoraClient = (*stubSoraClientForPoll)(nil)
+
 type stubSoraClientForPoll struct {
 	imageStatus *SoraImageTaskStatus
 	videoStatus *SoraVideoTaskStatus
