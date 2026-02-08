@@ -35,7 +35,7 @@ const (
 	// - 预检查：剩余限流时间 < 此阈值时等待，>= 此阈值时切换账号
 	antigravityRateLimitThreshold       = 7 * time.Second
 	antigravitySmartRetryMinWait        = 1 * time.Second  // 智能重试最小等待时间
-	antigravitySmartRetryMaxAttempts    = 3                // 智能重试最大次数
+	antigravitySmartRetryMaxAttempts    = 1                // 智能重试最大次数（仅重试 1 次，防止重复限流/长期等待）
 	antigravityDefaultRateLimitDuration = 30 * time.Second // 默认限流时间（无 retryDelay 时使用）
 
 	// Google RPC 状态和类型常量
@@ -247,6 +247,11 @@ REDACTED
 		REDACTED
 	REDACTED
 
+		// 清除粘性会话绑定，避免下次请求仍命中限流账号
+		if s.cache != nil && p.sessionHash != "" {
+			_ = s.cache.DeleteSessionAccountID(p.ctx, p.groupID, p.sessionHash)
+	REDACTED
+
 		// 返回账号切换信号，让上层切换账号重试
 		return &smartRetryResult{
 			action: smartRetryActionBreakWithResp,
@@ -264,27 +269,15 @@ REDACTED
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
-	// 预检查：如果账号已限流，根据剩余时间决定等待或切换
+	// 预检查：如果账号已限流，直接返回切换信号
 	if p.requestedModel != "" {
 		if remaining := p.account.GetRateLimitRemainingTimeWithContext(p.ctx, p.requestedModel); remaining > 0 {
-			if remaining < antigravityRateLimitThreshold {
-				// 限流剩余时间较短，等待后继续
-				log.Printf("%s pre_check: rate_limit_wait remaining=%v model=%s account=%d",
-					p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
-				select {
-				case <-p.ctx.Done():
-					return nil, p.ctx.Err()
-				case <-time.After(remaining):
-			REDACTED
-		REDACTED else {
-				// 限流剩余时间较长，返回账号切换信号
-				log.Printf("%s pre_check: rate_limit_switch remaining=%v model=%s account=%d",
-					p.prefix, remaining.Truncate(time.Second), p.requestedModel, p.account.ID)
-				return nil, &AntigravityAccountSwitchError{
-					OriginalAccountID: p.account.ID,
-					RateLimitedModel:  p.requestedModel,
-					IsStickySession:   p.isStickySession,
-			REDACTED
+			log.Printf("%s pre_check: rate_limit_switch remaining=%v model=%s account=%d",
+				p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
+			return nil, &AntigravityAccountSwitchError{
+				OriginalAccountID: p.account.ID,
+				RateLimitedModel:  p.requestedModel,
+				IsStickySession:   p.isStickySession,
 		REDACTED
 	REDACTED
 REDACTED
@@ -964,6 +957,16 @@ REDACTED
 REDACTED
 
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
+//
+// 限流处理流程:
+//
+//	请求 → antigravityRetryLoop → 预检查(remaining>0? → 切换账号) → 发送上游
+//	  ├─ 成功 → 正常返回
+//	  └─ 429/503 → handleSmartRetry
+//	      ├─ retryDelay >= 7s → 设置模型限流 + 清除粘性绑定 → 切换账号
+//	      └─ retryDelay <  7s → 等待后重试 1 次
+//	          ├─ 成功 → 正常返回
+//	          └─ 失败 → 设置模型限流 + 清除粘性绑定 → 切换账号
 func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte, isStickySession bool) (*ForwardResult, error) {
 	startTime := time.Now()
 	sessionID := getSessionID(c)
@@ -1583,6 +1586,16 @@ REDACTED
 REDACTED
 
 // ForwardGemini 转发 Gemini 协议请求
+//
+// 限流处理流程:
+//
+//	请求 → antigravityRetryLoop → 预检查(remaining>0? → 切换账号) → 发送上游
+//	  ├─ 成功 → 正常返回
+//	  └─ 429/503 → handleSmartRetry
+//	      ├─ retryDelay >= 7s → 设置模型限流 + 清除粘性绑定 → 切换账号
+//	      └─ retryDelay <  7s → 等待后重试 1 次
+//	          ├─ 成功 → 正常返回
+//	          └─ 失败 → 设置模型限流 + 清除粘性绑定 → 切换账号
 func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte, isStickySession bool) (*ForwardResult, error) {
 	startTime := time.Now()
 	sessionID := getSessionID(c)
