@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +16,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/cespare/xxhash/v2"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -490,8 +491,17 @@ REDACTED
 		return s.hashContent(cacheableContent)
 REDACTED
 
-	// 3. 最后 fallback: 使用 system + 所有消息的完整摘要串
+	// 3. 最后 fallback: 使用 session上下文 + system + 所有消息的完整摘要串
 	var combined strings.Builder
+	// 混入请求上下文区分因子，避免不同用户相同消息产生相同 hash
+	if parsed.SessionContext != nil {
+		_, _ = combined.WriteString(parsed.SessionContext.ClientIP)
+		_, _ = combined.WriteString(":")
+		_, _ = combined.WriteString(parsed.SessionContext.UserAgent)
+		_, _ = combined.WriteString(":")
+		_, _ = combined.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
+		_, _ = combined.WriteString("|")
+REDACTED
 	if parsed.System != nil {
 		systemText := s.extractTextFromSystem(parsed.System)
 		if systemText != "" {
@@ -649,8 +659,8 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) hashContent(content string) string {
-	hash := sha256.Sum256([]byte(content))
-	return hex.EncodeToString(hash[:16]) // 32字符
+	h := xxhash.Sum64String(content)
+	return strconv.FormatUint(h, 36)
 REDACTED
 
 // replaceModelInBody 替换请求体中的model字段

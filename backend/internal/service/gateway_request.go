@@ -9,6 +9,15 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
 
+// SessionContext 粘性会话上下文，用于区分不同来源的请求。
+// 仅在 GenerateSessionHash 第 3 级 fallback（消息内容 hash）时混入，
+// 避免不同用户发送相同消息产生相同 hash 导致账号集中。
+type SessionContext struct {
+	ClientIP  string
+	UserAgent string
+	APIKeyID  int64
+REDACTED
+
 // ParsedRequest 保存网关请求的预解析结果
 //
 // 性能优化说明：
@@ -22,15 +31,16 @@ import (
 // 2. 将解析结果 ParsedRequest 传递给 Service 层
 // 3. 避免重复 json.Unmarshal，减少 CPU 和内存开销
 type ParsedRequest struct {
-	Body            []byte // 原始请求体（保留用于转发）
-	Model           string // 请求的模型名称
-	Stream          bool   // 是否为流式请求
-	MetadataUserID  string // metadata.user_id（用于会话亲和）
-	System          any    // system 字段内容
-	Messages        []any  // messages 数组
-	HasSystem       bool   // 是否包含 system 字段（包含 null 也视为显式传入）
-	ThinkingEnabled bool   // 是否开启 thinking（部分平台会影响最终模型名）
-	MaxTokens       int    // max_tokens 值（用于探测请求拦截）
+	Body            []byte          // 原始请求体（保留用于转发）
+	Model           string          // 请求的模型名称
+	Stream          bool            // 是否为流式请求
+	MetadataUserID  string          // metadata.user_id（用于会话亲和）
+	System          any             // system 字段内容
+	Messages        []any           // messages 数组
+	HasSystem       bool            // 是否包含 system 字段（包含 null 也视为显式传入）
+	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
+	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
+	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
 REDACTED
 
 // ParseGatewayRequest 解析网关请求体并返回结构化结果

@@ -203,6 +203,11 @@ REDACTED
 REDACTED
 
 	// 计算粘性会话hash
+	parsedReq.SessionContext = &service.SessionContext{
+		ClientIP:  ip.GetClientIP(c),
+		UserAgent: c.GetHeader("User-Agent"),
+		APIKeyID:  apiKey.ID,
+REDACTED
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
 	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
@@ -962,6 +967,11 @@ REDACTED
 REDACTED
 
 	// 计算粘性会话 hash
+	parsedReq.SessionContext = &service.SessionContext{
+		ClientIP:  ip.GetClientIP(c),
+		UserAgent: c.GetHeader("User-Agent"),
+		APIKeyID:  apiKey.ID,
+REDACTED
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
 	// 选择支持该模型的账号

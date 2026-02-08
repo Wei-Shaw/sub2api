@@ -19,25 +19,34 @@ const (
 	// ARGV[2] = TTL seconds (用于刷新)
 	// 返回: 最长匹配的 value (uuid:accountID) 或 nil
 	// 查找成功时自动刷新 TTL，防止活跃会话意外过期
+	// 从最长前缀（完整 chain）开始逐步缩短，第一次命中即返回
 	geminiTrieFindScript = `
 local chain = ARGV[1]
 local ttl = tonumber(ARGV[2])
-local lastMatch = nil
-local path = ""
 
-for part in string.gmatch(chain, "[^-]+") do
-    path = path == "" and part or path .. "-" .. part
-    local val = redis.call('HGET', KEYS[1], path)
+-- 先尝试完整 chain（最常见场景：同一对话的下一轮请求）
+local val = redis.call('HGET', KEYS[1], chain)
+if val and val ~= "" then
+    redis.call('EXPIRE', KEYS[1], ttl)
+    return val
+end
+
+-- 从最长前缀开始逐步缩短（去掉最后一个 "-xxx" 段）
+local path = chain
+while true do
+    local i = string.find(path, "-[^-]*$")
+    if not i or i <= 1 then
+        break
+    end
+    path = string.sub(path, 1, i - 1)
+    val = redis.call('HGET', KEYS[1], path)
     if val and val ~= "" then
-        lastMatch = val
+        redis.call('EXPIRE', KEYS[1], ttl)
+        return val
     end
 end
 
-if lastMatch then
-    redis.call('EXPIRE', KEYS[1], ttl)
-end
-
-return lastMatch
+return nil
 `
 
 	// geminiTrieSaveScript 保存会话到 Trie 的 Lua 脚本
