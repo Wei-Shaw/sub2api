@@ -3492,12 +3492,14 @@ REDACTED
 		return nil, s.writeClaudeError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 REDACTED
 	// 透传客户端所有请求头（排除 hop-by-hop 和认证头）
-	for key, values := range c.Request.Header {
-		if upstreamHopByHopHeaders[strings.ToLower(key)] {
-			continue
-	REDACTED
-		for _, v := range values {
-			req.Header.Add(key, v)
+	if c != nil && c.Request != nil {
+		for key, values := range c.Request.Header {
+			if upstreamHopByHopHeaders[strings.ToLower(key)] {
+				continue
+		REDACTED
+			for _, v := range values {
+				req.Header.Add(key, v)
+		REDACTED
 	REDACTED
 REDACTED
 	// 覆盖认证头
@@ -3638,12 +3640,14 @@ REDACTED
 		return nil, s.writeGoogleError(c, http.StatusInternalServerError, "Failed to build request")
 REDACTED
 	// 透传客户端所有请求头（排除 hop-by-hop 和认证头）
-	for key, values := range c.Request.Header {
-		if upstreamHopByHopHeaders[strings.ToLower(key)] {
-			continue
-	REDACTED
-		for _, v := range values {
-			req.Header.Add(key, v)
+	if c != nil && c.Request != nil {
+		for key, values := range c.Request.Header {
+			if upstreamHopByHopHeaders[strings.ToLower(key)] {
+				continue
+		REDACTED
+			for _, v := range values {
+				req.Header.Add(key, v)
+		REDACTED
 	REDACTED
 REDACTED
 	// 覆盖认证头
