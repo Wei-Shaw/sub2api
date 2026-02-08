@@ -259,6 +259,7 @@ REDACTED
 	var geminiDigestChain string
 	var geminiPrefixHash string
 	var geminiSessionUUID string
+	var matchedDigestChain string
 	useDigestFallback := sessionBoundAccountID == 0
 
 	if useDigestFallback {
@@ -285,13 +286,14 @@ REDACTED
 				)
 
 				// 查找会话
-				foundUUID, foundAccountID, found := h.gatewayService.FindGeminiSession(
+				foundUUID, foundAccountID, foundMatchedChain, found := h.gatewayService.FindGeminiSession(
 					c.Request.Context(),
 					derefGroupID(apiKey.GroupID),
 					geminiPrefixHash,
 					geminiDigestChain,
 				)
 				if found {
+					matchedDigestChain = foundMatchedChain
 					sessionBoundAccountID = foundAccountID
 					geminiSessionUUID = foundUUID
 					log.Printf("[Gemini] Digest fallback matched: uuid=%s, accountID=%d, chain=%s",
@@ -458,6 +460,7 @@ REDACTED
 				geminiDigestChain,
 				geminiSessionUUID,
 				account.ID,
+				matchedDigestChain,
 			); err != nil {
 				log.Printf("[Gemini] Failed to save digest session: %v", err)
 		REDACTED

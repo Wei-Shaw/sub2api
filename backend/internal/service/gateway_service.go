@@ -305,23 +305,6 @@ type GatewayCache interface {
 	// GetModelLoadBatch 批量获取账号的模型负载信息（Antigravity 专用）
 	// Batch get model load info for accounts (Antigravity only)
 	GetModelLoadBatch(ctx context.Context, accountIDs []int64, model string) (map[int64]*ModelLoadInfo, error)
-
-	// FindGeminiSession 查找 Gemini 会话（MGET 倒序匹配）
-	// Find Gemini session using MGET reverse order matching
-	// 返回最长匹配的会话信息（uuid, accountID）
-	FindGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool)
-
-	// SaveGeminiSession 保存 Gemini 会话
-	// Save Gemini session binding
-	SaveGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error
-
-	// FindAnthropicSession 查找 Anthropic 会话（Trie 匹配）
-	// Find Anthropic session using Trie matching
-	FindAnthropicSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool)
-
-	// SaveAnthropicSession 保存 Anthropic 会话
-	// Save Anthropic session binding
-	SaveAnthropicSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error
 REDACTED
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -416,6 +399,7 @@ type GatewayService struct {
 	userSubRepo         UserSubscriptionRepository
 	userGroupRateRepo   UserGroupRateRepository
 	cache               GatewayCache
+	digestStore         *DigestSessionStore
 	cfg                 *config.Config
 	schedulerSnapshot   *SchedulerSnapshotService
 	billingService      *BillingService
@@ -449,6 +433,7 @@ func NewGatewayService(
 	deferredService *DeferredService,
 	claudeTokenProvider *ClaudeTokenProvider,
 	sessionLimitCache SessionLimitCache,
+	digestStore *DigestSessionStore,
 ) *GatewayService {
 	return &GatewayService{
 		accountRepo:         accountRepo,
@@ -458,6 +443,7 @@ func NewGatewayService(
 		userSubRepo:         userSubRepo,
 		userGroupRateRepo:   userGroupRateRepo,
 		cache:               cache,
+		digestStore:         digestStore,
 		cfg:                 cfg,
 		schedulerSnapshot:   schedulerSnapshot,
 		concurrencyService:  concurrencyService,
@@ -557,35 +543,37 @@ REDACTED
 
 // FindGeminiSession 查找 Gemini 会话（基于内容摘要链的 Fallback 匹配）
 // 返回最长匹配的会话信息（uuid, accountID）
-func (s *GatewayService) FindGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
-	if digestChain == "" || s.cache == nil {
-		return "", 0, false
+func (s *GatewayService) FindGeminiSession(_ context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, matchedChain string, found bool) {
+	if digestChain == "" || s.digestStore == nil {
+		return "", 0, "", false
 REDACTED
-	return s.cache.FindGeminiSession(ctx, groupID, prefixHash, digestChain)
+	return s.digestStore.Find(groupID, prefixHash, digestChain)
 REDACTED
 
-// SaveGeminiSession 保存 Gemini 会话
-func (s *GatewayService) SaveGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
-	if digestChain == "" || s.cache == nil {
+// SaveGeminiSession 保存 Gemini 会话。oldDigestChain 为 Find 返回的 matchedChain，用于删旧 key。
+func (s *GatewayService) SaveGeminiSession(_ context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64, oldDigestChain string) error {
+	if digestChain == "" || s.digestStore == nil {
 		return nil
 REDACTED
-	return s.cache.SaveGeminiSession(ctx, groupID, prefixHash, digestChain, uuid, accountID)
+	s.digestStore.Save(groupID, prefixHash, digestChain, uuid, accountID, oldDigestChain)
+	return nil
 REDACTED
 
 // FindAnthropicSession 查找 Anthropic 会话（基于内容摘要链的 Fallback 匹配）
-func (s *GatewayService) FindAnthropicSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
-	if digestChain == "" || s.cache == nil {
-		return "", 0, false
+func (s *GatewayService) FindAnthropicSession(_ context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, matchedChain string, found bool) {
+	if digestChain == "" || s.digestStore == nil {
+		return "", 0, "", false
 REDACTED
-	return s.cache.FindAnthropicSession(ctx, groupID, prefixHash, digestChain)
+	return s.digestStore.Find(groupID, prefixHash, digestChain)
 REDACTED
 
 // SaveAnthropicSession 保存 Anthropic 会话
-func (s *GatewayService) SaveAnthropicSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
-	if digestChain == "" || s.cache == nil {
+func (s *GatewayService) SaveAnthropicSession(_ context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64, oldDigestChain string) error {
+	if digestChain == "" || s.digestStore == nil {
 		return nil
 REDACTED
-	return s.cache.SaveAnthropicSession(ctx, groupID, prefixHash, digestChain, uuid, accountID)
+	s.digestStore.Save(groupID, prefixHash, digestChain, uuid, accountID, oldDigestChain)
+	return nil
 REDACTED
 
 func (s *GatewayService) extractCacheableContent(parsed *ParsedRequest) string {
