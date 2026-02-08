@@ -342,8 +342,11 @@
             </div>
           </template>
 
-          <template #cell-concurrency="{ value REDACTED">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value REDACTEDREDACTED</span>
+          <template #cell-concurrency="{ row REDACTED">
+            <UserConcurrencyCell
+              :current="row.current_concurrency ?? 0"
+              :max="row.concurrency"
+            />
           </template>
 
           <template #cell-status="{ value REDACTED">
@@ -535,6 +538,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import Select from '@/components/common/Select.vue'
 import UserAttributesConfigModal from '@/components/user/UserAttributesConfigModal.vue'
+import UserConcurrencyCell from '@/components/user/UserConcurrencyCell.vue'
 import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'

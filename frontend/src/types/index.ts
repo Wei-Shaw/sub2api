@@ -43,6 +43,8 @@ export interface AdminUser extends User {
   notes: string
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
+  // 当前并发数（仅管理员列表接口返回）
+  current_concurrency?: number
 REDACTED
 
 export interface LoginRequest {
