@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	mathrand "math/rand"
 	"net"
 	"net/http"
@@ -353,54 +354,102 @@ urlFallbackLoop:
 				return nil, fmt.Errorf("upstream request failed after retries: %w", err)
 		REDACTED
 
-			// 429/503 限流处理：区分 URL 级别限流、智能重试和账户配额限流
-			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			// 统一处理错误响应
+			if resp.StatusCode >= 400 {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				// 尝试智能重试处理（OAuth 账号专用）
-				smartResult := s.handleSmartRetry(p, resp, respBody, baseURL, urlIdx, availableURLs)
-				switch smartResult.action {
-				case smartRetryActionContinueURL:
-					continue urlFallbackLoop
-				case smartRetryActionBreakWithResp:
-					if smartResult.err != nil {
-						return nil, smartResult.err
+				// ★ 统一入口：自定义错误码 + 临时不可调度
+				if handled, policyErr := s.applyErrorPolicy(p, resp.StatusCode, resp.Header, respBody); handled {
+					if policyErr != nil {
+						return nil, policyErr
 				REDACTED
-					// 模型限流时返回切换账号信号
-					if smartResult.switchError != nil {
-						return nil, smartResult.switchError
+					resp = &http.Response{
+						StatusCode: resp.StatusCode,
+						Header:     resp.Header.Clone(),
+						Body:       io.NopCloser(bytes.NewReader(respBody)),
 				REDACTED
-					resp = smartResult.resp
 					break urlFallbackLoop
 			REDACTED
-				// smartRetryActionContinue: 继续默认重试逻辑
 
-				// 账户/模型配额限流，重试 3 次（指数退避）- 默认逻辑（非 OAuth 账号或解析失败）
-				if attempt < antigravityMaxRetries {
-					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
-					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
-						Platform:           p.account.Platform,
-						AccountID:          p.account.ID,
-						AccountName:        p.account.Name,
-						UpstreamStatusCode: resp.StatusCode,
-						UpstreamRequestID:  resp.Header.Get("x-request-id"),
-						Kind:               "retry",
-						Message:            upstreamMsg,
-						Detail:             getUpstreamDetail(respBody),
-				REDACTED)
-					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 200))
-					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
-						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
-						return nil, p.ctx.Err()
+				// 429/503 限流处理：区分 URL 级别限流、智能重试和账户配额限流
+				if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+					// 尝试智能重试处理（OAuth 账号专用）
+					smartResult := s.handleSmartRetry(p, resp, respBody, baseURL, urlIdx, availableURLs)
+					switch smartResult.action {
+					case smartRetryActionContinueURL:
+						continue urlFallbackLoop
+					case smartRetryActionBreakWithResp:
+						if smartResult.err != nil {
+							return nil, smartResult.err
+					REDACTED
+						// 模型限流时返回切换账号信号
+						if smartResult.switchError != nil {
+							return nil, smartResult.switchError
+					REDACTED
+						resp = smartResult.resp
+						break urlFallbackLoop
 				REDACTED
-					continue
+					// smartRetryActionContinue: 继续默认重试逻辑
+
+					// 账户/模型配额限流，重试 3 次（指数退避）- 默认逻辑（非 OAuth 账号或解析失败）
+					if attempt < antigravityMaxRetries {
+						upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+						upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+						appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
+							Platform:           p.account.Platform,
+							AccountID:          p.account.ID,
+							AccountName:        p.account.Name,
+							UpstreamStatusCode: resp.StatusCode,
+							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							Kind:               "retry",
+							Message:            upstreamMsg,
+							Detail:             getUpstreamDetail(respBody),
+					REDACTED)
+						log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 200))
+						if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
+							log.Printf("%s status=context_canceled_during_backoff", p.prefix)
+							return nil, p.ctx.Err()
+					REDACTED
+						continue
+				REDACTED
+
+					// 重试用尽，标记账户限流
+					p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
+					log.Printf("%s status=%d rate_limited base_url=%s body=%s", p.prefix, resp.StatusCode, baseURL, truncateForLog(respBody, 200))
+					resp = &http.Response{
+						StatusCode: resp.StatusCode,
+						Header:     resp.Header.Clone(),
+						Body:       io.NopCloser(bytes.NewReader(respBody)),
+				REDACTED
+					break urlFallbackLoop
 			REDACTED
 
-				// 重试用尽，标记账户限流
-				p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
-				log.Printf("%s status=%d rate_limited base_url=%s body=%s", p.prefix, resp.StatusCode, baseURL, truncateForLog(respBody, 200))
+				// 其他可重试错误（500/502/504/529，不包括 429 和 503）
+				if shouldRetryAntigravityError(resp.StatusCode) {
+					if attempt < antigravityMaxRetries {
+						upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
+						upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+						appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
+							Platform:           p.account.Platform,
+							AccountID:          p.account.ID,
+							AccountName:        p.account.Name,
+							UpstreamStatusCode: resp.StatusCode,
+							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							Kind:               "retry",
+							Message:            upstreamMsg,
+							Detail:             getUpstreamDetail(respBody),
+					REDACTED)
+						log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 500))
+						if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
+							log.Printf("%s status=context_canceled_during_backoff", p.prefix)
+							return nil, p.ctx.Err()
+					REDACTED
+						continue
+				REDACTED
+			REDACTED
+
+				// 其他 4xx 错误或重试用尽，直接返回
 				resp = &http.Response{
 					StatusCode: resp.StatusCode,
 					Header:     resp.Header.Clone(),
@@ -409,39 +458,7 @@ urlFallbackLoop:
 				break urlFallbackLoop
 		REDACTED
 
-			// 其他可重试错误（不包括 429 和 503，因为上面已处理）
-			if resp.StatusCode >= 400 && shouldRetryAntigravityError(resp.StatusCode) {
-				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-				_ = resp.Body.Close()
-
-				if attempt < antigravityMaxRetries {
-					upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
-					upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-					appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
-						Platform:           p.account.Platform,
-						AccountID:          p.account.ID,
-						AccountName:        p.account.Name,
-						UpstreamStatusCode: resp.StatusCode,
-						UpstreamRequestID:  resp.Header.Get("x-request-id"),
-						Kind:               "retry",
-						Message:            upstreamMsg,
-						Detail:             getUpstreamDetail(respBody),
-				REDACTED)
-					log.Printf("%s status=%d retry=%d/%d body=%s", p.prefix, resp.StatusCode, attempt, antigravityMaxRetries, truncateForLog(respBody, 500))
-					if !sleepAntigravityBackoffWithContext(p.ctx, attempt) {
-						log.Printf("%s status=context_canceled_during_backoff", p.prefix)
-						return nil, p.ctx.Err()
-				REDACTED
-					continue
-			REDACTED
-				resp = &http.Response{
-					StatusCode: resp.StatusCode,
-					Header:     resp.Header.Clone(),
-					Body:       io.NopCloser(bytes.NewReader(respBody)),
-			REDACTED
-				break urlFallbackLoop
-		REDACTED
-
+			// 成功响应（< 400）
 			break urlFallbackLoop
 	REDACTED
 REDACTED
@@ -572,6 +589,31 @@ func (s *AntigravityGatewayService) getUpstreamErrorDetail(body []byte) string {
 		return ""
 REDACTED
 	return truncateString(string(body), maxBytes)
+REDACTED
+
+// checkErrorPolicy nil 安全的包装
+func (s *AntigravityGatewayService) checkErrorPolicy(ctx context.Context, account *Account, statusCode int, body []byte) ErrorPolicyResult {
+	if s.rateLimitService == nil {
+		return ErrorPolicyNone
+REDACTED
+	return s.rateLimitService.CheckErrorPolicy(ctx, account, statusCode, body)
+REDACTED
+
+// applyErrorPolicy 应用错误策略结果，返回是否应终止当前循环
+func (s *AntigravityGatewayService) applyErrorPolicy(p antigravityRetryLoopParams, statusCode int, headers http.Header, respBody []byte) (handled bool, retErr error) {
+	switch s.checkErrorPolicy(p.ctx, p.account, statusCode, respBody) {
+	case ErrorPolicySkipped:
+		return true, nil
+	case ErrorPolicyMatched:
+		_ = p.handleError(p.ctx, p.prefix, p.account, statusCode, headers, respBody,
+			p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
+		return true, nil
+	case ErrorPolicyTempUnscheduled:
+		slog.Info("temp_unschedulable_matched",
+			"prefix", p.prefix, "status_code", statusCode, "account_id", p.account.ID)
+		return true, &AntigravityAccountSwitchError{OriginalAccountID: p.account.ID, IsStickySession: p.isStickySessionREDACTED
+REDACTED
+	return false, nil
 REDACTED
 
 // mapAntigravityModel 获取映射后的模型名

@@ -1038,10 +1038,7 @@
         </div>
 
         <!-- Custom Error Codes Section -->
-        <div
-          v-if="form.platform !== 'gemini'"
-          class="border-t border-gray-200 pt-4 dark:border-dark-600"
-        >
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <label class="input-label mb-0">{{ t('admin.accounts.customErrorCodes') REDACTEDREDACTED</label>
