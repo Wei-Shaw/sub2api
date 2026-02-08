@@ -149,10 +149,14 @@ REDACTED
 
 	// 情况1: retryDelay >= 阈值，限流模型并切换账号
 	if shouldRateLimitModel {
-		log.Printf("%s status=%d oauth_long_delay model=%s account=%d (model rate limit, switch account)",
-			p.prefix, resp.StatusCode, modelName, p.account.ID)
+		rateLimitDuration := waitDuration
+		if rateLimitDuration <= 0 {
+			rateLimitDuration = antigravityDefaultRateLimitDuration
+	REDACTED
+		log.Printf("%s status=%d oauth_long_delay model=%s account=%d upstream_retry_delay=%v body=%s (model rate limit, switch account)",
+			p.prefix, resp.StatusCode, modelName, p.account.ID, rateLimitDuration, truncateForLog(respBody, 200))
 
-		resetAt := time.Now().Add(antigravityDefaultRateLimitDuration)
+		resetAt := time.Now().Add(rateLimitDuration)
 		if !setModelRateLimitByModelName(p.ctx, p.accountRepo, p.account.ID, modelName, p.prefix, resp.StatusCode, resetAt, false) {
 			p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.quotaScope, p.groupID, p.sessionHash, p.isStickySession)
 			log.Printf("%s status=%d rate_limited account=%d (no scope mapping)", p.prefix, resp.StatusCode, p.account.ID)
@@ -234,16 +238,24 @@ REDACTED
 	REDACTED
 
 		// 所有重试都失败，限流当前模型并切换账号
-		log.Printf("%s status=%d smart_retry_exhausted attempts=%d model=%s account=%d (switch account)",
-			p.prefix, resp.StatusCode, antigravitySmartRetryMaxAttempts, modelName, p.account.ID)
+		rateLimitDuration := waitDuration
+		if rateLimitDuration <= 0 {
+			rateLimitDuration = antigravityDefaultRateLimitDuration
+	REDACTED
+		retryBody := lastRetryBody
+		if retryBody == nil {
+			retryBody = respBody
+	REDACTED
+		log.Printf("%s status=%d smart_retry_exhausted attempts=%d model=%s account=%d upstream_retry_delay=%v body=%s (switch account)",
+			p.prefix, resp.StatusCode, antigravitySmartRetryMaxAttempts, modelName, p.account.ID, rateLimitDuration, truncateForLog(retryBody, 200))
 
-		resetAt := time.Now().Add(antigravityDefaultRateLimitDuration)
+		resetAt := time.Now().Add(rateLimitDuration)
 		if p.accountRepo != nil && modelName != "" {
 			if err := p.accountRepo.SetModelRateLimit(p.ctx, p.account.ID, modelName, resetAt); err != nil {
 				log.Printf("%s status=%d model_rate_limit_failed model=%s error=%v", p.prefix, resp.StatusCode, modelName, err)
 		REDACTED else {
 				log.Printf("%s status=%d model_rate_limited_after_smart_retry model=%s account=%d reset_in=%v",
-					p.prefix, resp.StatusCode, modelName, p.account.ID, antigravityDefaultRateLimitDuration)
+					p.prefix, resp.StatusCode, modelName, p.account.ID, rateLimitDuration)
 				s.updateAccountModelRateLimitInCache(p.ctx, p.account, modelName, resetAt)
 		REDACTED
 	REDACTED
@@ -2115,9 +2127,9 @@ REDACTED
 REDACTED
 
 	// retryDelay >= 阈值：直接限流模型，不重试
-	// 注意：如果上游未提供 retryDelay，parseAntigravitySmartRetryInfo 已设置为默认 5 分钟
+	// 注意：如果上游未提供 retryDelay，parseAntigravitySmartRetryInfo 已设置为默认 30s
 	if info.RetryDelay >= antigravityRateLimitThreshold {
-		return false, true, 0, info.ModelName
+		return false, true, info.RetryDelay, info.ModelName
 REDACTED
 
 	// retryDelay < 阈值：智能重试
@@ -2264,50 +2276,25 @@ REDACTED
 		return nil
 REDACTED
 
-	// ========== 原有逻辑，保持不变 ==========
 	// 429 使用 Gemini 格式解析（从 body 解析重置时间）
 	if statusCode == 429 {
-		// 调试日志遵循统一日志开关与长度限制，避免无条件记录完整上游响应体。
 		if logBody, maxBytes := s.getLogConfig(); logBody {
 			log.Printf("[Antigravity-Debug] 429 response body: %s", truncateString(string(body), maxBytes))
 	REDACTED
 
 		useScopeLimit := quotaScope != ""
 		resetAt := ParseGeminiRateLimitResetTime(body)
-		if resetAt == nil {
-			// 解析失败：使用默认限流时间（与临时限流保持一致）
-			// 可通过配置或环境变量覆盖
-			defaultDur := antigravityDefaultRateLimitDuration
-			if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes > 0 {
-				defaultDur = time.Duration(s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes) * time.Minute
-		REDACTED
-			// 秒级环境变量优先级最高
-			if override, ok := antigravityFallbackCooldownSeconds(); ok {
-				defaultDur = override
-		REDACTED
-			ra := time.Now().Add(defaultDur)
-			if useScopeLimit {
-				log.Printf("%s status=429 rate_limited scope=%s reset_in=%v (fallback)", prefix, quotaScope, defaultDur)
-				if err := s.accountRepo.SetAntigravityQuotaScopeLimit(ctx, account.ID, quotaScope, ra); err != nil {
-					log.Printf("%s status=429 rate_limit_set_failed scope=%s error=%v", prefix, quotaScope, err)
-			REDACTED
-		REDACTED else {
-				log.Printf("%s status=429 rate_limited account=%d reset_in=%v (fallback)", prefix, account.ID, defaultDur)
-				if err := s.accountRepo.SetRateLimited(ctx, account.ID, ra); err != nil {
-					log.Printf("%s status=429 rate_limit_set_failed account=%d error=%v", prefix, account.ID, err)
-			REDACTED
-		REDACTED
-			return nil
-	REDACTED
-		resetTime := time.Unix(*resetAt, 0)
+		defaultDur := s.getDefaultRateLimitDuration()
+		ra := s.resolveResetTime(resetAt, defaultDur)
+
 		if useScopeLimit {
-			log.Printf("%s status=429 rate_limited scope=%s reset_at=%v reset_in=%v", prefix, quotaScope, resetTime.Format("15:04:05"), time.Until(resetTime).Truncate(time.Second))
-			if err := s.accountRepo.SetAntigravityQuotaScopeLimit(ctx, account.ID, quotaScope, resetTime); err != nil {
+			log.Printf("%s status=429 rate_limited scope=%s reset_at=%v reset_in=%v", prefix, quotaScope, ra.Format("15:04:05"), time.Until(ra).Truncate(time.Second))
+			if err := s.accountRepo.SetAntigravityQuotaScopeLimit(ctx, account.ID, quotaScope, ra); err != nil {
 				log.Printf("%s status=429 rate_limit_set_failed scope=%s error=%v", prefix, quotaScope, err)
 		REDACTED
 	REDACTED else {
-			log.Printf("%s status=429 rate_limited account=%d reset_at=%v reset_in=%v", prefix, account.ID, resetTime.Format("15:04:05"), time.Until(resetTime).Truncate(time.Second))
-			if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
+			log.Printf("%s status=429 rate_limited account=%d reset_at=%v reset_in=%v", prefix, account.ID, ra.Format("15:04:05"), time.Until(ra).Truncate(time.Second))
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, ra); err != nil {
 				log.Printf("%s status=429 rate_limit_set_failed account=%d error=%v", prefix, account.ID, err)
 		REDACTED
 	REDACTED
@@ -2322,6 +2309,26 @@ REDACTED
 		log.Printf("%s status=%d marked_error", prefix, statusCode)
 REDACTED
 	return nil
+REDACTED
+
+// getDefaultRateLimitDuration 获取默认限流时间
+func (s *AntigravityGatewayService) getDefaultRateLimitDuration() time.Duration {
+	defaultDur := antigravityDefaultRateLimitDuration
+	if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes > 0 {
+		defaultDur = time.Duration(s.settingService.cfg.Gateway.AntigravityFallbackCooldownMinutes) * time.Minute
+REDACTED
+	if override, ok := antigravityFallbackCooldownSeconds(); ok {
+		defaultDur = override
+REDACTED
+	return defaultDur
+REDACTED
+
+// resolveResetTime 根据解析的重置时间或默认时长计算重置时间点
+func (s *AntigravityGatewayService) resolveResetTime(resetAt *int64, defaultDur time.Duration) time.Time {
+	if resetAt != nil {
+		return time.Unix(*resetAt, 0)
+REDACTED
+	return time.Now().Add(defaultDur)
 REDACTED
 
 type antigravityStreamResult struct {
