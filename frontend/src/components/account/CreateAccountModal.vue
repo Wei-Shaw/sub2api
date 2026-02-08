@@ -1650,10 +1650,12 @@
         :show-proxy-warning="form.platform !== 'openai' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
+        :show-refresh-token-option="form.platform === 'openai'"
         :platform="form.platform"
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
+        @validate-refresh-token="handleOpenAIValidateRT"
       />
 
     </div>
@@ -2010,6 +2012,7 @@ interface OAuthFlowExposed {
   oauthState: string
   projectId: string
   sessionKey: string
+  refreshToken: string
   inputMethod: AuthInputMethod
   reset: () => void
 REDACTED
@@ -2856,6 +2859,95 @@ const handleOpenAIExchange = async (authCode: string) => {
   REDACTED catch (error: any) {
     openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
     appStore.showError(openaiOAuth.error.value)
+  REDACTED finally {
+    openaiOAuth.loading.value = false
+  REDACTED
+REDACTED
+
+// OpenAI 手动 RT 批量验证和创建
+const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
+  if (!refreshTokenInput.trim()) return
+
+  // Parse multiple refresh tokens (one per line)
+  const refreshTokens = refreshTokenInput
+    .split('\n')
+    .map((rt) => rt.trim())
+    .filter((rt) => rt)
+
+  if (refreshTokens.length === 0) {
+    openaiOAuth.error.value = t('admin.accounts.oauth.openai.pleaseEnterRefreshToken')
+    return
+  REDACTED
+
+  openaiOAuth.loading.value = true
+  openaiOAuth.error.value = ''
+
+  let successCount = 0
+  let failedCount = 0
+  const errors: string[] = []
+
+  try {
+    for (let i = 0; i < refreshTokens.length; i++) {
+      try {
+        const tokenInfo = await openaiOAuth.validateRefreshToken(
+          refreshTokens[i],
+          form.proxy_id
+        )
+        if (!tokenInfo) {
+          failedCount++
+          errors.push(`#${i + 1REDACTED: ${openaiOAuth.error.value || 'Validation failed'REDACTED`)
+          openaiOAuth.error.value = ''
+          continue
+        REDACTED
+
+        const credentials = openaiOAuth.buildCredentials(tokenInfo)
+        const extra = openaiOAuth.buildExtraInfo(tokenInfo)
+
+        // Generate account name with index for batch
+        const accountName = refreshTokens.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
+
+        await adminAPI.accounts.create({
+          name: accountName,
+          notes: form.notes,
+          platform: 'openai',
+          type: 'oauth',
+          credentials,
+          extra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        REDACTED)
+        successCount++
+      REDACTED catch (error: any) {
+        failedCount++
+        const errMsg = error.response?.data?.detail || error.message || 'Unknown error'
+        errors.push(`#${i + 1REDACTED: ${errMsgREDACTED`)
+      REDACTED
+    REDACTED
+
+    // Show results
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        refreshTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount REDACTED)
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    REDACTED else if (successCount > 0 && failedCount > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount REDACTED)
+      )
+      openaiOAuth.error.value = errors.join('\n')
+      emit('created')
+    REDACTED else {
+      openaiOAuth.error.value = errors.join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    REDACTED
   REDACTED finally {
     openaiOAuth.loading.value = false
   REDACTED

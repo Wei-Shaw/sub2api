@@ -1804,6 +1804,9 @@ export default {
         cookieAuthFailed: 'Cookie 授权失败',
         keyAuthFailed: '密钥 {indexREDACTED: {errorREDACTED',
         successCreated: '成功创建 {countREDACTED 个账号',
+        batchSuccess: '成功创建 {countREDACTED 个账号',
+        batchPartialSuccess: '部分成功：{successREDACTED 个成功，{failedREDACTED 个失败',
+        batchFailed: '批量创建失败',
         // OpenAI specific
         openai: {
           title: 'OpenAI 账户授权',
@@ -1820,7 +1823,14 @@ export default {
           authCode: '授权链接或 Code',
           authCodePlaceholder:
             '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
-          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别'
+          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+          // Refresh Token auth
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
+          refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token'
         REDACTED,
         // Gemini specific
         gemini: {
