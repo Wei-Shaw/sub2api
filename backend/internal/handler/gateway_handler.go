@@ -341,7 +341,7 @@ REDACTED
 				if errors.As(err, &failoverErr) {
 					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
-					if failoverErr.ForceCacheBilling {
+					if needForceCacheBilling(hasBoundSession, failoverErr) {
 						forceCacheBilling = true
 				REDACTED
 					if switchCount >= maxAccountSwitches {
@@ -541,7 +541,7 @@ REDACTED
 				if errors.As(err, &failoverErr) {
 					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
-					if failoverErr.ForceCacheBilling {
+					if needForceCacheBilling(hasBoundSession, failoverErr) {
 						forceCacheBilling = true
 				REDACTED
 					if switchCount >= maxAccountSwitches {
@@ -815,6 +815,12 @@ REDACTED
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+REDACTED
+
+// needForceCacheBilling 判断 failover 时是否需要强制缓存计费
+// 粘性会话切换账号、或上游明确标记时，将 input_tokens 转为 cache_read 计费
+func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFailoverError) bool {
+	return hasBoundSession || (failoverErr != nil && failoverErr.ForceCacheBilling)
 REDACTED
 
 // sleepFailoverDelay 账号切换线性递增延时：第1次0s、第2次1s、第3次2s…

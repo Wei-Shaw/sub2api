@@ -422,7 +422,7 @@ REDACTED
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
-				if failoverErr.ForceCacheBilling {
+				if needForceCacheBilling(hasBoundSession, failoverErr) {
 					forceCacheBilling = true
 			REDACTED
 				if switchCount >= maxAccountSwitches {
