@@ -357,5 +357,9 @@ func (s *stubAdminService) GetUserBalanceHistory(ctx context.Context, userID int
 	return s.redeems, int64(len(s.redeems)), 100.0, nil
 REDACTED
 
+func (s *stubAdminService) UpdateGroupSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
+	return nil
+REDACTED
+
 // Ensure stub implements interface.
 var _ service.AdminService = (*stubAdminService)(nil)

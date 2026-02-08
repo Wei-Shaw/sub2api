@@ -379,6 +379,9 @@ export interface AdminGroup extends Group {
 
   // 分组下账号数量（仅管理员可见）
   account_count?: number
+
+  // 分组排序
+  sort_order: number
 REDACTED
 
 export interface ApiKey {

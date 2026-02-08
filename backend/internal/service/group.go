@@ -45,6 +45,9 @@ type Group struct {
 	// 可选值: claude, gemini_text, gemini_image
 	SupportedModelScopes []string
 
+	// 分组排序
+	SortOrder int
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
