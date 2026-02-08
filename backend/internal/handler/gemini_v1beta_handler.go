@@ -433,6 +433,11 @@ REDACTED
 				lastFailoverErr = failoverErr
 				switchCount++
 				log.Printf("Gemini account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+				if account.Platform == service.PlatformAntigravity {
+					if !sleepFailoverDelay(c.Request.Context(), switchCount) {
+						return
+				REDACTED
+			REDACTED
 				continue
 		REDACTED
 			// ForwardNative already wrote the response
