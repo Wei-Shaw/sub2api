@@ -98,6 +98,9 @@ type AdminGroup struct {
 	SupportedModelScopes []string       `json:"supported_model_scopes"`
 	AccountGroups        []AccountGroup `json:"account_groups,omitempty"`
 	AccountCount         int64          `json:"account_count,omitempty"`
+
+	// 分组排序
+	SortOrder int `json:"sort_order"`
 REDACTED
 
 type Account struct {

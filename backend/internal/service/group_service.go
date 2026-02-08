@@ -33,6 +33,14 @@ type GroupRepository interface {
 	GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error)
 	// BindAccountsToGroup 将多个账号绑定到指定分组
 	BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error
+	// UpdateSortOrders 批量更新分组排序
+	UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
+REDACTED
+
+// GroupSortOrderUpdate 分组排序更新
+type GroupSortOrderUpdate struct {
+	ID        int64 `json:"id"`
+	SortOrder int   `json:"sort_order"`
 REDACTED
 
 // CreateGroupRequest 创建分组请求
