@@ -510,9 +510,20 @@ REDACTED
 REDACTED
 	for _, msg := range parsed.Messages {
 		if m, ok := msg.(map[string]any); ok {
-			msgText := s.extractTextFromContent(m["content"])
-			if msgText != "" {
-				_, _ = combined.WriteString(msgText)
+			if content, exists := m["content"]; exists {
+				// Anthropic: messages[].content
+				if msgText := s.extractTextFromContent(content); msgText != "" {
+					_, _ = combined.WriteString(msgText)
+			REDACTED
+		REDACTED else if parts, ok := m["parts"].([]any); ok {
+				// Gemini: contents[].parts[].text
+				for _, part := range parts {
+					if partMap, ok := part.(map[string]any); ok {
+						if text, ok := partMap["text"].(string); ok {
+							_, _ = combined.WriteString(text)
+					REDACTED
+				REDACTED
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED

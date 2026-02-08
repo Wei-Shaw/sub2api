@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -114,7 +115,7 @@ REDACTED
 
 	setOpsRequestContext(c, "", false, body)
 
-	parsedReq, err := service.ParseGatewayRequest(body)
+	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
@@ -939,7 +940,7 @@ REDACTED
 
 	setOpsRequestContext(c, "", false, body)
 
-	parsedReq, err := service.ParseGatewayRequest(body)
+	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return

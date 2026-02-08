@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
@@ -232,7 +233,7 @@ REDACTED
 	sessionHash := extractGeminiCLISessionHash(c, body)
 	if sessionHash == "" {
 		// Fallback: 使用通用的会话哈希生成逻辑（适用于其他客户端）
-		parsedReq, _ := service.ParseGatewayRequest(body)
+		parsedReq, _ := service.ParseGatewayRequest(body, domain.PlatformGemini)
 		if parsedReq != nil {
 			parsedReq.SessionContext = &service.SessionContext{
 				ClientIP:  ip.GetClientIP(c),

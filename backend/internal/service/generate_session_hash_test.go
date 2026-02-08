@@ -841,3 +841,373 @@ REDACTED
 	h2 := svc.GenerateSessionHash(parsed2)
 	require.NotEqual(t, h, h2, "adding more messages to long conversation should change hash")
 REDACTED
+
+// ============ Gemini 原生格式 session hash 测试 ============
+
+func TestGenerateSessionHash_GeminiContentsProducesHash(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	// Gemini 格式: contents[].parts[].text
+	parsed := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{"text": "Hello from Gemini"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: &SessionContext{
+			ClientIP:  "1.2.3.4",
+			UserAgent: "gemini-cli",
+			APIKeyID:  1,
+	REDACTED,
+REDACTED
+
+	h := svc.GenerateSessionHash(parsed)
+	require.NotEmpty(t, h, "Gemini contents with parts should produce a non-empty hash")
+REDACTED
+
+func TestGenerateSessionHash_GeminiDifferentContentsDifferentHash(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "gemini-cli", APIKeyID: 1REDACTED
+
+	parsed1 := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{"text": "Hello"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+	parsed2 := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{"text": "Goodbye"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+
+	h1 := svc.GenerateSessionHash(parsed1)
+	h2 := svc.GenerateSessionHash(parsed2)
+	require.NotEqual(t, h1, h2, "different Gemini contents should produce different hashes")
+REDACTED
+
+func TestGenerateSessionHash_GeminiSameContentsSameHash(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "gemini-cli", APIKeyID: 1REDACTED
+
+	mk := func() *ParsedRequest {
+		return &ParsedRequest{
+			Messages: []any{
+				map[string]any{
+					"role": "user",
+					"parts": []any{
+						map[string]any{"text": "Hello"REDACTED,
+				REDACTED,
+			REDACTED,
+				map[string]any{
+					"role": "model",
+					"parts": []any{
+						map[string]any{"text": "Hi there!"REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			SessionContext: ctx,
+	REDACTED
+REDACTED
+
+	h1 := svc.GenerateSessionHash(mk())
+	h2 := svc.GenerateSessionHash(mk())
+	require.Equal(t, h1, h2, "same Gemini contents should produce identical hash")
+REDACTED
+
+func TestGenerateSessionHash_GeminiMultiTurnHashChanges(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "gemini-cli", APIKeyID: 1REDACTED
+
+	round1 := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "hello"REDACTEDREDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+
+	round2 := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "hello"REDACTEDREDACTED,
+		REDACTED,
+			map[string]any{
+				"role":  "model",
+				"parts": []any{map[string]any{"text": "Hi!"REDACTEDREDACTED,
+		REDACTED,
+			map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "How are you?"REDACTEDREDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+
+	h1 := svc.GenerateSessionHash(round1)
+	h2 := svc.GenerateSessionHash(round2)
+	require.NotEmpty(t, h1)
+	require.NotEmpty(t, h2)
+	require.NotEqual(t, h1, h2, "Gemini multi-turn should produce different hashes per round")
+REDACTED
+
+func TestGenerateSessionHash_GeminiDifferentUsersSameContentDifferentHash(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	// 核心场景：两个不同用户发送相同 Gemini 格式消息应得到不同 hash
+	user1 := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "hello"REDACTEDREDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: &SessionContext{
+			ClientIP:  "1.1.1.1",
+			UserAgent: "gemini-cli",
+			APIKeyID:  10,
+	REDACTED,
+REDACTED
+	user2 := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "hello"REDACTEDREDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: &SessionContext{
+			ClientIP:  "2.2.2.2",
+			UserAgent: "gemini-cli",
+			APIKeyID:  20,
+	REDACTED,
+REDACTED
+
+	h1 := svc.GenerateSessionHash(user1)
+	h2 := svc.GenerateSessionHash(user2)
+	require.NotEqual(t, h1, h2, "CRITICAL: different Gemini users with same content must get different hashes")
+REDACTED
+
+func TestGenerateSessionHash_GeminiSystemInstructionAffectsHash(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "gemini-cli", APIKeyID: 1REDACTED
+
+	// systemInstruction 经 ParseGatewayRequest 解析后存入 parsed.System
+	withSys := &ParsedRequest{
+		System: []any{
+			map[string]any{"text": "You are a coding assistant."REDACTED,
+	REDACTED,
+		Messages: []any{
+			map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "hello"REDACTEDREDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+	withoutSys := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "hello"REDACTEDREDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+
+	h1 := svc.GenerateSessionHash(withSys)
+	h2 := svc.GenerateSessionHash(withoutSys)
+	require.NotEqual(t, h1, h2, "systemInstruction should affect the hash")
+REDACTED
+
+func TestGenerateSessionHash_GeminiMultiPartMessage(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "gemini-cli", APIKeyID: 1REDACTED
+
+	// 多 parts 的消息
+	parsed := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{"text": "Part 1"REDACTED,
+					map[string]any{"text": "Part 2"REDACTED,
+					map[string]any{"text": "Part 3"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+
+	h := svc.GenerateSessionHash(parsed)
+	require.NotEmpty(t, h, "multi-part Gemini message should produce a hash")
+
+	// 不同内容的多 parts
+	parsed2 := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{"text": "Part 1"REDACTED,
+					map[string]any{"text": "CHANGED"REDACTED,
+					map[string]any{"text": "Part 3"REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+
+	h2 := svc.GenerateSessionHash(parsed2)
+	require.NotEqual(t, h, h2, "changing a part should change the hash")
+REDACTED
+
+func TestGenerateSessionHash_GeminiNonTextPartsIgnored(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "gemini-cli", APIKeyID: 1REDACTED
+
+	// 含非 text 类型 parts（如 inline_data），应被跳过但不报错
+	parsed := &ParsedRequest{
+		Messages: []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{"text": "Describe this image"REDACTED,
+					map[string]any{"inline_data": map[string]any{"mime_type": "image/png", "data": "base64..."REDACTEDREDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		SessionContext: ctx,
+REDACTED
+
+	h := svc.GenerateSessionHash(parsed)
+	require.NotEmpty(t, h, "Gemini message with mixed parts should still produce a hash from text parts")
+REDACTED
+
+func TestGenerateSessionHash_GeminiMultiTurnHashNotSticky(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	ctx := &SessionContext{ClientIP: "10.0.0.1", UserAgent: "gemini-cli", APIKeyID: 42REDACTED
+
+	// 模拟同一 Gemini 会话的三轮请求，每轮 contents 累积增长。
+	// 验证预期行为：每轮 hash 都不同，即 GenerateSessionHash 不具备跨轮粘性。
+	// 这是 by-design 的——Gemini 的跨轮粘性由 Digest Fallback（BuildGeminiDigestChain）负责。
+	round1Body := []byte(`{
+		"systemInstruction": {"parts": [{"text": "You are a coding assistant."REDACTED]REDACTED,
+		"contents": [
+			{"role": "user", "parts": [{"text": "Write a Go function"REDACTED]REDACTED
+		]
+REDACTED`)
+	round2Body := []byte(`{
+		"systemInstruction": {"parts": [{"text": "You are a coding assistant."REDACTED]REDACTED,
+		"contents": [
+			{"role": "user", "parts": [{"text": "Write a Go function"REDACTED]REDACTED,
+			{"role": "model", "parts": [{"text": "func hello() {REDACTED"REDACTED]REDACTED,
+			{"role": "user", "parts": [{"text": "Add error handling"REDACTED]REDACTED
+		]
+REDACTED`)
+	round3Body := []byte(`{
+		"systemInstruction": {"parts": [{"text": "You are a coding assistant."REDACTED]REDACTED,
+		"contents": [
+			{"role": "user", "parts": [{"text": "Write a Go function"REDACTED]REDACTED,
+			{"role": "model", "parts": [{"text": "func hello() {REDACTED"REDACTED]REDACTED,
+			{"role": "user", "parts": [{"text": "Add error handling"REDACTED]REDACTED,
+			{"role": "model", "parts": [{"text": "func hello() error { return nil REDACTED"REDACTED]REDACTED,
+			{"role": "user", "parts": [{"text": "Now add tests"REDACTED]REDACTED
+		]
+REDACTED`)
+
+	hashes := make([]string, 3)
+	for i, body := range [][]byte{round1Body, round2Body, round3BodyREDACTED {
+		parsed, err := ParseGatewayRequest(body, "gemini")
+	REDACTED
+		parsed.SessionContext = ctx
+		hashes[i] = svc.GenerateSessionHash(parsed)
+		require.NotEmpty(t, hashes[i], "round %d hash should not be empty", i+1)
+REDACTED
+
+	// 每轮 hash 都不同——这是预期行为
+	require.NotEqual(t, hashes[0], hashes[1], "round 1 vs 2 hash should differ (contents grow)")
+	require.NotEqual(t, hashes[1], hashes[2], "round 2 vs 3 hash should differ (contents grow)")
+	require.NotEqual(t, hashes[0], hashes[2], "round 1 vs 3 hash should differ")
+
+	// 同一轮重试应产生相同 hash
+	parsed1Again, err := ParseGatewayRequest(round2Body, "gemini")
+REDACTED
+	parsed1Again.SessionContext = ctx
+	h2Again := svc.GenerateSessionHash(parsed1Again)
+	require.Equal(t, hashes[1], h2Again, "retry of same round should produce same hash")
+REDACTED
+
+func TestGenerateSessionHash_GeminiEndToEnd(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	// 端到端测试：模拟 ParseGatewayRequest + GenerateSessionHash 完整流程
+	body := []byte(`{
+		"model": "gemini-2.5-pro",
+		"systemInstruction": {
+			"parts": [{"text": "You are a coding assistant."REDACTED]
+	REDACTED,
+		"contents": [
+			{"role": "user", "parts": [{"text": "Write a Go function"REDACTED]REDACTED,
+			{"role": "model", "parts": [{"text": "Here is a function..."REDACTED]REDACTED,
+			{"role": "user", "parts": [{"text": "Now add error handling"REDACTED]REDACTED
+		]
+REDACTED`)
+
+	parsed, err := ParseGatewayRequest(body, "gemini")
+REDACTED
+	parsed.SessionContext = &SessionContext{
+		ClientIP:  "10.0.0.1",
+		UserAgent: "gemini-cli/1.0",
+		APIKeyID:  42,
+REDACTED
+
+	h := svc.GenerateSessionHash(parsed)
+	require.NotEmpty(t, h, "end-to-end Gemini flow should produce a hash")
+
+	// 同一请求再次解析应产生相同 hash
+	parsed2, err := ParseGatewayRequest(body, "gemini")
+REDACTED
+	parsed2.SessionContext = &SessionContext{
+		ClientIP:  "10.0.0.1",
+		UserAgent: "gemini-cli/1.0",
+		APIKeyID:  42,
+REDACTED
+
+	h2 := svc.GenerateSessionHash(parsed2)
+	require.Equal(t, h, h2, "same request should produce same hash")
+
+	// 不同用户发送相同请求应产生不同 hash
+	parsed3, err := ParseGatewayRequest(body, "gemini")
+REDACTED
+	parsed3.SessionContext = &SessionContext{
+		ClientIP:  "10.0.0.2",
+		UserAgent: "gemini-cli/1.0",
+		APIKeyID:  99,
+REDACTED
+
+	h3 := svc.GenerateSessionHash(parsed3)
+	require.NotEqual(t, h, h3, "different user with same Gemini request should get different hash")
+REDACTED

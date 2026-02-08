@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
@@ -528,7 +529,7 @@ REDACTED
 func extractRetryModelAndStream(reqType opsRetryRequestType, errorLog *OpsErrorLogDetail, body []byte) (model string, stream bool, err error) {
 	switch reqType {
 	case opsRetryTypeMessages:
-		parsed, parseErr := ParseGatewayRequest(body)
+		parsed, parseErr := ParseGatewayRequest(body, domain.PlatformAnthropic)
 		if parseErr != nil {
 			return "", false, fmt.Errorf("failed to parse messages request body: %w", parseErr)
 	REDACTED
@@ -596,7 +597,7 @@ REDACTED
 			if s.gatewayService == nil {
 				return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: "gateway service not available"REDACTED
 		REDACTED
-			parsedReq, parseErr := ParseGatewayRequest(body)
+			parsedReq, parseErr := ParseGatewayRequest(body, domain.PlatformAnthropic)
 			if parseErr != nil {
 				return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: "failed to parse request body"REDACTED
 		REDACTED
