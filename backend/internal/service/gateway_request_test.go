@@ -155,7 +155,8 @@ REDACTED
 	require.True(t, parsed.HasSystem)
 	require.Equal(t, "real system", parsed.System)
 	require.Len(t, parsed.Messages, 1)
-	msg := parsed.Messages[0].(map[string]any)
+	msg, ok := parsed.Messages[0].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "real content", msg["content"])
 REDACTED
 
