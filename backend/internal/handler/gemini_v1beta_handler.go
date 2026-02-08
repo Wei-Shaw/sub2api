@@ -30,13 +30,6 @@ import (
 // 匹配格式: /Users/xxx/.gemini/tmp/[64位十六进制哈希]
 var geminiCLITmpDirRegex = regexp.MustCompile(`/\.gemini/tmp/([A-Fa-f0-9]{64REDACTED)`)
 
-func isGeminiCLIRequest(c *gin.Context, body []byte) bool {
-	if strings.TrimSpace(c.GetHeader("x-gemini-api-privileged-user-id")) != "" {
-		return true
-REDACTED
-	return geminiCLITmpDirRegex.Match(body)
-REDACTED
-
 // GeminiV1BetaListModels proxies:
 // GET /v1beta/models
 func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
@@ -316,7 +309,6 @@ REDACTED
 
 	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
-	isCLI := isGeminiCLIRequest(c, body)
 	cleanedForUnknownBinding := false
 
 	maxAccountSwitches := h.maxAccountSwitchesGemini
@@ -344,10 +336,10 @@ REDACTED
 			log.Printf("[Gemini] Sticky session account switched: %d -> %d, cleaning thoughtSignature", sessionBoundAccountID, account.ID)
 			body = service.CleanGeminiNativeThoughtSignatures(body)
 			sessionBoundAccountID = account.ID
-	REDACTED else if sessionKey != "" && sessionBoundAccountID == 0 && isCLI && !cleanedForUnknownBinding && bytes.Contains(body, []byte(`"thoughtSignature"`)) {
-			// 无缓存绑定但请求里已有 thoughtSignature：常见于缓存丢失/TTL 过期后，CLI 继续携带旧签名。
+	REDACTED else if sessionKey != "" && sessionBoundAccountID == 0 && !cleanedForUnknownBinding && bytes.Contains(body, []byte(`"thoughtSignature"`)) {
+			// 无缓存绑定但请求里已有 thoughtSignature：常见于缓存丢失/TTL 过期后，客户端继续携带旧签名。
 			// 为避免第一次转发就 400，这里做一次确定性清理，让新账号重新生成签名链路。
-			log.Printf("[Gemini] Sticky session binding missing for CLI request, cleaning thoughtSignature proactively")
+			log.Printf("[Gemini] Sticky session binding missing, cleaning thoughtSignature proactively")
 			body = service.CleanGeminiNativeThoughtSignatures(body)
 			cleanedForUnknownBinding = true
 			sessionBoundAccountID = account.ID
