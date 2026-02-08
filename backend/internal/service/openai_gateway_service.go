@@ -580,10 +580,6 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED else {
-		type accountWithLoad struct {
-			account  *Account
-			loadInfo *AccountLoadInfo
-	REDACTED
 		var available []accountWithLoad
 		for _, acc := range candidates {
 			loadInfo := loadMap[acc.ID]
@@ -618,6 +614,7 @@ REDACTED else {
 					return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
 			REDACTED
 		REDACTED)
+			shuffleWithinSortGroups(available)
 
 			for _, item := range available {
 				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
