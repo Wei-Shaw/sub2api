@@ -482,7 +482,7 @@ REDACTED
 			if switchCount > 0 {
 				requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
 		REDACTED
-			if account.Platform == service.PlatformAntigravity {
+			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
 		REDACTED else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)

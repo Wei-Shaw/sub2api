@@ -1,0 +1,160 @@
+//go:build unit
+
+package service
+
+import (
+	"testing"
+)
+
+func TestGetBaseURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		account  Account
+		expected string
+REDACTED{
+		{
+			name: "non-apikey type returns empty",
+			account: Account{
+				Type:     AccountTypeOAuth,
+				Platform: PlatformAnthropic,
+		REDACTED,
+			expected: "",
+	REDACTED,
+		{
+			name: "apikey without base_url returns default anthropic",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformAnthropic,
+		REDACTEDREDACTED,
+		REDACTED,
+			expected: "https://api.anthropic.com",
+	REDACTED,
+		{
+			name: "apikey with custom base_url",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformAnthropic,
+		REDACTED"base_url": "https://custom.example.com"REDACTED,
+		REDACTED,
+			expected: "https://custom.example.com",
+	REDACTED,
+		{
+			name: "antigravity apikey auto-appends /antigravity",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformAntigravity,
+		REDACTED"base_url": "https://upstream.example.com"REDACTED,
+		REDACTED,
+			expected: "https://upstream.example.com/antigravity",
+	REDACTED,
+		{
+			name: "antigravity apikey trims trailing slash before appending",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformAntigravity,
+		REDACTED"base_url": "https://upstream.example.com/"REDACTED,
+		REDACTED,
+			expected: "https://upstream.example.com/antigravity",
+	REDACTED,
+		{
+			name: "antigravity non-apikey returns empty",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformAntigravity,
+		REDACTED"base_url": "https://upstream.example.com"REDACTED,
+		REDACTED,
+			expected: "",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.account.GetBaseURL()
+			if result != tt.expected {
+				t.Errorf("GetBaseURL() = %q, want %q", result, tt.expected)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGetGeminiBaseURL(t *testing.T) {
+	const defaultGeminiURL = "https://generativelanguage.googleapis.com"
+
+	tests := []struct {
+		name     string
+		account  Account
+		expected string
+REDACTED{
+		{
+			name: "apikey without base_url returns default",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+		REDACTEDREDACTED,
+		REDACTED,
+			expected: defaultGeminiURL,
+	REDACTED,
+		{
+			name: "apikey with custom base_url",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformGemini,
+		REDACTED"base_url": "https://custom-gemini.example.com"REDACTED,
+		REDACTED,
+			expected: "https://custom-gemini.example.com",
+	REDACTED,
+		{
+			name: "antigravity apikey auto-appends /antigravity",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformAntigravity,
+		REDACTED"base_url": "https://upstream.example.com"REDACTED,
+		REDACTED,
+			expected: "https://upstream.example.com/antigravity",
+	REDACTED,
+		{
+			name: "antigravity apikey trims trailing slash",
+			account: Account{
+				Type:        AccountTypeAPIKey,
+				Platform:    PlatformAntigravity,
+		REDACTED"base_url": "https://upstream.example.com/"REDACTED,
+		REDACTED,
+			expected: "https://upstream.example.com/antigravity",
+	REDACTED,
+		{
+			name: "antigravity oauth does NOT append /antigravity",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformAntigravity,
+		REDACTED"base_url": "https://upstream.example.com"REDACTED,
+		REDACTED,
+			expected: "https://upstream.example.com",
+	REDACTED,
+		{
+			name: "oauth without base_url returns default",
+			account: Account{
+				Type:        AccountTypeOAuth,
+				Platform:    PlatformAntigravity,
+		REDACTEDREDACTED,
+		REDACTED,
+			expected: defaultGeminiURL,
+	REDACTED,
+		{
+			name: "nil credentials returns default",
+			account: Account{
+				Type:     AccountTypeAPIKey,
+		REDACTED
+		REDACTED,
+			expected: defaultGeminiURL,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.account.GetGeminiBaseURL(defaultGeminiURL)
+			if result != tt.expected {
+				t.Errorf("GetGeminiBaseURL() = %q, want %q", result, tt.expected)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED

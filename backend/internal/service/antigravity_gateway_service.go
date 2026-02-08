@@ -643,6 +643,7 @@ REDACTED
 // TestConnection 测试 Antigravity 账号连接（非流式，无重试、无计费）
 // 支持 Claude 和 Gemini 两种协议，根据 modelID 前缀自动选择
 func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+
 	// 获取 token
 	if s.tokenProvider == nil {
 		return nil, errors.New("antigravity token provider not configured")
@@ -969,6 +970,7 @@ REDACTED
 //	          └─ 失败 → 设置模型限流 + 清除粘性绑定 → 切换账号
 func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte, isStickySession bool) (*ForwardResult, error) {
 	startTime := time.Now()
+
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
 
@@ -1598,6 +1600,7 @@ REDACTED
 //	          └─ 失败 → 设置模型限流 + 清除粘性绑定 → 切换账号
 func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte, isStickySession bool) (*ForwardResult, error) {
 	startTime := time.Now()
+
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
 

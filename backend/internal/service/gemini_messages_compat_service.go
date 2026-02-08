@@ -560,10 +560,7 @@ REDACTED
 				return nil, "", errors.New("gemini api_key not configured")
 		REDACTED
 
-			baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-			if baseURL == "" {
-				baseURL = geminicli.AIStudioBaseURL
-		REDACTED
+			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
@@ -640,10 +637,7 @@ REDACTED
 				return upstreamReq, "x-request-id", nil
 		REDACTED else {
 				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
-				baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-				if baseURL == "" {
-					baseURL = geminicli.AIStudioBaseURL
-			REDACTED
+				baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 				normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 				if err != nil {
 					return nil, "", err
@@ -1026,10 +1020,7 @@ REDACTED
 				return nil, "", errors.New("gemini api_key not configured")
 		REDACTED
 
-			baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-			if baseURL == "" {
-				baseURL = geminicli.AIStudioBaseURL
-		REDACTED
+			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
@@ -1097,10 +1088,7 @@ REDACTED
 				return upstreamReq, "x-request-id", nil
 		REDACTED else {
 				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
-				baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-				if baseURL == "" {
-					baseURL = geminicli.AIStudioBaseURL
-			REDACTED
+				baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 				normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 				if err != nil {
 					return nil, "", err
@@ -2420,10 +2408,7 @@ REDACTED
 		return nil, errors.New("invalid path")
 REDACTED
 
-	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-	if baseURL == "" {
-		baseURL = geminicli.AIStudioBaseURL
-REDACTED
+	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, err
