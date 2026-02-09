@@ -176,6 +176,7 @@ type SecurityConfig struct {
 	URLAllowlist    URLAllowlistConfig   `mapstructure:"url_allowlist"`
 	ResponseHeaders ResponseHeaderConfig `mapstructure:"response_headers"`
 	CSP             CSPConfig            `mapstructure:"csp"`
+	ProxyFallback   ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
 	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
 REDACTED
 
@@ -198,6 +199,12 @@ REDACTED
 type CSPConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Policy  string `mapstructure:"policy"`
+REDACTED
+
+type ProxyFallbackConfig struct {
+	// AllowDirectOnError 当代理初始化失败时是否允许回退直连。
+	// 默认 false：避免因代理配置错误导致 IP 泄露/关联。
+	AllowDirectOnError bool `mapstructure:"allow_direct_on_error"`
 REDACTED
 
 type ProxyProbeConfig struct {
@@ -1047,9 +1054,20 @@ REDACTED)
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
 
+	// Security - proxy fallback
+	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
+
 REDACTED
 
 func (c *Config) Validate() error {
+	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。
+	// 留空时表示使用内置的 Gemini CLI OAuth 客户端（其 client_secret 通过环境变量注入）。
+	geminiClientID := strings.TrimSpace(c.Gemini.OAuth.ClientID)
+	geminiClientSecret := strings.TrimSpace(c.Gemini.OAuth.ClientSecret)
+	if (geminiClientID == "") != (geminiClientSecret == "") {
+		return fmt.Errorf("gemini.oauth.client_id and gemini.oauth.client_secret must be both set or both empty")
+REDACTED
+
 	if strings.TrimSpace(c.Server.FrontendURL) != "" {
 		if err := ValidateAbsoluteHTTPURL(c.Server.FrontendURL); err != nil {
 			return fmt.Errorf("server.frontend_url invalid: %w", err)

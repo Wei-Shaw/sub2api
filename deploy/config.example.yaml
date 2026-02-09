@@ -707,10 +707,14 @@ turnstile:
 # 默认：使用 Gemini CLI 的公开 OAuth 凭证（与 Google 官方 CLI 工具相同）
 gemini:
   oauth:
-    # Gemini CLI public OAuth credentials (works for both Code Assist and AI Studio)
-    # Gemini CLI 公开 OAuth 凭证（适用于 Code Assist 和 AI Studio）
-    client_id: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
-    client_secret: "REDACTED"
+    # OAuth 客户端配置说明：
+    # 1) 留空 client_id/client_secret：使用 Gemini CLI 内置 OAuth Client（其 client_secret 需通过环境变量注入）
+    #    - GEMINI_CLI_OAUTH_CLIENT_SECRET
+    # 2) 同时设置 client_id/client_secret：使用你自建的 OAuth Client（推荐，权限更完整）
+    #
+    # 注意：client_id 与 client_secret 必须同时为空或同时非空。
+    client_id: ""
+    client_secret: ""
     # Optional scopes (space-separated). Leave empty to auto-select based on oauth_type.
     # 可选的权限范围（空格分隔）。留空则根据 oauth_type 自动选择。
     scopes: ""

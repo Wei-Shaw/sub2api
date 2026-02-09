@@ -6,10 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 type OAuthConfig struct {
@@ -164,15 +168,24 @@ REDACTED
 REDACTED
 
 	// Fall back to built-in Gemini CLI OAuth client when not configured.
+	// SECURITY: This repo does not embed the built-in client secret; it must be provided via env.
 	if effective.ClientID == "" && effective.ClientSecret == "" {
+		secret := strings.TrimSpace(GeminiCLIOAuthClientSecret)
+		if secret == "" {
+			if v, ok := os.LookupEnv(GeminiCLIOAuthClientSecretEnv); ok {
+				secret = strings.TrimSpace(v)
+		REDACTED
+	REDACTED
+		if secret == "" {
+			return OAuthConfig{REDACTED, infraerrors.Newf(http.StatusBadRequest, "GEMINI_CLI_OAUTH_CLIENT_SECRET_MISSING", "built-in Gemini CLI OAuth client_secret is not configured; set %s or provide a custom OAuth client", GeminiCLIOAuthClientSecretEnv)
+	REDACTED
 		effective.ClientID = GeminiCLIOAuthClientID
-		effective.ClientSecret = GeminiCLIOAuthClientSecret
+		effective.ClientSecret = secret
 REDACTED else if effective.ClientID == "" || effective.ClientSecret == "" {
-		return OAuthConfig{REDACTED, fmt.Errorf("OAuth client not configured: please set both client_id and client_secret (or leave both empty to use the built-in Gemini CLI client)")
+		return OAuthConfig{REDACTED, infraerrors.New(http.StatusBadRequest, "GEMINI_OAUTH_CLIENT_NOT_CONFIGURED", "OAuth client not configured: please set both client_id and client_secret (or leave both empty to use the built-in Gemini CLI client)")
 REDACTED
 
-	isBuiltinClient := effective.ClientID == GeminiCLIOAuthClientID &&
-		effective.ClientSecret == GeminiCLIOAuthClientSecret
+	isBuiltinClient := effective.ClientID == GeminiCLIOAuthClientID
 
 	if effective.Scopes == "" {
 		// Use different default scopes based on OAuth type
