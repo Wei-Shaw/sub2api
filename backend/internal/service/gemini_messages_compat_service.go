@@ -560,10 +560,7 @@ REDACTED
 				return nil, "", errors.New("gemini api_key not configured")
 		REDACTED
 
-			baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-			if baseURL == "" {
-				baseURL = geminicli.AIStudioBaseURL
-		REDACTED
+			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
@@ -640,10 +637,7 @@ REDACTED
 				return upstreamReq, "x-request-id", nil
 		REDACTED else {
 				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
-				baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-				if baseURL == "" {
-					baseURL = geminicli.AIStudioBaseURL
-			REDACTED
+				baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 				normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 				if err != nil {
 					return nil, "", err
@@ -837,38 +831,47 @@ REDACTED
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-		tempMatched := false
+		// 统一错误策略：自定义错误码 + 临时不可调度
 		if s.rateLimitService != nil {
-			tempMatched = s.rateLimitService.HandleTempUnschedulable(ctx, account, resp.StatusCode, respBody)
-	REDACTED
-		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		if tempMatched {
-			upstreamReqID := resp.Header.Get(requestIDHeader)
-			if upstreamReqID == "" {
-				upstreamReqID = resp.Header.Get("x-goog-request-id")
-		REDACTED
-			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-			upstreamDetail := ""
-			if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-				maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-				if maxBytes <= 0 {
-					maxBytes = 2048
+			switch s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody) {
+			case ErrorPolicySkipped:
+				upstreamReqID := resp.Header.Get(requestIDHeader)
+				if upstreamReqID == "" {
+					upstreamReqID = resp.Header.Get("x-goog-request-id")
 			REDACTED
-				upstreamDetail = truncateString(string(respBody), maxBytes)
+				return nil, s.writeGeminiMappedError(c, account, resp.StatusCode, upstreamReqID, respBody)
+			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
+				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+				upstreamReqID := resp.Header.Get(requestIDHeader)
+				if upstreamReqID == "" {
+					upstreamReqID = resp.Header.Get("x-goog-request-id")
+			REDACTED
+				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  upstreamReqID,
+					Kind:               "failover",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 		REDACTED
-			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-				Platform:           account.Platform,
-				AccountID:          account.ID,
-				AccountName:        account.Name,
-				UpstreamStatusCode: resp.StatusCode,
-				UpstreamRequestID:  upstreamReqID,
-				Kind:               "failover",
-				Message:            upstreamMsg,
-				Detail:             upstreamDetail,
-		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
+
+		// ErrorPolicyNone → 原有逻辑
+		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			upstreamReqID := resp.Header.Get(requestIDHeader)
 			if upstreamReqID == "" {
@@ -1026,10 +1029,7 @@ REDACTED
 				return nil, "", errors.New("gemini api_key not configured")
 		REDACTED
 
-			baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-			if baseURL == "" {
-				baseURL = geminicli.AIStudioBaseURL
-		REDACTED
+			baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 			normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
 				return nil, "", err
@@ -1097,10 +1097,7 @@ REDACTED
 				return upstreamReq, "x-request-id", nil
 		REDACTED else {
 				// Mode 2: AI Studio API with OAuth (like API key mode, but using Bearer token)
-				baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-				if baseURL == "" {
-					baseURL = geminicli.AIStudioBaseURL
-			REDACTED
+				baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 				normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 				if err != nil {
 					return nil, "", err
@@ -1261,14 +1258,9 @@ REDACTED
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-		tempMatched := false
-		if s.rateLimitService != nil {
-			tempMatched = s.rateLimitService.HandleTempUnschedulable(ctx, account, resp.StatusCode, respBody)
-	REDACTED
-		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-
 		// Best-effort fallback for OAuth tokens missing AI Studio scopes when calling countTokens.
 		// This avoids Gemini SDKs failing hard during preflight token counting.
+		// Checked before error policy so it always works regardless of custom error codes.
 		if action == "countTokens" && isOAuth && isGeminiInsufficientScope(resp.Header, respBody) {
 			estimated := estimateGeminiCountTokens(body)
 			c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
@@ -1282,30 +1274,46 @@ REDACTED
 		REDACTED, nil
 	REDACTED
 
-		if tempMatched {
-			evBody := unwrapIfNeeded(isOAuth, respBody)
-			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(evBody))
-			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-			upstreamDetail := ""
-			if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-				maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-				if maxBytes <= 0 {
-					maxBytes = 2048
+		// 统一错误策略：自定义错误码 + 临时不可调度
+		if s.rateLimitService != nil {
+			switch s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody) {
+			case ErrorPolicySkipped:
+				respBody = unwrapIfNeeded(isOAuth, respBody)
+				contentType := resp.Header.Get("Content-Type")
+				if contentType == "" {
+					contentType = "application/json"
 			REDACTED
-				upstreamDetail = truncateString(string(evBody), maxBytes)
+				c.Data(resp.StatusCode, contentType, respBody)
+				return nil, fmt.Errorf("gemini upstream error: %d (skipped by error policy)", resp.StatusCode)
+			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
+				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+				evBody := unwrapIfNeeded(isOAuth, respBody)
+				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(evBody))
+				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(string(evBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  requestID,
+					Kind:               "failover",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 		REDACTED
-			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-				Platform:           account.Platform,
-				AccountID:          account.ID,
-				AccountName:        account.Name,
-				UpstreamStatusCode: resp.StatusCode,
-				UpstreamRequestID:  requestID,
-				Kind:               "failover",
-				Message:            upstreamMsg,
-				Detail:             upstreamDetail,
-		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
+
+		// ErrorPolicyNone → 原有逻辑
+		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			evBody := unwrapIfNeeded(isOAuth, respBody)
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(evBody))
@@ -2420,10 +2428,7 @@ REDACTED
 		return nil, errors.New("invalid path")
 REDACTED
 
-	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-	if baseURL == "" {
-		baseURL = geminicli.AIStudioBaseURL
-REDACTED
+	baseURL := account.GetGeminiBaseURL(geminicli.AIStudioBaseURL)
 	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return nil, err

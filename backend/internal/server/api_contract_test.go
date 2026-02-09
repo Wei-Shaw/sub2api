@@ -896,6 +896,10 @@ func (stubGroupRepo) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int
 	return nil, errors.New("not implemented")
 REDACTED
 
+func (stubGroupRepo) UpdateSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
+	return nil
+REDACTED
+
 type stubAccountRepo struct {
 	bulkUpdateIDs []int64
 REDACTED
@@ -1004,10 +1008,6 @@ func (s *stubAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt 
 	return errors.New("not implemented")
 REDACTED
 
-func (s *stubAccountRepo) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope service.AntigravityQuotaScope, resetAt time.Time) error {
-	return errors.New("not implemented")
-REDACTED
-
 func (s *stubAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
 	return errors.New("not implemented")
 REDACTED
@@ -1047,6 +1047,10 @@ REDACTED
 func (s *stubAccountRepo) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	s.bulkUpdateIDs = append([]int64{REDACTED, ids...)
 	return int64(len(ids)), nil
+REDACTED
+
+func (s *stubAccountRepo) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
+	return nil, errors.New("not implemented")
 REDACTED
 
 type stubProxyRepo struct{REDACTED

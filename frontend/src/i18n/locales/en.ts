@@ -1042,6 +1042,10 @@ export default {
       createGroup: 'Create Group',
       editGroup: 'Edit Group',
       deleteGroup: 'Delete Group',
+      sortOrder: 'Sort',
+      sortOrderHint: 'Drag groups to adjust display order, groups at the top will be displayed first',
+      sortOrderUpdated: 'Sort order updated',
+      failedToUpdateSortOrder: 'Failed to update sort order',
       allPlatforms: 'All Platforms',
       allStatus: 'All Status',
       allGroups: 'All Groups',
@@ -1305,10 +1309,23 @@ export default {
       syncResult: 'Sync Result',
       syncResultSummary: 'Created {createdREDACTED, updated {updatedREDACTED, skipped {skippedREDACTED, failed {failedREDACTED',
       syncErrors: 'Errors / Skipped Details',
-      syncCompleted: 'Sync completed: created {createdREDACTED, updated {updatedREDACTED',
+      syncCompleted: 'Sync completed: created {createdREDACTED, updated {updatedREDACTED, skipped {skippedREDACTED',
       syncCompletedWithErrors:
-        'Sync completed with errors: failed {failedREDACTED (created {createdREDACTED, updated {updatedREDACTED)',
+        'Sync completed with errors: failed {failedREDACTED (created {createdREDACTED, updated {updatedREDACTED, skipped {skippedREDACTED)',
       syncFailed: 'Sync failed',
+      crsPreview: 'Preview',
+      crsPreviewing: 'Previewing...',
+      crsPreviewFailed: 'Preview failed',
+      crsExistingAccounts: 'Existing accounts (will be updated)',
+      crsNewAccounts: 'New accounts (select to sync)',
+      crsSelectAll: 'Select all',
+      crsSelectNone: 'Select none',
+      crsNoNewAccounts: 'All CRS accounts are already synced.',
+      crsWillUpdate: 'Will update {countREDACTED existing accounts.',
+      crsSelectedCount: '{countREDACTED new accounts selected',
+      crsUpdateBehaviorNote:
+        'Existing accounts only sync fields returned by CRS; missing fields keep their current values. Credentials are merged by key — keys not returned by CRS are preserved. Proxies are kept when "Sync proxies" is unchecked.',
+      crsBack: 'Back',
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
       searchAccounts: 'Search accounts...',
@@ -1356,7 +1373,6 @@ export default {
         overloaded: 'Overloaded',
         tempUnschedulable: 'Temp Unschedulable',
         rateLimitedUntil: 'Rate limited until {timeREDACTED',
-        scopeRateLimitedUntil: '{scopeREDACTED rate limited until {timeREDACTED',
         modelRateLimitedUntil: '{modelREDACTED rate limited until {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
         viewTempUnschedDetails: 'View temp unschedulable details'
@@ -1662,6 +1678,9 @@ export default {
         cookieAuthFailed: 'Cookie authorization failed',
         keyAuthFailed: 'Key {indexREDACTED: {errorREDACTED',
         successCreated: 'Successfully created {countREDACTED account(s)',
+        batchSuccess: 'Successfully created {countREDACTED account(s)',
+        batchPartialSuccess: 'Partial success: {successREDACTED succeeded, {failedREDACTED failed',
+        batchFailed: 'Batch creation failed',
         // OpenAI specific
         openai: {
           title: 'OpenAI Account Authorization',
@@ -1680,7 +1699,14 @@ export default {
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
           authCodeHint:
-            'You can copy the entire URL or just the code parameter value, the system will auto-detect'
+            'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+          // Refresh Token auth
+          refreshTokenAuth: 'Manual RT Input',
+          refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
+          refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create Account',
+          pleaseEnterRefreshToken: 'Please enter Refresh Token'
         REDACTED,
         // Gemini specific
 	        gemini: {
@@ -3049,7 +3075,6 @@ export default {
         empty: 'No data',
         queued: 'Queue {countREDACTED',
         rateLimited: 'Rate-limited {countREDACTED',
-        scopeRateLimitedTooltip: '{scopeREDACTED rate-limited ({countREDACTED accounts)',
         errorAccounts: 'Errors {countREDACTED',
         loadFailed: 'Failed to load concurrency data'
       REDACTED,

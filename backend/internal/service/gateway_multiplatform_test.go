@@ -77,6 +77,9 @@ REDACTED
 func (m *mockAccountRepoForPlatform) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error) {
 	return nil, nil
 REDACTED
+func (m *mockAccountRepoForPlatform) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
+	return nil, nil
+REDACTED
 func (m *mockAccountRepoForPlatform) Update(ctx context.Context, account *Account) error {
 	return nil
 REDACTED
@@ -140,9 +143,6 @@ func (m *mockAccountRepoForPlatform) ListSchedulableByGroupIDAndPlatforms(ctx co
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 REDACTED
 func (m *mockAccountRepoForPlatform) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
-	return nil
-REDACTED
-func (m *mockAccountRepoForPlatform) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error {
 	return nil
 REDACTED
 func (m *mockAccountRepoForPlatform) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
@@ -216,22 +216,6 @@ REDACTED
 	return nil
 REDACTED
 
-func (m *mockGatewayCacheForPlatform) IncrModelCallCount(ctx context.Context, accountID int64, model string) (int64, error) {
-	return 0, nil
-REDACTED
-
-func (m *mockGatewayCacheForPlatform) GetModelLoadBatch(ctx context.Context, accountIDs []int64, model string) (map[int64]*ModelLoadInfo, error) {
-	return nil, nil
-REDACTED
-
-func (m *mockGatewayCacheForPlatform) FindGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
-	return "", 0, false
-REDACTED
-
-func (m *mockGatewayCacheForPlatform) SaveGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
-	return nil
-REDACTED
-
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int
@@ -288,6 +272,10 @@ REDACTED
 
 func (m *mockGroupRepoForGateway) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error) {
 	return nil, nil
+REDACTED
+
+func (m *mockGroupRepoForGateway) UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
+	return nil
 REDACTED
 
 func ptr[T any](v T) *T {

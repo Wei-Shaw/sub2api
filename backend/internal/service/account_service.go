@@ -25,6 +25,9 @@ type AccountRepository interface {
 	// GetByCRSAccountID finds an account previously synced from CRS.
 	// Returns (nil, nil) if not found.
 	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
+	// ListCRSAccountIDs returns a map of crs_account_id -> local account ID
+	// for all accounts that have been synced from CRS.
+	ListCRSAccountIDs(ctx context.Context) (map[string]int64, error)
 	Update(ctx context.Context, account *Account) error
 	Delete(ctx context.Context, id int64) error
 
@@ -50,7 +53,6 @@ type AccountRepository interface {
 	ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
-	SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error
 	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
 	SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error

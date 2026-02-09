@@ -43,6 +43,8 @@ export interface AdminUser extends User {
   notes: string
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
+  // 当前并发数（仅管理员列表接口返回）
+  current_concurrency?: number
 REDACTED
 
 export interface LoginRequest {
@@ -377,6 +379,9 @@ export interface AdminGroup extends Group {
 
   // 分组下账号数量（仅管理员可见）
   account_count?: number
+
+  // 分组排序
+  sort_order: number
 REDACTED
 
 export interface ApiKey {
@@ -588,9 +593,6 @@ export interface Account {
   overload_until: string | null
   temp_unschedulable_until: string | null
   temp_unschedulable_reason: string | null
-
-  // Antigravity scope 级限流状态
-  scope_rate_limits?: Record<string, { reset_at: string; remaining_sec: number REDACTED>
 
   // Session window fields (5-hour window)
   session_window_start: string | null

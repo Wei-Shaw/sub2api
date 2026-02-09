@@ -165,6 +165,11 @@ func McpXMLInject(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMcpXMLInject, v))
 REDACTED
 
+// SortOrder applies equality check predicate on the "sort_order" field. It's identical to SortOrderEQ.
+func SortOrder(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSortOrder, v))
+REDACTED
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1158,6 +1163,46 @@ REDACTED
 // McpXMLInjectNEQ applies the NEQ predicate on the "mcp_xml_inject" field.
 func McpXMLInjectNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldMcpXMLInject, v))
+REDACTED
+
+// SortOrderEQ applies the EQ predicate on the "sort_order" field.
+func SortOrderEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSortOrder, v))
+REDACTED
+
+// SortOrderNEQ applies the NEQ predicate on the "sort_order" field.
+func SortOrderNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSortOrder, v))
+REDACTED
+
+// SortOrderIn applies the In predicate on the "sort_order" field.
+func SortOrderIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSortOrder, vs...))
+REDACTED
+
+// SortOrderNotIn applies the NotIn predicate on the "sort_order" field.
+func SortOrderNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSortOrder, vs...))
+REDACTED
+
+// SortOrderGT applies the GT predicate on the "sort_order" field.
+func SortOrderGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSortOrder, v))
+REDACTED
+
+// SortOrderGTE applies the GTE predicate on the "sort_order" field.
+func SortOrderGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSortOrder, v))
+REDACTED
+
+// SortOrderLT applies the LT predicate on the "sort_order" field.
+func SortOrderLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSortOrder, v))
+REDACTED
+
+// SortOrderLTE applies the LTE predicate on the "sort_order" field.
+func SortOrderLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSortOrder, v))
 REDACTED
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

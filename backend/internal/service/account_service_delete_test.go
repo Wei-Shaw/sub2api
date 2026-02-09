@@ -54,6 +54,10 @@ func (s *accountRepoStub) GetByCRSAccountID(ctx context.Context, crsAccountID st
 	panic("unexpected GetByCRSAccountID call")
 REDACTED
 
+func (s *accountRepoStub) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
+	panic("unexpected ListCRSAccountIDs call")
+REDACTED
+
 func (s *accountRepoStub) Update(ctx context.Context, account *Account) error {
 	panic("unexpected Update call")
 REDACTED
@@ -141,10 +145,6 @@ REDACTED
 
 func (s *accountRepoStub) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	panic("unexpected SetRateLimited call")
-REDACTED
-
-func (s *accountRepoStub) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error {
-	panic("unexpected SetAntigravityQuotaScopeLimit call")
 REDACTED
 
 func (s *accountRepoStub) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {

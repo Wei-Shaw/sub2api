@@ -11,15 +11,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// UserWithConcurrency wraps AdminUser with current concurrency info
+type UserWithConcurrency struct {
+	dto.AdminUser
+	CurrentConcurrency int `json:"current_concurrency"`
+REDACTED
+
 // UserHandler handles admin user management
 type UserHandler struct {
-	adminService service.AdminService
+	adminService       service.AdminService
+	concurrencyService *service.ConcurrencyService
 REDACTED
 
 // NewUserHandler creates a new admin user handler
-func NewUserHandler(adminService service.AdminService) *UserHandler {
+func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService) *UserHandler {
 	return &UserHandler{
-		adminService: adminService,
+		adminService:       adminService,
+		concurrencyService: concurrencyService,
 REDACTED
 REDACTED
 
@@ -87,10 +95,30 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.AdminUser, 0, len(users))
-	for i := range users {
-		out = append(out, *dto.UserFromServiceAdmin(&users[i]))
+	// Batch get current concurrency (nil map if unavailable)
+	var loadInfo map[int64]*service.UserLoadInfo
+	if len(users) > 0 && h.concurrencyService != nil {
+		usersConcurrency := make([]service.UserWithConcurrency, len(users))
+		for i := range users {
+			usersConcurrency[i] = service.UserWithConcurrency{
+				ID:             users[i].ID,
+				MaxConcurrency: users[i].Concurrency,
+		REDACTED
+	REDACTED
+		loadInfo, _ = h.concurrencyService.GetUsersLoadBatch(c.Request.Context(), usersConcurrency)
 REDACTED
+
+	// Build response with concurrency info
+	out := make([]UserWithConcurrency, len(users))
+	for i := range users {
+		out[i] = UserWithConcurrency{
+			AdminUser: *dto.UserFromServiceAdmin(&users[i]),
+	REDACTED
+		if info := loadInfo[users[i].ID]; info != nil {
+			out[i].CurrentConcurrency = info.CurrentConcurrency
+	REDACTED
+REDACTED
+
 	response.Paginated(c, out, total, page, pageSize)
 REDACTED
 

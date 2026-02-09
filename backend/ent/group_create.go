@@ -340,6 +340,20 @@ func (_c *GroupCreate) SetSupportedModelScopes(v []string) *GroupCreate {
 	return _c
 REDACTED
 
+// SetSortOrder sets the "sort_order" field.
+func (_c *GroupCreate) SetSortOrder(v int) *GroupCreate {
+	_c.mutation.SetSortOrder(v)
+	return _c
+REDACTED
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSortOrder(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetSortOrder(*v)
+REDACTED
+	return _c
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -521,6 +535,10 @@ REDACTED
 		v := group.DefaultSupportedModelScopes
 		_c.mutation.SetSupportedModelScopes(v)
 REDACTED
+	if _, ok := _c.mutation.SortOrder(); !ok {
+		v := group.DefaultSortOrder
+		_c.mutation.SetSortOrder(v)
+REDACTED
 	return nil
 REDACTED
 
@@ -584,6 +602,9 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.SupportedModelScopes(); !ok {
 		return &ValidationError{Name: "supported_model_scopes", err: errors.New(`ent: missing required field "Group.supported_model_scopes"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.SortOrder(); !ok {
+		return &ValidationError{Name: "sort_order", err: errors.New(`ent: missing required field "Group.sort_order"`)REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -707,6 +728,10 @@ REDACTED
 	if value, ok := _c.mutation.SupportedModelScopes(); ok {
 		_spec.SetField(group.FieldSupportedModelScopes, field.TypeJSON, value)
 		_node.SupportedModelScopes = value
+REDACTED
+	if value, ok := _c.mutation.SortOrder(); ok {
+		_spec.SetField(group.FieldSortOrder, field.TypeInt, value)
+		_node.SortOrder = value
 REDACTED
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1266,6 +1291,24 @@ func (u *GroupUpsert) UpdateSupportedModelScopes() *GroupUpsert {
 	return u
 REDACTED
 
+// SetSortOrder sets the "sort_order" field.
+func (u *GroupUpsert) SetSortOrder(v int) *GroupUpsert {
+	u.Set(group.FieldSortOrder, v)
+	return u
+REDACTED
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSortOrder() *GroupUpsert {
+	u.SetExcluded(group.FieldSortOrder)
+	return u
+REDACTED
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *GroupUpsert) AddSortOrder(v int) *GroupUpsert {
+	u.Add(group.FieldSortOrder, v)
+	return u
+REDACTED
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1777,6 +1820,27 @@ REDACTED
 func (u *GroupUpsertOne) UpdateSupportedModelScopes() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSupportedModelScopes()
+REDACTED)
+REDACTED
+
+// SetSortOrder sets the "sort_order" field.
+func (u *GroupUpsertOne) SetSortOrder(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSortOrder(v)
+REDACTED)
+REDACTED
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *GroupUpsertOne) AddSortOrder(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSortOrder(v)
+REDACTED)
+REDACTED
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSortOrder() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSortOrder()
 REDACTED)
 REDACTED
 
@@ -2457,6 +2521,27 @@ REDACTED
 func (u *GroupUpsertBulk) UpdateSupportedModelScopes() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateSupportedModelScopes()
+REDACTED)
+REDACTED
+
+// SetSortOrder sets the "sort_order" field.
+func (u *GroupUpsertBulk) SetSortOrder(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSortOrder(v)
+REDACTED)
+REDACTED
+
+// AddSortOrder adds v to the "sort_order" field.
+func (u *GroupUpsertBulk) AddSortOrder(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSortOrder(v)
+REDACTED)
+REDACTED
+
+// UpdateSortOrder sets the "sort_order" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSortOrder() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSortOrder()
 REDACTED)
 REDACTED
 

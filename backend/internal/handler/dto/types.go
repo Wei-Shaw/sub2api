@@ -2,11 +2,6 @@ package dto
 
 import "time"
 
-type ScopeRateLimitInfo struct {
-	ResetAt      time.Time `json:"reset_at"`
-	RemainingSec int64     `json:"remaining_sec"`
-REDACTED
-
 type User struct {
 	ID            int64     `json:"id"`
 	Email         string    `json:"email"`
@@ -98,6 +93,9 @@ type AdminGroup struct {
 	SupportedModelScopes []string       `json:"supported_model_scopes"`
 	AccountGroups        []AccountGroup `json:"account_groups,omitempty"`
 	AccountCount         int64          `json:"account_count,omitempty"`
+
+	// 分组排序
+	SortOrder int `json:"sort_order"`
 REDACTED
 
 type Account struct {
@@ -125,9 +123,6 @@ type Account struct {
 	RateLimitedAt    *time.Time `json:"rate_limited_at"`
 	RateLimitResetAt *time.Time `json:"rate_limit_reset_at"`
 	OverloadUntil    *time.Time `json:"overload_until"`
-
-	// Antigravity scope 级限流状态（从 extra 提取）
-	ScopeRateLimits map[string]ScopeRateLimitInfo `json:"scope_rate_limits,omitempty"`
 
 	TempUnschedulableUntil  *time.Time `json:"temp_unschedulable_until"`
 	TempUnschedulableReason string     `json:"temp_unschedulable_reason"`
