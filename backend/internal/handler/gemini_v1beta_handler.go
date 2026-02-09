@@ -334,6 +334,19 @@ REDACTED
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 				return
 		REDACTED
+			// Antigravity 单账号退避重试：分组内没有其他可用账号时，
+			// 对 503 错误不直接返回，而是清除排除列表、等待退避后重试同一个账号。
+			// 谷歌上游 503 (MODEL_CAPACITY_EXHAUSTED) 通常是暂时性的，等几秒就能恢复。
+			if lastFailoverErr != nil && lastFailoverErr.StatusCode == http.StatusServiceUnavailable && switchCount <= maxAccountSwitches {
+				if sleepAntigravitySingleAccountBackoff(c.Request.Context(), switchCount) {
+					log.Printf("Antigravity single-account 503 retry: clearing failed accounts, retry %d/%d", switchCount, maxAccountSwitches)
+					failedAccountIDs = make(map[int64]struct{REDACTED)
+					// 设置 context 标记，让 Service 层预检查等待限流过期而非直接切换
+					ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+					c.Request = c.Request.WithContext(ctx)
+					continue
+			REDACTED
+		REDACTED
 			h.handleGeminiFailoverExhausted(c, lastFailoverErr)
 			return
 	REDACTED
