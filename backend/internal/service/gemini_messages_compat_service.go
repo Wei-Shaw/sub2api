@@ -770,6 +770,14 @@ REDACTED
 			break
 	REDACTED
 
+		// 错误策略优先：匹配则跳过重试直接处理。
+		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
+			resp = rebuilt
+			break
+	REDACTED else {
+			resp = rebuilt
+	REDACTED
+
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			_ = resp.Body.Close()
@@ -839,7 +847,7 @@ REDACTED
 				if upstreamReqID == "" {
 					upstreamReqID = resp.Header.Get("x-goog-request-id")
 			REDACTED
-				return nil, s.writeGeminiMappedError(c, account, resp.StatusCode, upstreamReqID, respBody)
+				return nil, s.writeGeminiMappedError(c, account, http.StatusInternalServerError, upstreamReqID, respBody)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
 				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 				upstreamReqID := resp.Header.Get(requestIDHeader)
@@ -1176,6 +1184,14 @@ REDACTED
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries: "+safeErr)
 	REDACTED
 
+		// 错误策略优先：匹配则跳过重试直接处理。
+		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
+			resp = rebuilt
+			break
+	REDACTED else {
+			resp = rebuilt
+	REDACTED
+
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			_ = resp.Body.Close()
@@ -1283,7 +1299,7 @@ REDACTED
 				if contentType == "" {
 					contentType = "application/json"
 			REDACTED
-				c.Data(resp.StatusCode, contentType, respBody)
+				c.Data(http.StatusInternalServerError, contentType, respBody)
 				return nil, fmt.Errorf("gemini upstream error: %d (skipped by error policy)", resp.StatusCode)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
 				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
@@ -1423,6 +1439,26 @@ REDACTED
 		ImageCount:   imageCount,
 		ImageSize:    imageSize,
 REDACTED, nil
+REDACTED
+
+// checkErrorPolicyInLoop 在重试循环内预检查错误策略。
+// 返回 true 表示策略已匹配（调用者应 break），resp 已重建可直接使用。
+// 返回 false 表示 ErrorPolicyNone，resp 已重建，调用者继续走重试逻辑。
+func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
+	ctx context.Context, account *Account, resp *http.Response,
+) (matched bool, rebuilt *http.Response) {
+	if resp.StatusCode < 400 || s.rateLimitService == nil {
+		return false, resp
+REDACTED
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	_ = resp.Body.Close()
+	rebuilt = &http.Response{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Header.Clone(),
+		Body:       io.NopCloser(bytes.NewReader(body)),
+REDACTED
+	policy := s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, body)
+	return policy != ErrorPolicyNone, rebuilt
 REDACTED
 
 func (s *GeminiMessagesCompatService) shouldRetryGeminiUpstreamError(account *Account, statusCode int) bool {
@@ -2597,6 +2633,10 @@ REDACTED
 REDACTED
 
 func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
+	// 遵守自定义错误码策略：未命中则跳过所有限流处理
+	if !account.ShouldHandleErrorCode(statusCode) {
+		return
+REDACTED
 	if s.rateLimitService != nil && (statusCode == 401 || statusCode == 403 || statusCode == 529) {
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, headers, body)
 		return

@@ -371,12 +371,12 @@ urlFallbackLoop:
 				_ = resp.Body.Close()
 
 				// ★ 统一入口：自定义错误码 + 临时不可调度
-				if handled, policyErr := s.applyErrorPolicy(p, resp.StatusCode, resp.Header, respBody); handled {
+				if handled, outStatus, policyErr := s.applyErrorPolicy(p, resp.StatusCode, resp.Header, respBody); handled {
 					if policyErr != nil {
 						return nil, policyErr
 				REDACTED
 					resp = &http.Response{
-						StatusCode: resp.StatusCode,
+						StatusCode: outStatus,
 						Header:     resp.Header.Clone(),
 						Body:       io.NopCloser(bytes.NewReader(respBody)),
 				REDACTED
@@ -610,21 +610,22 @@ REDACTED
 	return s.rateLimitService.CheckErrorPolicy(ctx, account, statusCode, body)
 REDACTED
 
-// applyErrorPolicy 应用错误策略结果，返回是否应终止当前循环
-func (s *AntigravityGatewayService) applyErrorPolicy(p antigravityRetryLoopParams, statusCode int, headers http.Header, respBody []byte) (handled bool, retErr error) {
+// applyErrorPolicy 应用错误策略结果，返回是否应终止当前循环及应返回的状态码。
+// ErrorPolicySkipped 时 outStatus 为 500（前端约定：未命中的错误返回 500）。
+func (s *AntigravityGatewayService) applyErrorPolicy(p antigravityRetryLoopParams, statusCode int, headers http.Header, respBody []byte) (handled bool, outStatus int, retErr error) {
 	switch s.checkErrorPolicy(p.ctx, p.account, statusCode, respBody) {
 	case ErrorPolicySkipped:
-		return true, nil
+		return true, http.StatusInternalServerError, nil
 	case ErrorPolicyMatched:
 		_ = p.handleError(p.ctx, p.prefix, p.account, statusCode, headers, respBody,
 			p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
-		return true, nil
+		return true, statusCode, nil
 	case ErrorPolicyTempUnscheduled:
 		slog.Info("temp_unschedulable_matched",
 			"prefix", p.prefix, "status_code", statusCode, "account_id", p.account.ID)
-		return true, &AntigravityAccountSwitchError{OriginalAccountID: p.account.ID, IsStickySession: p.isStickySessionREDACTED
+		return true, statusCode, &AntigravityAccountSwitchError{OriginalAccountID: p.account.ID, IsStickySession: p.isStickySessionREDACTED
 REDACTED
-	return false, nil
+	return false, statusCode, nil
 REDACTED
 
 // mapAntigravityModel 获取映射后的模型名
@@ -2242,6 +2243,10 @@ func (s *AntigravityGatewayService) handleUpstreamError(
 	requestedModel string,
 	groupID int64, sessionHash string, isStickySession bool,
 ) *handleModelRateLimitResult {
+	// 遵守自定义错误码策略：未命中则跳过所有限流处理
+	if !account.ShouldHandleErrorCode(statusCode) {
+		return nil
+REDACTED
 	// 模型级限流处理（优先）
 	result := s.handleModelRateLimit(&handleModelRateLimitParams{
 		ctx:             ctx,
