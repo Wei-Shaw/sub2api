@@ -294,8 +294,9 @@ REDACTED
 	require.Len(t, upstream.calls, 1, "should have made one retry call (max attempts)")
 REDACTED
 
-// TestHandleSmartRetry_503_ModelCapacityExhausted_ReturnsSwitchError 测试 503 MODEL_CAPACITY_EXHAUSTED 返回 switchError
-func TestHandleSmartRetry_503_ModelCapacityExhausted_ReturnsSwitchError(t *testing.T) {
+// TestHandleSmartRetry_503_ModelCapacityExhausted_RetrySuccess 测试 503 MODEL_CAPACITY_EXHAUSTED 重试成功
+// MODEL_CAPACITY_EXHAUSTED 使用固定 1s 间隔重试，不切换账号
+func TestHandleSmartRetry_503_ModelCapacityExhausted_RetrySuccess(t *testing.T) {
 	repo := &stubAntigravityAccountRepo{REDACTED
 	account := &Account{
 		ID:       3,
@@ -304,7 +305,7 @@ func TestHandleSmartRetry_503_ModelCapacityExhausted_ReturnsSwitchError(t *testi
 		Platform: PlatformAntigravity,
 REDACTED
 
-	// 503 + MODEL_CAPACITY_EXHAUSTED + 39s >= 7s 阈值
+	// 503 + MODEL_CAPACITY_EXHAUSTED + 39s（上游 retryDelay 应被忽略，使用固定 1s）
 	respBody := []byte(`{
 		"error": {
 			"code": 503,
@@ -322,6 +323,14 @@ REDACTED`)
 		Body:       io.NopCloser(bytes.NewReader(respBody)),
 REDACTED
 
+	// mock: 第 1 次重试返回 200 成功
+	upstream := &mockSmartRetryUpstream{
+		responses: []*http.Response{
+			{StatusCode: http.StatusOK, Header: http.Header{REDACTED, Body: io.NopCloser(strings.NewReader(`{"ok":trueREDACTED`))REDACTED,
+	REDACTED,
+		errors: []error{nilREDACTED,
+REDACTED
+
 	params := antigravityRetryLoopParams{
 		ctx:             context.Background(),
 		prefix:          "[test]",
@@ -330,6 +339,7 @@ REDACTED
 		action:          "generateContent",
 		body:            []byte(`{"input":"test"REDACTED`),
 		accountRepo:     repo,
+		httpUpstream:    upstream,
 		isStickySession: true,
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
@@ -343,16 +353,67 @@ REDACTED
 
 	require.NotNil(t, result)
 	require.Equal(t, smartRetryActionBreakWithResp, result.action)
-	require.Nil(t, result.resp)
+	require.NotNil(t, result.resp, "should return successful response")
+	require.Equal(t, http.StatusOK, result.resp.StatusCode)
 	require.Nil(t, result.err)
-	require.NotNil(t, result.switchError, "should return switchError for 503 model capacity exhausted")
-	require.Equal(t, account.ID, result.switchError.OriginalAccountID)
-	require.Equal(t, "gemini-3-pro-high", result.switchError.RateLimitedModel)
-	require.True(t, result.switchError.IsStickySession)
+	require.Nil(t, result.switchError, "MODEL_CAPACITY_EXHAUSTED should not return switchError")
 
-	// 验证模型限流已设置
-	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, "gemini-3-pro-high", repo.modelRateLimitCalls[0].modelKey)
+	// 不应设置模型限流
+	require.Empty(t, repo.modelRateLimitCalls, "MODEL_CAPACITY_EXHAUSTED should not set model rate limit")
+	require.Len(t, upstream.calls, 1, "should have made one retry call before success")
+REDACTED
+
+// TestHandleSmartRetry_503_ModelCapacityExhausted_ContextCancel 测试 MODEL_CAPACITY_EXHAUSTED 上下文取消
+func TestHandleSmartRetry_503_ModelCapacityExhausted_ContextCancel(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{REDACTED
+	account := &Account{
+		ID:       3,
+		Name:     "acc-3",
+		Type:     AccountTypeOAuth,
+		Platform: PlatformAntigravity,
+REDACTED
+
+	respBody := []byte(`{
+		"error": {
+			"code": 503,
+			"status": "UNAVAILABLE",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "39s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	resp := &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTED
+
+	// 立即取消上下文，验证重试循环能正确退出
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	params := antigravityRetryLoopParams{
+		ctx:         ctx,
+		prefix:      "[test]",
+		account:     account,
+		accessToken: "token",
+		action:      "generateContent",
+		body:        []byte(`{"input":"test"REDACTED`),
+		accountRepo: repo,
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+			return nil
+	REDACTED,
+REDACTED
+
+	svc := &AntigravityGatewayService{REDACTED
+	result := svc.handleSmartRetry(params, resp, respBody, "https://ag-1.test", 0, []string{"https://ag-1.test"REDACTED)
+
+	require.NotNil(t, result)
+	require.Equal(t, smartRetryActionBreakWithResp, result.action)
+	require.Error(t, result.err, "should return context error")
+	require.Nil(t, result.switchError, "should not return switchError on context cancel")
+	require.Empty(t, repo.modelRateLimitCalls, "should not set model rate limit on context cancel")
 REDACTED
 
 // TestHandleSmartRetry_NonAntigravityAccount_ContinuesDefaultLogic 测试非 Antigravity 平台账号走默认逻辑
@@ -1129,20 +1190,20 @@ REDACTED
 REDACTED
 
 // TestHandleSmartRetry_ShortDelay_503_StickySession_FailedRetry_ClearsSession
-// 503 + 短延迟 + 粘性会话 + 重试失败 → 清除粘性绑定
+// 429 + 短延迟 + 粘性会话 + 重试失败 → 清除粘性绑定
 func TestHandleSmartRetry_ShortDelay_503_StickySession_FailedRetry_ClearsSession(t *testing.T) {
 	failRespBody := `{
 		"error": {
-			"code": 503,
-			"status": "UNAVAILABLE",
+			"code": 429,
+			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.5s"REDACTED
 			]
 	REDACTED
 REDACTED`
 	failResp := &http.Response{
-		StatusCode: http.StatusServiceUnavailable,
+		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(strings.NewReader(failRespBody)),
 REDACTED
@@ -1162,16 +1223,16 @@ REDACTED
 
 	respBody := []byte(`{
 		"error": {
-			"code": 503,
-			"status": "UNAVAILABLE",
+			"code": 429,
+			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.5s"REDACTED
 			]
 	REDACTED
 REDACTED`)
 	resp := &http.Response{
-		StatusCode: http.StatusServiceUnavailable,
+		StatusCode: http.StatusTooManyRequests,
 		Header:     http.Header{REDACTED,
 		Body:       io.NopCloser(bytes.NewReader(respBody)),
 REDACTED

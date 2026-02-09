@@ -39,6 +39,12 @@ const (
 	antigravitySmartRetryMaxAttempts    = 1                // 智能重试最大次数（仅重试 1 次，防止重复限流/长期等待）
 	antigravityDefaultRateLimitDuration = 30 * time.Second // 默认限流时间（无 retryDelay 时使用）
 
+	// MODEL_CAPACITY_EXHAUSTED 专用重试参数
+	// 模型容量不足时，所有账号共享同一容量池，切换账号无意义
+	// 使用固定 1s 间隔重试，最多重试 60 次
+	antigravityModelCapacityRetryMaxAttempts = 60
+	antigravityModelCapacityRetryWait        = 1 * time.Second
+
 	// Google RPC 状态和类型常量
 	googleRPCStatusResourceExhausted      = "RESOURCE_EXHAUSTED"
 	googleRPCStatusUnavailable            = "UNAVAILABLE"
@@ -144,7 +150,7 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 REDACTED
 
 	// 判断是否触发智能重试
-	shouldSmartRetry, shouldRateLimitModel, waitDuration, modelName := shouldTriggerAntigravitySmartRetry(p.account, respBody)
+	shouldSmartRetry, shouldRateLimitModel, waitDuration, modelName, isModelCapacityExhausted := shouldTriggerAntigravitySmartRetry(p.account, respBody)
 
 	// 情况1: retryDelay >= 阈值，限流模型并切换账号
 	if shouldRateLimitModel {
@@ -174,14 +180,21 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 情况2: retryDelay < 阈值，智能重试（最多 antigravitySmartRetryMaxAttempts 次）
+	// 情况2: retryDelay < 阈值（或 MODEL_CAPACITY_EXHAUSTED），智能重试
 	if shouldSmartRetry {
 		var lastRetryResp *http.Response
 		var lastRetryBody []byte
 
-		for attempt := 1; attempt <= antigravitySmartRetryMaxAttempts; attempt++ {
+		// MODEL_CAPACITY_EXHAUSTED 使用独立的重试参数（60 次，固定 1s 间隔）
+		maxAttempts := antigravitySmartRetryMaxAttempts
+		if isModelCapacityExhausted {
+			maxAttempts = antigravityModelCapacityRetryMaxAttempts
+			waitDuration = antigravityModelCapacityRetryWait
+	REDACTED
+
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			log.Printf("%s status=%d oauth_smart_retry attempt=%d/%d delay=%v model=%s account=%d",
-				p.prefix, resp.StatusCode, attempt, antigravitySmartRetryMaxAttempts, waitDuration, modelName, p.account.ID)
+				p.prefix, resp.StatusCode, attempt, maxAttempts, waitDuration, modelName, p.account.ID)
 
 			select {
 			case <-p.ctx.Done():
@@ -207,13 +220,13 @@ REDACTED
 
 			retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
-				log.Printf("%s status=%d smart_retry_success attempt=%d/%d", p.prefix, retryResp.StatusCode, attempt, antigravitySmartRetryMaxAttempts)
+				log.Printf("%s status=%d smart_retry_success attempt=%d/%d", p.prefix, retryResp.StatusCode, attempt, maxAttempts)
 				return &smartRetryResult{action: smartRetryActionBreakWithResp, resp: retryRespREDACTED
 		REDACTED
 
 			// 网络错误时，继续重试
 			if retryErr != nil || retryResp == nil {
-				log.Printf("%s status=smart_retry_network_error attempt=%d/%d error=%v", p.prefix, attempt, antigravitySmartRetryMaxAttempts, retryErr)
+				log.Printf("%s status=smart_retry_network_error attempt=%d/%d error=%v", p.prefix, attempt, maxAttempts, retryErr)
 				continue
 		REDACTED
 
@@ -227,26 +240,43 @@ REDACTED
 				_ = retryResp.Body.Close()
 		REDACTED
 
-			// 解析新的重试信息，用于下次重试的等待时间
-			if attempt < antigravitySmartRetryMaxAttempts && lastRetryBody != nil {
-				newShouldRetry, _, newWaitDuration, _ := shouldTriggerAntigravitySmartRetry(p.account, lastRetryBody)
+			// 解析新的重试信息，用于下次重试的等待时间（MODEL_CAPACITY_EXHAUSTED 使用固定循环，跳过）
+			if !isModelCapacityExhausted && attempt < maxAttempts && lastRetryBody != nil {
+				newShouldRetry, _, newWaitDuration, _, _ := shouldTriggerAntigravitySmartRetry(p.account, lastRetryBody)
 				if newShouldRetry && newWaitDuration > 0 {
 					waitDuration = newWaitDuration
 			REDACTED
 		REDACTED
 	REDACTED
 
-		// 所有重试都失败，限流当前模型并切换账号
-		rateLimitDuration := waitDuration
-		if rateLimitDuration <= 0 {
-			rateLimitDuration = antigravityDefaultRateLimitDuration
-	REDACTED
+		// 所有重试都失败
 		retryBody := lastRetryBody
 		if retryBody == nil {
 			retryBody = respBody
 	REDACTED
+
+		// MODEL_CAPACITY_EXHAUSTED：模型容量不足，切换账号无意义
+		// 直接返回上游错误响应，不设置模型限流，不切换账号
+		if isModelCapacityExhausted {
+			log.Printf("%s status=%d smart_retry_exhausted_model_capacity attempts=%d model=%s account=%d body=%s (model capacity exhausted, not switching account)",
+				p.prefix, resp.StatusCode, maxAttempts, modelName, p.account.ID, truncateForLog(retryBody, 200))
+			return &smartRetryResult{
+				action: smartRetryActionBreakWithResp,
+				resp: &http.Response{
+					StatusCode: resp.StatusCode,
+					Header:     resp.Header.Clone(),
+					Body:       io.NopCloser(bytes.NewReader(retryBody)),
+			REDACTED,
+		REDACTED
+	REDACTED
+
+		// RATE_LIMIT_EXCEEDED：账号级限流，限流当前模型并切换账号
+		rateLimitDuration := waitDuration
+		if rateLimitDuration <= 0 {
+			rateLimitDuration = antigravityDefaultRateLimitDuration
+	REDACTED
 		log.Printf("%s status=%d smart_retry_exhausted attempts=%d model=%s account=%d upstream_retry_delay=%v body=%s (switch account)",
-			p.prefix, resp.StatusCode, antigravitySmartRetryMaxAttempts, modelName, p.account.ID, rateLimitDuration, truncateForLog(retryBody, 200))
+			p.prefix, resp.StatusCode, maxAttempts, modelName, p.account.ID, rateLimitDuration, truncateForLog(retryBody, 200))
 
 		resetAt := time.Now().Add(rateLimitDuration)
 		if p.accountRepo != nil && modelName != "" {
@@ -2053,8 +2083,9 @@ REDACTED
 
 // antigravitySmartRetryInfo 智能重试所需的信息
 type antigravitySmartRetryInfo struct {
-	RetryDelay time.Duration // 重试延迟时间
-	ModelName  string        // 限流的模型名称（如 "claude-sonnet-4-5"）
+	RetryDelay               time.Duration // 重试延迟时间
+	ModelName                string        // 限流的模型名称（如 "claude-sonnet-4-5"）
+	IsModelCapacityExhausted bool          // 是否为模型容量不足（MODEL_CAPACITY_EXHAUSTED）
 REDACTED
 
 // parseAntigravitySmartRetryInfo 解析 Google RPC RetryInfo 和 ErrorInfo 信息
@@ -2169,31 +2200,40 @@ REDACTED
 REDACTED
 
 	return &antigravitySmartRetryInfo{
-		RetryDelay: retryDelay,
-		ModelName:  modelName,
+		RetryDelay:               retryDelay,
+		ModelName:                modelName,
+		IsModelCapacityExhausted: hasModelCapacityExhausted,
 REDACTED
 REDACTED
 
 // shouldTriggerAntigravitySmartRetry 判断是否应该触发智能重试
 // 返回：
-//   - shouldRetry: 是否应该智能重试（retryDelay < antigravityRateLimitThreshold）
-//   - shouldRateLimitModel: 是否应该限流模型（retryDelay >= antigravityRateLimitThreshold）
-//   - waitDuration: 等待时间（智能重试时使用，shouldRateLimitModel=true 时为 0）
+//   - shouldRetry: 是否应该智能重试（retryDelay < antigravityRateLimitThreshold，或 MODEL_CAPACITY_EXHAUSTED）
+//   - shouldRateLimitModel: 是否应该限流模型并切换账号（仅 RATE_LIMIT_EXCEEDED 且 retryDelay >= 阈值）
+//   - waitDuration: 等待时间
 //   - modelName: 限流的模型名称
-func shouldTriggerAntigravitySmartRetry(account *Account, respBody []byte) (shouldRetry bool, shouldRateLimitModel bool, waitDuration time.Duration, modelName string) {
+//   - isModelCapacityExhausted: 是否为模型容量不足（MODEL_CAPACITY_EXHAUSTED）
+func shouldTriggerAntigravitySmartRetry(account *Account, respBody []byte) (shouldRetry bool, shouldRateLimitModel bool, waitDuration time.Duration, modelName string, isModelCapacityExhausted bool) {
 	if account.Platform != PlatformAntigravity {
-		return false, false, 0, ""
+		return false, false, 0, "", false
 REDACTED
 
 	info := parseAntigravitySmartRetryInfo(respBody)
 	if info == nil {
-		return false, false, 0, ""
+		return false, false, 0, "", false
 REDACTED
 
+	// MODEL_CAPACITY_EXHAUSTED（模型容量不足）：所有账号共享同一模型容量池
+	// 切换账号无意义，使用固定 1s 间隔重试
+	if info.IsModelCapacityExhausted {
+		return true, false, antigravityModelCapacityRetryWait, info.ModelName, true
+REDACTED
+
+	// RATE_LIMIT_EXCEEDED（账号级限流）：
 	// retryDelay >= 阈值：直接限流模型，不重试
 	// 注意：如果上游未提供 retryDelay，parseAntigravitySmartRetryInfo 已设置为默认 30s
 	if info.RetryDelay >= antigravityRateLimitThreshold {
-		return false, true, info.RetryDelay, info.ModelName
+		return false, true, info.RetryDelay, info.ModelName, false
 REDACTED
 
 	// retryDelay < 阈值：智能重试
@@ -2202,7 +2242,7 @@ REDACTED
 		waitDuration = antigravitySmartRetryMinWait
 REDACTED
 
-	return true, false, waitDuration, info.ModelName
+	return true, false, waitDuration, info.ModelName, false
 REDACTED
 
 // handleModelRateLimitParams 模型级限流处理参数
@@ -2228,8 +2268,9 @@ REDACTED
 
 // handleModelRateLimit 处理模型级限流（在原有逻辑之前调用）
 // 仅处理 429/503，解析模型名和 retryDelay
-// - retryDelay < antigravityRateLimitThreshold: 返回 ShouldRetry=true，由调用方等待后重试
-// - retryDelay >= antigravityRateLimitThreshold: 设置模型限流 + 清除粘性会话 + 返回 SwitchError
+// - MODEL_CAPACITY_EXHAUSTED: 返回 Handled=true（实际重试由 handleSmartRetry 处理）
+// - RATE_LIMIT_EXCEEDED + retryDelay < 阈值: 返回 ShouldRetry=true，由调用方等待后重试
+// - RATE_LIMIT_EXCEEDED + retryDelay >= 阈值: 设置模型限流 + 清除粘性会话 + 返回 SwitchError
 func (s *AntigravityGatewayService) handleModelRateLimit(p *handleModelRateLimitParams) *handleModelRateLimitResult {
 	if p.statusCode != 429 && p.statusCode != 503 {
 		return &handleModelRateLimitResult{Handled: falseREDACTED
@@ -2240,7 +2281,17 @@ REDACTED
 		return &handleModelRateLimitResult{Handled: falseREDACTED
 REDACTED
 
-	// < antigravityRateLimitThreshold: 等待后重试
+	// MODEL_CAPACITY_EXHAUSTED：模型容量不足，所有账号共享同一容量池
+	// 切换账号无意义，不设置模型限流（实际重试由 handleSmartRetry 处理）
+	if info.IsModelCapacityExhausted {
+		log.Printf("%s status=%d model_capacity_exhausted model=%s (not switching account, retry handled by smart retry)",
+			p.prefix, p.statusCode, info.ModelName)
+		return &handleModelRateLimitResult{
+			Handled: true,
+	REDACTED
+REDACTED
+
+	// RATE_LIMIT_EXCEEDED: < antigravityRateLimitThreshold: 等待后重试
 	if info.RetryDelay < antigravityRateLimitThreshold {
 		log.Printf("%s status=%d model_rate_limit_wait model=%s wait=%v",
 			p.prefix, p.statusCode, info.ModelName, info.RetryDelay)
@@ -2251,7 +2302,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// >= antigravityRateLimitThreshold: 设置限流 + 清除粘性会话 + 切换账号
+	// RATE_LIMIT_EXCEEDED: >= antigravityRateLimitThreshold: 设置限流 + 清除粘性会话 + 切换账号
 	s.setModelRateLimitAndClearSession(p, info)
 
 	return &handleModelRateLimitResult{
