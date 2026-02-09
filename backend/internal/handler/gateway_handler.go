@@ -238,6 +238,13 @@ REDACTED
 		var lastFailoverErr *service.UpstreamFailoverError
 		var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
 
+		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
+		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
+		if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
+			ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+			c.Request = c.Request.WithContext(ctx)
+	REDACTED
+
 		for {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, failedAccountIDs, "") // Gemini 不使用会话限制
 			if err != nil {
@@ -408,6 +415,13 @@ REDACTED
 		fallbackGroupID = apiKey.Group.FallbackGroupIDOnInvalidRequest
 REDACTED
 	fallbackUsed := false
+
+	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
+	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
+	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), currentAPIKey.GroupID) {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+		c.Request = c.Request.WithContext(ctx)
+REDACTED
 
 	for {
 		maxAccountSwitches := h.maxAccountSwitches
