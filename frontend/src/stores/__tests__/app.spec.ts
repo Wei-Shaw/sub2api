@@ -250,7 +250,8 @@ describe('useAppStore', () => {
 
   describe('公开设置加载', () => {
     it('从 window.__APP_CONFIG__ 初始化', () => {
-      ;(window as any).__APP_CONFIG__ = {
+      const windowAny = window as any
+      windowAny.__APP_CONFIG__ = {
         site_name: 'TestSite',
         site_logo: '/logo.png',
         version: '1.0.0',
@@ -278,7 +279,8 @@ describe('useAppStore', () => {
     REDACTED)
 
     it('clearPublicSettingsCache 清除缓存', () => {
-      ;(window as any).__APP_CONFIG__ = { site_name: 'Test' REDACTED
+      const windowAny = window as any
+      windowAny.__APP_CONFIG__ = { site_name: 'Test' REDACTED
       const store = useAppStore()
       store.initFromInjectedConfig()
 

@@ -96,10 +96,12 @@ describe('useClipboard', () => {
   REDACTED)
 
   it('Clipboard API 失败时降级到 fallback', async () => {
-    ;(navigator.clipboard.writeText as any).mockRejectedValue(new Error('API failed'))
+    const writeTextMock = navigator.clipboard.writeText as any
+    writeTextMock.mockRejectedValue(new Error('API failed'))
 
     // jsdom 没有 execCommand，手动定义
-    ;(document as any).execCommand = vi.fn().mockReturnValue(true)
+    const documentAny = document as any
+    documentAny.execCommand = vi.fn().mockReturnValue(true)
 
     const { copyToClipboard, copied REDACTED = useClipboard()
     const result = await copyToClipboard('fallback text')
@@ -112,7 +114,8 @@ describe('useClipboard', () => {
   it('非安全上下文使用 fallback', async () => {
     Object.defineProperty(window, 'isSecureContext', { value: false, writable: true REDACTED)
 
-    ;(document as any).execCommand = vi.fn().mockReturnValue(true)
+    const documentAny = document as any
+    documentAny.execCommand = vi.fn().mockReturnValue(true)
 
     const { copyToClipboard, copied REDACTED = useClipboard()
     const result = await copyToClipboard('insecure context text')
@@ -124,8 +127,11 @@ describe('useClipboard', () => {
   REDACTED)
 
   it('所有复制方式均失败时调用 showError', async () => {
-    ;(navigator.clipboard.writeText as any).mockRejectedValue(new Error('fail'))
-    ;(document as any).execCommand = vi.fn().mockReturnValue(false)
+    const writeTextMock = navigator.clipboard.writeText as any
+    writeTextMock.mockRejectedValue(new Error('fail'))
+
+    const documentAny = document as any
+    documentAny.execCommand = vi.fn().mockReturnValue(false)
 
     const { copyToClipboard, copied REDACTED = useClipboard()
     const result = await copyToClipboard('text')

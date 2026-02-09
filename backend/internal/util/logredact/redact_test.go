@@ -28,9 +28,9 @@ REDACTED
 REDACTED
 
 func TestRedactText_GOCSPX(t *testing.T) {
-	in := "client_secret=GOCSPX-abcdefghijklmnopqrstuvwxyz_0123456789"
+	in := "client_secret=GOCSPX-your-client-secret"
 	out := RedactText(in)
-	if strings.Contains(out, "abcdefghijklmnopqrstuvwxyz") {
+	if strings.Contains(out, "your-client-secret") {
 		t.Fatalf("expected secret redacted, got %q", out)
 REDACTED
 	if !strings.Contains(out, "client_secret=***") {

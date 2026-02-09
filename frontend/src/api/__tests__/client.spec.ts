@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach REDACTED from 'vitest'
 import axios from 'axios'
-import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosHeaders REDACTED from 'axios'
+import type { AxiosInstance REDACTED from 'axios'
 
 // 需要在导入 client 之前设置 mock
 vi.mock('@/i18n', () => ({

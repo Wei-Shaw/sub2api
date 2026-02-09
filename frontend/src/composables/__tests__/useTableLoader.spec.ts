@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach REDACTED from 'vitest'
 import { useTableLoader REDACTED from '@/composables/useTableLoader'
-import { nextTick REDACTED from 'vue'
 
 // Mock @vueuse/core 的 useDebounceFn
 vi.mock('@vueuse/core', () => ({
@@ -212,7 +211,7 @@ describe('useTableLoader', () => {
         REDACTED)
       REDACTED)
 
-      const { load, items REDACTED = useTableLoader({ fetchFn REDACTED)
+      const { load REDACTED = useTableLoader({ fetchFn REDACTED)
 
       // 第一次加载
       const p1 = load()
