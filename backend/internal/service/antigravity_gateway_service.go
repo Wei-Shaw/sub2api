@@ -1285,6 +1285,28 @@ REDACTED
 
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, 0, "", isStickySession)
 
+			// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
+			if resp.StatusCode == http.StatusBadRequest {
+				msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+				if isGoogleProjectConfigError(msg) {
+					upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
+					upstreamDetail := s.getUpstreamErrorDetail(respBody)
+					log.Printf("%s status=400 google_config_error failover=true upstream_message=%q account=%d", prefix, upstreamMsg, account.ID)
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						Kind:               "failover",
+						Message:            upstreamMsg,
+						Detail:             upstreamDetail,
+				REDACTED)
+					tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, prefix)
+					return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+			REDACTED
+		REDACTED
+
 			if s.shouldFailoverUpstreamError(resp.StatusCode) {
 				upstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(respBody))
 				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -1825,6 +1847,23 @@ REDACTED()
 		// Always record upstream context for Ops error logs, even when we will failover.
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 
+		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
+		if resp.StatusCode == http.StatusBadRequest && isGoogleProjectConfigError(strings.ToLower(upstreamMsg)) {
+			log.Printf("%s status=400 google_config_error failover=true upstream_message=%q account=%d", prefix, upstreamMsg, account.ID)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  requestID,
+				Kind:               "failover",
+				Message:            upstreamMsg,
+				Detail:             upstreamDetail,
+		REDACTED)
+			tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, prefix)
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOpsREDACTED
+	REDACTED
+
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
@@ -1917,6 +1956,29 @@ func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) 
 		return true
 	default:
 		return statusCode >= 500
+REDACTED
+REDACTED
+
+// isGoogleProjectConfigError 判断（已提取的小写）错误消息是否属于 Google 服务端配置类问题。
+// 只精确匹配已知的服务端侧错误，避免对客户端请求错误做无意义重试。
+// 适用于所有走 Google 后端的平台（Antigravity、Gemini）。
+func isGoogleProjectConfigError(lowerMsg string) bool {
+	// Google 间歇性 Bug：Project ID 有效但被临时识别失败
+	return strings.Contains(lowerMsg, "invalid project resource name")
+REDACTED
+
+// googleConfigErrorCooldown 服务端配置类 400 错误的临时封禁时长
+const googleConfigErrorCooldown = 60 * time.Minute
+
+// tempUnscheduleGoogleConfigError 对服务端配置类 400 错误触发临时封禁，
+// 避免短时间内反复调度到同一个有问题的账号。
+func tempUnscheduleGoogleConfigError(ctx context.Context, repo AccountRepository, accountID int64, logPrefix string) {
+	until := time.Now().Add(googleConfigErrorCooldown)
+	reason := "400: invalid project resource name (auto temp-unschedule 1h)"
+	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
+		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
+REDACTED else {
+		log.Printf("%s temp_unscheduled account=%d until=%v reason=%q", logPrefix, accountID, until.Format("15:04:05"), reason)
 REDACTED
 REDACTED
 

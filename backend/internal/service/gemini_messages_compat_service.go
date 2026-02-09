@@ -880,6 +880,38 @@ REDACTED
 
 		// ErrorPolicyNone → 原有逻辑
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
+		if resp.StatusCode == http.StatusBadRequest {
+			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+			if isGoogleProjectConfigError(msg400) {
+				upstreamReqID := resp.Header.Get(requestIDHeader)
+				if upstreamReqID == "" {
+					upstreamReqID = resp.Header.Get("x-goog-request-id")
+			REDACTED
+				upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				log.Printf("[Gemini] status=400 google_config_error failover=true upstream_message=%q account=%d", upstreamMsg, account.ID)
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  upstreamReqID,
+					Kind:               "failover",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+				tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, "[Gemini]")
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+		REDACTED
+	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			upstreamReqID := resp.Header.Get(requestIDHeader)
 			if upstreamReqID == "" {
@@ -1330,6 +1362,35 @@ REDACTED
 
 		// ErrorPolicyNone → 原有逻辑
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
+		if resp.StatusCode == http.StatusBadRequest {
+			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+			if isGoogleProjectConfigError(msg400) {
+				evBody := unwrapIfNeeded(isOAuth, respBody)
+				upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(evBody)))
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(string(evBody), maxBytes)
+			REDACTED
+				log.Printf("[Gemini] status=400 google_config_error failover=true upstream_message=%q account=%d", upstreamMsg, account.ID)
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  requestID,
+					Kind:               "failover",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+				tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, "[Gemini]")
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: evBodyREDACTED
+		REDACTED
+	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
 			evBody := unwrapIfNeeded(isOAuth, respBody)
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(evBody))
