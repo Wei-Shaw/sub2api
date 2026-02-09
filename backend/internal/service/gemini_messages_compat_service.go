@@ -839,7 +839,7 @@ REDACTED
 				if upstreamReqID == "" {
 					upstreamReqID = resp.Header.Get("x-goog-request-id")
 			REDACTED
-				return nil, s.writeGeminiMappedError(c, account, resp.StatusCode, upstreamReqID, respBody)
+				return nil, s.writeGeminiMappedError(c, account, http.StatusInternalServerError, upstreamReqID, respBody)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
 				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 				upstreamReqID := resp.Header.Get(requestIDHeader)
@@ -1283,7 +1283,7 @@ REDACTED
 				if contentType == "" {
 					contentType = "application/json"
 			REDACTED
-				c.Data(resp.StatusCode, contentType, respBody)
+				c.Data(http.StatusInternalServerError, contentType, respBody)
 				return nil, fmt.Errorf("gemini upstream error: %d (skipped by error policy)", resp.StatusCode)
 			case ErrorPolicyMatched, ErrorPolicyTempUnscheduled:
 				s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
