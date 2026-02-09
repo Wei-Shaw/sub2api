@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/gemini"
@@ -29,13 +30,6 @@ import (
 // geminiCLITmpDirRegex 用于从 Gemini CLI 请求体中提取 tmp 目录的哈希值
 // 匹配格式: /Users/xxx/.gemini/tmp/[64位十六进制哈希]
 var geminiCLITmpDirRegex = regexp.MustCompile(`/\.gemini/tmp/([A-Fa-f0-9]{64REDACTED)`)
-
-func isGeminiCLIRequest(c *gin.Context, body []byte) bool {
-	if strings.TrimSpace(c.GetHeader("x-gemini-api-privileged-user-id")) != "" {
-		return true
-REDACTED
-	return geminiCLITmpDirRegex.Match(body)
-REDACTED
 
 // GeminiV1BetaListModels proxies:
 // GET /v1beta/models
@@ -239,7 +233,14 @@ REDACTED
 	sessionHash := extractGeminiCLISessionHash(c, body)
 	if sessionHash == "" {
 		// Fallback: 使用通用的会话哈希生成逻辑（适用于其他客户端）
-		parsedReq, _ := service.ParseGatewayRequest(body)
+		parsedReq, _ := service.ParseGatewayRequest(body, domain.PlatformGemini)
+		if parsedReq != nil {
+			parsedReq.SessionContext = &service.SessionContext{
+				ClientIP:  ip.GetClientIP(c),
+				UserAgent: c.GetHeader("User-Agent"),
+				APIKeyID:  apiKey.ID,
+		REDACTED
+	REDACTED
 		sessionHash = h.gatewayService.GenerateSessionHash(parsedReq)
 REDACTED
 	sessionKey := sessionHash
@@ -258,6 +259,7 @@ REDACTED
 	var geminiDigestChain string
 	var geminiPrefixHash string
 	var geminiSessionUUID string
+	var matchedDigestChain string
 	useDigestFallback := sessionBoundAccountID == 0
 
 	if useDigestFallback {
@@ -284,13 +286,14 @@ REDACTED
 				)
 
 				// 查找会话
-				foundUUID, foundAccountID, found := h.gatewayService.FindGeminiSession(
+				foundUUID, foundAccountID, foundMatchedChain, found := h.gatewayService.FindGeminiSession(
 					c.Request.Context(),
 					derefGroupID(apiKey.GroupID),
 					geminiPrefixHash,
 					geminiDigestChain,
 				)
 				if found {
+					matchedDigestChain = foundMatchedChain
 					sessionBoundAccountID = foundAccountID
 					geminiSessionUUID = foundUUID
 					log.Printf("[Gemini] Digest fallback matched: uuid=%s, accountID=%d, chain=%s",
@@ -316,7 +319,6 @@ REDACTED
 
 	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
-	isCLI := isGeminiCLIRequest(c, body)
 	cleanedForUnknownBinding := false
 
 	maxAccountSwitches := h.maxAccountSwitchesGemini
@@ -344,10 +346,10 @@ REDACTED
 			log.Printf("[Gemini] Sticky session account switched: %d -> %d, cleaning thoughtSignature", sessionBoundAccountID, account.ID)
 			body = service.CleanGeminiNativeThoughtSignatures(body)
 			sessionBoundAccountID = account.ID
-	REDACTED else if sessionKey != "" && sessionBoundAccountID == 0 && isCLI && !cleanedForUnknownBinding && bytes.Contains(body, []byte(`"thoughtSignature"`)) {
-			// 无缓存绑定但请求里已有 thoughtSignature：常见于缓存丢失/TTL 过期后，CLI 继续携带旧签名。
+	REDACTED else if sessionKey != "" && sessionBoundAccountID == 0 && !cleanedForUnknownBinding && bytes.Contains(body, []byte(`"thoughtSignature"`)) {
+			// 无缓存绑定但请求里已有 thoughtSignature：常见于缓存丢失/TTL 过期后，客户端继续携带旧签名。
 			// 为避免第一次转发就 400，这里做一次确定性清理，让新账号重新生成签名链路。
-			log.Printf("[Gemini] Sticky session binding missing for CLI request, cleaning thoughtSignature proactively")
+			log.Printf("[Gemini] Sticky session binding missing, cleaning thoughtSignature proactively")
 			body = service.CleanGeminiNativeThoughtSignatures(body)
 			cleanedForUnknownBinding = true
 			sessionBoundAccountID = account.ID
@@ -422,7 +424,7 @@ REDACTED
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
-				if failoverErr.ForceCacheBilling {
+				if needForceCacheBilling(hasBoundSession, failoverErr) {
 					forceCacheBilling = true
 			REDACTED
 				if switchCount >= maxAccountSwitches {
@@ -433,6 +435,11 @@ REDACTED
 				lastFailoverErr = failoverErr
 				switchCount++
 				log.Printf("Gemini account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+				if account.Platform == service.PlatformAntigravity {
+					if !sleepFailoverDelay(c.Request.Context(), switchCount) {
+						return
+				REDACTED
+			REDACTED
 				continue
 		REDACTED
 			// ForwardNative already wrote the response
@@ -453,6 +460,7 @@ REDACTED
 				geminiDigestChain,
 				geminiSessionUUID,
 				account.ID,
+				matchedDigestChain,
 			); err != nil {
 				log.Printf("[Gemini] Failed to save digest session: %v", err)
 		REDACTED

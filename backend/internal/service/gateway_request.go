@@ -6,8 +6,18 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 )
+
+// SessionContext 粘性会话上下文，用于区分不同来源的请求。
+// 仅在 GenerateSessionHash 第 3 级 fallback（消息内容 hash）时混入，
+// 避免不同用户发送相同消息产生相同 hash 导致账号集中。
+type SessionContext struct {
+	ClientIP  string
+	UserAgent string
+	APIKeyID  int64
+REDACTED
 
 // ParsedRequest 保存网关请求的预解析结果
 //
@@ -22,20 +32,22 @@ import (
 // 2. 将解析结果 ParsedRequest 传递给 Service 层
 // 3. 避免重复 json.Unmarshal，减少 CPU 和内存开销
 type ParsedRequest struct {
-	Body            []byte // 原始请求体（保留用于转发）
-	Model           string // 请求的模型名称
-	Stream          bool   // 是否为流式请求
-	MetadataUserID  string // metadata.user_id（用于会话亲和）
-	System          any    // system 字段内容
-	Messages        []any  // messages 数组
-	HasSystem       bool   // 是否包含 system 字段（包含 null 也视为显式传入）
-	ThinkingEnabled bool   // 是否开启 thinking（部分平台会影响最终模型名）
-	MaxTokens       int    // max_tokens 值（用于探测请求拦截）
+	Body            []byte          // 原始请求体（保留用于转发）
+	Model           string          // 请求的模型名称
+	Stream          bool            // 是否为流式请求
+	MetadataUserID  string          // metadata.user_id（用于会话亲和）
+	System          any             // system 字段内容
+	Messages        []any           // messages 数组
+	HasSystem       bool            // 是否包含 system 字段（包含 null 也视为显式传入）
+	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
+	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
+	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
 REDACTED
 
-// ParseGatewayRequest 解析网关请求体并返回结构化结果
-// 性能优化：一次解析提取所有需要的字段，避免重复 Unmarshal
-func ParseGatewayRequest(body []byte) (*ParsedRequest, error) {
+// ParseGatewayRequest 解析网关请求体并返回结构化结果。
+// protocol 指定请求协议格式（domain.PlatformAnthropic / domain.PlatformGemini），
+// 不同协议使用不同的 system/messages 字段名。
+func ParseGatewayRequest(body []byte, protocol string) (*ParsedRequest, error) {
 	var req map[string]any
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, err
@@ -64,14 +76,29 @@ REDACTED
 			parsed.MetadataUserID = userID
 	REDACTED
 REDACTED
-	// system 字段只要存在就视为显式提供（即使为 null），
-	// 以避免客户端传 null 时被默认 system 误注入。
-	if system, ok := req["system"]; ok {
-		parsed.HasSystem = true
-		parsed.System = system
-REDACTED
-	if messages, ok := req["messages"].([]any); ok {
-		parsed.Messages = messages
+
+	switch protocol {
+	case domain.PlatformGemini:
+		// Gemini 原生格式: systemInstruction.parts / contents
+		if sysInst, ok := req["systemInstruction"].(map[string]any); ok {
+			if parts, ok := sysInst["parts"].([]any); ok {
+				parsed.System = parts
+		REDACTED
+	REDACTED
+		if contents, ok := req["contents"].([]any); ok {
+			parsed.Messages = contents
+	REDACTED
+	default:
+		// Anthropic / OpenAI 格式: system / messages
+		// system 字段只要存在就视为显式提供（即使为 null），
+		// 以避免客户端传 null 时被默认 system 误注入。
+		if system, ok := req["system"]; ok {
+			parsed.HasSystem = true
+			parsed.System = system
+	REDACTED
+		if messages, ok := req["messages"].([]any); ok {
+			parsed.Messages = messages
+	REDACTED
 REDACTED
 
 	// thinking: {type: "enabled"REDACTED

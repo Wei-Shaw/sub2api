@@ -62,6 +62,32 @@ func (s *RateLimitService) SetTokenCacheInvalidator(invalidator TokenCacheInvali
 	s.tokenCacheInvalidator = invalidator
 REDACTED
 
+// ErrorPolicyResult 表示错误策略检查的结果
+type ErrorPolicyResult int
+
+const (
+	ErrorPolicyNone            ErrorPolicyResult = iota // 未命中任何策略，继续默认逻辑
+	ErrorPolicySkipped                                  // 自定义错误码开启但未命中，跳过处理
+	ErrorPolicyMatched                                  // 自定义错误码命中，应停止调度
+	ErrorPolicyTempUnscheduled                          // 临时不可调度规则命中
+)
+
+// CheckErrorPolicy 检查自定义错误码和临时不可调度规则。
+// 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
+func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte) ErrorPolicyResult {
+	if account.IsCustomErrorCodesEnabled() {
+		if account.ShouldHandleErrorCode(statusCode) {
+			return ErrorPolicyMatched
+	REDACTED
+		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
+		return ErrorPolicySkipped
+REDACTED
+	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+		return ErrorPolicyTempUnscheduled
+REDACTED
+	return ErrorPolicyNone
+REDACTED
+
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {

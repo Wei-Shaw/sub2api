@@ -2,7 +2,6 @@ package service
 
 import (
 	"encoding/json"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -11,9 +10,6 @@ import (
 const (
 	// anthropicSessionTTLSeconds Anthropic 会话缓存 TTL（5 分钟）
 	anthropicSessionTTLSeconds = 300
-
-	// anthropicTrieKeyPrefix Anthropic Trie 会话 key 前缀
-	anthropicTrieKeyPrefix = "anthropic:trie:"
 
 	// anthropicDigestSessionKeyPrefix Anthropic 摘要 fallback 会话 key 前缀
 	anthropicDigestSessionKeyPrefix = "anthropic:digest:"
@@ -66,12 +62,6 @@ func rolePrefix(role string) string {
 	default:
 		return "u"
 REDACTED
-REDACTED
-
-// BuildAnthropicTrieKey 构建 Anthropic Trie Redis key
-// 格式: anthropic:trie:{groupIDREDACTED:{prefixHashREDACTED
-func BuildAnthropicTrieKey(groupID int64, prefixHash string) string {
-	return anthropicTrieKeyPrefix + strconv.FormatInt(groupID, 10) + ":" + prefixHash
 REDACTED
 
 // GenerateAnthropicDigestSessionKey 生成 Anthropic 摘要 fallback 的 sessionKey

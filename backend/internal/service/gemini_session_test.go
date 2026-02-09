@@ -152,61 +152,6 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestGenerateDigestChainPrefixes(t *testing.T) {
-	tests := []struct {
-		name    string
-		chain   string
-		want    []string
-		wantLen int
-REDACTED{
-		{
-			name:    "empty",
-			chain:   "",
-			wantLen: 0,
-	REDACTED,
-		{
-			name:    "single part",
-			chain:   "u:abc123",
-			want:    []string{"u:abc123"REDACTED,
-			wantLen: 1,
-	REDACTED,
-		{
-			name:    "two parts",
-			chain:   "s:xyz-u:abc",
-			want:    []string{"s:xyz-u:abc", "s:xyz"REDACTED,
-			wantLen: 2,
-	REDACTED,
-		{
-			name:    "four parts",
-			chain:   "s:a-u:b-m:c-u:d",
-			want:    []string{"s:a-u:b-m:c-u:d", "s:a-u:b-m:c", "s:a-u:b", "s:a"REDACTED,
-			wantLen: 4,
-	REDACTED,
-REDACTED
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := GenerateDigestChainPrefixes(tt.chain)
-
-			if len(result) != tt.wantLen {
-				t.Errorf("expected %d prefixes, got %d: %v", tt.wantLen, len(result), result)
-		REDACTED
-
-			if tt.want != nil {
-				for i, want := range tt.want {
-					if i >= len(result) {
-						t.Errorf("missing prefix at index %d", i)
-						continue
-				REDACTED
-					if result[i] != want {
-						t.Errorf("prefix[%d]: expected %s, got %s", i, want, result[i])
-				REDACTED
-			REDACTED
-		REDACTED
-	REDACTED)
-REDACTED
-REDACTED
-
 func TestParseGeminiSessionValue(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -441,41 +386,4 @@ REDACTED)
 			t.Errorf("Different UUIDs should produce different session keys: %s vs %s", result1, result2)
 	REDACTED
 REDACTED)
-REDACTED
-
-func TestBuildGeminiTrieKey(t *testing.T) {
-	tests := []struct {
-		name       string
-		groupID    int64
-		prefixHash string
-		want       string
-REDACTED{
-		{
-			name:       "normal",
-			groupID:    123,
-			prefixHash: "abcdef12",
-			want:       "gemini:trie:123:abcdef12",
-	REDACTED,
-		{
-			name:       "zero group",
-			groupID:    0,
-			prefixHash: "xyz",
-			want:       "gemini:trie:0:xyz",
-	REDACTED,
-		{
-			name:       "empty prefix",
-			groupID:    1,
-			prefixHash: "",
-			want:       "gemini:trie:1:",
-	REDACTED,
-REDACTED
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := BuildGeminiTrieKey(tt.groupID, tt.prefixHash)
-			if got != tt.want {
-				t.Errorf("BuildGeminiTrieKey(%d, %q) = %q, want %q", tt.groupID, tt.prefixHash, got, tt.want)
-		REDACTED
-	REDACTED)
-REDACTED
 REDACTED

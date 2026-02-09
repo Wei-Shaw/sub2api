@@ -6,25 +6,10 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/cespare/xxhash/v2"
 )
-
-// Gemini 会话 ID Fallback 相关常量
-const (
-	// geminiSessionTTLSeconds Gemini 会话缓存 TTL（5 分钟）
-	geminiSessionTTLSeconds = 300
-
-	// geminiSessionKeyPrefix Gemini 会话 Redis key 前缀
-	geminiSessionKeyPrefix = "gemini:sess:"
-)
-
-// GeminiSessionTTL 返回 Gemini 会话缓存 TTL
-func GeminiSessionTTL() time.Duration {
-	return geminiSessionTTLSeconds * time.Second
-REDACTED
 
 // shortHash 使用 XXHash64 + Base36 生成短 hash（16 字符）
 // XXHash64 比 SHA256 快约 10 倍，Base36 比 Hex 短约 20%
@@ -79,35 +64,6 @@ func GenerateGeminiPrefixHash(userID, apiKeyID int64, ip, userAgent, platform, m
 	return base64.RawURLEncoding.EncodeToString(hash[:12])
 REDACTED
 
-// BuildGeminiSessionKey 构建 Gemini 会话 Redis key
-// 格式: gemini:sess:{groupIDREDACTED:{prefixHashREDACTED:{digestChainREDACTED
-func BuildGeminiSessionKey(groupID int64, prefixHash, digestChain string) string {
-	return geminiSessionKeyPrefix + strconv.FormatInt(groupID, 10) + ":" + prefixHash + ":" + digestChain
-REDACTED
-
-// GenerateDigestChainPrefixes 生成摘要链的所有前缀（从长到短）
-// 用于 MGET 批量查询最长匹配
-func GenerateDigestChainPrefixes(chain string) []string {
-	if chain == "" {
-		return nil
-REDACTED
-
-	var prefixes []string
-	c := chain
-
-	for c != "" {
-		prefixes = append(prefixes, c)
-		// 找到最后一个 "-" 的位置
-		if i := strings.LastIndex(c, "-"); i > 0 {
-			c = c[:i]
-	REDACTED else {
-			break
-	REDACTED
-REDACTED
-
-	return prefixes
-REDACTED
-
 // ParseGeminiSessionValue 解析 Gemini 会话缓存值
 // 格式: {uuidREDACTED:{accountIDREDACTED
 func ParseGeminiSessionValue(value string) (uuid string, accountID int64, ok bool) {
@@ -138,15 +94,6 @@ REDACTED
 
 // geminiDigestSessionKeyPrefix Gemini 摘要 fallback 会话 key 前缀
 const geminiDigestSessionKeyPrefix = "gemini:digest:"
-
-// geminiTrieKeyPrefix Gemini Trie 会话 key 前缀
-const geminiTrieKeyPrefix = "gemini:trie:"
-
-// BuildGeminiTrieKey 构建 Gemini Trie Redis key
-// 格式: gemini:trie:{groupIDREDACTED:{prefixHashREDACTED
-func BuildGeminiTrieKey(groupID int64, prefixHash string) string {
-	return geminiTrieKeyPrefix + strconv.FormatInt(groupID, 10) + ":" + prefixHash
-REDACTED
 
 // GenerateGeminiDigestSessionKey 生成 Gemini 摘要 fallback 的 sessionKey
 // 组合 prefixHash 前 8 位 + uuid 前 8 位，确保不同会话产生不同的 sessionKey

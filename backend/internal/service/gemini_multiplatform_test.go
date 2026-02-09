@@ -133,9 +133,6 @@ REDACTED
 func (m *mockAccountRepoForGemini) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	return nil
 REDACTED
-func (m *mockAccountRepoForGemini) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error {
-	return nil
-REDACTED
 func (m *mockAccountRepoForGemini) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
 	return nil
 REDACTED
@@ -266,30 +263,6 @@ REDACTED
 REDACTED
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
-	return nil
-REDACTED
-
-func (m *mockGatewayCacheForGemini) IncrModelCallCount(ctx context.Context, accountID int64, model string) (int64, error) {
-	return 0, nil
-REDACTED
-
-func (m *mockGatewayCacheForGemini) GetModelLoadBatch(ctx context.Context, accountIDs []int64, model string) (map[int64]*ModelLoadInfo, error) {
-	return nil, nil
-REDACTED
-
-func (m *mockGatewayCacheForGemini) FindGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
-	return "", 0, false
-REDACTED
-
-func (m *mockGatewayCacheForGemini) SaveGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
-	return nil
-REDACTED
-
-func (m *mockGatewayCacheForGemini) FindAnthropicSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
-	return "", 0, false
-REDACTED
-
-func (m *mockGatewayCacheForGemini) SaveAnthropicSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
 	return nil
 REDACTED
 

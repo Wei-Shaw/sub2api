@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -114,7 +115,7 @@ REDACTED
 
 	setOpsRequestContext(c, "", false, body)
 
-	parsedReq, err := service.ParseGatewayRequest(body)
+	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
@@ -203,6 +204,11 @@ REDACTED
 REDACTED
 
 	// 计算粘性会话hash
+	parsedReq.SessionContext = &service.SessionContext{
+		ClientIP:  ip.GetClientIP(c),
+		UserAgent: c.GetHeader("User-Agent"),
+		APIKeyID:  apiKey.ID,
+REDACTED
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
 	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
@@ -335,7 +341,7 @@ REDACTED
 				if errors.As(err, &failoverErr) {
 					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
-					if failoverErr.ForceCacheBilling {
+					if needForceCacheBilling(hasBoundSession, failoverErr) {
 						forceCacheBilling = true
 				REDACTED
 					if switchCount >= maxAccountSwitches {
@@ -344,6 +350,11 @@ REDACTED
 				REDACTED
 					switchCount++
 					log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+					if account.Platform == service.PlatformAntigravity {
+						if !sleepFailoverDelay(c.Request.Context(), switchCount) {
+							return
+					REDACTED
+				REDACTED
 					continue
 			REDACTED
 				// 错误响应已在Forward中处理，这里只记录日志
@@ -530,7 +541,7 @@ REDACTED
 				if errors.As(err, &failoverErr) {
 					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
-					if failoverErr.ForceCacheBilling {
+					if needForceCacheBilling(hasBoundSession, failoverErr) {
 						forceCacheBilling = true
 				REDACTED
 					if switchCount >= maxAccountSwitches {
@@ -539,6 +550,11 @@ REDACTED
 				REDACTED
 					switchCount++
 					log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+					if account.Platform == service.PlatformAntigravity {
+						if !sleepFailoverDelay(c.Request.Context(), switchCount) {
+							return
+					REDACTED
+				REDACTED
 					continue
 			REDACTED
 				// 错误响应已在Forward中处理，这里只记录日志
@@ -801,6 +817,27 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
 REDACTED
 
+// needForceCacheBilling 判断 failover 时是否需要强制缓存计费
+// 粘性会话切换账号、或上游明确标记时，将 input_tokens 转为 cache_read 计费
+func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFailoverError) bool {
+	return hasBoundSession || (failoverErr != nil && failoverErr.ForceCacheBilling)
+REDACTED
+
+// sleepFailoverDelay 账号切换线性递增延时：第1次0s、第2次1s、第3次2s…
+// 返回 false 表示 context 已取消。
+func sleepFailoverDelay(ctx context.Context, switchCount int) bool {
+	delay := time.Duration(switchCount-1) * time.Second
+	if delay <= 0 {
+		return true
+REDACTED
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(delay):
+		return true
+REDACTED
+REDACTED
+
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
@@ -934,7 +971,7 @@ REDACTED
 
 	setOpsRequestContext(c, "", false, body)
 
-	parsedReq, err := service.ParseGatewayRequest(body)
+	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
@@ -962,6 +999,11 @@ REDACTED
 REDACTED
 
 	// 计算粘性会话 hash
+	parsedReq.SessionContext = &service.SessionContext{
+		ClientIP:  ip.GetClientIP(c),
+		UserAgent: c.GetHeader("User-Agent"),
+		APIKeyID:  apiKey.ID,
+REDACTED
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
 	// 选择支持该模型的账号

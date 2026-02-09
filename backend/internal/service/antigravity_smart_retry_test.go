@@ -75,7 +75,7 @@ REDACTED
 		accessToken: "token",
 		action:      "generateContent",
 		body:        []byte(`{"input":"test"REDACTED`),
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -127,7 +127,7 @@ REDACTED
 		body:            []byte(`{"input":"test"REDACTED`),
 		accountRepo:     repo,
 		isStickySession: true,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -194,7 +194,7 @@ REDACTED
 		action:       "generateContent",
 		body:         []byte(`{"input":"test"REDACTED`),
 		httpUpstream: upstream,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -269,7 +269,7 @@ REDACTED
 		httpUpstream:    upstream,
 		accountRepo:     repo,
 		isStickySession: false,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -331,7 +331,7 @@ REDACTED
 		body:            []byte(`{"input":"test"REDACTED`),
 		accountRepo:     repo,
 		isStickySession: true,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -387,7 +387,7 @@ REDACTED
 		accessToken: "token",
 		action:      "generateContent",
 		body:        []byte(`{"input":"test"REDACTED`),
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -436,7 +436,7 @@ REDACTED
 		accessToken: "token",
 		action:      "generateContent",
 		body:        []byte(`{"input":"test"REDACTED`),
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -487,7 +487,7 @@ REDACTED
 		action:      "generateContent",
 		body:        []byte(`{"input":"test"REDACTED`),
 		accountRepo: repo,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -548,7 +548,7 @@ REDACTED
 		httpUpstream:    upstream,
 		accountRepo:     repo,
 		isStickySession: true,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED)
@@ -604,7 +604,7 @@ REDACTED
 		body:         []byte(`{"input":"test"REDACTED`),
 		httpUpstream: upstream,
 		accountRepo:  repo,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -662,7 +662,7 @@ REDACTED
 		body:            []byte(`{"input":"test"REDACTED`),
 		accountRepo:     repo,
 		isStickySession: true,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -754,7 +754,7 @@ REDACTED
 		isStickySession: true,
 		groupID:         42,
 		sessionHash:     "sticky-hash-abc",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -842,7 +842,7 @@ REDACTED
 		isStickySession: false,
 		groupID:         42,
 		sessionHash:     "", // 非粘性会话，sessionHash 为空
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -918,7 +918,7 @@ REDACTED
 		isStickySession: true,
 		groupID:         42,
 		sessionHash:     "sticky-hash-nil-cache",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -983,7 +983,7 @@ REDACTED
 		isStickySession: true,
 		groupID:         42,
 		sessionHash:     "sticky-hash-success",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -1043,7 +1043,7 @@ REDACTED
 		isStickySession: true,
 		groupID:         42,
 		sessionHash:     "sticky-hash-long-delay",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -1108,7 +1108,7 @@ REDACTED
 		isStickySession: true,
 		groupID:         99,
 		sessionHash:     "sticky-net-error",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -1188,7 +1188,7 @@ REDACTED
 		isStickySession: true,
 		groupID:         77,
 		sessionHash:     "sticky-503-short",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED
@@ -1278,7 +1278,7 @@ REDACTED
 		isStickySession: true,
 		groupID:         55,
 		sessionHash:     "sticky-loop-test",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED)
