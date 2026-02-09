@@ -1351,6 +1351,10 @@ REDACTED else {
 		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel)
 		if err != nil {
 			log.Printf("%s status=stream_collect_error error=%v", prefix, err)
+			var failoverErr *UpstreamFailoverError
+			if errors.As(err, &failoverErr) && failoverErr.StatusCode == http.StatusBadGateway {
+				tempUnscheduleEmptyResponse(ctx, s.accountRepo, account.ID, prefix)
+		REDACTED
 			return nil, err
 	REDACTED
 		usage = streamRes.usage
@@ -1920,6 +1924,10 @@ REDACTED else {
 		streamRes, err := s.handleGeminiStreamToNonStreaming(c, resp, startTime)
 		if err != nil {
 			log.Printf("%s status=stream_collect_error error=%v", prefix, err)
+			var failoverErr *UpstreamFailoverError
+			if errors.As(err, &failoverErr) && failoverErr.StatusCode == http.StatusBadGateway {
+				tempUnscheduleEmptyResponse(ctx, s.accountRepo, account.ID, prefix)
+		REDACTED
 			return nil, err
 	REDACTED
 		usage = streamRes.usage
@@ -1968,13 +1976,28 @@ func isGoogleProjectConfigError(lowerMsg string) bool {
 REDACTED
 
 // googleConfigErrorCooldown 服务端配置类 400 错误的临时封禁时长
-const googleConfigErrorCooldown = 60 * time.Minute
+const googleConfigErrorCooldown = 30 * time.Minute
 
 // tempUnscheduleGoogleConfigError 对服务端配置类 400 错误触发临时封禁，
 // 避免短时间内反复调度到同一个有问题的账号。
 func tempUnscheduleGoogleConfigError(ctx context.Context, repo AccountRepository, accountID int64, logPrefix string) {
 	until := time.Now().Add(googleConfigErrorCooldown)
-	reason := "400: invalid project resource name (auto temp-unschedule 1h)"
+	reason := "400: invalid project resource name (auto temp-unschedule 30m)"
+	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
+		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
+REDACTED else {
+		log.Printf("%s temp_unscheduled account=%d until=%v reason=%q", logPrefix, accountID, until.Format("15:04:05"), reason)
+REDACTED
+REDACTED
+
+// emptyResponseCooldown 空流式响应的临时封禁时长
+const emptyResponseCooldown = 30 * time.Minute
+
+// tempUnscheduleEmptyResponse 对空流式响应触发临时封禁，
+// 避免短时间内反复调度到同一个返回空响应的账号。
+func tempUnscheduleEmptyResponse(ctx context.Context, repo AccountRepository, accountID int64, logPrefix string) {
+	until := time.Now().Add(emptyResponseCooldown)
+	reason := "empty stream response (auto temp-unschedule 30m)"
 	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
 		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
 REDACTED else {
@@ -2786,9 +2809,13 @@ returnResponse:
 	// 选择最后一个有效响应
 	finalResponse := pickGeminiCollectResult(last, lastWithParts)
 
-	// 处理空响应情况
+	// 处理空响应情况 — 触发 failover 切换账号重试
 	if last == nil && lastWithParts == nil {
-		log.Printf("[antigravity-Forward] warning: empty stream response, no valid chunks received")
+		log.Printf("[antigravity-Forward] warning: empty stream response (gemini non-stream), triggering failover")
+		return nil, &UpstreamFailoverError{
+			StatusCode:   http.StatusBadGateway,
+			ResponseBody: []byte(`{"error":"empty stream response from upstream"REDACTED`),
+	REDACTED
 REDACTED
 
 	// 如果收集到了图片 parts，需要合并到最终响应中
@@ -3201,10 +3228,13 @@ returnResponse:
 	// 选择最后一个有效响应
 	finalResponse := pickGeminiCollectResult(last, lastWithParts)
 
-	// 处理空响应情况
+	// 处理空响应情况 — 触发 failover 切换账号重试
 	if last == nil && lastWithParts == nil {
-		log.Printf("[antigravity-Forward] warning: empty stream response, no valid chunks received")
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Empty response from upstream")
+		log.Printf("[antigravity-Forward] warning: empty stream response (claude non-stream), triggering failover")
+		return nil, &UpstreamFailoverError{
+			StatusCode:   http.StatusBadGateway,
+			ResponseBody: []byte(`{"error":"empty stream response from upstream"REDACTED`),
+	REDACTED
 REDACTED
 
 	// 将收集的所有 parts 合并到最终响应中
