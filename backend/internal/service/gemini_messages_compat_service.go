@@ -908,8 +908,7 @@ REDACTED
 					Message:            upstreamMsg,
 					Detail:             upstreamDetail,
 			REDACTED)
-				tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, "[Gemini]")
-				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: trueREDACTED
 		REDACTED
 	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {
@@ -1387,8 +1386,7 @@ REDACTED
 					Message:            upstreamMsg,
 					Detail:             upstreamDetail,
 			REDACTED)
-				tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, "[Gemini]")
-				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: evBodyREDACTED
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: evBody, RetryableOnSameAccount: trueREDACTED
 		REDACTED
 	REDACTED
 		if s.shouldFailoverGeminiUpstreamError(resp.StatusCode) {

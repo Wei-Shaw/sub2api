@@ -1285,7 +1285,7 @@ REDACTED
 
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, 0, "", isStickySession)
 
-			// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
+			// 精确匹配服务端配置类 400 错误，触发同账号重试 + failover
 			if resp.StatusCode == http.StatusBadRequest {
 				msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(respBody)))
 				if isGoogleProjectConfigError(msg) {
@@ -1302,8 +1302,7 @@ REDACTED
 						Message:            upstreamMsg,
 						Detail:             upstreamDetail,
 				REDACTED)
-					tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, prefix)
-					return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+					return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: trueREDACTED
 			REDACTED
 		REDACTED
 
@@ -1351,10 +1350,6 @@ REDACTED else {
 		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel)
 		if err != nil {
 			log.Printf("%s status=stream_collect_error error=%v", prefix, err)
-			var failoverErr *UpstreamFailoverError
-			if errors.As(err, &failoverErr) && failoverErr.StatusCode == http.StatusBadGateway {
-				tempUnscheduleEmptyResponse(ctx, s.accountRepo, account.ID, prefix)
-		REDACTED
 			return nil, err
 	REDACTED
 		usage = streamRes.usage
@@ -1851,7 +1846,7 @@ REDACTED()
 		// Always record upstream context for Ops error logs, even when we will failover.
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 
-		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
+		// 精确匹配服务端配置类 400 错误，触发同账号重试 + failover
 		if resp.StatusCode == http.StatusBadRequest && isGoogleProjectConfigError(strings.ToLower(upstreamMsg)) {
 			log.Printf("%s status=400 google_config_error failover=true upstream_message=%q account=%d", prefix, upstreamMsg, account.ID)
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -1864,8 +1859,7 @@ REDACTED()
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			tempUnscheduleGoogleConfigError(ctx, s.accountRepo, account.ID, prefix)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOpsREDACTED
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps, RetryableOnSameAccount: trueREDACTED
 	REDACTED
 
 		if s.shouldFailoverUpstreamError(resp.StatusCode) {
@@ -1924,10 +1918,6 @@ REDACTED else {
 		streamRes, err := s.handleGeminiStreamToNonStreaming(c, resp, startTime)
 		if err != nil {
 			log.Printf("%s status=stream_collect_error error=%v", prefix, err)
-			var failoverErr *UpstreamFailoverError
-			if errors.As(err, &failoverErr) && failoverErr.StatusCode == http.StatusBadGateway {
-				tempUnscheduleEmptyResponse(ctx, s.accountRepo, account.ID, prefix)
-		REDACTED
 			return nil, err
 	REDACTED
 		usage = streamRes.usage
@@ -1976,13 +1966,13 @@ func isGoogleProjectConfigError(lowerMsg string) bool {
 REDACTED
 
 // googleConfigErrorCooldown 服务端配置类 400 错误的临时封禁时长
-const googleConfigErrorCooldown = 30 * time.Minute
+const googleConfigErrorCooldown = 1 * time.Minute
 
 // tempUnscheduleGoogleConfigError 对服务端配置类 400 错误触发临时封禁，
 // 避免短时间内反复调度到同一个有问题的账号。
 func tempUnscheduleGoogleConfigError(ctx context.Context, repo AccountRepository, accountID int64, logPrefix string) {
 	until := time.Now().Add(googleConfigErrorCooldown)
-	reason := "400: invalid project resource name (auto temp-unschedule 30m)"
+	reason := "400: invalid project resource name (auto temp-unschedule 1m)"
 	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
 		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
 REDACTED else {
@@ -1991,13 +1981,13 @@ REDACTED
 REDACTED
 
 // emptyResponseCooldown 空流式响应的临时封禁时长
-const emptyResponseCooldown = 30 * time.Minute
+const emptyResponseCooldown = 1 * time.Minute
 
 // tempUnscheduleEmptyResponse 对空流式响应触发临时封禁，
 // 避免短时间内反复调度到同一个返回空响应的账号。
 func tempUnscheduleEmptyResponse(ctx context.Context, repo AccountRepository, accountID int64, logPrefix string) {
 	until := time.Now().Add(emptyResponseCooldown)
-	reason := "empty stream response (auto temp-unschedule 30m)"
+	reason := "empty stream response (auto temp-unschedule 1m)"
 	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
 		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
 REDACTED else {
@@ -2809,12 +2799,13 @@ returnResponse:
 	// 选择最后一个有效响应
 	finalResponse := pickGeminiCollectResult(last, lastWithParts)
 
-	// 处理空响应情况 — 触发 failover 切换账号重试
+	// 处理空响应情况 — 触发同账号重试 + failover 切换账号
 	if last == nil && lastWithParts == nil {
 		log.Printf("[antigravity-Forward] warning: empty stream response (gemini non-stream), triggering failover")
 		return nil, &UpstreamFailoverError{
-			StatusCode:   http.StatusBadGateway,
-			ResponseBody: []byte(`{"error":"empty stream response from upstream"REDACTED`),
+			StatusCode:             http.StatusBadGateway,
+			ResponseBody:           []byte(`{"error":"empty stream response from upstream"REDACTED`),
+			RetryableOnSameAccount: true,
 	REDACTED
 REDACTED
 
@@ -3228,12 +3219,13 @@ returnResponse:
 	// 选择最后一个有效响应
 	finalResponse := pickGeminiCollectResult(last, lastWithParts)
 
-	// 处理空响应情况 — 触发 failover 切换账号重试
+	// 处理空响应情况 — 触发同账号重试 + failover 切换账号
 	if last == nil && lastWithParts == nil {
 		log.Printf("[antigravity-Forward] warning: empty stream response (claude non-stream), triggering failover")
 		return nil, &UpstreamFailoverError{
-			StatusCode:   http.StatusBadGateway,
-			ResponseBody: []byte(`{"error":"empty stream response from upstream"REDACTED`),
+			StatusCode:             http.StatusBadGateway,
+			ResponseBody:           []byte(`{"error":"empty stream response from upstream"REDACTED`),
+			RetryableOnSameAccount: true,
 	REDACTED
 REDACTED
 
