@@ -1099,6 +1099,10 @@ export default {
       createGroup: '创建分组',
       editGroup: '编辑分组',
       deleteGroup: '删除分组',
+      sortOrder: '排序',
+      sortOrderHint: '拖拽分组调整显示顺序，排在前面的分组会优先显示',
+      sortOrderUpdated: '排序已更新',
+      failedToUpdateSortOrder: '更新排序失败',
       deleteConfirm: "确定要删除分组 '{nameREDACTED' 吗？所有关联的 API 密钥将不再属于任何分组。",
       deleteConfirmSubscription:
         "确定要删除订阅分组 '{nameREDACTED' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
@@ -1402,9 +1406,22 @@ export default {
       syncResult: '同步结果',
       syncResultSummary: '创建 {createdREDACTED，更新 {updatedREDACTED，跳过 {skippedREDACTED，失败 {failedREDACTED',
       syncErrors: '错误/跳过详情',
-      syncCompleted: '同步完成：创建 {createdREDACTED，更新 {updatedREDACTED',
-      syncCompletedWithErrors: '同步完成但有错误：失败 {failedREDACTED（创建 {createdREDACTED，更新 {updatedREDACTED）',
+      syncCompleted: '同步完成：创建 {createdREDACTED，更新 {updatedREDACTED，跳过 {skippedREDACTED',
+      syncCompletedWithErrors: '同步完成但有错误：失败 {failedREDACTED（创建 {createdREDACTED，更新 {updatedREDACTED，跳过 {skippedREDACTED）',
       syncFailed: '同步失败',
+      crsPreview: '预览',
+      crsPreviewing: '预览中...',
+      crsPreviewFailed: '预览失败',
+      crsExistingAccounts: '将自动更新的已有账号',
+      crsNewAccounts: '新账号（可选择）',
+      crsSelectAll: '全选',
+      crsSelectNone: '全不选',
+      crsNoNewAccounts: '所有 CRS 账号均已同步。',
+      crsWillUpdate: '将更新 {countREDACTED 个已有账号。',
+      crsSelectedCount: '已选择 {countREDACTED 个新账号',
+      crsUpdateBehaviorNote:
+        '已有账号仅同步 CRS 返回的字段，缺失字段保持原值；凭据按键合并，不会清空未下发的键；未勾选"同步代理"时保留原有代理。',
+      crsBack: '返回',
       editAccount: '编辑账号',
       deleteAccount: '删除账号',
       deleteConfirmMessage: "确定要删除账号 '{nameREDACTED' 吗？",
@@ -1502,7 +1519,6 @@ export default {
         overloaded: '过载中',
         tempUnschedulable: '临时不可调度',
         rateLimitedUntil: '限流中，重置时间：{timeREDACTED',
-        scopeRateLimitedUntil: '{scopeREDACTED 限流中，重置时间：{timeREDACTED',
         modelRateLimitedUntil: '{modelREDACTED 限流至 {timeREDACTED',
         overloadedUntil: '负载过重，重置时间：{timeREDACTED',
         viewTempUnschedDetails: '查看临时不可调度详情'
@@ -1821,6 +1837,9 @@ export default {
         cookieAuthFailed: 'Cookie 授权失败',
         keyAuthFailed: '密钥 {indexREDACTED: {errorREDACTED',
         successCreated: '成功创建 {countREDACTED 个账号',
+        batchSuccess: '成功创建 {countREDACTED 个账号',
+        batchPartialSuccess: '部分成功：{successREDACTED 个成功，{failedREDACTED 个失败',
+        batchFailed: '批量创建失败',
         // OpenAI specific
         openai: {
           title: 'OpenAI 账户授权',
@@ -1837,7 +1856,14 @@ export default {
           authCode: '授权链接或 Code',
           authCodePlaceholder:
             '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
-          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别'
+          authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+          // Refresh Token auth
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
+          refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token'
         REDACTED,
         // Gemini specific
         gemini: {
@@ -3239,7 +3265,6 @@ export default {
         empty: '暂无数据',
         queued: '队列 {countREDACTED',
         rateLimited: '限流 {countREDACTED',
-        scopeRateLimitedTooltip: '{scopeREDACTED 限流中 ({countREDACTED 个账号)',
         errorAccounts: '异常 {countREDACTED',
         loadFailed: '加载并发数据失败'
       REDACTED,

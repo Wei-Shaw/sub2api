@@ -58,6 +58,7 @@ const icons = {
   arrowLeft: 'M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18',
   arrowUp: 'M5 10l7-7m0 0l7 7m-7-7v18',
   arrowDown: 'M19 14l-7 7m0 0l-7-7m7 7V3',
+  arrowsUpDown: 'M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5',
   chevronUp: 'M5 15l7-7 7 7',
   externalLink: 'M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14',
 

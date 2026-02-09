@@ -139,6 +139,11 @@ func (Group) Fields() []ent.Field {
 			Default([]string{"claude", "gemini_text", "gemini_image"REDACTED).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"REDACTED).
 			Comment("支持的模型系列：claude, gemini_text, gemini_image"),
+
+		// 分组排序 (added by migration 052)
+		field.Int("sort_order").
+			Default(0).
+			Comment("分组显示排序，数值越小越靠前"),
 REDACTED
 REDACTED
 
@@ -167,5 +172,6 @@ func (Group) Indexes() []ent.Index {
 		index.Fields("subscription_type"),
 		index.Fields("is_exclusive"),
 		index.Fields("deleted_at"),
+		index.Fields("sort_order"),
 REDACTED
 REDACTED

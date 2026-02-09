@@ -65,12 +65,6 @@ func (s *stubAntigravityUpstream) DoWithTLS(req *http.Request, proxyURL string, 
 	return s.Do(req, proxyURL, accountID, accountConcurrency)
 REDACTED
 
-type scopeLimitCall struct {
-	accountID int64
-	scope     AntigravityQuotaScope
-	resetAt   time.Time
-REDACTED
-
 type rateLimitCall struct {
 	accountID int64
 	resetAt   time.Time
@@ -84,14 +78,8 @@ REDACTED
 
 type stubAntigravityAccountRepo struct {
 	AccountRepository
-	scopeCalls          []scopeLimitCall
 	rateCalls           []rateLimitCall
 	modelRateLimitCalls []modelRateLimitCall
-REDACTED
-
-func (s *stubAntigravityAccountRepo) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error {
-	s.scopeCalls = append(s.scopeCalls, scopeLimitCall{accountID: id, scope: scope, resetAt: resetAtREDACTED)
-	return nil
 REDACTED
 
 func (s *stubAntigravityAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
@@ -137,10 +125,9 @@ REDACTED
 		accessToken:    "token",
 		action:         "generateContent",
 		body:           []byte(`{"input":"test"REDACTED`),
-		quotaScope:     AntigravityQuotaScopeClaude,
 		httpUpstream:   upstream,
 		requestedModel: "claude-sonnet-4-5",
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			handleErrorCalled = true
 			return nil
 	REDACTED,
@@ -161,23 +148,6 @@ REDACTED
 	require.Equal(t, base2, available[0])
 REDACTED
 
-func TestAntigravityHandleUpstreamError_UsesScopeLimit(t *testing.T) {
-	// 分区限流始终开启，不再支持通过环境变量关闭
-	repo := &stubAntigravityAccountRepo{REDACTED
-	svc := &AntigravityGatewayService{accountRepo: repoREDACTED
-	account := &Account{ID: 9, Name: "acc-9", Platform: PlatformAntigravityREDACTED
-
-	body := buildGeminiRateLimitBody("3s")
-	svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{REDACTED, body, AntigravityQuotaScopeClaude, 0, "", false)
-
-	require.Len(t, repo.scopeCalls, 1)
-	require.Empty(t, repo.rateCalls)
-	call := repo.scopeCalls[0]
-	require.Equal(t, account.ID, call.accountID)
-	require.Equal(t, AntigravityQuotaScopeClaude, call.scope)
-	require.WithinDuration(t, time.Now().Add(3*time.Second), call.resetAt, 2*time.Second)
-REDACTED
-
 // TestHandleUpstreamError_429_ModelRateLimit 测试 429 模型限流场景
 func TestHandleUpstreamError_429_ModelRateLimit(t *testing.T) {
 	repo := &stubAntigravityAccountRepo{REDACTED
@@ -195,7 +165,7 @@ func TestHandleUpstreamError_429_ModelRateLimit(t *testing.T) {
 	REDACTED
 REDACTED`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{REDACTED, body, AntigravityQuotaScopeClaude, 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{REDACTED, body, "claude-sonnet-4-5", 0, "", false)
 
 	// 应该触发模型限流
 	require.NotNil(t, result)
@@ -206,22 +176,22 @@ REDACTED`)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 REDACTED
 
-// TestHandleUpstreamError_429_NonModelRateLimit 测试 429 非模型限流场景（走 scope 限流）
+// TestHandleUpstreamError_429_NonModelRateLimit 测试 429 非模型限流场景（走模型级限流兜底）
 func TestHandleUpstreamError_429_NonModelRateLimit(t *testing.T) {
 	repo := &stubAntigravityAccountRepo{REDACTED
 	svc := &AntigravityGatewayService{accountRepo: repoREDACTED
 	account := &Account{ID: 2, Name: "acc-2", Platform: PlatformAntigravityREDACTED
 
-	// 429 + 普通限流响应（无 RATE_LIMIT_EXCEEDED reason）→ scope 限流
+	// 429 + 普通限流响应（无 RATE_LIMIT_EXCEEDED reason）→ 走模型级限流兜底
 	body := buildGeminiRateLimitBody("5s")
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{REDACTED, body, AntigravityQuotaScopeClaude, 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{REDACTED, body, "claude-sonnet-4-5", 0, "", false)
 
-	// 不应该触发模型限流，应该走 scope 限流
+	// handleModelRateLimit 不会处理（因为没有 RATE_LIMIT_EXCEEDED），
+	// 但 429 兜底逻辑会使用 requestedModel 设置模型级限流
 	require.Nil(t, result)
-	require.Empty(t, repo.modelRateLimitCalls)
-	require.Len(t, repo.scopeCalls, 1)
-	require.Equal(t, AntigravityQuotaScopeClaude, repo.scopeCalls[0].scope)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 REDACTED
 
 // TestHandleUpstreamError_503_ModelRateLimit 测试 503 模型限流场景
@@ -241,7 +211,7 @@ func TestHandleUpstreamError_503_ModelRateLimit(t *testing.T) {
 	REDACTED
 REDACTED`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{REDACTED, body, AntigravityQuotaScopeGeminiText, 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{REDACTED, body, "gemini-3-pro-high", 0, "", false)
 
 	// 应该触发模型限流
 	require.NotNil(t, result)
@@ -269,12 +239,11 @@ func TestHandleUpstreamError_503_NonModelRateLimit(t *testing.T) {
 	REDACTED
 REDACTED`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{REDACTED, body, AntigravityQuotaScopeGeminiText, 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{REDACTED, body, "gemini-3-pro-high", 0, "", false)
 
 	// 503 非模型限流不应该做任何处理
 	require.Nil(t, result)
 	require.Empty(t, repo.modelRateLimitCalls, "503 non-model rate limit should not trigger model rate limit")
-	require.Empty(t, repo.scopeCalls, "503 non-model rate limit should not trigger scope rate limit")
 	require.Empty(t, repo.rateCalls, "503 non-model rate limit should not trigger account rate limit")
 REDACTED
 
@@ -287,12 +256,11 @@ func TestHandleUpstreamError_503_EmptyBody(t *testing.T) {
 	// 503 + 空响应体 → 不做任何处理
 	body := []byte(`{REDACTED`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{REDACTED, body, AntigravityQuotaScopeGeminiText, 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{REDACTED, body, "gemini-3-pro-high", 0, "", false)
 
 	// 503 空响应不应该做任何处理
 	require.Nil(t, result)
 	require.Empty(t, repo.modelRateLimitCalls)
-	require.Empty(t, repo.scopeCalls)
 	require.Empty(t, repo.rateCalls)
 REDACTED
 
@@ -313,15 +281,7 @@ REDACTED
 	require.False(t, account.IsSchedulableForModel("gemini-3-flash"))
 
 	account.RateLimitResetAt = nil
-	account.Extra = map[string]any{
-		antigravityQuotaScopesKey: map[string]any{
-			"claude": map[string]any{
-				"rate_limit_reset_at": future.Format(time.RFC3339),
-		REDACTED,
-	REDACTED,
-REDACTED
-
-	require.False(t, account.IsSchedulableForModel("claude-sonnet-4-5"))
+	require.True(t, account.IsSchedulableForModel("claude-sonnet-4-5"))
 	require.True(t, account.IsSchedulableForModel("gemini-3-flash"))
 REDACTED
 
@@ -641,6 +601,7 @@ REDACTED{
 		REDACTED`,
 			expectedShouldRetry:     false,
 			expectedShouldRateLimit: true,
+			minWait:                 7 * time.Second,
 			modelName:               "gemini-pro",
 	REDACTED,
 		{
@@ -658,6 +619,7 @@ REDACTED{
 		REDACTED`,
 			expectedShouldRetry:     false,
 			expectedShouldRateLimit: true,
+			minWait:                 39 * time.Second,
 			modelName:               "gemini-3-pro-high",
 	REDACTED,
 		{
@@ -675,6 +637,7 @@ REDACTED{
 		REDACTED`,
 			expectedShouldRetry:     false,
 			expectedShouldRateLimit: true,
+			minWait:                 30 * time.Second,
 			modelName:               "gemini-2.5-flash",
 	REDACTED,
 		{
@@ -692,6 +655,7 @@ REDACTED{
 		REDACTED`,
 			expectedShouldRetry:     false,
 			expectedShouldRateLimit: true,
+			minWait:                 30 * time.Second,
 			modelName:               "claude-sonnet-4-5",
 	REDACTED,
 REDACTED
@@ -708,6 +672,11 @@ REDACTED
 			if shouldRetry {
 				if wait < tt.minWait {
 					t.Errorf("wait = %v, want >= %v", wait, tt.minWait)
+			REDACTED
+		REDACTED
+			if shouldRateLimit && tt.minWait > 0 {
+				if wait < tt.minWait {
+					t.Errorf("rate limit wait = %v, want >= %v", wait, tt.minWait)
 			REDACTED
 		REDACTED
 			if (shouldRetry || shouldRateLimit) && model != tt.modelName {
@@ -809,7 +778,7 @@ func TestSetModelRateLimitByModelName_NotConvertToScope(t *testing.T) {
 	require.NotEqual(t, "claude_sonnet", call.modelKey, "should NOT be scope")
 REDACTED
 
-func TestAntigravityRetryLoop_PreCheck_WaitsWhenRemainingBelowThreshold(t *testing.T) {
+func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 	upstream := &recordingOKUpstream{REDACTED
 	account := &Account{
 		ID:          1,
@@ -821,19 +790,15 @@ func TestAntigravityRetryLoop_PreCheck_WaitsWhenRemainingBelowThreshold(t *testi
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
 				"claude-sonnet-4-5": map[string]any{
-					// RFC3339 here is second-precision; keep it safely in the future.
 					"rate_limit_reset_at": time.Now().Add(2 * time.Second).Format(time.RFC3339),
 			REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-
 	svc := &AntigravityGatewayService{REDACTED
 	result, err := svc.antigravityRetryLoop(antigravityRetryLoopParams{
-		ctx:             ctx,
+		ctx:             context.Background(),
 		prefix:          "[test]",
 		account:         account,
 		accessToken:     "token",
@@ -842,17 +807,21 @@ REDACTED
 		requestedModel:  "claude-sonnet-4-5",
 		httpUpstream:    upstream,
 		isStickySession: true,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED)
 
-	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, result)
-	require.Equal(t, 0, upstream.calls, "should not call upstream while waiting on pre-check")
+	var switchErr *AntigravityAccountSwitchError
+	require.ErrorAs(t, err, &switchErr)
+	require.Equal(t, account.ID, switchErr.OriginalAccountID)
+	require.Equal(t, "claude-sonnet-4-5", switchErr.RateLimitedModel)
+	require.True(t, switchErr.IsStickySession)
+	require.Equal(t, 0, upstream.calls, "should not call upstream when switching on pre-check")
 REDACTED
 
-func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingAtOrAboveThreshold(t *testing.T) {
+func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingLong(t *testing.T) {
 	upstream := &recordingOKUpstream{REDACTED
 	account := &Account{
 		ID:          2,
@@ -881,7 +850,7 @@ REDACTED
 		requestedModel:  "claude-sonnet-4-5",
 		httpUpstream:    upstream,
 		isStickySession: true,
-		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, quotaScope AntigravityQuotaScope, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
+		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 	REDACTED,
 REDACTED)

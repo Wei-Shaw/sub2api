@@ -583,6 +583,27 @@ func (_u *GroupUpdate) AppendSupportedModelScopes(v []string) *GroupUpdate {
 	return _u
 REDACTED
 
+// SetSortOrder sets the "sort_order" field.
+func (_u *GroupUpdate) SetSortOrder(v int) *GroupUpdate {
+	_u.mutation.ResetSortOrder()
+	_u.mutation.SetSortOrder(v)
+	return _u
+REDACTED
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSortOrder(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetSortOrder(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSortOrder adds value to the "sort_order" field.
+func (_u *GroupUpdate) AddSortOrder(v int) *GroupUpdate {
+	_u.mutation.AddSortOrder(v)
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1055,6 +1076,12 @@ REDACTED
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldSupportedModelScopes, value)
 	REDACTED)
+REDACTED
+	if value, ok := _u.mutation.SortOrder(); ok {
+		_spec.SetField(group.FieldSortOrder, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSortOrder(); ok {
+		_spec.AddField(group.FieldSortOrder, field.TypeInt, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1918,6 +1945,27 @@ func (_u *GroupUpdateOne) AppendSupportedModelScopes(v []string) *GroupUpdateOne
 	return _u
 REDACTED
 
+// SetSortOrder sets the "sort_order" field.
+func (_u *GroupUpdateOne) SetSortOrder(v int) *GroupUpdateOne {
+	_u.mutation.ResetSortOrder()
+	_u.mutation.SetSortOrder(v)
+	return _u
+REDACTED
+
+// SetNillableSortOrder sets the "sort_order" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSortOrder(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSortOrder(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSortOrder adds value to the "sort_order" field.
+func (_u *GroupUpdateOne) AddSortOrder(v int) *GroupUpdateOne {
+	_u.mutation.AddSortOrder(v)
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2420,6 +2468,12 @@ REDACTED
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldSupportedModelScopes, value)
 	REDACTED)
+REDACTED
+	if value, ok := _u.mutation.SortOrder(); ok {
+		_spec.SetField(group.FieldSortOrder, field.TypeInt, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSortOrder(); ok {
+		_spec.AddField(group.FieldSortOrder, field.TypeInt, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -76,26 +76,6 @@
       </div>
     </div>
 
-    <!-- Scope Rate Limit Indicators (Antigravity) -->
-    <template v-if="activeScopeRateLimits.length > 0">
-      <div v-for="item in activeScopeRateLimits" :key="item.scope" class="group relative">
-        <span
-          class="inline-flex items-center gap-1 rounded bg-orange-100 px-1.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
-        >
-          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
-          {{ formatScopeName(item.scope) REDACTEDREDACTED
-        </span>
-        <!-- Tooltip -->
-        <div
-          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
-        >
-          {{ t('admin.accounts.status.scopeRateLimitedUntil', { scope: formatScopeName(item.scope), time: formatTime(item.reset_at) REDACTED) REDACTEDREDACTED
-          <div
-            class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"          ></div>
-        </div>
-      </div>
-    </template>
-
     <!-- Model Rate Limit Indicators (Antigravity OAuth Smart Retry) -->
     <template v-if="activeModelRateLimits.length > 0">
       <div v-for="item in activeModelRateLimits" :key="item.model" class="group relative">
@@ -160,15 +140,6 @@ const isRateLimited = computed(() => {
   return new Date(props.account.rate_limit_reset_at) > new Date()
 REDACTED)
 
-// Computed: active scope rate limits (Antigravity)
-const activeScopeRateLimits = computed(() => {
-  const scopeLimits = props.account.scope_rate_limits
-  if (!scopeLimits) return []
-  const now = new Date()
-  return Object.entries(scopeLimits)
-    .filter(([, info]) => new Date(info.reset_at) > now)
-    .map(([scope, info]) => ({ scope, reset_at: info.reset_at REDACTED))
-REDACTED)
 
 // Computed: active model rate limits (Antigravity OAuth Smart Retry)
 const activeModelRateLimits = computed(() => {

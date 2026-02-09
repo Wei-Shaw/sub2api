@@ -1,34 +1,18 @@
 <template>
   <AppLayout>
     <TablePageLayout>
-      <template #actions>
-        <div class="flex justify-end gap-3">
-          <button
-          @click="loadCodes"
-          :disabled="loading"
-          class="btn btn-secondary"
-          :title="t('common.refresh')"
-        >
-          <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-        </button>
-        <button @click="showGenerateDialog = true" class="btn btn-primary">
-          {{ t('admin.redeem.generateCodes') REDACTEDREDACTED
-        </button>
-        </div>
-      </template>
-
       <template #filters>
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div class="max-w-md flex-1">
-          <input
-            v-model="searchQuery"
-            type="text"
-            :placeholder="t('admin.redeem.searchCodes')"
-            class="input"
-            @input="handleSearch"
-          />
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- Left: Search + Filters -->
+          <div class="flex-1 sm:max-w-64">
+            <input
+              v-model="searchQuery"
+              type="text"
+              :placeholder="t('admin.redeem.searchCodes')"
+              class="input"
+              @input="handleSearch"
+            />
           </div>
-          <div class="flex gap-2">
           <Select
             v-model="filters.type"
             :options="filterTypeOptions"
@@ -41,9 +25,23 @@
             class="w-36"
             @change="loadCodes"
           />
-          <button @click="handleExportCodes" class="btn btn-secondary">
-            {{ t('admin.redeem.exportCsv') REDACTEDREDACTED
-          </button>
+
+          <!-- Right: Action buttons -->
+          <div class="flex flex-1 flex-wrap items-center justify-end gap-2">
+            <button
+              @click="loadCodes"
+              :disabled="loading"
+              class="btn btn-secondary"
+              :title="t('common.refresh')"
+            >
+              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+            </button>
+            <button @click="handleExportCodes" class="btn btn-secondary">
+              {{ t('admin.redeem.exportCsv') REDACTEDREDACTED
+            </button>
+            <button @click="showGenerateDialog = true" class="btn btn-primary">
+              {{ t('admin.redeem.generateCodes') REDACTEDREDACTED
+            </button>
           </div>
         </div>
       </template>

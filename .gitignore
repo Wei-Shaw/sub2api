@@ -130,5 +130,4 @@ deploy/docker-compose.override.yml
 vite.config.js
 docs/*
 .serena/
-
-frontend/coverage
+frontend/coverage/

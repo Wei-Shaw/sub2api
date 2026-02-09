@@ -28,6 +28,9 @@ type AccountRepository interface {
 	// FindByExtraField 根据 extra 字段中的键值对查找账号（限定 platform='sora'）
 	// 用于查找通过 linked_openai_account_id 关联的 Sora 账号
 	FindByExtraField(ctx context.Context, key string, value any) ([]Account, error)
+	// ListCRSAccountIDs returns a map of crs_account_id -> local account ID
+	// for all accounts that have been synced from CRS.
+	ListCRSAccountIDs(ctx context.Context) (map[string]int64, error)
 	Update(ctx context.Context, account *Account) error
 	Delete(ctx context.Context, id int64) error
 
@@ -53,7 +56,6 @@ type AccountRepository interface {
 	ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
-	SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error
 	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error
 	SetOverloaded(ctx context.Context, id int64, until time.Time) error
 	SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error

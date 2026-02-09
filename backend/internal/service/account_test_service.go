@@ -250,7 +250,6 @@ REDACTED
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("anthropic-beta", claude.DefaultBetaHeader)
 
 	// Apply Claude Code client headers
 	for key, value := range claude.DefaultHeaders {
@@ -259,8 +258,10 @@ REDACTED
 
 	// Set authentication header
 	if useBearer {
+		req.Header.Set("anthropic-beta", claude.DefaultBetaHeader)
 		req.Header.Set("Authorization", "Bearer "+authToken)
 REDACTED else {
+		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 		req.Header.Set("x-api-key", authToken)
 REDACTED
 

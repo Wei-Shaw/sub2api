@@ -425,6 +425,22 @@ REDACTED
 	if baseURL == "" {
 		return "https://api.anthropic.com"
 REDACTED
+	if a.Platform == PlatformAntigravity {
+		return strings.TrimRight(baseURL, "/") + "/antigravity"
+REDACTED
+	return baseURL
+REDACTED
+
+// GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。
+// Antigravity 平台的 APIKey 账号自动拼接 /antigravity。
+func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return defaultBaseURL
+REDACTED
+	if a.Platform == PlatformAntigravity && a.Type == AccountTypeAPIKey {
+		return strings.TrimRight(baseURL, "/") + "/antigravity"
+REDACTED
 	return baseURL
 REDACTED
 

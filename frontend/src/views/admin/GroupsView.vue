@@ -53,6 +53,14 @@
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
             <button
+              @click="openSortModal"
+              class="btn btn-secondary"
+              :title="t('admin.groups.sortOrder')"
+            >
+              <Icon name="arrowsUpDown" size="md" class="mr-2" />
+              {{ t('admin.groups.sortOrder') REDACTEDREDACTED
+            </button>
+            <button
               @click="showCreateModal = true"
               class="btn btn-primary"
               data-tour="groups-create-btn"
@@ -1571,6 +1579,92 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
+
+    <!-- Sort Order Modal -->
+    <BaseDialog
+      :show="showSortModal"
+      :title="t('admin.groups.sortOrder')"
+      width="normal"
+      @close="closeSortModal"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('admin.groups.sortOrderHint') REDACTEDREDACTED
+        </p>
+        <VueDraggable
+          v-model="sortableGroups"
+          :animation="200"
+          class="space-y-2"
+        >
+          <div
+            v-for="group in sortableGroups"
+            :key="group.id"
+            class="flex cursor-grab items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-md active:cursor-grabbing dark:border-dark-600 dark:bg-dark-700"
+          >
+            <div class="text-gray-400">
+              <Icon name="menu" size="md" />
+            </div>
+            <div class="flex-1">
+              <div class="font-medium text-gray-900 dark:text-white">{{ group.name REDACTEDREDACTED</div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                <span
+                  :class="[
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                    group.platform === 'anthropic'
+                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                      : group.platform === 'openai'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                        : group.platform === 'antigravity'
+                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                  ]"
+                >
+                  {{ t('admin.groups.platforms.' + group.platform) REDACTEDREDACTED
+                </span>
+              </div>
+            </div>
+            <div class="text-sm text-gray-400">
+              #{{ group.id REDACTEDREDACTED
+            </div>
+          </div>
+        </VueDraggable>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3 pt-4">
+          <button @click="closeSortModal" type="button" class="btn btn-secondary">
+            {{ t('common.cancel') REDACTEDREDACTED
+          </button>
+          <button
+            @click="saveSortOrder"
+            :disabled="sortSubmitting"
+            class="btn btn-primary"
+          >
+            <svg
+              v-if="sortSubmitting"
+              class="-ml-1 mr-2 h-4 w-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            {{ sortSubmitting ? t('common.saving') : t('common.save') REDACTEDREDACTED
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -1592,6 +1686,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { VueDraggable REDACTED from 'vue-draggable-plus'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -1758,9 +1853,12 @@ let abortController: AbortController | null = null
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
+const showSortModal = ref(false)
 const submitting = ref(false)
+const sortSubmitting = ref(false)
 const editingGroup = ref<AdminGroup | null>(null)
 const deletingGroup = ref<AdminGroup | null>(null)
+const sortableGroups = ref<AdminGroup[]>([])
 
 const createForm = reactive({
   name: '',
@@ -2234,6 +2332,46 @@ const handleClickOutside = (event: MouseEvent) => {
     Object.keys(showAccountDropdown.value).forEach(key => {
       showAccountDropdown.value[key] = false
     REDACTED)
+  REDACTED
+REDACTED
+
+// 打开排序弹窗
+const openSortModal = async () => {
+  try {
+    // 获取所有分组（不分页）
+    const allGroups = await adminAPI.groups.getAll()
+    // 按 sort_order 排序
+    sortableGroups.value = [...allGroups].sort((a, b) => a.sort_order - b.sort_order)
+    showSortModal.value = true
+  REDACTED catch (error) {
+    appStore.showError(t('admin.groups.failedToLoad'))
+    console.error('Error loading groups for sorting:', error)
+  REDACTED
+REDACTED
+
+// 关闭排序弹窗
+const closeSortModal = () => {
+  showSortModal.value = false
+  sortableGroups.value = []
+REDACTED
+
+// 保存排序
+const saveSortOrder = async () => {
+  sortSubmitting.value = true
+  try {
+    const updates = sortableGroups.value.map((g, index) => ({
+      id: g.id,
+      sort_order: index * 10
+    REDACTED))
+    await adminAPI.groups.updateSortOrder(updates)
+    appStore.showSuccess(t('admin.groups.sortOrderUpdated'))
+    closeSortModal()
+    loadGroups()
+  REDACTED catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.groups.failedToUpdateSortOrder'))
+    console.error('Error updating sort order:', error)
+  REDACTED finally {
+    sortSubmitting.value = false
   REDACTED
 REDACTED
 

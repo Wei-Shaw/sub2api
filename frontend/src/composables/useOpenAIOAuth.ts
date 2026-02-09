@@ -105,6 +105,32 @@ export function useOpenAIOAuth() {
     REDACTED
   REDACTED
 
+  // Validate refresh token and get full token info
+  const validateRefreshToken = async (
+    refreshToken: string,
+    proxyId?: number | null
+  ): Promise<OpenAITokenInfo | null> => {
+    if (!refreshToken.trim()) {
+      error.value = 'Missing refresh token'
+      return null
+    REDACTED
+
+    loading.value = true
+    error.value = ''
+
+    try {
+      // Use dedicated refresh-token endpoint
+      const tokenInfo = await adminAPI.accounts.refreshOpenAIToken(refreshToken.trim(), proxyId)
+      return tokenInfo as OpenAITokenInfo
+    REDACTED catch (err: any) {
+      error.value = err.response?.data?.detail || 'Failed to validate refresh token'
+      appStore.showError(error.value)
+      return null
+    REDACTED finally {
+      loading.value = false
+    REDACTED
+  REDACTED
+
   // Build credentials for OpenAI OAuth account
   const buildCredentials = (tokenInfo: OpenAITokenInfo): Record<string, unknown> => {
     const creds: Record<string, unknown> = {
@@ -152,6 +178,7 @@ export function useOpenAIOAuth() {
     resetState,
     generateAuthUrl,
     exchangeAuthCode,
+    validateRefreshToken,
     buildCredentials,
     buildExtraInfo
   REDACTED

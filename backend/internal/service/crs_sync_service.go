@@ -45,10 +45,11 @@ REDACTED
 REDACTED
 
 type SyncFromCRSInput struct {
-	BaseURL     string
-	Username    string
-	Password    string
-	SyncProxies bool
+	BaseURL            string
+	Username           string
+	Password           string
+	SyncProxies        bool
+	SelectedAccountIDs []string // if non-empty, only create new accounts with these CRS IDs
 REDACTED
 
 type SyncFromCRSItemResult struct {
@@ -190,25 +191,27 @@ type crsGeminiAPIKeyAccount struct {
 	Extra       map[string]any `json:"extra"`
 REDACTED
 
-func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput) (*SyncFromCRSResult, error) {
+// fetchCRSExport validates the connection parameters, authenticates with CRS,
+// and returns the exported accounts. Shared by SyncFromCRS and PreviewFromCRS.
+func (s *CRSSyncService) fetchCRSExport(ctx context.Context, baseURL, username, password string) (*crsExportResponse, error) {
 	if s.cfg == nil {
 		return nil, errors.New("config is not available")
 REDACTED
-	baseURL := strings.TrimSpace(input.BaseURL)
+	normalizedURL := strings.TrimSpace(baseURL)
 	if s.cfg.Security.URLAllowlist.Enabled {
-		normalized, err := normalizeBaseURL(baseURL, s.cfg.Security.URLAllowlist.CRSHosts, s.cfg.Security.URLAllowlist.AllowPrivateHosts)
+		normalized, err := normalizeBaseURL(normalizedURL, s.cfg.Security.URLAllowlist.CRSHosts, s.cfg.Security.URLAllowlist.AllowPrivateHosts)
 		if err != nil {
 			return nil, err
 	REDACTED
-		baseURL = normalized
+		normalizedURL = normalized
 REDACTED else {
-		normalized, err := urlvalidator.ValidateURLFormat(baseURL, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
+		normalized, err := urlvalidator.ValidateURLFormat(normalizedURL, s.cfg.Security.URLAllowlist.AllowInsecureHTTP)
 		if err != nil {
 			return nil, fmt.Errorf("invalid base_url: %w", err)
 	REDACTED
-		baseURL = normalized
+		normalizedURL = normalized
 REDACTED
-	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" {
+	if strings.TrimSpace(username) == "" || strings.TrimSpace(password) == "" {
 		return nil, errors.New("username and password are required")
 REDACTED
 
@@ -221,12 +224,16 @@ REDACTED)
 		client = &http.Client{Timeout: 20 * time.SecondREDACTED
 REDACTED
 
-	adminToken, err := crsLogin(ctx, client, baseURL, input.Username, input.Password)
+	adminToken, err := crsLogin(ctx, client, normalizedURL, username, password)
 	if err != nil {
 		return nil, err
 REDACTED
 
-	exported, err := crsExportAccounts(ctx, client, baseURL, adminToken)
+	return crsExportAccounts(ctx, client, normalizedURL, adminToken)
+REDACTED
+
+func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput) (*SyncFromCRSResult, error) {
+	exported, err := s.fetchCRSExport(ctx, input.BaseURL, input.Username, input.Password)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -240,6 +247,8 @@ REDACTED
 			len(exported.Data.ClaudeAccounts)+len(exported.Data.ClaudeConsoleAccounts)+len(exported.Data.OpenAIOAuthAccounts)+len(exported.Data.OpenAIResponsesAccounts)+len(exported.Data.GeminiOAuthAccounts)+len(exported.Data.GeminiAPIKeyAccounts),
 		),
 REDACTED
+
+	selectedSet := buildSelectedSet(input.SelectedAccountIDs)
 
 	var proxies []Proxy
 	if input.SyncProxies {
@@ -329,6 +338,13 @@ REDACTED
 	REDACTED
 
 		if existing == nil {
+			if !shouldCreateAccount(src.ID, selectedSet) {
+				item.Action = "skipped"
+				item.Error = "not selected"
+				result.Skipped++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformAnthropic,
@@ -446,6 +462,13 @@ REDACTED
 	REDACTED
 
 		if existing == nil {
+			if !shouldCreateAccount(src.ID, selectedSet) {
+				item.Action = "skipped"
+				item.Error = "not selected"
+				result.Skipped++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformAnthropic,
@@ -569,6 +592,13 @@ REDACTED
 	REDACTED
 
 		if existing == nil {
+			if !shouldCreateAccount(src.ID, selectedSet) {
+				item.Action = "skipped"
+				item.Error = "not selected"
+				result.Skipped++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformOpenAI,
@@ -690,6 +720,13 @@ REDACTED
 	REDACTED
 
 		if existing == nil {
+			if !shouldCreateAccount(src.ID, selectedSet) {
+				item.Action = "skipped"
+				item.Error = "not selected"
+				result.Skipped++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformOpenAI,
@@ -798,6 +835,13 @@ REDACTED
 	REDACTED
 
 		if existing == nil {
+			if !shouldCreateAccount(src.ID, selectedSet) {
+				item.Action = "skipped"
+				item.Error = "not selected"
+				result.Skipped++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformGemini,
@@ -909,6 +953,13 @@ REDACTED
 	REDACTED
 
 		if existing == nil {
+			if !shouldCreateAccount(src.ID, selectedSet) {
+				item.Action = "skipped"
+				item.Error = "not selected"
+				result.Skipped++
+				result.Items = append(result.Items, item)
+				continue
+		REDACTED
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformGemini,
@@ -1252,4 +1303,103 @@ REDACTED
 REDACTED
 
 	return newCredentials
+REDACTED
+
+// buildSelectedSet converts a slice of selected CRS account IDs to a set for O(1) lookup.
+// Returns nil if ids is nil (field not sent → backward compatible: create all).
+// Returns an empty map if ids is non-nil but empty (user selected none → create none).
+func buildSelectedSet(ids []string) map[string]struct{REDACTED {
+	if ids == nil {
+		return nil
+REDACTED
+	set := make(map[string]struct{REDACTED, len(ids))
+	for _, id := range ids {
+		set[id] = struct{REDACTED{REDACTED
+REDACTED
+	return set
+REDACTED
+
+// shouldCreateAccount checks if a new CRS account should be created based on user selection.
+// Returns true if selectedSet is nil (backward compatible: create all) or if crsID is in the set.
+func shouldCreateAccount(crsID string, selectedSet map[string]struct{REDACTED) bool {
+	if selectedSet == nil {
+		return true
+REDACTED
+	_, ok := selectedSet[crsID]
+	return ok
+REDACTED
+
+// PreviewFromCRSResult contains the preview of accounts from CRS before sync.
+type PreviewFromCRSResult struct {
+	NewAccounts      []CRSPreviewAccount `json:"new_accounts"`
+	ExistingAccounts []CRSPreviewAccount `json:"existing_accounts"`
+REDACTED
+
+// CRSPreviewAccount represents a single account in the preview result.
+type CRSPreviewAccount struct {
+	CRSAccountID string `json:"crs_account_id"`
+	Kind         string `json:"kind"`
+	Name         string `json:"name"`
+	Platform     string `json:"platform"`
+	Type         string `json:"type"`
+REDACTED
+
+// PreviewFromCRS connects to CRS, fetches all accounts, and classifies them
+// as new or existing by batch-querying local crs_account_id mappings.
+func (s *CRSSyncService) PreviewFromCRS(ctx context.Context, input SyncFromCRSInput) (*PreviewFromCRSResult, error) {
+	exported, err := s.fetchCRSExport(ctx, input.BaseURL, input.Username, input.Password)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	// Batch query all existing CRS account IDs
+	existingCRSIDs, err := s.accountRepo.ListCRSAccountIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list existing CRS accounts: %w", err)
+REDACTED
+
+	result := &PreviewFromCRSResult{
+		NewAccounts:      make([]CRSPreviewAccount, 0),
+		ExistingAccounts: make([]CRSPreviewAccount, 0),
+REDACTED
+
+	classify := func(crsID, kind, name, platform, accountType string) {
+		preview := CRSPreviewAccount{
+			CRSAccountID: crsID,
+			Kind:         kind,
+			Name:         defaultName(name, crsID),
+			Platform:     platform,
+			Type:         accountType,
+	REDACTED
+		if _, exists := existingCRSIDs[crsID]; exists {
+			result.ExistingAccounts = append(result.ExistingAccounts, preview)
+	REDACTED else {
+			result.NewAccounts = append(result.NewAccounts, preview)
+	REDACTED
+REDACTED
+
+	for _, src := range exported.Data.ClaudeAccounts {
+		authType := strings.TrimSpace(src.AuthType)
+		if authType == "" {
+			authType = AccountTypeOAuth
+	REDACTED
+		classify(src.ID, src.Kind, src.Name, PlatformAnthropic, authType)
+REDACTED
+	for _, src := range exported.Data.ClaudeConsoleAccounts {
+		classify(src.ID, src.Kind, src.Name, PlatformAnthropic, AccountTypeAPIKey)
+REDACTED
+	for _, src := range exported.Data.OpenAIOAuthAccounts {
+		classify(src.ID, src.Kind, src.Name, PlatformOpenAI, AccountTypeOAuth)
+REDACTED
+	for _, src := range exported.Data.OpenAIResponsesAccounts {
+		classify(src.ID, src.Kind, src.Name, PlatformOpenAI, AccountTypeAPIKey)
+REDACTED
+	for _, src := range exported.Data.GeminiOAuthAccounts {
+		classify(src.ID, src.Kind, src.Name, PlatformGemini, AccountTypeOAuth)
+REDACTED
+	for _, src := range exported.Data.GeminiAPIKeyAccounts {
+		classify(src.ID, src.Kind, src.Name, PlatformGemini, AccountTypeAPIKey)
+REDACTED
+
+	return result, nil
 REDACTED

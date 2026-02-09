@@ -66,7 +66,12 @@ func (m *mockAccountRepoForGemini) Create(ctx context.Context, account *Account)
 func (m *mockAccountRepoForGemini) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error) {
 	return nil, nil
 REDACTED
-func (m *mockAccountRepoForGemini) FindByExtraField(ctx context.Context, key string, value interface{REDACTED) ([]Account, error) {
+
+func (m *mockAccountRepoForGemini) FindByExtraField(ctx context.Context, key string, value any) ([]Account, error) {
+	return nil, nil
+REDACTED
+
+func (m *mockAccountRepoForGemini) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	return nil, nil
 REDACTED
 func (m *mockAccountRepoForGemini) Update(ctx context.Context, account *Account) error { return nil REDACTED
@@ -134,9 +139,6 @@ REDACTED
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 REDACTED
 func (m *mockAccountRepoForGemini) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
-	return nil
-REDACTED
-func (m *mockAccountRepoForGemini) SetAntigravityQuotaScopeLimit(ctx context.Context, id int64, scope AntigravityQuotaScope, resetAt time.Time) error {
 	return nil
 REDACTED
 func (m *mockAccountRepoForGemini) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
@@ -229,6 +231,10 @@ func (m *mockGroupRepoForGemini) GetAccountIDsByGroupIDs(ctx context.Context, gr
 	return nil, nil
 REDACTED
 
+func (m *mockGroupRepoForGemini) UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
+	return nil
+REDACTED
+
 var _ GroupRepository = (*mockGroupRepoForGemini)(nil)
 
 // mockGatewayCacheForGemini Gemini 测试用的 cache mock
@@ -265,22 +271,6 @@ REDACTED
 REDACTED
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
-	return nil
-REDACTED
-
-func (m *mockGatewayCacheForGemini) IncrModelCallCount(ctx context.Context, accountID int64, model string) (int64, error) {
-	return 0, nil
-REDACTED
-
-func (m *mockGatewayCacheForGemini) GetModelLoadBatch(ctx context.Context, accountIDs []int64, model string) (map[int64]*ModelLoadInfo, error) {
-	return nil, nil
-REDACTED
-
-func (m *mockGatewayCacheForGemini) FindGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, found bool) {
-	return "", 0, false
-REDACTED
-
-func (m *mockGatewayCacheForGemini) SaveGeminiSession(ctx context.Context, groupID int64, prefixHash, digestChain, uuid string, accountID int64) error {
 	return nil
 REDACTED
 

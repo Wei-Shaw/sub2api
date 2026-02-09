@@ -318,110 +318,6 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestGetQuotaScopeRateLimitRemainingTime(t *testing.T) {
-	now := time.Now()
-	future10m := now.Add(10 * time.Minute).Format(time.RFC3339)
-	past := now.Add(-10 * time.Minute).Format(time.RFC3339)
-
-	tests := []struct {
-		name           string
-		account        *Account
-		requestedModel string
-		minExpected    time.Duration
-		maxExpected    time.Duration
-REDACTED{
-		{
-			name:           "nil account",
-			account:        nil,
-			requestedModel: "claude-sonnet-4-5",
-			minExpected:    0,
-			maxExpected:    0,
-	REDACTED,
-		{
-			name: "non-antigravity platform",
-			account: &Account{
-				Platform: PlatformAnthropic,
-				Extra: map[string]any{
-					antigravityQuotaScopesKey: map[string]any{
-						"claude": map[string]any{
-							"rate_limit_reset_at": future10m,
-					REDACTED,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-			requestedModel: "claude-sonnet-4-5",
-			minExpected:    0,
-			maxExpected:    0,
-	REDACTED,
-		{
-			name: "claude scope rate limited",
-			account: &Account{
-				Platform: PlatformAntigravity,
-				Extra: map[string]any{
-					antigravityQuotaScopesKey: map[string]any{
-						"claude": map[string]any{
-							"rate_limit_reset_at": future10m,
-					REDACTED,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-			requestedModel: "claude-sonnet-4-5",
-			minExpected:    9 * time.Minute,
-			maxExpected:    11 * time.Minute,
-	REDACTED,
-		{
-			name: "gemini_text scope rate limited",
-			account: &Account{
-				Platform: PlatformAntigravity,
-				Extra: map[string]any{
-					antigravityQuotaScopesKey: map[string]any{
-						"gemini_text": map[string]any{
-							"rate_limit_reset_at": future10m,
-					REDACTED,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-			requestedModel: "gemini-3-flash",
-			minExpected:    9 * time.Minute,
-			maxExpected:    11 * time.Minute,
-	REDACTED,
-		{
-			name: "expired scope rate limit",
-			account: &Account{
-				Platform: PlatformAntigravity,
-				Extra: map[string]any{
-					antigravityQuotaScopesKey: map[string]any{
-						"claude": map[string]any{
-							"rate_limit_reset_at": past,
-					REDACTED,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-			requestedModel: "claude-sonnet-4-5",
-			minExpected:    0,
-			maxExpected:    0,
-	REDACTED,
-		{
-			name: "unsupported model",
-			account: &Account{
-				Platform: PlatformAntigravity,
-		REDACTED,
-			requestedModel: "gpt-4",
-			minExpected:    0,
-			maxExpected:    0,
-	REDACTED,
-REDACTED
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.account.GetQuotaScopeRateLimitRemainingTime(tt.requestedModel)
-			if result < tt.minExpected || result > tt.maxExpected {
-				t.Errorf("GetQuotaScopeRateLimitRemainingTime() = %v, want between %v and %v", result, tt.minExpected, tt.maxExpected)
-		REDACTED
-	REDACTED)
-REDACTED
-REDACTED
-
 func TestGetRateLimitRemainingTime(t *testing.T) {
 	now := time.Now()
 	future15m := now.Add(15 * time.Minute).Format(time.RFC3339)
@@ -442,45 +338,19 @@ REDACTED{
 			maxExpected:    0,
 	REDACTED,
 		{
-			name: "model remaining > scope remaining - returns model",
+			name: "model rate limited - 15 minutes",
 			account: &Account{
 				Platform: PlatformAntigravity,
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
 						"claude-sonnet-4-5": map[string]any{
-							"rate_limit_reset_at": future15m, // 15 分钟
-					REDACTED,
-				REDACTED,
-					antigravityQuotaScopesKey: map[string]any{
-						"claude": map[string]any{
-							"rate_limit_reset_at": future5m, // 5 分钟
+							"rate_limit_reset_at": future15m,
 					REDACTED,
 				REDACTED,
 			REDACTED,
 		REDACTED,
 			requestedModel: "claude-sonnet-4-5",
-			minExpected:    14 * time.Minute, // 应返回较大的 15 分钟
-			maxExpected:    16 * time.Minute,
-	REDACTED,
-		{
-			name: "scope remaining > model remaining - returns scope",
-			account: &Account{
-				Platform: PlatformAntigravity,
-				Extra: map[string]any{
-					modelRateLimitsKey: map[string]any{
-						"claude-sonnet-4-5": map[string]any{
-							"rate_limit_reset_at": future5m, // 5 分钟
-					REDACTED,
-				REDACTED,
-					antigravityQuotaScopesKey: map[string]any{
-						"claude": map[string]any{
-							"rate_limit_reset_at": future15m, // 15 分钟
-					REDACTED,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-			requestedModel: "claude-sonnet-4-5",
-			minExpected:    14 * time.Minute, // 应返回较大的 15 分钟
+			minExpected:    14 * time.Minute,
 			maxExpected:    16 * time.Minute,
 	REDACTED,
 		{
@@ -490,22 +360,6 @@ REDACTED{
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
 						"claude-sonnet-4-5": map[string]any{
-							"rate_limit_reset_at": future5m,
-					REDACTED,
-				REDACTED,
-			REDACTED,
-		REDACTED,
-			requestedModel: "claude-sonnet-4-5",
-			minExpected:    4 * time.Minute,
-			maxExpected:    6 * time.Minute,
-	REDACTED,
-		{
-			name: "only scope rate limited",
-			account: &Account{
-				Platform: PlatformAntigravity,
-				Extra: map[string]any{
-					antigravityQuotaScopesKey: map[string]any{
-						"claude": map[string]any{
 							"rate_limit_reset_at": future5m,
 					REDACTED,
 				REDACTED,
