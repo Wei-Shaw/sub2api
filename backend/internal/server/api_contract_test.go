@@ -1049,6 +1049,10 @@ func (s *stubAccountRepo) BulkUpdate(ctx context.Context, ids []int64, updates s
 	return int64(len(ids)), nil
 REDACTED
 
+func (s *stubAccountRepo) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
 type stubProxyRepo struct{REDACTED
 
 func (stubProxyRepo) Create(ctx context.Context, proxy *service.Proxy) error {
