@@ -57,6 +57,57 @@ REDACTED
 	REDACTED,
 REDACTED
 
+	t.Run("standard_mode_needs_maintenance_does_not_block_request", func(t *testing.T) {
+		cfg := &config.Config{RunMode: config.RunModeStandardREDACTED
+		cfg.SubscriptionMaintenance.WorkerCount = 1
+		cfg.SubscriptionMaintenance.QueueSize = 1
+
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+		past := time.Now().Add(-48 * time.Hour)
+		sub := &service.UserSubscription{
+			ID:               55,
+			UserID:           user.ID,
+			GroupID:          group.ID,
+			Status:           service.SubscriptionStatusActive,
+			ExpiresAt:        time.Now().Add(24 * time.Hour),
+			DailyWindowStart: &past,
+			DailyUsageUSD:    0,
+	REDACTED
+		maintenanceCalled := make(chan struct{REDACTED, 1)
+		subscriptionRepo := &stubUserSubscriptionRepo{
+			getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+				clone := *sub
+				return &clone, nil
+		REDACTED,
+			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil REDACTED,
+			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
+			resetDaily: func(ctx context.Context, id int64, start time.Time) error {
+				maintenanceCalled <- struct{REDACTED{REDACTED
+				return nil
+		REDACTED,
+			resetWeekly:  func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
+			resetMonthly: func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
+	REDACTED
+		subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+		t.Cleanup(subscriptionService.Stop)
+
+		router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		select {
+		case <-maintenanceCalled:
+			// ok
+		case <-time.After(time.Second):
+			t.Fatalf("expected maintenance to be scheduled")
+	REDACTED
+REDACTED)
+
 	t.Run("simple_mode_bypasses_quota_check", func(t *testing.T) {
 		cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
 		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
@@ -66,6 +117,20 @@ REDACTED
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/t", nil)
 		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+REDACTED)
+
+	t.Run("simple_mode_accepts_lowercase_bearer", func(t *testing.T) {
+		cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+		subscriptionService := service.NewSubscriptionService(nil, &stubUserSubscriptionRepo{REDACTED, nil, nil, cfg)
+		router := newAuthTestRouter(apiKeyService, subscriptionService, cfg)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("Authorization", "bearer "+apiKey.Key)
 		router.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Code)

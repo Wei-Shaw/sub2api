@@ -35,8 +35,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if authHeader != "" {
 			// 验证Bearer scheme
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && parts[0] == "Bearer" {
-				apiKeyString = parts[1]
+			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+				apiKeyString = strings.TrimSpace(parts[1])
 		REDACTED
 	REDACTED
 
@@ -166,7 +166,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// 传递独立拷贝，避免与 handler 读取 context 中的 subscription 产生 data race
 			if needsMaintenance {
 				maintenanceCopy := *subscription
-				go subscriptionService.DoWindowMaintenance(&maintenanceCopy)
+				subscriptionService.DoWindowMaintenance(&maintenanceCopy)
 		REDACTED
 	REDACTED else {
 			// 余额模式：检查用户余额

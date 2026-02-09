@@ -38,33 +38,34 @@ const (
 )
 
 type Config struct {
-	Server            ServerConfig               `mapstructure:"server"`
-	CORS              CORSConfig                 `mapstructure:"cors"`
-	Security          SecurityConfig             `mapstructure:"security"`
-	Billing           BillingConfig              `mapstructure:"billing"`
-	Turnstile         TurnstileConfig            `mapstructure:"turnstile"`
-	Database          DatabaseConfig             `mapstructure:"database"`
-	Redis             RedisConfig                `mapstructure:"redis"`
-	Ops               OpsConfig                  `mapstructure:"ops"`
-	JWT               JWTConfig                  `mapstructure:"jwt"`
-	Totp              TotpConfig                 `mapstructure:"totp"`
-	LinuxDo           LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
-	Default           DefaultConfig              `mapstructure:"default"`
-	RateLimit         RateLimitConfig            `mapstructure:"rate_limit"`
-	Pricing           PricingConfig              `mapstructure:"pricing"`
-	Gateway           GatewayConfig              `mapstructure:"gateway"`
-	APIKeyAuth        APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
-	SubscriptionCache SubscriptionCacheConfig    `mapstructure:"subscription_cache"`
-	Dashboard         DashboardCacheConfig       `mapstructure:"dashboard_cache"`
-	DashboardAgg      DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
-	UsageCleanup      UsageCleanupConfig         `mapstructure:"usage_cleanup"`
-	Concurrency       ConcurrencyConfig          `mapstructure:"concurrency"`
-	TokenRefresh      TokenRefreshConfig         `mapstructure:"token_refresh"`
-	Sora              SoraConfig                 `mapstructure:"sora"`
-	RunMode           string                     `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone          string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini            GeminiConfig               `mapstructure:"gemini"`
-	Update            UpdateConfig               `mapstructure:"update"`
+	Server                  ServerConfig                  `mapstructure:"server"`
+	CORS                    CORSConfig                    `mapstructure:"cors"`
+	Security                SecurityConfig                `mapstructure:"security"`
+	Billing                 BillingConfig                 `mapstructure:"billing"`
+	Turnstile               TurnstileConfig               `mapstructure:"turnstile"`
+	Database                DatabaseConfig                `mapstructure:"database"`
+	Redis                   RedisConfig                   `mapstructure:"redis"`
+	Ops                     OpsConfig                     `mapstructure:"ops"`
+	JWT                     JWTConfig                     `mapstructure:"jwt"`
+	Totp                    TotpConfig                    `mapstructure:"totp"`
+	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
+	Default                 DefaultConfig                 `mapstructure:"default"`
+	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
+	Pricing                 PricingConfig                 `mapstructure:"pricing"`
+	Gateway                 GatewayConfig                 `mapstructure:"gateway"`
+	APIKeyAuth              APIKeyAuthCacheConfig         `mapstructure:"api_key_auth_cache"`
+	SubscriptionCache       SubscriptionCacheConfig       `mapstructure:"subscription_cache"`
+	SubscriptionMaintenance SubscriptionMaintenanceConfig `mapstructure:"subscription_maintenance"`
+	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
+	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
+	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
+	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
+	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
+	Sora                    SoraConfig                    `mapstructure:"sora"`
+	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
+	Update                  UpdateConfig                  `mapstructure:"update"`
 REDACTED
 
 type GeminiConfig struct {
@@ -609,6 +610,13 @@ type SubscriptionCacheConfig struct {
 	JitterPercent int `mapstructure:"jitter_percent"`
 REDACTED
 
+// SubscriptionMaintenanceConfig 订阅窗口维护后台任务配置。
+// 用于将“请求路径触发的维护动作”有界化，避免高并发下 goroutine 膨胀。
+type SubscriptionMaintenanceConfig struct {
+	WorkerCount int `mapstructure:"worker_count"`
+	QueueSize   int `mapstructure:"queue_size"`
+REDACTED
+
 // DashboardCacheConfig 仪表盘统计缓存配置
 type DashboardCacheConfig struct {
 	// Enabled: 是否启用仪表盘缓存
@@ -733,15 +741,6 @@ REDACTED
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
-
-	if cfg.JWT.Secret == "" {
-		secret, err := generateJWTSecret(64)
-		if err != nil {
-			return nil, fmt.Errorf("generate jwt secret error: %w", err)
-	REDACTED
-		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
-REDACTED
 
 	// Auto-generate TOTP encryption key if not set (32 bytes = 64 hex chars for AES-256)
 	cfg.Totp.EncryptionKey = strings.TrimSpace(cfg.Totp.EncryptionKey)
@@ -1057,9 +1056,30 @@ REDACTED)
 	// Security - proxy fallback
 	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
 
+	// Subscription Maintenance (bounded queue + worker pool)
+	viper.SetDefault("subscription_maintenance.worker_count", 2)
+	viper.SetDefault("subscription_maintenance.queue_size", 1024)
+
 REDACTED
 
 func (c *Config) Validate() error {
+	jwtSecret := strings.TrimSpace(c.JWT.Secret)
+	if jwtSecret == "" {
+		return fmt.Errorf("jwt.secret is required")
+REDACTED
+	// NOTE: 按 UTF-8 编码后的字节长度计算。
+	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
+	if len([]byte(jwtSecret)) < 32 {
+		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+REDACTED
+
+	if c.SubscriptionMaintenance.WorkerCount < 0 {
+		return fmt.Errorf("subscription_maintenance.worker_count must be non-negative")
+REDACTED
+	if c.SubscriptionMaintenance.QueueSize < 0 {
+		return fmt.Errorf("subscription_maintenance.queue_size must be non-negative")
+REDACTED
+
 	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。
 	// 留空时表示使用内置的 Gemini CLI OAuth 客户端（其 client_secret 通过环境变量注入）。
 	geminiClientID := strings.TrimSpace(c.Gemini.OAuth.ClientID)

@@ -58,8 +58,13 @@ func adminAuth(
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && parts[0] == "Bearer" {
-				if !validateJWTForAdmin(c, parts[1], authService, userService) {
+			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+				token := strings.TrimSpace(parts[1])
+				if token == "" {
+					AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
+					return
+			REDACTED
+				if !validateJWTForAdmin(c, token, authService, userService) {
 					return
 			REDACTED
 				c.Next()
