@@ -25,6 +25,9 @@ type AccountRepository interface {
 	// GetByCRSAccountID finds an account previously synced from CRS.
 	// Returns (nil, nil) if not found.
 	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
+	// ListCRSAccountIDs returns a map of crs_account_id -> local account ID
+	// for all accounts that have been synced from CRS.
+	ListCRSAccountIDs(ctx context.Context) (map[string]int64, error)
 	Update(ctx context.Context, account *Account) error
 	Delete(ctx context.Context, id int64) error
 
