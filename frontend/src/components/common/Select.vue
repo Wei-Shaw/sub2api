@@ -434,7 +434,7 @@ REDACTED
 
 <style>
 .select-dropdown-portal {
-  @apply w-max min-w-[160px] max-w-[320px];
+  @apply w-max min-w-[200px] max-w-[480px];
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;

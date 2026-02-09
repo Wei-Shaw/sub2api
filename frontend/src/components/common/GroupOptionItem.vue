@@ -13,7 +13,7 @@
       />
       <span
         v-if="description"
-        class="w-full truncate text-left text-xs text-gray-500 dark:text-gray-400"
+        class="w-full text-left text-xs text-gray-500 dark:text-gray-400 line-clamp-2"
       >
         {{ description REDACTEDREDACTED
       </span>

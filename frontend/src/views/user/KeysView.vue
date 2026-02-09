@@ -102,7 +102,7 @@
                   t('keys.noGroup')
                 REDACTEDREDACTED</span>
                 <svg
-                  class="h-3.5 w-3.5 text-gray-400 opacity-0 transition-opacity group-hover/dropdown:opacity-100"
+                  class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -955,7 +955,7 @@
       <div
         v-if="groupSelectorKeyId !== null && dropdownPosition"
         ref="dropdownRef"
-        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-64 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-auto min-w-[280px] max-w-[480px] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
         style="pointer-events: auto !important;"
         :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' REDACTED"
       >
