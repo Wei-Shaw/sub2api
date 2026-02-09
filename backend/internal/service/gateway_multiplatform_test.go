@@ -77,6 +77,9 @@ REDACTED
 func (m *mockAccountRepoForPlatform) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error) {
 	return nil, nil
 REDACTED
+func (m *mockAccountRepoForPlatform) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
+	return nil, nil
+REDACTED
 func (m *mockAccountRepoForPlatform) Update(ctx context.Context, account *Account) error {
 	return nil
 REDACTED
