@@ -1937,7 +1937,7 @@ func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 			return a.LastUsedAt.Before(*b.LastUsedAt)
 	REDACTED
 REDACTED)
-	shuffleWithinPriorityAndLastUsed(accounts)
+	shuffleWithinPriorityAndLastUsed(accounts, preferOAuth)
 REDACTED
 
 // shuffleWithinSortGroups 对排序后的 accountWithLoad 切片，按 (Priority, LoadRate, LastUsedAt) 分组后组内随机打乱。
@@ -1973,7 +1973,12 @@ REDACTED
 REDACTED
 
 // shuffleWithinPriorityAndLastUsed 对排序后的 []*Account 切片，按 (Priority, LastUsedAt) 分组后组内随机打乱。
-func shuffleWithinPriorityAndLastUsed(accounts []*Account) {
+//
+// 注意：当 preferOAuth=true 时，需要保证 OAuth 账号在同组内仍然优先，否则会把排序时的偏好打散掉。
+// 因此这里采用“组内分区 + 分区内 shuffle”的方式：
+// - 先把同组账号按 (OAuth / 非 OAuth) 拆成两段，保持 OAuth 段在前；
+// - 再分别在各段内随机打散，避免热点。
+func shuffleWithinPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 	if len(accounts) <= 1 {
 		return
 REDACTED
@@ -1984,9 +1989,29 @@ REDACTED
 			j++
 	REDACTED
 		if j-i > 1 {
-			mathrand.Shuffle(j-i, func(a, b int) {
-				accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
-		REDACTED)
+			if preferOAuth {
+				oauth := make([]*Account, 0, j-i)
+				others := make([]*Account, 0, j-i)
+				for _, acc := range accounts[i:j] {
+					if acc.Type == AccountTypeOAuth {
+						oauth = append(oauth, acc)
+				REDACTED else {
+						others = append(others, acc)
+				REDACTED
+			REDACTED
+				if len(oauth) > 1 {
+					mathrand.Shuffle(len(oauth), func(a, b int) { oauth[a], oauth[b] = oauth[b], oauth[a] REDACTED)
+			REDACTED
+				if len(others) > 1 {
+					mathrand.Shuffle(len(others), func(a, b int) { others[a], others[b] = others[b], others[a] REDACTED)
+			REDACTED
+				copy(accounts[i:], oauth)
+				copy(accounts[i+len(oauth):], others)
+		REDACTED else {
+				mathrand.Shuffle(j-i, func(a, b int) {
+					accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
+			REDACTED)
+		REDACTED
 	REDACTED
 		i = j
 REDACTED

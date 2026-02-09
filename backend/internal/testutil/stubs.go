@@ -90,18 +90,6 @@ REDACTED
 func (c StubGatewayCache) DeleteSessionAccountID(_ context.Context, _ int64, _ string) error {
 	return nil
 REDACTED
-func (c StubGatewayCache) IncrModelCallCount(_ context.Context, _ int64, _ string) (int64, error) {
-	return 0, nil
-REDACTED
-func (c StubGatewayCache) GetModelLoadBatch(_ context.Context, _ []int64, _ string) (map[int64]*service.ModelLoadInfo, error) {
-	return nil, nil
-REDACTED
-func (c StubGatewayCache) FindGeminiSession(_ context.Context, _ int64, _, _ string) (string, int64, bool) {
-	return "", 0, false
-REDACTED
-func (c StubGatewayCache) SaveGeminiSession(_ context.Context, _ int64, _, _, _ string, _ int64) error {
-	return nil
-REDACTED
 
 // ============================================================
 // StubSessionLimitCache — service.SessionLimitCache 的空实现
