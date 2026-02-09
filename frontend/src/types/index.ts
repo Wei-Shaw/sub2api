@@ -594,9 +594,6 @@ export interface Account {
   temp_unschedulable_until: string | null
   temp_unschedulable_reason: string | null
 
-  // Antigravity scope 级限流状态
-  scope_rate_limits?: Record<string, { reset_at: string; remaining_sec: number REDACTED>
-
   // Session window fields (5-hour window)
   session_window_start: string | null
   session_window_end: string | null

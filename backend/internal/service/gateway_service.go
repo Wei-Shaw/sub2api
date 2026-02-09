@@ -246,9 +246,6 @@ REDACTED
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
-// ErrModelScopeNotSupported 表示请求的模型系列不在分组支持的范围内
-var ErrModelScopeNotSupported = errors.New("model scope not supported by this group")
-
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
 	"accept":                                    true,
@@ -274,13 +271,6 @@ REDACTED
 // GatewayCache 定义网关服务的缓存操作接口。
 // 提供粘性会话（Sticky Session）的存储、查询、刷新和删除功能。
 //
-// ModelLoadInfo 模型负载信息（用于 Antigravity 调度）
-// Model load info for Antigravity scheduling
-type ModelLoadInfo struct {
-	CallCount  int64     // 当前分钟调用次数 / Call count in current minute
-	LastUsedAt time.Time // 最后调度时间（零值表示未调度过）/ Last scheduling time (zero means never scheduled)
-REDACTED
-
 // GatewayCache defines cache operations for gateway service.
 // Provides sticky session storage, retrieval, refresh and deletion capabilities.
 type GatewayCache interface {
@@ -296,15 +286,6 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
-
-	// IncrModelCallCount 增加模型调用次数并更新最后调度时间（Antigravity 专用）
-	// Increment model call count and update last scheduling time (Antigravity only)
-	// 返回更新后的调用次数
-	IncrModelCallCount(ctx context.Context, accountID int64, model string) (int64, error)
-
-	// GetModelLoadBatch 批量获取账号的模型负载信息（Antigravity 专用）
-	// Batch get model load info for accounts (Antigravity only)
-	GetModelLoadBatch(ctx context.Context, accountIDs []int64, model string) (map[int64]*ModelLoadInfo, error)
 REDACTED
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -1018,13 +999,6 @@ REDACTED
 		log.Printf("[ModelRoutingDebug] load-aware enabled: group_id=%v model=%s session=%s platform=%s", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), platform)
 REDACTED
 
-	// Antigravity 模型系列检查（在账号选择前检查，确保所有代码路径都经过此检查）
-	if platform == PlatformAntigravity && groupID != nil && requestedModel != "" {
-		if err := s.checkAntigravityModelScope(ctx, *groupID, requestedModel); err != nil {
-			return nil, err
-	REDACTED
-REDACTED
-
 	accounts, useMixed, err := s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
 		return nil, err
@@ -1372,10 +1346,6 @@ REDACTED
 			return result, nil
 	REDACTED
 REDACTED else {
-		// Antigravity 平台：获取模型负载信息
-		var modelLoadMap map[int64]*ModelLoadInfo
-		isAntigravity := platform == PlatformAntigravity
-
 		var available []accountWithLoad
 		for _, acc := range candidates {
 			loadInfo := loadMap[acc.ID]
@@ -1390,109 +1360,44 @@ REDACTED else {
 		REDACTED
 	REDACTED
 
-		// Antigravity 平台：按账号实际映射后的模型名获取模型负载（与 Forward 的统计保持一致）
-		if isAntigravity && requestedModel != "" && s.cache != nil && len(available) > 0 {
-			modelLoadMap = make(map[int64]*ModelLoadInfo, len(available))
-			modelToAccountIDs := make(map[string][]int64)
-			for _, item := range available {
-				mappedModel := mapAntigravityModel(item.account, requestedModel)
-				if mappedModel == "" {
-					continue
-			REDACTED
-				modelToAccountIDs[mappedModel] = append(modelToAccountIDs[mappedModel], item.account.ID)
+		// 分层过滤选择：优先级 → 负载率 → LRU
+		for len(available) > 0 {
+			// 1. 取优先级最小的集合
+			candidates := filterByMinPriority(available)
+			// 2. 取负载率最低的集合
+			candidates = filterByMinLoadRate(candidates)
+			// 3. LRU 选择最久未用的账号
+			selected := selectByLRU(candidates, preferOAuth)
+			if selected == nil {
+				break
 		REDACTED
-			for model, ids := range modelToAccountIDs {
-				batch, err := s.cache.GetModelLoadBatch(ctx, ids, model)
-				if err != nil {
-					continue
-			REDACTED
-				for id, info := range batch {
-					modelLoadMap[id] = info
-			REDACTED
-		REDACTED
-			if len(modelLoadMap) == 0 {
-				modelLoadMap = nil
-		REDACTED
-	REDACTED
 
-		// Antigravity 平台：优先级硬过滤 →（同优先级内）按调用次数选择（最少优先，新账号用平均值）
-		// 其他平台：分层过滤选择：优先级 → 负载率 → LRU
-		if isAntigravity {
-			for len(available) > 0 {
-				// 1. 取优先级最小的集合（硬过滤）
-				candidates := filterByMinPriority(available)
-				// 2. 同优先级内按调用次数选择（调用次数最少优先，新账号使用平均值）
-				selected := selectByCallCount(candidates, modelLoadMap, preferOAuth)
-				if selected == nil {
-					break
-			REDACTED
-
-				result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
-				if err == nil && result.Acquired {
-					// 会话数量限制检查
-					if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
-						result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
-				REDACTED else {
-						if sessionHash != "" && s.cache != nil {
-							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
-					REDACTED
-						return &AccountSelectionResult{
-							Account:     selected.account,
-							Acquired:    true,
-							ReleaseFunc: result.ReleaseFunc,
-					REDACTED, nil
+			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
+			if err == nil && result.Acquired {
+				// 会话数量限制检查
+				if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
+					result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
+			REDACTED else {
+					if sessionHash != "" && s.cache != nil {
+						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 				REDACTED
+					return &AccountSelectionResult{
+						Account:     selected.account,
+						Acquired:    true,
+						ReleaseFunc: result.ReleaseFunc,
+				REDACTED, nil
 			REDACTED
-
-				// 移除已尝试的账号，重新选择
-				selectedID := selected.account.ID
-				newAvailable := make([]accountWithLoad, 0, len(available)-1)
-				for _, acc := range available {
-					if acc.account.ID != selectedID {
-						newAvailable = append(newAvailable, acc)
-				REDACTED
-			REDACTED
-				available = newAvailable
 		REDACTED
-	REDACTED else {
-			for len(available) > 0 {
-				// 1. 取优先级最小的集合
-				candidates := filterByMinPriority(available)
-				// 2. 取负载率最低的集合
-				candidates = filterByMinLoadRate(candidates)
-				// 3. LRU 选择最久未用的账号
-				selected := selectByLRU(candidates, preferOAuth)
-				if selected == nil {
-					break
-			REDACTED
 
-				result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
-				if err == nil && result.Acquired {
-					// 会话数量限制检查
-					if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
-						result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
-				REDACTED else {
-						if sessionHash != "" && s.cache != nil {
-							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
-					REDACTED
-						return &AccountSelectionResult{
-							Account:     selected.account,
-							Acquired:    true,
-							ReleaseFunc: result.ReleaseFunc,
-					REDACTED, nil
-				REDACTED
+			// 移除已尝试的账号，重新进行分层过滤
+			selectedID := selected.account.ID
+			newAvailable := make([]accountWithLoad, 0, len(available)-1)
+			for _, acc := range available {
+				if acc.account.ID != selectedID {
+					newAvailable = append(newAvailable, acc)
 			REDACTED
-
-				// 移除已尝试的账号，重新进行分层过滤
-				selectedID := selected.account.ID
-				newAvailable := make([]accountWithLoad, 0, len(available)-1)
-				for _, acc := range available {
-					if acc.account.ID != selectedID {
-						newAvailable = append(newAvailable, acc)
-				REDACTED
-			REDACTED
-				available = newAvailable
 		REDACTED
+			available = newAvailable
 	REDACTED
 REDACTED
 
@@ -2103,87 +2008,6 @@ func sameLastUsedAt(a, b *time.Time) bool {
 REDACTED
 REDACTED
 
-// selectByCallCount 从候选账号中选择调用次数最少的账号（Antigravity 专用）
-// 新账号（CallCount=0）使用平均调用次数作为虚拟值，避免冷启动被猛调
-// 如果有多个账号具有相同的最小调用次数，则随机选择一个
-func selectByCallCount(accounts []accountWithLoad, modelLoadMap map[int64]*ModelLoadInfo, preferOAuth bool) *accountWithLoad {
-	if len(accounts) == 0 {
-		return nil
-REDACTED
-	if len(accounts) == 1 {
-		return &accounts[0]
-REDACTED
-
-	// 如果没有负载信息，回退到 LRU
-	if modelLoadMap == nil {
-		return selectByLRU(accounts, preferOAuth)
-REDACTED
-
-	// 1. 计算平均调用次数（用于新账号冷启动）
-	var totalCallCount int64
-	var countWithCalls int
-	for _, acc := range accounts {
-		if info := modelLoadMap[acc.account.ID]; info != nil && info.CallCount > 0 {
-			totalCallCount += info.CallCount
-			countWithCalls++
-	REDACTED
-REDACTED
-
-	var avgCallCount int64
-	if countWithCalls > 0 {
-		avgCallCount = totalCallCount / int64(countWithCalls)
-REDACTED
-
-	// 2. 获取每个账号的有效调用次数
-	getEffectiveCallCount := func(acc accountWithLoad) int64 {
-		if acc.account == nil {
-			return 0
-	REDACTED
-		info := modelLoadMap[acc.account.ID]
-		if info == nil || info.CallCount == 0 {
-			return avgCallCount // 新账号使用平均值
-	REDACTED
-		return info.CallCount
-REDACTED
-
-	// 3. 找到最小调用次数
-	minCount := getEffectiveCallCount(accounts[0])
-	for _, acc := range accounts[1:] {
-		if c := getEffectiveCallCount(acc); c < minCount {
-			minCount = c
-	REDACTED
-REDACTED
-
-	// 4. 收集所有具有最小调用次数的账号
-	var candidateIdxs []int
-	for i, acc := range accounts {
-		if getEffectiveCallCount(acc) == minCount {
-			candidateIdxs = append(candidateIdxs, i)
-	REDACTED
-REDACTED
-
-	// 5. 如果只有一个候选，直接返回
-	if len(candidateIdxs) == 1 {
-		return &accounts[candidateIdxs[0]]
-REDACTED
-
-	// 6. preferOAuth 处理
-	if preferOAuth {
-		var oauthIdxs []int
-		for _, idx := range candidateIdxs {
-			if accounts[idx].account.Type == AccountTypeOAuth {
-				oauthIdxs = append(oauthIdxs, idx)
-		REDACTED
-	REDACTED
-		if len(oauthIdxs) > 0 {
-			candidateIdxs = oauthIdxs
-	REDACTED
-REDACTED
-
-	// 7. 随机选择
-	return &accounts[candidateIdxs[mathrand.Intn(len(candidateIdxs))]]
-REDACTED
-
 // sortCandidatesForFallback 根据配置选择排序策略
 // mode: "last_used"(按最后使用时间) 或 "random"(随机)
 func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOAuth bool, mode string) {
@@ -2236,13 +2060,6 @@ REDACTED
 
 // selectAccountForModelWithPlatform 选择单平台账户（完全隔离）
 func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, platform string) (*Account, error) {
-	// 对 Antigravity 平台，检查请求的模型系列是否在分组支持范围内
-	if platform == PlatformAntigravity && groupID != nil && requestedModel != "" {
-		if err := s.checkAntigravityModelScope(ctx, *groupID, requestedModel); err != nil {
-			return nil, err
-	REDACTED
-REDACTED
-
 	preferOAuth := platform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
 
@@ -5252,27 +5069,6 @@ REDACTED)
 		return "", fmt.Errorf("invalid base_url: %w", err)
 REDACTED
 	return normalized, nil
-REDACTED
-
-// checkAntigravityModelScope 检查 Antigravity 平台的模型系列是否在分组支持范围内
-func (s *GatewayService) checkAntigravityModelScope(ctx context.Context, groupID int64, requestedModel string) error {
-	scope, ok := ResolveAntigravityQuotaScope(requestedModel)
-	if !ok {
-		return nil // 无法解析 scope，跳过检查
-REDACTED
-
-	group, err := s.resolveGroupByID(ctx, groupID)
-	if err != nil {
-		return nil // 查询失败时放行
-REDACTED
-	if group == nil {
-		return nil // 分组不存在时放行
-REDACTED
-
-	if !IsScopeSupported(group.SupportedModelScopes, scope) {
-		return ErrModelScopeNotSupported
-REDACTED
-	return nil
 REDACTED
 
 // GetAvailableModels returns the list of models available for a group
