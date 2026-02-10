@@ -327,12 +327,32 @@ REDACTED
 	var lastFailoverErr *service.UpstreamFailoverError
 	var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
 
+	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
+	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
+	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+		c.Request = c.Request.WithContext(ctx)
+REDACTED
+
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, failedAccountIDs, "") // Gemini 不使用会话限制
 		if err != nil {
 			if len(failedAccountIDs) == 0 {
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 				return
+		REDACTED
+			// Antigravity 单账号退避重试：分组内没有其他可用账号时，
+			// 对 503 错误不直接返回，而是清除排除列表、等待退避后重试同一个账号。
+			// 谷歌上游 503 (MODEL_CAPACITY_EXHAUSTED) 通常是暂时性的，等几秒就能恢复。
+			if lastFailoverErr != nil && lastFailoverErr.StatusCode == http.StatusServiceUnavailable && switchCount <= maxAccountSwitches {
+				if sleepAntigravitySingleAccountBackoff(c.Request.Context(), switchCount) {
+					log.Printf("Antigravity single-account 503 retry: clearing failed accounts, retry %d/%d", switchCount, maxAccountSwitches)
+					failedAccountIDs = make(map[int64]struct{REDACTED)
+					// 设置 context 标记，让 Service 层预检查等待限流过期而非直接切换
+					ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+					c.Request = c.Request.WithContext(ctx)
+					continue
+			REDACTED
 		REDACTED
 			h.handleGeminiFailoverExhausted(c, lastFailoverErr)
 			return

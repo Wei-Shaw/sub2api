@@ -28,4 +28,8 @@ const (
 	// IsMaxTokensOneHaikuRequest 标识当前请求是否为 max_tokens=1 + haiku 模型的探测请求
 	// 用于 ClaudeCodeOnly 验证绕过（绕过 system prompt 检查，但仍需验证 User-Agent）
 	IsMaxTokensOneHaikuRequest Key = "ctx_is_max_tokens_one_haiku"
+
+	// SingleAccountRetry 标识当前请求处于单账号 503 退避重试模式。
+	// 在此模式下，Service 层的模型限流预检查将等待限流过期而非直接切换账号。
+	SingleAccountRetry Key = "ctx_single_account_retry"
 )

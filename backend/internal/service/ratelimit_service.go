@@ -623,6 +623,10 @@ REDACTED
 			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
 	REDACTED
 REDACTED
+	// 同时清除模型级别限流
+	if err := s.accountRepo.ClearModelRateLimits(ctx, accountID); err != nil {
+		slog.Warn("clear_model_rate_limits_on_temp_unsched_reset_failed", "account_id", accountID, "error", err)
+REDACTED
 	return nil
 REDACTED
 

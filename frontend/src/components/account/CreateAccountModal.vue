@@ -665,8 +665,8 @@
               <Icon name="cloud" size="sm" />
             </div>
             <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.types.upstream') REDACTEDREDACTED</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.upstreamDesc') REDACTEDREDACTED</span>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.antigravityApikey') REDACTEDREDACTED</span>
             </div>
           </button>
         </div>
@@ -681,7 +681,7 @@
             type="text"
             required
             class="input"
-            placeholder="https://s.konstants.xyz"
+            placeholder="https://cloudcode-pa.googleapis.com"
           />
           <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') REDACTEDREDACTED</p>
         </div>
@@ -816,8 +816,8 @@
         </div>
       </div>
 
-      <!-- API Key input (only for apikey type) -->
-      <div v-if="form.type === 'apikey'" class="space-y-4">
+      <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
+      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') REDACTEDREDACTED</label>
           <input
@@ -862,7 +862,7 @@
           <p class="input-hint">{{ t('admin.accounts.gemini.tier.aiStudioHint') REDACTEDREDACTED</p>
         </div>
 
-        <!-- Model Restriction Section (不适用于 Gemini) -->
+        <!-- Model Restriction Section (不适用于 Gemini，Antigravity 已在上层条件排除) -->
         <div v-if="form.platform !== 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
 
