@@ -440,18 +440,35 @@ REDACTED
 func TestSoraHandler_ValidationExtraction(t *testing.T) {
 	// model 缺失
 	body := []byte(`{"messages":[{"role":"user","content":"test"REDACTED]REDACTED`)
-	model := gjson.GetBytes(body, "model").String()
-	require.Empty(t, model)
+	modelResult := gjson.GetBytes(body, "model")
+	require.True(t, !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "")
+
+	// model 为数字 → 类型不是 gjson.String，应被拒绝
+	body1b := []byte(`{"model":123,"messages":[{"role":"user","content":"test"REDACTED]REDACTED`)
+	modelResult1b := gjson.GetBytes(body1b, "model")
+	require.True(t, modelResult1b.Exists())
+	require.NotEqual(t, gjson.String, modelResult1b.Type)
 
 	// messages 缺失
 	body2 := []byte(`{"model":"sora"REDACTED`)
-	require.False(t, gjson.GetBytes(body2, "messages").Exists())
+	require.False(t, gjson.GetBytes(body2, "messages").IsArray())
 
-	// messages 不是 JSON 数组
+	// messages 不是 JSON 数组（字符串）
 	body3 := []byte(`{"model":"sora","messages":"not array"REDACTED`)
-	msgResult := gjson.GetBytes(body3, "messages")
-	require.True(t, msgResult.Exists())
-	require.NotEqual(t, gjson.JSON, msgResult.Type) // string 类型，不是 JSON 数组
+	require.False(t, gjson.GetBytes(body3, "messages").IsArray())
+
+	// messages 是对象而非数组 → IsArray 返回 false
+	body4 := []byte(`{"model":"sora","messages":{REDACTEDREDACTED`)
+	require.False(t, gjson.GetBytes(body4, "messages").IsArray())
+
+	// messages 是空数组 → IsArray 为 true 但 len==0，应被拒绝
+	body5 := []byte(`{"model":"sora","messages":[]REDACTED`)
+	msgsResult := gjson.GetBytes(body5, "messages")
+	require.True(t, msgsResult.IsArray())
+	require.Equal(t, 0, len(msgsResult.Array()))
+
+	// 非法 JSON 被 gjson.ValidBytes 拦截
+	require.False(t, gjson.ValidBytes([]byte(`{invalid`)))
 REDACTED
 
 // TestGenerateOpenAISessionHash_WithBody 验证 generateOpenAISessionHash 的 body/header 解析逻辑

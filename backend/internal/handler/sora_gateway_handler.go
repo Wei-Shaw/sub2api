@@ -106,13 +106,22 @@ REDACTED
 
 	setOpsRequestContext(c, "", false, body)
 
+	// 校验请求体 JSON 合法性
+	if !gjson.ValidBytes(body) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+REDACTED
+
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
-	reqModel := gjson.GetBytes(body, "model").String()
-	if reqModel == "" {
+	modelResult := gjson.GetBytes(body, "model")
+	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 REDACTED
-	if !gjson.GetBytes(body, "messages").Exists() || gjson.GetBytes(body, "messages").Type != gjson.JSON {
+	reqModel := modelResult.String()
+
+	msgsResult := gjson.GetBytes(body, "messages")
+	if !msgsResult.IsArray() || len(msgsResult.Array()) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "messages is required")
 		return
 REDACTED
