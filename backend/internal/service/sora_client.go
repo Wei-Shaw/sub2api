@@ -24,6 +24,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -219,12 +220,8 @@ REDACTED
 	if err != nil {
 		return "", err
 REDACTED
-	var payload map[string]any
-	if err := json.Unmarshal(respBody, &payload); err != nil {
-		return "", fmt.Errorf("parse upload response: %w", err)
-REDACTED
-	id, _ := payload["id"].(string)
-	if strings.TrimSpace(id) == "" {
+	id := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
+	if id == "" {
 		return "", errors.New("upload response missing id")
 REDACTED
 	return id, nil
@@ -274,12 +271,8 @@ REDACTED
 	if err != nil {
 		return "", err
 REDACTED
-	var resp map[string]any
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return "", err
-REDACTED
-	taskID, _ := resp["id"].(string)
-	if strings.TrimSpace(taskID) == "" {
+	taskID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
+	if taskID == "" {
 		return "", errors.New("image task response missing id")
 REDACTED
 	return taskID, nil
@@ -347,12 +340,8 @@ REDACTED
 	if err != nil {
 		return "", err
 REDACTED
-	var resp map[string]any
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return "", err
-REDACTED
-	taskID, _ := resp["id"].(string)
-	if strings.TrimSpace(taskID) == "" {
+	taskID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
+	if taskID == "" {
 		return "", errors.New("video task response missing id")
 REDACTED
 	return taskID, nil
@@ -393,41 +382,30 @@ REDACTED
 	if err != nil {
 		return nil, false, err
 REDACTED
-	var resp map[string]any
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, false, err
-REDACTED
-	taskResponses, _ := resp["task_responses"].([]any)
-	for _, item := range taskResponses {
-		taskResp, ok := item.(map[string]any)
-		if !ok {
-			continue
+	var found *SoraImageTaskStatus
+	gjson.GetBytes(respBody, "task_responses").ForEach(func(_, item gjson.Result) bool {
+		if item.Get("id").String() != taskID {
+			return true // continue
 	REDACTED
-		if id, _ := taskResp["id"].(string); id == taskID {
-			status := strings.TrimSpace(fmt.Sprintf("%v", taskResp["status"]))
-			progress := 0.0
-			if v, ok := taskResp["progress_pct"].(float64); ok {
-				progress = v
+		status := strings.TrimSpace(item.Get("status").String())
+		progress := item.Get("progress_pct").Float()
+		var urls []string
+		item.Get("generations").ForEach(func(_, gen gjson.Result) bool {
+			if u := strings.TrimSpace(gen.Get("url").String()); u != "" {
+				urls = append(urls, u)
 		REDACTED
-			urls := []string{REDACTED
-			if generations, ok := taskResp["generations"].([]any); ok {
-				for _, genItem := range generations {
-					gen, ok := genItem.(map[string]any)
-					if !ok {
-						continue
-				REDACTED
-					if urlStr, ok := gen["url"].(string); ok && strings.TrimSpace(urlStr) != "" {
-						urls = append(urls, urlStr)
-				REDACTED
-			REDACTED
-		REDACTED
-			return &SoraImageTaskStatus{
-				ID:          taskID,
-				Status:      status,
-				ProgressPct: progress,
-				URLs:        urls,
-		REDACTED, true, nil
+			return true
+	REDACTED)
+		found = &SoraImageTaskStatus{
+			ID:          taskID,
+			Status:      status,
+			ProgressPct: progress,
+			URLs:        urls,
 	REDACTED
+		return false // break
+REDACTED)
+	if found != nil {
+		return found, true, nil
 REDACTED
 	return &SoraImageTaskStatus{ID: taskID, Status: "processing"REDACTED, false, nil
 REDACTED
@@ -463,27 +441,28 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	var pending any
-	if err := json.Unmarshal(respBody, &pending); err == nil {
-		if list, ok := pending.([]any); ok {
-			for _, item := range list {
-				task, ok := item.(map[string]any)
-				if !ok {
-					continue
-			REDACTED
-				if id, _ := task["id"].(string); id == taskID {
-					progress := 0
-					if v, ok := task["progress_pct"].(float64); ok {
-						progress = int(v * 100)
-				REDACTED
-					status := strings.TrimSpace(fmt.Sprintf("%v", task["status"]))
-					return &SoraVideoTaskStatus{
-						ID:          taskID,
-						Status:      status,
-						ProgressPct: progress,
-				REDACTED, nil
-			REDACTED
+	// 搜索 pending 列表（JSON 数组）
+	pendingResult := gjson.ParseBytes(respBody)
+	if pendingResult.IsArray() {
+		var pendingFound *SoraVideoTaskStatus
+		pendingResult.ForEach(func(_, task gjson.Result) bool {
+			if task.Get("id").String() != taskID {
+				return true
 		REDACTED
+			progress := 0
+			if v := task.Get("progress_pct"); v.Exists() {
+				progress = int(v.Float() * 100)
+		REDACTED
+			status := strings.TrimSpace(task.Get("status").String())
+			pendingFound = &SoraVideoTaskStatus{
+				ID:          taskID,
+				Status:      status,
+				ProgressPct: progress,
+		REDACTED
+			return false
+	REDACTED)
+		if pendingFound != nil {
+			return pendingFound, nil
 	REDACTED
 REDACTED
 
@@ -491,44 +470,42 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	var draftsResp map[string]any
-	if err := json.Unmarshal(respBody, &draftsResp); err != nil {
-		return nil, err
-REDACTED
-	items, _ := draftsResp["items"].([]any)
-	for _, item := range items {
-		draft, ok := item.(map[string]any)
-		if !ok {
-			continue
+	var draftFound *SoraVideoTaskStatus
+	gjson.GetBytes(respBody, "items").ForEach(func(_, draft gjson.Result) bool {
+		if draft.Get("task_id").String() != taskID {
+			return true
 	REDACTED
-		if id, _ := draft["task_id"].(string); id == taskID {
-			kind := strings.TrimSpace(fmt.Sprintf("%v", draft["kind"]))
-			reason := strings.TrimSpace(fmt.Sprintf("%v", draft["reason_str"]))
-			if reason == "" {
-				reason = strings.TrimSpace(fmt.Sprintf("%v", draft["markdown_reason_str"]))
-		REDACTED
-			urlStr := strings.TrimSpace(fmt.Sprintf("%v", draft["downloadable_url"]))
-			if urlStr == "" {
-				urlStr = strings.TrimSpace(fmt.Sprintf("%v", draft["url"]))
-		REDACTED
+		kind := strings.TrimSpace(draft.Get("kind").String())
+		reason := strings.TrimSpace(draft.Get("reason_str").String())
+		if reason == "" {
+			reason = strings.TrimSpace(draft.Get("markdown_reason_str").String())
+	REDACTED
+		urlStr := strings.TrimSpace(draft.Get("downloadable_url").String())
+		if urlStr == "" {
+			urlStr = strings.TrimSpace(draft.Get("url").String())
+	REDACTED
 
-			if kind == "sora_content_violation" || reason != "" || urlStr == "" {
-				msg := reason
-				if msg == "" {
-					msg = "Content violates guardrails"
-			REDACTED
-				return &SoraVideoTaskStatus{
-					ID:       taskID,
-					Status:   "failed",
-					ErrorMsg: msg,
-			REDACTED, nil
+		if kind == "sora_content_violation" || reason != "" || urlStr == "" {
+			msg := reason
+			if msg == "" {
+				msg = "Content violates guardrails"
 		REDACTED
-			return &SoraVideoTaskStatus{
+			draftFound = &SoraVideoTaskStatus{
+				ID:       taskID,
+				Status:   "failed",
+				ErrorMsg: msg,
+		REDACTED
+	REDACTED else {
+			draftFound = &SoraVideoTaskStatus{
 				ID:     taskID,
 				Status: "completed",
 				URLs:   []string{urlStrREDACTED,
-		REDACTED, nil
+		REDACTED
 	REDACTED
+		return false
+REDACTED)
+	if draftFound != nil {
+		return draftFound, nil
 REDACTED
 
 	return &SoraVideoTaskStatus{ID: taskID, Status: "processing"REDACTED, nil

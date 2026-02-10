@@ -230,7 +230,7 @@ REDACTED
 //  1. Header: session_id
 //  2. Header: conversation_id
 //  3. Body:   prompt_cache_key (opencode)
-func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, reqBody map[string]any) string {
+func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
 REDACTED
@@ -239,10 +239,8 @@ REDACTED
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
 REDACTED
-	if sessionID == "" && reqBody != nil {
-		if v, ok := reqBody["prompt_cache_key"].(string); ok {
-			sessionID = strings.TrimSpace(v)
-	REDACTED
+	if sessionID == "" && len(body) > 0 {
+		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 REDACTED
 	if sessionID == "" {
 		return ""

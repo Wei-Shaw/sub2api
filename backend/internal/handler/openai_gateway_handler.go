@@ -18,6 +18,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
@@ -93,16 +95,9 @@ REDACTED
 
 	setOpsRequestContext(c, "", false, body)
 
-	// Parse request body to map for potential modification
-	var reqBody map[string]any
-	if err := json.Unmarshal(body, &reqBody); err != nil {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-		return
-REDACTED
-
-	// Extract model and stream
-	reqModel, _ := reqBody["model"].(string)
-	reqStream, _ := reqBody["stream"].(bool)
+	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
+	reqModel := gjson.GetBytes(body, "model").String()
+	reqStream := gjson.GetBytes(body, "stream").Bool()
 
 	// 验证 model 必填
 	if reqModel == "" {
@@ -113,16 +108,10 @@ REDACTED
 	userAgent := c.GetHeader("User-Agent")
 	isCodexCLI := openai.IsCodexCLIRequest(userAgent) || (h.cfg != nil && h.cfg.Gateway.ForceCodexCLI)
 	if !isCodexCLI {
-		existingInstructions, _ := reqBody["instructions"].(string)
+		existingInstructions := gjson.GetBytes(body, "instructions").String()
 		if strings.TrimSpace(existingInstructions) == "" {
 			if instructions := strings.TrimSpace(service.GetOpenCodeInstructions()); instructions != "" {
-				reqBody["instructions"] = instructions
-				// Re-serialize body
-				body, err = json.Marshal(reqBody)
-				if err != nil {
-					h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to process request")
-					return
-			REDACTED
+				body, _ = sjson.SetBytes(body, "instructions", instructions)
 		REDACTED
 	REDACTED
 REDACTED
@@ -132,19 +121,25 @@ REDACTED
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	// 要求 previous_response_id，或 input 内存在带 call_id 的 tool_call/function_call，
 	// 或带 id 且与 call_id 匹配的 item_reference。
-	if service.HasFunctionCallOutput(reqBody) {
-		previousResponseID, _ := reqBody["previous_response_id"].(string)
-		if strings.TrimSpace(previousResponseID) == "" && !service.HasToolCallContext(reqBody) {
-			if service.HasFunctionCallOutputMissingCallID(reqBody) {
-				log.Printf("[OpenAI Handler] function_call_output 缺少 call_id: model=%s", reqModel)
-				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id or previous_response_id; if relying on history, ensure store=true and reuse previous_response_id")
-				return
-		REDACTED
-			callIDs := service.FunctionCallOutputCallIDs(reqBody)
-			if !service.HasItemReferenceForCallIDs(reqBody, callIDs) {
-				log.Printf("[OpenAI Handler] function_call_output 缺少匹配的 item_reference: model=%s", reqModel)
-				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id, or previous_response_id/tool_call context; if relying on history, ensure store=true and reuse previous_response_id")
-				return
+	// 此路径需要遍历 input 数组做 call_id 关联检查，保留 Unmarshal
+	if gjson.GetBytes(body, `input.#(type=="function_call_output")`).Exists() {
+		var reqBody map[string]any
+		if err := json.Unmarshal(body, &reqBody); err == nil {
+			if service.HasFunctionCallOutput(reqBody) {
+				previousResponseID, _ := reqBody["previous_response_id"].(string)
+				if strings.TrimSpace(previousResponseID) == "" && !service.HasToolCallContext(reqBody) {
+					if service.HasFunctionCallOutputMissingCallID(reqBody) {
+						log.Printf("[OpenAI Handler] function_call_output 缺少 call_id: model=%s", reqModel)
+						h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id or previous_response_id; if relying on history, ensure store=true and reuse previous_response_id")
+						return
+				REDACTED
+					callIDs := service.FunctionCallOutputCallIDs(reqBody)
+					if !service.HasItemReferenceForCallIDs(reqBody, callIDs) {
+						log.Printf("[OpenAI Handler] function_call_output 缺少匹配的 item_reference: model=%s", reqModel)
+						h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id, or previous_response_id/tool_call context; if relying on history, ensure store=true and reuse previous_response_id")
+						return
+				REDACTED
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
@@ -207,7 +202,7 @@ REDACTED
 REDACTED
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
-	sessionHash := h.gatewayService.GenerateSessionHash(c, reqBody)
+	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/tidwall/gjson"
 )
 
 // SessionContext 粘性会话上下文，用于区分不同来源的请求。
@@ -48,38 +49,58 @@ REDACTED
 // protocol 指定请求协议格式（domain.PlatformAnthropic / domain.PlatformGemini），
 // 不同协议使用不同的 system/messages 字段名。
 func ParseGatewayRequest(body []byte, protocol string) (*ParsedRequest, error) {
-	var req map[string]any
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
-REDACTED
-
 	parsed := &ParsedRequest{
 		Body: body,
 REDACTED
 
-	if rawModel, exists := req["model"]; exists {
-		model, ok := rawModel.(string)
-		if !ok {
+	// --- gjson 提取简单字段（避免完整 Unmarshal） ---
+
+	// model: 需要严格类型校验，非 string 返回错误
+	modelResult := gjson.GetBytes(body, "model")
+	if modelResult.Exists() {
+		if modelResult.Type != gjson.String {
 			return nil, fmt.Errorf("invalid model field type")
 	REDACTED
-		parsed.Model = model
+		parsed.Model = modelResult.String()
 REDACTED
-	if rawStream, exists := req["stream"]; exists {
-		stream, ok := rawStream.(bool)
-		if !ok {
+
+	// stream: 需要严格类型校验，非 bool 返回错误
+	streamResult := gjson.GetBytes(body, "stream")
+	if streamResult.Exists() {
+		if streamResult.Type != gjson.True && streamResult.Type != gjson.False {
 			return nil, fmt.Errorf("invalid stream field type")
 	REDACTED
-		parsed.Stream = stream
+		parsed.Stream = streamResult.Bool()
 REDACTED
-	if metadata, ok := req["metadata"].(map[string]any); ok {
-		if userID, ok := metadata["user_id"].(string); ok {
-			parsed.MetadataUserID = userID
+
+	// metadata.user_id: 直接路径提取，不需要严格类型校验
+	parsed.MetadataUserID = gjson.GetBytes(body, "metadata.user_id").String()
+
+	// thinking.type: 直接路径提取
+	if gjson.GetBytes(body, "thinking.type").String() == "enabled" {
+		parsed.ThinkingEnabled = true
+REDACTED
+
+	// max_tokens: 仅接受整数值
+	maxTokensResult := gjson.GetBytes(body, "max_tokens")
+	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
+		f := maxTokensResult.Float()
+		if !math.IsNaN(f) && !math.IsInf(f, 0) && f == math.Trunc(f) &&
+			f <= float64(math.MaxInt) && f >= float64(math.MinInt) {
+			parsed.MaxTokens = int(f)
 	REDACTED
 REDACTED
+
+	// --- 保留 Unmarshal 用于 system/messages 提取 ---
+	// 这些字段需要作为 any/[]any 传递给下游消费者，无法用 gjson 替代
 
 	switch protocol {
 	case domain.PlatformGemini:
 		// Gemini 原生格式: systemInstruction.parts / contents
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			return nil, err
+	REDACTED
 		if sysInst, ok := req["systemInstruction"].(map[string]any); ok {
 			if parts, ok := sysInst["parts"].([]any); ok {
 				parsed.System = parts
@@ -92,26 +113,16 @@ REDACTED
 		// Anthropic / OpenAI 格式: system / messages
 		// system 字段只要存在就视为显式提供（即使为 null），
 		// 以避免客户端传 null 时被默认 system 误注入。
+		var req map[string]any
+		if err := json.Unmarshal(body, &req); err != nil {
+			return nil, err
+	REDACTED
 		if system, ok := req["system"]; ok {
 			parsed.HasSystem = true
 			parsed.System = system
 	REDACTED
 		if messages, ok := req["messages"].([]any); ok {
 			parsed.Messages = messages
-	REDACTED
-REDACTED
-
-	// thinking: {type: "enabled"REDACTED
-	if rawThinking, ok := req["thinking"].(map[string]any); ok {
-		if t, ok := rawThinking["type"].(string); ok && t == "enabled" {
-			parsed.ThinkingEnabled = true
-	REDACTED
-REDACTED
-
-	// max_tokens
-	if rawMaxTokens, exists := req["max_tokens"]; exists {
-		if maxTokens, ok := parseIntegralNumber(rawMaxTokens); ok {
-			parsed.MaxTokens = maxTokens
 	REDACTED
 REDACTED
 

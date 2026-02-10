@@ -19,6 +19,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // 编译期接口断言
@@ -413,4 +415,66 @@ REDACTED
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp["media_url"])
+REDACTED
+
+// TestSoraHandler_StreamForcing 验证 sora handler 的 stream 强制逻辑
+func TestSoraHandler_StreamForcing(t *testing.T) {
+	// 测试 1：stream=false 时 sjson 强制修改为 true
+	body := []byte(`{"model":"sora","messages":[{"role":"user","content":"test"REDACTED],"stream":falseREDACTED`)
+	clientStream := gjson.GetBytes(body, "stream").Bool()
+	require.False(t, clientStream)
+	newBody, err := sjson.SetBytes(body, "stream", true)
+REDACTED
+	require.True(t, gjson.GetBytes(newBody, "stream").Bool())
+
+	// 测试 2：stream=true 时不修改
+	body2 := []byte(`{"model":"sora","messages":[{"role":"user","content":"test"REDACTED],"stream":trueREDACTED`)
+	require.True(t, gjson.GetBytes(body2, "stream").Bool())
+
+	// 测试 3：无 stream 字段时 gjson 返回 false（零值）
+	body3 := []byte(`{"model":"sora","messages":[{"role":"user","content":"test"REDACTED]REDACTED`)
+	require.False(t, gjson.GetBytes(body3, "stream").Bool())
+REDACTED
+
+// TestSoraHandler_ValidationExtraction 验证 sora handler 中 gjson 字段校验逻辑
+func TestSoraHandler_ValidationExtraction(t *testing.T) {
+	// model 缺失
+	body := []byte(`{"messages":[{"role":"user","content":"test"REDACTED]REDACTED`)
+	model := gjson.GetBytes(body, "model").String()
+	require.Empty(t, model)
+
+	// messages 缺失
+	body2 := []byte(`{"model":"sora"REDACTED`)
+	require.False(t, gjson.GetBytes(body2, "messages").Exists())
+
+	// messages 不是 JSON 数组
+	body3 := []byte(`{"model":"sora","messages":"not array"REDACTED`)
+	msgResult := gjson.GetBytes(body3, "messages")
+	require.True(t, msgResult.Exists())
+	require.NotEqual(t, gjson.JSON, msgResult.Type) // string 类型，不是 JSON 数组
+REDACTED
+
+// TestGenerateOpenAISessionHash_WithBody 验证 generateOpenAISessionHash 的 body/header 解析逻辑
+func TestGenerateOpenAISessionHash_WithBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// 从 body 提取 prompt_cache_key
+	body := []byte(`{"model":"sora","prompt_cache_key":"session-abc"REDACTED`)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/", nil)
+
+	hash := generateOpenAISessionHash(c, body)
+	require.NotEmpty(t, hash)
+
+	// 无 prompt_cache_key 且无 header → 空 hash
+	body2 := []byte(`{"model":"sora"REDACTED`)
+	hash2 := generateOpenAISessionHash(c, body2)
+	require.Empty(t, hash2)
+
+	// header 优先于 body
+	c.Request.Header.Set("session_id", "from-header")
+	hash3 := generateOpenAISessionHash(c, body)
+	require.NotEmpty(t, hash3)
+	require.NotEqual(t, hash, hash3) // 不同来源应产生不同 hash
 REDACTED
