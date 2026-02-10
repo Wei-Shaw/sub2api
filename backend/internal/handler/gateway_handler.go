@@ -238,12 +238,32 @@ REDACTED
 		var lastFailoverErr *service.UpstreamFailoverError
 		var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
 
+		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
+		// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
+		if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
+			ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+			c.Request = c.Request.WithContext(ctx)
+	REDACTED
+
 		for {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, failedAccountIDs, "") // Gemini 不使用会话限制
 			if err != nil {
 				if len(failedAccountIDs) == 0 {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 					return
+			REDACTED
+				// Antigravity 单账号退避重试：分组内没有其他可用账号时，
+				// 对 503 错误不直接返回，而是清除排除列表、等待退避后重试同一个账号。
+				// 谷歌上游 503 (MODEL_CAPACITY_EXHAUSTED) 通常是暂时性的，等几秒就能恢复。
+				if lastFailoverErr != nil && lastFailoverErr.StatusCode == http.StatusServiceUnavailable && switchCount <= maxAccountSwitches {
+					if sleepAntigravitySingleAccountBackoff(c.Request.Context(), switchCount) {
+						log.Printf("Antigravity single-account 503 retry: clearing failed accounts, retry %d/%d", switchCount, maxAccountSwitches)
+						failedAccountIDs = make(map[int64]struct{REDACTED)
+						// 设置 context 标记，让 Service 层预检查等待限流过期而非直接切换
+						ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+						c.Request = c.Request.WithContext(ctx)
+						continue
+				REDACTED
 			REDACTED
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, service.PlatformGemini, streamStarted)
@@ -396,6 +416,13 @@ REDACTED
 REDACTED
 	fallbackUsed := false
 
+	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
+	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
+	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), currentAPIKey.GroupID) {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+		c.Request = c.Request.WithContext(ctx)
+REDACTED
+
 	for {
 		maxAccountSwitches := h.maxAccountSwitches
 		switchCount := 0
@@ -411,6 +438,19 @@ REDACTED
 				if len(failedAccountIDs) == 0 {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 					return
+			REDACTED
+				// Antigravity 单账号退避重试：分组内没有其他可用账号时，
+				// 对 503 错误不直接返回，而是清除排除列表、等待退避后重试同一个账号。
+				// 谷歌上游 503 (MODEL_CAPACITY_EXHAUSTED) 通常是暂时性的，等几秒就能恢复。
+				if lastFailoverErr != nil && lastFailoverErr.StatusCode == http.StatusServiceUnavailable && switchCount <= maxAccountSwitches {
+					if sleepAntigravitySingleAccountBackoff(c.Request.Context(), switchCount) {
+						log.Printf("Antigravity single-account 503 retry: clearing failed accounts, retry %d/%d", switchCount, maxAccountSwitches)
+						failedAccountIDs = make(map[int64]struct{REDACTED)
+						// 设置 context 标记，让 Service 层预检查等待限流过期而非直接切换
+						ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+						c.Request = c.Request.WithContext(ctx)
+						continue
+				REDACTED
 			REDACTED
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, platform, streamStarted)
@@ -830,6 +870,27 @@ func sleepFailoverDelay(ctx context.Context, switchCount int) bool {
 	if delay <= 0 {
 		return true
 REDACTED
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(delay):
+		return true
+REDACTED
+REDACTED
+
+// sleepAntigravitySingleAccountBackoff Antigravity 平台单账号分组的 503 退避重试延时。
+// 当分组内只有一个可用账号且上游返回 503（MODEL_CAPACITY_EXHAUSTED）时使用，
+// 采用短固定延时策略。Service 层在 SingleAccountRetry 模式下已经做了充分的原地重试
+// （最多 3 次、总等待 30s），所以 Handler 层的退避只需短暂等待即可。
+// 返回 false 表示 context 已取消。
+func sleepAntigravitySingleAccountBackoff(ctx context.Context, retryCount int) bool {
+	// 固定短延时：2s
+	// Service 层已经在原地等待了足够长的时间（retryDelay × 重试次数），
+	// Handler 层只需短暂间隔后重新进入 Service 层即可。
+	const delay = 2 * time.Second
+
+	log.Printf("Antigravity single-account 503 backoff: waiting %v before retry (attempt %d)", delay, retryCount)
+
 	select {
 	case <-ctx.Done():
 		return false
