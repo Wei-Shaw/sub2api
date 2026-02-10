@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net"
 	"net/http"
@@ -210,9 +211,11 @@ REDACTED
 	if len(mediaURLs) > 0 && s.mediaStorage != nil && s.mediaStorage.Enabled() {
 		stored, storeErr := s.mediaStorage.StoreFromURLs(reqCtx, mediaType, mediaURLs)
 		if storeErr != nil {
-			return nil, s.handleSoraRequestError(ctx, account, storeErr, reqModel, c, clientStream)
+			// 存储失败时降级使用原始 URL，不中断用户请求
+			log.Printf("[Sora] StoreFromURLs failed, falling back to original URLs: %v", storeErr)
+	REDACTED else {
+			finalURLs = s.normalizeSoraMediaURLs(stored)
 	REDACTED
-		finalURLs = s.normalizeSoraMediaURLs(stored)
 REDACTED
 
 	content := buildSoraContent(mediaType, finalURLs)

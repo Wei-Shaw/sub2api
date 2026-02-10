@@ -47,7 +47,9 @@ REDACTED
 
 // Schedule schedules a one-time task
 func (s *TimingWheelService) Schedule(name string, delay time.Duration, fn func()) {
-	_ = s.tw.SetTimer(name, fn, delay)
+	if err := s.tw.SetTimer(name, fn, delay); err != nil {
+		log.Printf("[TimingWheel] SetTimer failed for %q: %v", name, err)
+REDACTED
 REDACTED
 
 // ScheduleRecurring schedules a recurring task
@@ -55,9 +57,13 @@ func (s *TimingWheelService) ScheduleRecurring(name string, interval time.Durati
 	var schedule func()
 	schedule = func() {
 		fn()
-		_ = s.tw.SetTimer(name, schedule, interval)
+		if err := s.tw.SetTimer(name, schedule, interval); err != nil {
+			log.Printf("[TimingWheel] recurring SetTimer failed for %q: %v", name, err)
+	REDACTED
 REDACTED
-	_ = s.tw.SetTimer(name, schedule, interval)
+	if err := s.tw.SetTimer(name, schedule, interval); err != nil {
+		log.Printf("[TimingWheel] initial SetTimer failed for %q: %v", name, err)
+REDACTED
 REDACTED
 
 // Cancel cancels a scheduled task
