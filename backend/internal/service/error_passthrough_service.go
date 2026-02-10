@@ -161,7 +161,7 @@ func (s *ErrorPassthroughService) MatchRule(platform string, statusCode int, bod
 REDACTED
 
 	lowerPlatform := strings.ToLower(platform)
-	var bodyLower string     // 延迟初始化，只在需要关键词匹配时计算
+	var bodyLower string // 延迟初始化，只在需要关键词匹配时计算
 	var bodyLowerDone bool
 
 	for _, rule := range rules {
