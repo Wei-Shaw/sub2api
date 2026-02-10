@@ -17,7 +17,7 @@
   "dependencies": {
     "@lobehub/icons": "^4.0.2",
     "@vueuse/core": "^10.7.0",
-    "axios": "^1.6.2",
+    "axios": "^1.13.5",
     "chart.js": "^4.4.1",
     "dompurify": "^3.3.1",
     "driver.js": "^1.4.0",
