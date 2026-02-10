@@ -915,6 +915,22 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestResolveAntigravityForwardBaseURL_DefaultDaily(t *testing.T) {
+	t.Setenv(antigravityForwardBaseURLEnv, "")
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	defer func() {
+		antigravity.BaseURLs = oldBaseURLs
+REDACTED()
+
+	prodURL := "https://prod.test"
+	dailyURL := "https://daily.test"
+	antigravity.BaseURLs = []string{dailyURL, prodURLREDACTED
+
+	resolved := resolveAntigravityForwardBaseURL()
+	require.Equal(t, dailyURL, resolved)
+REDACTED
+
 func TestAntigravityAccountSwitchError_Error(t *testing.T) {
 	err := &AntigravityAccountSwitchError{
 		OriginalAccountID: 789,
