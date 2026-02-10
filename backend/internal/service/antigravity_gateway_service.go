@@ -3251,6 +3251,21 @@ REDACTED)
 		log.Printf("[antigravity-Forward] upstream_error status=%d body=%s", upstreamStatus, truncateForLog(body, maxBytes))
 REDACTED
 
+	// 检查错误透传规则
+	if ptStatus, ptErrType, ptErrMsg, matched := applyErrorPassthroughRule(
+		c, account.Platform, upstreamStatus, body,
+		0, "", "",
+	); matched {
+		c.JSON(ptStatus, gin.H{
+			"type":  "error",
+			"error": gin.H{"type": ptErrType, "message": ptErrMsgREDACTED,
+	REDACTED)
+		if upstreamMsg == "" {
+			return fmt.Errorf("upstream error: %d", upstreamStatus)
+	REDACTED
+		return fmt.Errorf("upstream error: %d message=%s", upstreamStatus, upstreamMsg)
+REDACTED
+
 	var statusCode int
 	var errType, errMsg string
 
