@@ -694,6 +694,36 @@
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') REDACTEDREDACTED</p>
       </div>
 
+      <!-- OpenAI OAuth passthrough toggle (OpenAI OAuth only) -->
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.oauthPassthrough') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.oauthPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openaiOAuthPassthroughEnabled = !openaiOAuthPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiOAuthPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiOAuthPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <div>
         <div class="flex items-center justify-between">
           <div>
@@ -1103,6 +1133,9 @@ const sessionIdleTimeout = ref<number | null>(null)
 const tlsFingerprintEnabled = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 
+// OpenAI OAuth: passthrough mode toggle
+const openaiOAuthPassthroughEnabled = ref(false)
+
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
 const tempUnschedPresets = computed(() => [
@@ -1189,6 +1222,12 @@ watch(
       // Load mixed scheduling setting (only for antigravity accounts)
       const extra = newAccount.extra as Record<string, unknown> | undefined
       mixedScheduling.value = extra?.mixed_scheduling === true
+
+      // Load OpenAI OAuth passthrough toggle (OpenAI OAuth only)
+      openaiOAuthPassthroughEnabled.value = false
+      if (newAccount.platform === 'openai' && newAccount.type === 'oauth') {
+        openaiOAuthPassthroughEnabled.value = extra?.openai_oauth_passthrough === true
+      REDACTED
 
       // Load antigravity model mapping (Antigravity 只支持映射模式)
       if (newAccount.platform === 'antigravity') {
@@ -1723,6 +1762,18 @@ const handleSubmit = async () => {
         delete newExtra.session_id_masking_enabled
       REDACTED
 
+      updatePayload.extra = newExtra
+    REDACTED
+
+    // For OpenAI OAuth accounts, handle passthrough mode in extra
+    if (props.account.platform === 'openai' && props.account.type === 'oauth') {
+      const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
+      const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+      if (openaiOAuthPassthroughEnabled.value) {
+        newExtra.openai_oauth_passthrough = true
+      REDACTED else {
+        delete newExtra.openai_oauth_passthrough
+      REDACTED
       updatePayload.extra = newExtra
     REDACTED
 

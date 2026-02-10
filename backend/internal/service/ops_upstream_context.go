@@ -42,6 +42,10 @@ REDACTED
 type OpsUpstreamErrorEvent struct {
 	AtUnixMs int64 `json:"at_unix_ms,omitempty"`
 
+	// Passthrough 表示本次请求是否命中“原样透传（仅替换认证）”分支。
+	// 该字段用于排障与灰度评估；存入 JSON，不涉及 DB schema 变更。
+	Passthrough bool `json:"passthrough,omitempty"`
+
 	// Context
 	Platform    string `json:"platform,omitempty"`
 	AccountID   int64  `json:"account_id,omitempty"`
