@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -66,6 +67,9 @@ const (
 	// 单账号 503 退避重试：原地重试的总累计等待时间上限
 	// 超过此上限将不再重试，直接返回 503
 	antigravitySingleAccountSmartRetryTotalMaxWait = 30 * time.Second
+
+	// MODEL_CAPACITY_EXHAUSTED 全局去重：重试全部失败后的 cooldown 时间
+	antigravityModelCapacityCooldown = 10 * time.Second
 )
 
 // antigravityPassthroughErrorMessages 透传给客户端的错误消息白名单（小写）
@@ -73,6 +77,12 @@ const (
 var antigravityPassthroughErrorMessages = []string{
 	"prompt is too long",
 REDACTED
+
+// MODEL_CAPACITY_EXHAUSTED 全局去重：避免多个并发请求同时对同一模型进行容量耗尽重试
+var (
+	modelCapacityExhaustedMu    sync.RWMutex
+	modelCapacityExhaustedUntil = make(map[string]time.Time) // modelName -> cooldown until
+)
 
 const (
 	antigravityBillingModelEnv    = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
@@ -211,17 +221,38 @@ REDACTED
 		if isModelCapacityExhausted {
 			maxAttempts = antigravityModelCapacityRetryMaxAttempts
 			waitDuration = antigravityModelCapacityRetryWait
+
+			// 全局去重：如果其他 goroutine 已在重试同一模型且尚在 cooldown 中，直接返回 503
+			if modelName != "" {
+				modelCapacityExhaustedMu.RLock()
+				cooldownUntil, exists := modelCapacityExhaustedUntil[modelName]
+				modelCapacityExhaustedMu.RUnlock()
+				if exists && time.Now().Before(cooldownUntil) {
+					log.Printf("%s status=%d model_capacity_exhausted_dedup model=%s account=%d cooldown_until=%v (skip retry)",
+						p.prefix, resp.StatusCode, modelName, p.account.ID, cooldownUntil.Format("15:04:05"))
+					return &smartRetryResult{
+						action: smartRetryActionBreakWithResp,
+						resp: &http.Response{
+							StatusCode: resp.StatusCode,
+							Header:     resp.Header.Clone(),
+							Body:       io.NopCloser(bytes.NewReader(respBody)),
+					REDACTED,
+				REDACTED
+			REDACTED
+		REDACTED
 	REDACTED
 
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			log.Printf("%s status=%d oauth_smart_retry attempt=%d/%d delay=%v model=%s account=%d",
 				p.prefix, resp.StatusCode, attempt, maxAttempts, waitDuration, modelName, p.account.ID)
 
+			timer := time.NewTimer(waitDuration)
 			select {
 			case <-p.ctx.Done():
+				timer.Stop()
 				log.Printf("%s status=context_canceled_during_smart_retry", p.prefix)
 				return &smartRetryResult{action: smartRetryActionBreakWithResp, err: p.ctx.Err()REDACTED
-			case <-time.After(waitDuration):
+			case <-timer.C:
 		REDACTED
 
 			// 智能重试：创建新请求
@@ -242,6 +273,12 @@ REDACTED
 			retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
 				log.Printf("%s status=%d smart_retry_success attempt=%d/%d", p.prefix, retryResp.StatusCode, attempt, maxAttempts)
+				// 重试成功，清除 MODEL_CAPACITY_EXHAUSTED cooldown
+				if isModelCapacityExhausted && modelName != "" {
+					modelCapacityExhaustedMu.Lock()
+					delete(modelCapacityExhaustedUntil, modelName)
+					modelCapacityExhaustedMu.Unlock()
+			REDACTED
 				return &smartRetryResult{action: smartRetryActionBreakWithResp, resp: retryRespREDACTED
 		REDACTED
 
@@ -257,7 +294,7 @@ REDACTED
 		REDACTED
 			lastRetryResp = retryResp
 			if retryResp != nil {
-				lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+				lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 8<<10))
 				_ = retryResp.Body.Close()
 		REDACTED
 
@@ -283,6 +320,12 @@ REDACTED
 		// MODEL_CAPACITY_EXHAUSTED：模型容量不足，切换账号无意义
 		// 直接返回上游错误响应，不设置模型限流，不切换账号
 		if isModelCapacityExhausted {
+			// 设置 cooldown，让后续请求快速失败，避免重复重试
+			if modelName != "" {
+				modelCapacityExhaustedMu.Lock()
+				modelCapacityExhaustedUntil[modelName] = time.Now().Add(antigravityModelCapacityCooldown)
+				modelCapacityExhaustedMu.Unlock()
+		REDACTED
 			log.Printf("%s status=%d smart_retry_exhausted_model_capacity attempts=%d model=%s account=%d body=%s (model capacity exhausted, not switching account)",
 				p.prefix, resp.StatusCode, maxAttempts, modelName, p.account.ID, truncateForLog(retryBody, 200))
 			return &smartRetryResult{
@@ -395,11 +438,13 @@ REDACTED
 		log.Printf("%s status=%d single_account_503_retry attempt=%d/%d delay=%v total_waited=%v model=%s account=%d",
 			p.prefix, resp.StatusCode, attempt, antigravitySingleAccountSmartRetryMaxAttempts, waitDuration, totalWaited, modelName, p.account.ID)
 
+		timer := time.NewTimer(waitDuration)
 		select {
 		case <-p.ctx.Done():
+			timer.Stop()
 			log.Printf("%s status=context_canceled_during_single_account_retry", p.prefix)
 			return &smartRetryResult{action: smartRetryActionBreakWithResp, err: p.ctx.Err()REDACTED
-		case <-time.After(waitDuration):
+		case <-timer.C:
 	REDACTED
 		totalWaited += waitDuration
 
@@ -433,7 +478,7 @@ REDACTED
 			_ = lastRetryResp.Body.Close()
 	REDACTED
 		lastRetryResp = retryResp
-		lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+		lastRetryBody, _ = io.ReadAll(io.LimitReader(retryResp.Body, 8<<10))
 		_ = retryResp.Body.Close()
 
 		// 解析新的重试信息，更新下次等待时间
@@ -1404,7 +1449,7 @@ REDACTED
 					break
 			REDACTED
 
-				retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+				retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 8<<10))
 				_ = retryResp.Body.Close()
 				if retryResp.StatusCode == http.StatusTooManyRequests {
 					retryBaseURL := ""
@@ -2211,10 +2256,12 @@ REDACTED
 		sleepFor = 0
 REDACTED
 
+	timer := time.NewTimer(sleepFor)
 	select {
 	case <-ctx.Done():
+		timer.Stop()
 		return false
-	case <-time.After(sleepFor):
+	case <-timer.C:
 		return true
 REDACTED
 REDACTED

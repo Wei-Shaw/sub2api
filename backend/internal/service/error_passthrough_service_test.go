@@ -145,32 +145,58 @@ REDACTED
 	return svc
 REDACTED
 
+// newCachedRuleForTest 从 model.ErrorPassthroughRule 创建 cachedPassthroughRule（测试用）
+func newCachedRuleForTest(rule *model.ErrorPassthroughRule) *cachedPassthroughRule {
+	cr := &cachedPassthroughRule{ErrorPassthroughRule: ruleREDACTED
+	if len(rule.Keywords) > 0 {
+		cr.lowerKeywords = make([]string, len(rule.Keywords))
+		for j, kw := range rule.Keywords {
+			cr.lowerKeywords[j] = strings.ToLower(kw)
+	REDACTED
+REDACTED
+	if len(rule.Platforms) > 0 {
+		cr.lowerPlatforms = make([]string, len(rule.Platforms))
+		for j, p := range rule.Platforms {
+			cr.lowerPlatforms[j] = strings.ToLower(p)
+	REDACTED
+REDACTED
+	if len(rule.ErrorCodes) > 0 {
+		cr.errorCodeSet = make(map[int]struct{REDACTED, len(rule.ErrorCodes))
+		for _, code := range rule.ErrorCodes {
+			cr.errorCodeSet[code] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+	return cr
+REDACTED
+
 // =============================================================================
-// 测试 ruleMatches 核心匹配逻辑
+// 测试 ruleMatchesOptimized 核心匹配逻辑
 // =============================================================================
 
 func TestRuleMatches_NoConditions(t *testing.T) {
 	// 没有配置任何条件时，不应该匹配
 	svc := newTestService(nil)
-	rule := &model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{REDACTED,
 		Keywords:   []string{REDACTED,
 		MatchMode:  model.MatchModeAny,
-REDACTED
+REDACTED)
 
-	assert.False(t, svc.ruleMatches(rule, 422, "some error message"),
+	var bodyLower string
+	var bodyLowerDone bool
+	assert.False(t, svc.ruleMatchesOptimized(rule, 422, []byte("some error message"), &bodyLower, &bodyLowerDone),
 		"没有配置条件时不应该匹配")
 REDACTED
 
 func TestRuleMatches_OnlyErrorCodes_AnyMode(t *testing.T) {
 	svc := newTestService(nil)
-	rule := &model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{422, 400REDACTED,
 		Keywords:   []string{REDACTED,
 		MatchMode:  model.MatchModeAny,
-REDACTED
+REDACTED)
 
 	tests := []struct {
 		name       string
@@ -186,7 +212,9 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := svc.ruleMatches(rule, tt.statusCode, tt.body)
+			var bodyLower string
+			var bodyLowerDone bool
+			result := svc.ruleMatchesOptimized(rule, tt.statusCode, []byte(tt.body), &bodyLower, &bodyLowerDone)
 			assert.Equal(t, tt.expected, result)
 	REDACTED)
 REDACTED
@@ -194,12 +222,12 @@ REDACTED
 
 func TestRuleMatches_OnlyKeywords_AnyMode(t *testing.T) {
 	svc := newTestService(nil)
-	rule := &model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{REDACTED,
 		Keywords:   []string{"context limit", "model not supported"REDACTED,
 		MatchMode:  model.MatchModeAny,
-REDACTED
+REDACTED)
 
 	tests := []struct {
 		name       string
@@ -210,16 +238,14 @@ REDACTED{
 		{"关键词匹配 context limit", 500, "error: context limit reached", trueREDACTED,
 		{"关键词匹配 model not supported", 400, "the model not supported here", trueREDACTED,
 		{"关键词不匹配", 422, "some other error", falseREDACTED,
-		// 注意：ruleMatches 接收的 body 参数应该是已经转换为小写的
-		// 实际使用时，MatchRule 会先将 body 转换为小写再传给 ruleMatches
-		{"关键词大小写 - 输入已小写", 500, "context limit exceeded", trueREDACTED,
+		{"关键词大小写 - 自动转换", 500, "Context Limit exceeded", trueREDACTED,
 REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 模拟 MatchRule 的行为：先转换为小写
-			bodyLower := strings.ToLower(tt.body)
-			result := svc.ruleMatches(rule, tt.statusCode, bodyLower)
+			var bodyLower string
+			var bodyLowerDone bool
+			result := svc.ruleMatchesOptimized(rule, tt.statusCode, []byte(tt.body), &bodyLower, &bodyLowerDone)
 			assert.Equal(t, tt.expected, result)
 	REDACTED)
 REDACTED
@@ -228,12 +254,12 @@ REDACTED
 func TestRuleMatches_BothConditions_AnyMode(t *testing.T) {
 	// any 模式：错误码 OR 关键词
 	svc := newTestService(nil)
-	rule := &model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{422, 400REDACTED,
 		Keywords:   []string{"context limit"REDACTED,
 		MatchMode:  model.MatchModeAny,
-REDACTED
+REDACTED)
 
 	tests := []struct {
 		name       string
@@ -274,7 +300,9 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := svc.ruleMatches(rule, tt.statusCode, tt.body)
+			var bodyLower string
+			var bodyLowerDone bool
+			result := svc.ruleMatchesOptimized(rule, tt.statusCode, []byte(tt.body), &bodyLower, &bodyLowerDone)
 			assert.Equal(t, tt.expected, result, tt.reason)
 	REDACTED)
 REDACTED
@@ -283,12 +311,12 @@ REDACTED
 func TestRuleMatches_BothConditions_AllMode(t *testing.T) {
 	// all 模式：错误码 AND 关键词
 	svc := newTestService(nil)
-	rule := &model.ErrorPassthroughRule{
+	rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
 		Enabled:    true,
 		ErrorCodes: []int{422, 400REDACTED,
 		Keywords:   []string{"context limit"REDACTED,
 		MatchMode:  model.MatchModeAll,
-REDACTED
+REDACTED)
 
 	tests := []struct {
 		name       string
@@ -329,14 +357,16 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := svc.ruleMatches(rule, tt.statusCode, tt.body)
+			var bodyLower string
+			var bodyLowerDone bool
+			result := svc.ruleMatchesOptimized(rule, tt.statusCode, []byte(tt.body), &bodyLower, &bodyLowerDone)
 			assert.Equal(t, tt.expected, result, tt.reason)
 	REDACTED)
 REDACTED
 REDACTED
 
 // =============================================================================
-// 测试 platformMatches 平台匹配逻辑
+// 测试 platformMatchesCached 平台匹配逻辑
 // =============================================================================
 
 func TestPlatformMatches(t *testing.T) {
@@ -394,10 +424,10 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := &model.ErrorPassthroughRule{
+			rule := newCachedRuleForTest(&model.ErrorPassthroughRule{
 				Platforms: tt.rulePlatforms,
-		REDACTED
-			result := svc.platformMatches(rule, tt.requestPlatform)
+		REDACTED)
+			result := svc.platformMatchesCached(rule, strings.ToLower(tt.requestPlatform))
 			assert.Equal(t, tt.expected, result)
 	REDACTED)
 REDACTED
