@@ -325,6 +325,7 @@ REDACTED
 		{Name: "response_code", Type: field.TypeInt, Nullable: trueREDACTED,
 		{Name: "passthrough_body", Type: field.TypeBool, Default: trueREDACTED,
 		{Name: "custom_message", Type: field.TypeString, Nullable: true, Size: 2147483647REDACTED,
+		{Name: "skip_monitoring", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647REDACTED,
 REDACTED
 	// ErrorPassthroughRulesTable holds the schema information for the "error_passthrough_rules" table.

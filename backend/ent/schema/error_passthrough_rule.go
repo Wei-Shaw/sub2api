@@ -105,6 +105,12 @@ func (ErrorPassthroughRule) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 
+		// skip_monitoring: 是否跳过运维监控记录
+		// true: 匹配此规则的错误不会被记录到 ops_error_logs
+		// false: 正常记录到运维监控（默认行为）
+		field.Bool("skip_monitoring").
+			Default(false),
+
 		// description: 规则描述，用于说明规则的用途
 		field.Text("description").
 			Optional().

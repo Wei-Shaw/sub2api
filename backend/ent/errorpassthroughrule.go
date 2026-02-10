@@ -44,6 +44,8 @@ type ErrorPassthroughRule struct {
 	PassthroughBody bool `json:"passthrough_body,omitempty"`
 	// CustomMessage holds the value of the "custom_message" field.
 	CustomMessage *string `json:"custom_message,omitempty"`
+	// SkipMonitoring holds the value of the "skip_monitoring" field.
+	SkipMonitoring bool `json:"skip_monitoring,omitempty"`
 	// Description holds the value of the "description" field.
 	Description  *string `json:"description,omitempty"`
 	selectValues sql.SelectValues
@@ -56,7 +58,7 @@ func (*ErrorPassthroughRule) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case errorpassthroughrule.FieldErrorCodes, errorpassthroughrule.FieldKeywords, errorpassthroughrule.FieldPlatforms:
 			values[i] = new([]byte)
-		case errorpassthroughrule.FieldEnabled, errorpassthroughrule.FieldPassthroughCode, errorpassthroughrule.FieldPassthroughBody:
+		case errorpassthroughrule.FieldEnabled, errorpassthroughrule.FieldPassthroughCode, errorpassthroughrule.FieldPassthroughBody, errorpassthroughrule.FieldSkipMonitoring:
 			values[i] = new(sql.NullBool)
 		case errorpassthroughrule.FieldID, errorpassthroughrule.FieldPriority, errorpassthroughrule.FieldResponseCode:
 			values[i] = new(sql.NullInt64)
@@ -171,6 +173,12 @@ REDACTED
 				_m.CustomMessage = new(string)
 				*_m.CustomMessage = value.String
 		REDACTED
+		case errorpassthroughrule.FieldSkipMonitoring:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field skip_monitoring", values[i])
+		REDACTED else if value.Valid {
+				_m.SkipMonitoring = value.Bool
+		REDACTED
 		case errorpassthroughrule.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
@@ -256,6 +264,9 @@ REDACTED
 		builder.WriteString("custom_message=")
 		builder.WriteString(*v)
 REDACTED
+	builder.WriteString(", ")
+	builder.WriteString("skip_monitoring=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SkipMonitoring))
 	builder.WriteString(", ")
 	if v := _m.Description; v != nil {
 		builder.WriteString("description=")

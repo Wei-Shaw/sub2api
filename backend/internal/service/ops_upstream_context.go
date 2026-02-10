@@ -20,6 +20,10 @@ const (
 	// retry the specific upstream attempt (not just the client request).
 	// This value is sanitized+trimmed before being persisted.
 	OpsUpstreamRequestBodyKey = "ops_upstream_request_body"
+
+	// OpsSkipPassthroughKey 由 applyErrorPassthroughRule 在命中 skip_monitoring=true 的规则时设置。
+	// ops_error_logger 中间件检查此 key，为 true 时跳过错误记录。
+	OpsSkipPassthroughKey = "ops_skip_passthrough"
 )
 
 func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage, upstreamDetail string) {

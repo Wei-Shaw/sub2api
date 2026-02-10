@@ -148,6 +148,16 @@
                       {{ rule.passthrough_body ? t('admin.errorPassthrough.passthrough') : t('admin.errorPassthrough.custom') REDACTEDREDACTED
                     </span>
                   </div>
+                  <div v-if="rule.skip_monitoring" class="flex items-center gap-1">
+                    <Icon
+                      name="checkCircle"
+                      size="xs"
+                      class="text-yellow-500"
+                    />
+                    <span class="text-gray-600 dark:text-gray-400">
+                      {{ t('admin.errorPassthrough.skipMonitoring') REDACTEDREDACTED
+                    </span>
+                  </div>
                 </div>
               </td>
               <td class="px-3 py-2">
@@ -366,6 +376,19 @@
           </div>
         </div>
 
+        <!-- Skip Monitoring -->
+        <div class="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            v-model="form.skip_monitoring"
+            class="h-3.5 w-3.5 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+          />
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.errorPassthrough.form.skipMonitoring') REDACTEDREDACTED
+          </span>
+        </div>
+        <p class="input-hint text-xs -mt-3">{{ t('admin.errorPassthrough.form.skipMonitoringHint') REDACTEDREDACTED</p>
+
         <!-- Enabled -->
         <div class="flex items-center gap-1.5">
           <input
@@ -453,6 +476,7 @@ const form = reactive({
   response_code: null as number | null,
   passthrough_body: true,
   custom_message: null as string | null,
+  skip_monitoring: false,
   description: null as string | null
 REDACTED)
 
@@ -497,6 +521,7 @@ const resetForm = () => {
   form.response_code = null
   form.passthrough_body = true
   form.custom_message = null
+  form.skip_monitoring = false
   form.description = null
   errorCodesInput.value = ''
   keywordsInput.value = ''
@@ -520,6 +545,7 @@ const handleEdit = (rule: ErrorPassthroughRule) => {
   form.response_code = rule.response_code
   form.passthrough_body = rule.passthrough_body
   form.custom_message = rule.custom_message
+  form.skip_monitoring = rule.skip_monitoring
   form.description = rule.description
   errorCodesInput.value = rule.error_codes.join(', ')
   keywordsInput.value = rule.keywords.join('\n')
@@ -575,6 +601,7 @@ const handleSubmit = async () => {
       response_code: form.passthrough_code ? null : form.response_code,
       passthrough_body: form.passthrough_body,
       custom_message: form.passthrough_body ? null : form.custom_message,
+      skip_monitoring: form.skip_monitoring,
       description: form.description?.trim() || null
     REDACTED
 

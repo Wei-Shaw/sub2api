@@ -3527,6 +3527,7 @@ export default {
       custom: '自定义',
       code: '状态码',
       body: '消息体',
+      skipMonitoring: '跳过监控',
 
       // Columns
       columns: {
@@ -3571,6 +3572,8 @@ export default {
         passthroughBody: '透传上游错误信息',
         customMessage: '自定义错误信息',
         customMessagePlaceholder: '返回给客户端的错误信息...',
+        skipMonitoring: '跳过运维监控记录',
+        skipMonitoringHint: '开启后，匹配此规则的错误不会被记录到运维监控中',
         enabled: '启用此规则'
       REDACTED,
 

@@ -544,6 +544,13 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		body := w.buf.Bytes()
 		parsed := parseOpsErrorResponse(body)
 
+		// Skip logging if a passthrough rule with skip_monitoring=true matched.
+		if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
+			if skip, _ := v.(bool); skip {
+				return
+		REDACTED
+	REDACTED
+
 		// Skip logging if the error should be filtered based on settings
 		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path) {
 			return

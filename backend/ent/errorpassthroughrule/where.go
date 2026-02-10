@@ -104,6 +104,11 @@ func CustomMessage(v string) predicate.ErrorPassthroughRule {
 	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldCustomMessage, v))
 REDACTED
 
+// SkipMonitoring applies equality check predicate on the "skip_monitoring" field. It's identical to SkipMonitoringEQ.
+func SkipMonitoring(v bool) predicate.ErrorPassthroughRule {
+	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldSkipMonitoring, v))
+REDACTED
+
 // Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
 func Description(v string) predicate.ErrorPassthroughRule {
 	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldDescription, v))
@@ -542,6 +547,16 @@ REDACTED
 // CustomMessageContainsFold applies the ContainsFold predicate on the "custom_message" field.
 func CustomMessageContainsFold(v string) predicate.ErrorPassthroughRule {
 	return predicate.ErrorPassthroughRule(sql.FieldContainsFold(FieldCustomMessage, v))
+REDACTED
+
+// SkipMonitoringEQ applies the EQ predicate on the "skip_monitoring" field.
+func SkipMonitoringEQ(v bool) predicate.ErrorPassthroughRule {
+	return predicate.ErrorPassthroughRule(sql.FieldEQ(FieldSkipMonitoring, v))
+REDACTED
+
+// SkipMonitoringNEQ applies the NEQ predicate on the "skip_monitoring" field.
+func SkipMonitoringNEQ(v bool) predicate.ErrorPassthroughRule {
+	return predicate.ErrorPassthroughRule(sql.FieldNEQ(FieldSkipMonitoring, v))
 REDACTED
 
 // DescriptionEQ applies the EQ predicate on the "description" field.
