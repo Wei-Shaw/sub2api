@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -98,6 +99,150 @@ REDACTED
 	require.Contains(t, url, "/sora/media-signed")
 	require.Contains(t, url, "expires=")
 	require.Contains(t, url, "sig=")
+REDACTED
+
+func TestNormalizeSoraMediaURLs_Empty(t *testing.T) {
+	svc := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
+	result := svc.normalizeSoraMediaURLs(nil)
+	require.Empty(t, result)
+
+	result = svc.normalizeSoraMediaURLs([]string{REDACTED)
+	require.Empty(t, result)
+REDACTED
+
+func TestNormalizeSoraMediaURLs_HTTPUrls(t *testing.T) {
+	svc := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
+	urls := []string{"https://example.com/a.png", "http://example.com/b.mp4"REDACTED
+	result := svc.normalizeSoraMediaURLs(urls)
+	require.Equal(t, urls, result)
+REDACTED
+
+func TestNormalizeSoraMediaURLs_LocalPaths(t *testing.T) {
+	cfg := &config.Config{REDACTED
+	svc := NewSoraGatewayService(nil, nil, nil, cfg)
+	urls := []string{"/image/2025/01/a.png", "video/2025/01/b.mp4"REDACTED
+	result := svc.normalizeSoraMediaURLs(urls)
+	require.Len(t, result, 2)
+	require.Contains(t, result[0], "/sora/media")
+	require.Contains(t, result[1], "/sora/media")
+REDACTED
+
+func TestNormalizeSoraMediaURLs_SkipsBlank(t *testing.T) {
+	svc := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
+	urls := []string{"https://example.com/a.png", "", "  ", "https://example.com/b.png"REDACTED
+	result := svc.normalizeSoraMediaURLs(urls)
+	require.Len(t, result, 2)
+REDACTED
+
+func TestBuildSoraContent_Image(t *testing.T) {
+	content := buildSoraContent("image", []string{"https://a.com/1.png", "https://a.com/2.png"REDACTED)
+	require.Contains(t, content, "![image](https://a.com/1.png)")
+	require.Contains(t, content, "![image](https://a.com/2.png)")
+REDACTED
+
+func TestBuildSoraContent_Video(t *testing.T) {
+	content := buildSoraContent("video", []string{"https://a.com/v.mp4"REDACTED)
+	require.Contains(t, content, "<video src='https://a.com/v.mp4'")
+REDACTED
+
+func TestBuildSoraContent_VideoEmpty(t *testing.T) {
+	content := buildSoraContent("video", nil)
+	require.Empty(t, content)
+REDACTED
+
+func TestBuildSoraContent_Prompt(t *testing.T) {
+	content := buildSoraContent("prompt", nil)
+	require.Empty(t, content)
+REDACTED
+
+func TestSoraImageSizeFromModel(t *testing.T) {
+	require.Equal(t, "360", soraImageSizeFromModel("gpt-image"))
+	require.Equal(t, "540", soraImageSizeFromModel("gpt-image-landscape"))
+	require.Equal(t, "540", soraImageSizeFromModel("gpt-image-portrait"))
+	require.Equal(t, "540", soraImageSizeFromModel("something-landscape"))
+	require.Equal(t, "360", soraImageSizeFromModel("unknown-model"))
+REDACTED
+
+func TestFirstMediaURL(t *testing.T) {
+	require.Equal(t, "", firstMediaURL(nil))
+	require.Equal(t, "", firstMediaURL([]string{REDACTED))
+	require.Equal(t, "a", firstMediaURL([]string{"a", "b"REDACTED))
+REDACTED
+
+func TestSoraProErrorMessage(t *testing.T) {
+	require.Contains(t, soraProErrorMessage("sora2pro-hd", ""), "Pro-HD")
+	require.Contains(t, soraProErrorMessage("sora2pro", ""), "Pro")
+	require.Empty(t, soraProErrorMessage("sora-basic", ""))
+REDACTED
+
+func TestShouldFailoverUpstreamError(t *testing.T) {
+	svc := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
+	require.True(t, svc.shouldFailoverUpstreamError(401))
+	require.True(t, svc.shouldFailoverUpstreamError(429))
+	require.True(t, svc.shouldFailoverUpstreamError(500))
+	require.True(t, svc.shouldFailoverUpstreamError(502))
+	require.False(t, svc.shouldFailoverUpstreamError(200))
+	require.False(t, svc.shouldFailoverUpstreamError(400))
+REDACTED
+
+func TestWithSoraTimeout_NilService(t *testing.T) {
+	var svc *SoraGatewayService
+	ctx, cancel := svc.withSoraTimeout(context.Background(), false)
+	require.NotNil(t, ctx)
+	require.Nil(t, cancel)
+REDACTED
+
+func TestWithSoraTimeout_ZeroTimeout(t *testing.T) {
+	cfg := &config.Config{REDACTED
+	svc := NewSoraGatewayService(nil, nil, nil, cfg)
+	ctx, cancel := svc.withSoraTimeout(context.Background(), false)
+	require.NotNil(t, ctx)
+	require.Nil(t, cancel)
+REDACTED
+
+func TestWithSoraTimeout_PositiveTimeout(t *testing.T) {
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			SoraRequestTimeoutSeconds: 30,
+	REDACTED,
+REDACTED
+	svc := NewSoraGatewayService(nil, nil, nil, cfg)
+	ctx, cancel := svc.withSoraTimeout(context.Background(), false)
+	require.NotNil(t, ctx)
+	require.NotNil(t, cancel)
+	cancel()
+REDACTED
+
+func TestPollInterval(t *testing.T) {
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				PollIntervalSeconds: 5,
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewSoraGatewayService(nil, nil, nil, cfg)
+	require.Equal(t, 5*time.Second, svc.pollInterval())
+
+	// 默认值
+	svc2 := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
+	require.True(t, svc2.pollInterval() > 0)
+REDACTED
+
+func TestPollMaxAttempts(t *testing.T) {
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				MaxPollAttempts: 100,
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewSoraGatewayService(nil, nil, nil, cfg)
+	require.Equal(t, 100, svc.pollMaxAttempts())
+
+	// 默认值
+	svc2 := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
+	require.True(t, svc2.pollMaxAttempts() > 0)
 REDACTED
 
 func TestDecodeSoraImageInput_BlockPrivateURL(t *testing.T) {
