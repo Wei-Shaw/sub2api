@@ -57,8 +57,6 @@ func TestSingleAccountRetryConstants(t *testing.T) {
 		"单次最大等待 15s")
 	require.Equal(t, 30*time.Second, antigravitySingleAccountSmartRetryTotalMaxWait,
 		"总累计等待不超过 30s")
-	require.Equal(t, 30*time.Second, antigravitySingleAccountMaxWait,
-		"预检查最大等待 30s")
 REDACTED
 
 // ---------------------------------------------------------------------------
