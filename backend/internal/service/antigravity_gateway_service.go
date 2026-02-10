@@ -70,6 +70,7 @@ REDACTED
 
 const (
 	antigravityBillingModelEnv    = "GATEWAY_ANTIGRAVITY_BILL_WITH_MAPPED_MODEL"
+	antigravityForwardBaseURLEnv  = "GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL"
 	antigravityFallbackSecondsEnv = "GATEWAY_ANTIGRAVITY_FALLBACK_COOLDOWN_SECONDS"
 )
 
@@ -129,6 +130,20 @@ REDACTED
 // antigravityRetryLoopResult 重试循环的结果
 type antigravityRetryLoopResult struct {
 	resp *http.Response
+REDACTED
+
+// resolveAntigravityForwardBaseURL 解析转发用 base URL。
+// 默认使用 daily（ForwardBaseURLs 的首个地址）；当环境变量为 prod 时使用第二个地址。
+func resolveAntigravityForwardBaseURL() string {
+	baseURLs := antigravity.ForwardBaseURLs()
+	if len(baseURLs) == 0 {
+		return ""
+REDACTED
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityForwardBaseURLEnv)))
+	if mode == "prod" && len(baseURLs) > 1 {
+		return baseURLs[1]
+REDACTED
+	return baseURLs[0]
 REDACTED
 
 // smartRetryAction 智能重试的处理结果
@@ -466,10 +481,11 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	REDACTED
 REDACTED
 
-	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLs()
-	if len(availableURLs) == 0 {
-		availableURLs = antigravity.BaseURLs
+	baseURL := resolveAntigravityForwardBaseURL()
+	if baseURL == "" {
+		return nil, errors.New("no antigravity forward base url configured")
 REDACTED
+	availableURLs := []string{baseURLREDACTED
 
 	var resp *http.Response
 	var usedBaseURL string
@@ -907,11 +923,11 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	// URL fallback 循环
-	availableURLs := antigravity.DefaultURLAvailability.GetAvailableURLs()
-	if len(availableURLs) == 0 {
-		availableURLs = antigravity.BaseURLs // 所有 URL 都不可用时，重试所有
+	baseURL := resolveAntigravityForwardBaseURL()
+	if baseURL == "" {
+		return nil, errors.New("no antigravity forward base url configured")
 REDACTED
+	availableURLs := []string{baseURLREDACTED
 
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
