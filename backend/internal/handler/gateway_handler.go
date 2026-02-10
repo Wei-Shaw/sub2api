@@ -235,6 +235,7 @@ REDACTED
 		maxAccountSwitches := h.maxAccountSwitchesGemini
 		switchCount := 0
 		failedAccountIDs := make(map[int64]struct{REDACTED)
+		sameAccountRetryCount := make(map[int64]int) // 同账号重试计数
 		var lastFailoverErr *service.UpstreamFailoverError
 		var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
 
@@ -359,11 +360,28 @@ REDACTED
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
 					if needForceCacheBilling(hasBoundSession, failoverErr) {
 						forceCacheBilling = true
 				REDACTED
+
+					// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
+					if failoverErr.RetryableOnSameAccount && sameAccountRetryCount[account.ID] < maxSameAccountRetries {
+						sameAccountRetryCount[account.ID]++
+						log.Printf("Account %d: retryable error %d, same-account retry %d/%d",
+							account.ID, failoverErr.StatusCode, sameAccountRetryCount[account.ID], maxSameAccountRetries)
+						if !sleepSameAccountRetryDelay(c.Request.Context()) {
+							return
+					REDACTED
+						continue
+				REDACTED
+
+					// 同账号重试用尽，执行临时封禁并切换账号
+					if failoverErr.RetryableOnSameAccount {
+						h.gatewayService.TempUnscheduleRetryableError(c.Request.Context(), account.ID, failoverErr)
+				REDACTED
+
+					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, streamStarted)
 						return
@@ -427,6 +445,7 @@ REDACTED
 		maxAccountSwitches := h.maxAccountSwitches
 		switchCount := 0
 		failedAccountIDs := make(map[int64]struct{REDACTED)
+		sameAccountRetryCount := make(map[int64]int) // 同账号重试计数
 		var lastFailoverErr *service.UpstreamFailoverError
 		retryWithFallback := false
 		var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
@@ -579,11 +598,28 @@ REDACTED
 			REDACTED
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					lastFailoverErr = failoverErr
 					if needForceCacheBilling(hasBoundSession, failoverErr) {
 						forceCacheBilling = true
 				REDACTED
+
+					// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
+					if failoverErr.RetryableOnSameAccount && sameAccountRetryCount[account.ID] < maxSameAccountRetries {
+						sameAccountRetryCount[account.ID]++
+						log.Printf("Account %d: retryable error %d, same-account retry %d/%d",
+							account.ID, failoverErr.StatusCode, sameAccountRetryCount[account.ID], maxSameAccountRetries)
+						if !sleepSameAccountRetryDelay(c.Request.Context()) {
+							return
+					REDACTED
+						continue
+				REDACTED
+
+					// 同账号重试用尽，执行临时封禁并切换账号
+					if failoverErr.RetryableOnSameAccount {
+						h.gatewayService.TempUnscheduleRetryableError(c.Request.Context(), account.ID, failoverErr)
+				REDACTED
+
+					failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, streamStarted)
 						return
@@ -863,6 +899,23 @@ func needForceCacheBilling(hasBoundSession bool, failoverErr *service.UpstreamFa
 	return hasBoundSession || (failoverErr != nil && failoverErr.ForceCacheBilling)
 REDACTED
 
+const (
+	// maxSameAccountRetries 同账号重试次数上限（针对 RetryableOnSameAccount 错误）
+	maxSameAccountRetries = 2
+	// sameAccountRetryDelay 同账号重试间隔
+	sameAccountRetryDelay = 500 * time.Millisecond
+)
+
+// sleepSameAccountRetryDelay 同账号重试固定延时，返回 false 表示 context 已取消。
+func sleepSameAccountRetryDelay(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(sameAccountRetryDelay):
+		return true
+REDACTED
+REDACTED
+
 // sleepFailoverDelay 账号切换线性递增延时：第1次0s、第2次1s、第3次2s…
 // 返回 false 表示 context 已取消。
 func sleepFailoverDelay(ctx context.Context, switchCount int) bool {
@@ -916,6 +969,10 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 			msg := service.ExtractUpstreamErrorMessage(responseBody)
 			if !rule.PassthroughBody && rule.CustomMessage != nil {
 				msg = *rule.CustomMessage
+		REDACTED
+
+			if rule.SkipMonitoring {
+				c.Set(service.OpsSkipPassthroughKey, true)
 		REDACTED
 
 			h.handleStreamingAwareError(c, respCode, "upstream_error", msg, streamStarted)

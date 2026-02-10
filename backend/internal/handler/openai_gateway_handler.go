@@ -354,6 +354,10 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 				msg = *rule.CustomMessage
 		REDACTED
 
+			if rule.SkipMonitoring {
+				c.Set(service.OpsSkipPassthroughKey, true)
+		REDACTED
+
 			h.handleStreamingAwareError(c, respCode, "upstream_error", msg, streamStarted)
 			return
 	REDACTED

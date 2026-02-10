@@ -191,13 +191,14 @@ func TestHandleUpstreamError_429_NonModelRateLimit(t *testing.T) {
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 REDACTED
 
-// TestHandleUpstreamError_503_ModelRateLimit 测试 503 模型限流场景
-func TestHandleUpstreamError_503_ModelRateLimit(t *testing.T) {
+// TestHandleUpstreamError_503_ModelCapacityExhausted 测试 503 模型容量不足场景
+// MODEL_CAPACITY_EXHAUSTED 时应等待重试，不切换账号
+func TestHandleUpstreamError_503_ModelCapacityExhausted(t *testing.T) {
 	repo := &stubAntigravityAccountRepo{REDACTED
 	svc := &AntigravityGatewayService{accountRepo: repoREDACTED
 	account := &Account{ID: 3, Name: "acc-3", Platform: PlatformAntigravityREDACTED
 
-	// 503 + MODEL_CAPACITY_EXHAUSTED → 模型限流
+	// 503 + MODEL_CAPACITY_EXHAUSTED → 等待重试，不切换账号
 	body := []byte(`{
 		"error": {
 			"status": "UNAVAILABLE",
@@ -210,13 +211,13 @@ REDACTED`)
 
 	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{REDACTED, body, "gemini-3-pro-high", 0, "", false)
 
-	// 应该触发模型限流
+	// MODEL_CAPACITY_EXHAUSTED 应该标记为已处理，不切换账号，不设置模型限流
+	// 实际重试由 handleSmartRetry 处理
 	require.NotNil(t, result)
 	require.True(t, result.Handled)
-	require.NotNil(t, result.SwitchError)
-	require.Equal(t, "gemini-3-pro-high", result.SwitchError.RateLimitedModel)
-	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, "gemini-3-pro-high", repo.modelRateLimitCalls[0].modelKey)
+	require.False(t, result.ShouldRetry, "MODEL_CAPACITY_EXHAUSTED should not trigger retry from handleModelRateLimit path")
+	require.Nil(t, result.SwitchError, "MODEL_CAPACITY_EXHAUSTED should not trigger account switch")
+	require.Empty(t, repo.modelRateLimitCalls, "MODEL_CAPACITY_EXHAUSTED should not set model rate limit")
 REDACTED
 
 // TestHandleUpstreamError_503_NonModelRateLimit 测试 503 非模型限流场景（不处理）
@@ -304,11 +305,12 @@ REDACTED
 
 func TestParseAntigravitySmartRetryInfo(t *testing.T) {
 	tests := []struct {
-		name          string
-		body          string
-		expectedDelay time.Duration
-		expectedModel string
-		expectedNil   bool
+		name                             string
+		body                             string
+		expectedDelay                    time.Duration
+		expectedModel                    string
+		expectedNil                      bool
+		expectedIsModelCapacityExhausted bool
 REDACTED{
 		{
 			name: "valid complete response with RATE_LIMIT_EXCEEDED",
@@ -371,8 +373,9 @@ REDACTED{
 					"message": "No capacity available for model gemini-3-pro-high on the server"
 			REDACTED
 		REDACTED`,
-			expectedDelay: 39 * time.Second,
-			expectedModel: "gemini-3-pro-high",
+			expectedDelay:                    39 * time.Second,
+			expectedModel:                    "gemini-3-pro-high",
+			expectedIsModelCapacityExhausted: true,
 	REDACTED,
 		{
 			name: "503 UNAVAILABLE without MODEL_CAPACITY_EXHAUSTED - should return nil",
@@ -483,6 +486,9 @@ REDACTED
 			if result.ModelName != tt.expectedModel {
 				t.Errorf("ModelName = %q, want %q", result.ModelName, tt.expectedModel)
 		REDACTED
+			if result.IsModelCapacityExhausted != tt.expectedIsModelCapacityExhausted {
+				t.Errorf("IsModelCapacityExhausted = %v, want %v", result.IsModelCapacityExhausted, tt.expectedIsModelCapacityExhausted)
+		REDACTED
 	REDACTED)
 REDACTED
 REDACTED
@@ -494,13 +500,14 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 	apiKeyAccount := &Account{Type: AccountTypeAPIKeyREDACTED
 
 	tests := []struct {
-		name                    string
-		account                 *Account
-		body                    string
-		expectedShouldRetry     bool
-		expectedShouldRateLimit bool
-		minWait                 time.Duration
-		modelName               string
+		name                             string
+		account                          *Account
+		body                             string
+		expectedShouldRetry              bool
+		expectedShouldRateLimit          bool
+		expectedIsModelCapacityExhausted bool
+		minWait                          time.Duration
+		modelName                        string
 REDACTED{
 		{
 			name:    "OAuth account with short delay (< 7s) - smart retry",
@@ -614,13 +621,14 @@ REDACTED{
 					]
 			REDACTED
 		REDACTED`,
-			expectedShouldRetry:     false,
-			expectedShouldRateLimit: true,
-			minWait:                 39 * time.Second,
-			modelName:               "gemini-3-pro-high",
+			expectedShouldRetry:              true,
+			expectedShouldRateLimit:          false,
+			expectedIsModelCapacityExhausted: true,
+			minWait:                          1 * time.Second,
+			modelName:                        "gemini-3-pro-high",
 	REDACTED,
 		{
-			name:    "503 UNAVAILABLE with MODEL_CAPACITY_EXHAUSTED - no retryDelay - use default rate limit",
+			name:    "503 UNAVAILABLE with MODEL_CAPACITY_EXHAUSTED - no retryDelay - use fixed wait",
 			account: oauthAccount,
 			body: `{
 				"error": {
@@ -632,10 +640,11 @@ REDACTED{
 					"message": "No capacity available for model gemini-2.5-flash on the server"
 			REDACTED
 		REDACTED`,
-			expectedShouldRetry:     false,
-			expectedShouldRateLimit: true,
-			minWait:                 30 * time.Second,
-			modelName:               "gemini-2.5-flash",
+			expectedShouldRetry:              true,
+			expectedShouldRateLimit:          false,
+			expectedIsModelCapacityExhausted: true,
+			minWait:                          1 * time.Second,
+			modelName:                        "gemini-2.5-flash",
 	REDACTED,
 		{
 			name:    "429 RESOURCE_EXHAUSTED with RATE_LIMIT_EXCEEDED - no retryDelay - use default rate limit",
@@ -659,12 +668,15 @@ REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shouldRetry, shouldRateLimit, wait, model := shouldTriggerAntigravitySmartRetry(tt.account, []byte(tt.body))
+			shouldRetry, shouldRateLimit, wait, model, isModelCapacityExhausted := shouldTriggerAntigravitySmartRetry(tt.account, []byte(tt.body))
 			if shouldRetry != tt.expectedShouldRetry {
 				t.Errorf("shouldRetry = %v, want %v", shouldRetry, tt.expectedShouldRetry)
 		REDACTED
 			if shouldRateLimit != tt.expectedShouldRateLimit {
 				t.Errorf("shouldRateLimit = %v, want %v", shouldRateLimit, tt.expectedShouldRateLimit)
+		REDACTED
+			if isModelCapacityExhausted != tt.expectedIsModelCapacityExhausted {
+				t.Errorf("isModelCapacityExhausted = %v, want %v", isModelCapacityExhausted, tt.expectedIsModelCapacityExhausted)
 		REDACTED
 			if shouldRetry {
 				if wait < tt.minWait {

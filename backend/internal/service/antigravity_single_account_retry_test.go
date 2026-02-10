@@ -153,13 +153,14 @@ func TestHandleSmartRetry_503_LongDelay_NoSingleAccountRetry_StillSwitches(t *te
 		Platform: PlatformAntigravity,
 REDACTED
 
-	// 503 + 39s >= 7s 阈值
+	// 503 + 39s >= 7s 阈值（使用 RATE_LIMIT_EXCEEDED 而非 MODEL_CAPACITY_EXHAUSTED，
+	// 因为 MODEL_CAPACITY_EXHAUSTED 走独立的重试路径，不触发 shouldRateLimitModel）
 	respBody := []byte(`{
 		"error": {
 			"code": 503,
-			"status": "UNAVAILABLE",
+			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "39s"REDACTED
 			]
 	REDACTED
@@ -339,13 +340,14 @@ REDACTED
 
 // TestHandleSmartRetry_503_ShortDelay_NoSingleAccountRetry_SetsRateLimit
 // 对照组：503 + retryDelay < 7s + 无 SingleAccountRetry → 智能重试耗尽后照常设限流
+// 使用 RATE_LIMIT_EXCEEDED 而非 MODEL_CAPACITY_EXHAUSTED，因为后者走独立的 60 次重试路径
 func TestHandleSmartRetry_503_ShortDelay_NoSingleAccountRetry_SetsRateLimit(t *testing.T) {
 	failRespBody := `{
 		"error": {
 			"code": 503,
-			"status": "UNAVAILABLE",
+			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
 			]
 	REDACTED
@@ -371,9 +373,9 @@ REDACTED
 	respBody := []byte(`{
 		"error": {
 			"code": 503,
-			"status": "UNAVAILABLE",
+			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "MODEL_CAPACITY_EXHAUSTED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"REDACTED
 			]
 	REDACTED
