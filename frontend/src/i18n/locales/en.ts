@@ -1774,13 +1774,20 @@ export default {
           authCode: 'Authorization URL or Code',
           authCodePlaceholder:
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
-          authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
-          failedToGenerateUrl: 'Failed to generate Antigravity auth URL',
-          missingExchangeParams: 'Missing code, session ID, or state',
-          failedToExchangeCode: 'Failed to exchange Antigravity auth code'
-        REDACTED
-	      REDACTED,
-      // Gemini specific (platform-wide)
+                    authCodeHint: 'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+                    failedToGenerateUrl: 'Failed to generate Antigravity auth URL',
+                    missingExchangeParams: 'Missing code, session ID, or state',
+                    failedToExchangeCode: 'Failed to exchange Antigravity auth code',
+                    // Refresh Token auth
+                    refreshTokenAuth: 'Manual RT',
+                    refreshTokenDesc: 'Enter your existing Antigravity Refresh Token. Supports batch input (one per line). The system will automatically validate and create accounts.',
+                    refreshTokenPlaceholder: 'Paste your Antigravity Refresh Token...\nSupports multiple tokens, one per line',
+                    validating: 'Validating...',
+                    validateAndCreate: 'Validate & Create',
+                    pleaseEnterRefreshToken: 'Please enter Refresh Token',
+                    failedToValidateRT: 'Failed to validate Refresh Token'
+                  REDACTED
+                REDACTED,      // Gemini specific (platform-wide)
       gemini: {
         helpButton: 'Help',
         helpDialog: {
