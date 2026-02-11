@@ -54,6 +54,8 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyUnchang
 	c.Request.Header.Set("Cookie", "secret=1")
 	c.Request.Header.Set("X-Api-Key", "sk-inbound")
 	c.Request.Header.Set("X-Goog-Api-Key", "goog-inbound")
+	c.Request.Header.Set("Accept-Encoding", "gzip")
+	c.Request.Header.Set("Proxy-Authorization", "Basic abc")
 	c.Request.Header.Set("X-Test", "keep")
 
 	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"store":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
@@ -108,6 +110,8 @@ REDACTED
 	require.Empty(t, upstream.lastReq.Header.Get("Cookie"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Api-Key"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Goog-Api-Key"))
+	require.Empty(t, upstream.lastReq.Header.Get("Accept-Encoding"))
+	require.Empty(t, upstream.lastReq.Header.Get("Proxy-Authorization"))
 	require.Equal(t, "keep", upstream.lastReq.Header.Get("X-Test"))
 
 	// 3) required OAuth headers are present
@@ -361,4 +365,59 @@ REDACTED
 	require.GreaterOrEqual(t, time.Since(start), time.Duration(0))
 	require.NotNil(t, result.FirstTokenMs)
 	require.GreaterOrEqual(t, *result.FirstTokenMs, 0)
+REDACTED
+
+func TestOpenAIGatewayService_OAuthPassthrough_StreamClientDisconnectStillCollectsUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+	// 首次写入成功，后续写入失败，模拟客户端中途断开。
+	c.Writer = &failingGinWriter{ResponseWriter: c.Writer, failAfter: 1REDACTED
+
+	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","delta":"h"REDACTED`,
+		"",
+		`data: {"type":"response.completed","response":{"usage":{"input_tokens":11,"output_tokens":7,"input_tokens_details":{"cached_tokens":3REDACTEDREDACTEDREDACTEDREDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: respREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+		httpUpstream: upstream,
+REDACTED
+
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:          map[string]any{"openai_oauth_passthrough": trueREDACTED,
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+REDACTED
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.NotNil(t, result.FirstTokenMs)
+	require.Equal(t, 11, result.Usage.InputTokens)
+	require.Equal(t, 7, result.Usage.OutputTokens)
+	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
 REDACTED
