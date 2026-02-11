@@ -273,10 +273,19 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 	REDACTED
 
 		client := antigravity.NewClient(proxyURL)
-		loadResp, _, err := client.LoadCodeAssist(ctx, accessToken)
+		loadResp, loadRaw, err := client.LoadCodeAssist(ctx, accessToken)
 
 		if err == nil && loadResp != nil && loadResp.CloudAICompanionProject != "" {
 			return loadResp.CloudAICompanionProject, nil
+	REDACTED
+
+		if err == nil {
+			if projectID, onboardErr := tryOnboardProjectID(ctx, client, accessToken, loadRaw); onboardErr == nil && projectID != "" {
+				return projectID, nil
+		REDACTED else if onboardErr != nil {
+				lastErr = onboardErr
+				continue
+		REDACTED
 	REDACTED
 
 		// 记录错误
@@ -290,6 +299,65 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 REDACTED
 
 	return "", fmt.Errorf("获取 project_id 失败 (重试 %d 次后): %w", maxRetries, lastErr)
+REDACTED
+
+func tryOnboardProjectID(ctx context.Context, client *antigravity.Client, accessToken string, loadRaw map[string]any) (string, error) {
+	tierID := resolveDefaultTierID(loadRaw)
+	if tierID == "" {
+		return "", fmt.Errorf("loadCodeAssist 未返回可用的默认 tier")
+REDACTED
+
+	projectID, err := client.OnboardUser(ctx, accessToken, tierID)
+	if err != nil {
+		return "", fmt.Errorf("onboardUser 失败 (tier=%s): %w", tierID, err)
+REDACTED
+	return projectID, nil
+REDACTED
+
+func resolveDefaultTierID(loadRaw map[string]any) string {
+	if len(loadRaw) == 0 {
+		return ""
+REDACTED
+
+	rawTiers, ok := loadRaw["allowedTiers"]
+	if !ok {
+		return ""
+REDACTED
+
+	tiers, ok := rawTiers.([]any)
+	if !ok {
+		return ""
+REDACTED
+
+	for _, rawTier := range tiers {
+		tier, ok := rawTier.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		if isDefault, _ := tier["isDefault"].(bool); !isDefault {
+			continue
+	REDACTED
+		if id, ok := tier["id"].(string); ok {
+			id = strings.TrimSpace(id)
+			if id != "" {
+				return id
+		REDACTED
+	REDACTED
+REDACTED
+
+	return ""
+REDACTED
+
+// FillProjectID 仅获取 project_id，不刷新 OAuth token
+func (s *AntigravityOAuthService) FillProjectID(ctx context.Context, account *Account, accessToken string) (string, error) {
+	var proxyURL string
+	if account.ProxyID != nil {
+		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+		if err == nil && proxy != nil {
+			proxyURL = proxy.URL()
+	REDACTED
+REDACTED
+	return s.loadProjectIDWithRetry(ctx, accessToken, proxyURL, 3)
 REDACTED
 
 // BuildAccountCredentials 构建账户凭证
