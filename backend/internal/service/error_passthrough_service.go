@@ -45,9 +45,19 @@ type ErrorPassthroughService struct {
 	cache ErrorPassthroughCache
 
 	// 本地内存缓存，用于快速匹配
-	localCache   []*model.ErrorPassthroughRule
+	localCache   []*cachedPassthroughRule
 	localCacheMu sync.RWMutex
 REDACTED
+
+// cachedPassthroughRule 预计算的规则缓存，避免运行时重复 ToLower
+type cachedPassthroughRule struct {
+	*model.ErrorPassthroughRule
+	lowerKeywords  []string         // 预计算的小写关键词
+	lowerPlatforms []string         // 预计算的小写平台
+	errorCodeSet   map[int]struct{REDACTED // 预计算的 error code set
+REDACTED
+
+const maxBodyMatchLen = 8 << 10 // 8KB，错误信息不会在 8KB 之后才出现
 
 // NewErrorPassthroughService 创建错误透传规则服务
 func NewErrorPassthroughService(
@@ -150,17 +160,19 @@ func (s *ErrorPassthroughService) MatchRule(platform string, statusCode int, bod
 		return nil
 REDACTED
 
-	bodyStr := strings.ToLower(string(body))
+	lowerPlatform := strings.ToLower(platform)
+	var bodyLower string // 延迟初始化，只在需要关键词匹配时计算
+	var bodyLowerDone bool
 
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 	REDACTED
-		if !s.platformMatches(rule, platform) {
+		if !s.platformMatchesCached(rule, lowerPlatform) {
 			continue
 	REDACTED
-		if s.ruleMatches(rule, statusCode, bodyStr) {
-			return rule
+		if s.ruleMatchesOptimized(rule, statusCode, body, &bodyLower, &bodyLowerDone) {
+			return rule.ErrorPassthroughRule
 	REDACTED
 REDACTED
 
@@ -168,7 +180,7 @@ REDACTED
 REDACTED
 
 // getCachedRules 获取缓存的规则列表（按优先级排序）
-func (s *ErrorPassthroughService) getCachedRules() []*model.ErrorPassthroughRule {
+func (s *ErrorPassthroughService) getCachedRules() []*cachedPassthroughRule {
 	s.localCacheMu.RLock()
 	rules := s.localCache
 	s.localCacheMu.RUnlock()
@@ -223,17 +235,39 @@ REDACTED
 	return nil
 REDACTED
 
-// setLocalCache 设置本地缓存
+// setLocalCache 设置本地缓存，预计算小写值和 set 以避免运行时重复计算
 func (s *ErrorPassthroughService) setLocalCache(rules []*model.ErrorPassthroughRule) {
+	cached := make([]*cachedPassthroughRule, len(rules))
+	for i, r := range rules {
+		cr := &cachedPassthroughRule{ErrorPassthroughRule: rREDACTED
+		if len(r.Keywords) > 0 {
+			cr.lowerKeywords = make([]string, len(r.Keywords))
+			for j, kw := range r.Keywords {
+				cr.lowerKeywords[j] = strings.ToLower(kw)
+		REDACTED
+	REDACTED
+		if len(r.Platforms) > 0 {
+			cr.lowerPlatforms = make([]string, len(r.Platforms))
+			for j, p := range r.Platforms {
+				cr.lowerPlatforms[j] = strings.ToLower(p)
+		REDACTED
+	REDACTED
+		if len(r.ErrorCodes) > 0 {
+			cr.errorCodeSet = make(map[int]struct{REDACTED, len(r.ErrorCodes))
+			for _, code := range r.ErrorCodes {
+				cr.errorCodeSet[code] = struct{REDACTED{REDACTED
+		REDACTED
+	REDACTED
+		cached[i] = cr
+REDACTED
+
 	// 按优先级排序
-	sorted := make([]*model.ErrorPassthroughRule, len(rules))
-	copy(sorted, rules)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Priority < sorted[j].Priority
+	sort.Slice(cached, func(i, j int) bool {
+		return cached[i].Priority < cached[j].Priority
 REDACTED)
 
 	s.localCacheMu.Lock()
-	s.localCache = sorted
+	s.localCache = cached
 	s.localCacheMu.Unlock()
 REDACTED
 
@@ -273,62 +307,79 @@ REDACTED
 REDACTED
 REDACTED
 
-// platformMatches 检查平台是否匹配
-func (s *ErrorPassthroughService) platformMatches(rule *model.ErrorPassthroughRule, platform string) bool {
-	// 如果没有配置平台限制，则匹配所有平台
-	if len(rule.Platforms) == 0 {
-		return true
+// ensureBodyLower 延迟初始化 body 的小写版本，只做一次转换，限制 8KB
+func ensureBodyLower(body []byte, bodyLower *string, done *bool) string {
+	if *done {
+		return *bodyLower
+REDACTED
+	b := body
+	if len(b) > maxBodyMatchLen {
+		b = b[:maxBodyMatchLen]
+REDACTED
+	*bodyLower = strings.ToLower(string(b))
+	*done = true
+	return *bodyLower
 REDACTED
 
-	platform = strings.ToLower(platform)
-	for _, p := range rule.Platforms {
-		if strings.ToLower(p) == platform {
+// platformMatchesCached 使用预计算的小写平台检查是否匹配
+func (s *ErrorPassthroughService) platformMatchesCached(rule *cachedPassthroughRule, lowerPlatform string) bool {
+	if len(rule.lowerPlatforms) == 0 {
+		return true
+REDACTED
+	for _, p := range rule.lowerPlatforms {
+		if p == lowerPlatform {
 			return true
 	REDACTED
 REDACTED
-
 	return false
 REDACTED
 
-// ruleMatches 检查规则是否匹配
-func (s *ErrorPassthroughService) ruleMatches(rule *model.ErrorPassthroughRule, statusCode int, bodyLower string) bool {
-	hasErrorCodes := len(rule.ErrorCodes) > 0
-	hasKeywords := len(rule.Keywords) > 0
+// ruleMatchesOptimized 优化的规则匹配，支持短路和延迟 body 转换
+func (s *ErrorPassthroughService) ruleMatchesOptimized(rule *cachedPassthroughRule, statusCode int, body []byte, bodyLower *string, bodyLowerDone *bool) bool {
+	hasErrorCodes := len(rule.errorCodeSet) > 0
+	hasKeywords := len(rule.lowerKeywords) > 0
 
-	// 如果没有配置任何条件，不匹配
 	if !hasErrorCodes && !hasKeywords {
 		return false
 REDACTED
 
-	codeMatch := !hasErrorCodes || s.containsInt(rule.ErrorCodes, statusCode)
-	keywordMatch := !hasKeywords || s.containsAnyKeyword(bodyLower, rule.Keywords)
+	codeMatch := !hasErrorCodes || s.containsIntSet(rule.errorCodeSet, statusCode)
 
 	if rule.MatchMode == model.MatchModeAll {
-		// "all" 模式：所有配置的条件都必须满足
-		return codeMatch && keywordMatch
+		// "all" 模式：所有配置的条件都必须满足，短路
+		if hasErrorCodes && !codeMatch {
+			return false
+	REDACTED
+		if hasKeywords {
+			return s.containsAnyKeywordCached(ensureBodyLower(body, bodyLower, bodyLowerDone), rule.lowerKeywords)
+	REDACTED
+		return codeMatch
 REDACTED
 
-	// "any" 模式：任一条件满足即可
+	// "any" 模式：任一条件满足即可，短路
 	if hasErrorCodes && hasKeywords {
-		return codeMatch || keywordMatch
-REDACTED
-	return codeMatch && keywordMatch
-REDACTED
-
-// containsInt 检查切片是否包含指定整数
-func (s *ErrorPassthroughService) containsInt(slice []int, val int) bool {
-	for _, v := range slice {
-		if v == val {
+		if codeMatch {
 			return true
 	REDACTED
+		return s.containsAnyKeywordCached(ensureBodyLower(body, bodyLower, bodyLowerDone), rule.lowerKeywords)
 REDACTED
-	return false
+	// 只配置了一种条件
+	if hasKeywords {
+		return s.containsAnyKeywordCached(ensureBodyLower(body, bodyLower, bodyLowerDone), rule.lowerKeywords)
+REDACTED
+	return codeMatch
 REDACTED
 
-// containsAnyKeyword 检查字符串是否包含任一关键词（不区分大小写）
-func (s *ErrorPassthroughService) containsAnyKeyword(bodyLower string, keywords []string) bool {
-	for _, kw := range keywords {
-		if strings.Contains(bodyLower, strings.ToLower(kw)) {
+// containsIntSet 使用 map 查找替代线性扫描
+func (s *ErrorPassthroughService) containsIntSet(set map[int]struct{REDACTED, val int) bool {
+	_, ok := set[val]
+	return ok
+REDACTED
+
+// containsAnyKeywordCached 使用预计算的小写关键词检查匹配
+func (s *ErrorPassthroughService) containsAnyKeywordCached(bodyLower string, lowerKeywords []string) bool {
+	for _, kw := range lowerKeywords {
+		if strings.Contains(bodyLower, kw) {
 			return true
 	REDACTED
 REDACTED

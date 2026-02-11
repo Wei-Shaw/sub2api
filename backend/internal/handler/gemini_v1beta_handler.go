@@ -554,6 +554,10 @@ REDACTED
 				msg = *rule.CustomMessage
 		REDACTED
 
+			if rule.SkipMonitoring {
+				c.Set(service.OpsSkipPassthroughKey, true)
+		REDACTED
+
 			googleError(c, respCode, msg)
 			return
 	REDACTED

@@ -194,6 +194,63 @@ REDACTED
 	assert.Equal(t, "Gemini上游失败", errField["message"])
 REDACTED
 
+func TestApplyErrorPassthroughRule_SkipMonitoringSetsContextKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	rule := newNonFailoverPassthroughRule(http.StatusBadRequest, "prompt is too long", http.StatusBadRequest, "上下文超限")
+	rule.SkipMonitoring = true
+
+	ruleSvc := &ErrorPassthroughService{REDACTED
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{ruleREDACTED)
+	BindErrorPassthroughService(c, ruleSvc)
+
+	_, _, _, matched := applyErrorPassthroughRule(
+		c,
+		PlatformAnthropic,
+		http.StatusBadRequest,
+		[]byte(`{"error":{"message":"prompt is too long"REDACTEDREDACTED`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	v, exists := c.Get(OpsSkipPassthroughKey)
+	assert.True(t, exists, "OpsSkipPassthroughKey should be set when skip_monitoring=true")
+	boolVal, ok := v.(bool)
+	assert.True(t, ok, "value should be bool")
+	assert.True(t, boolVal)
+REDACTED
+
+func TestApplyErrorPassthroughRule_NoSkipMonitoringDoesNotSetContextKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	rule := newNonFailoverPassthroughRule(http.StatusBadRequest, "prompt is too long", http.StatusBadRequest, "上下文超限")
+	rule.SkipMonitoring = false
+
+	ruleSvc := &ErrorPassthroughService{REDACTED
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{ruleREDACTED)
+	BindErrorPassthroughService(c, ruleSvc)
+
+	_, _, _, matched := applyErrorPassthroughRule(
+		c,
+		PlatformAnthropic,
+		http.StatusBadRequest,
+		[]byte(`{"error":{"message":"prompt is too long"REDACTEDREDACTED`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	assert.True(t, matched)
+	_, exists := c.Get(OpsSkipPassthroughKey)
+	assert.False(t, exists, "OpsSkipPassthroughKey should NOT be set when skip_monitoring=false")
+REDACTED
+
 func newNonFailoverPassthroughRule(statusCode int, keyword string, respCode int, customMessage string) *model.ErrorPassthroughRule {
 	return &model.ErrorPassthroughRule{
 		ID:              1,

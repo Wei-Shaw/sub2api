@@ -227,6 +227,20 @@ func (_u *ErrorPassthroughRuleUpdate) ClearCustomMessage() *ErrorPassthroughRule
 	return _u
 REDACTED
 
+// SetSkipMonitoring sets the "skip_monitoring" field.
+func (_u *ErrorPassthroughRuleUpdate) SetSkipMonitoring(v bool) *ErrorPassthroughRuleUpdate {
+	_u.mutation.SetSkipMonitoring(v)
+	return _u
+REDACTED
+
+// SetNillableSkipMonitoring sets the "skip_monitoring" field if the given value is not nil.
+func (_u *ErrorPassthroughRuleUpdate) SetNillableSkipMonitoring(v *bool) *ErrorPassthroughRuleUpdate {
+	if v != nil {
+		_u.SetSkipMonitoring(*v)
+REDACTED
+	return _u
+REDACTED
+
 // SetDescription sets the "description" field.
 func (_u *ErrorPassthroughRuleUpdate) SetDescription(v string) *ErrorPassthroughRuleUpdate {
 	_u.mutation.SetDescription(v)
@@ -386,6 +400,9 @@ REDACTED
 REDACTED
 	if _u.mutation.CustomMessageCleared() {
 		_spec.ClearField(errorpassthroughrule.FieldCustomMessage, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.SkipMonitoring(); ok {
+		_spec.SetField(errorpassthroughrule.FieldSkipMonitoring, field.TypeBool, value)
 REDACTED
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(errorpassthroughrule.FieldDescription, field.TypeString, value)
@@ -611,6 +628,20 @@ func (_u *ErrorPassthroughRuleUpdateOne) ClearCustomMessage() *ErrorPassthroughR
 	return _u
 REDACTED
 
+// SetSkipMonitoring sets the "skip_monitoring" field.
+func (_u *ErrorPassthroughRuleUpdateOne) SetSkipMonitoring(v bool) *ErrorPassthroughRuleUpdateOne {
+	_u.mutation.SetSkipMonitoring(v)
+	return _u
+REDACTED
+
+// SetNillableSkipMonitoring sets the "skip_monitoring" field if the given value is not nil.
+func (_u *ErrorPassthroughRuleUpdateOne) SetNillableSkipMonitoring(v *bool) *ErrorPassthroughRuleUpdateOne {
+	if v != nil {
+		_u.SetSkipMonitoring(*v)
+REDACTED
+	return _u
+REDACTED
+
 // SetDescription sets the "description" field.
 func (_u *ErrorPassthroughRuleUpdateOne) SetDescription(v string) *ErrorPassthroughRuleUpdateOne {
 	_u.mutation.SetDescription(v)
@@ -800,6 +831,9 @@ REDACTED
 REDACTED
 	if _u.mutation.CustomMessageCleared() {
 		_spec.ClearField(errorpassthroughrule.FieldCustomMessage, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.SkipMonitoring(); ok {
+		_spec.SetField(errorpassthroughrule.FieldSkipMonitoring, field.TypeBool, value)
 REDACTED
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(errorpassthroughrule.FieldDescription, field.TypeString, value)
