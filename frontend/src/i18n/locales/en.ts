@@ -1335,6 +1335,7 @@ export default {
       allPlatforms: 'All Platforms',
       allTypes: 'All Types',
       allStatus: 'All Status',
+      allGroups: 'All Groups',
       oauthType: 'OAuth',
       setupToken: 'Setup Token',
       apiKey: 'API Key',
@@ -1344,7 +1345,7 @@ export default {
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
-      allGroups: '{countREDACTED groups total',
+      groupCountTotal: '{countREDACTED groups total',
       platforms: {
         anthropic: 'Anthropic',
         claude: 'Claude',
