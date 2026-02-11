@@ -155,6 +155,7 @@ type GeminiUsageMetadata struct {
 	CandidatesTokenCount    int `json:"candidatesTokenCount,omitempty"`
 	CachedContentTokenCount int `json:"cachedContentTokenCount,omitempty"`
 	TotalTokenCount         int `json:"totalTokenCount,omitempty"`
+	ThoughtsTokenCount      int `json:"thoughtsTokenCount,omitempty"` // thinking tokens（按输出价格计费）
 REDACTED
 
 // GeminiGroundingMetadata Gemini grounding 元数据（Web Search）

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
@@ -201,5 +203,72 @@ REDACTED
 	s := string(out)
 	if !strings.Contains(s, "\"thoughtSignature\":\""+geminiDummyThoughtSignature+"\"") {
 		t.Fatalf("expected injected thoughtSignature %q, got: %s", geminiDummyThoughtSignature, s)
+REDACTED
+REDACTED
+
+func TestExtractGeminiUsage_ThoughtsTokenCount(t *testing.T) {
+	tests := []struct {
+		name          string
+		resp          map[string]any
+		wantInput     int
+		wantOutput    int
+		wantCacheRead int
+		wantNil       bool
+REDACTED{
+		{
+			name: "with thoughtsTokenCount",
+			resp: map[string]any{
+				"usageMetadata": map[string]any{
+					"promptTokenCount":     float64(100),
+					"candidatesTokenCount": float64(20),
+					"thoughtsTokenCount":   float64(50),
+			REDACTED,
+		REDACTED,
+			wantInput:  100,
+			wantOutput: 70,
+	REDACTED,
+		{
+			name: "with thoughtsTokenCount and cache",
+			resp: map[string]any{
+				"usageMetadata": map[string]any{
+					"promptTokenCount":        float64(100),
+					"candidatesTokenCount":    float64(20),
+					"cachedContentTokenCount": float64(30),
+					"thoughtsTokenCount":      float64(50),
+			REDACTED,
+		REDACTED,
+			wantInput:     70,
+			wantOutput:    70,
+			wantCacheRead: 30,
+	REDACTED,
+		{
+			name: "without thoughtsTokenCount (old model)",
+			resp: map[string]any{
+				"usageMetadata": map[string]any{
+					"promptTokenCount":     float64(100),
+					"candidatesTokenCount": float64(20),
+			REDACTED,
+		REDACTED,
+			wantInput:  100,
+			wantOutput: 20,
+	REDACTED,
+		{
+			name:    "no usageMetadata",
+			resp:    map[string]any{REDACTED,
+			wantNil: true,
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			usage := extractGeminiUsage(tt.resp)
+			if tt.wantNil {
+				require.Nil(t, usage)
+				return
+		REDACTED
+			require.NotNil(t, usage)
+			require.Equal(t, tt.wantInput, usage.InputTokens)
+			require.Equal(t, tt.wantOutput, usage.OutputTokens)
+			require.Equal(t, tt.wantCacheRead, usage.CacheReadInputTokens)
+	REDACTED)
 REDACTED
 REDACTED
