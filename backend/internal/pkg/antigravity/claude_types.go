@@ -28,7 +28,7 @@ REDACTED
 // ThinkingConfig Thinking 配置
 type ThinkingConfig struct {
 	Type         string `json:"type"`                    // "enabled" / "adaptive" / "disabled"
-	BudgetTokens int    `json:"budget_tokens,omitempty"` // thinking budget（-1 表示动态预算）
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // thinking budget
 REDACTED
 
 // ClaudeMetadata 请求元数据

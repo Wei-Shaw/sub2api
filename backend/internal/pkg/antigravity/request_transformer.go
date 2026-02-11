@@ -618,9 +618,8 @@ REDACTED
 			IncludeThoughts: true,
 	REDACTED
 
-		// - thinking.type=enabled：budget_tokens>0 用显式预算；否则使用动态预算（-1）
+		// - thinking.type=enabled：budget_tokens>0 用显式预算
 		// - thinking.type=adaptive：仅在 Antigravity 的 Opus 4.6 上覆写为 （24576）
-		//   （CLIProxyAPI 先翻译为 thinkingLevel="high"，再按模型能力转换为预算值）。
 		budget := -1
 		if req.Thinking.BudgetTokens > 0 {
 			budget = req.Thinking.BudgetTokens
