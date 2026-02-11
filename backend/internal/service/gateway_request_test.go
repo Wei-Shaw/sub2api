@@ -29,6 +29,14 @@ REDACTED
 	require.True(t, parsed.ThinkingEnabled)
 REDACTED
 
+func TestParseGatewayRequest_ThinkingAdaptiveEnabled(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5","thinking":{"type":"adaptive"REDACTED,"messages":[{"content":"hi"REDACTED]REDACTED`)
+	parsed, err := ParseGatewayRequest(body, "")
+REDACTED
+	require.Equal(t, "claude-sonnet-4-5", parsed.Model)
+	require.True(t, parsed.ThinkingEnabled)
+REDACTED
+
 func TestParseGatewayRequest_MaxTokens(t *testing.T) {
 	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1REDACTED`)
 	parsed, err := ParseGatewayRequest(body, "")
@@ -207,6 +215,16 @@ REDACTED{
 		{
 			name:         "filters thinking blocks",
 			input:        `{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":[{"type":"text","text":"Hello"REDACTED,{"type":"thinking","thinking":"internal","signature":"invalid"REDACTED,{"type":"text","text":"World"REDACTED]REDACTED]REDACTED`,
+			shouldFilter: true,
+	REDACTED,
+		{
+			name:         "does not filter signed thinking blocks when thinking adaptive",
+			input:        `{"thinking":{"type":"adaptive"REDACTED,"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"ok","signature":"sig_real_123"REDACTED,{"type":"text","text":"B"REDACTED]REDACTED]REDACTED`,
+			shouldFilter: false,
+	REDACTED,
+		{
+			name:         "filters unsigned thinking blocks when thinking adaptive",
+			input:        `{"thinking":{"type":"adaptive"REDACTED,"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"internal","signature":""REDACTED,{"type":"text","text":"B"REDACTED]REDACTED]REDACTED`,
 			shouldFilter: true,
 	REDACTED,
 		{
