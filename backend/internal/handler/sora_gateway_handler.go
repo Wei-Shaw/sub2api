@@ -215,7 +215,7 @@ REDACTED
 			return
 	REDACTED
 		account := selection.Account
-		setOpsSelectedAccount(c, account.ID)
+		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc := selection.ReleaseFunc
 		if !selection.Acquired {

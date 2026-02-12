@@ -39,6 +39,7 @@ const (
 
 type Config struct {
 	Server                  ServerConfig                  `mapstructure:"server"`
+	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
 	Security                SecurityConfig                `mapstructure:"security"`
 	Billing                 BillingConfig                 `mapstructure:"billing"`
@@ -66,6 +67,38 @@ type Config struct {
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
+REDACTED
+
+type LogConfig struct {
+	Level           string            `mapstructure:"level"`
+	Format          string            `mapstructure:"format"`
+	ServiceName     string            `mapstructure:"service_name"`
+	Environment     string            `mapstructure:"env"`
+	Caller          bool              `mapstructure:"caller"`
+	StacktraceLevel string            `mapstructure:"stacktrace_level"`
+	Output          LogOutputConfig   `mapstructure:"output"`
+	Rotation        LogRotationConfig `mapstructure:"rotation"`
+	Sampling        LogSamplingConfig `mapstructure:"sampling"`
+REDACTED
+
+type LogOutputConfig struct {
+	ToStdout bool   `mapstructure:"to_stdout"`
+	ToFile   bool   `mapstructure:"to_file"`
+	FilePath string `mapstructure:"file_path"`
+REDACTED
+
+type LogRotationConfig struct {
+	MaxSizeMB  int  `mapstructure:"max_size_mb"`
+	MaxBackups int  `mapstructure:"max_backups"`
+	MaxAgeDays int  `mapstructure:"max_age_days"`
+	Compress   bool `mapstructure:"compress"`
+	LocalTime  bool `mapstructure:"local_time"`
+REDACTED
+
+type LogSamplingConfig struct {
+	Enabled    bool `mapstructure:"enabled"`
+	Initial    int  `mapstructure:"initial"`
+	Thereafter int  `mapstructure:"thereafter"`
 REDACTED
 
 type GeminiConfig struct {
@@ -756,6 +789,12 @@ REDACTED
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
+	cfg.Log.Level = strings.ToLower(strings.TrimSpace(cfg.Log.Level))
+	cfg.Log.Format = strings.ToLower(strings.TrimSpace(cfg.Log.Format))
+	cfg.Log.ServiceName = strings.TrimSpace(cfg.Log.ServiceName)
+	cfg.Log.Environment = strings.TrimSpace(cfg.Log.Environment)
+	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
+	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 
 	// Auto-generate TOTP encryption key if not set (32 bytes = 64 hex chars for AES-256)
 	cfg.Totp.EncryptionKey = strings.TrimSpace(cfg.Totp.EncryptionKey)
@@ -824,6 +863,25 @@ func setDefaults() {
 	viper.SetDefault("server.h2c.max_read_frame_size", 1<<20)              // 1MB（够用）
 	viper.SetDefault("server.h2c.max_upload_buffer_per_connection", 2<<20) // 2MB
 	viper.SetDefault("server.h2c.max_upload_buffer_per_stream", 512<<10)   // 512KB
+
+	// Log
+	viper.SetDefault("log.level", "info")
+	viper.SetDefault("log.format", "json")
+	viper.SetDefault("log.service_name", "sub2api")
+	viper.SetDefault("log.env", "production")
+	viper.SetDefault("log.caller", true)
+	viper.SetDefault("log.stacktrace_level", "error")
+	viper.SetDefault("log.output.to_stdout", true)
+	viper.SetDefault("log.output.to_file", true)
+	viper.SetDefault("log.output.file_path", "")
+	viper.SetDefault("log.rotation.max_size_mb", 100)
+	viper.SetDefault("log.rotation.max_backups", 10)
+	viper.SetDefault("log.rotation.max_age_days", 7)
+	viper.SetDefault("log.rotation.compress", true)
+	viper.SetDefault("log.rotation.local_time", true)
+	viper.SetDefault("log.sampling.enabled", false)
+	viper.SetDefault("log.sampling.initial", 100)
+	viper.SetDefault("log.sampling.thereafter", 100)
 
 	// CORS
 	viper.SetDefault("cors.allowed_origins", []string{REDACTED)
@@ -1097,6 +1155,54 @@ REDACTED
 	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
 	if len([]byte(jwtSecret)) < 32 {
 		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+REDACTED
+	switch c.Log.Level {
+	case "debug", "info", "warn", "error":
+	case "":
+		return fmt.Errorf("log.level is required")
+	default:
+		return fmt.Errorf("log.level must be one of: debug/info/warn/error")
+REDACTED
+	switch c.Log.Format {
+	case "json", "console":
+	case "":
+		return fmt.Errorf("log.format is required")
+	default:
+		return fmt.Errorf("log.format must be one of: json/console")
+REDACTED
+	switch c.Log.StacktraceLevel {
+	case "none", "error", "fatal":
+	case "":
+		return fmt.Errorf("log.stacktrace_level is required")
+	default:
+		return fmt.Errorf("log.stacktrace_level must be one of: none/error/fatal")
+REDACTED
+	if !c.Log.Output.ToStdout && !c.Log.Output.ToFile {
+		return fmt.Errorf("log.output.to_stdout and log.output.to_file cannot both be false")
+REDACTED
+	if c.Log.Rotation.MaxSizeMB <= 0 {
+		return fmt.Errorf("log.rotation.max_size_mb must be positive")
+REDACTED
+	if c.Log.Rotation.MaxBackups < 0 {
+		return fmt.Errorf("log.rotation.max_backups must be non-negative")
+REDACTED
+	if c.Log.Rotation.MaxAgeDays < 0 {
+		return fmt.Errorf("log.rotation.max_age_days must be non-negative")
+REDACTED
+	if c.Log.Sampling.Enabled {
+		if c.Log.Sampling.Initial <= 0 {
+			return fmt.Errorf("log.sampling.initial must be positive when sampling is enabled")
+	REDACTED
+		if c.Log.Sampling.Thereafter <= 0 {
+			return fmt.Errorf("log.sampling.thereafter must be positive when sampling is enabled")
+	REDACTED
+REDACTED else {
+		if c.Log.Sampling.Initial < 0 {
+			return fmt.Errorf("log.sampling.initial must be non-negative")
+	REDACTED
+		if c.Log.Sampling.Thereafter < 0 {
+			return fmt.Errorf("log.sampling.thereafter must be non-negative")
+	REDACTED
 REDACTED
 
 	if c.SubscriptionMaintenance.WorkerCount < 0 {

@@ -276,7 +276,7 @@ REDACTED
 				return
 		REDACTED
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID)
+			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -462,7 +462,7 @@ REDACTED
 				return
 		REDACTED
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID)
+			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -1087,7 +1087,7 @@ REDACTED
 		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
 		return
 REDACTED
-	setOpsSelectedAccount(c, account.ID)
+	setOpsSelectedAccount(c, account.ID, account.Platform)
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {

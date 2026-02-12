@@ -240,7 +240,7 @@ REDACTED
 	REDACTED
 		account := selection.Account
 		log.Printf("[OpenAI Handler] Selected account: id=%d name=%s", account.ID, account.Name)
-		setOpsSelectedAccount(c, account.ID)
+		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		// 3. Acquire account concurrency slot
 		accountReleaseFunc := selection.ReleaseFunc

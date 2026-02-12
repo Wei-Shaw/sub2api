@@ -287,6 +287,70 @@ gateway:
     #     name: "Custom Profile 2"
 
 # =============================================================================
+# Logging Configuration
+# 日志配置
+# =============================================================================
+log:
+  # Log level: debug/info/warn/error
+  # 日志级别：debug/info/warn/error
+  level: "info"
+  # Log format: json/console
+  # 日志格式：json/console
+  format: "json"
+  # Service name field written into each log line
+  # 每条日志都会附带 service 字段
+  service_name: "sub2api"
+  # Environment field written into each log line
+  # 每条日志都会附带 env 字段
+  env: "production"
+  # Include caller information
+  # 是否输出调用方位置信息
+  caller: true
+  # Stacktrace threshold: none/error/fatal
+  # 堆栈输出阈值：none/error/fatal
+  stacktrace_level: "error"
+  output:
+    # Keep stdout/stderr output for container log collection
+    # 保持标准输出用于容器日志采集
+    to_stdout: true
+    # Enable file output (default path auto-derived)
+    # 启用文件输出（默认路径自动推导）
+    to_file: true
+    # Empty means:
+    # - DATA_DIR set: {{DATA_DIRREDACTEDREDACTED/logs/sub2api.log
+    # - otherwise: /app/data/logs/sub2api.log
+    # 留空时：
+    # - 设置 DATA_DIR：{{DATA_DIRREDACTEDREDACTED/logs/sub2api.log
+    # - 否则：/app/data/logs/sub2api.log
+    file_path: ""
+  rotation:
+    # Max file size before rotation (MB)
+    # 单文件滚动阈值（MB）
+    max_size_mb: 100
+    # Number of rotated files to keep (0 means unlimited)
+    # 保留历史文件数量（0 表示不限制）
+    max_backups: 10
+    # Number of days to keep old log files (0 means unlimited)
+    # 历史日志保留天数（0 表示不限制）
+    max_age_days: 7
+    # Compress rotated files
+    # 是否压缩历史日志
+    compress: true
+    # Use local time for timestamp in rotated filename
+    # 滚动文件名时间戳使用本地时区
+    local_time: true
+  sampling:
+    # Enable zap sampler (reduce high-frequency repetitive logs)
+    # 启用 zap 采样（减少高频重复日志）
+    enabled: false
+    # Number of first entries per second to always log
+    # 每秒无采样保留的前 N 条日志
+    initial: 100
+    # Thereafter keep 1 out of N entries per second
+    # 之后每 N 条保留 1 条
+    thereafter: 100
+
+# =============================================================================
 # Sora Direct Client Configuration
 # Sora 直连配置
 # =============================================================================

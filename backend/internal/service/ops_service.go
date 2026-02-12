@@ -37,6 +37,7 @@ type OpsService struct {
 	openAIGatewayService      *OpenAIGatewayService
 	geminiCompatService       *GeminiMessagesCompatService
 	antigravityGatewayService *AntigravityGatewayService
+	systemLogSink             *OpsSystemLogSink
 REDACTED
 
 func NewOpsService(
@@ -50,8 +51,9 @@ func NewOpsService(
 	openAIGatewayService *OpenAIGatewayService,
 	geminiCompatService *GeminiMessagesCompatService,
 	antigravityGatewayService *AntigravityGatewayService,
+	systemLogSink *OpsSystemLogSink,
 ) *OpsService {
-	return &OpsService{
+	svc := &OpsService{
 		opsRepo:     opsRepo,
 		settingRepo: settingRepo,
 		cfg:         cfg,
@@ -64,7 +66,10 @@ func NewOpsService(
 		openAIGatewayService:      openAIGatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
+		systemLogSink:             systemLogSink,
 REDACTED
+	svc.applyRuntimeLogConfigOnStartup(context.Background())
+	return svc
 REDACTED
 
 func (s *OpsService) RequireMonitoringEnabled(ctx context.Context) error {

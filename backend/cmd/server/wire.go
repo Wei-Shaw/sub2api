@@ -67,6 +67,7 @@ func provideCleanup(
 	opsAlertEvaluator *service.OpsAlertEvaluatorService,
 	opsCleanup *service.OpsCleanupService,
 	opsScheduledReport *service.OpsScheduledReportService,
+	opsSystemLogSink *service.OpsSystemLogSink,
 	soraMediaCleanup *service.SoraMediaCleanupService,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
@@ -100,6 +101,12 @@ func provideCleanup(
 			{"OpsCleanupService", func() error {
 				if opsCleanup != nil {
 					opsCleanup.Stop()
+			REDACTED
+				return nil
+	REDACTED
+			{"OpsSystemLogSink", func() error {
+				if opsSystemLogSink != nil {
+					opsSystemLogSink.Stop()
 			REDACTED
 				return nil
 	REDACTED
