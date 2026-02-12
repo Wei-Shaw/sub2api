@@ -162,6 +162,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
+      # postgres:18-alpine 默认 PGDATA=/var/lib/postgresql/18/docker（位于镜像声明的匿名卷 /var/lib/postgresql 内）。
+      # 若不显式设置 PGDATA，则即使挂载了 postgres_data 到 /var/lib/postgresql/data，数据也不会落盘到该命名卷，
+      # docker compose down/up 后会触发 initdb 重新初始化，导致用户/密码等数据丢失。
+      - PGDATA=/var/lib/postgresql/data
       - POSTGRES_USER=${POSTGRES_USER:-sub2apiREDACTED
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
       - POSTGRES_DB=${POSTGRES_DB:-sub2apiREDACTED
