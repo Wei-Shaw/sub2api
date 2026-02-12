@@ -2675,11 +2675,33 @@ export default {
         '5m': '近5分钟',
         '30m': '近30分钟',
         '1h': '近1小时',
+        '1d': '近1天',
+        '15d': '近15天',
         '6h': '近6小时',
         '24h': '近24小时',
         '7d': '近7天',
         '30d': '近30天',
         custom: '自定义'
+      REDACTED,
+      openaiTokenStats: {
+        title: 'OpenAI Token 请求统计',
+        viewModeTopN: 'TopN',
+        viewModePagination: '分页',
+        prevPage: '上一页',
+        nextPage: '下一页',
+        pageInfo: '第 {pageREDACTED/{totalREDACTED 页',
+        totalModels: '模型总数：{totalREDACTED',
+        failedToLoad: '加载 OpenAI Token 统计失败',
+        empty: '当前筛选条件下暂无 OpenAI Token 请求统计数据',
+        table: {
+          model: '模型',
+          requestCount: '请求数',
+          avgTokensPerSec: '平均 Tokens/秒',
+          avgFirstTokenMs: '平均首 Token 延迟(ms)',
+          totalOutputTokens: '输出 Token 总数',
+          avgDurationMs: '平均时长(ms)',
+          requestsWithFirstToken: '首 Token 样本数'
+        REDACTED
       REDACTED,
       customTimeRange: {
         startTime: '开始时间',
